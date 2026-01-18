@@ -26,13 +26,31 @@ All Rust code must pass clippy checks without errors or warnings. Run the follow
 cargo clippy
 ```
 
+### Testing
+
+All Rust code must include appropriate tests and pass all test cases. Write tests for:
+
+- Unit tests for individual functions and modules
+- Integration tests for complete features and workflows
+- Edge cases and error conditions
+
+Run the following command to execute tests:
+
+```bash
+cargo test
+```
+
+All tests must pass before considering the implementation complete.
+
 ### Final Verification
 
 Before completing any implementation or modification of Rust files:
 
-1. Run `cargo fmt` to format the code
-2. Run `cargo clippy` to check for linting issues
-3. Ensure there are no errors or warnings
-4. Only mark the task as complete when the code is properly formatted and passes all lint checks
+1. Write appropriate tests for the implemented functionality
+2. Run `cargo test` to ensure all tests pass
+3. Run `cargo fmt` to format the code
+4. Run `cargo clippy` to check for linting issues
+5. Ensure there are no errors or warnings
+6. Only mark the task as complete when the code is properly formatted, passes all lint checks, and all tests pass
 
-The codebase must be in a clean state with zero errors and zero warnings from both rustfmt and clippy.
+The codebase must be in a clean state with zero errors and zero warnings from both rustfmt and clippy, and all tests must pass.
