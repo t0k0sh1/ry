@@ -1,4 +1,4 @@
-mod eval;
+pub mod eval;
 
 use std::io::{self, BufRead, Write};
 use std::path::Path;

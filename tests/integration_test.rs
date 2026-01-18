@@ -1,3 +1,4 @@
+use ry::eval::Value;
 use ry::{evaluate_expression, validate_ry_file};
 use std::fs;
 use std::io::Write;
@@ -114,44 +115,47 @@ fn test_run_file_with_nonexistent_file() {
 // Integration tests for arithmetic operations
 #[test]
 fn test_evaluate_expression_addition() {
-    assert_eq!(evaluate_expression("1+1").unwrap(), 2.0);
-    assert_eq!(evaluate_expression("1 + 1").unwrap(), 2.0);
-    assert_eq!(evaluate_expression("10+20").unwrap(), 30.0);
+    assert_eq!(evaluate_expression("1+1").unwrap(), Value::Int(2));
+    assert_eq!(evaluate_expression("1 + 1").unwrap(), Value::Int(2));
+    assert_eq!(evaluate_expression("10+20").unwrap(), Value::Int(30));
 }
 
 #[test]
 fn test_evaluate_expression_subtraction() {
-    assert_eq!(evaluate_expression("2-1").unwrap(), 1.0);
-    assert_eq!(evaluate_expression("2 - 1").unwrap(), 1.0);
-    assert_eq!(evaluate_expression("10-5").unwrap(), 5.0);
+    assert_eq!(evaluate_expression("2-1").unwrap(), Value::Int(1));
+    assert_eq!(evaluate_expression("2 - 1").unwrap(), Value::Int(1));
+    assert_eq!(evaluate_expression("10-5").unwrap(), Value::Int(5));
 }
 
 #[test]
 fn test_evaluate_expression_multiplication() {
-    assert_eq!(evaluate_expression("3*6").unwrap(), 18.0);
-    assert_eq!(evaluate_expression("3 * 6").unwrap(), 18.0);
-    assert_eq!(evaluate_expression("4*5").unwrap(), 20.0);
+    assert_eq!(evaluate_expression("3*6").unwrap(), Value::Int(18));
+    assert_eq!(evaluate_expression("3 * 6").unwrap(), Value::Int(18));
+    assert_eq!(evaluate_expression("4*5").unwrap(), Value::Int(20));
 }
 
 #[test]
 fn test_evaluate_expression_division() {
-    assert_eq!(evaluate_expression("5/10").unwrap(), 0.5);
-    assert_eq!(evaluate_expression("5 / 10").unwrap(), 0.5);
-    assert_eq!(evaluate_expression("10/2").unwrap(), 5.0);
+    assert_eq!(evaluate_expression("5/10").unwrap(), Value::Float(0.5));
+    assert_eq!(evaluate_expression("5 / 10").unwrap(), Value::Float(0.5));
+    assert_eq!(evaluate_expression("10/2").unwrap(), Value::Float(5.0));
 }
 
 #[test]
 fn test_evaluate_expression_operator_precedence() {
     // 2 * 3 + 4 = 6 + 4 = 10
-    assert_eq!(evaluate_expression("2*3+4").unwrap(), 10.0);
-    assert_eq!(evaluate_expression("2 * 3 + 4").unwrap(), 10.0);
+    assert_eq!(evaluate_expression("2*3+4").unwrap(), Value::Int(10));
+    assert_eq!(evaluate_expression("2 * 3 + 4").unwrap(), Value::Int(10));
 
-    // 10 / 2 - 1 = 5 - 1 = 4
-    assert_eq!(evaluate_expression("10/2-1").unwrap(), 4.0);
-    assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), 4.0);
+    // 10 / 2 - 1 = 5.0 - 1 = 4.0 (除算の結果はFloat)
+    assert_eq!(evaluate_expression("10/2-1").unwrap(), Value::Float(4.0));
+    assert_eq!(
+        evaluate_expression("10 / 2 - 1").unwrap(),
+        Value::Float(4.0)
+    );
 
     // 1 + 2 * 3 = 1 + 6 = 7
-    assert_eq!(evaluate_expression("1+2*3").unwrap(), 7.0);
+    assert_eq!(evaluate_expression("1+2*3").unwrap(), Value::Int(7));
 }
 
 #[test]
