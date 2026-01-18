@@ -1,0 +1,38 @@
+---
+description: Rust development standards including formatting and linting requirements
+globs: **/*.rs
+alwaysApply: false
+---
+
+# Rust Development Standards
+
+## Code Quality Requirements
+
+When implementing or modifying Rust code, you must ensure the code is properly formatted and passes all linter checks before completion.
+
+### Formatting
+
+All Rust code must be formatted using `cargo fmt`. Run the following command after implementing changes:
+
+```bash
+cargo fmt
+```
+
+### Linting
+
+All Rust code must pass clippy checks without errors or warnings. Run the following command after implementing changes:
+
+```bash
+cargo clippy
+```
+
+### Final Verification
+
+Before completing any implementation or modification of Rust files:
+
+1. Run `cargo fmt` to format the code
+2. Run `cargo clippy` to check for linting issues
+3. Ensure there are no errors or warnings
+4. Only mark the task as complete when the code is properly formatted and passes all lint checks
+
+The codebase must be in a clean state with zero errors and zero warnings from both rustfmt and clippy.
