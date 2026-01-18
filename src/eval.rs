@@ -115,6 +115,81 @@ impl Value {
             Value::Float(f) => f,
         }
     }
+
+    /// 剰余算
+    pub fn modulo(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Int(a % b))
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a as f64 % b))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a % b as f64))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a % b))
+                }
+            }
+        }
+    }
+
+    /// 冪乗（指数に浮動小数点数を指定可能）
+    pub fn power(self, other: Self) -> Result<Self, String> {
+        let base = self.to_f64();
+        let exponent = other.to_f64();
+        Ok(Value::Float(base.powf(exponent)))
+    }
+
+    /// 切り捨て除算
+    pub fn floor_divide(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Int(a / b))
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float((a as f64 / b).floor()))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float((a / b as f64).floor()))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float((a / b).floor()))
+                }
+            }
+        }
+    }
 }
 
 impl Add for Value {
@@ -148,6 +223,9 @@ pub enum Token {
     Minus,
     Multiply,
     Divide,
+    Modulo,
+    Power,
+    FloorDivide,
     Eof,
 }
 
@@ -167,6 +245,9 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
+    Power,
+    FloorDivide,
 }
 
 pub struct Lexer {
@@ -246,8 +327,25 @@ impl Lexer {
                     match ch {
                         '+' => Ok(Token::Plus),
                         '-' => Ok(Token::Minus),
-                        '*' => Ok(Token::Multiply),
-                        '/' => Ok(Token::Divide),
+                        '*' => {
+                            // ** をチェック
+                            if let Some('*') = self.current_char() {
+                                self.advance();
+                                Ok(Token::Power)
+                            } else {
+                                Ok(Token::Multiply)
+                            }
+                        }
+                        '/' => {
+                            // // をチェック
+                            if let Some('/') = self.current_char() {
+                                self.advance();
+                                Ok(Token::FloorDivide)
+                            } else {
+                                Ok(Token::Divide)
+                            }
+                        }
+                        '%' => Ok(Token::Modulo),
                         _ => Err(format!("Unexpected character: {}", ch)),
                     }
                 }
@@ -287,14 +385,31 @@ impl Parser {
         }
     }
 
-    fn parse_term(&mut self) -> Result<Expr, String> {
+    fn parse_power(&mut self) -> Result<Expr, String> {
         let mut expr = self.parse_factor()?;
+
+        // 冪乗は右結合
+        while matches!(&self.current_token, Token::Power) {
+            self.advance()?;
+            let right = self.parse_power()?;
+            expr = Expr::BinaryOp {
+                op: BinaryOp::Power,
+                left: Box::new(expr),
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_term(&mut self) -> Result<Expr, String> {
+        let mut expr = self.parse_power()?;
 
         loop {
             match &self.current_token {
                 Token::Multiply => {
                     self.advance()?;
-                    let right = self.parse_factor()?;
+                    let right = self.parse_power()?;
                     expr = Expr::BinaryOp {
                         op: BinaryOp::Multiply,
                         left: Box::new(expr),
@@ -303,9 +418,27 @@ impl Parser {
                 }
                 Token::Divide => {
                     self.advance()?;
-                    let right = self.parse_factor()?;
+                    let right = self.parse_power()?;
                     expr = Expr::BinaryOp {
                         op: BinaryOp::Divide,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::Modulo => {
+                    self.advance()?;
+                    let right = self.parse_power()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::Modulo,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::FloorDivide => {
+                    self.advance()?;
+                    let right = self.parse_power()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::FloorDivide,
                         left: Box::new(expr),
                         right: Box::new(right),
                     };
@@ -369,6 +502,9 @@ pub fn evaluate(expr: &Expr) -> Result<Value, String> {
                 BinaryOp::Subtract => Ok(left_val - right_val),
                 BinaryOp::Multiply => Ok(left_val * right_val),
                 BinaryOp::Divide => left_val.divide(right_val),
+                BinaryOp::Modulo => left_val.modulo(right_val),
+                BinaryOp::Power => left_val.power(right_val),
+                BinaryOp::FloorDivide => left_val.floor_divide(right_val),
             }
         }
     }
@@ -521,5 +657,86 @@ mod tests {
         // 整数同士の除算は浮動小数点数を返す
         assert_eq!(evaluate_expression("10/2").unwrap(), Value::Float(5.0));
         assert_eq!(evaluate_expression("7/2").unwrap(), Value::Float(3.5));
+    }
+
+    #[test]
+    fn test_evaluate_modulo() {
+        assert_eq!(evaluate_expression("10%3").unwrap(), Value::Int(1));
+        assert_eq!(evaluate_expression("10 % 3").unwrap(), Value::Int(1));
+        assert_eq!(evaluate_expression("15%4").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("10.5%3").unwrap(), Value::Float(1.5));
+    }
+
+    #[test]
+    fn test_evaluate_power() {
+        assert_eq!(evaluate_expression("2**3").unwrap(), Value::Float(8.0));
+        assert_eq!(evaluate_expression("2 ** 3").unwrap(), Value::Float(8.0));
+        assert_eq!(evaluate_expression("3**2").unwrap(), Value::Float(9.0));
+        assert_eq!(
+            evaluate_expression("2**3.5").unwrap(),
+            Value::Float(11.313708498984761)
+        );
+        assert_eq!(evaluate_expression("10**0").unwrap(), Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_evaluate_floor_divide() {
+        assert_eq!(evaluate_expression("10//3").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("10 // 3").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("7//2").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("10.7//3").unwrap(), Value::Float(3.0));
+        assert_eq!(evaluate_expression("10.7//3.2").unwrap(), Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_new_operator_precedence() {
+        // 2 ** 3 + 4 = 8 + 4 = 12.0 (冪乗が最高優先度)
+        assert_eq!(evaluate_expression("2**3+4").unwrap(), Value::Float(12.0));
+
+        // 2 * 3 % 2 = 6 % 2 = 0 (乗算と剰余算は同じ優先度)
+        assert_eq!(evaluate_expression("2*3%2").unwrap(), Value::Int(0));
+
+        // 10 // 3 * 2 = 3 * 2 = 6 (切り捨て除算と乗算は同じ優先度)
+        assert_eq!(evaluate_expression("10//3*2").unwrap(), Value::Int(6));
+
+        // 2 ** 3 ** 2 = 2 ** (3 ** 2) = 2 ** 9 = 512.0 (右結合)
+        assert_eq!(evaluate_expression("2**3**2").unwrap(), Value::Float(512.0));
+
+        // 2 * 3 ** 2 = 2 * 9 = 18.0 (冪乗が乗算より優先)
+        assert_eq!(evaluate_expression("2*3**2").unwrap(), Value::Float(18.0));
+    }
+
+    #[test]
+    fn test_modulo_by_zero() {
+        let result = evaluate_expression("5%0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Division by zero"));
+
+        let result = evaluate_expression("5.5%0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Division by zero"));
+    }
+
+    #[test]
+    fn test_floor_divide_by_zero() {
+        let result = evaluate_expression("5//0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Division by zero"));
+
+        let result = evaluate_expression("5.5//0");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Division by zero"));
+    }
+
+    #[test]
+    fn test_mixed_types_with_new_operators() {
+        // 整数と浮動小数点数の混合テスト
+        assert_eq!(evaluate_expression("10.5%3").unwrap(), Value::Float(1.5));
+        assert_eq!(
+            evaluate_expression("2**3.5").unwrap(),
+            Value::Float(11.313708498984761)
+        );
+        assert_eq!(evaluate_expression("10.7//3").unwrap(), Value::Float(3.0));
+        assert_eq!(evaluate_expression("10//3.2").unwrap(), Value::Float(3.0));
     }
 }
