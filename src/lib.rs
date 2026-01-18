@@ -1,5 +1,9 @@
+mod eval;
+
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+
+pub use eval::evaluate_expression;
 
 pub fn validate_ry_file(path: &str) -> Result<(), String> {
     let path_obj = Path::new(path);
@@ -18,8 +22,19 @@ pub fn run_file(path: &str) -> Result<(), String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
 
-    // TODO: Evaluate the content (placeholder for now)
-    println!("File content:\n{}", content);
+    // Evaluate each line
+    for (line_num, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match evaluate_expression(trimmed) {
+            Ok(result) => println!("{}", result),
+            Err(e) => {
+                return Err(format!("Error at line {}: {}", line_num + 1, e));
+            }
+        }
+    }
 
     Ok(())
 }
@@ -47,8 +62,11 @@ pub fn run_repl() {
                 if trimmed == "exit" || trimmed == "quit" {
                     break;
                 }
-                // TODO: Evaluate the input (placeholder for now)
-                println!("You entered: {}", trimmed);
+                // Evaluate the input
+                match evaluate_expression(trimmed) {
+                    Ok(result) => println!("{}", result),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
             }
             Err(e) => {
                 eprintln!("Error reading input: {}", e);
