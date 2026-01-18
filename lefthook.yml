@@ -1,0 +1,10 @@
+pre-commit:
+  jobs:
+    - name: format check
+      run: cargo fmt --check
+
+    - name: lint check
+      run: cargo clippy
+
+    - name: test check
+      run: cargo test
