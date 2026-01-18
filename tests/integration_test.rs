@@ -1,5 +1,5 @@
-use ry::{evaluate_expression, validate_ry_file};
 use ry::eval::Value;
+use ry::{evaluate_expression, validate_ry_file};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -149,7 +149,10 @@ fn test_evaluate_expression_operator_precedence() {
 
     // 10 / 2 - 1 = 5.0 - 1 = 4.0 (除算の結果はFloat)
     assert_eq!(evaluate_expression("10/2-1").unwrap(), Value::Float(4.0));
-    assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), Value::Float(4.0));
+    assert_eq!(
+        evaluate_expression("10 / 2 - 1").unwrap(),
+        Value::Float(4.0)
+    );
 
     // 1 + 2 * 3 = 1 + 6 = 7
     assert_eq!(evaluate_expression("1+2*3").unwrap(), Value::Int(7));

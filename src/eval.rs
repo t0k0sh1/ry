@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::{Add, Mul, Sub};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -31,8 +32,8 @@ impl Value {
         }
     }
 
-    /// 加算
-    pub fn add(self, other: Self) -> Self {
+    /// 加算（内部実装）
+    fn add_impl(self, other: Self) -> Self {
         match (self, other) {
             (Value::Int(a), Value::Int(b)) => {
                 // オーバーフローチェック
@@ -47,30 +48,26 @@ impl Value {
         }
     }
 
-    /// 減算
-    pub fn subtract(self, other: Self) -> Self {
+    /// 減算（内部実装）
+    fn subtract_impl(self, other: Self) -> Self {
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => {
-                match a.checked_sub(b) {
-                    Some(result) => Value::Int(result),
-                    None => Value::Float(a as f64 - b as f64),
-                }
-            }
+            (Value::Int(a), Value::Int(b)) => match a.checked_sub(b) {
+                Some(result) => Value::Int(result),
+                None => Value::Float(a as f64 - b as f64),
+            },
             (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 - b),
             (Value::Float(a), Value::Int(b)) => Value::Float(a - b as f64),
             (Value::Float(a), Value::Float(b)) => Value::Float(a - b),
         }
     }
 
-    /// 乗算
-    pub fn multiply(self, other: Self) -> Self {
+    /// 乗算（内部実装）
+    fn multiply_impl(self, other: Self) -> Self {
         match (self, other) {
-            (Value::Int(a), Value::Int(b)) => {
-                match a.checked_mul(b) {
-                    Some(result) => Value::Int(result),
-                    None => Value::Float(a as f64 * b as f64),
-                }
-            }
+            (Value::Int(a), Value::Int(b)) => match a.checked_mul(b) {
+                Some(result) => Value::Int(result),
+                None => Value::Float(a as f64 * b as f64),
+            },
             (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 * b),
             (Value::Float(a), Value::Int(b)) => Value::Float(a * b as f64),
             (Value::Float(a), Value::Float(b)) => Value::Float(a * b),
@@ -117,6 +114,30 @@ impl Value {
             Value::Int(i) => i as f64,
             Value::Float(f) => f,
         }
+    }
+}
+
+impl Add for Value {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        self.add_impl(other)
+    }
+}
+
+impl Sub for Value {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        self.subtract_impl(other)
+    }
+}
+
+impl Mul for Value {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self::Output {
+        self.multiply_impl(other)
     }
 }
 
@@ -195,7 +216,7 @@ impl Lexer {
         }
 
         let num_str: String = self.input[start..self.position].iter().collect();
-        
+
         if has_dot {
             // 浮動小数点数として解析
             num_str
@@ -344,9 +365,9 @@ pub fn evaluate(expr: &Expr) -> Result<Value, String> {
             let right_val = evaluate(right)?;
 
             match op {
-                BinaryOp::Add => Ok(left_val.add(right_val)),
-                BinaryOp::Subtract => Ok(left_val.subtract(right_val)),
-                BinaryOp::Multiply => Ok(left_val.multiply(right_val)),
+                BinaryOp::Add => Ok(left_val + right_val),
+                BinaryOp::Subtract => Ok(left_val - right_val),
+                BinaryOp::Multiply => Ok(left_val * right_val),
                 BinaryOp::Divide => left_val.divide(right_val),
             }
         }
@@ -437,7 +458,10 @@ mod tests {
 
         // 10 / 2 - 1 = 5.0 - 1 = 4.0 (除算の結果はFloat)
         assert_eq!(evaluate_expression("10/2-1").unwrap(), Value::Float(4.0));
-        assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), Value::Float(4.0));
+        assert_eq!(
+            evaluate_expression("10 / 2 - 1").unwrap(),
+            Value::Float(4.0)
+        );
 
         // 1 + 2 * 3 = 1 + 6 = 7
         assert_eq!(evaluate_expression("1+2*3").unwrap(), Value::Int(7));
@@ -477,11 +501,11 @@ mod tests {
         // 整数 + 浮動小数点数 = 浮動小数点数
         assert_eq!(evaluate_expression("1+1.5").unwrap(), Value::Float(2.5));
         assert_eq!(evaluate_expression("1.5+1").unwrap(), Value::Float(2.5));
-        
+
         // 整数 - 浮動小数点数 = 浮動小数点数
         assert_eq!(evaluate_expression("5-2.5").unwrap(), Value::Float(2.5));
         assert_eq!(evaluate_expression("5.5-2").unwrap(), Value::Float(3.5));
-        
+
         // 整数 * 浮動小数点数 = 浮動小数点数
         assert_eq!(evaluate_expression("2*1.5").unwrap(), Value::Float(3.0));
         assert_eq!(evaluate_expression("2.5*2").unwrap(), Value::Float(5.0));
@@ -493,7 +517,7 @@ mod tests {
         assert_eq!(evaluate_expression("1+2").unwrap(), Value::Int(3));
         assert_eq!(evaluate_expression("5-2").unwrap(), Value::Int(3));
         assert_eq!(evaluate_expression("2*3").unwrap(), Value::Int(6));
-        
+
         // 整数同士の除算は浮動小数点数を返す
         assert_eq!(evaluate_expression("10/2").unwrap(), Value::Float(5.0));
         assert_eq!(evaluate_expression("7/2").unwrap(), Value::Float(3.5));
