@@ -1,4 +1,4 @@
-use ry::validate_ry_file;
+use ry::{evaluate_expression, validate_ry_file};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -68,9 +68,9 @@ fn test_read_nonexistent_file_returns_error() {
 fn test_run_file_with_valid_ry_file() {
     let temp_dir = std::env::temp_dir();
     let test_file = temp_dir.join("test_run.ry");
-    let test_content = "println(\"Hello, Ry!\");";
+    let test_content = "1+1";
 
-    // Create a temporary .ry file
+    // Create a temporary .ry file with a valid arithmetic expression
     let mut file = fs::File::create(&test_file).unwrap();
     file.write_all(test_content.as_bytes()).unwrap();
     drop(file);
@@ -109,4 +109,105 @@ fn test_run_file_with_nonexistent_file() {
     let result = ry::run_file(nonexistent_file);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Failed to read file"));
+}
+
+// Integration tests for arithmetic operations
+#[test]
+fn test_evaluate_expression_addition() {
+    assert_eq!(evaluate_expression("1+1").unwrap(), 2.0);
+    assert_eq!(evaluate_expression("1 + 1").unwrap(), 2.0);
+    assert_eq!(evaluate_expression("10+20").unwrap(), 30.0);
+}
+
+#[test]
+fn test_evaluate_expression_subtraction() {
+    assert_eq!(evaluate_expression("2-1").unwrap(), 1.0);
+    assert_eq!(evaluate_expression("2 - 1").unwrap(), 1.0);
+    assert_eq!(evaluate_expression("10-5").unwrap(), 5.0);
+}
+
+#[test]
+fn test_evaluate_expression_multiplication() {
+    assert_eq!(evaluate_expression("3*6").unwrap(), 18.0);
+    assert_eq!(evaluate_expression("3 * 6").unwrap(), 18.0);
+    assert_eq!(evaluate_expression("4*5").unwrap(), 20.0);
+}
+
+#[test]
+fn test_evaluate_expression_division() {
+    assert_eq!(evaluate_expression("5/10").unwrap(), 0.5);
+    assert_eq!(evaluate_expression("5 / 10").unwrap(), 0.5);
+    assert_eq!(evaluate_expression("10/2").unwrap(), 5.0);
+}
+
+#[test]
+fn test_evaluate_expression_operator_precedence() {
+    // 2 * 3 + 4 = 6 + 4 = 10
+    assert_eq!(evaluate_expression("2*3+4").unwrap(), 10.0);
+    assert_eq!(evaluate_expression("2 * 3 + 4").unwrap(), 10.0);
+
+    // 10 / 2 - 1 = 5 - 1 = 4
+    assert_eq!(evaluate_expression("10/2-1").unwrap(), 4.0);
+    assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), 4.0);
+
+    // 1 + 2 * 3 = 1 + 6 = 7
+    assert_eq!(evaluate_expression("1+2*3").unwrap(), 7.0);
+}
+
+#[test]
+fn test_run_file_with_arithmetic_expressions() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_arithmetic.ry");
+    let test_content = "1+1\n2-1\n3*6\n5/10";
+
+    // Create a temporary .ry file with arithmetic expressions
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_ok());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+}
+
+#[test]
+fn test_run_file_with_complex_arithmetic() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_complex.ry");
+    let test_content = "2*3+4\n10/2-1\n1+2*3";
+
+    // Create a temporary .ry file with complex arithmetic expressions
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_ok());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+}
+
+#[test]
+fn test_run_file_with_invalid_expression() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_invalid.ry");
+    let test_content = "1+\n2++3";
+
+    // Create a temporary .ry file with invalid expressions
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function should return error
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Error at line"));
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
 }
