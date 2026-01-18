@@ -1,6 +1,128 @@
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i64),
+    Float(f64),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Int(i) => write!(f, "{}", i),
+            Value::Float(fl) => {
+                // 整数として表示できる場合は整数として表示
+                if *fl == (*fl as i64 as f64) {
+                    write!(f, "{}", *fl as i64)
+                } else {
+                    write!(f, "{}", fl)
+                }
+            }
+        }
+    }
+}
+
+impl Value {
+    /// 整数を浮動小数点数に変換
+    pub fn promote_to_float(self) -> Self {
+        match self {
+            Value::Int(i) => Value::Float(i as f64),
+            Value::Float(f) => Value::Float(f),
+        }
+    }
+
+    /// 加算
+    pub fn add(self, other: Self) -> Self {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                // オーバーフローチェック
+                match a.checked_add(b) {
+                    Some(result) => Value::Int(result),
+                    None => Value::Float(a as f64 + b as f64),
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 + b),
+            (Value::Float(a), Value::Int(b)) => Value::Float(a + b as f64),
+            (Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+        }
+    }
+
+    /// 減算
+    pub fn subtract(self, other: Self) -> Self {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                match a.checked_sub(b) {
+                    Some(result) => Value::Int(result),
+                    None => Value::Float(a as f64 - b as f64),
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 - b),
+            (Value::Float(a), Value::Int(b)) => Value::Float(a - b as f64),
+            (Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+        }
+    }
+
+    /// 乗算
+    pub fn multiply(self, other: Self) -> Self {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                match a.checked_mul(b) {
+                    Some(result) => Value::Int(result),
+                    None => Value::Float(a as f64 * b as f64),
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 * b),
+            (Value::Float(a), Value::Int(b)) => Value::Float(a * b as f64),
+            (Value::Float(a), Value::Float(b)) => Value::Float(a * b),
+        }
+    }
+
+    /// 除算（除算は常に浮動小数点数を返す）
+    pub fn divide(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a as f64 / b as f64))
+                }
+            }
+            (Value::Int(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a as f64 / b))
+                }
+            }
+            (Value::Float(a), Value::Int(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a / b as f64))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a / b))
+                }
+            }
+        }
+    }
+
+    /// f64に変換（後方互換性のため）
+    pub fn to_f64(self) -> f64 {
+        match self {
+            Value::Int(i) => i as f64,
+            Value::Float(f) => f,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Number(f64),
+    Number(Value),
     Plus,
     Minus,
     Multiply,
@@ -10,7 +132,7 @@ pub enum Token {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Number(f64),
+    Number(Value),
     BinaryOp {
         op: BinaryOp,
         left: Box<Expr>,
@@ -57,7 +179,7 @@ impl Lexer {
         }
     }
 
-    fn read_number(&mut self) -> Result<f64, String> {
+    fn read_number(&mut self) -> Result<Value, String> {
         let start = self.position;
         let mut has_dot = false;
 
@@ -73,9 +195,20 @@ impl Lexer {
         }
 
         let num_str: String = self.input[start..self.position].iter().collect();
-        num_str
-            .parse::<f64>()
-            .map_err(|_| format!("Invalid number: {}", num_str))
+        
+        if has_dot {
+            // 浮動小数点数として解析
+            num_str
+                .parse::<f64>()
+                .map(Value::Float)
+                .map_err(|_| format!("Invalid number: {}", num_str))
+        } else {
+            // 整数として解析
+            num_str
+                .parse::<i64>()
+                .map(Value::Int)
+                .map_err(|_| format!("Invalid number: {}", num_str))
+        }
     }
 
     pub fn next_token(&mut self) -> Result<Token, String> {
@@ -125,7 +258,7 @@ impl Parser {
     fn parse_factor(&mut self) -> Result<Expr, String> {
         match &self.current_token {
             Token::Number(n) => {
-                let value = *n;
+                let value = n.clone();
                 self.advance()?;
                 Ok(Expr::Number(value))
             }
@@ -203,33 +336,32 @@ impl Parser {
     }
 }
 
-pub fn evaluate(expr: &Expr) -> Result<f64, String> {
+pub fn evaluate(expr: &Expr) -> Result<Value, String> {
     match expr {
-        Expr::Number(n) => Ok(*n),
+        Expr::Number(n) => Ok(n.clone()),
         Expr::BinaryOp { op, left, right } => {
             let left_val = evaluate(left)?;
             let right_val = evaluate(right)?;
 
             match op {
-                BinaryOp::Add => Ok(left_val + right_val),
-                BinaryOp::Subtract => Ok(left_val - right_val),
-                BinaryOp::Multiply => Ok(left_val * right_val),
-                BinaryOp::Divide => {
-                    if right_val == 0.0 {
-                        Err("Division by zero".to_string())
-                    } else {
-                        Ok(left_val / right_val)
-                    }
-                }
+                BinaryOp::Add => Ok(left_val.add(right_val)),
+                BinaryOp::Subtract => Ok(left_val.subtract(right_val)),
+                BinaryOp::Multiply => Ok(left_val.multiply(right_val)),
+                BinaryOp::Divide => left_val.divide(right_val),
             }
         }
     }
 }
 
-pub fn evaluate_expression(input: &str) -> Result<f64, String> {
+pub fn evaluate_expression(input: &str) -> Result<Value, String> {
     let mut parser = Parser::new(input)?;
     let expr = parser.parse()?;
     evaluate(&expr)
+}
+
+/// 後方互換性のためのf64を返すラッパー関数
+pub fn evaluate_expression_f64(input: &str) -> Result<f64, String> {
+    evaluate_expression(input).map(|v| v.to_f64())
 }
 
 #[cfg(test)]
@@ -239,78 +371,79 @@ mod tests {
     #[test]
     fn test_lexer_basic() {
         let mut lexer = Lexer::new("1+2");
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(1.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(1)));
         assert_eq!(lexer.next_token().unwrap(), Token::Plus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(2.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(2)));
         assert_eq!(lexer.next_token().unwrap(), Token::Eof);
     }
 
     #[test]
     fn test_lexer_with_spaces() {
         let mut lexer = Lexer::new("1 + 2");
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(1.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(1)));
         assert_eq!(lexer.next_token().unwrap(), Token::Plus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(2.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(2)));
         assert_eq!(lexer.next_token().unwrap(), Token::Eof);
     }
 
     #[test]
     fn test_lexer_all_operators() {
         let mut lexer = Lexer::new("1+2-3*4/5");
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(1.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(1)));
         assert_eq!(lexer.next_token().unwrap(), Token::Plus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(2.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(2)));
         assert_eq!(lexer.next_token().unwrap(), Token::Minus);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(3.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(3)));
         assert_eq!(lexer.next_token().unwrap(), Token::Multiply);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(4.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(4)));
         assert_eq!(lexer.next_token().unwrap(), Token::Divide);
-        assert_eq!(lexer.next_token().unwrap(), Token::Number(5.0));
+        assert_eq!(lexer.next_token().unwrap(), Token::Number(Value::Int(5)));
     }
 
     #[test]
     fn test_evaluate_addition() {
-        assert_eq!(evaluate_expression("1+1").unwrap(), 2.0);
-        assert_eq!(evaluate_expression("1 + 1").unwrap(), 2.0);
-        assert_eq!(evaluate_expression("10+20").unwrap(), 30.0);
+        assert_eq!(evaluate_expression("1+1").unwrap(), Value::Int(2));
+        assert_eq!(evaluate_expression("1 + 1").unwrap(), Value::Int(2));
+        assert_eq!(evaluate_expression("10+20").unwrap(), Value::Int(30));
     }
 
     #[test]
     fn test_evaluate_subtraction() {
-        assert_eq!(evaluate_expression("2-1").unwrap(), 1.0);
-        assert_eq!(evaluate_expression("2 - 1").unwrap(), 1.0);
-        assert_eq!(evaluate_expression("10-5").unwrap(), 5.0);
+        assert_eq!(evaluate_expression("2-1").unwrap(), Value::Int(1));
+        assert_eq!(evaluate_expression("2 - 1").unwrap(), Value::Int(1));
+        assert_eq!(evaluate_expression("10-5").unwrap(), Value::Int(5));
     }
 
     #[test]
     fn test_evaluate_multiplication() {
-        assert_eq!(evaluate_expression("3*6").unwrap(), 18.0);
-        assert_eq!(evaluate_expression("3 * 6").unwrap(), 18.0);
-        assert_eq!(evaluate_expression("4*5").unwrap(), 20.0);
+        assert_eq!(evaluate_expression("3*6").unwrap(), Value::Int(18));
+        assert_eq!(evaluate_expression("3 * 6").unwrap(), Value::Int(18));
+        assert_eq!(evaluate_expression("4*5").unwrap(), Value::Int(20));
     }
 
     #[test]
     fn test_evaluate_division() {
-        assert_eq!(evaluate_expression("5/10").unwrap(), 0.5);
-        assert_eq!(evaluate_expression("5 / 10").unwrap(), 0.5);
-        assert_eq!(evaluate_expression("10/2").unwrap(), 5.0);
+        assert_eq!(evaluate_expression("5/10").unwrap(), Value::Float(0.5));
+        assert_eq!(evaluate_expression("5 / 10").unwrap(), Value::Float(0.5));
+        // 除算は常にFloatを返す
+        assert_eq!(evaluate_expression("10/2").unwrap(), Value::Float(5.0));
     }
 
     #[test]
     fn test_operator_precedence() {
         // 2 * 3 + 4 = 6 + 4 = 10
-        assert_eq!(evaluate_expression("2*3+4").unwrap(), 10.0);
-        assert_eq!(evaluate_expression("2 * 3 + 4").unwrap(), 10.0);
+        assert_eq!(evaluate_expression("2*3+4").unwrap(), Value::Int(10));
+        assert_eq!(evaluate_expression("2 * 3 + 4").unwrap(), Value::Int(10));
 
-        // 10 / 2 - 1 = 5 - 1 = 4
-        assert_eq!(evaluate_expression("10/2-1").unwrap(), 4.0);
-        assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), 4.0);
+        // 10 / 2 - 1 = 5.0 - 1 = 4.0 (除算の結果はFloat)
+        assert_eq!(evaluate_expression("10/2-1").unwrap(), Value::Float(4.0));
+        assert_eq!(evaluate_expression("10 / 2 - 1").unwrap(), Value::Float(4.0));
 
         // 1 + 2 * 3 = 1 + 6 = 7
-        assert_eq!(evaluate_expression("1+2*3").unwrap(), 7.0);
+        assert_eq!(evaluate_expression("1+2*3").unwrap(), Value::Int(7));
 
-        // 8 / 2 * 2 = 4 * 2 = 8 (left associative)
-        assert_eq!(evaluate_expression("8/2*2").unwrap(), 8.0);
+        // 8 / 2 * 2 = 4.0 * 2 = 8.0 (除算の結果はFloat)
+        assert_eq!(evaluate_expression("8/2*2").unwrap(), Value::Float(8.0));
     }
 
     #[test]
@@ -334,8 +467,35 @@ mod tests {
 
     #[test]
     fn test_decimal_numbers() {
-        assert_eq!(evaluate_expression("1.5+2.5").unwrap(), 4.0);
-        assert_eq!(evaluate_expression("3.14*2").unwrap(), 6.28);
-        assert_eq!(evaluate_expression("10.0/2.0").unwrap(), 5.0);
+        assert_eq!(evaluate_expression("1.5+2.5").unwrap(), Value::Float(4.0));
+        assert_eq!(evaluate_expression("3.14*2").unwrap(), Value::Float(6.28));
+        assert_eq!(evaluate_expression("10.0/2.0").unwrap(), Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_type_promotion_int_to_float() {
+        // 整数 + 浮動小数点数 = 浮動小数点数
+        assert_eq!(evaluate_expression("1+1.5").unwrap(), Value::Float(2.5));
+        assert_eq!(evaluate_expression("1.5+1").unwrap(), Value::Float(2.5));
+        
+        // 整数 - 浮動小数点数 = 浮動小数点数
+        assert_eq!(evaluate_expression("5-2.5").unwrap(), Value::Float(2.5));
+        assert_eq!(evaluate_expression("5.5-2").unwrap(), Value::Float(3.5));
+        
+        // 整数 * 浮動小数点数 = 浮動小数点数
+        assert_eq!(evaluate_expression("2*1.5").unwrap(), Value::Float(3.0));
+        assert_eq!(evaluate_expression("2.5*2").unwrap(), Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_integer_operations() {
+        // 整数同士の加算、減算、乗算は整数を返す
+        assert_eq!(evaluate_expression("1+2").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("5-2").unwrap(), Value::Int(3));
+        assert_eq!(evaluate_expression("2*3").unwrap(), Value::Int(6));
+        
+        // 整数同士の除算は浮動小数点数を返す
+        assert_eq!(evaluate_expression("10/2").unwrap(), Value::Float(5.0));
+        assert_eq!(evaluate_expression("7/2").unwrap(), Value::Float(3.5));
     }
 }
