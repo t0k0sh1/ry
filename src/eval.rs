@@ -5,6 +5,7 @@ use std::ops::{Add, Mul, Sub};
 pub enum Value {
     Int(i64),
     Float(f64),
+    Bool(bool),
 }
 
 impl fmt::Display for Value {
@@ -19,6 +20,7 @@ impl fmt::Display for Value {
                     write!(f, "{}", fl)
                 }
             }
+            Value::Bool(b) => write!(f, "{}", b),
         }
     }
 }
@@ -29,6 +31,7 @@ impl Value {
         match self {
             Value::Int(i) => Value::Float(i as f64),
             Value::Float(f) => Value::Float(f),
+            Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
         }
     }
 
@@ -45,6 +48,7 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 + b),
             (Value::Float(a), Value::Int(b)) => Value::Float(a + b as f64),
             (Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+            _ => panic!("Unsupported types for addition"),
         }
     }
 
@@ -58,6 +62,7 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 - b),
             (Value::Float(a), Value::Int(b)) => Value::Float(a - b as f64),
             (Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+            _ => panic!("Unsupported types for subtraction"),
         }
     }
 
@@ -71,6 +76,7 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Value::Float(a as f64 * b),
             (Value::Float(a), Value::Int(b)) => Value::Float(a * b as f64),
             (Value::Float(a), Value::Float(b)) => Value::Float(a * b),
+            _ => panic!("Unsupported types for multiplication"),
         }
     }
 
@@ -105,6 +111,7 @@ impl Value {
                     Ok(Value::Float(a / b))
                 }
             }
+            _ => Err("Unsupported types for division".to_string()),
         }
     }
 
@@ -113,6 +120,13 @@ impl Value {
         match self {
             Value::Int(i) => i as f64,
             Value::Float(f) => f,
+            Value::Bool(b) => {
+                if b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
         }
     }
 
@@ -147,6 +161,7 @@ impl Value {
                     Ok(Value::Float(a % b))
                 }
             }
+            _ => Err("Unsupported types for modulo".to_string()),
         }
     }
 
@@ -188,6 +203,75 @@ impl Value {
                     Ok(Value::Float((a / b).floor()))
                 }
             }
+            _ => Err("Unsupported types for floor division".to_string()),
+        }
+    }
+
+    /// 等価比較
+    pub fn compare_eq(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) == b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a == (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a == b)),
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
+            _ => Err("Unsupported types for comparison".to_string()),
+        }
+    }
+
+    /// 不等価比較
+    pub fn compare_ne(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) != b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a != (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a != b)),
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
+            _ => Err("Unsupported types for comparison".to_string()),
+        }
+    }
+
+    /// より小さい比較
+    pub fn compare_lt(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) < b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a < (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
+            _ => Err("Unsupported types for comparison".to_string()),
+        }
+    }
+
+    /// より大きい比較
+    pub fn compare_gt(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) > b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a > (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
+            _ => Err("Unsupported types for comparison".to_string()),
+        }
+    }
+
+    /// 以下比較
+    pub fn compare_le(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) <= b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a <= (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
+            _ => Err("Unsupported types for comparison".to_string()),
+        }
+    }
+
+    /// 以上比較
+    pub fn compare_ge(self, other: Self) -> Result<Self, String> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool((a as f64) >= b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(a >= (b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a >= b)),
+            _ => Err("Unsupported types for comparison".to_string()),
         }
     }
 }
@@ -219,6 +303,8 @@ impl Mul for Value {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Number(Value),
+    True,
+    False,
     Plus,
     Minus,
     Multiply,
@@ -226,6 +312,12 @@ pub enum Token {
     Modulo,
     Power,
     FloorDivide,
+    Equal,
+    NotEqual,
+    LessThan,
+    GreaterThan,
+    LessThanOrEqual,
+    GreaterThanOrEqual,
     Eof,
 }
 
@@ -248,6 +340,12 @@ pub enum BinaryOp {
     Modulo,
     Power,
     FloorDivide,
+    Equal,
+    NotEqual,
+    LessThan,
+    GreaterThan,
+    LessThanOrEqual,
+    GreaterThanOrEqual,
 }
 
 pub struct Lexer {
@@ -313,6 +411,18 @@ impl Lexer {
         }
     }
 
+    fn read_keyword(&mut self) -> Result<String, String> {
+        let start = self.position;
+        while let Some(ch) = self.current_char() {
+            if ch.is_ascii_alphabetic() || ch == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        Ok(self.input[start..self.position].iter().collect())
+    }
+
     pub fn next_token(&mut self) -> Result<Token, String> {
         self.skip_whitespace();
 
@@ -322,6 +432,13 @@ impl Lexer {
                 if ch.is_ascii_digit() || ch == '.' {
                     let num = self.read_number()?;
                     Ok(Token::Number(num))
+                } else if ch.is_ascii_alphabetic() || ch == '_' {
+                    let keyword = self.read_keyword()?;
+                    match keyword.as_str() {
+                        "true" => Ok(Token::True),
+                        "false" => Ok(Token::False),
+                        _ => Err(format!("Unexpected keyword: {}", keyword)),
+                    }
                 } else {
                     self.advance();
                     match ch {
@@ -346,6 +463,42 @@ impl Lexer {
                             }
                         }
                         '%' => Ok(Token::Modulo),
+                        '=' => {
+                            // == をチェック
+                            if let Some('=') = self.current_char() {
+                                self.advance();
+                                Ok(Token::Equal)
+                            } else {
+                                Err("Unexpected character: =".to_string())
+                            }
+                        }
+                        '!' => {
+                            // != をチェック
+                            if let Some('=') = self.current_char() {
+                                self.advance();
+                                Ok(Token::NotEqual)
+                            } else {
+                                Err("Unexpected character: !".to_string())
+                            }
+                        }
+                        '<' => {
+                            // <= をチェック
+                            if let Some('=') = self.current_char() {
+                                self.advance();
+                                Ok(Token::LessThanOrEqual)
+                            } else {
+                                Ok(Token::LessThan)
+                            }
+                        }
+                        '>' => {
+                            // >= をチェック
+                            if let Some('=') = self.current_char() {
+                                self.advance();
+                                Ok(Token::GreaterThanOrEqual)
+                            } else {
+                                Ok(Token::GreaterThan)
+                            }
+                        }
                         _ => Err(format!("Unexpected character: {}", ch)),
                     }
                 }
@@ -381,7 +534,15 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::Number(value))
             }
-            _ => Err("Expected a number".to_string()),
+            Token::True => {
+                self.advance()?;
+                Ok(Expr::Number(Value::Bool(true)))
+            }
+            Token::False => {
+                self.advance()?;
+                Ok(Expr::Number(Value::Bool(false)))
+            }
+            _ => Err("Expected a number or boolean".to_string()),
         }
     }
 
@@ -450,7 +611,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, String> {
+    fn parse_comparison(&mut self) -> Result<Expr, String> {
         let mut expr = self.parse_term()?;
 
         loop {
@@ -469,6 +630,72 @@ impl Parser {
                     let right = self.parse_term()?;
                     expr = Expr::BinaryOp {
                         op: BinaryOp::Subtract,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_expression(&mut self) -> Result<Expr, String> {
+        let mut expr = self.parse_comparison()?;
+
+        loop {
+            match &self.current_token {
+                Token::Equal => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::Equal,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::NotEqual => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::NotEqual,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::LessThan => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::LessThan,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::GreaterThan => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::GreaterThan,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::LessThanOrEqual => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::LessThanOrEqual,
+                        left: Box::new(expr),
+                        right: Box::new(right),
+                    };
+                }
+                Token::GreaterThanOrEqual => {
+                    self.advance()?;
+                    let right = self.parse_comparison()?;
+                    expr = Expr::BinaryOp {
+                        op: BinaryOp::GreaterThanOrEqual,
                         left: Box::new(expr),
                         right: Box::new(right),
                     };
@@ -505,6 +732,12 @@ pub fn evaluate(expr: &Expr) -> Result<Value, String> {
                 BinaryOp::Modulo => left_val.modulo(right_val),
                 BinaryOp::Power => left_val.power(right_val),
                 BinaryOp::FloorDivide => left_val.floor_divide(right_val),
+                BinaryOp::Equal => left_val.compare_eq(right_val),
+                BinaryOp::NotEqual => left_val.compare_ne(right_val),
+                BinaryOp::LessThan => left_val.compare_lt(right_val),
+                BinaryOp::GreaterThan => left_val.compare_gt(right_val),
+                BinaryOp::LessThanOrEqual => left_val.compare_le(right_val),
+                BinaryOp::GreaterThanOrEqual => left_val.compare_ge(right_val),
             }
         }
     }
@@ -738,5 +971,136 @@ mod tests {
         );
         assert_eq!(evaluate_expression("10.7//3").unwrap(), Value::Float(3.0));
         assert_eq!(evaluate_expression("10//3.2").unwrap(), Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_bool_literals() {
+        assert_eq!(evaluate_expression("true").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("false").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_lexer_bool_literals() {
+        let mut lexer = Lexer::new("true false");
+        assert_eq!(lexer.next_token().unwrap(), Token::True);
+        assert_eq!(lexer.next_token().unwrap(), Token::False);
+        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
+    }
+
+    #[test]
+    fn test_comparison_equal() {
+        assert_eq!(evaluate_expression("1==1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1 == 1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1==2").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1.5==1.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1==1.0").unwrap(), Value::Bool(true));
+        assert_eq!(
+            evaluate_expression("true==true").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            evaluate_expression("true==false").unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_comparison_not_equal() {
+        assert_eq!(evaluate_expression("1!=1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1 != 1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1!=2").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1.5!=1.5").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1!=1.0").unwrap(), Value::Bool(false));
+        assert_eq!(
+            evaluate_expression("true!=true").unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            evaluate_expression("true!=false").unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_comparison_less_than() {
+        assert_eq!(evaluate_expression("1<2").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1 < 2").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2<1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1<1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1.5<2.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1<2.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2.5<1").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_comparison_greater_than() {
+        assert_eq!(evaluate_expression("2>1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2 > 1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1>2").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1>1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("2.5>1.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2.5>1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1>2.5").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_comparison_less_than_or_equal() {
+        assert_eq!(evaluate_expression("1<=2").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1 <= 2").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1<=1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2<=1").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("1.5<=2.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1.5<=1.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2.5<=1.5").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_comparison_greater_than_or_equal() {
+        assert_eq!(evaluate_expression("2>=1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("2 >= 1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1>=1").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1>=2").unwrap(), Value::Bool(false));
+        assert_eq!(evaluate_expression("2.5>=1.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1.5>=1.5").unwrap(), Value::Bool(true));
+        assert_eq!(evaluate_expression("1.5>=2.5").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_comparison_operator_precedence() {
+        // 1 + 2 < 3 * 4  →  (1 + 2) < (3 * 4) = 3 < 12 = true
+        assert_eq!(evaluate_expression("1+2<3*4").unwrap(), Value::Bool(true));
+        assert_eq!(
+            evaluate_expression("1 + 2 < 3 * 4").unwrap(),
+            Value::Bool(true)
+        );
+
+        // 10 / 2 > 3  →  (10 / 2) > 3 = 5.0 > 3 = true
+        assert_eq!(evaluate_expression("10/2>3").unwrap(), Value::Bool(true));
+
+        // 2 * 3 == 6  →  (2 * 3) == 6 = 6 == 6 = true
+        assert_eq!(evaluate_expression("2*3==6").unwrap(), Value::Bool(true));
+
+        // 1 + 2 <= 3  →  (1 + 2) <= 3 = 3 <= 3 = true
+        assert_eq!(evaluate_expression("1+2<=3").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_comparison_chaining() {
+        // 比較演算子は左結合
+        // 1 < 2 < 3 は (1 < 2) < 3 = true < 3 となり、これはエラーになるべき
+        // ただし、現在の実装では比較演算子の連鎖はサポートしていない
+        // これは将来の拡張として残しておく
+    }
+
+    #[test]
+    fn test_lexer_comparison_operators() {
+        let mut lexer = Lexer::new("== != < > <= >=");
+        assert_eq!(lexer.next_token().unwrap(), Token::Equal);
+        assert_eq!(lexer.next_token().unwrap(), Token::NotEqual);
+        assert_eq!(lexer.next_token().unwrap(), Token::LessThan);
+        assert_eq!(lexer.next_token().unwrap(), Token::GreaterThan);
+        assert_eq!(lexer.next_token().unwrap(), Token::LessThanOrEqual);
+        assert_eq!(lexer.next_token().unwrap(), Token::GreaterThanOrEqual);
+        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
     }
 }
