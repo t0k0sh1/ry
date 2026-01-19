@@ -12,10 +12,12 @@ use error::Result;
 // Re-exports for public API
 pub use context::Context;
 pub use context::ScopeGuard;
+pub use context::VariableInfo;
 pub use error::EvalError;
 pub use lexer::Lexer;
 pub use parser::parse_program;
 pub use token::Token;
+pub use value::TypeAnnotation;
 pub use value::Value;
 
 /// Evaluate an AST expression with a context
@@ -26,9 +28,30 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
             .get(name)
             .cloned()
             .ok_or_else(|| EvalError::UndefinedVariable(name.clone())),
-        Expr::Assign { name, value } => {
+        Expr::Assign {
+            name,
+            type_annotation,
+            value,
+        } => {
             let val = evaluate(value, ctx)?;
-            ctx.set(name.clone(), val.clone());
+
+            // Check type constraint from declaration or existing variable
+            let effective_constraint = type_annotation
+                .or_else(|| ctx.get_info(name).and_then(|info| info.type_constraint));
+
+            // Validate type if constraint exists
+            if let Some(constraint) = effective_constraint {
+                if !constraint.matches(&val) {
+                    return Err(EvalError::TypeMismatch {
+                        expected: constraint.type_name().to_string(),
+                        actual: val.type_name().to_string(),
+                        variable: name.clone(),
+                    });
+                }
+            }
+
+            // Set the variable with type constraint
+            ctx.set_typed(name.clone(), val.clone(), *type_annotation);
             Ok(val)
         }
         Expr::BinaryOp { op, left, right } => {
@@ -633,5 +656,129 @@ mod tests {
         let input = "if 0:\n    10\nelse:\n    20\n";
         let result = execute_test_program(input, &mut ctx).unwrap();
         assert_eq!(result, Some(Value::Int(20)));
+    }
+
+    // Type annotation tests
+    #[test]
+    fn test_typed_int_assignment() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x: int = 5", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_typed_float_assignment() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("y: float = 3.14", &mut ctx).unwrap(),
+            Value::Float(3.14)
+        );
+        assert_eq!(ctx.get("y"), Some(&Value::Float(3.14)));
+    }
+
+    #[test]
+    fn test_typed_bool_assignment() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("flag: bool = true", &mut ctx).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(ctx.get("flag"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_typed_mismatch_int_expects_float() {
+        let mut ctx = Context::new();
+        let result = evaluate_expression_with_context("x: int = 3.14", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_typed_mismatch_float_expects_int() {
+        let mut ctx = Context::new();
+        let result = evaluate_expression_with_context("x: float = 5", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_typed_mismatch_bool_expects_int() {
+        let mut ctx = Context::new();
+        let result = evaluate_expression_with_context("x: bool = 5", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_typed_variable_reassignment_same_type() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x: int = 5", &mut ctx).unwrap();
+        // Reassigning with same type should work
+        assert_eq!(
+            evaluate_expression_with_context("x = 10", &mut ctx).unwrap(),
+            Value::Int(10)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(10)));
+    }
+
+    #[test]
+    fn test_typed_variable_reassignment_different_type() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x: int = 5", &mut ctx).unwrap();
+        // Reassigning with different type should fail
+        let result = evaluate_expression_with_context("x = 3.14", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_untyped_variable_allows_type_change() {
+        let mut ctx = Context::new();
+        // Untyped variable assignment
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        // Can reassign to different type
+        assert_eq!(
+            evaluate_expression_with_context("x = 3.14", &mut ctx).unwrap(),
+            Value::Float(3.14)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Float(3.14)));
+    }
+
+    #[test]
+    fn test_typed_assignment_with_expression() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x: int = 2 + 3", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_typed_variable_in_program() {
+        let mut ctx = Context::new();
+        let input = "x: int = 10\ny: float = 3.14\nx + 1\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(11)));
+    }
+
+    #[test]
+    fn test_typed_variable_reassignment_in_program() {
+        let mut ctx = Context::new();
+        let input = "x: int = 10\nx = 20\nx\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(20)));
+    }
+
+    #[test]
+    fn test_typed_variable_type_error_in_program() {
+        let mut ctx = Context::new();
+        let input = "x: int = 10\nx = 3.14\n";
+        let result = execute_test_program(input, &mut ctx);
+        assert!(result.is_err());
     }
 }

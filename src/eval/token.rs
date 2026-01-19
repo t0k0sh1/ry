@@ -35,6 +35,11 @@ pub enum Token {
     True,
     False,
 
+    // Type keywords
+    IntType,   // int
+    FloatType, // float
+    BoolType,  // bool
+
     // Indentation
     Indent,
     Dedent,
@@ -49,7 +54,14 @@ impl Token {
     pub fn is_keyword(&self) -> bool {
         matches!(
             self,
-            Token::If | Token::Elif | Token::Else | Token::True | Token::False
+            Token::If
+                | Token::Elif
+                | Token::Else
+                | Token::True
+                | Token::False
+                | Token::IntType
+                | Token::FloatType
+                | Token::BoolType
         )
     }
 }

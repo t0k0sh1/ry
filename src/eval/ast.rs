@@ -1,4 +1,4 @@
-use super::value::Value;
+use super::value::{TypeAnnotation, Value};
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -6,6 +6,7 @@ pub enum Expr {
     Variable(String),
     Assign {
         name: String,
+        type_annotation: Option<TypeAnnotation>,
         value: Box<Expr>,
     },
     BinaryOp {

@@ -13,6 +13,12 @@ pub enum EvalError {
     IndentationError(String),
     /// Type error in condition
     TypeError(String),
+    /// Type mismatch error for typed variable assignment
+    TypeMismatch {
+        expected: String,
+        actual: String,
+        variable: String,
+    },
 }
 
 impl fmt::Display for EvalError {
@@ -30,6 +36,17 @@ impl fmt::Display for EvalError {
             }
             EvalError::TypeError(msg) => {
                 write!(f, "Type error: {}", msg)
+            }
+            EvalError::TypeMismatch {
+                expected,
+                actual,
+                variable,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch for '{}': expected {}, got {}",
+                    variable, expected, actual
+                )
             }
         }
     }
