@@ -3,7 +3,7 @@ pub mod eval;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-pub use eval::evaluate_expression;
+pub use eval::{evaluate_expression, EvalError, Value};
 
 pub fn validate_ry_file(path: &str) -> Result<(), String> {
     let path_obj = Path::new(path);
