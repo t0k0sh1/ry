@@ -1,5 +1,5 @@
 use ry::eval::Value;
-use ry::{evaluate_expression, validate_ry_file};
+use ry::{evaluate_expression, evaluate_expression_with_context, validate_ry_file, Context};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -214,4 +214,85 @@ fn test_run_file_with_invalid_expression() {
 
     // Cleanup
     fs::remove_file(&test_file).unwrap();
+}
+
+// Integration tests for variable assignment
+#[test]
+fn test_variable_assignment_integration() {
+    let mut ctx = Context::new();
+    assert_eq!(
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap(),
+        Value::Int(5)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("y = 10", &mut ctx).unwrap(),
+        Value::Int(10)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("x + y", &mut ctx).unwrap(),
+        Value::Int(15)
+    );
+}
+
+#[test]
+fn test_variable_persistence_across_lines() {
+    let mut ctx = Context::new();
+    evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+    evaluate_expression_with_context("y = 10", &mut ctx).unwrap();
+    assert_eq!(
+        evaluate_expression_with_context("z = x * y + 1", &mut ctx).unwrap(),
+        Value::Int(51)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("z", &mut ctx).unwrap(),
+        Value::Int(51)
+    );
+}
+
+#[test]
+fn test_run_file_with_variables() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_variables.ry");
+    let test_content = "x = 5\ny = 10\nx + y";
+
+    // Create a temporary .ry file with variable expressions
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_ok());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+}
+
+#[test]
+fn test_chain_assignment_integration() {
+    let mut ctx = Context::new();
+    assert_eq!(
+        evaluate_expression_with_context("x = y = z = 42", &mut ctx).unwrap(),
+        Value::Int(42)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("x", &mut ctx).unwrap(),
+        Value::Int(42)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("y", &mut ctx).unwrap(),
+        Value::Int(42)
+    );
+    assert_eq!(
+        evaluate_expression_with_context("z", &mut ctx).unwrap(),
+        Value::Int(42)
+    );
+}
+
+#[test]
+fn test_undefined_variable_error() {
+    let mut ctx = Context::new();
+    let result = evaluate_expression_with_context("undefined_var", &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Undefined variable"));
 }

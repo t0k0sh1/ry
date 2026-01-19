@@ -3,6 +3,11 @@ use super::value::Value;
 #[derive(Debug, Clone)]
 pub enum Expr {
     Number(Value),
+    Variable(String),
+    Assign {
+        name: String,
+        value: Box<Expr>,
+    },
     BinaryOp {
         op: BinaryOp,
         left: Box<Expr>,

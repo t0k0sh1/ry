@@ -29,8 +29,19 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             text::keyword("false").to(Expr::Number(Value::Bool(false))),
         ));
 
-        // Atom: number, bool, or parenthesized expression
-        let atom = choice((number, bool_lit, expr.delimited_by(just('('), just(')')))).padded();
+        // Identifier (variable reference)
+        // Pattern: [a-zA-Z_][a-zA-Z0-9_]*
+        // Must not be 'true' or 'false' (handled by trying bool_lit first)
+        let ident = text::ident().map(|s: &str| Expr::Variable(s.to_string()));
+
+        // Atom: number, bool, identifier, or parenthesized expression
+        let atom = choice((
+            number,
+            bool_lit,
+            ident,
+            expr.clone().delimited_by(just('('), just(')')),
+        ))
+        .padded();
 
         // Power operator (right-associative, highest precedence)
         // Collect all power operands and fold from right for right-associativity
@@ -90,7 +101,8 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
 
         // Comparison operators (==, !=, <=, >=, <, >)
         // Note: <= and >= must be checked before < and >
-        additive.clone().foldl(
+        // Note: == must be checked before = (assignment)
+        let comparison = additive.clone().foldl(
             choice((
                 just("==").padded().to(BinaryOp::Equal),
                 just("!=").padded().to(BinaryOp::NotEqual),
@@ -106,7 +118,39 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
                 left: Box::new(lhs),
                 right: Box::new(rhs),
             },
-        )
+        );
+
+        // Assignment operator (right-associative, lowest precedence)
+        // Pattern: x = y = 5 => x = (y = 5)
+        // Only valid when left side is a variable
+        let assign_op = just('=').padded();
+        comparison
+            .clone()
+            .separated_by(assign_op)
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map(|exprs| {
+                // Fold from right to left for right-associativity
+                exprs
+                    .into_iter()
+                    .rev()
+                    .reduce(|acc, item| {
+                        // For assignment, left side must be a variable
+                        match item {
+                            Expr::Variable(name) => Expr::Assign {
+                                name,
+                                value: Box::new(acc),
+                            },
+                            // If left side is not a variable, we still create an Assign
+                            // but it will fail at evaluation time with proper error
+                            _ => Expr::Assign {
+                                name: String::new(),
+                                value: Box::new(acc),
+                            },
+                        }
+                    })
+                    .unwrap()
+            })
     })
     .then_ignore(end())
 }
@@ -237,5 +281,55 @@ mod tests {
     fn test_parse_invalid() {
         assert!(parse("1+").is_err());
         assert!(parse("+1").is_err());
+    }
+
+    #[test]
+    fn test_parse_variable() {
+        let result = parse("x").unwrap();
+        assert!(matches!(result, Expr::Variable(name) if name == "x"));
+
+        let result = parse("my_var").unwrap();
+        assert!(matches!(result, Expr::Variable(name) if name == "my_var"));
+
+        let result = parse("_private").unwrap();
+        assert!(matches!(result, Expr::Variable(name) if name == "_private"));
+    }
+
+    #[test]
+    fn test_parse_assignment() {
+        let result = parse("x = 5").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                ..
+            } if name == "x"
+        ));
+    }
+
+    #[test]
+    fn test_parse_chain_assignment() {
+        let result = parse("x = y = 5").unwrap();
+        // Should be Assign { name: "x", value: Assign { name: "y", ... } }
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                value,
+            } if name == "x" && matches!(*value, Expr::Assign { name: ref n, .. } if n == "y")
+        ));
+    }
+
+    #[test]
+    fn test_parse_assignment_with_expression() {
+        let result = parse("x = 1 + 2").unwrap();
+        // x = (1 + 2) - assignment has lowest precedence
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                value,
+            } if name == "x" && matches!(*value, Expr::BinaryOp { op: BinaryOp::Add, .. })
+        ));
     }
 }
