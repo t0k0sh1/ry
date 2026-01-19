@@ -346,6 +346,9 @@ impl<'a> Lexer<'a> {
             "else" => Ok(Token::Else),
             "true" => Ok(Token::True),
             "false" => Ok(Token::False),
+            "int" => Ok(Token::IntType),
+            "float" => Ok(Token::FloatType),
+            "bool" => Ok(Token::BoolType),
             _ => Ok(Token::Ident(ident.to_string())),
         }
     }

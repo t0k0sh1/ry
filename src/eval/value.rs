@@ -3,11 +3,51 @@ use std::ops::{Add, Mul, Sub};
 
 use super::error::{EvalError, Result};
 
+/// Type annotation for variable declarations
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeAnnotation {
+    Int,
+    Float,
+    Bool,
+}
+
+impl TypeAnnotation {
+    /// Check if a value matches this type annotation
+    pub fn matches(&self, value: &Value) -> bool {
+        matches!(
+            (self, value),
+            (TypeAnnotation::Int, Value::Int(_))
+                | (TypeAnnotation::Float, Value::Float(_))
+                | (TypeAnnotation::Bool, Value::Bool(_))
+        )
+    }
+
+    /// Get the type name as a string
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            TypeAnnotation::Int => "int",
+            TypeAnnotation::Float => "float",
+            TypeAnnotation::Bool => "bool",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
+}
+
+impl Value {
+    /// Get the type name of this value
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Int(_) => "int",
+            Value::Float(_) => "float",
+            Value::Bool(_) => "bool",
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -399,5 +439,36 @@ mod tests {
         assert!(Value::Bool(true).safe_add(Value::Int(1)).is_err());
         assert!(Value::Bool(true).safe_sub(Value::Int(1)).is_err());
         assert!(Value::Bool(true).safe_mul(Value::Int(1)).is_err());
+    }
+
+    // TypeAnnotation tests
+    #[test]
+    fn test_type_annotation_matches() {
+        assert!(TypeAnnotation::Int.matches(&Value::Int(42)));
+        assert!(!TypeAnnotation::Int.matches(&Value::Float(3.14)));
+        assert!(!TypeAnnotation::Int.matches(&Value::Bool(true)));
+
+        assert!(TypeAnnotation::Float.matches(&Value::Float(3.14)));
+        assert!(!TypeAnnotation::Float.matches(&Value::Int(42)));
+        assert!(!TypeAnnotation::Float.matches(&Value::Bool(true)));
+
+        assert!(TypeAnnotation::Bool.matches(&Value::Bool(true)));
+        assert!(TypeAnnotation::Bool.matches(&Value::Bool(false)));
+        assert!(!TypeAnnotation::Bool.matches(&Value::Int(42)));
+        assert!(!TypeAnnotation::Bool.matches(&Value::Float(3.14)));
+    }
+
+    #[test]
+    fn test_type_annotation_type_name() {
+        assert_eq!(TypeAnnotation::Int.type_name(), "int");
+        assert_eq!(TypeAnnotation::Float.type_name(), "float");
+        assert_eq!(TypeAnnotation::Bool.type_name(), "bool");
+    }
+
+    #[test]
+    fn test_value_type_name() {
+        assert_eq!(Value::Int(42).type_name(), "int");
+        assert_eq!(Value::Float(3.14).type_name(), "float");
+        assert_eq!(Value::Bool(true).type_name(), "bool");
     }
 }

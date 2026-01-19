@@ -1,11 +1,18 @@
 use std::collections::HashMap;
 
-use super::value::Value;
+use super::value::{TypeAnnotation, Value};
+
+/// Information about a variable including its value and optional type constraint
+#[derive(Debug, Clone)]
+pub struct VariableInfo {
+    pub value: Value,
+    pub type_constraint: Option<TypeAnnotation>,
+}
 
 /// A single scope containing variables
 #[derive(Debug, Clone, Default)]
 struct Scope {
-    variables: HashMap<String, Value>,
+    variables: HashMap<String, VariableInfo>,
 }
 
 /// Evaluation context that stores variables with scope support
@@ -67,7 +74,7 @@ impl Context {
         }
     }
 
-    /// Set a variable in the context
+    /// Set a variable in the context (without type constraint)
     /// If the variable exists in any outer scope, update it there
     /// Otherwise, create it in the current (innermost) scope
     pub fn set(&mut self, name: String, value: Value) {
@@ -76,22 +83,79 @@ impl Context {
             if let std::collections::hash_map::Entry::Occupied(mut e) =
                 scope.variables.entry(name.clone())
             {
-                e.insert(value);
+                // Preserve existing type constraint
+                let type_constraint = e.get().type_constraint;
+                e.insert(VariableInfo {
+                    value,
+                    type_constraint,
+                });
+                return;
+            }
+        }
+        // Not found, create in current scope without type constraint
+        if let Some(current) = self.scopes.last_mut() {
+            current.variables.insert(
+                name,
+                VariableInfo {
+                    value,
+                    type_constraint: None,
+                },
+            );
+        }
+    }
+
+    /// Set a typed variable in the context
+    /// If the variable exists in any outer scope, update it there
+    /// Otherwise, create it in the current (innermost) scope with the type constraint
+    pub fn set_typed(
+        &mut self,
+        name: String,
+        value: Value,
+        type_constraint: Option<TypeAnnotation>,
+    ) {
+        // Search from innermost to outermost scope for existing variable
+        for scope in self.scopes.iter_mut().rev() {
+            if let std::collections::hash_map::Entry::Occupied(mut e) =
+                scope.variables.entry(name.clone())
+            {
+                // Keep the original type constraint if no new one is provided
+                let constraint = type_constraint.or(e.get().type_constraint);
+                e.insert(VariableInfo {
+                    value,
+                    type_constraint: constraint,
+                });
                 return;
             }
         }
         // Not found, create in current scope
         if let Some(current) = self.scopes.last_mut() {
-            current.variables.insert(name, value);
+            current.variables.insert(
+                name,
+                VariableInfo {
+                    value,
+                    type_constraint,
+                },
+            );
         }
     }
 
-    /// Get a variable from the context
+    /// Get a variable's value from the context
     /// Searches from innermost to outermost scope
     pub fn get(&self, name: &str) -> Option<&Value> {
         for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.variables.get(name) {
-                return Some(value);
+            if let Some(info) = scope.variables.get(name) {
+                return Some(&info.value);
+            }
+        }
+        None
+    }
+
+    /// Get full variable info including type constraint
+    /// Searches from innermost to outermost scope
+    pub fn get_info(&self, name: &str) -> Option<&VariableInfo> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(info) = scope.variables.get(name) {
+                return Some(info);
             }
         }
         None

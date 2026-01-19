@@ -2,7 +2,7 @@ use chumsky::prelude::*;
 
 use super::ast::{BinaryOp, Block, ConditionalBranch, Expr, Program, Statement};
 use super::token::Token;
-use super::value::Value;
+use super::value::{TypeAnnotation, Value};
 
 /// Parse and return an expression from the input string (for REPL single-line mode)
 pub fn parse(input: &str) -> Result<Expr, Vec<Rich<'_, char>>> {
@@ -164,8 +164,47 @@ impl<'a> ProgramParser<'a> {
         self.parse_assignment()
     }
 
+    fn parse_type_annotation(&mut self) -> Result<Option<TypeAnnotation>, String> {
+        match self.peek() {
+            Some(Token::IntType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Int))
+            }
+            Some(Token::FloatType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Float))
+            }
+            Some(Token::BoolType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Bool))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn parse_assignment(&mut self) -> Result<Expr, String> {
         let expr = self.parse_comparison()?;
+
+        // Check for type annotation pattern: ident: type = value
+        if let Expr::Variable(name) = &expr {
+            if let Some(Token::Colon) = self.peek() {
+                self.advance(); // consume ':'
+                let type_annotation = self.parse_type_annotation()?;
+                if type_annotation.is_some() {
+                    self.expect(&Token::Equal)?;
+                    let value = self.parse_assignment()?;
+                    return Ok(Expr::Assign {
+                        name: name.clone(),
+                        type_annotation,
+                        value: Box::new(value),
+                    });
+                } else {
+                    return Err(
+                        "expected type annotation (int, float, or bool) after ':'".to_string()
+                    );
+                }
+            }
+        }
 
         if let Some(Token::Equal) = self.peek() {
             // Check if lhs is a variable
@@ -174,6 +213,7 @@ impl<'a> ProgramParser<'a> {
                 let value = self.parse_assignment()?;
                 return Ok(Expr::Assign {
                     name,
+                    type_annotation: None,
                     value: Box::new(value),
                 });
             }
@@ -413,11 +453,39 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             },
         );
 
+        // Type annotation parser
+        let type_annot = choice((
+            text::keyword("int").to(TypeAnnotation::Int),
+            text::keyword("float").to(TypeAnnotation::Float),
+            text::keyword("bool").to(TypeAnnotation::Bool),
+        ))
+        .boxed();
+
+        // Typed assignment: x: int = 5
+        // Parse name: type pair first, then combine with value
+        let name_and_type = text::ident()
+            .padded()
+            .then_ignore(just(':').padded())
+            .then(type_annot.padded());
+
+        fn make_typed_assign(((name, ta), value): ((&str, TypeAnnotation), Expr)) -> Expr {
+            Expr::Assign {
+                name: name.to_string(),
+                type_annotation: Some(ta),
+                value: Box::new(value),
+            }
+        }
+
+        let typed_assign = name_and_type
+            .then_ignore(just('=').padded())
+            .then(comparison.clone())
+            .map(make_typed_assign);
+
         // Assignment operator (right-associative, lowest precedence)
         // Pattern: x = y = 5 => x = (y = 5)
         // Only valid when left side is a variable
         let assign_op = just('=').padded();
-        comparison
+        let untyped_assign = comparison
             .clone()
             .separated_by(assign_op)
             .at_least(1)
@@ -432,18 +500,23 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
                         match item {
                             Expr::Variable(name) => Expr::Assign {
                                 name,
+                                type_annotation: None,
                                 value: Box::new(acc),
                             },
                             // If left side is not a variable, we still create an Assign
                             // but it will fail at evaluation time with proper error
                             _ => Expr::Assign {
                                 name: String::new(),
+                                type_annotation: None,
                                 value: Box::new(acc),
                             },
                         }
                     })
                     .unwrap()
-            })
+            });
+
+        // Try typed assignment first, then fall back to untyped
+        typed_assign.or(untyped_assign)
     })
     .then_ignore(end())
 }
@@ -609,6 +682,7 @@ mod tests {
             Expr::Assign {
                 name,
                 value,
+                ..
             } if name == "x" && matches!(*value, Expr::Assign { name: ref n, .. } if n == "y")
         ));
     }
@@ -622,7 +696,41 @@ mod tests {
             Expr::Assign {
                 name,
                 value,
+                ..
             } if name == "x" && matches!(*value, Expr::BinaryOp { op: BinaryOp::Add, .. })
+        ));
+    }
+
+    #[test]
+    fn test_parse_typed_assignment() {
+        let result = parse("x: int = 5").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Int),
+                ..
+            } if name == "x"
+        ));
+
+        let result = parse("y: float = 3.14").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Float),
+                ..
+            } if name == "y"
+        ));
+
+        let result = parse("flag: bool = true").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Bool),
+                ..
+            } if name == "flag"
         ));
     }
 }
