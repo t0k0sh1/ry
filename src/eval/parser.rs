@@ -178,6 +178,10 @@ impl<'a> ProgramParser<'a> {
                 self.advance();
                 Ok(Some(TypeAnnotation::Bool))
             }
+            Some(Token::StrType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Str))
+            }
             _ => Ok(None),
         }
     }
@@ -200,7 +204,7 @@ impl<'a> ProgramParser<'a> {
                     });
                 } else {
                     return Err(
-                        "expected type annotation (int, float, or bool) after ':'".to_string()
+                        "expected type annotation (int, float, bool, or str) after ':'".to_string(),
                     );
                 }
             }
@@ -316,6 +320,11 @@ impl<'a> ProgramParser<'a> {
                 self.advance();
                 Ok(Expr::Number(value))
             }
+            Some(Token::StringLiteral(s)) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Expr::Number(Value::Str(s)))
+            }
             Some(Token::True) => {
                 self.advance();
                 Ok(Expr::Number(Value::Bool(true)))
@@ -362,15 +371,30 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             text::keyword("false").to(Expr::Number(Value::Bool(false))),
         ));
 
+        // String literal
+        let escape = just('\\').ignore_then(choice((
+            just('n').to('\n'),
+            just('t').to('\t'),
+            just('r').to('\r'),
+            just('\\').to('\\'),
+            just('"').to('"'),
+        )));
+        let string_char = none_of("\\\"").or(escape);
+        let string_lit = just('"')
+            .ignore_then(string_char.repeated().collect::<String>())
+            .then_ignore(just('"'))
+            .map(|s| Expr::Number(Value::Str(s)));
+
         // Identifier (variable reference)
         // Pattern: [a-zA-Z_][a-zA-Z0-9_]*
         // Must not be 'true' or 'false' (handled by trying bool_lit first)
         let ident = text::ident().map(|s: &str| Expr::Variable(s.to_string()));
 
-        // Atom: number, bool, identifier, or parenthesized expression
+        // Atom: number, bool, string, identifier, or parenthesized expression
         let atom = choice((
             number,
             bool_lit,
+            string_lit,
             ident,
             expr.clone().delimited_by(just('('), just(')')),
         ))
@@ -458,6 +482,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             text::keyword("int").to(TypeAnnotation::Int),
             text::keyword("float").to(TypeAnnotation::Float),
             text::keyword("bool").to(TypeAnnotation::Bool),
+            text::keyword("str").to(TypeAnnotation::Str),
         ))
         .boxed();
 
@@ -731,6 +756,55 @@ mod tests {
                 type_annotation: Some(TypeAnnotation::Bool),
                 ..
             } if name == "flag"
+        ));
+    }
+
+    #[test]
+    fn test_parse_string_literal() {
+        let result = parse("\"hello\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Number(Value::Str(s)) if s == "hello"
+        ));
+    }
+
+    #[test]
+    fn test_parse_string_with_spaces() {
+        let result = parse("\"hello world\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Number(Value::Str(s)) if s == "hello world"
+        ));
+    }
+
+    #[test]
+    fn test_parse_string_with_escape() {
+        let result = parse("\"hello\\nworld\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Number(Value::Str(s)) if s == "hello\nworld"
+        ));
+    }
+
+    #[test]
+    fn test_parse_empty_string() {
+        let result = parse("\"\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Number(Value::Str(s)) if s.is_empty()
+        ));
+    }
+
+    #[test]
+    fn test_parse_typed_string_assignment() {
+        let result = parse("x: str = \"hello\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Str),
+                ..
+            } if name == "x"
         ));
     }
 }
