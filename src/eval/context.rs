@@ -2,26 +2,72 @@ use std::collections::HashMap;
 
 use super::value::Value;
 
-/// Evaluation context that stores variables
+/// A single scope containing variables
 #[derive(Debug, Clone, Default)]
-pub struct Context {
+struct Scope {
     variables: HashMap<String, Value>,
 }
 
+/// Evaluation context that stores variables with scope support
+#[derive(Debug, Clone)]
+pub struct Context {
+    scopes: Vec<Scope>,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Context {
-    /// Create a new empty context
+    /// Create a new context with a global scope
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            scopes: vec![Scope::default()],
+        }
+    }
+
+    /// Push a new scope onto the stack
+    pub fn push_scope(&mut self) {
+        self.scopes.push(Scope::default());
+    }
+
+    /// Pop the current scope from the stack
+    pub fn pop_scope(&mut self) {
+        if self.scopes.len() > 1 {
+            self.scopes.pop();
+        }
     }
 
     /// Set a variable in the context
+    /// If the variable exists in any outer scope, update it there
+    /// Otherwise, create it in the current (innermost) scope
     pub fn set(&mut self, name: String, value: Value) {
-        self.variables.insert(name, value);
+        // Search from innermost to outermost scope for existing variable
+        for scope in self.scopes.iter_mut().rev() {
+            if let std::collections::hash_map::Entry::Occupied(mut e) =
+                scope.variables.entry(name.clone())
+            {
+                e.insert(value);
+                return;
+            }
+        }
+        // Not found, create in current scope
+        if let Some(current) = self.scopes.last_mut() {
+            current.variables.insert(name, value);
+        }
     }
 
     /// Get a variable from the context
+    /// Searches from innermost to outermost scope
     pub fn get(&self, name: &str) -> Option<&Value> {
-        self.variables.get(name)
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.variables.get(name) {
+                return Some(value);
+            }
+        }
+        None
     }
 }
 
@@ -59,5 +105,87 @@ mod tests {
         assert_eq!(ctx.get("x"), Some(&Value::Int(1)));
         assert_eq!(ctx.get("y"), Some(&Value::Float(2.5)));
         assert_eq!(ctx.get("z"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_scope_isolation() {
+        let mut ctx = Context::new();
+        ctx.set("x".to_string(), Value::Int(10));
+
+        // Push a new scope
+        ctx.push_scope();
+        ctx.set("y".to_string(), Value::Int(20));
+
+        // Both x and y are accessible
+        assert_eq!(ctx.get("x"), Some(&Value::Int(10)));
+        assert_eq!(ctx.get("y"), Some(&Value::Int(20)));
+
+        // Pop the scope
+        ctx.pop_scope();
+
+        // x is still accessible, but y is not
+        assert_eq!(ctx.get("x"), Some(&Value::Int(10)));
+        assert!(ctx.get("y").is_none());
+    }
+
+    #[test]
+    fn test_outer_variable_update() {
+        let mut ctx = Context::new();
+        ctx.set("x".to_string(), Value::Int(10));
+
+        // Push a new scope and update x
+        ctx.push_scope();
+        ctx.set("x".to_string(), Value::Int(100));
+
+        // x should be updated
+        assert_eq!(ctx.get("x"), Some(&Value::Int(100)));
+
+        // Pop the scope
+        ctx.pop_scope();
+
+        // x should still be 100 (updated in outer scope)
+        assert_eq!(ctx.get("x"), Some(&Value::Int(100)));
+    }
+
+    #[test]
+    fn test_nested_scopes() {
+        let mut ctx = Context::new();
+        ctx.set("a".to_string(), Value::Int(1));
+
+        ctx.push_scope();
+        ctx.set("b".to_string(), Value::Int(2));
+
+        ctx.push_scope();
+        ctx.set("c".to_string(), Value::Int(3));
+
+        // All variables accessible
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert_eq!(ctx.get("b"), Some(&Value::Int(2)));
+        assert_eq!(ctx.get("c"), Some(&Value::Int(3)));
+
+        ctx.pop_scope();
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert_eq!(ctx.get("b"), Some(&Value::Int(2)));
+        assert!(ctx.get("c").is_none());
+
+        ctx.pop_scope();
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert!(ctx.get("b").is_none());
+        assert!(ctx.get("c").is_none());
+    }
+
+    #[test]
+    fn test_shadow_and_restore() {
+        let mut ctx = Context::new();
+        ctx.set("x".to_string(), Value::Int(10));
+
+        // This updates outer x, not shadows
+        ctx.push_scope();
+        ctx.set("x".to_string(), Value::Int(20));
+        assert_eq!(ctx.get("x"), Some(&Value::Int(20)));
+
+        ctx.pop_scope();
+        // x was updated, not shadowed
+        assert_eq!(ctx.get("x"), Some(&Value::Int(20)));
     }
 }

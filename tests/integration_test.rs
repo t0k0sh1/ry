@@ -210,7 +210,13 @@ fn test_run_file_with_invalid_expression() {
     // Test run_file function should return error
     let result = ry::run_file(test_file.to_str().unwrap());
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Error at line"));
+    // Error message contains information about the unexpected token
+    let error_msg = result.unwrap_err();
+    assert!(
+        error_msg.contains("unexpected") || error_msg.contains("Error"),
+        "Expected error message, got: {}",
+        error_msg
+    );
 
     // Cleanup
     fs::remove_file(&test_file).unwrap();

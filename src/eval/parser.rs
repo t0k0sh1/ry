@@ -1,11 +1,304 @@
 use chumsky::prelude::*;
 
-use super::ast::{BinaryOp, Expr};
+use super::ast::{BinaryOp, Block, ConditionalBranch, Expr, Program, Statement};
+use super::token::Token;
 use super::value::Value;
 
-/// Parse and return an expression from the input string
+/// Parse and return an expression from the input string (for REPL single-line mode)
 pub fn parse(input: &str) -> Result<Expr, Vec<Rich<'_, char>>> {
     parser().parse(input).into_result()
+}
+
+/// Parse a program from tokens
+pub fn parse_program(tokens: &[Token]) -> Result<Program, String> {
+    let mut parser = ProgramParser::new(tokens);
+    parser.parse_program()
+}
+
+/// Token-based program parser for if statements
+struct ProgramParser<'a> {
+    tokens: &'a [Token],
+    position: usize,
+}
+
+impl<'a> ProgramParser<'a> {
+    fn new(tokens: &'a [Token]) -> Self {
+        Self {
+            tokens,
+            position: 0,
+        }
+    }
+
+    fn peek(&self) -> Option<&Token> {
+        self.tokens.get(self.position)
+    }
+
+    fn advance(&mut self) -> Option<&Token> {
+        let token = self.tokens.get(self.position);
+        if token.is_some() {
+            self.position += 1;
+        }
+        token
+    }
+
+    fn expect(&mut self, expected: &Token) -> Result<(), String> {
+        match self.peek() {
+            Some(token) if token == expected => {
+                self.advance();
+                Ok(())
+            }
+            Some(token) => Err(format!("expected {:?}, got {:?}", expected, token)),
+            None => Err(format!("expected {:?}, got end of input", expected)),
+        }
+    }
+
+    fn skip_newlines(&mut self) {
+        while let Some(Token::Newline) = self.peek() {
+            self.advance();
+        }
+    }
+
+    fn parse_program(&mut self) -> Result<Program, String> {
+        let mut statements = Vec::new();
+
+        self.skip_newlines();
+
+        while let Some(token) = self.peek() {
+            if *token == Token::Eof {
+                break;
+            }
+
+            let stmt = self.parse_statement()?;
+            statements.push(stmt);
+
+            self.skip_newlines();
+        }
+
+        Ok(Program { statements })
+    }
+
+    fn parse_statement(&mut self) -> Result<Statement, String> {
+        match self.peek() {
+            Some(Token::If) => self.parse_if_statement(),
+            _ => {
+                let expr = self.parse_expression()?;
+                // Consume optional newline after expression
+                if let Some(Token::Newline) = self.peek() {
+                    self.advance();
+                }
+                Ok(Statement::Expression(expr))
+            }
+        }
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Statement, String> {
+        // Parse if branch
+        self.expect(&Token::If)?;
+        let if_condition = self.parse_expression()?;
+        self.expect(&Token::Colon)?;
+        self.expect(&Token::Newline)?;
+        let if_body = self.parse_block()?;
+
+        let if_branch = ConditionalBranch {
+            condition: if_condition,
+            body: if_body,
+        };
+
+        // Parse elif branches
+        let mut elif_branches = Vec::new();
+        while let Some(Token::Elif) = self.peek() {
+            self.advance();
+            let condition = self.parse_expression()?;
+            self.expect(&Token::Colon)?;
+            self.expect(&Token::Newline)?;
+            let body = self.parse_block()?;
+            elif_branches.push(ConditionalBranch { condition, body });
+        }
+
+        // Parse optional else
+        let else_body = if let Some(Token::Else) = self.peek() {
+            self.advance();
+            self.expect(&Token::Colon)?;
+            self.expect(&Token::Newline)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::If {
+            if_branch,
+            elif_branches,
+            else_body,
+        })
+    }
+
+    fn parse_block(&mut self) -> Result<Block, String> {
+        self.expect(&Token::Indent)?;
+
+        let mut statements = Vec::new();
+
+        loop {
+            // Check for dedent or EOF
+            match self.peek() {
+                Some(Token::Dedent) | Some(Token::Eof) | None => break,
+                Some(Token::Newline) => {
+                    self.advance();
+                    continue;
+                }
+                _ => {}
+            }
+
+            let stmt = self.parse_statement()?;
+            statements.push(stmt);
+        }
+
+        // Consume dedent if present
+        if let Some(Token::Dedent) = self.peek() {
+            self.advance();
+        }
+
+        Ok(Block { statements })
+    }
+
+    fn parse_expression(&mut self) -> Result<Expr, String> {
+        self.parse_assignment()
+    }
+
+    fn parse_assignment(&mut self) -> Result<Expr, String> {
+        let expr = self.parse_comparison()?;
+
+        if let Some(Token::Equal) = self.peek() {
+            // Check if lhs is a variable
+            if let Expr::Variable(name) = expr {
+                self.advance();
+                let value = self.parse_assignment()?;
+                return Ok(Expr::Assign {
+                    name,
+                    value: Box::new(value),
+                });
+            }
+            // If not a variable, just return the expression
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_comparison(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_additive()?;
+
+        loop {
+            let op = match self.peek() {
+                Some(Token::EqualEqual) => BinaryOp::Equal,
+                Some(Token::NotEqual) => BinaryOp::NotEqual,
+                Some(Token::Less) => BinaryOp::LessThan,
+                Some(Token::Greater) => BinaryOp::GreaterThan,
+                Some(Token::LessEqual) => BinaryOp::LessThanOrEqual,
+                Some(Token::GreaterEqual) => BinaryOp::GreaterThanOrEqual,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_additive()?;
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_additive(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_multiplicative()?;
+
+        loop {
+            let op = match self.peek() {
+                Some(Token::Plus) => BinaryOp::Add,
+                Some(Token::Minus) => BinaryOp::Subtract,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_multiplicative()?;
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_multiplicative(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_power()?;
+
+        loop {
+            let op = match self.peek() {
+                Some(Token::Star) => BinaryOp::Multiply,
+                Some(Token::Slash) => BinaryOp::Divide,
+                Some(Token::Percent) => BinaryOp::Modulo,
+                Some(Token::SlashSlash) => BinaryOp::FloorDivide,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_power()?;
+            left = Expr::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_power(&mut self) -> Result<Expr, String> {
+        let base = self.parse_primary()?;
+
+        if let Some(Token::StarStar) = self.peek() {
+            self.advance();
+            // Right-associative
+            let exponent = self.parse_power()?;
+            return Ok(Expr::BinaryOp {
+                op: BinaryOp::Power,
+                left: Box::new(base),
+                right: Box::new(exponent),
+            });
+        }
+
+        Ok(base)
+    }
+
+    fn parse_primary(&mut self) -> Result<Expr, String> {
+        match self.peek() {
+            Some(Token::Number(value)) => {
+                let value = value.clone();
+                self.advance();
+                Ok(Expr::Number(value))
+            }
+            Some(Token::True) => {
+                self.advance();
+                Ok(Expr::Number(Value::Bool(true)))
+            }
+            Some(Token::False) => {
+                self.advance();
+                Ok(Expr::Number(Value::Bool(false)))
+            }
+            Some(Token::Ident(name)) => {
+                let name = name.clone();
+                self.advance();
+                Ok(Expr::Variable(name))
+            }
+            Some(Token::LParen) => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.expect(&Token::RParen)?;
+                Ok(expr)
+            }
+            Some(token) => Err(format!("unexpected token: {:?}", token)),
+            None => Err("unexpected end of input".to_string()),
+        }
+    }
 }
 
 /// Create the expression parser

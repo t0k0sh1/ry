@@ -1,15 +1,20 @@
 pub mod ast;
 pub mod context;
 pub mod error;
+pub mod lexer;
 pub mod parser;
+pub mod token;
 pub mod value;
 
-use ast::{BinaryOp, Expr};
+use ast::{BinaryOp, Block, Expr, Program, Statement};
 use error::Result;
 
 // Re-exports for public API
 pub use context::Context;
 pub use error::EvalError;
+pub use lexer::Lexer;
+pub use parser::parse_program;
+pub use token::Token;
 pub use value::Value;
 
 /// Evaluate an AST expression with a context
@@ -46,6 +51,68 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
             }
         }
     }
+}
+
+/// Check if a value is truthy
+fn is_truthy(value: &Value) -> Result<bool> {
+    match value {
+        Value::Bool(b) => Ok(*b),
+        Value::Int(i) => Ok(*i != 0),
+        Value::Float(f) => Ok(*f != 0.0),
+    }
+}
+
+/// Execute a program with a context
+pub fn execute_program(program: &Program, ctx: &mut Context) -> Result<Option<Value>> {
+    let mut last_value = None;
+    for stmt in &program.statements {
+        last_value = execute_statement(stmt, ctx)?;
+    }
+    Ok(last_value)
+}
+
+/// Execute a statement with a context
+pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<Value>> {
+    match stmt {
+        Statement::Expression(expr) => Ok(Some(evaluate(expr, ctx)?)),
+        Statement::If {
+            if_branch,
+            elif_branches,
+            else_body,
+        } => {
+            // Check if condition
+            let cond_value = evaluate(&if_branch.condition, ctx)?;
+            if is_truthy(&cond_value)? {
+                return execute_block(&if_branch.body, ctx);
+            }
+
+            // Check elif conditions
+            for elif_branch in elif_branches {
+                let cond_value = evaluate(&elif_branch.condition, ctx)?;
+                if is_truthy(&cond_value)? {
+                    return execute_block(&elif_branch.body, ctx);
+                }
+            }
+
+            // Execute else body if present
+            if let Some(else_block) = else_body {
+                return execute_block(else_block, ctx);
+            }
+
+            Ok(None)
+        }
+    }
+}
+
+/// Execute a block in a new scope
+fn execute_block(block: &Block, ctx: &mut Context) -> Result<Option<Value>> {
+    ctx.push_scope();
+    let mut last_value = None;
+    for stmt in &block.statements {
+        last_value = execute_statement(stmt, ctx)?;
+    }
+    ctx.pop_scope();
+    Ok(last_value)
 }
 
 /// Parse and evaluate an expression string with a context
@@ -466,5 +533,105 @@ mod tests {
             evaluate_expression_with_context("x > 3", &mut ctx).unwrap(),
             Value::Bool(true)
         );
+    }
+
+    // Tests for if statements
+    fn execute_test_program(
+        input: &str,
+        ctx: &mut Context,
+    ) -> std::result::Result<Option<Value>, String> {
+        let mut lexer = super::lexer::Lexer::new(input);
+        let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+        let program = super::parser::parse_program(&tokens)?;
+        super::execute_program(&program, ctx).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn test_if_true_branch() {
+        let mut ctx = Context::new();
+        let input = "x = 10\nif x > 5:\n    y = 20\n    y\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(20)));
+    }
+
+    #[test]
+    fn test_if_false_branch() {
+        let mut ctx = Context::new();
+        let input = "x = 3\nif x > 5:\n    y = 20\n    y\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_if_else() {
+        let mut ctx = Context::new();
+        let input = "x = 3\nif x > 5:\n    10\nelse:\n    20\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(20)));
+    }
+
+    #[test]
+    fn test_if_elif_else() {
+        let mut ctx = Context::new();
+        let input = "x = 5\nif x > 10:\n    1\nelif x > 3:\n    2\nelse:\n    3\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(2)));
+    }
+
+    #[test]
+    fn test_scope_isolation_in_if() {
+        let mut ctx = Context::new();
+        let input = "x = 10\nif true:\n    y = 20\n";
+        execute_test_program(input, &mut ctx).unwrap();
+
+        // x is accessible
+        assert_eq!(ctx.get("x"), Some(&Value::Int(10)));
+        // y is not accessible (was in if block scope)
+        assert!(ctx.get("y").is_none());
+    }
+
+    #[test]
+    fn test_outer_variable_update_in_if() {
+        let mut ctx = Context::new();
+        let input = "x = 10\nif true:\n    x = 100\n";
+        execute_test_program(input, &mut ctx).unwrap();
+
+        // x was updated in the outer scope
+        assert_eq!(ctx.get("x"), Some(&Value::Int(100)));
+    }
+
+    #[test]
+    fn test_nested_if() {
+        let mut ctx = Context::new();
+        // y is defined outside the inner if, so it can be accessed after
+        let input = "x = 10\ny = 0\nif x > 5:\n    if x > 8:\n        y = 1\n    else:\n        y = 2\n    y\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(1)));
+        // y was updated in outer scope
+        assert_eq!(ctx.get("y"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn test_if_with_complex_condition() {
+        let mut ctx = Context::new();
+        let input = "x = 10\ny = 5\nif x > y:\n    z = x + y\n    z\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(15)));
+    }
+
+    #[test]
+    fn test_truthy_integer() {
+        let mut ctx = Context::new();
+        let input = "if 1:\n    10\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(10)));
+    }
+
+    #[test]
+    fn test_falsy_integer() {
+        let mut ctx = Context::new();
+        let input = "if 0:\n    10\nelse:\n    20\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(20)));
     }
 }
