@@ -7,6 +7,8 @@ pub enum EvalError {
     DivisionByZero,
     /// Unsupported types for the given operation
     UnsupportedTypes(&'static str),
+    /// Undefined variable error
+    UndefinedVariable(String),
 }
 
 impl fmt::Display for EvalError {
@@ -15,6 +17,9 @@ impl fmt::Display for EvalError {
             EvalError::DivisionByZero => write!(f, "Division by zero"),
             EvalError::UnsupportedTypes(op) => {
                 write!(f, "Unsupported types for {}", op)
+            }
+            EvalError::UndefinedVariable(name) => {
+                write!(f, "Undefined variable: {}", name)
             }
         }
     }

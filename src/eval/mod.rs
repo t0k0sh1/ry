@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod context;
 pub mod error;
 pub mod parser;
 pub mod value;
@@ -7,16 +8,26 @@ use ast::{BinaryOp, Expr};
 use error::Result;
 
 // Re-exports for public API
+pub use context::Context;
 pub use error::EvalError;
 pub use value::Value;
 
-/// Evaluate an AST expression
-pub fn evaluate(expr: &Expr) -> Result<Value> {
+/// Evaluate an AST expression with a context
+pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
     match expr {
         Expr::Number(n) => Ok(n.clone()),
+        Expr::Variable(name) => ctx
+            .get(name)
+            .cloned()
+            .ok_or_else(|| EvalError::UndefinedVariable(name.clone())),
+        Expr::Assign { name, value } => {
+            let val = evaluate(value, ctx)?;
+            ctx.set(name.clone(), val.clone());
+            Ok(val)
+        }
         Expr::BinaryOp { op, left, right } => {
-            let left_val = evaluate(left)?;
-            let right_val = evaluate(right)?;
+            let left_val = evaluate(left, ctx)?;
+            let right_val = evaluate(right, ctx)?;
 
             match op {
                 BinaryOp::Add => left_val.safe_add(right_val),
@@ -37,10 +48,19 @@ pub fn evaluate(expr: &Expr) -> Result<Value> {
     }
 }
 
-/// Parse and evaluate an expression string
-pub fn evaluate_expression(input: &str) -> std::result::Result<Value, String> {
+/// Parse and evaluate an expression string with a context
+pub fn evaluate_expression_with_context(
+    input: &str,
+    ctx: &mut Context,
+) -> std::result::Result<Value, String> {
     let expr = parser::parse(input).map_err(|errs| format_parse_errors(errs, input))?;
-    evaluate(&expr).map_err(|e| e.to_string())
+    evaluate(&expr, ctx).map_err(|e| e.to_string())
+}
+
+/// Parse and evaluate an expression string (backward compatible, uses fresh context)
+pub fn evaluate_expression(input: &str) -> std::result::Result<Value, String> {
+    let mut ctx = Context::new();
+    evaluate_expression_with_context(input, &mut ctx)
 }
 
 /// Format parse errors into a human-readable string
@@ -334,5 +354,117 @@ mod tests {
         assert_eq!(evaluate_expression("10/2>3").unwrap(), Value::Bool(true));
         assert_eq!(evaluate_expression("2*3==6").unwrap(), Value::Bool(true));
         assert_eq!(evaluate_expression("1+2<=3").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_variable_assignment() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x = 5", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_variable_reference() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        assert_eq!(
+            evaluate_expression_with_context("x", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+    }
+
+    #[test]
+    fn test_variable_in_expression() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        assert_eq!(
+            evaluate_expression_with_context("x + 1", &mut ctx).unwrap(),
+            Value::Int(6)
+        );
+        assert_eq!(
+            evaluate_expression_with_context("x * 2", &mut ctx).unwrap(),
+            Value::Int(10)
+        );
+    }
+
+    #[test]
+    fn test_assignment_precedence() {
+        let mut ctx = Context::new();
+        // x = 1 + 2 should be x = (1 + 2) = 3
+        assert_eq!(
+            evaluate_expression_with_context("x = 1 + 2", &mut ctx).unwrap(),
+            Value::Int(3)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_chain_assignment() {
+        let mut ctx = Context::new();
+        // x = y = 5 should set both x and y to 5
+        assert_eq!(
+            evaluate_expression_with_context("x = y = 5", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+        assert_eq!(ctx.get("y"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_undefined_variable() {
+        let mut ctx = Context::new();
+        let result = evaluate_expression_with_context("x", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Undefined variable"));
+    }
+
+    #[test]
+    fn test_variable_reassignment() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        evaluate_expression_with_context("x = 10", &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Int(10)));
+    }
+
+    #[test]
+    fn test_variable_with_underscore() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("my_var = 42", &mut ctx).unwrap(),
+            Value::Int(42)
+        );
+        assert_eq!(
+            evaluate_expression_with_context("_private = 1", &mut ctx).unwrap(),
+            Value::Int(1)
+        );
+    }
+
+    #[test]
+    fn test_variable_assign_expression() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        evaluate_expression_with_context("y = 10", &mut ctx).unwrap();
+        assert_eq!(
+            evaluate_expression_with_context("z = x + y", &mut ctx).unwrap(),
+            Value::Int(15)
+        );
+        assert_eq!(ctx.get("z"), Some(&Value::Int(15)));
+    }
+
+    #[test]
+    fn test_variable_with_comparison() {
+        let mut ctx = Context::new();
+        evaluate_expression_with_context("x = 5", &mut ctx).unwrap();
+        assert_eq!(
+            evaluate_expression_with_context("x == 5", &mut ctx).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            evaluate_expression_with_context("x > 3", &mut ctx).unwrap(),
+            Value::Bool(true)
+        );
     }
 }
