@@ -1,0 +1,403 @@
+use std::fmt;
+use std::ops::{Add, Mul, Sub};
+
+use super::error::{EvalError, Result};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Int(i) => write!(f, "{}", i),
+            Value::Float(fl) => {
+                if *fl == (*fl as i64 as f64) {
+                    write!(f, "{}", *fl as i64)
+                } else {
+                    write!(f, "{}", fl)
+                }
+            }
+            Value::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+impl Value {
+    /// Convert to float
+    pub fn promote_to_float(self) -> Self {
+        match self {
+            Value::Int(i) => Value::Float(i as f64),
+            Value::Float(f) => Value::Float(f),
+            Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
+        }
+    }
+
+    /// Convert to f64 (for backward compatibility)
+    pub fn to_f64(self) -> f64 {
+        match self {
+            Value::Int(i) => i as f64,
+            Value::Float(f) => f,
+            Value::Bool(b) => {
+                if b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
+
+    /// Extract numeric pair for operations, returning (left, right, left_is_int, right_is_int)
+    fn into_numeric_pair(self, other: Self) -> Result<(f64, f64, bool, bool)> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok((a as f64, b as f64, true, true)),
+            (Value::Int(a), Value::Float(b)) => Ok((a as f64, b, true, false)),
+            (Value::Float(a), Value::Int(b)) => Ok((a, b as f64, false, true)),
+            (Value::Float(a), Value::Float(b)) => Ok((a, b, false, false)),
+            _ => Err(EvalError::UnsupportedTypes("arithmetic")),
+        }
+    }
+
+    /// Check if divisor is zero
+    fn check_zero(divisor: f64) -> Result<()> {
+        if divisor == 0.0 {
+            Err(EvalError::DivisionByZero)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Addition (internal implementation)
+    fn add_impl(self, other: Self) -> Result<Self> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => match a.checked_add(b) {
+                Some(result) => Ok(Value::Int(result)),
+                None => Ok(Value::Float(a as f64 + b as f64)),
+            },
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 + b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + b as f64)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            _ => Err(EvalError::UnsupportedTypes("addition")),
+        }
+    }
+
+    /// Subtraction (internal implementation)
+    fn subtract_impl(self, other: Self) -> Result<Self> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => match a.checked_sub(b) {
+                Some(result) => Ok(Value::Int(result)),
+                None => Ok(Value::Float(a as f64 - b as f64)),
+            },
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 - b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a - b as f64)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            _ => Err(EvalError::UnsupportedTypes("subtraction")),
+        }
+    }
+
+    /// Multiplication (internal implementation)
+    fn multiply_impl(self, other: Self) -> Result<Self> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => match a.checked_mul(b) {
+                Some(result) => Ok(Value::Int(result)),
+                None => Ok(Value::Float(a as f64 * b as f64)),
+            },
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 * b)),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a * b as f64)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            _ => Err(EvalError::UnsupportedTypes("multiplication")),
+        }
+    }
+
+    /// Safe addition that returns Result
+    pub fn safe_add(self, other: Self) -> Result<Self> {
+        self.add_impl(other)
+    }
+
+    /// Safe subtraction that returns Result
+    pub fn safe_sub(self, other: Self) -> Result<Self> {
+        self.subtract_impl(other)
+    }
+
+    /// Safe multiplication that returns Result
+    pub fn safe_mul(self, other: Self) -> Result<Self> {
+        self.multiply_impl(other)
+    }
+
+    /// Division (always returns Float)
+    pub fn divide(self, other: Self) -> Result<Self> {
+        let (a, b, _, _) = self.into_numeric_pair(other)?;
+        Self::check_zero(b)?;
+        Ok(Value::Float(a / b))
+    }
+
+    /// Modulo operation
+    pub fn modulo(self, other: Self) -> Result<Self> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                Self::check_zero(b as f64)?;
+                Ok(Value::Int(a % b))
+            }
+            (left, right) => {
+                let (a, b, _, _) = left.into_numeric_pair(right)?;
+                Self::check_zero(b)?;
+                Ok(Value::Float(a % b))
+            }
+        }
+    }
+
+    /// Power operation
+    pub fn power(self, other: Self) -> Result<Self> {
+        let base = self.to_f64();
+        let exponent = other.to_f64();
+        Ok(Value::Float(base.powf(exponent)))
+    }
+
+    /// Floor division
+    pub fn floor_divide(self, other: Self) -> Result<Self> {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => {
+                Self::check_zero(b as f64)?;
+                Ok(Value::Int(a / b))
+            }
+            (left, right) => {
+                let (a, b, _, _) = left.into_numeric_pair(right)?;
+                Self::check_zero(b)?;
+                Ok(Value::Float((a / b).floor()))
+            }
+        }
+    }
+
+    /// Generic comparison operation
+    fn compare<F>(self, other: Self, cmp: F, op_name: &'static str) -> Result<Self>
+    where
+        F: Fn(f64, f64) -> bool,
+    {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(cmp(a as f64, b as f64))),
+            (Value::Int(a), Value::Float(b)) => Ok(Value::Bool(cmp(a as f64, b))),
+            (Value::Float(a), Value::Int(b)) => Ok(Value::Bool(cmp(a, b as f64))),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(a, b))),
+            _ => Err(EvalError::UnsupportedTypes(op_name)),
+        }
+    }
+
+    /// Equality comparison
+    pub fn compare_eq(self, other: Self) -> Result<Self> {
+        match (&self, &other) {
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
+            _ => self.compare(other, |a, b| a == b, "comparison"),
+        }
+    }
+
+    /// Not equal comparison
+    pub fn compare_ne(self, other: Self) -> Result<Self> {
+        match (&self, &other) {
+            (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
+            _ => self.compare(other, |a, b| a != b, "comparison"),
+        }
+    }
+
+    /// Less than comparison
+    pub fn compare_lt(self, other: Self) -> Result<Self> {
+        self.compare(other, |a, b| a < b, "comparison")
+    }
+
+    /// Greater than comparison
+    pub fn compare_gt(self, other: Self) -> Result<Self> {
+        self.compare(other, |a, b| a > b, "comparison")
+    }
+
+    /// Less than or equal comparison
+    pub fn compare_le(self, other: Self) -> Result<Self> {
+        self.compare(other, |a, b| a <= b, "comparison")
+    }
+
+    /// Greater than or equal comparison
+    pub fn compare_ge(self, other: Self) -> Result<Self> {
+        self.compare(other, |a, b| a >= b, "comparison")
+    }
+}
+
+impl Add for Value {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        self.add_impl(other)
+            .expect("Unsupported types for addition")
+    }
+}
+
+impl Sub for Value {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        self.subtract_impl(other)
+            .expect("Unsupported types for subtraction")
+    }
+}
+
+impl Mul for Value {
+    type Output = Self;
+
+    fn mul(self, other: Self) -> Self::Output {
+        self.multiply_impl(other)
+            .expect("Unsupported types for multiplication")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_value_display() {
+        assert_eq!(format!("{}", Value::Int(42)), "42");
+        assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Value::Float(5.0)), "5");
+        assert_eq!(format!("{}", Value::Bool(true)), "true");
+        assert_eq!(format!("{}", Value::Bool(false)), "false");
+    }
+
+    #[test]
+    fn test_addition() {
+        assert_eq!(
+            Value::Int(1).safe_add(Value::Int(2)).unwrap(),
+            Value::Int(3)
+        );
+        assert_eq!(
+            Value::Int(1).safe_add(Value::Float(1.5)).unwrap(),
+            Value::Float(2.5)
+        );
+        assert_eq!(
+            Value::Float(1.5).safe_add(Value::Int(1)).unwrap(),
+            Value::Float(2.5)
+        );
+        assert_eq!(
+            Value::Float(1.5).safe_add(Value::Float(1.5)).unwrap(),
+            Value::Float(3.0)
+        );
+    }
+
+    #[test]
+    fn test_subtraction() {
+        assert_eq!(
+            Value::Int(5).safe_sub(Value::Int(3)).unwrap(),
+            Value::Int(2)
+        );
+        assert_eq!(
+            Value::Float(5.5).safe_sub(Value::Int(2)).unwrap(),
+            Value::Float(3.5)
+        );
+    }
+
+    #[test]
+    fn test_multiplication() {
+        assert_eq!(
+            Value::Int(3).safe_mul(Value::Int(4)).unwrap(),
+            Value::Int(12)
+        );
+        assert_eq!(
+            Value::Float(2.5).safe_mul(Value::Int(2)).unwrap(),
+            Value::Float(5.0)
+        );
+    }
+
+    #[test]
+    fn test_division() {
+        assert_eq!(
+            Value::Int(10).divide(Value::Int(2)).unwrap(),
+            Value::Float(5.0)
+        );
+        assert_eq!(
+            Value::Int(7).divide(Value::Int(2)).unwrap(),
+            Value::Float(3.5)
+        );
+    }
+
+    #[test]
+    fn test_division_by_zero() {
+        assert!(Value::Int(5).divide(Value::Int(0)).is_err());
+        assert!(Value::Float(5.0).divide(Value::Float(0.0)).is_err());
+    }
+
+    #[test]
+    fn test_modulo() {
+        assert_eq!(Value::Int(10).modulo(Value::Int(3)).unwrap(), Value::Int(1));
+        assert_eq!(
+            Value::Float(10.5).modulo(Value::Float(3.0)).unwrap(),
+            Value::Float(1.5)
+        );
+    }
+
+    #[test]
+    fn test_power() {
+        assert_eq!(
+            Value::Int(2).power(Value::Int(3)).unwrap(),
+            Value::Float(8.0)
+        );
+    }
+
+    #[test]
+    fn test_floor_divide() {
+        assert_eq!(
+            Value::Int(10).floor_divide(Value::Int(3)).unwrap(),
+            Value::Int(3)
+        );
+        assert_eq!(
+            Value::Float(10.7).floor_divide(Value::Float(3.0)).unwrap(),
+            Value::Float(3.0)
+        );
+    }
+
+    #[test]
+    fn test_comparisons() {
+        assert_eq!(
+            Value::Int(1).compare_eq(Value::Int(1)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Int(1).compare_ne(Value::Int(2)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Int(1).compare_lt(Value::Int(2)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Int(2).compare_gt(Value::Int(1)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Int(1).compare_le(Value::Int(1)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Int(1).compare_ge(Value::Int(1)).unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_bool_comparison() {
+        assert_eq!(
+            Value::Bool(true).compare_eq(Value::Bool(true)).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Bool(true).compare_ne(Value::Bool(false)).unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_unsupported_types() {
+        assert!(Value::Bool(true).safe_add(Value::Int(1)).is_err());
+        assert!(Value::Bool(true).safe_sub(Value::Int(1)).is_err());
+        assert!(Value::Bool(true).safe_mul(Value::Int(1)).is_err());
+    }
+}
