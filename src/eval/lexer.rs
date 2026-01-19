@@ -417,6 +417,7 @@ impl<'a> Lexer<'a> {
             "float" => Ok(Token::FloatType),
             "bool" => Ok(Token::BoolType),
             "str" => Ok(Token::StrType),
+            "any" => Ok(Token::AnyType),
             _ => Ok(Token::Ident(ident.to_string())),
         }
     }
@@ -621,5 +622,12 @@ mod tests {
         let mut lexer = Lexer::new("str");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(tokens, vec![Token::StrType, Token::Eof,]);
+    }
+
+    #[test]
+    fn test_any_type_keyword() {
+        let mut lexer = Lexer::new("any");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::AnyType, Token::Eof,]);
     }
 }
