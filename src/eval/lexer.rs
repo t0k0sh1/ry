@@ -410,6 +410,7 @@ impl<'a> Lexer<'a> {
             "if" => Ok(Token::If),
             "elif" => Ok(Token::Elif),
             "else" => Ok(Token::Else),
+            "while" => Ok(Token::While),
             "true" => Ok(Token::True),
             "false" => Ok(Token::False),
             "int" => Ok(Token::IntType),

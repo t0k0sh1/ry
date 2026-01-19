@@ -33,6 +33,7 @@ pub enum Token {
     If,
     Elif,
     Else,
+    While,
     True,
     False,
 
@@ -59,6 +60,7 @@ impl Token {
             Token::If
                 | Token::Elif
                 | Token::Else
+                | Token::While
                 | Token::True
                 | Token::False
                 | Token::IntType
