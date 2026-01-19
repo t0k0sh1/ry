@@ -20,6 +20,33 @@ impl Default for Context {
     }
 }
 
+/// RAII scope guard - automatically pops scope when dropped
+///
+/// This ensures that scopes are always properly cleaned up, even when
+/// errors occur (e.g., when using the `?` operator).
+pub struct ScopeGuard<'a> {
+    context: &'a mut Context,
+}
+
+impl<'a> ScopeGuard<'a> {
+    /// Create a new scope guard, pushing a new scope onto the context
+    pub fn new(context: &'a mut Context) -> Self {
+        context.push_scope();
+        Self { context }
+    }
+
+    /// Get a mutable reference to the underlying context
+    pub fn context(&mut self) -> &mut Context {
+        self.context
+    }
+}
+
+impl Drop for ScopeGuard<'_> {
+    fn drop(&mut self) {
+        self.context.pop_scope();
+    }
+}
+
 impl Context {
     /// Create a new context with a global scope
     pub fn new() -> Self {
@@ -187,5 +214,71 @@ mod tests {
         ctx.pop_scope();
         // x was updated, not shadowed
         assert_eq!(ctx.get("x"), Some(&Value::Int(20)));
+    }
+
+    #[test]
+    fn test_scope_guard_basic() {
+        let mut ctx = Context::new();
+        ctx.set("outer".to_string(), Value::Int(1));
+
+        {
+            let mut guard = ScopeGuard::new(&mut ctx);
+            guard.context().set("inner".to_string(), Value::Int(2));
+
+            // Both variables accessible inside guard
+            assert_eq!(guard.context().get("outer"), Some(&Value::Int(1)));
+            assert_eq!(guard.context().get("inner"), Some(&Value::Int(2)));
+        } // ScopeGuard dropped here, pops scope
+
+        // outer still accessible, inner is gone
+        assert_eq!(ctx.get("outer"), Some(&Value::Int(1)));
+        assert!(ctx.get("inner").is_none());
+    }
+
+    #[test]
+    fn test_scope_guard_nested() {
+        let mut ctx = Context::new();
+        ctx.set("a".to_string(), Value::Int(1));
+
+        {
+            let mut guard1 = ScopeGuard::new(&mut ctx);
+            guard1.context().set("b".to_string(), Value::Int(2));
+
+            {
+                let mut guard2 = ScopeGuard::new(guard1.context());
+                guard2.context().set("c".to_string(), Value::Int(3));
+
+                // All accessible
+                assert_eq!(guard2.context().get("a"), Some(&Value::Int(1)));
+                assert_eq!(guard2.context().get("b"), Some(&Value::Int(2)));
+                assert_eq!(guard2.context().get("c"), Some(&Value::Int(3)));
+            } // guard2 dropped
+
+            // c is gone, a and b still accessible
+            assert_eq!(guard1.context().get("a"), Some(&Value::Int(1)));
+            assert_eq!(guard1.context().get("b"), Some(&Value::Int(2)));
+            assert!(guard1.context().get("c").is_none());
+        } // guard1 dropped
+
+        // Only a remains
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert!(ctx.get("b").is_none());
+        assert!(ctx.get("c").is_none());
+    }
+
+    #[test]
+    fn test_scope_guard_updates_outer() {
+        let mut ctx = Context::new();
+        ctx.set("x".to_string(), Value::Int(10));
+
+        {
+            let mut guard = ScopeGuard::new(&mut ctx);
+            // Update outer variable
+            guard.context().set("x".to_string(), Value::Int(100));
+            assert_eq!(guard.context().get("x"), Some(&Value::Int(100)));
+        }
+
+        // x was updated in outer scope
+        assert_eq!(ctx.get("x"), Some(&Value::Int(100)));
     }
 }
