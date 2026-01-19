@@ -11,6 +11,7 @@ use error::Result;
 
 // Re-exports for public API
 pub use context::Context;
+pub use context::ScopeGuard;
 pub use error::EvalError;
 pub use lexer::Lexer;
 pub use parser::parse_program;
@@ -106,14 +107,13 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
 
 /// Execute a block in a new scope
 fn execute_block(block: &Block, ctx: &mut Context) -> Result<Option<Value>> {
-    ctx.push_scope();
+    let mut guard = ScopeGuard::new(ctx);
     let mut last_value = None;
     for stmt in &block.statements {
-        last_value = execute_statement(stmt, ctx)?;
+        last_value = execute_statement(stmt, guard.context())?;
     }
-    ctx.pop_scope();
     Ok(last_value)
-}
+} // ScopeGuard is dropped here, automatically calling pop_scope()
 
 /// Parse and evaluate an expression string with a context
 pub fn evaluate_expression_with_context(
