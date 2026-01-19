@@ -126,6 +126,17 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
 
             Ok(None)
         }
+        Statement::While { condition, body } => {
+            let mut last_value = None;
+            loop {
+                let cond_value = evaluate(condition, ctx)?;
+                if !is_truthy(&cond_value)? {
+                    break;
+                }
+                last_value = execute_block(body, ctx)?;
+            }
+            Ok(last_value)
+        }
     }
 }
 
@@ -867,5 +878,61 @@ mod tests {
         let input = "if \"\":\n    10\nelse:\n    20\n";
         let result = execute_test_program(input, &mut ctx).unwrap();
         assert_eq!(result, Some(Value::Int(20)));
+    }
+
+    // While loop tests
+    #[test]
+    fn test_while_basic() {
+        let mut ctx = Context::new();
+        let input = "count = 0\nwhile count < 3:\n    count = count + 1\ncount\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(3)));
+    }
+
+    #[test]
+    fn test_while_false_condition() {
+        let mut ctx = Context::new();
+        let input = "x = 0\nwhile false:\n    x = 1\nx\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        // Body is never executed, x remains 0
+        assert_eq!(result, Some(Value::Int(0)));
+    }
+
+    #[test]
+    fn test_while_scope_isolation() {
+        let mut ctx = Context::new();
+        let input = "count = 0\nwhile count < 1:\n    count = count + 1\n    temp = 42\n";
+        execute_test_program(input, &mut ctx).unwrap();
+        // count was updated in outer scope
+        assert_eq!(ctx.get("count"), Some(&Value::Int(1)));
+        // temp is not accessible (was in while block scope)
+        assert!(ctx.get("temp").is_none());
+    }
+
+    #[test]
+    fn test_while_nested() {
+        let mut ctx = Context::new();
+        let input = "i = 0\nsum = 0\nwhile i < 3:\n    j = 0\n    while j < 2:\n        sum = sum + 1\n        j = j + 1\n    i = i + 1\nsum\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        // 3 outer iterations * 2 inner iterations = 6
+        assert_eq!(result, Some(Value::Int(6)));
+    }
+
+    #[test]
+    fn test_while_with_truthy_integer() {
+        let mut ctx = Context::new();
+        let input = "n = 3\nresult = 0\nwhile n:\n    result = result + n\n    n = n - 1\nresult\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        // 3 + 2 + 1 = 6
+        assert_eq!(result, Some(Value::Int(6)));
+    }
+
+    #[test]
+    fn test_while_returns_last_value() {
+        let mut ctx = Context::new();
+        let input = "count = 0\nwhile count < 3:\n    count = count + 1\n    count * 10\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        // Last iteration: count = 3, returns 3 * 10 = 30
+        assert_eq!(result, Some(Value::Int(30)));
     }
 }

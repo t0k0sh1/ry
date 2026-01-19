@@ -57,6 +57,8 @@ pub enum Statement {
         elif_branches: Vec<ConditionalBranch>,
         else_body: Option<Block>,
     },
+    /// While loop statement
+    While { condition: Expr, body: Block },
 }
 
 /// Program is a collection of statements

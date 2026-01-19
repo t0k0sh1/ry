@@ -80,6 +80,7 @@ impl<'a> ProgramParser<'a> {
     fn parse_statement(&mut self) -> Result<Statement, String> {
         match self.peek() {
             Some(Token::If) => self.parse_if_statement(),
+            Some(Token::While) => self.parse_while_statement(),
             _ => {
                 let expr = self.parse_expression()?;
                 // Consume optional newline after expression
@@ -130,6 +131,16 @@ impl<'a> ProgramParser<'a> {
             elif_branches,
             else_body,
         })
+    }
+
+    fn parse_while_statement(&mut self) -> Result<Statement, String> {
+        self.expect(&Token::While)?;
+        let condition = self.parse_expression()?;
+        self.expect(&Token::Colon)?;
+        self.expect(&Token::Newline)?;
+        let body = self.parse_block()?;
+
+        Ok(Statement::While { condition, body })
     }
 
     fn parse_block(&mut self) -> Result<Block, String> {
@@ -192,9 +203,16 @@ impl<'a> ProgramParser<'a> {
         // Check for type annotation pattern: ident: type = value
         if let Expr::Variable(name) = &expr {
             if let Some(Token::Colon) = self.peek() {
-                self.advance(); // consume ':'
-                let type_annotation = self.parse_type_annotation()?;
-                if type_annotation.is_some() {
+                // Check if next token is a type keyword before consuming ':'
+                let is_type_annotation = self.tokens.get(self.position + 1).is_some_and(|t| {
+                    matches!(
+                        t,
+                        Token::IntType | Token::FloatType | Token::BoolType | Token::StrType
+                    )
+                });
+                if is_type_annotation {
+                    self.advance(); // consume ':'
+                    let type_annotation = self.parse_type_annotation()?;
                     self.expect(&Token::Equal)?;
                     let value = self.parse_assignment()?;
                     return Ok(Expr::Assign {
@@ -202,10 +220,6 @@ impl<'a> ProgramParser<'a> {
                         type_annotation,
                         value: Box::new(value),
                     });
-                } else {
-                    return Err(
-                        "expected type annotation (int, float, bool, or str) after ':'".to_string(),
-                    );
                 }
             }
         }
