@@ -1,0 +1,10 @@
+x = 5
+result = 0
+if x > 10:
+    result = 1
+elif x > 3:
+    result = 2
+else:
+    result = 3
+
+result

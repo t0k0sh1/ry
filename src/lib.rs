@@ -3,7 +3,10 @@ pub mod eval;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 
-pub use eval::{evaluate_expression, evaluate_expression_with_context, Context, EvalError, Value};
+pub use eval::{
+    evaluate_expression, evaluate_expression_with_context, execute_program, parse_program, Context,
+    EvalError, Lexer, Token, Value,
+};
 
 pub fn validate_ry_file(path: &str) -> Result<(), String> {
     let path_obj = Path::new(path);
@@ -22,24 +25,80 @@ pub fn run_file(path: &str) -> Result<(), String> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
 
-    // Create context for variable persistence across lines
+    // Create context for variable persistence
     let mut ctx = Context::new();
 
-    // Evaluate each line
-    for (line_num, line) in content.lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        match evaluate_expression_with_context(trimmed, &mut ctx) {
-            Ok(result) => println!("{}", result),
-            Err(e) => {
-                return Err(format!("Error at line {}: {}", line_num + 1, e));
-            }
+    // Tokenize and parse
+    let mut lexer = Lexer::new(&content);
+    let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+
+    let program = parse_program(&tokens)?;
+
+    // Execute program
+    for stmt in &program.statements {
+        if let Some(value) = eval::execute_statement(stmt, &mut ctx).map_err(|e| e.to_string())? {
+            println!("{}", value);
         }
     }
 
     Ok(())
+}
+
+const INDENT_SIZE: usize = 2;
+
+/// Calculate the current indent level based on the buffer content
+fn calculate_indent_level(buffer: &str) -> usize {
+    let mut indent_stack: Vec<usize> = vec![0];
+
+    for line in buffer.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Count leading spaces
+        let line_indent = line.len() - line.trim_start().len();
+
+        // Adjust indent stack based on current line's indentation
+        while indent_stack.len() > 1 && line_indent < *indent_stack.last().unwrap() {
+            indent_stack.pop();
+        }
+
+        // If line ends with colon, next line should be indented
+        if trimmed.ends_with(':') {
+            indent_stack.push(line_indent + INDENT_SIZE);
+        }
+    }
+
+    *indent_stack.last().unwrap_or(&0)
+}
+
+/// Check if input needs continuation (ends with colon or is indented)
+fn needs_continuation(input: &str) -> bool {
+    let trimmed = input.trim_end();
+    // Line ends with colon (starting a block)
+    if trimmed.ends_with(':') {
+        return true;
+    }
+    // Check if there's an unclosed block (has indent but no matching dedent)
+    // Simple heuristic: if the last non-empty line is indented, continue
+    let lines: Vec<&str> = input.lines().collect();
+    if let Some(last_line) = lines.last() {
+        let last_trimmed = last_line.trim();
+        if !last_trimmed.is_empty() {
+            // Check if last line starts with whitespace (indented)
+            if last_line.starts_with(' ') || last_line.starts_with('\t') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if input starts with continuation keywords at current indentation
+fn starts_with_continuation_keyword(input: &str) -> bool {
+    let trimmed = input.trim();
+    trimmed.starts_with("elif ") || trimmed.starts_with("else:")
 }
 
 pub fn run_repl() {
@@ -48,9 +107,17 @@ pub fn run_repl() {
 
     // Create context for variable persistence across REPL lines
     let mut ctx = Context::new();
+    let mut buffer = String::new();
+    let mut in_multiline = false;
 
     loop {
-        print!("ry> ");
+        if in_multiline {
+            let indent_level = calculate_indent_level(&buffer);
+            let indent = " ".repeat(indent_level);
+            print!("... {}", indent);
+        } else {
+            print!("ry> ");
+        }
         io::stdout().flush().expect("Failed to flush stdout");
 
         let mut line = String::new();
@@ -62,21 +129,104 @@ pub fn run_repl() {
             }
             Ok(_) => {
                 let trimmed = line.trim();
+
+                // Handle exit commands
+                if !in_multiline && (trimmed == "exit" || trimmed == "quit") {
+                    break;
+                }
+
+                // Handle empty line in multiline mode
+                if in_multiline && trimmed.is_empty() {
+                    // Empty line in multiline mode - try to execute
+                    buffer.push('\n');
+
+                    // Execute the buffered input
+                    execute_multiline_input(&buffer, &mut ctx);
+                    buffer.clear();
+                    in_multiline = false;
+                    continue;
+                }
+
+                // Empty line in single-line mode
                 if trimmed.is_empty() {
                     continue;
                 }
-                if trimmed == "exit" || trimmed == "quit" {
-                    break;
+
+                // In multiline mode, prepend auto-indent if the user didn't provide their own
+                if in_multiline && !line.starts_with(' ') && !line.starts_with('\t') {
+                    let indent_level = calculate_indent_level(&buffer);
+                    let indent = " ".repeat(indent_level);
+                    buffer.push_str(&indent);
                 }
-                // Evaluate the input
-                match evaluate_expression_with_context(trimmed, &mut ctx) {
-                    Ok(result) => println!("{}", result),
-                    Err(e) => eprintln!("Error: {}", e),
+
+                // Accumulate input
+                buffer.push_str(&line);
+
+                // Check if we need to continue reading
+                if needs_continuation(&buffer) || starts_with_continuation_keyword(trimmed) {
+                    in_multiline = true;
+                    continue;
                 }
+
+                // Check if this is a multiline block that needs more input
+                // (e.g., after elif or else that ends with :)
+                if in_multiline {
+                    continue;
+                }
+
+                // Single-line input - try to evaluate
+                let input = buffer.trim();
+
+                // Check if it looks like a program (has if/elif/else or newlines)
+                if input.contains('\n') || input.starts_with("if ") {
+                    execute_multiline_input(&buffer, &mut ctx);
+                } else {
+                    // Simple expression
+                    match evaluate_expression_with_context(input, &mut ctx) {
+                        Ok(result) => println!("{}", result),
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                }
+
+                buffer.clear();
+                in_multiline = false;
             }
             Err(e) => {
                 eprintln!("Error reading input: {}", e);
                 break;
+            }
+        }
+    }
+}
+
+fn execute_multiline_input(input: &str, ctx: &mut Context) {
+    // Tokenize
+    let mut lexer = Lexer::new(input);
+    let tokens = match lexer.tokenize() {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return;
+        }
+    };
+
+    // Parse
+    let program = match parse_program(&tokens) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            return;
+        }
+    };
+
+    // Execute
+    for stmt in &program.statements {
+        match eval::execute_statement(stmt, ctx) {
+            Ok(Some(value)) => println!("{}", value),
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                return;
             }
         }
     }

@@ -9,6 +9,10 @@ pub enum EvalError {
     UnsupportedTypes(&'static str),
     /// Undefined variable error
     UndefinedVariable(String),
+    /// Indentation error
+    IndentationError(String),
+    /// Type error in condition
+    TypeError(String),
 }
 
 impl fmt::Display for EvalError {
@@ -20,6 +24,12 @@ impl fmt::Display for EvalError {
             }
             EvalError::UndefinedVariable(name) => {
                 write!(f, "Undefined variable: {}", name)
+            }
+            EvalError::IndentationError(msg) => {
+                write!(f, "Indentation error: {}", msg)
+            }
+            EvalError::TypeError(msg) => {
+                write!(f, "Type error: {}", msg)
             }
         }
     }
