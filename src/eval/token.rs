@@ -5,6 +5,7 @@ use super::value::Value;
 pub enum Token {
     // Literals
     Number(Value),
+    StringLiteral(String),
     Ident(String),
 
     // Operators
@@ -39,6 +40,7 @@ pub enum Token {
     IntType,   // int
     FloatType, // float
     BoolType,  // bool
+    StrType,   // str
 
     // Indentation
     Indent,
@@ -62,6 +64,7 @@ impl Token {
                 | Token::IntType
                 | Token::FloatType
                 | Token::BoolType
+                | Token::StrType
         )
     }
 }

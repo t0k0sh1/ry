@@ -283,6 +283,9 @@ impl<'a> Lexer<'a> {
             // Numbers
             '0'..='9' => self.parse_number(),
 
+            // String literals
+            '"' => self.parse_string(),
+
             // Identifiers and keywords
             'a'..='z' | 'A'..='Z' | '_' => self.parse_identifier(),
 
@@ -325,6 +328,69 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn parse_string(&mut self) -> Result<Token> {
+        // Consume opening quote
+        self.advance();
+
+        let mut result = String::new();
+
+        loop {
+            match self.peek() {
+                Some('"') => {
+                    // End of string
+                    self.advance();
+                    return Ok(Token::StringLiteral(result));
+                }
+                Some('\\') => {
+                    // Escape sequence
+                    self.advance();
+                    match self.peek() {
+                        Some('n') => {
+                            self.advance();
+                            result.push('\n');
+                        }
+                        Some('t') => {
+                            self.advance();
+                            result.push('\t');
+                        }
+                        Some('r') => {
+                            self.advance();
+                            result.push('\r');
+                        }
+                        Some('\\') => {
+                            self.advance();
+                            result.push('\\');
+                        }
+                        Some('"') => {
+                            self.advance();
+                            result.push('"');
+                        }
+                        Some(ch) => {
+                            return Err(EvalError::IndentationError(format!(
+                                "unknown escape sequence: \\{}",
+                                ch
+                            )));
+                        }
+                        None => {
+                            return Err(EvalError::IndentationError(
+                                "unterminated string literal".to_string(),
+                            ));
+                        }
+                    }
+                }
+                Some('\n') | None => {
+                    return Err(EvalError::IndentationError(
+                        "unterminated string literal".to_string(),
+                    ));
+                }
+                Some(ch) => {
+                    self.advance();
+                    result.push(ch);
+                }
+            }
+        }
+    }
+
     fn parse_identifier(&mut self) -> Result<Token> {
         let start = self.position;
 
@@ -349,6 +415,7 @@ impl<'a> Lexer<'a> {
             "int" => Ok(Token::IntType),
             "float" => Ok(Token::FloatType),
             "bool" => Ok(Token::BoolType),
+            "str" => Ok(Token::StrType),
             _ => Ok(Token::Ident(ident.to_string())),
         }
     }
@@ -468,5 +535,90 @@ mod tests {
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn test_string_literal() {
+        let mut lexer = Lexer::new("\"hello\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("hello".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_string_with_spaces() {
+        let mut lexer = Lexer::new("\"hello world\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("hello world".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_string_escape_sequences() {
+        let mut lexer = Lexer::new("\"hello\\nworld\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("hello\nworld".to_string()), Token::Eof,]
+        );
+
+        let mut lexer = Lexer::new("\"tab\\there\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("tab\there".to_string()), Token::Eof,]
+        );
+
+        let mut lexer = Lexer::new("\"quote\\\"here\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("quote\"here".to_string()), Token::Eof,]
+        );
+
+        let mut lexer = Lexer::new("\"backslash\\\\here\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::StringLiteral("backslash\\here".to_string()),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_string() {
+        let mut lexer = Lexer::new("\"\"");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unterminated_string() {
+        let mut lexer = Lexer::new("\"hello");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unknown_escape_sequence() {
+        let mut lexer = Lexer::new("\"hello\\x\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_str_type_keyword() {
+        let mut lexer = Lexer::new("str");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::StrType, Token::Eof,]);
     }
 }

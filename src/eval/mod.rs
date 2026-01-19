@@ -83,6 +83,7 @@ fn is_truthy(value: &Value) -> Result<bool> {
         Value::Bool(b) => Ok(*b),
         Value::Int(i) => Ok(*i != 0),
         Value::Float(f) => Ok(*f != 0.0),
+        Value::Str(s) => Ok(!s.is_empty()),
     }
 }
 
@@ -780,5 +781,91 @@ mod tests {
         let input = "x: int = 10\nx = 3.14\n";
         let result = execute_test_program(input, &mut ctx);
         assert!(result.is_err());
+    }
+
+    // String tests
+    #[test]
+    fn test_string_literal() {
+        assert_eq!(
+            evaluate_expression("\"hello\"").unwrap(),
+            Value::Str("hello".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        assert_eq!(
+            evaluate_expression("\"hello\" + \" world\"").unwrap(),
+            Value::Str("hello world".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_variable() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x = \"test\"", &mut ctx).unwrap(),
+            Value::Str("test".to_string())
+        );
+        assert_eq!(
+            evaluate_expression_with_context("x", &mut ctx).unwrap(),
+            Value::Str("test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_typed_string_variable() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x: str = \"hello\"", &mut ctx).unwrap(),
+            Value::Str("hello".to_string())
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Str("hello".to_string())));
+    }
+
+    #[test]
+    fn test_typed_string_mismatch() {
+        let mut ctx = Context::new();
+        let result = evaluate_expression_with_context("x: str = 42", &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_string_equality() {
+        assert_eq!(
+            evaluate_expression("\"hello\" == \"hello\"").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            evaluate_expression("\"hello\" == \"world\"").unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            evaluate_expression("\"hello\" != \"world\"").unwrap(),
+            Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn test_string_with_int_error() {
+        let result = evaluate_expression("\"hello\" + 1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_truthy_in_program() {
+        let mut ctx = Context::new();
+        let input = "if \"hello\":\n    10\nelse:\n    20\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(10)));
+    }
+
+    #[test]
+    fn test_empty_string_falsy_in_program() {
+        let mut ctx = Context::new();
+        let input = "if \"\":\n    10\nelse:\n    20\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Int(20)));
     }
 }

@@ -9,6 +9,7 @@ pub enum TypeAnnotation {
     Int,
     Float,
     Bool,
+    Str,
 }
 
 impl TypeAnnotation {
@@ -19,6 +20,7 @@ impl TypeAnnotation {
             (TypeAnnotation::Int, Value::Int(_))
                 | (TypeAnnotation::Float, Value::Float(_))
                 | (TypeAnnotation::Bool, Value::Bool(_))
+                | (TypeAnnotation::Str, Value::Str(_))
         )
     }
 
@@ -28,6 +30,7 @@ impl TypeAnnotation {
             TypeAnnotation::Int => "int",
             TypeAnnotation::Float => "float",
             TypeAnnotation::Bool => "bool",
+            TypeAnnotation::Str => "str",
         }
     }
 }
@@ -37,6 +40,7 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
+    Str(String),
 }
 
 impl Value {
@@ -46,6 +50,7 @@ impl Value {
             Value::Int(_) => "int",
             Value::Float(_) => "float",
             Value::Bool(_) => "bool",
+            Value::Str(_) => "str",
         }
     }
 }
@@ -62,6 +67,7 @@ impl fmt::Display for Value {
                 }
             }
             Value::Bool(b) => write!(f, "{}", b),
+            Value::Str(s) => write!(f, "{}", s),
         }
     }
 }
@@ -73,6 +79,7 @@ impl Value {
             Value::Int(i) => Value::Float(i as f64),
             Value::Float(f) => Value::Float(f),
             Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
+            Value::Str(_) => panic!("Cannot convert string to float"),
         }
     }
 
@@ -88,6 +95,7 @@ impl Value {
                     0.0
                 }
             }
+            Value::Str(_) => panic!("Cannot convert string to f64"),
         }
     }
 
@@ -121,6 +129,7 @@ impl Value {
             (Value::Int(a), Value::Float(b)) => Ok(Value::Float(a as f64 + b)),
             (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a + b as f64)),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::Str(a), Value::Str(b)) => Ok(Value::Str(a + &b)),
             _ => Err(EvalError::UnsupportedTypes("addition")),
         }
     }
@@ -230,6 +239,7 @@ impl Value {
     pub fn compare_eq(self, other: Self) -> Result<Self> {
         match (&self, &other) {
             (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
+            (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a == b)),
             _ => self.compare(other, |a, b| a == b, "comparison"),
         }
     }
@@ -238,6 +248,7 @@ impl Value {
     pub fn compare_ne(self, other: Self) -> Result<Self> {
         match (&self, &other) {
             (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
+            (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a != b)),
             _ => self.compare(other, |a, b| a != b, "comparison"),
         }
     }
@@ -470,5 +481,96 @@ mod tests {
         assert_eq!(Value::Int(42).type_name(), "int");
         assert_eq!(Value::Float(3.14).type_name(), "float");
         assert_eq!(Value::Bool(true).type_name(), "bool");
+        assert_eq!(Value::Str("hello".to_string()).type_name(), "str");
+    }
+
+    // String tests
+    #[test]
+    fn test_string_display() {
+        assert_eq!(format!("{}", Value::Str("hello".to_string())), "hello");
+        assert_eq!(format!("{}", Value::Str("".to_string())), "");
+        assert_eq!(
+            format!("{}", Value::Str("hello world".to_string())),
+            "hello world"
+        );
+    }
+
+    #[test]
+    fn test_string_concatenation() {
+        assert_eq!(
+            Value::Str("hello".to_string())
+                .safe_add(Value::Str(" world".to_string()))
+                .unwrap(),
+            Value::Str("hello world".to_string())
+        );
+        assert_eq!(
+            Value::Str("".to_string())
+                .safe_add(Value::Str("test".to_string()))
+                .unwrap(),
+            Value::Str("test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_string_equality() {
+        assert_eq!(
+            Value::Str("hello".to_string())
+                .compare_eq(Value::Str("hello".to_string()))
+                .unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Str("hello".to_string())
+                .compare_eq(Value::Str("world".to_string()))
+                .unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_string_inequality() {
+        assert_eq!(
+            Value::Str("hello".to_string())
+                .compare_ne(Value::Str("world".to_string()))
+                .unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            Value::Str("hello".to_string())
+                .compare_ne(Value::Str("hello".to_string()))
+                .unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_string_unsupported_ops() {
+        // String + Int should fail
+        assert!(Value::Str("hello".to_string())
+            .safe_add(Value::Int(1))
+            .is_err());
+        // String - String should fail
+        assert!(Value::Str("hello".to_string())
+            .safe_sub(Value::Str("h".to_string()))
+            .is_err());
+        // String * Int should fail
+        assert!(Value::Str("hello".to_string())
+            .safe_mul(Value::Int(2))
+            .is_err());
+    }
+
+    #[test]
+    fn test_string_type_annotation_matches() {
+        assert!(TypeAnnotation::Str.matches(&Value::Str("test".to_string())));
+        assert!(!TypeAnnotation::Str.matches(&Value::Int(42)));
+        assert!(!TypeAnnotation::Str.matches(&Value::Float(3.14)));
+        assert!(!TypeAnnotation::Str.matches(&Value::Bool(true)));
+        // Other types don't match string
+        assert!(!TypeAnnotation::Int.matches(&Value::Str("test".to_string())));
+    }
+
+    #[test]
+    fn test_string_type_annotation_type_name() {
+        assert_eq!(TypeAnnotation::Str.type_name(), "str");
     }
 }
