@@ -935,4 +935,79 @@ mod tests {
         // Last iteration: count = 3, returns 3 * 10 = 30
         assert_eq!(result, Some(Value::Int(30)));
     }
+
+    // Any type tests
+    #[test]
+    fn test_any_type_assignment() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("x: any = 5", &mut ctx).unwrap(),
+            Value::Int(5)
+        );
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_any_type_allows_reassignment_to_different_types() {
+        let mut ctx = Context::new();
+        // Initial assignment with any type
+        evaluate_expression_with_context("x: any = 5", &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Int(5)));
+
+        // Reassign to float
+        evaluate_expression_with_context("x = 3.14", &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Float(3.14)));
+
+        // Reassign to bool
+        evaluate_expression_with_context("x = true", &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Bool(true)));
+
+        // Reassign to string
+        evaluate_expression_with_context("x = \"hello\"", &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Str("hello".to_string())));
+    }
+
+    #[test]
+    fn test_any_type_in_program() {
+        let mut ctx = Context::new();
+        let input = "x: any = 5\nx = 3.14\nx = true\nx = \"hello\"\nx\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(result, Some(Value::Str("hello".to_string())));
+    }
+
+    #[test]
+    fn test_any_type_with_float_initial() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("y: any = 3.14", &mut ctx).unwrap(),
+            Value::Float(3.14)
+        );
+        // Can reassign to int
+        evaluate_expression_with_context("y = 42", &mut ctx).unwrap();
+        assert_eq!(ctx.get("y"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_any_type_with_bool_initial() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("flag: any = true", &mut ctx).unwrap(),
+            Value::Bool(true)
+        );
+        // Can reassign to string
+        evaluate_expression_with_context("flag = \"yes\"", &mut ctx).unwrap();
+        assert_eq!(ctx.get("flag"), Some(&Value::Str("yes".to_string())));
+    }
+
+    #[test]
+    fn test_any_type_with_string_initial() {
+        let mut ctx = Context::new();
+        assert_eq!(
+            evaluate_expression_with_context("s: any = \"hello\"", &mut ctx).unwrap(),
+            Value::Str("hello".to_string())
+        );
+        // Can reassign to int
+        evaluate_expression_with_context("s = 100", &mut ctx).unwrap();
+        assert_eq!(ctx.get("s"), Some(&Value::Int(100)));
+    }
 }

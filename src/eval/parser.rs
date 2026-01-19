@@ -193,6 +193,10 @@ impl<'a> ProgramParser<'a> {
                 self.advance();
                 Ok(Some(TypeAnnotation::Str))
             }
+            Some(Token::AnyType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Any))
+            }
             _ => Ok(None),
         }
     }
@@ -207,7 +211,11 @@ impl<'a> ProgramParser<'a> {
                 let is_type_annotation = self.tokens.get(self.position + 1).is_some_and(|t| {
                     matches!(
                         t,
-                        Token::IntType | Token::FloatType | Token::BoolType | Token::StrType
+                        Token::IntType
+                            | Token::FloatType
+                            | Token::BoolType
+                            | Token::StrType
+                            | Token::AnyType
                     )
                 });
                 if is_type_annotation {
@@ -497,6 +505,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             text::keyword("float").to(TypeAnnotation::Float),
             text::keyword("bool").to(TypeAnnotation::Bool),
             text::keyword("str").to(TypeAnnotation::Str),
+            text::keyword("any").to(TypeAnnotation::Any),
         ))
         .boxed();
 
@@ -819,6 +828,49 @@ mod tests {
                 type_annotation: Some(TypeAnnotation::Str),
                 ..
             } if name == "x"
+        ));
+    }
+
+    #[test]
+    fn test_parse_any_typed_assignment() {
+        let result = parse("x: any = 5").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Any),
+                ..
+            } if name == "x"
+        ));
+
+        let result = parse("y: any = 3.14").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Any),
+                ..
+            } if name == "y"
+        ));
+
+        let result = parse("flag: any = true").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Any),
+                ..
+            } if name == "flag"
+        ));
+
+        let result = parse("s: any = \"hello\"").unwrap();
+        assert!(matches!(
+            result,
+            Expr::Assign {
+                name,
+                type_annotation: Some(TypeAnnotation::Any),
+                ..
+            } if name == "s"
         ));
     }
 }

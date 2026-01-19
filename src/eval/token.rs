@@ -42,6 +42,7 @@ pub enum Token {
     FloatType, // float
     BoolType,  // bool
     StrType,   // str
+    AnyType,   // any
 
     // Indentation
     Indent,
@@ -67,6 +68,7 @@ impl Token {
                 | Token::FloatType
                 | Token::BoolType
                 | Token::StrType
+                | Token::AnyType
         )
     }
 }

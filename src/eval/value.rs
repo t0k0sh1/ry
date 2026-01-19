@@ -6,6 +6,7 @@ use super::error::{EvalError, Result};
 /// Type annotation for variable declarations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeAnnotation {
+    Any,
     Int,
     Float,
     Bool,
@@ -15,18 +16,22 @@ pub enum TypeAnnotation {
 impl TypeAnnotation {
     /// Check if a value matches this type annotation
     pub fn matches(&self, value: &Value) -> bool {
-        matches!(
-            (self, value),
-            (TypeAnnotation::Int, Value::Int(_))
-                | (TypeAnnotation::Float, Value::Float(_))
-                | (TypeAnnotation::Bool, Value::Bool(_))
-                | (TypeAnnotation::Str, Value::Str(_))
-        )
+        match self {
+            TypeAnnotation::Any => true,
+            _ => matches!(
+                (self, value),
+                (TypeAnnotation::Int, Value::Int(_))
+                    | (TypeAnnotation::Float, Value::Float(_))
+                    | (TypeAnnotation::Bool, Value::Bool(_))
+                    | (TypeAnnotation::Str, Value::Str(_))
+            ),
+        }
     }
 
     /// Get the type name as a string
     pub fn type_name(&self) -> &'static str {
         match self {
+            TypeAnnotation::Any => "any",
             TypeAnnotation::Int => "int",
             TypeAnnotation::Float => "float",
             TypeAnnotation::Bool => "bool",
@@ -572,5 +577,20 @@ mod tests {
     #[test]
     fn test_string_type_annotation_type_name() {
         assert_eq!(TypeAnnotation::Str.type_name(), "str");
+    }
+
+    // Any type tests
+    #[test]
+    fn test_any_type_annotation_matches_all() {
+        assert!(TypeAnnotation::Any.matches(&Value::Int(42)));
+        assert!(TypeAnnotation::Any.matches(&Value::Float(3.14)));
+        assert!(TypeAnnotation::Any.matches(&Value::Bool(true)));
+        assert!(TypeAnnotation::Any.matches(&Value::Bool(false)));
+        assert!(TypeAnnotation::Any.matches(&Value::Str("test".to_string())));
+    }
+
+    #[test]
+    fn test_any_type_annotation_type_name() {
+        assert_eq!(TypeAnnotation::Any.type_name(), "any");
     }
 }
