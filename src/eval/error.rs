@@ -11,6 +11,8 @@ pub enum EvalError {
     UndefinedVariable(String),
     /// Indentation error
     IndentationError(String),
+    /// Lexer error (invalid characters, unterminated strings, etc.)
+    LexerError(String),
     /// Type error in condition
     TypeError(String),
     /// Type mismatch error for typed variable assignment
@@ -37,6 +39,9 @@ impl fmt::Display for EvalError {
             }
             EvalError::IndentationError(msg) => {
                 write!(f, "Indentation error: {}", msg)
+            }
+            EvalError::LexerError(msg) => {
+                write!(f, "Lexer error: {}", msg)
             }
             EvalError::TypeError(msg) => {
                 write!(f, "Type error: {}", msg)
