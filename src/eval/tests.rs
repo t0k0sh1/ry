@@ -50,14 +50,29 @@ fn test_division_by_zero() {
 
 #[test]
 fn test_invalid_expression() {
+    // Trailing operator - should report an error
     let result = evaluate_expression("1+");
     assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("unexpected") || err.contains("Unexpected") || err.contains("expected"),
+        "Error message should indicate parsing failure: {}",
+        err
+    );
 
+    // Leading operator - should report error (+ is not a valid unary operator in ry)
     let result = evaluate_expression("+1");
     assert!(result.is_err());
 
+    // Double operator - should report unexpected token
     let result = evaluate_expression("1++2");
     assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("unexpected") || err.contains("Unexpected") || err.contains("expected"),
+        "Error message should indicate parsing failure: {}",
+        err
+    );
 }
 
 #[test]
@@ -1463,4 +1478,55 @@ my_func: func(int) -> int = add
     let result = execute_test_program(input, &mut ctx);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Type mismatch"));
+}
+
+// ===================
+// Edge case tests
+// ===================
+
+#[test]
+fn test_deeply_nested_scope() {
+    let mut ctx = Context::new();
+    let input = r#"
+x = 1
+if true:
+    y = 2
+    if true:
+        z = 3
+        if true:
+            w = 4
+            result = x + y + z + w
+"#;
+    let result = execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(result, Some(Value::Int(10)));
+}
+
+#[test]
+fn test_nested_function_definition() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn outer():
+    fn inner():
+        return 42
+    return inner()
+
+result = outer()
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(42)));
+}
+
+#[test]
+fn test_deep_recursion() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn countdown(n: int) -> int:
+    if n == 0:
+        return 0
+    return countdown(n - 1)
+
+result = countdown(100)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(0)));
 }

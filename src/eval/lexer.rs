@@ -65,15 +65,8 @@ impl<'a> Lexer<'a> {
 
         // Check for EOF
         if self.peek().is_none() {
-            // Generate remaining DEDENTs
-            while self.indent_stack.len() > 1 {
-                self.indent_stack.pop();
-                self.pending_tokens.push(Token::Dedent);
-            }
-            if let Some(token) = self.pending_tokens.pop() {
-                return Ok(token);
-            }
-            return Ok(Token::Eof);
+            self.generate_remaining_dedents();
+            return Ok(self.pending_or_eof());
         }
 
         // Parse other tokens
@@ -100,6 +93,19 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+    }
+
+    /// Generate remaining DEDENTs for all open indentation levels
+    fn generate_remaining_dedents(&mut self) {
+        while self.indent_stack.len() > 1 {
+            self.indent_stack.pop();
+            self.pending_tokens.push(Token::Dedent);
+        }
+    }
+
+    /// Return a pending token if available, otherwise EOF
+    fn pending_or_eof(&mut self) -> Token {
+        self.pending_tokens.pop().unwrap_or(Token::Eof)
     }
 
     fn handle_indentation(&mut self) -> Result<Token> {
@@ -144,15 +150,8 @@ impl<'a> Lexer<'a> {
 
         // Check for EOF at line start
         if self.peek().is_none() {
-            // Generate remaining DEDENTs
-            while self.indent_stack.len() > 1 {
-                self.indent_stack.pop();
-                self.pending_tokens.push(Token::Dedent);
-            }
-            if let Some(token) = self.pending_tokens.pop() {
-                return Ok(token);
-            }
-            return Ok(Token::Eof);
+            self.generate_remaining_dedents();
+            return Ok(self.pending_or_eof());
         }
 
         let current_indent = *self.indent_stack.last().unwrap();
