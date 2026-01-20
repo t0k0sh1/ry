@@ -23,6 +23,35 @@ pub use token::Token;
 pub use value::TypeAnnotation;
 pub use value::Value;
 
+/// Assign a value to a variable with type checking
+fn assign_with_type_check(
+    ctx: &mut Context,
+    name: &str,
+    value: Value,
+    type_annotation: Option<TypeAnnotation>,
+) -> Result<Value> {
+    // Check type constraint from declaration or existing variable
+    let effective_constraint = type_annotation.clone().or_else(|| {
+        ctx.get_info(name)
+            .and_then(|info| info.type_constraint.clone())
+    });
+
+    // Validate type if constraint exists
+    if let Some(ref constraint) = effective_constraint {
+        if !constraint.matches(&value) {
+            return Err(EvalError::TypeMismatch {
+                expected: constraint.type_name(),
+                actual: value.type_name(),
+                variable: name.to_string(),
+            });
+        }
+    }
+
+    // Set the variable with type constraint
+    ctx.set_typed(name.to_string(), value.clone(), type_annotation);
+    Ok(value)
+}
+
 /// Evaluate an AST expression with a context
 pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
     match expr {
@@ -37,27 +66,7 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
             value,
         } => {
             let val = evaluate(value, ctx)?;
-
-            // Check type constraint from declaration or existing variable
-            let effective_constraint = type_annotation.clone().or_else(|| {
-                ctx.get_info(name)
-                    .and_then(|info| info.type_constraint.clone())
-            });
-
-            // Validate type if constraint exists
-            if let Some(ref constraint) = effective_constraint {
-                if !constraint.matches(&val) {
-                    return Err(EvalError::TypeMismatch {
-                        expected: constraint.type_name(),
-                        actual: val.type_name(),
-                        variable: name.clone(),
-                    });
-                }
-            }
-
-            // Set the variable with type constraint
-            ctx.set_typed(name.clone(), val.clone(), type_annotation.clone());
-            Ok(val)
+            assign_with_type_check(ctx, name, val, type_annotation.clone())
         }
         Expr::Tuple(exprs) => {
             let values: Result<Vec<Value>> = exprs.iter().map(|e| evaluate(e, ctx)).collect();
@@ -74,24 +83,7 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
                         });
                     }
                     for ((name, type_annotation), v) in targets.iter().zip(values.iter()) {
-                        // Check type constraint from declaration or existing variable
-                        let effective_constraint = type_annotation.clone().or_else(|| {
-                            ctx.get_info(name)
-                                .and_then(|info| info.type_constraint.clone())
-                        });
-
-                        // Validate type if constraint exists
-                        if let Some(ref constraint) = effective_constraint {
-                            if !constraint.matches(v) {
-                                return Err(EvalError::TypeMismatch {
-                                    expected: constraint.type_name(),
-                                    actual: v.type_name(),
-                                    variable: name.clone(),
-                                });
-                            }
-                        }
-
-                        ctx.set_typed(name.clone(), v.clone(), type_annotation.clone());
+                        assign_with_type_check(ctx, name, v.clone(), type_annotation.clone())?;
                     }
                     Ok(Value::Tuple(values))
                 }
@@ -226,6 +218,25 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
     }
 }
 
+/// Validate return value against expected type
+fn validate_return_value(
+    return_value: Option<Value>,
+    expected_type: &Option<TypeAnnotation>,
+    func_name: &str,
+) -> Result<Value> {
+    let value = return_value.unwrap_or(Value::Tuple(vec![]));
+    if let Some(ref constraint) = expected_type {
+        if !constraint.matches(&value) {
+            return Err(EvalError::ReturnTypeMismatch {
+                expected: constraint.type_name(),
+                actual: value.type_name(),
+                func_name: func_name.to_string(),
+            });
+        }
+    }
+    Ok(value)
+}
+
 /// Call a function with arguments
 fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result<Value> {
     let func_name = func_def.name.as_deref().unwrap_or("<anonymous>");
@@ -284,33 +295,9 @@ fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result
 
     // Handle return value
     match result {
-        Ok(val) => {
-            let return_value = val.unwrap_or(Value::Tuple(vec![])); // Return empty tuple if no explicit return
-                                                                    // Check return type
-            if let Some(ref expected_type) = func_def.return_type {
-                if !expected_type.matches(&return_value) {
-                    return Err(EvalError::ReturnTypeMismatch {
-                        expected: expected_type.type_name(),
-                        actual: return_value.type_name(),
-                        func_name: func_name.to_string(),
-                    });
-                }
-            }
-            Ok(return_value)
-        }
+        Ok(val) => validate_return_value(val, &func_def.return_type, func_name),
         Err(EvalError::ReturnValue(val)) => {
-            let return_value = val.unwrap_or(Value::Tuple(vec![]));
-            // Check return type
-            if let Some(ref expected_type) = func_def.return_type {
-                if !expected_type.matches(&return_value) {
-                    return Err(EvalError::ReturnTypeMismatch {
-                        expected: expected_type.type_name(),
-                        actual: return_value.type_name(),
-                        func_name: func_name.to_string(),
-                    });
-                }
-            }
-            Ok(return_value)
+            validate_return_value(val, &func_def.return_type, func_name)
         }
         Err(e) => Err(e),
     }

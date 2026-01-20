@@ -779,4 +779,30 @@ mod tests {
     fn test_any_type_annotation_type_name() {
         assert_eq!(TypeAnnotation::Any.type_name(), "any");
     }
+
+    // ===================
+    // Float special value tests
+    // ===================
+
+    #[test]
+    fn test_float_infinity() {
+        let inf = Value::Float(f64::INFINITY);
+        let result = inf.safe_add(Value::Float(1.0)).unwrap();
+        assert!(matches!(result, Value::Float(f) if f.is_infinite()));
+    }
+
+    #[test]
+    fn test_float_nan_propagation() {
+        let nan = Value::Float(f64::NAN);
+        let result = nan.safe_add(Value::Float(1.0)).unwrap();
+        assert!(matches!(result, Value::Float(f) if f.is_nan()));
+    }
+
+    #[test]
+    fn test_float_nan_comparison() {
+        let nan = Value::Float(f64::NAN);
+        let result = nan.compare_eq(Value::Float(f64::NAN)).unwrap();
+        // NaN != NaN in IEEE 754
+        assert_eq!(result, Value::Bool(false));
+    }
 }
