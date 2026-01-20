@@ -1,6 +1,8 @@
 use std::fmt;
 use std::ops::{Add, Mul, Sub};
+use std::sync::Arc;
 
+use super::ast::Block;
 use super::error::{EvalError, Result};
 
 /// Maximum number of elements allowed in a tuple
@@ -15,6 +17,23 @@ pub enum TypeAnnotation {
     Bool,
     Str,
     Tuple(Vec<TypeAnnotation>),
+    Func, // Simple function type marker
+}
+
+/// Function parameter definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct FuncParam {
+    pub name: String,
+    pub type_annotation: Option<TypeAnnotation>,
+}
+
+/// Function definition (stored in Value::Func)
+#[derive(Debug, Clone)]
+pub struct FuncDef {
+    pub name: Option<String>,
+    pub params: Vec<FuncParam>,
+    pub return_type: Option<TypeAnnotation>,
+    pub body: Block,
 }
 
 impl TypeAnnotation {
@@ -32,6 +51,7 @@ impl TypeAnnotation {
                 }
                 types.iter().zip(values.iter()).all(|(t, v)| t.matches(v))
             }
+            (TypeAnnotation::Func, Value::Func(_)) => true,
             _ => false,
         }
     }
@@ -48,17 +68,34 @@ impl TypeAnnotation {
                 let inner: Vec<String> = types.iter().map(|t| t.type_name()).collect();
                 format!("({})", inner.join(", "))
             }
+            TypeAnnotation::Func => "func".to_string(),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Value enum - holds runtime values
+#[derive(Debug, Clone)]
 pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
     Str(String),
     Tuple(Vec<Value>),
+    Func(Arc<FuncDef>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Tuple(a), Value::Tuple(b)) => a == b,
+            (Value::Func(a), Value::Func(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
 }
 
 impl Value {
@@ -72,6 +109,10 @@ impl Value {
             Value::Tuple(values) => {
                 let inner: Vec<String> = values.iter().map(|v| v.type_name()).collect();
                 format!("({})", inner.join(", "))
+            }
+            Value::Func(func_def) => {
+                let name = func_def.name.as_deref().unwrap_or("<anonymous>");
+                format!("func<{}>", name)
             }
         }
     }
@@ -94,6 +135,10 @@ impl fmt::Display for Value {
                 let inner: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "({})", inner.join(", "))
             }
+            Value::Func(func_def) => {
+                let name = func_def.name.as_deref().unwrap_or("<anonymous>");
+                write!(f, "<func {}>", name)
+            }
         }
     }
 }
@@ -107,6 +152,7 @@ impl Value {
             Value::Bool(b) => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
+            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
         }
     }
 
@@ -118,6 +164,7 @@ impl Value {
             Value::Bool(b) => Ok(if b { 1.0 } else { 0.0 }),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
+            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
         }
     }
 

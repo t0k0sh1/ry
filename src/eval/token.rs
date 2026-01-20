@@ -37,6 +37,11 @@ pub enum Token {
     While,
     True,
     False,
+    Fn,     // fn
+    Return, // return
+
+    // Arrow
+    Arrow, // ->
 
     // Type keywords
     IntType,   // int
@@ -44,6 +49,7 @@ pub enum Token {
     BoolType,  // bool
     StrType,   // str
     AnyType,   // any
+    FuncType,  // func
 
     // Indentation
     Indent,
@@ -65,11 +71,14 @@ impl Token {
                 | Token::While
                 | Token::True
                 | Token::False
+                | Token::Fn
+                | Token::Return
                 | Token::IntType
                 | Token::FloatType
                 | Token::BoolType
                 | Token::StrType
                 | Token::AnyType
+                | Token::FuncType
         )
     }
 }

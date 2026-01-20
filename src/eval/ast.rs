@@ -19,6 +19,11 @@ pub enum Expr {
         targets: Vec<(String, Option<TypeAnnotation>)>,
         value: Box<Expr>,
     },
+    /// Function call: callee(arg1, arg2, ...)
+    FuncCall {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +69,15 @@ pub enum Statement {
     },
     /// While loop statement
     While { condition: Expr, body: Block },
+    /// Function definition
+    FuncDef {
+        name: String,
+        params: Vec<(String, Option<TypeAnnotation>)>,
+        return_type: Option<TypeAnnotation>,
+        body: Block,
+    },
+    /// Return statement
+    Return(Option<Expr>),
 }
 
 /// Program is a collection of statements
