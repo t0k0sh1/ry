@@ -84,7 +84,7 @@ impl Context {
                 scope.variables.entry(name.clone())
             {
                 // Preserve existing type constraint
-                let type_constraint = e.get().type_constraint;
+                let type_constraint = e.get().type_constraint.clone();
                 e.insert(VariableInfo {
                     value,
                     type_constraint,
@@ -119,7 +119,7 @@ impl Context {
                 scope.variables.entry(name.clone())
             {
                 // Keep the original type constraint if no new one is provided
-                let constraint = type_constraint.or(e.get().type_constraint);
+                let constraint = type_constraint.or_else(|| e.get().type_constraint.clone());
                 e.insert(VariableInfo {
                     value,
                     type_constraint: constraint,

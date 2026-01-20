@@ -14,6 +14,11 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    Tuple(Vec<Expr>),
+    TupleUnpack {
+        targets: Vec<(String, Option<TypeAnnotation>)>,
+        value: Box<Expr>,
+    },
 }
 
 #[derive(Debug, Clone)]

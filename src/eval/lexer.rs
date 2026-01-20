@@ -221,6 +221,10 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Ok(Token::Colon)
             }
+            ',' => {
+                self.advance();
+                Ok(Token::Comma)
+            }
 
             // Two-character operators
             '*' => {
