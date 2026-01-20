@@ -17,30 +17,39 @@ pub fn validate_ry_file(path: &str) -> Result<(), String> {
     }
 }
 
-pub fn run_file(path: &str) -> Result<(), String> {
-    // Validate file extension
-    validate_ry_file(path)?;
-
-    // Read file
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
-
-    // Create context for variable persistence
-    let mut ctx = Context::new();
-
-    // Tokenize and parse
-    let mut lexer = Lexer::new(&content);
+/// Execute input string with context
+/// Used by both file execution and REPL
+fn execute_input(
+    input: &str,
+    ctx: &mut Context,
+    print_results: bool,
+) -> Result<Option<Value>, String> {
+    let mut lexer = Lexer::new(input);
     let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
-
     let program = parse_program(&tokens)?;
 
-    // Execute program
+    let mut last_value = None;
     for stmt in &program.statements {
-        if let Some(value) = eval::execute_statement(stmt, &mut ctx).map_err(|e| e.to_string())? {
-            println!("{}", value);
+        match eval::execute_statement(stmt, ctx) {
+            Ok(Some(value)) => {
+                if print_results {
+                    println!("{}", value);
+                }
+                last_value = Some(value);
+            }
+            Ok(None) => {}
+            Err(e) => return Err(e.to_string()),
         }
     }
+    Ok(last_value)
+}
 
+pub fn run_file(path: &str) -> Result<(), String> {
+    validate_ry_file(path)?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
+    let mut ctx = Context::new();
+    execute_input(&content, &mut ctx, true)?;
     Ok(())
 }
 
@@ -174,19 +183,8 @@ pub fn run_repl() {
                     continue;
                 }
 
-                // Single-line input - try to evaluate
-                let input = buffer.trim();
-
-                // Check if it looks like a program (has if/elif/else or newlines)
-                if input.contains('\n') || input.starts_with("if ") {
-                    execute_multiline_input(&buffer, &mut ctx);
-                } else {
-                    // Simple expression
-                    match evaluate_expression_with_context(input, &mut ctx) {
-                        Ok(result) => println!("{}", result),
-                        Err(e) => eprintln!("Error: {}", e),
-                    }
-                }
+                // Execute input using unified code path
+                execute_multiline_input(&buffer, &mut ctx);
 
                 buffer.clear();
                 in_multiline = false;
@@ -200,34 +198,7 @@ pub fn run_repl() {
 }
 
 fn execute_multiline_input(input: &str, ctx: &mut Context) {
-    // Tokenize
-    let mut lexer = Lexer::new(input);
-    let tokens = match lexer.tokenize() {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            return;
-        }
-    };
-
-    // Parse
-    let program = match parse_program(&tokens) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            return;
-        }
-    };
-
-    // Execute
-    for stmt in &program.statements {
-        match eval::execute_statement(stmt, ctx) {
-            Ok(Some(value)) => println!("{}", value),
-            Ok(None) => {}
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                return;
-            }
-        }
+    if let Err(e) = execute_input(input, ctx, true) {
+        eprintln!("Error: {}", e);
     }
 }
