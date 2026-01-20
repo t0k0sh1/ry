@@ -19,6 +19,10 @@ pub enum EvalError {
         actual: String,
         variable: String,
     },
+    /// Tuple unpack element count mismatch
+    TupleUnpackMismatch { expected: usize, actual: usize },
+    /// Cannot unpack a non-tuple value
+    CannotUnpackNonTuple(String),
 }
 
 impl fmt::Display for EvalError {
@@ -47,6 +51,16 @@ impl fmt::Display for EvalError {
                     "Type mismatch for '{}': expected {}, got {}",
                     variable, expected, actual
                 )
+            }
+            EvalError::TupleUnpackMismatch { expected, actual } => {
+                write!(
+                    f,
+                    "Tuple unpack mismatch: expected {} elements, got {}",
+                    expected, actual
+                )
+            }
+            EvalError::CannotUnpackNonTuple(type_name) => {
+                write!(f, "Cannot unpack non-tuple value of type {}", type_name)
             }
         }
     }

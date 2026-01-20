@@ -2,7 +2,7 @@ use chumsky::prelude::*;
 
 use super::ast::{BinaryOp, Block, ConditionalBranch, Expr, Program, Statement};
 use super::token::Token;
-use super::value::{TypeAnnotation, Value};
+use super::value::{TypeAnnotation, Value, MAX_TUPLE_ELEMENTS};
 
 /// Parse and return an expression from the input string (for REPL single-line mode)
 pub fn parse(input: &str) -> Result<Expr, Vec<Rich<'_, char>>> {
@@ -197,12 +197,80 @@ impl<'a> ProgramParser<'a> {
                 self.advance();
                 Ok(Some(TypeAnnotation::Any))
             }
+            Some(Token::LParen) => {
+                // Tuple type annotation: (int, float, ...)
+                self.advance();
+                let mut types = Vec::new();
+
+                // Parse first type
+                if let Some(first_type) = self.parse_type_annotation()? {
+                    types.push(first_type);
+
+                    // Parse remaining types
+                    while let Some(Token::Comma) = self.peek() {
+                        self.advance();
+                        if let Some(next_type) = self.parse_type_annotation()? {
+                            types.push(next_type);
+                        } else {
+                            return Err("expected type after comma in tuple type".to_string());
+                        }
+                    }
+                }
+
+                self.expect(&Token::RParen)?;
+
+                if types.len() < 2 {
+                    return Err("tuple type must have at least 2 elements".to_string());
+                }
+                if types.len() > MAX_TUPLE_ELEMENTS {
+                    return Err(format!(
+                        "tuple type cannot have more than {} elements",
+                        MAX_TUPLE_ELEMENTS
+                    ));
+                }
+
+                Ok(Some(TypeAnnotation::Tuple(types)))
+            }
             _ => Ok(None),
         }
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, String> {
         let expr = self.parse_comparison()?;
+
+        // Check for tuple unpacking: a, b = (1, 2) or a, b, c = (1, 2, 3)
+        if let Expr::Variable(first_name) = &expr {
+            if let Some(Token::Comma) = self.peek() {
+                // This might be tuple unpacking
+                let mut targets = vec![(first_name.clone(), None)];
+
+                while let Some(Token::Comma) = self.peek() {
+                    self.advance(); // consume comma
+
+                    // Parse next identifier
+                    match self.peek() {
+                        Some(Token::Ident(name)) => {
+                            let name = name.clone();
+                            self.advance();
+                            targets.push((name, None));
+                        }
+                        _ => return Err("expected identifier in tuple unpacking".to_string()),
+                    }
+                }
+
+                // Check for assignment
+                if let Some(Token::Equal) = self.peek() {
+                    self.advance();
+                    let value = self.parse_assignment()?;
+                    return Ok(Expr::TupleUnpack {
+                        targets,
+                        value: Box::new(value),
+                    });
+                } else {
+                    return Err("expected '=' in tuple unpacking".to_string());
+                }
+            }
+        }
 
         // Check for type annotation pattern: ident: type = value
         if let Expr::Variable(name) = &expr {
@@ -216,6 +284,7 @@ impl<'a> ProgramParser<'a> {
                             | Token::BoolType
                             | Token::StrType
                             | Token::AnyType
+                            | Token::LParen
                     )
                 });
                 if is_type_annotation {
@@ -362,9 +431,36 @@ impl<'a> ProgramParser<'a> {
             }
             Some(Token::LParen) => {
                 self.advance();
-                let expr = self.parse_expression()?;
+                let first_expr = self.parse_expression()?;
+
+                // Check if this is a tuple
+                if let Some(Token::Comma) = self.peek() {
+                    let mut elements = vec![first_expr];
+
+                    while let Some(Token::Comma) = self.peek() {
+                        self.advance(); // consume comma
+                        let next_expr = self.parse_expression()?;
+                        elements.push(next_expr);
+                    }
+
+                    self.expect(&Token::RParen)?;
+
+                    if elements.len() < 2 {
+                        return Err("tuple must have at least 2 elements".to_string());
+                    }
+                    if elements.len() > MAX_TUPLE_ELEMENTS {
+                        return Err(format!(
+                            "tuple cannot have more than {} elements",
+                            MAX_TUPLE_ELEMENTS
+                        ));
+                    }
+
+                    return Ok(Expr::Tuple(elements));
+                }
+
+                // Not a tuple, just a grouped expression
                 self.expect(&Token::RParen)?;
-                Ok(expr)
+                Ok(first_expr)
             }
             Some(token) => Err(format!("unexpected token: {:?}", token)),
             None => Err("unexpected end of input".to_string()),
@@ -412,15 +508,27 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
         // Must not be 'true' or 'false' (handled by trying bool_lit first)
         let ident = text::ident().map(|s: &str| Expr::Variable(s.to_string()));
 
-        // Atom: number, bool, string, identifier, or parenthesized expression
-        let atom = choice((
-            number,
-            bool_lit,
-            string_lit,
-            ident,
-            expr.clone().delimited_by(just('('), just(')')),
-        ))
-        .padded();
+        // Parenthesized expression or tuple
+        let paren_or_tuple = just('(')
+            .ignore_then(
+                expr.clone()
+                    .separated_by(just(',').padded())
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(')'))
+            .map(|exprs| {
+                if exprs.len() == 1 {
+                    // Single expression in parentheses - just grouping
+                    exprs.into_iter().next().unwrap()
+                } else {
+                    // Multiple expressions - tuple
+                    Expr::Tuple(exprs)
+                }
+            });
+
+        // Atom: number, bool, string, identifier, or parenthesized expression/tuple
+        let atom = choice((number, bool_lit, string_lit, ident, paren_or_tuple)).padded();
 
         // Power operator (right-associative, highest precedence)
         // Collect all power operands and fold from right for right-associativity
@@ -499,14 +607,29 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             },
         );
 
-        // Type annotation parser
-        let type_annot = choice((
-            text::keyword("int").to(TypeAnnotation::Int),
-            text::keyword("float").to(TypeAnnotation::Float),
-            text::keyword("bool").to(TypeAnnotation::Bool),
-            text::keyword("str").to(TypeAnnotation::Str),
-            text::keyword("any").to(TypeAnnotation::Any),
-        ))
+        // Type annotation parser (recursive to support tuple types)
+        let type_annot = recursive(|type_annot| {
+            let simple_type = choice((
+                text::keyword("int").to(TypeAnnotation::Int),
+                text::keyword("float").to(TypeAnnotation::Float),
+                text::keyword("bool").to(TypeAnnotation::Bool),
+                text::keyword("str").to(TypeAnnotation::Str),
+                text::keyword("any").to(TypeAnnotation::Any),
+            ));
+
+            // Tuple type: (int, float, ...)
+            let tuple_type = just('(')
+                .ignore_then(
+                    type_annot
+                        .separated_by(just(',').padded())
+                        .at_least(2)
+                        .collect::<Vec<_>>(),
+                )
+                .then_ignore(just(')'))
+                .map(TypeAnnotation::Tuple);
+
+            choice((tuple_type, simple_type))
+        })
         .boxed();
 
         // Typed assignment: x: int = 5
@@ -528,6 +651,22 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             .then_ignore(just('=').padded())
             .then(comparison.clone())
             .map(make_typed_assign);
+
+        // Tuple unpacking: a, b = expr or a, b, c = expr
+        let tuple_unpack = text::ident()
+            .padded()
+            .separated_by(just(',').padded())
+            .at_least(2)
+            .collect::<Vec<_>>()
+            .then_ignore(just('=').padded())
+            .then(comparison.clone())
+            .map(|(names, value)| Expr::TupleUnpack {
+                targets: names
+                    .into_iter()
+                    .map(|n: &str| (n.to_string(), None))
+                    .collect(),
+                value: Box::new(value),
+            });
 
         // Assignment operator (right-associative, lowest precedence)
         // Pattern: x = y = 5 => x = (y = 5)
@@ -563,8 +702,8 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
                     .unwrap()
             });
 
-        // Try typed assignment first, then fall back to untyped
-        typed_assign.or(untyped_assign)
+        // Try typed assignment first, then tuple unpacking, then fall back to untyped
+        typed_assign.or(tuple_unpack).or(untyped_assign)
     })
     .then_ignore(end())
 }

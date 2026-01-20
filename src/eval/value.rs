@@ -3,39 +3,51 @@ use std::ops::{Add, Mul, Sub};
 
 use super::error::{EvalError, Result};
 
+/// Maximum number of elements allowed in a tuple
+pub const MAX_TUPLE_ELEMENTS: usize = 1024;
+
 /// Type annotation for variable declarations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeAnnotation {
     Any,
     Int,
     Float,
     Bool,
     Str,
+    Tuple(Vec<TypeAnnotation>),
 }
 
 impl TypeAnnotation {
     /// Check if a value matches this type annotation
     pub fn matches(&self, value: &Value) -> bool {
-        match self {
-            TypeAnnotation::Any => true,
-            _ => matches!(
-                (self, value),
-                (TypeAnnotation::Int, Value::Int(_))
-                    | (TypeAnnotation::Float, Value::Float(_))
-                    | (TypeAnnotation::Bool, Value::Bool(_))
-                    | (TypeAnnotation::Str, Value::Str(_))
-            ),
+        match (self, value) {
+            (TypeAnnotation::Any, _) => true,
+            (TypeAnnotation::Int, Value::Int(_)) => true,
+            (TypeAnnotation::Float, Value::Float(_)) => true,
+            (TypeAnnotation::Bool, Value::Bool(_)) => true,
+            (TypeAnnotation::Str, Value::Str(_)) => true,
+            (TypeAnnotation::Tuple(types), Value::Tuple(values)) => {
+                if types.len() != values.len() {
+                    return false;
+                }
+                types.iter().zip(values.iter()).all(|(t, v)| t.matches(v))
+            }
+            _ => false,
         }
     }
 
     /// Get the type name as a string
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> String {
         match self {
-            TypeAnnotation::Any => "any",
-            TypeAnnotation::Int => "int",
-            TypeAnnotation::Float => "float",
-            TypeAnnotation::Bool => "bool",
-            TypeAnnotation::Str => "str",
+            TypeAnnotation::Any => "any".to_string(),
+            TypeAnnotation::Int => "int".to_string(),
+            TypeAnnotation::Float => "float".to_string(),
+            TypeAnnotation::Bool => "bool".to_string(),
+            TypeAnnotation::Str => "str".to_string(),
+            TypeAnnotation::Tuple(types) => {
+                let inner: Vec<String> = types.iter().map(|t| t.type_name()).collect();
+                format!("({})", inner.join(", "))
+            }
         }
     }
 }
@@ -46,16 +58,21 @@ pub enum Value {
     Float(f64),
     Bool(bool),
     Str(String),
+    Tuple(Vec<Value>),
 }
 
 impl Value {
     /// Get the type name of this value
-    pub fn type_name(&self) -> &'static str {
+    pub fn type_name(&self) -> String {
         match self {
-            Value::Int(_) => "int",
-            Value::Float(_) => "float",
-            Value::Bool(_) => "bool",
-            Value::Str(_) => "str",
+            Value::Int(_) => "int".to_string(),
+            Value::Float(_) => "float".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Str(_) => "str".to_string(),
+            Value::Tuple(values) => {
+                let inner: Vec<String> = values.iter().map(|v| v.type_name()).collect();
+                format!("({})", inner.join(", "))
+            }
         }
     }
 }
@@ -73,6 +90,10 @@ impl fmt::Display for Value {
             }
             Value::Bool(b) => write!(f, "{}", b),
             Value::Str(s) => write!(f, "{}", s),
+            Value::Tuple(values) => {
+                let inner: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
+                write!(f, "({})", inner.join(", "))
+            }
         }
     }
 }
@@ -85,6 +106,7 @@ impl Value {
             Value::Float(f) => Value::Float(f),
             Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
             Value::Str(_) => panic!("Cannot convert string to float"),
+            Value::Tuple(_) => panic!("Cannot convert tuple to float"),
         }
     }
 
@@ -101,6 +123,7 @@ impl Value {
                 }
             }
             Value::Str(_) => panic!("Cannot convert string to f64"),
+            Value::Tuple(_) => panic!("Cannot convert tuple to f64"),
         }
     }
 
@@ -245,6 +268,18 @@ impl Value {
         match (&self, &other) {
             (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
             (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a == b)),
+            (Value::Tuple(a), Value::Tuple(b)) => {
+                if a.len() != b.len() {
+                    return Ok(Value::Bool(false));
+                }
+                for (av, bv) in a.iter().zip(b.iter()) {
+                    match av.clone().compare_eq(bv.clone())? {
+                        Value::Bool(false) => return Ok(Value::Bool(false)),
+                        _ => continue,
+                    }
+                }
+                Ok(Value::Bool(true))
+            }
             _ => self.compare(other, |a, b| a == b, "comparison"),
         }
     }
@@ -254,6 +289,18 @@ impl Value {
         match (&self, &other) {
             (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
             (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a != b)),
+            (Value::Tuple(a), Value::Tuple(b)) => {
+                if a.len() != b.len() {
+                    return Ok(Value::Bool(true));
+                }
+                for (av, bv) in a.iter().zip(b.iter()) {
+                    match av.clone().compare_ne(bv.clone())? {
+                        Value::Bool(true) => return Ok(Value::Bool(true)),
+                        _ => continue,
+                    }
+                }
+                Ok(Value::Bool(false))
+            }
             _ => self.compare(other, |a, b| a != b, "comparison"),
         }
     }

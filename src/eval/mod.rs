@@ -36,23 +36,64 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
             let val = evaluate(value, ctx)?;
 
             // Check type constraint from declaration or existing variable
-            let effective_constraint = type_annotation
-                .or_else(|| ctx.get_info(name).and_then(|info| info.type_constraint));
+            let effective_constraint = type_annotation.clone().or_else(|| {
+                ctx.get_info(name)
+                    .and_then(|info| info.type_constraint.clone())
+            });
 
             // Validate type if constraint exists
-            if let Some(constraint) = effective_constraint {
+            if let Some(ref constraint) = effective_constraint {
                 if !constraint.matches(&val) {
                     return Err(EvalError::TypeMismatch {
-                        expected: constraint.type_name().to_string(),
-                        actual: val.type_name().to_string(),
+                        expected: constraint.type_name(),
+                        actual: val.type_name(),
                         variable: name.clone(),
                     });
                 }
             }
 
             // Set the variable with type constraint
-            ctx.set_typed(name.clone(), val.clone(), *type_annotation);
+            ctx.set_typed(name.clone(), val.clone(), type_annotation.clone());
             Ok(val)
+        }
+        Expr::Tuple(exprs) => {
+            let values: Result<Vec<Value>> = exprs.iter().map(|e| evaluate(e, ctx)).collect();
+            Ok(Value::Tuple(values?))
+        }
+        Expr::TupleUnpack { targets, value } => {
+            let val = evaluate(value, ctx)?;
+            match val {
+                Value::Tuple(values) => {
+                    if targets.len() != values.len() {
+                        return Err(EvalError::TupleUnpackMismatch {
+                            expected: targets.len(),
+                            actual: values.len(),
+                        });
+                    }
+                    for ((name, type_annotation), v) in targets.iter().zip(values.iter()) {
+                        // Check type constraint from declaration or existing variable
+                        let effective_constraint = type_annotation.clone().or_else(|| {
+                            ctx.get_info(name)
+                                .and_then(|info| info.type_constraint.clone())
+                        });
+
+                        // Validate type if constraint exists
+                        if let Some(ref constraint) = effective_constraint {
+                            if !constraint.matches(v) {
+                                return Err(EvalError::TypeMismatch {
+                                    expected: constraint.type_name(),
+                                    actual: v.type_name(),
+                                    variable: name.clone(),
+                                });
+                            }
+                        }
+
+                        ctx.set_typed(name.clone(), v.clone(), type_annotation.clone());
+                    }
+                    Ok(Value::Tuple(values))
+                }
+                _ => Err(EvalError::CannotUnpackNonTuple(val.type_name())),
+            }
         }
         Expr::BinaryOp { op, left, right } => {
             let left_val = evaluate(left, ctx)?;
@@ -84,6 +125,7 @@ fn is_truthy(value: &Value) -> Result<bool> {
         Value::Int(i) => Ok(*i != 0),
         Value::Float(f) => Ok(*f != 0.0),
         Value::Str(s) => Ok(!s.is_empty()),
+        Value::Tuple(values) => Ok(!values.is_empty()),
     }
 }
 
@@ -1009,5 +1051,164 @@ mod tests {
         // Can reassign to int
         evaluate_expression_with_context("s = 100", &mut ctx).unwrap();
         assert_eq!(ctx.get("s"), Some(&Value::Int(100)));
+    }
+
+    // Tuple tests
+    #[test]
+    fn test_tuple_basic() {
+        assert_eq!(
+            evaluate_expression("(1, 2)").unwrap(),
+            Value::Tuple(vec![Value::Int(1), Value::Int(2)])
+        );
+    }
+
+    #[test]
+    fn test_tuple_three_elements() {
+        assert_eq!(
+            evaluate_expression("(1, 2, 3)").unwrap(),
+            Value::Tuple(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        );
+    }
+
+    #[test]
+    fn test_tuple_with_expressions() {
+        assert_eq!(
+            evaluate_expression("(1 + 1, 2 * 3)").unwrap(),
+            Value::Tuple(vec![Value::Int(2), Value::Int(6)])
+        );
+    }
+
+    #[test]
+    fn test_tuple_nested() {
+        assert_eq!(
+            evaluate_expression("((1, 2), 3)").unwrap(),
+            Value::Tuple(vec![
+                Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
+                Value::Int(3)
+            ])
+        );
+    }
+
+    #[test]
+    fn test_tuple_equality() {
+        assert_eq!(
+            evaluate_expression("(1, 2) == (1, 2)").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            evaluate_expression("(1, 2) == (1, 3)").unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_tuple_inequality() {
+        assert_eq!(
+            evaluate_expression("(1, 2) != (1, 3)").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            evaluate_expression("(1, 2) != (1, 2)").unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_tuple_unpack_basic() {
+        let mut ctx = Context::new();
+        let input = "a, b = (1, 2)\n";
+        execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert_eq!(ctx.get("b"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_tuple_unpack_three_elements() {
+        let mut ctx = Context::new();
+        let input = "a, b, c = (1, 2, 3)\n";
+        execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(ctx.get("a"), Some(&Value::Int(1)));
+        assert_eq!(ctx.get("b"), Some(&Value::Int(2)));
+        assert_eq!(ctx.get("c"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_tuple_unpack_from_expression() {
+        let mut ctx = Context::new();
+        let input = "x, y = (1 + 1, 2 * 3)\n";
+        execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(ctx.get("x"), Some(&Value::Int(2)));
+        assert_eq!(ctx.get("y"), Some(&Value::Int(6)));
+    }
+
+    #[test]
+    fn test_tuple_unpack_mismatch() {
+        let mut ctx = Context::new();
+        let input = "a, b = (1, 2, 3)\n";
+        let result = execute_test_program(input, &mut ctx);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Tuple unpack mismatch: expected 2 elements, got 3"));
+    }
+
+    #[test]
+    fn test_tuple_unpack_non_tuple() {
+        let mut ctx = Context::new();
+        let input = "a, b = 5\n";
+        let result = execute_test_program(input, &mut ctx);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .contains("Cannot unpack non-tuple value of type int"));
+    }
+
+    #[test]
+    fn test_typed_tuple_assignment() {
+        let mut ctx = Context::new();
+        let input = "p: (int, int) = (1, 2)\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(
+            result,
+            Some(Value::Tuple(vec![Value::Int(1), Value::Int(2)]))
+        );
+    }
+
+    #[test]
+    fn test_typed_tuple_mixed_types() {
+        let mut ctx = Context::new();
+        let input = "q: (int, float) = (1, 2.5)\n";
+        let result = execute_test_program(input, &mut ctx).unwrap();
+        assert_eq!(
+            result,
+            Some(Value::Tuple(vec![Value::Int(1), Value::Float(2.5)]))
+        );
+    }
+
+    #[test]
+    fn test_typed_tuple_type_mismatch() {
+        let mut ctx = Context::new();
+        let input = "p: (int, int) = (1, 2.5)\n";
+        let result = execute_test_program(input, &mut ctx);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_tuple_display() {
+        let tuple = Value::Tuple(vec![Value::Int(1), Value::Int(2)]);
+        assert_eq!(format!("{}", tuple), "(1, 2)");
+    }
+
+    #[test]
+    fn test_tuple_type_name() {
+        let tuple = Value::Tuple(vec![Value::Int(1), Value::Float(2.5)]);
+        assert_eq!(tuple.type_name(), "(int, float)");
+    }
+
+    #[test]
+    fn test_parenthesized_expression_not_tuple() {
+        // Single expression in parens should be grouping, not a tuple
+        assert_eq!(evaluate_expression("(1 + 2)").unwrap(), Value::Int(3));
     }
 }
