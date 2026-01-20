@@ -40,6 +40,13 @@ pub enum EvalError {
         param_name: String,
         func_name: String,
     },
+    /// Function signature mismatch when passing function as argument
+    FunctionSignatureMismatch {
+        expected: String,
+        actual: String,
+        param_name: String,
+        func_name: String,
+    },
     /// Return type mismatch
     ReturnTypeMismatch {
         expected: String,
@@ -114,6 +121,18 @@ impl fmt::Display for EvalError {
                 write!(
                     f,
                     "Type mismatch for parameter '{}' in function '{}': expected {}, got {}",
+                    param_name, func_name, expected, actual
+                )
+            }
+            EvalError::FunctionSignatureMismatch {
+                expected,
+                actual,
+                param_name,
+                func_name,
+            } => {
+                write!(
+                    f,
+                    "Function signature mismatch for parameter '{}' in function '{}': expected {}, got {}",
                     param_name, func_name, expected, actual
                 )
             }
@@ -194,6 +213,20 @@ impl PartialEq for EvalError {
                     func_name: f1,
                 },
                 EvalError::ArgumentTypeMismatch {
+                    expected: e2,
+                    actual: a2,
+                    param_name: p2,
+                    func_name: f2,
+                },
+            ) => e1 == e2 && a1 == a2 && p1 == p2 && f1 == f2,
+            (
+                EvalError::FunctionSignatureMismatch {
+                    expected: e1,
+                    actual: a1,
+                    param_name: p1,
+                    func_name: f1,
+                },
+                EvalError::FunctionSignatureMismatch {
                     expected: e2,
                     actual: a2,
                     param_name: p2,

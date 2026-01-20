@@ -323,7 +323,54 @@ impl<'a> ProgramParser<'a> {
             }
             Some(Token::FuncType) => {
                 self.advance();
-                Ok(Some(TypeAnnotation::Func))
+                // Check if there's a signature: func(int, int) -> int
+                if let Some(Token::LParen) = self.peek() {
+                    self.advance(); // consume '('
+
+                    // Parse parameter types
+                    let mut param_types = Vec::new();
+                    if !matches!(self.peek(), Some(Token::RParen)) {
+                        // Parse first parameter type
+                        if let Some(first_type) = self.parse_type_annotation()? {
+                            param_types.push(first_type);
+
+                            // Parse remaining parameter types
+                            while let Some(Token::Comma) = self.peek() {
+                                self.advance();
+                                if let Some(next_type) = self.parse_type_annotation()? {
+                                    param_types.push(next_type);
+                                } else {
+                                    return Err("expected type after comma in function signature"
+                                        .to_string());
+                                }
+                            }
+                        } else {
+                            return Err("expected type in function signature".to_string());
+                        }
+                    }
+
+                    self.expect(&Token::RParen)?;
+
+                    // Parse optional return type
+                    let return_type = if let Some(Token::Arrow) = self.peek() {
+                        self.advance();
+                        if let Some(ret_type) = self.parse_type_annotation()? {
+                            Some(Box::new(ret_type))
+                        } else {
+                            return Err("expected return type after '->'".to_string());
+                        }
+                    } else {
+                        None
+                    };
+
+                    Ok(Some(TypeAnnotation::FuncSig {
+                        params: param_types,
+                        return_type,
+                    }))
+                } else {
+                    // Just `func` without signature - backward compatible
+                    Ok(Some(TypeAnnotation::Func))
+                }
             }
             Some(Token::LParen) => {
                 // Tuple type annotation: (int, float, ...)
@@ -412,6 +459,7 @@ impl<'a> ProgramParser<'a> {
                             | Token::BoolType
                             | Token::StrType
                             | Token::AnyType
+                            | Token::FuncType
                             | Token::LParen
                     )
                 });
