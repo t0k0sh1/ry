@@ -100,30 +100,24 @@ impl fmt::Display for Value {
 
 impl Value {
     /// Convert to float
-    pub fn promote_to_float(self) -> Self {
+    pub fn promote_to_float(self) -> Result<Self> {
         match self {
-            Value::Int(i) => Value::Float(i as f64),
-            Value::Float(f) => Value::Float(f),
-            Value::Bool(b) => Value::Float(if b { 1.0 } else { 0.0 }),
-            Value::Str(_) => panic!("Cannot convert string to float"),
-            Value::Tuple(_) => panic!("Cannot convert tuple to float"),
+            Value::Int(i) => Ok(Value::Float(i as f64)),
+            Value::Float(f) => Ok(Value::Float(f)),
+            Value::Bool(b) => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
+            Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
+            Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
         }
     }
 
     /// Convert to f64 (for backward compatibility)
-    pub fn to_f64(self) -> f64 {
+    pub fn to_f64(self) -> Result<f64> {
         match self {
-            Value::Int(i) => i as f64,
-            Value::Float(f) => f,
-            Value::Bool(b) => {
-                if b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            Value::Str(_) => panic!("Cannot convert string to f64"),
-            Value::Tuple(_) => panic!("Cannot convert tuple to f64"),
+            Value::Int(i) => Ok(i as f64),
+            Value::Float(f) => Ok(f),
+            Value::Bool(b) => Ok(if b { 1.0 } else { 0.0 }),
+            Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
+            Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
         }
     }
 
@@ -229,8 +223,8 @@ impl Value {
 
     /// Power operation
     pub fn power(self, other: Self) -> Result<Self> {
-        let base = self.to_f64();
-        let exponent = other.to_f64();
+        let base = self.to_f64()?;
+        let exponent = other.to_f64()?;
         Ok(Value::Float(base.powf(exponent)))
     }
 

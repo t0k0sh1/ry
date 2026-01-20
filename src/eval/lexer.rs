@@ -260,9 +260,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     Ok(Token::NotEqual)
                 } else {
-                    Err(EvalError::IndentationError(
-                        "unexpected character: !".to_string(),
-                    ))
+                    Err(EvalError::LexerError("unexpected character: !".to_string()))
                 }
             }
             '<' => {
@@ -293,7 +291,7 @@ impl<'a> Lexer<'a> {
             // Identifiers and keywords
             'a'..='z' | 'A'..='Z' | '_' => self.parse_identifier(),
 
-            _ => Err(EvalError::IndentationError(format!(
+            _ => Err(EvalError::LexerError(format!(
                 "unexpected character: {}",
                 ch
             ))),
@@ -322,12 +320,12 @@ impl<'a> Lexer<'a> {
         if has_dot {
             let value: f64 = num_str
                 .parse()
-                .map_err(|_| EvalError::IndentationError(format!("invalid number: {}", num_str)))?;
+                .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
             Ok(Token::Number(Value::Float(value)))
         } else {
             let value: i64 = num_str
                 .parse()
-                .map_err(|_| EvalError::IndentationError(format!("invalid number: {}", num_str)))?;
+                .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
             Ok(Token::Number(Value::Int(value)))
         }
     }
@@ -370,20 +368,20 @@ impl<'a> Lexer<'a> {
                             result.push('"');
                         }
                         Some(ch) => {
-                            return Err(EvalError::IndentationError(format!(
+                            return Err(EvalError::LexerError(format!(
                                 "unknown escape sequence: \\{}",
                                 ch
                             )));
                         }
                         None => {
-                            return Err(EvalError::IndentationError(
+                            return Err(EvalError::LexerError(
                                 "unterminated string literal".to_string(),
                             ));
                         }
                     }
                 }
                 Some('\n') | None => {
-                    return Err(EvalError::IndentationError(
+                    return Err(EvalError::LexerError(
                         "unterminated string literal".to_string(),
                     ));
                 }
