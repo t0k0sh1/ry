@@ -17,7 +17,12 @@ pub enum TypeAnnotation {
     Bool,
     Str,
     Tuple(Vec<TypeAnnotation>),
-    Func, // Simple function type marker
+    Func, // Simple function type marker (any function)
+    /// Function with signature: func(param_types...) -> return_type
+    FuncSig {
+        params: Vec<TypeAnnotation>,
+        return_type: Option<Box<TypeAnnotation>>,
+    },
 }
 
 /// Function parameter definition
@@ -52,7 +57,90 @@ impl TypeAnnotation {
                 types.iter().zip(values.iter()).all(|(t, v)| t.matches(v))
             }
             (TypeAnnotation::Func, Value::Func(_)) => true,
+            (
+                TypeAnnotation::FuncSig {
+                    params: expected_params,
+                    return_type: expected_return,
+                },
+                Value::Func(func_def),
+            ) => {
+                // Check parameter count
+                if expected_params.len() != func_def.params.len() {
+                    return false;
+                }
+
+                // Check parameter types
+                for (expected_type, param) in expected_params.iter().zip(func_def.params.iter()) {
+                    // If expected type is Any, accept any parameter type
+                    if *expected_type == TypeAnnotation::Any {
+                        continue;
+                    }
+                    // If parameter has type annotation, check it matches expected
+                    match &param.type_annotation {
+                        Some(actual_type) => {
+                            if !Self::types_compatible(expected_type, actual_type) {
+                                return false;
+                            }
+                        }
+                        // If parameter has no type annotation, it can accept any type (compatible with any expected)
+                        None => continue,
+                    }
+                }
+
+                // Check return type
+                match (expected_return, &func_def.return_type) {
+                    (Some(expected), Some(actual)) => {
+                        if **expected == TypeAnnotation::Any {
+                            true
+                        } else {
+                            Self::types_compatible(expected, actual)
+                        }
+                    }
+                    // If expected return type is None (no return type specified in signature), accept any
+                    (None, _) => true,
+                    // If function has no return type annotation, it can match any expected return type
+                    // (untyped functions are compatible with any signature)
+                    (Some(_), None) => true,
+                }
+            }
             _ => false,
+        }
+    }
+
+    /// Check if two type annotations are compatible
+    /// (expected type can accept actual type)
+    fn types_compatible(expected: &TypeAnnotation, actual: &TypeAnnotation) -> bool {
+        match (expected, actual) {
+            (TypeAnnotation::Any, _) => true,
+            // Simple func type accepts any function signature
+            (TypeAnnotation::Func, TypeAnnotation::Func) => true,
+            (TypeAnnotation::Func, TypeAnnotation::FuncSig { .. }) => true,
+            // FuncSig comparison
+            (
+                TypeAnnotation::FuncSig {
+                    params: exp_params,
+                    return_type: exp_ret,
+                },
+                TypeAnnotation::FuncSig {
+                    params: act_params,
+                    return_type: act_ret,
+                },
+            ) => {
+                if exp_params.len() != act_params.len() {
+                    return false;
+                }
+                for (e, a) in exp_params.iter().zip(act_params.iter()) {
+                    if !Self::types_compatible(e, a) {
+                        return false;
+                    }
+                }
+                match (exp_ret, act_ret) {
+                    (None, _) => true,
+                    (Some(e), Some(a)) => Self::types_compatible(e, a),
+                    (Some(e), None) => **e == TypeAnnotation::Any,
+                }
+            }
+            _ => expected == actual,
         }
     }
 
@@ -69,6 +157,16 @@ impl TypeAnnotation {
                 format!("({})", inner.join(", "))
             }
             TypeAnnotation::Func => "func".to_string(),
+            TypeAnnotation::FuncSig {
+                params,
+                return_type,
+            } => {
+                let params_str: Vec<String> = params.iter().map(|t| t.type_name()).collect();
+                match return_type {
+                    Some(ret) => format!("func({}) -> {}", params_str.join(", "), ret.type_name()),
+                    None => format!("func({})", params_str.join(", ")),
+                }
+            }
         }
     }
 }

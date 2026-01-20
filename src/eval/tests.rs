@@ -1235,3 +1235,232 @@ result = add_func(10)
     // Works because n is in the outer scope accessible during add_func(10) call
     assert_eq!(ctx.get("result"), Some(&Value::Int(15)));
 }
+
+// ===================
+// Function signature tests
+// ===================
+
+#[test]
+fn test_function_signature_basic() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n: int) -> int:
+    return n * 2
+
+fn apply(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply(double, 5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_signature_two_params() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn apply2(f: func(int, int) -> int, a: int, b: int) -> int:
+    return f(a, b)
+
+result = apply2(add, 3, 4)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(7)));
+}
+
+#[test]
+fn test_function_signature_no_return_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn print_num(n: int):
+    x = n
+
+fn foreach(f: func(int), x: int):
+    f(x)
+
+foreach(print_num, 42)
+"#;
+    // Should work - no return type in signature means any return is acceptable
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_function_signature_backward_compat_func() {
+    // `func` without signature accepts any function
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n: int) -> int:
+    return n * 2
+
+fn apply_any(f: func, x: int) -> int:
+    return f(x)
+
+result = apply_any(double, 5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_signature_backward_compat_func_any_params() {
+    // `func` without signature accepts functions with any number of params
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn apply_any_binary(f: func, a: int, b: int) -> int:
+    return f(a, b)
+
+result = apply_any_binary(add, 3, 4)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(7)));
+}
+
+#[test]
+fn test_function_signature_any_param_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn identity(x: int) -> int:
+    return x
+
+fn apply_any_arg(f: func(any) -> int, x: int) -> int:
+    return f(x)
+
+result = apply_any_arg(identity, 42)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(42)));
+}
+
+#[test]
+fn test_function_signature_any_return_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n: int) -> int:
+    return n * 2
+
+fn apply_any_ret(f: func(int) -> any, x: int) -> any:
+    return f(x)
+
+result = apply_any_ret(double, 5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_signature_mismatch_param_count() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn apply_unary(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply_unary(add, 5)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Function signature mismatch"));
+}
+
+#[test]
+fn test_function_signature_mismatch_param_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn process_float(x: float) -> float:
+    return x * 2.0
+
+fn apply_int(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply_int(process_float, 5)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Function signature mismatch"));
+}
+
+#[test]
+fn test_function_signature_mismatch_return_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn to_float(n: int) -> float:
+    return n * 1.0
+
+fn apply_int_ret(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply_int_ret(to_float, 5)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Function signature mismatch"));
+}
+
+#[test]
+fn test_function_signature_mismatch_non_function() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn apply(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply(42, 5)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Function signature mismatch"));
+}
+
+#[test]
+fn test_function_signature_untyped_func_compatible() {
+    // Function without type annotations should be compatible with any signature expectation
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n):
+    return n * 2
+
+fn apply(f: func(int) -> int, x: int) -> int:
+    return f(x)
+
+result = apply(double, 5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_signature_in_variable() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n: int) -> int:
+    return n * 2
+
+my_func: func(int) -> int = double
+result = my_func(5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_signature_variable_mismatch() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+my_func: func(int) -> int = add
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Type mismatch"));
+}

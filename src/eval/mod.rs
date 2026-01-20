@@ -249,6 +249,18 @@ fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result
     for (param, value) in func_def.params.iter().zip(arg_values.iter()) {
         if let Some(ref constraint) = param.type_annotation {
             if !constraint.matches(value) {
+                // Use FunctionSignatureMismatch for function type mismatches
+                if matches!(
+                    constraint,
+                    TypeAnnotation::Func | TypeAnnotation::FuncSig { .. }
+                ) {
+                    return Err(EvalError::FunctionSignatureMismatch {
+                        expected: constraint.type_name(),
+                        actual: value.type_name(),
+                        param_name: param.name.clone(),
+                        func_name: func_name.to_string(),
+                    });
+                }
                 return Err(EvalError::ArgumentTypeMismatch {
                     expected: constraint.type_name(),
                     actual: value.type_name(),
