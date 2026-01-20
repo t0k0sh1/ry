@@ -965,3 +965,273 @@ fn test_parenthesized_expression_not_tuple() {
     // Single expression in parens should be grouping, not a tuple
     assert_eq!(evaluate_expression("(1 + 2)").unwrap(), Value::Int(3));
 }
+
+// ===================
+// Function tests
+// ===================
+
+#[test]
+fn test_function_definition_and_call() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a, b):
+    return a + b
+
+result = add(1, 2)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(3)));
+}
+
+#[test]
+fn test_function_with_type_annotations() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+result = add(1, 2)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(3)));
+}
+
+#[test]
+fn test_function_type_mismatch_argument() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int):
+    return a + b
+
+result = add(1, 2.5)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Type mismatch for parameter"));
+}
+
+#[test]
+fn test_function_type_mismatch_return() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn get_int() -> int:
+    return 3.14
+
+result = get_int()
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Return type mismatch"));
+}
+
+#[test]
+fn test_function_argument_count_mismatch() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a, b):
+    return a + b
+
+result = add(1)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("expects 2 arguments, got 1"));
+}
+
+#[test]
+fn test_function_implicit_return() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn set_x():
+    x = 10
+
+result = set_x()
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    // Function without explicit return implicitly returns the last expression value
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_as_value() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a, b):
+    return a + b
+
+my_func = add
+result = my_func(3, 4)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(7)));
+}
+
+#[test]
+fn test_higher_order_function() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(n):
+    return n * 2
+
+fn apply(f, x):
+    return f(x)
+
+result = apply(double, 5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(10)));
+}
+
+#[test]
+fn test_function_recursion() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+result = factorial(5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(120)));
+}
+
+#[test]
+fn test_function_early_return() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn abs(n):
+    if n < 0:
+        return 0 - n
+    return n
+
+result1 = abs(5)
+result2 = abs(-5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result1"), Some(&Value::Int(5)));
+    assert_eq!(ctx.get("result2"), Some(&Value::Int(5)));
+}
+
+#[test]
+fn test_function_modifies_outer_scope() {
+    // In ry, functions can modify variables from outer scopes
+    // This is similar to Python's behavior without `global` keyword
+    // but ry allows modification of outer scope variables directly
+    let mut ctx = Context::new();
+    let input = r#"
+x = 10
+
+fn set_x():
+    x = 99
+    return x
+
+result = set_x()
+outer_x = x
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(99)));
+    // x in outer scope is modified by the function
+    assert_eq!(ctx.get("outer_x"), Some(&Value::Int(99)));
+}
+
+#[test]
+fn test_function_local_variable() {
+    // Variables that don't exist in outer scope are local to the function
+    let mut ctx = Context::new();
+    let input = r#"
+fn create_local():
+    local_var = 42
+    return local_var
+
+result = create_local()
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(42)));
+    // local_var should not exist in outer scope
+    assert_eq!(ctx.get("local_var"), None);
+}
+
+#[test]
+fn test_function_closure_reads_outer() {
+    let mut ctx = Context::new();
+    let input = r#"
+multiplier = 10
+
+fn times_multiplier(n):
+    return n * multiplier
+
+result = times_multiplier(5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(50)));
+}
+
+#[test]
+fn test_function_not_callable_error() {
+    let mut ctx = Context::new();
+    let input = r#"
+x = 5
+result = x(1, 2)
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Cannot call value of type"));
+}
+
+#[test]
+fn test_function_with_while_loop() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn sum_to(n):
+    total = 0
+    i = 1
+    while i <= n:
+        total = total + i
+        i = i + 1
+    return total
+
+result = sum_to(5)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(15)));
+}
+
+#[test]
+fn test_function_nested_calls() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a, b):
+    return a + b
+
+fn multiply(a, b):
+    return a * b
+
+result = add(multiply(2, 3), multiply(4, 5))
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(26)));
+}
+
+#[test]
+fn test_function_return_function() {
+    // Note: True closures with captured environments are not fully supported.
+    // This test demonstrates returning a function, but inner functions
+    // can only access variables that exist in the global/outer scope at call time.
+    let mut ctx = Context::new();
+    let input = r#"
+n = 5
+
+fn make_adder():
+    fn add(x):
+        return x + n
+    return add
+
+add_func = make_adder()
+result = add_func(10)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    // Works because n is in the outer scope accessible during add_func(10) call
+    assert_eq!(ctx.get("result"), Some(&Value::Int(15)));
+}

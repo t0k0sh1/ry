@@ -203,7 +203,12 @@ impl<'a> Lexer<'a> {
             }
             '-' => {
                 self.advance();
-                Ok(Token::Minus)
+                if self.peek() == Some('>') {
+                    self.advance();
+                    Ok(Token::Arrow)
+                } else {
+                    Ok(Token::Minus)
+                }
             }
             '%' => {
                 self.advance();
@@ -415,11 +420,14 @@ impl<'a> Lexer<'a> {
             "while" => Ok(Token::While),
             "true" => Ok(Token::True),
             "false" => Ok(Token::False),
+            "fn" => Ok(Token::Fn),
+            "return" => Ok(Token::Return),
             "int" => Ok(Token::IntType),
             "float" => Ok(Token::FloatType),
             "bool" => Ok(Token::BoolType),
             "str" => Ok(Token::StrType),
             "any" => Ok(Token::AnyType),
+            "func" => Ok(Token::FuncType),
             _ => Ok(Token::Ident(ident.to_string())),
         }
     }
@@ -631,5 +639,52 @@ mod tests {
         let mut lexer = Lexer::new("any");
         let tokens = lexer.tokenize().unwrap();
         assert_eq!(tokens, vec![Token::AnyType, Token::Eof,]);
+    }
+
+    #[test]
+    fn test_fn_keyword() {
+        let mut lexer = Lexer::new("fn");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Fn, Token::Eof]);
+    }
+
+    #[test]
+    fn test_return_keyword() {
+        let mut lexer = Lexer::new("return");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Return, Token::Eof]);
+    }
+
+    #[test]
+    fn test_arrow_operator() {
+        let mut lexer = Lexer::new("->");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Arrow, Token::Eof]);
+    }
+
+    #[test]
+    fn test_function_definition_tokens() {
+        let mut lexer = Lexer::new("fn add(a: int, b: int) -> int:");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Fn,
+                Token::Ident("add".to_string()),
+                Token::LParen,
+                Token::Ident("a".to_string()),
+                Token::Colon,
+                Token::IntType,
+                Token::Comma,
+                Token::Ident("b".to_string()),
+                Token::Colon,
+                Token::IntType,
+                Token::RParen,
+                Token::Arrow,
+                Token::IntType,
+                Token::Colon,
+                Token::Eof,
+            ]
+        );
     }
 }

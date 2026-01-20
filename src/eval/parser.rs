@@ -81,6 +81,8 @@ impl<'a> ProgramParser<'a> {
         match self.peek() {
             Some(Token::If) => self.parse_if_statement(),
             Some(Token::While) => self.parse_while_statement(),
+            Some(Token::Fn) => self.parse_function_def(),
+            Some(Token::Return) => self.parse_return_statement(),
             _ => {
                 let expr = self.parse_expression()?;
                 // Consume optional newline after expression
@@ -90,6 +92,128 @@ impl<'a> ProgramParser<'a> {
                 Ok(Statement::Expression(expr))
             }
         }
+    }
+
+    fn parse_function_def(&mut self) -> Result<Statement, String> {
+        self.expect(&Token::Fn)?;
+
+        // Parse function name
+        let name = match self.peek() {
+            Some(Token::Ident(n)) => {
+                let n = n.clone();
+                self.advance();
+                n
+            }
+            _ => return Err("expected function name".to_string()),
+        };
+
+        // Parse parameters
+        self.expect(&Token::LParen)?;
+        let params = self.parse_param_list()?;
+        self.expect(&Token::RParen)?;
+
+        // Parse optional return type
+        let return_type = if let Some(Token::Arrow) = self.peek() {
+            self.advance();
+            self.parse_type_annotation()?
+        } else {
+            None
+        };
+
+        // Parse function body
+        self.expect(&Token::Colon)?;
+        self.expect(&Token::Newline)?;
+        let body = self.parse_block()?;
+
+        Ok(Statement::FuncDef {
+            name,
+            params,
+            return_type,
+            body,
+        })
+    }
+
+    fn parse_param_list(&mut self) -> Result<Vec<(String, Option<TypeAnnotation>)>, String> {
+        let mut params = Vec::new();
+
+        // Check for empty parameter list
+        if let Some(Token::RParen) = self.peek() {
+            return Ok(params);
+        }
+
+        // Parse first parameter
+        let first_param = self.parse_param()?;
+        params.push(first_param);
+
+        // Parse remaining parameters
+        while let Some(Token::Comma) = self.peek() {
+            self.advance();
+            let param = self.parse_param()?;
+            params.push(param);
+        }
+
+        Ok(params)
+    }
+
+    fn parse_param(&mut self) -> Result<(String, Option<TypeAnnotation>), String> {
+        // Parse parameter name
+        let name = match self.peek() {
+            Some(Token::Ident(n)) => {
+                let n = n.clone();
+                self.advance();
+                n
+            }
+            _ => return Err("expected parameter name".to_string()),
+        };
+
+        // Parse optional type annotation
+        let type_annotation = if let Some(Token::Colon) = self.peek() {
+            self.advance();
+            self.parse_type_annotation()?
+        } else {
+            None
+        };
+
+        Ok((name, type_annotation))
+    }
+
+    fn parse_return_statement(&mut self) -> Result<Statement, String> {
+        self.expect(&Token::Return)?;
+
+        // Check if there's an expression to return
+        let expr = match self.peek() {
+            Some(Token::Newline) | Some(Token::Eof) | Some(Token::Dedent) | None => None,
+            _ => Some(self.parse_expression()?),
+        };
+
+        // Consume optional newline
+        if let Some(Token::Newline) = self.peek() {
+            self.advance();
+        }
+
+        Ok(Statement::Return(expr))
+    }
+
+    fn parse_arg_list(&mut self) -> Result<Vec<Expr>, String> {
+        let mut args = Vec::new();
+
+        // Check for empty argument list
+        if let Some(Token::RParen) = self.peek() {
+            return Ok(args);
+        }
+
+        // Parse first argument (use parse_comparison to avoid tuple unpacking)
+        let first_arg = self.parse_comparison()?;
+        args.push(first_arg);
+
+        // Parse remaining arguments
+        while let Some(Token::Comma) = self.peek() {
+            self.advance();
+            let arg = self.parse_comparison()?;
+            args.push(arg);
+        }
+
+        Ok(args)
     }
 
     fn parse_if_statement(&mut self) -> Result<Statement, String> {
@@ -196,6 +320,10 @@ impl<'a> ProgramParser<'a> {
             Some(Token::AnyType) => {
                 self.advance();
                 Ok(Some(TypeAnnotation::Any))
+            }
+            Some(Token::FuncType) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::Func))
             }
             Some(Token::LParen) => {
                 // Tuple type annotation: (int, float, ...)
@@ -406,6 +534,16 @@ impl<'a> ProgramParser<'a> {
 
     fn parse_primary(&mut self) -> Result<Expr, String> {
         match self.peek() {
+            Some(Token::Minus) => {
+                // Unary minus
+                self.advance();
+                let expr = self.parse_primary()?;
+                Ok(Expr::BinaryOp {
+                    op: BinaryOp::Subtract,
+                    left: Box::new(Expr::Number(Value::Int(0))),
+                    right: Box::new(expr),
+                })
+            }
             Some(Token::Number(value)) => {
                 let value = value.clone();
                 self.advance();
@@ -427,7 +565,20 @@ impl<'a> ProgramParser<'a> {
             Some(Token::Ident(name)) => {
                 let name = name.clone();
                 self.advance();
-                Ok(Expr::Variable(name))
+                let mut expr = Expr::Variable(name);
+
+                // Check for function call (possibly chained)
+                while let Some(Token::LParen) = self.peek() {
+                    self.advance();
+                    let args = self.parse_arg_list()?;
+                    self.expect(&Token::RParen)?;
+                    expr = Expr::FuncCall {
+                        callee: Box::new(expr),
+                        args,
+                    };
+                }
+
+                Ok(expr)
             }
             Some(Token::LParen) => {
                 self.advance();

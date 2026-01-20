@@ -6,8 +6,11 @@ pub mod parser;
 pub mod token;
 pub mod value;
 
+use std::sync::Arc;
+
 use ast::{BinaryOp, Block, Expr, Program, Statement};
 use error::Result;
+use value::{FuncDef, FuncParam};
 
 // Re-exports for public API
 pub use context::Context;
@@ -115,6 +118,13 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
                 BinaryOp::GreaterThanOrEqual => left_val.compare_ge(right_val),
             }
         }
+        Expr::FuncCall { callee, args } => {
+            let callee_value = evaluate(callee, ctx)?;
+            match callee_value {
+                Value::Func(func_def) => call_function(&func_def, args, ctx),
+                _ => Err(EvalError::NotCallable(callee_value.type_name())),
+            }
+        }
     }
 }
 
@@ -126,6 +136,7 @@ fn is_truthy(value: &Value) -> Result<bool> {
         Value::Float(f) => Ok(*f != 0.0),
         Value::Str(s) => Ok(!s.is_empty()),
         Value::Tuple(values) => Ok(!values.is_empty()),
+        Value::Func(_) => Ok(true), // Functions are always truthy
     }
 }
 
@@ -175,11 +186,135 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
                 if !is_truthy(&cond_value)? {
                     break;
                 }
-                last_value = execute_block(body, ctx)?;
+                match execute_block(body, ctx) {
+                    Ok(val) => last_value = val,
+                    Err(EvalError::ReturnValue(val)) => return Err(EvalError::ReturnValue(val)),
+                    Err(e) => return Err(e),
+                }
             }
             Ok(last_value)
         }
+        Statement::FuncDef {
+            name,
+            params,
+            return_type,
+            body,
+        } => {
+            let func_def = FuncDef {
+                name: Some(name.clone()),
+                params: params
+                    .iter()
+                    .map(|(n, t)| FuncParam {
+                        name: n.clone(),
+                        type_annotation: t.clone(),
+                    })
+                    .collect(),
+                return_type: return_type.clone(),
+                body: body.clone(),
+            };
+            let value = Value::Func(Arc::new(func_def));
+            ctx.set(name.clone(), value.clone());
+            Ok(Some(value))
+        }
+        Statement::Return(expr) => {
+            let value = match expr {
+                Some(e) => Some(evaluate(e, ctx)?),
+                None => None,
+            };
+            Err(EvalError::ReturnValue(value))
+        }
     }
+}
+
+/// Call a function with arguments
+fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result<Value> {
+    let func_name = func_def.name.as_deref().unwrap_or("<anonymous>");
+
+    // Check argument count
+    if args.len() != func_def.params.len() {
+        return Err(EvalError::ArgumentCountMismatch {
+            expected: func_def.params.len(),
+            actual: args.len(),
+            func_name: func_name.to_string(),
+        });
+    }
+
+    // Evaluate arguments
+    let mut arg_values = Vec::new();
+    for arg in args {
+        arg_values.push(evaluate(arg, ctx)?);
+    }
+
+    // Check argument types
+    for (param, value) in func_def.params.iter().zip(arg_values.iter()) {
+        if let Some(ref constraint) = param.type_annotation {
+            if !constraint.matches(value) {
+                return Err(EvalError::ArgumentTypeMismatch {
+                    expected: constraint.type_name(),
+                    actual: value.type_name(),
+                    param_name: param.name.clone(),
+                    func_name: func_name.to_string(),
+                });
+            }
+        }
+    }
+
+    // Create new scope and bind parameters
+    let mut guard = ScopeGuard::new(ctx);
+    for (param, value) in func_def.params.iter().zip(arg_values.into_iter()) {
+        guard
+            .context()
+            .set_typed(param.name.clone(), value, param.type_annotation.clone());
+    }
+
+    // Execute function body
+    let result = execute_function_body(&func_def.body, guard.context());
+
+    // Handle return value
+    match result {
+        Ok(val) => {
+            let return_value = val.unwrap_or(Value::Tuple(vec![])); // Return empty tuple if no explicit return
+                                                                    // Check return type
+            if let Some(ref expected_type) = func_def.return_type {
+                if !expected_type.matches(&return_value) {
+                    return Err(EvalError::ReturnTypeMismatch {
+                        expected: expected_type.type_name(),
+                        actual: return_value.type_name(),
+                        func_name: func_name.to_string(),
+                    });
+                }
+            }
+            Ok(return_value)
+        }
+        Err(EvalError::ReturnValue(val)) => {
+            let return_value = val.unwrap_or(Value::Tuple(vec![]));
+            // Check return type
+            if let Some(ref expected_type) = func_def.return_type {
+                if !expected_type.matches(&return_value) {
+                    return Err(EvalError::ReturnTypeMismatch {
+                        expected: expected_type.type_name(),
+                        actual: return_value.type_name(),
+                        func_name: func_name.to_string(),
+                    });
+                }
+            }
+            Ok(return_value)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Execute function body (separate from execute_block to handle returns properly)
+fn execute_function_body(block: &Block, ctx: &mut Context) -> Result<Option<Value>> {
+    let mut last_value = None;
+    for stmt in &block.statements {
+        match execute_statement(stmt, ctx) {
+            Ok(val) => last_value = val,
+            Err(EvalError::ReturnValue(val)) => return Err(EvalError::ReturnValue(val)),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(last_value)
 }
 
 /// Execute a block in a new scope
