@@ -120,10 +120,15 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
                 .collect::<Result<Vec<_>>>()?;
 
             match callee_value {
-                Value::Func(func_def) => call_function(&func_def, &arg_values, ctx),
-                Value::FuncOverloads(overloads) => {
-                    let resolved = overloads.resolve(&arg_values)?;
-                    call_function(&resolved, &arg_values, ctx)
+                Value::Func(overloads) => {
+                    if overloads.overloads.len() == 1 {
+                        // Single function: use direct call for better error messages
+                        call_function(&overloads.overloads[0], &arg_values, ctx)
+                    } else {
+                        // Multiple overloads: use resolution
+                        let resolved = overloads.resolve(&arg_values)?;
+                        call_function(&resolved, &arg_values, ctx)
+                    }
                 }
                 _ => Err(EvalError::NotCallable(callee_value.type_name())),
             }
@@ -139,7 +144,7 @@ fn is_truthy(value: &Value) -> Result<bool> {
         Value::Float(f) => Ok(*f != 0.0),
         Value::Str(s) => Ok(!s.is_empty()),
         Value::Tuple(values) => Ok(!values.is_empty()),
-        Value::Func(_) | Value::FuncOverloads(_) => Ok(true), // Functions are always truthy
+        Value::Func(_) => Ok(true), // Functions are always truthy
     }
 }
 
@@ -218,26 +223,18 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
 
             // Check if there's already a function with this name
             match ctx.get(name) {
-                Some(Value::FuncOverloads(overloads)) => {
+                Some(Value::Func(overloads)) => {
                     // Add to existing overload collection
                     let mut new_overloads = overloads.as_ref().clone();
-                    new_overloads.add_overload(func_def.clone())?;
-                    let value = Value::FuncOverloads(Arc::new(new_overloads));
+                    new_overloads.add_overload(func_def)?;
+                    let value = Value::Func(Arc::new(new_overloads));
                     ctx.set(name.clone(), value.clone());
-                    Ok(Some(Value::Func(func_def)))
-                }
-                Some(Value::Func(existing)) => {
-                    // Convert single function to overload collection
-                    let mut overloads = FuncOverloads::new(name.clone());
-                    overloads.add_overload(existing.clone())?;
-                    overloads.add_overload(func_def.clone())?;
-                    let value = Value::FuncOverloads(Arc::new(overloads));
-                    ctx.set(name.clone(), value.clone());
-                    Ok(Some(Value::Func(func_def)))
+                    Ok(Some(value))
                 }
                 _ => {
-                    // First definition: store as single function (efficient case)
-                    let value = Value::Func(func_def);
+                    // First definition: create single-function overload collection
+                    let overloads = FuncOverloads::single(func_def);
+                    let value = Value::Func(Arc::new(overloads));
                     ctx.set(name.clone(), value.clone());
                     Ok(Some(value))
                 }
