@@ -385,45 +385,18 @@ pub fn evaluate_expression_with_context(
     input: &str,
     ctx: &mut Context,
 ) -> std::result::Result<Value, String> {
-    let expr = parser::parse(input).map_err(|errs| format_parse_errors(errs, input))?;
-    evaluate(&expr, ctx).map_err(|e| e.to_string())
+    let mut lexer = Lexer::new(input);
+    let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+    let program = parse_program(&tokens)?;
+    execute_program(&program, ctx)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No expression to evaluate".to_string())
 }
 
 /// Parse and evaluate an expression string (backward compatible, uses fresh context)
 pub fn evaluate_expression(input: &str) -> std::result::Result<Value, String> {
     let mut ctx = Context::new();
     evaluate_expression_with_context(input, &mut ctx)
-}
-
-/// Format parse errors into a human-readable string
-fn format_parse_errors(errs: Vec<chumsky::error::Rich<'_, char>>, input: &str) -> String {
-    use ariadne::{Color, Label, Report, ReportKind, Source};
-    use std::fmt::Write;
-
-    let mut output = String::new();
-
-    for err in errs {
-        let mut report = Report::build(ReportKind::Error, (), err.span().start);
-
-        report = report.with_message(err.to_string()).with_label(
-            Label::new(err.span().into_range())
-                .with_message(err.reason().to_string())
-                .with_color(Color::Red),
-        );
-
-        let mut buf = Vec::new();
-        report
-            .finish()
-            .write(Source::from(input), &mut buf)
-            .unwrap();
-        let _ = write!(output, "{}", String::from_utf8_lossy(&buf));
-    }
-
-    if output.is_empty() {
-        "Parse error".to_string()
-    } else {
-        output
-    }
 }
 
 /// Backward compatibility wrapper that returns f64
