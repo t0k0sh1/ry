@@ -29,6 +29,7 @@ pub enum Token {
     RParen, // )
     Colon,  // :
     Comma,  // ,
+    Pipe,   // |
 
     // Keywords
     If,

@@ -229,6 +229,10 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Ok(Token::Comma)
             }
+            '|' => {
+                self.advance();
+                Ok(Token::Pipe)
+            }
 
             // Two-character operators
             '*' => {
