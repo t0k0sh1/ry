@@ -1,32 +1,6 @@
 use super::value::{TypeAnnotation, Value};
 
 #[derive(Debug, Clone)]
-pub enum Expr {
-    Number(Value),
-    Variable(String),
-    Assign {
-        name: String,
-        type_annotation: Option<TypeAnnotation>,
-        value: Box<Expr>,
-    },
-    BinaryOp {
-        op: BinaryOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
-    Tuple(Vec<Expr>),
-    TupleUnpack {
-        targets: Vec<(String, Option<TypeAnnotation>)>,
-        value: Box<Expr>,
-    },
-    /// Function call: callee(arg1, arg2, ...)
-    FuncCall {
-        callee: Box<Expr>,
-        args: Vec<Expr>,
-    },
-}
-
-#[derive(Debug, Clone)]
 pub enum BinaryOp {
     Add,
     Subtract,
@@ -41,6 +15,43 @@ pub enum BinaryOp {
     GreaterThan,
     LessThanOrEqual,
     GreaterThanOrEqual,
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    Not,
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    Number(Value),
+    Variable(String),
+    Assign {
+        name: String,
+        type_annotation: Option<TypeAnnotation>,
+        value: Box<Expr>,
+    },
+    BinaryOp {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    UnaryOp {
+        op: UnaryOp,
+        operand: Box<Expr>,
+    },
+    Tuple(Vec<Expr>),
+    TupleUnpack {
+        targets: Vec<(String, Option<TypeAnnotation>)>,
+        value: Box<Expr>,
+    },
+    /// Function call: callee(arg1, arg2, ...)
+    FuncCall {
+        callee: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 /// Block containing a list of statements (has its own scope)

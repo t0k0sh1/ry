@@ -1,6 +1,6 @@
 use chumsky::prelude::*;
 
-use super::ast::{BinaryOp, Block, ConditionalBranch, Expr, Program, Statement};
+use super::ast::{BinaryOp, Block, ConditionalBranch, Expr, Program, Statement, UnaryOp};
 use super::token::Token;
 use super::value::{TypeAnnotation, Value, MAX_TUPLE_ELEMENTS};
 
@@ -483,7 +483,7 @@ impl<'a> ProgramParser<'a> {
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, String> {
-        let expr = self.parse_comparison()?;
+        let expr = self.parse_or()?;
 
         // Check for tuple unpacking: a, b = (1, 2) or a, b, c = (1, 2, 3)
         if let Expr::Variable(first_name) = &expr {
@@ -569,6 +569,46 @@ impl<'a> ProgramParser<'a> {
         }
 
         Ok(expr)
+    }
+
+    fn parse_or(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_and()?;
+        while let Some(Token::Or) = self.peek() {
+            self.advance();
+            let right = self.parse_and()?;
+            left = Expr::BinaryOp {
+                op: BinaryOp::Or,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_and(&mut self) -> Result<Expr, String> {
+        let mut left = self.parse_not()?;
+        while let Some(Token::And) = self.peek() {
+            self.advance();
+            let right = self.parse_not()?;
+            left = Expr::BinaryOp {
+                op: BinaryOp::And,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
+    }
+
+    fn parse_not(&mut self) -> Result<Expr, String> {
+        if let Some(Token::Not) = self.peek() {
+            self.advance();
+            let operand = self.parse_not()?; // 右結合（not not x のため）
+            return Ok(Expr::UnaryOp {
+                op: UnaryOp::Not,
+                operand: Box::new(operand),
+            });
+        }
+        self.parse_comparison()
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, String> {
@@ -883,6 +923,54 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             },
         );
 
+        // not operator (unary, right-associative for `not not x`)
+        let logical_not = text::keyword("not")
+            .padded()
+            .repeated()
+            .collect::<Vec<_>>()
+            .then(comparison.clone())
+            .map(|(nots, expr)| {
+                nots.into_iter().rev().fold(expr, |acc, _| Expr::UnaryOp {
+                    op: UnaryOp::Not,
+                    operand: Box::new(acc),
+                })
+            })
+            .boxed();
+
+        // and operator
+        let logical_and = logical_not
+            .clone()
+            .foldl(
+                text::keyword("and")
+                    .padded()
+                    .to(BinaryOp::And)
+                    .then(logical_not)
+                    .repeated(),
+                |lhs, (op, rhs)| Expr::BinaryOp {
+                    op,
+                    left: Box::new(lhs),
+                    right: Box::new(rhs),
+                },
+            )
+            .boxed();
+
+        // or operator
+        let logical_or = logical_and
+            .clone()
+            .foldl(
+                text::keyword("or")
+                    .padded()
+                    .to(BinaryOp::Or)
+                    .then(logical_and)
+                    .repeated(),
+                |lhs, (op, rhs)| Expr::BinaryOp {
+                    op,
+                    left: Box::new(lhs),
+                    right: Box::new(rhs),
+                },
+            )
+            .boxed();
+
         // Type annotation parser (recursive to support tuple types and union types)
         let type_annot = recursive(|type_annot| {
             // Basic type keywords
@@ -995,7 +1083,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
 
         let typed_assign = name_and_type
             .then_ignore(just('=').padded())
-            .then(comparison.clone())
+            .then(logical_or.clone())
             .map(make_typed_assign);
 
         // Tuple unpacking: a, b = expr or a, b, c = expr
@@ -1005,7 +1093,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             .at_least(2)
             .collect::<Vec<_>>()
             .then_ignore(just('=').padded())
-            .then(comparison.clone())
+            .then(logical_or.clone())
             .map(|(names, value)| Expr::TupleUnpack {
                 targets: names
                     .into_iter()
@@ -1018,7 +1106,7 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
         // Pattern: x = y = 5 => x = (y = 5)
         // Only valid when left side is a variable
         let assign_op = just('=').padded();
-        let untyped_assign = comparison
+        let untyped_assign = logical_or
             .clone()
             .separated_by(assign_op)
             .at_least(1)

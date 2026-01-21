@@ -40,6 +40,9 @@ pub enum Token {
     False,
     Fn,     // fn
     Return, // return
+    And,    // and
+    Or,     // or
+    Not,    // not
 
     // Arrow
     Arrow, // ->
@@ -74,6 +77,9 @@ impl Token {
                 | Token::False
                 | Token::Fn
                 | Token::Return
+                | Token::And
+                | Token::Or
+                | Token::Not
                 | Token::IntType
                 | Token::FloatType
                 | Token::BoolType
