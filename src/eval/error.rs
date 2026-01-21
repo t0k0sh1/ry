@@ -59,6 +59,23 @@ pub enum EvalError {
     ReturnOutsideFunction,
     /// Return control flow (used internally, not a real error)
     ReturnValue(Option<Value>),
+    /// No matching overload found for function call
+    NoMatchingOverload {
+        func_name: String,
+        arg_types: Vec<String>,
+        available_signatures: Vec<String>,
+    },
+    /// Multiple overloads match with same priority (ambiguous)
+    AmbiguousOverload {
+        func_name: String,
+        arg_types: Vec<String>,
+        matching_signatures: Vec<String>,
+    },
+    /// Duplicate function signature in overload
+    DuplicateSignature {
+        func_name: String,
+        signature: String,
+    },
 }
 
 impl fmt::Display for EvalError {
@@ -157,6 +174,42 @@ impl fmt::Display for EvalError {
                 // This should not be displayed to users - it's internal control flow
                 write!(f, "Internal: return value")
             }
+            EvalError::NoMatchingOverload {
+                func_name,
+                arg_types,
+                available_signatures,
+            } => {
+                write!(
+                    f,
+                    "No matching overload for function '{}' with arguments ({}). Available signatures: {}",
+                    func_name,
+                    arg_types.join(", "),
+                    available_signatures.join(", ")
+                )
+            }
+            EvalError::AmbiguousOverload {
+                func_name,
+                arg_types,
+                matching_signatures,
+            } => {
+                write!(
+                    f,
+                    "Ambiguous overload for function '{}' with arguments ({}). Matching signatures: {}",
+                    func_name,
+                    arg_types.join(", "),
+                    matching_signatures.join(", ")
+                )
+            }
+            EvalError::DuplicateSignature {
+                func_name,
+                signature,
+            } => {
+                write!(
+                    f,
+                    "Duplicate function signature for '{}': {}",
+                    func_name, signature
+                )
+            }
         }
     }
 }
@@ -251,6 +304,40 @@ impl PartialEq for EvalError {
                 // ReturnValue comparison is not meaningful - always false
                 false
             }
+            (
+                EvalError::NoMatchingOverload {
+                    func_name: f1,
+                    arg_types: a1,
+                    available_signatures: s1,
+                },
+                EvalError::NoMatchingOverload {
+                    func_name: f2,
+                    arg_types: a2,
+                    available_signatures: s2,
+                },
+            ) => f1 == f2 && a1 == a2 && s1 == s2,
+            (
+                EvalError::AmbiguousOverload {
+                    func_name: f1,
+                    arg_types: a1,
+                    matching_signatures: s1,
+                },
+                EvalError::AmbiguousOverload {
+                    func_name: f2,
+                    arg_types: a2,
+                    matching_signatures: s2,
+                },
+            ) => f1 == f2 && a1 == a2 && s1 == s2,
+            (
+                EvalError::DuplicateSignature {
+                    func_name: f1,
+                    signature: s1,
+                },
+                EvalError::DuplicateSignature {
+                    func_name: f2,
+                    signature: s2,
+                },
+            ) => f1 == f2 && s1 == s2,
             _ => false,
         }
     }
