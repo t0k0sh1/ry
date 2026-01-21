@@ -8,7 +8,7 @@ pub mod value;
 
 use std::sync::Arc;
 
-use ast::{BinaryOp, Block, Expr, Program, Statement};
+use ast::{BinaryOp, Block, Expr, Program, Statement, UnaryOp};
 use error::Result;
 use value::{FuncDef, FuncOverloads, FuncParam};
 
@@ -91,25 +91,53 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
             }
         }
         Expr::BinaryOp { op, left, right } => {
-            let left_val = evaluate(left, ctx)?;
-            let right_val = evaluate(right, ctx)?;
-
+            // Short-circuit evaluation for logical operators
             match op {
-                BinaryOp::Add => left_val.safe_add(right_val),
-                BinaryOp::Subtract => left_val.safe_sub(right_val),
-                BinaryOp::Multiply => left_val.safe_mul(right_val),
-                BinaryOp::Divide => left_val.divide(right_val),
-                BinaryOp::Modulo => left_val.modulo(right_val),
-                BinaryOp::Power => left_val.power(right_val),
-                BinaryOp::FloorDivide => left_val.floor_divide(right_val),
-                BinaryOp::Equal => left_val.compare_eq(right_val),
-                BinaryOp::NotEqual => left_val.compare_ne(right_val),
-                BinaryOp::LessThan => left_val.compare_lt(right_val),
-                BinaryOp::GreaterThan => left_val.compare_gt(right_val),
-                BinaryOp::LessThanOrEqual => left_val.compare_le(right_val),
-                BinaryOp::GreaterThanOrEqual => left_val.compare_ge(right_val),
+                BinaryOp::And => {
+                    let left_val = evaluate(left, ctx)?;
+                    if !is_truthy(&left_val)? {
+                        return Ok(left_val);
+                    }
+                    evaluate(right, ctx)
+                }
+                BinaryOp::Or => {
+                    let left_val = evaluate(left, ctx)?;
+                    if is_truthy(&left_val)? {
+                        return Ok(left_val);
+                    }
+                    evaluate(right, ctx)
+                }
+                _ => {
+                    // Non-short-circuit operators: evaluate both operands first
+                    let left_val = evaluate(left, ctx)?;
+                    let right_val = evaluate(right, ctx)?;
+
+                    match op {
+                        BinaryOp::Add => left_val.safe_add(right_val),
+                        BinaryOp::Subtract => left_val.safe_sub(right_val),
+                        BinaryOp::Multiply => left_val.safe_mul(right_val),
+                        BinaryOp::Divide => left_val.divide(right_val),
+                        BinaryOp::Modulo => left_val.modulo(right_val),
+                        BinaryOp::Power => left_val.power(right_val),
+                        BinaryOp::FloorDivide => left_val.floor_divide(right_val),
+                        BinaryOp::Equal => left_val.compare_eq(right_val),
+                        BinaryOp::NotEqual => left_val.compare_ne(right_val),
+                        BinaryOp::LessThan => left_val.compare_lt(right_val),
+                        BinaryOp::GreaterThan => left_val.compare_gt(right_val),
+                        BinaryOp::LessThanOrEqual => left_val.compare_le(right_val),
+                        BinaryOp::GreaterThanOrEqual => left_val.compare_ge(right_val),
+                        BinaryOp::And | BinaryOp::Or => unreachable!(),
+                    }
+                }
             }
         }
+        Expr::UnaryOp { op, operand } => match op {
+            UnaryOp::Not => {
+                let val = evaluate(operand, ctx)?;
+                let truthy = is_truthy(&val)?;
+                Ok(Value::Bool(!truthy))
+            }
+        },
         Expr::FuncCall { callee, args } => {
             let callee_value = evaluate(callee, ctx)?;
 

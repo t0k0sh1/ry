@@ -1781,3 +1781,243 @@ fn f(x: str):
     let f_value = ctx.get("f").unwrap();
     assert!(f_value.type_name().contains("overloads"));
 }
+
+// ===================
+// Logical operator tests
+// ===================
+
+// Basic and tests
+#[test]
+fn test_and_true_true() {
+    assert_eq!(
+        evaluate_expression("true and true").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_and_true_false() {
+    assert_eq!(
+        evaluate_expression("true and false").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_and_false_true() {
+    assert_eq!(
+        evaluate_expression("false and true").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_and_false_false() {
+    assert_eq!(
+        evaluate_expression("false and false").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+// Basic or tests
+#[test]
+fn test_or_true_true() {
+    assert_eq!(
+        evaluate_expression("true or true").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_or_true_false() {
+    assert_eq!(
+        evaluate_expression("true or false").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_or_false_true() {
+    assert_eq!(
+        evaluate_expression("false or true").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_or_false_false() {
+    assert_eq!(
+        evaluate_expression("false or false").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+// Basic not tests
+#[test]
+fn test_not_true() {
+    assert_eq!(evaluate_expression("not true").unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn test_not_false() {
+    assert_eq!(evaluate_expression("not false").unwrap(), Value::Bool(true));
+}
+
+// Short-circuit evaluation tests
+#[test]
+fn test_and_short_circuit() {
+    let mut ctx = Context::new();
+    // false and undefined_var should return false without evaluating undefined_var
+    let result = evaluate_expression_with_context("false and undefined_var", &mut ctx);
+    assert_eq!(result.unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn test_or_short_circuit() {
+    let mut ctx = Context::new();
+    // true or undefined_var should return true without evaluating undefined_var
+    let result = evaluate_expression_with_context("true or undefined_var", &mut ctx);
+    assert_eq!(result.unwrap(), Value::Bool(true));
+}
+
+// Truthy value tests (Python-style return values)
+#[test]
+fn test_and_truthy_values() {
+    // 1 and 2 -> 2 (returns last evaluated value)
+    assert_eq!(evaluate_expression("1 and 2").unwrap(), Value::Int(2));
+    // 0 and 2 -> 0 (returns first falsy value)
+    assert_eq!(evaluate_expression("0 and 2").unwrap(), Value::Int(0));
+}
+
+#[test]
+fn test_or_truthy_values() {
+    // 1 or 2 -> 1 (returns first truthy value)
+    assert_eq!(evaluate_expression("1 or 2").unwrap(), Value::Int(1));
+    // 0 or 2 -> 2 (returns last evaluated value when first is falsy)
+    assert_eq!(evaluate_expression("0 or 2").unwrap(), Value::Int(2));
+}
+
+#[test]
+fn test_not_truthy_values() {
+    // not 0 -> true (0 is falsy)
+    assert_eq!(evaluate_expression("not 0").unwrap(), Value::Bool(true));
+    // not 1 -> false (1 is truthy)
+    assert_eq!(evaluate_expression("not 1").unwrap(), Value::Bool(false));
+    // not "" -> true (empty string is falsy)
+    assert_eq!(evaluate_expression("not \"\"").unwrap(), Value::Bool(true));
+    // not "hello" -> false (non-empty string is truthy)
+    assert_eq!(
+        evaluate_expression("not \"hello\"").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+// Precedence tests
+#[test]
+fn test_or_and_precedence() {
+    // true or false and false -> true (and binds tighter than or)
+    // Equivalent to: true or (false and false) = true or false = true
+    assert_eq!(
+        evaluate_expression("true or false and false").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_not_and_precedence() {
+    // not false and true -> true (not binds tighter than and)
+    // Equivalent to: (not false) and true = true and true = true
+    assert_eq!(
+        evaluate_expression("not false and true").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+#[test]
+fn test_comparison_and_precedence() {
+    // 1 < 2 and 3 < 4 -> true (comparison has higher precedence than and)
+    assert_eq!(
+        evaluate_expression("1 < 2 and 3 < 4").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate_expression("1 < 2 and 3 > 4").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+// Double not test
+#[test]
+fn test_not_not() {
+    assert_eq!(
+        evaluate_expression("not not true").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate_expression("not not false").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+// Complex expressions
+#[test]
+fn test_complex_logical_expression() {
+    // (1 < 2) and (3 > 2) or false
+    // = true and true or false
+    // = true or false
+    // = true
+    assert_eq!(
+        evaluate_expression("1 < 2 and 3 > 2 or false").unwrap(),
+        Value::Bool(true)
+    );
+}
+
+// Logical operators in if statements
+#[test]
+fn test_logical_in_if_statement() {
+    let mut ctx = Context::new();
+    let input = "x = 5\nresult = 0\nif x > 3 and x < 10:\n    result = 1\n";
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(1)));
+}
+
+#[test]
+fn test_or_in_if_statement() {
+    let mut ctx = Context::new();
+    let input = "x = 15\nresult = 0\nif x < 3 or x > 10:\n    result = 1\n";
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(1)));
+}
+
+#[test]
+fn test_not_in_if_statement() {
+    let mut ctx = Context::new();
+    let input = "flag = false\nresult = 0\nif not flag:\n    result = 1\n";
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(1)));
+}
+
+// Chained logical operators
+#[test]
+fn test_chained_and() {
+    assert_eq!(
+        evaluate_expression("true and true and true").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate_expression("true and false and true").unwrap(),
+        Value::Bool(false)
+    );
+}
+
+#[test]
+fn test_chained_or() {
+    assert_eq!(
+        evaluate_expression("false or false or true").unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        evaluate_expression("false or false or false").unwrap(),
+        Value::Bool(false)
+    );
+}
