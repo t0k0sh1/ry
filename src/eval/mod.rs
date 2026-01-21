@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use ast::{BinaryOp, Block, Expr, Program, Statement};
 use error::Result;
-use value::{FuncDef, FuncParam};
+use value::{FuncDef, FuncOverloads, FuncParam};
 
 // Re-exports for public API
 pub use context::Context;
@@ -112,8 +112,19 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
         }
         Expr::FuncCall { callee, args } => {
             let callee_value = evaluate(callee, ctx)?;
+
+            // Evaluate arguments first
+            let arg_values: Vec<Value> = args
+                .iter()
+                .map(|a| evaluate(a, ctx))
+                .collect::<Result<Vec<_>>>()?;
+
             match callee_value {
-                Value::Func(func_def) => call_function(&func_def, args, ctx),
+                Value::Func(func_def) => call_function(&func_def, &arg_values, ctx),
+                Value::FuncOverloads(overloads) => {
+                    let resolved = overloads.resolve(&arg_values)?;
+                    call_function(&resolved, &arg_values, ctx)
+                }
                 _ => Err(EvalError::NotCallable(callee_value.type_name())),
             }
         }
@@ -128,7 +139,7 @@ fn is_truthy(value: &Value) -> Result<bool> {
         Value::Float(f) => Ok(*f != 0.0),
         Value::Str(s) => Ok(!s.is_empty()),
         Value::Tuple(values) => Ok(!values.is_empty()),
-        Value::Func(_) => Ok(true), // Functions are always truthy
+        Value::Func(_) | Value::FuncOverloads(_) => Ok(true), // Functions are always truthy
     }
 }
 
@@ -192,7 +203,7 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
             return_type,
             body,
         } => {
-            let func_def = FuncDef {
+            let func_def = Arc::new(FuncDef {
                 name: Some(name.clone()),
                 params: params
                     .iter()
@@ -203,10 +214,34 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
                     .collect(),
                 return_type: return_type.clone(),
                 body: body.clone(),
-            };
-            let value = Value::Func(Arc::new(func_def));
-            ctx.set(name.clone(), value.clone());
-            Ok(Some(value))
+            });
+
+            // Check if there's already a function with this name
+            match ctx.get(name) {
+                Some(Value::FuncOverloads(overloads)) => {
+                    // Add to existing overload collection
+                    let mut new_overloads = overloads.as_ref().clone();
+                    new_overloads.add_overload(func_def.clone())?;
+                    let value = Value::FuncOverloads(Arc::new(new_overloads));
+                    ctx.set(name.clone(), value.clone());
+                    Ok(Some(Value::Func(func_def)))
+                }
+                Some(Value::Func(existing)) => {
+                    // Convert single function to overload collection
+                    let mut overloads = FuncOverloads::new(name.clone());
+                    overloads.add_overload(existing.clone())?;
+                    overloads.add_overload(func_def.clone())?;
+                    let value = Value::FuncOverloads(Arc::new(overloads));
+                    ctx.set(name.clone(), value.clone());
+                    Ok(Some(Value::Func(func_def)))
+                }
+                _ => {
+                    // First definition: store as single function (efficient case)
+                    let value = Value::Func(func_def);
+                    ctx.set(name.clone(), value.clone());
+                    Ok(Some(value))
+                }
+            }
         }
         Statement::Return(expr) => {
             let value = match expr {
@@ -237,23 +272,17 @@ fn validate_return_value(
     Ok(value)
 }
 
-/// Call a function with arguments
-fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result<Value> {
+/// Call a function with pre-evaluated arguments
+fn call_function(func_def: &FuncDef, arg_values: &[Value], ctx: &mut Context) -> Result<Value> {
     let func_name = func_def.name.as_deref().unwrap_or("<anonymous>");
 
     // Check argument count
-    if args.len() != func_def.params.len() {
+    if arg_values.len() != func_def.params.len() {
         return Err(EvalError::ArgumentCountMismatch {
             expected: func_def.params.len(),
-            actual: args.len(),
+            actual: arg_values.len(),
             func_name: func_name.to_string(),
         });
-    }
-
-    // Evaluate arguments
-    let mut arg_values = Vec::new();
-    for arg in args {
-        arg_values.push(evaluate(arg, ctx)?);
     }
 
     // Check argument types
@@ -284,7 +313,7 @@ fn call_function(func_def: &FuncDef, args: &[Expr], ctx: &mut Context) -> Result
 
     // Create new scope and bind parameters
     let mut guard = ScopeGuard::new(ctx);
-    for (param, value) in func_def.params.iter().zip(arg_values.into_iter()) {
+    for (param, value) in func_def.params.iter().zip(arg_values.iter().cloned()) {
         guard
             .context()
             .set_typed(param.name.clone(), value, param.type_annotation.clone());

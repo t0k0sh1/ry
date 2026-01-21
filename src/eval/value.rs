@@ -41,6 +41,177 @@ pub struct FuncDef {
     pub body: Block,
 }
 
+/// Function signature for overload resolution
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FuncSignature {
+    pub param_count: usize,
+    pub param_types: Vec<Option<TypeAnnotation>>,
+}
+
+impl FuncSignature {
+    /// Create a signature from a function definition
+    pub fn from_func_def(func_def: &FuncDef) -> Self {
+        FuncSignature {
+            param_count: func_def.params.len(),
+            param_types: func_def
+                .params
+                .iter()
+                .map(|p| p.type_annotation.clone())
+                .collect(),
+        }
+    }
+
+    /// Calculate a match score for the given arguments.
+    /// Returns None if the arguments don't match, or Some(score) if they do.
+    /// Higher scores indicate better matches.
+    pub fn match_score(&self, args: &[Value]) -> Option<u32> {
+        // Check argument count first
+        if args.len() != self.param_count {
+            return None;
+        }
+
+        let mut score = 0u32;
+
+        for (param_type, arg) in self.param_types.iter().zip(args.iter()) {
+            match param_type {
+                Some(TypeAnnotation::Any) => {
+                    // any type accepts anything but with lowest priority
+                    score += 1;
+                }
+                Some(type_ann) => {
+                    // Typed parameter - must match exactly
+                    if type_ann.matches(arg) {
+                        score += 100; // High score for exact type match
+                    } else {
+                        return None; // Type mismatch - no match
+                    }
+                }
+                None => {
+                    // Untyped parameter - accepts anything with medium priority
+                    score += 10;
+                }
+            }
+        }
+
+        // For zero-argument functions, base score is 1
+        if self.param_count == 0 {
+            return Some(1);
+        }
+
+        Some(score)
+    }
+
+    /// Get a string representation of the signature for error messages
+    pub fn to_string_repr(&self) -> String {
+        let param_strs: Vec<String> = self
+            .param_types
+            .iter()
+            .map(|t| {
+                t.as_ref()
+                    .map(|ta| ta.type_name())
+                    .unwrap_or_else(|| "any".to_string())
+            })
+            .collect();
+        format!("({})", param_strs.join(", "))
+    }
+}
+
+/// Collection of overloaded function definitions
+#[derive(Debug, Clone)]
+pub struct FuncOverloads {
+    pub name: String,
+    pub overloads: Vec<Arc<FuncDef>>,
+}
+
+impl FuncOverloads {
+    /// Create a new empty overload collection
+    pub fn new(name: String) -> Self {
+        FuncOverloads {
+            name,
+            overloads: Vec::new(),
+        }
+    }
+
+    /// Add a new overload. Returns error if a duplicate signature exists.
+    pub fn add_overload(&mut self, func_def: Arc<FuncDef>) -> Result<()> {
+        let new_sig = FuncSignature::from_func_def(&func_def);
+
+        // Check for duplicate signatures
+        for existing in &self.overloads {
+            let existing_sig = FuncSignature::from_func_def(existing);
+            if existing_sig == new_sig {
+                return Err(EvalError::DuplicateSignature {
+                    func_name: self.name.clone(),
+                    signature: new_sig.to_string_repr(),
+                });
+            }
+        }
+
+        self.overloads.push(func_def);
+        Ok(())
+    }
+
+    /// Resolve the best matching overload for the given arguments.
+    pub fn resolve(&self, args: &[Value]) -> Result<Arc<FuncDef>> {
+        let mut best_match: Option<(Arc<FuncDef>, u32)> = None;
+        let mut ambiguous_matches: Vec<Arc<FuncDef>> = Vec::new();
+
+        for func_def in &self.overloads {
+            let sig = FuncSignature::from_func_def(func_def);
+            if let Some(score) = sig.match_score(args) {
+                match &best_match {
+                    None => {
+                        best_match = Some((func_def.clone(), score));
+                        ambiguous_matches.clear();
+                        ambiguous_matches.push(func_def.clone());
+                    }
+                    Some((_, best_score)) => {
+                        if score > *best_score {
+                            best_match = Some((func_def.clone(), score));
+                            ambiguous_matches.clear();
+                            ambiguous_matches.push(func_def.clone());
+                        } else if score == *best_score {
+                            ambiguous_matches.push(func_def.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        match best_match {
+            None => {
+                let arg_types: Vec<String> = args.iter().map(|a| a.type_name()).collect();
+                let available: Vec<String> = self
+                    .overloads
+                    .iter()
+                    .map(|f| FuncSignature::from_func_def(f).to_string_repr())
+                    .collect();
+                Err(EvalError::NoMatchingOverload {
+                    func_name: self.name.clone(),
+                    arg_types,
+                    available_signatures: available,
+                })
+            }
+            Some((func_def, _)) => {
+                if ambiguous_matches.len() > 1 {
+                    let arg_types: Vec<String> = args.iter().map(|a| a.type_name()).collect();
+                    let matching: Vec<String> = ambiguous_matches
+                        .iter()
+                        .map(|f| FuncSignature::from_func_def(f).to_string_repr())
+                        .collect();
+                    Err(EvalError::AmbiguousOverload {
+                        func_name: self.name.clone(),
+                        arg_types,
+                        matching_signatures: matching,
+                    })
+                } else {
+                    Ok(func_def)
+                }
+            }
+        }
+    }
+}
+
 impl TypeAnnotation {
     /// Check if a value matches this type annotation
     pub fn matches(&self, value: &Value) -> bool {
@@ -57,6 +228,7 @@ impl TypeAnnotation {
                 types.iter().zip(values.iter()).all(|(t, v)| t.matches(v))
             }
             (TypeAnnotation::Func, Value::Func(_)) => true,
+            (TypeAnnotation::Func, Value::FuncOverloads(_)) => true,
             (
                 TypeAnnotation::FuncSig {
                     params: expected_params,
@@ -180,6 +352,7 @@ pub enum Value {
     Str(String),
     Tuple(Vec<Value>),
     Func(Arc<FuncDef>),
+    FuncOverloads(Arc<FuncOverloads>),
 }
 
 impl PartialEq for Value {
@@ -191,6 +364,7 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Tuple(a), Value::Tuple(b)) => a == b,
             (Value::Func(a), Value::Func(b)) => Arc::ptr_eq(a, b),
+            (Value::FuncOverloads(a), Value::FuncOverloads(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -211,6 +385,13 @@ impl Value {
             Value::Func(func_def) => {
                 let name = func_def.name.as_deref().unwrap_or("<anonymous>");
                 format!("func<{}>", name)
+            }
+            Value::FuncOverloads(overloads) => {
+                format!(
+                    "func<{} ({} overloads)>",
+                    overloads.name,
+                    overloads.overloads.len()
+                )
             }
         }
     }
@@ -237,6 +418,14 @@ impl fmt::Display for Value {
                 let name = func_def.name.as_deref().unwrap_or("<anonymous>");
                 write!(f, "<func {}>", name)
             }
+            Value::FuncOverloads(overloads) => {
+                write!(
+                    f,
+                    "<func {} ({} overloads)>",
+                    overloads.name,
+                    overloads.overloads.len()
+                )
+            }
         }
     }
 }
@@ -250,7 +439,9 @@ impl Value {
             Value::Bool(b) => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
-            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
+            Value::Func(_) | Value::FuncOverloads(_) => {
+                Err(EvalError::UnsupportedTypes("float conversion (function)"))
+            }
         }
     }
 
@@ -262,7 +453,9 @@ impl Value {
             Value::Bool(b) => Ok(if b { 1.0 } else { 0.0 }),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
-            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
+            Value::Func(_) | Value::FuncOverloads(_) => {
+                Err(EvalError::UnsupportedTypes("float conversion (function)"))
+            }
         }
     }
 

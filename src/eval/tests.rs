@@ -1530,3 +1530,254 @@ result = countdown(100)
     execute_test_program(input, &mut ctx).unwrap();
     assert_eq!(ctx.get("result"), Some(&Value::Int(0)));
 }
+
+// ===================
+// Function overloading tests
+// ===================
+
+#[test]
+fn test_overload_by_argument_count() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn greet():
+    return "Hello!"
+
+fn greet(name: str):
+    return "Hello, " + name + "!"
+
+r1 = greet()
+r2 = greet("Alice")
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Str("Hello!".to_string())));
+    assert_eq!(
+        ctx.get("r2"),
+        Some(&Value::Str("Hello, Alice!".to_string()))
+    );
+}
+
+#[test]
+fn test_overload_by_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(x: int) -> int:
+    return x * 2
+
+fn double(x: float) -> float:
+    return x * 2.0
+
+fn double(s: str) -> str:
+    return s + s
+
+r1 = double(5)
+r2 = double(2.5)
+r3 = double("ab")
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Int(10)));
+    assert_eq!(ctx.get("r2"), Some(&Value::Float(5.0)));
+    assert_eq!(ctx.get("r3"), Some(&Value::Str("abab".to_string())));
+}
+
+#[test]
+fn test_overload_mixed_count_and_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn process(x: int) -> int:
+    return x + 1
+
+fn process(x: int, y: int) -> int:
+    return x + y
+
+fn process(x: str) -> str:
+    return "processed: " + x
+
+r1 = process(5)
+r2 = process(3, 4)
+r3 = process("test")
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Int(6)));
+    assert_eq!(ctx.get("r2"), Some(&Value::Int(7)));
+    assert_eq!(
+        ctx.get("r3"),
+        Some(&Value::Str("processed: test".to_string()))
+    );
+}
+
+#[test]
+fn test_overload_no_matching_signature() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+fn add(a: float, b: float) -> float:
+    return a + b
+
+result = add("x", "y")
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("No matching overload"));
+}
+
+#[test]
+fn test_overload_duplicate_signature_error() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn foo(x: int) -> int:
+    return x
+
+fn foo(y: int) -> int:
+    return y * 2
+"#;
+    let result = execute_test_program(input, &mut ctx);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Duplicate function signature"));
+}
+
+#[test]
+fn test_overload_untyped_vs_typed() {
+    // Typed parameter should take precedence over untyped
+    let mut ctx = Context::new();
+    let input = r#"
+fn process(x):
+    return "untyped"
+
+fn process(x: int) -> str:
+    return "int"
+
+r1 = process(5)
+r2 = process("text")
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    // Typed (int) should match for int argument
+    assert_eq!(ctx.get("r1"), Some(&Value::Str("int".to_string())));
+    // Untyped should match for string argument (no typed match)
+    assert_eq!(ctx.get("r2"), Some(&Value::Str("untyped".to_string())));
+}
+
+#[test]
+fn test_overload_three_arities() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn sum() -> int:
+    return 0
+
+fn sum(a: int) -> int:
+    return a
+
+fn sum(a: int, b: int) -> int:
+    return a + b
+
+fn sum(a: int, b: int, c: int) -> int:
+    return a + b + c
+
+r0 = sum()
+r1 = sum(1)
+r2 = sum(1, 2)
+r3 = sum(1, 2, 3)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r0"), Some(&Value::Int(0)));
+    assert_eq!(ctx.get("r1"), Some(&Value::Int(1)));
+    assert_eq!(ctx.get("r2"), Some(&Value::Int(3)));
+    assert_eq!(ctx.get("r3"), Some(&Value::Int(6)));
+}
+
+#[test]
+fn test_overload_with_recursion() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+fn factorial(n: int, acc: int) -> int:
+    if n <= 1:
+        return acc
+    return factorial(n - 1, acc * n)
+
+r1 = factorial(5)
+r2 = factorial(5, 1)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Int(120)));
+    assert_eq!(ctx.get("r2"), Some(&Value::Int(120)));
+}
+
+#[test]
+fn test_overload_function_as_value() {
+    // When assigning an overloaded function to a variable,
+    // the variable holds the overload collection
+    let mut ctx = Context::new();
+    let input = r#"
+fn double(x: int) -> int:
+    return x * 2
+
+fn double(x: str) -> str:
+    return x + x
+
+my_double = double
+r1 = my_double(5)
+r2 = my_double("ab")
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Int(10)));
+    assert_eq!(ctx.get("r2"), Some(&Value::Str("abab".to_string())));
+}
+
+#[test]
+fn test_overload_bool_type() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn to_string(x: int) -> str:
+    return "int"
+
+fn to_string(x: bool) -> str:
+    return "bool"
+
+fn to_string(x: float) -> str:
+    return "float"
+
+r1 = to_string(42)
+r2 = to_string(true)
+r3 = to_string(3.14)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("r1"), Some(&Value::Str("int".to_string())));
+    assert_eq!(ctx.get("r2"), Some(&Value::Str("bool".to_string())));
+    assert_eq!(ctx.get("r3"), Some(&Value::Str("float".to_string())));
+}
+
+#[test]
+fn test_single_function_still_works() {
+    // Ensure single function (not overloaded) still works
+    let mut ctx = Context::new();
+    let input = r#"
+fn add(a: int, b: int) -> int:
+    return a + b
+
+result = add(3, 4)
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    assert_eq!(ctx.get("result"), Some(&Value::Int(7)));
+}
+
+#[test]
+fn test_overload_type_name() {
+    let mut ctx = Context::new();
+    let input = r#"
+fn f(x: int):
+    return x
+
+fn f(x: str):
+    return x
+"#;
+    execute_test_program(input, &mut ctx).unwrap();
+    // The variable f should hold an overload collection
+    let f_value = ctx.get("f").unwrap();
+    assert!(f_value.type_name().contains("overloads"));
+}
