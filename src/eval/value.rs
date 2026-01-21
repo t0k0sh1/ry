@@ -168,6 +168,18 @@ impl FuncOverloads {
         }
     }
 
+    /// Create a new overload collection with a single function
+    pub fn single(func_def: Arc<FuncDef>) -> Self {
+        let name = func_def
+            .name
+            .clone()
+            .unwrap_or_else(|| "<anonymous>".to_string());
+        FuncOverloads {
+            name,
+            overloads: vec![func_def],
+        }
+    }
+
     /// Add a new overload. Returns error if a duplicate signature exists.
     pub fn add_overload(&mut self, func_def: Arc<FuncDef>) -> Result<()> {
         let new_sig = FuncSignature::from_func_def(&func_def);
@@ -264,52 +276,55 @@ impl TypeAnnotation {
                 types.iter().zip(values.iter()).all(|(t, v)| t.matches(v))
             }
             (TypeAnnotation::Func, Value::Func(_)) => true,
-            (TypeAnnotation::Func, Value::FuncOverloads(_)) => true,
             (
                 TypeAnnotation::FuncSig {
                     params: expected_params,
                     return_type: expected_return,
                 },
-                Value::Func(func_def),
+                Value::Func(overloads),
             ) => {
-                // Check parameter count
-                if expected_params.len() != func_def.params.len() {
-                    return false;
-                }
-
-                // Check parameter types
-                for (expected_type, param) in expected_params.iter().zip(func_def.params.iter()) {
-                    // If expected type is Any, accept any parameter type
-                    if *expected_type == TypeAnnotation::Any {
-                        continue;
+                // For FuncSig matching, check the first overload (single function case)
+                // If there are multiple overloads, we check if any of them match
+                overloads.overloads.iter().any(|func_def| {
+                    // Check parameter count
+                    if expected_params.len() != func_def.params.len() {
+                        return false;
                     }
-                    // If parameter has type annotation, check it matches expected
-                    match &param.type_annotation {
-                        Some(actual_type) => {
-                            if !Self::types_compatible(expected_type, actual_type) {
-                                return false;
+
+                    // Check parameter types
+                    for (expected_type, param) in expected_params.iter().zip(func_def.params.iter())
+                    {
+                        // If expected type is Any, accept any parameter type
+                        if *expected_type == TypeAnnotation::Any {
+                            continue;
+                        }
+                        // If parameter has type annotation, check it matches expected
+                        match &param.type_annotation {
+                            Some(actual_type) => {
+                                if !Self::types_compatible(expected_type, actual_type) {
+                                    return false;
+                                }
+                            }
+                            // If parameter has no type annotation, it can accept any type
+                            None => continue,
+                        }
+                    }
+
+                    // Check return type
+                    match (expected_return, &func_def.return_type) {
+                        (Some(expected), Some(actual)) => {
+                            if **expected == TypeAnnotation::Any {
+                                true
+                            } else {
+                                Self::types_compatible(expected, actual)
                             }
                         }
-                        // If parameter has no type annotation, it can accept any type (compatible with any expected)
-                        None => continue,
+                        // If expected return type is None, accept any
+                        (None, _) => true,
+                        // If function has no return type annotation, it can match any expected
+                        (Some(_), None) => true,
                     }
-                }
-
-                // Check return type
-                match (expected_return, &func_def.return_type) {
-                    (Some(expected), Some(actual)) => {
-                        if **expected == TypeAnnotation::Any {
-                            true
-                        } else {
-                            Self::types_compatible(expected, actual)
-                        }
-                    }
-                    // If expected return type is None (no return type specified in signature), accept any
-                    (None, _) => true,
-                    // If function has no return type annotation, it can match any expected return type
-                    // (untyped functions are compatible with any signature)
-                    (Some(_), None) => true,
-                }
+                })
             }
             // Literal type matching
             (TypeAnnotation::LiteralInt(expected), Value::Int(actual)) => expected == actual,
@@ -418,8 +433,7 @@ pub enum Value {
     Bool(bool),
     Str(String),
     Tuple(Vec<Value>),
-    Func(Arc<FuncDef>),
-    FuncOverloads(Arc<FuncOverloads>),
+    Func(Arc<FuncOverloads>),
 }
 
 impl PartialEq for Value {
@@ -431,7 +445,6 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Tuple(a), Value::Tuple(b)) => a == b,
             (Value::Func(a), Value::Func(b)) => Arc::ptr_eq(a, b),
-            (Value::FuncOverloads(a), Value::FuncOverloads(b)) => Arc::ptr_eq(a, b),
             _ => false,
         }
     }
@@ -449,16 +462,13 @@ impl Value {
                 let inner: Vec<String> = values.iter().map(|v| v.type_name()).collect();
                 format!("({})", inner.join(", "))
             }
-            Value::Func(func_def) => {
-                let name = func_def.name.as_deref().unwrap_or("<anonymous>");
-                format!("func<{}>", name)
-            }
-            Value::FuncOverloads(overloads) => {
-                format!(
-                    "func<{} ({} overloads)>",
-                    overloads.name,
-                    overloads.overloads.len()
-                )
+            Value::Func(overloads) => {
+                let count = overloads.overloads.len();
+                if count == 1 {
+                    format!("func<{}>", overloads.name)
+                } else {
+                    format!("func<{} ({} overloads)>", overloads.name, count)
+                }
             }
         }
     }
@@ -481,17 +491,13 @@ impl fmt::Display for Value {
                 let inner: Vec<String> = values.iter().map(|v| format!("{}", v)).collect();
                 write!(f, "({})", inner.join(", "))
             }
-            Value::Func(func_def) => {
-                let name = func_def.name.as_deref().unwrap_or("<anonymous>");
-                write!(f, "<func {}>", name)
-            }
-            Value::FuncOverloads(overloads) => {
-                write!(
-                    f,
-                    "<func {} ({} overloads)>",
-                    overloads.name,
-                    overloads.overloads.len()
-                )
+            Value::Func(overloads) => {
+                let count = overloads.overloads.len();
+                if count == 1 {
+                    write!(f, "<func {}>", overloads.name)
+                } else {
+                    write!(f, "<func {} ({} overloads)>", overloads.name, count)
+                }
             }
         }
     }
@@ -506,9 +512,7 @@ impl Value {
             Value::Bool(b) => Ok(Value::Float(if b { 1.0 } else { 0.0 })),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
-            Value::Func(_) | Value::FuncOverloads(_) => {
-                Err(EvalError::UnsupportedTypes("float conversion (function)"))
-            }
+            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
         }
     }
 
@@ -520,9 +524,7 @@ impl Value {
             Value::Bool(b) => Ok(if b { 1.0 } else { 0.0 }),
             Value::Str(_) => Err(EvalError::UnsupportedTypes("float conversion (string)")),
             Value::Tuple(_) => Err(EvalError::UnsupportedTypes("float conversion (tuple)")),
-            Value::Func(_) | Value::FuncOverloads(_) => {
-                Err(EvalError::UnsupportedTypes("float conversion (function)"))
-            }
+            Value::Func(_) => Err(EvalError::UnsupportedTypes("float conversion (function)")),
         }
     }
 
