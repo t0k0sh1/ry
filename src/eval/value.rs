@@ -23,6 +23,15 @@ pub enum TypeAnnotation {
         params: Vec<TypeAnnotation>,
         return_type: Option<Box<TypeAnnotation>>,
     },
+    // Literal types (for union type support)
+    /// Literal integer type (e.g., 1, 2, 3)
+    LiteralInt(i64),
+    /// Literal boolean type (e.g., true, false)
+    LiteralBool(bool),
+    /// Literal string type (e.g., "yes", "no")
+    LiteralStr(String),
+    /// Union type (e.g., int | float, 1 | 2 | 3)
+    Union(Vec<TypeAnnotation>),
 }
 
 /// Function parameter definition
@@ -64,6 +73,12 @@ impl FuncSignature {
     /// Calculate a match score for the given arguments.
     /// Returns None if the arguments don't match, or Some(score) if they do.
     /// Higher scores indicate better matches.
+    /// Score priorities:
+    /// - Literal type exact match: 1000 points (highest priority)
+    /// - Basic type match: 100 points
+    /// - Union type match: highest score among union members
+    /// - Untyped parameter: 10 points
+    /// - Any type: 1 point (lowest priority)
     pub fn match_score(&self, args: &[Value]) -> Option<u32> {
         // Check argument count first
         if args.len() != self.param_count {
@@ -79,9 +94,9 @@ impl FuncSignature {
                     score += 1;
                 }
                 Some(type_ann) => {
-                    // Typed parameter - must match exactly
+                    // Typed parameter - must match
                     if type_ann.matches(arg) {
-                        score += 100; // High score for exact type match
+                        score += Self::type_match_score(type_ann, arg);
                     } else {
                         return None; // Type mismatch - no match
                     }
@@ -99,6 +114,27 @@ impl FuncSignature {
         }
 
         Some(score)
+    }
+
+    /// Calculate the score for a specific type match
+    fn type_match_score(type_ann: &TypeAnnotation, arg: &Value) -> u32 {
+        match type_ann {
+            // Literal types get highest priority
+            TypeAnnotation::LiteralInt(_)
+            | TypeAnnotation::LiteralBool(_)
+            | TypeAnnotation::LiteralStr(_) => 1000,
+            // Union types get the highest score among their members
+            TypeAnnotation::Union(types) => types
+                .iter()
+                .filter(|t| t.matches(arg))
+                .map(|t| Self::type_match_score(t, arg))
+                .max()
+                .unwrap_or(100),
+            // Any type gets lowest priority
+            TypeAnnotation::Any => 1,
+            // Basic types get standard priority
+            _ => 100,
+        }
     }
 
     /// Get a string representation of the signature for error messages
@@ -275,6 +311,12 @@ impl TypeAnnotation {
                     (Some(_), None) => true,
                 }
             }
+            // Literal type matching
+            (TypeAnnotation::LiteralInt(expected), Value::Int(actual)) => expected == actual,
+            (TypeAnnotation::LiteralBool(expected), Value::Bool(actual)) => expected == actual,
+            (TypeAnnotation::LiteralStr(expected), Value::Str(actual)) => expected == actual,
+            // Union type matching
+            (TypeAnnotation::Union(types), value) => types.iter().any(|t| t.matches(value)),
             _ => false,
         }
     }
@@ -312,6 +354,23 @@ impl TypeAnnotation {
                     (Some(e), None) => **e == TypeAnnotation::Any,
                 }
             }
+            // Union type compatibility
+            // expected is union: actual must match at least one of the expected types
+            (TypeAnnotation::Union(expected_types), actual) => expected_types
+                .iter()
+                .any(|et| Self::types_compatible(et, actual)),
+            // actual is union: all actual types must be compatible with expected
+            (expected, TypeAnnotation::Union(actual_types)) => actual_types
+                .iter()
+                .all(|at| Self::types_compatible(expected, at)),
+            // Literal types are compatible with their base types
+            (TypeAnnotation::Int, TypeAnnotation::LiteralInt(_)) => true,
+            (TypeAnnotation::Bool, TypeAnnotation::LiteralBool(_)) => true,
+            (TypeAnnotation::Str, TypeAnnotation::LiteralStr(_)) => true,
+            // Literal type comparisons
+            (TypeAnnotation::LiteralInt(a), TypeAnnotation::LiteralInt(b)) => a == b,
+            (TypeAnnotation::LiteralBool(a), TypeAnnotation::LiteralBool(b)) => a == b,
+            (TypeAnnotation::LiteralStr(a), TypeAnnotation::LiteralStr(b)) => a == b,
             _ => expected == actual,
         }
     }
@@ -339,6 +398,14 @@ impl TypeAnnotation {
                     None => format!("func({})", params_str.join(", ")),
                 }
             }
+            TypeAnnotation::LiteralInt(n) => n.to_string(),
+            TypeAnnotation::LiteralBool(b) => b.to_string(),
+            TypeAnnotation::LiteralStr(s) => format!("\"{}\"", s),
+            TypeAnnotation::Union(types) => types
+                .iter()
+                .map(|t| t.type_name())
+                .collect::<Vec<_>>()
+                .join(" | "),
         }
     }
 }

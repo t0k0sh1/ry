@@ -299,7 +299,36 @@ impl<'a> ProgramParser<'a> {
         self.parse_assignment()
     }
 
+    /// Parse a type annotation, including union types (e.g., int | float)
     fn parse_type_annotation(&mut self) -> Result<Option<TypeAnnotation>, String> {
+        let first = self.parse_type_primary()?;
+        match first {
+            None => Ok(None),
+            Some(first_type) => {
+                if let Some(Token::Pipe) = self.peek() {
+                    let mut types = vec![first_type];
+                    while let Some(Token::Pipe) = self.peek() {
+                        self.advance();
+                        match self.parse_type_primary()? {
+                            Some(t) => types.push(t),
+                            None => return Err("expected type after '|'".to_string()),
+                        }
+                    }
+                    let normalized = Self::normalize_union(types);
+                    if normalized.len() == 1 {
+                        Ok(Some(normalized.into_iter().next().unwrap()))
+                    } else {
+                        Ok(Some(TypeAnnotation::Union(normalized)))
+                    }
+                } else {
+                    Ok(Some(first_type))
+                }
+            }
+        }
+    }
+
+    /// Parse a primary type (basic type, literal type, tuple type, or function signature)
+    fn parse_type_primary(&mut self) -> Result<Option<TypeAnnotation>, String> {
         match self.peek() {
             Some(Token::IntType) => {
                 self.advance();
@@ -372,6 +401,27 @@ impl<'a> ProgramParser<'a> {
                     Ok(Some(TypeAnnotation::Func))
                 }
             }
+            // Literal type: integer
+            Some(Token::Number(Value::Int(n))) => {
+                let n = *n;
+                self.advance();
+                Ok(Some(TypeAnnotation::LiteralInt(n)))
+            }
+            // Literal type: boolean
+            Some(Token::True) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::LiteralBool(true)))
+            }
+            Some(Token::False) => {
+                self.advance();
+                Ok(Some(TypeAnnotation::LiteralBool(false)))
+            }
+            // Literal type: string
+            Some(Token::StringLiteral(s)) => {
+                let s = s.clone();
+                self.advance();
+                Ok(Some(TypeAnnotation::LiteralStr(s)))
+            }
             Some(Token::LParen) => {
                 // Tuple type annotation: (int, float, ...)
                 self.advance();
@@ -408,6 +458,28 @@ impl<'a> ProgramParser<'a> {
             }
             _ => Ok(None),
         }
+    }
+
+    /// Normalize a union type by flattening nested unions and removing duplicates
+    fn normalize_union(types: Vec<TypeAnnotation>) -> Vec<TypeAnnotation> {
+        let mut result = Vec::new();
+        for t in types {
+            match t {
+                TypeAnnotation::Union(inner) => {
+                    for inner_t in inner {
+                        if !result.contains(&inner_t) {
+                            result.push(inner_t);
+                        }
+                    }
+                }
+                _ => {
+                    if !result.contains(&t) {
+                        result.push(t);
+                    }
+                }
+            }
+        }
+        result
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, String> {
@@ -450,7 +522,7 @@ impl<'a> ProgramParser<'a> {
         // Check for type annotation pattern: ident: type = value
         if let Expr::Variable(name) = &expr {
             if let Some(Token::Colon) = self.peek() {
-                // Check if next token is a type keyword before consuming ':'
+                // Check if next token is a type keyword or literal type before consuming ':'
                 let is_type_annotation = self.tokens.get(self.position + 1).is_some_and(|t| {
                     matches!(
                         t,
@@ -461,6 +533,11 @@ impl<'a> ProgramParser<'a> {
                             | Token::AnyType
                             | Token::FuncType
                             | Token::LParen
+                            // Literal types for union type support
+                            | Token::Number(Value::Int(_))
+                            | Token::True
+                            | Token::False
+                            | Token::StringLiteral(_)
                     )
                 });
                 if is_type_annotation {
@@ -806,8 +883,9 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
             },
         );
 
-        // Type annotation parser (recursive to support tuple types)
+        // Type annotation parser (recursive to support tuple types and union types)
         let type_annot = recursive(|type_annot| {
+            // Basic type keywords
             let simple_type = choice((
                 text::keyword("int").to(TypeAnnotation::Int),
                 text::keyword("float").to(TypeAnnotation::Float),
@@ -816,10 +894,35 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
                 text::keyword("any").to(TypeAnnotation::Any),
             ));
 
+            // Literal boolean types
+            let literal_bool = choice((
+                text::keyword("true").to(TypeAnnotation::LiteralBool(true)),
+                text::keyword("false").to(TypeAnnotation::LiteralBool(false)),
+            ));
+
+            // Literal integer type
+            let literal_int =
+                text::int(10).map(|s: &str| TypeAnnotation::LiteralInt(s.parse().unwrap()));
+
+            // Literal string type
+            let escape = just('\\').ignore_then(choice((
+                just('n').to('\n'),
+                just('t').to('\t'),
+                just('r').to('\r'),
+                just('\\').to('\\'),
+                just('"').to('"'),
+            )));
+            let string_char = none_of("\\\"").or(escape);
+            let literal_str = just('"')
+                .ignore_then(string_char.repeated().collect::<String>())
+                .then_ignore(just('"'))
+                .map(TypeAnnotation::LiteralStr);
+
             // Tuple type: (int, float, ...)
             let tuple_type = just('(')
                 .ignore_then(
                     type_annot
+                        .clone()
                         .separated_by(just(',').padded())
                         .at_least(2)
                         .collect::<Vec<_>>(),
@@ -827,7 +930,51 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Expr, extra::Err<Rich<'src, ch
                 .then_ignore(just(')'))
                 .map(TypeAnnotation::Tuple);
 
-            choice((tuple_type, simple_type))
+            // Primary type (basic, literal, or tuple)
+            let type_primary = choice((
+                tuple_type,
+                simple_type,
+                literal_bool,
+                literal_str,
+                literal_int,
+            ))
+            .padded();
+
+            // Union type: type | type | ...
+            type_primary
+                .clone()
+                .separated_by(just('|').padded())
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .map(|types| {
+                    if types.len() == 1 {
+                        types.into_iter().next().unwrap()
+                    } else {
+                        // Normalize: flatten nested unions and remove duplicates
+                        let mut result = Vec::new();
+                        for t in types {
+                            match t {
+                                TypeAnnotation::Union(inner) => {
+                                    for inner_t in inner {
+                                        if !result.contains(&inner_t) {
+                                            result.push(inner_t);
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    if !result.contains(&t) {
+                                        result.push(t);
+                                    }
+                                }
+                            }
+                        }
+                        if result.len() == 1 {
+                            result.into_iter().next().unwrap()
+                        } else {
+                            TypeAnnotation::Union(result)
+                        }
+                    }
+                })
         })
         .boxed();
 
