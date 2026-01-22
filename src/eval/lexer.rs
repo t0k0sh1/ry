@@ -656,6 +656,136 @@ mod tests {
     }
 
     #[test]
+    fn test_scientific_notation() {
+        let mut lexer = Lexer::new("1e10 2.5e-3 1E+6");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Float(1e10)),
+                Token::Number(Value::Float(2.5e-3)),
+                Token::Number(Value::Float(1e6)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_scientific_notation_error() {
+        let mut lexer = Lexer::new("1e");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected digit after exponent"));
+    }
+
+    #[test]
+    fn test_hex_number() {
+        let mut lexer = Lexer::new("0xFF 0x10 0XAB");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(255)),
+                Token::Number(Value::Int(16)),
+                Token::Number(Value::Int(171)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hex_number_lowercase() {
+        let mut lexer = Lexer::new("0xabcdef");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Number(Value::Int(0xabcdef)), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_hex_number_error() {
+        let mut lexer = Lexer::new("0x");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected hex digit after 0x"));
+    }
+
+    #[test]
+    fn test_octal_number() {
+        let mut lexer = Lexer::new("0o77 0o10 0O755");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(63)),
+                Token::Number(Value::Int(8)),
+                Token::Number(Value::Int(493)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_octal_number_error() {
+        let mut lexer = Lexer::new("0o");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected octal digit after 0o"));
+    }
+
+    #[test]
+    fn test_binary_number() {
+        let mut lexer = Lexer::new("0b1010 0b0 0B1111");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(10)),
+                Token::Number(Value::Int(0)),
+                Token::Number(Value::Int(15)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_binary_number_error() {
+        let mut lexer = Lexer::new("0b");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected binary digit after 0b"));
+    }
+
+    #[test]
+    fn test_zero_literal() {
+        // Ensure plain 0 still works
+        let mut lexer = Lexer::new("0");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Number(Value::Int(0)), Token::Eof,]);
+    }
+
+    #[test]
+    fn test_zero_with_decimal() {
+        // Ensure 0.5 still works
+        let mut lexer = Lexer::new("0.5");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Number(Value::Float(0.5)), Token::Eof,]);
+    }
+
+    #[test]
     fn test_string_literal() {
         let mut lexer = Lexer::new("\"hello\"");
         let tokens = lexer.tokenize().unwrap();
