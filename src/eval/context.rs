@@ -62,6 +62,13 @@ impl Context {
         }
     }
 
+    /// Create a new context with built-in functions registered
+    pub fn with_builtins() -> Self {
+        let mut ctx = Self::new();
+        super::builtins::register_builtins(&mut ctx);
+        ctx
+    }
+
     /// Push a new scope onto the stack
     pub fn push_scope(&mut self) {
         self.scopes.push(Scope::default());

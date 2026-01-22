@@ -5,6 +5,39 @@ use std::sync::Arc;
 use super::ast::Block;
 use super::error::{EvalError, Result};
 
+/// Native function pointer wrapper for built-in functions
+#[derive(Clone, Copy)]
+pub struct NativeFunc(pub fn(&[Value]) -> Result<Value>);
+
+impl NativeFunc {
+    /// Call the native function with the given arguments
+    pub fn call(&self, args: &[Value]) -> Result<Value> {
+        (self.0)(args)
+    }
+}
+
+impl fmt::Debug for NativeFunc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<native function>")
+    }
+}
+
+impl PartialEq for NativeFunc {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare function pointers
+        std::ptr::fn_addr_eq(self.0, other.0)
+    }
+}
+
+/// Function body - either AST-based or native implementation
+#[derive(Debug, Clone)]
+pub enum FuncBody {
+    /// User-defined function with AST block
+    Block(Block),
+    /// Native (built-in) function
+    Native(NativeFunc),
+}
+
 /// Maximum number of elements allowed in a tuple
 pub const MAX_TUPLE_ELEMENTS: usize = 1024;
 
@@ -47,7 +80,39 @@ pub struct FuncDef {
     pub name: Option<String>,
     pub params: Vec<FuncParam>,
     pub return_type: Option<TypeAnnotation>,
-    pub body: Block,
+    pub body: FuncBody,
+}
+
+impl FuncDef {
+    /// Create a user-defined function with AST block body
+    pub fn user_defined(
+        name: Option<String>,
+        params: Vec<FuncParam>,
+        return_type: Option<TypeAnnotation>,
+        body: Block,
+    ) -> Self {
+        FuncDef {
+            name,
+            params,
+            return_type,
+            body: FuncBody::Block(body),
+        }
+    }
+
+    /// Create a native (built-in) function
+    pub fn native(
+        name: String,
+        params: Vec<FuncParam>,
+        return_type: Option<TypeAnnotation>,
+        func: fn(&[Value]) -> Result<Value>,
+    ) -> Self {
+        FuncDef {
+            name: Some(name),
+            params,
+            return_type,
+            body: FuncBody::Native(NativeFunc(func)),
+        }
+    }
 }
 
 /// Function signature for overload resolution

@@ -864,6 +864,19 @@ impl<'a> ProgramParser<'a> {
                 // Function calls are handled by parse_postfix()
                 Ok(Expr::Variable(name))
             }
+            // Type keywords can also be used as identifiers (for built-in functions)
+            Some(Token::IntType) => {
+                self.advance();
+                Ok(Expr::Variable("int".to_string()))
+            }
+            Some(Token::FloatType) => {
+                self.advance();
+                Ok(Expr::Variable("float".to_string()))
+            }
+            Some(Token::StrType) => {
+                self.advance();
+                Ok(Expr::Variable("str".to_string()))
+            }
             Some(Token::LParen) => {
                 self.advance();
                 let first_expr = self.parse_expression()?;

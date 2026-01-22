@@ -91,7 +91,7 @@ pub fn run_repl() {
     let mut handle = stdin.lock();
 
     // Create context for variable persistence across REPL lines
-    let mut ctx = Context::new();
+    let mut ctx = Context::with_builtins();
     let mut buffer = String::new();
     let mut in_multiline = false;
 

@@ -22,7 +22,7 @@ pub fn run_file(path: &str) -> Result<(), String> {
     validate_ry_file(path)?;
     let content = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
-    let mut ctx = Context::new();
+    let mut ctx = Context::with_builtins();
     repl::execute_input(&content, &mut ctx, true)?;
     Ok(())
 }
