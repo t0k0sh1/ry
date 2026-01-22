@@ -1959,6 +1959,65 @@ fn test_not_not() {
     );
 }
 
+// Unary minus tests
+#[test]
+fn test_unary_minus_integer() {
+    assert_eq!(evaluate_expression("-5").unwrap(), Value::Int(-5));
+}
+
+#[test]
+fn test_unary_minus_float() {
+    assert_eq!(evaluate_expression("-5.5").unwrap(), Value::Float(-5.5));
+}
+
+#[test]
+fn test_unary_minus_in_expression() {
+    // 2 * -3 = -6
+    assert_eq!(evaluate_expression("2 * -3").unwrap(), Value::Int(-6));
+}
+
+#[test]
+fn test_unary_minus_double_negation() {
+    // --5 = 5
+    assert_eq!(evaluate_expression("--5").unwrap(), Value::Int(5));
+}
+
+#[test]
+fn test_unary_minus_precedence_with_power() {
+    // -2 ** 3 should be -(2 ** 3) = -8, not (-2) ** 3 = -8
+    // (Both happen to equal -8, so test with -2 ** 2 instead)
+    // -2 ** 2 = -(2 ** 2) = -4, not (-2) ** 2 = 4
+    // Note: ** returns Float, so we check for Float(-4.0)
+    assert_eq!(evaluate_expression("-2 ** 2").unwrap(), Value::Float(-4.0));
+}
+
+#[test]
+fn test_unary_minus_i64_min_overflow() {
+    // Negating i64::MIN should fall back to float since -i64::MIN overflows
+    // Note: We can't write i64::MIN as a literal because the lexer can't parse
+    // 9223372036854775808 as i64 (it's larger than i64::MAX).
+    // Instead, we construct i64::MIN via arithmetic and test negation via context.
+    let mut ctx = Context::new();
+    ctx.set("x".to_string(), Value::Int(i64::MIN));
+    let result = evaluate_expression_with_context("-x", &mut ctx).unwrap();
+    // Since -i64::MIN overflows, it should become a float
+    match result {
+        Value::Float(f) => {
+            // -(-9223372036854775808) = 9223372036854775808.0
+            assert!((f - 9223372036854775808.0).abs() < 1e10);
+        }
+        _ => panic!("Expected Float for negation of i64::MIN, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_unary_minus_type_error() {
+    // Negating a boolean should produce a type error
+    let result = evaluate_expression("-true");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("cannot negate"));
+}
+
 // Complex expressions
 #[test]
 fn test_complex_logical_expression() {
