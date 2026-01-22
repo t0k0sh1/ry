@@ -103,22 +103,10 @@ impl<'a> ProgramParser<'a> {
                     | Some(Token::GreaterEqual)
                     | Some(Token::And)
                     | Some(Token::Or) => self.parse_expression_statement(),
-                    // Minus is ambiguous: could be binary (x - 5) or unary in command (add -5)
-                    // Check the token after minus to determine
-                    Some(Token::Minus) => {
-                        // Look at position + 2 (token after minus)
-                        match self.tokens.get(self.position + 2) {
-                            // If minus is followed by a value, treat as command syntax
-                            Some(Token::Number(_))
-                            | Some(Token::Ident(_))
-                            | Some(Token::LParen)
-                            | Some(Token::True)
-                            | Some(Token::False)
-                            | Some(Token::StringLiteral(_)) => self.parse_command_call(),
-                            // Otherwise treat as binary operator
-                            _ => self.parse_expression_statement(),
-                        }
-                    }
+                    // Minus after identifier is always treated as binary subtraction
+                    // e.g., x - y → subtract, a - 5 → subtract
+                    // To pass negative numbers in command syntax, use parentheses: add (-5), 10
+                    Some(Token::Minus) => self.parse_expression_statement(),
                     // End of statement - just a variable expression
                     Some(Token::Newline) | Some(Token::Eof) | Some(Token::Dedent) | None => {
                         self.parse_expression_statement()
@@ -1475,9 +1463,10 @@ mod tests {
     }
 
     #[test]
-    fn test_command_negative_arg() {
-        // add -5, 10 -> add(-5, 10)
-        let program = parse("add -5, 10").unwrap();
+    fn test_negative_arg_requires_normal_call_syntax() {
+        // For negative number arguments, use normal function call syntax: add(-5, 10)
+        // Command syntax "add -5, 10" would be parsed as binary subtraction "add - 5, 10"
+        let program = parse("add(-5, 10)").unwrap();
         assert_eq!(program.statements.len(), 1);
         match &program.statements[0] {
             Statement::Expression(Expr::FuncCall { callee, args }) => {
@@ -1533,6 +1522,36 @@ mod tests {
                 assert_eq!(name, "x");
             }
             _ => panic!("Expected variable expression"),
+        }
+    }
+
+    #[test]
+    fn test_binary_subtraction_not_command() {
+        // x - y should be parsed as binary subtraction, not as command syntax x(-y)
+        let program = parse("x - y").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::BinaryOp { op, left, right }) => {
+                assert!(matches!(op, BinaryOp::Subtract));
+                assert!(matches!(left.as_ref(), Expr::Variable(name) if name == "x"));
+                assert!(matches!(right.as_ref(), Expr::Variable(name) if name == "y"));
+            }
+            _ => panic!("Expected binary subtraction expression"),
+        }
+    }
+
+    #[test]
+    fn test_binary_subtraction_with_numbers_not_command() {
+        // a - 5 should be parsed as binary subtraction, not as command syntax
+        let program = parse("a - 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::BinaryOp { op, left, right }) => {
+                assert!(matches!(op, BinaryOp::Subtract));
+                assert!(matches!(left.as_ref(), Expr::Variable(name) if name == "a"));
+                assert!(matches!(right.as_ref(), Expr::Number(Value::Int(5))));
+            }
+            _ => panic!("Expected binary subtraction expression"),
         }
     }
 }
