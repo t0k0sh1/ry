@@ -695,7 +695,8 @@ impl<'a> ProgramParser<'a> {
             Some(Token::Minus) => {
                 // Unary minus
                 self.advance();
-                let expr = self.parse_power()?; // Higher precedence than power
+                // Parse power so that `**` has higher precedence than unary minus
+                let expr = self.parse_power()?;
                 Ok(Expr::UnaryOp {
                     op: UnaryOp::Neg,
                     operand: Box::new(expr),
