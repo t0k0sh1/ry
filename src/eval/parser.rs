@@ -26,6 +26,11 @@ impl<'a> ProgramParser<'a> {
         self.tokens.get(self.position)
     }
 
+    /// Peek at the next token (one position ahead of current)
+    fn peek_next(&self) -> Option<&Token> {
+        self.tokens.get(self.position + 1)
+    }
+
     fn advance(&mut self) -> Option<&Token> {
         let token = self.tokens.get(self.position);
         if token.is_some() {
@@ -76,15 +81,108 @@ impl<'a> ProgramParser<'a> {
             Some(Token::While) => self.parse_while_statement(),
             Some(Token::Fn) => self.parse_function_def(),
             Some(Token::Return) => self.parse_return_statement(),
-            _ => {
-                let expr = self.parse_expression()?;
-                // Consume optional newline after expression
-                if let Some(Token::Newline) = self.peek() {
-                    self.advance();
+            Some(Token::Ident(_)) => {
+                // Check if this is Command Syntax: identifier followed by value
+                // Not command syntax if next token is: =, :, (, ., or binary operators
+                match self.peek_next() {
+                    // Normal expression: assignment, type annotation, function call, method call
+                    Some(Token::Equal) | Some(Token::Colon) | Some(Token::LParen)
+                    | Some(Token::Dot) | Some(Token::Comma) => self.parse_expression_statement(),
+                    // Binary operators (except Minus which could be unary) - normal expression
+                    Some(Token::Plus)
+                    | Some(Token::Star)
+                    | Some(Token::Slash)
+                    | Some(Token::Percent)
+                    | Some(Token::StarStar)
+                    | Some(Token::SlashSlash)
+                    | Some(Token::EqualEqual)
+                    | Some(Token::NotEqual)
+                    | Some(Token::Less)
+                    | Some(Token::Greater)
+                    | Some(Token::LessEqual)
+                    | Some(Token::GreaterEqual)
+                    | Some(Token::And)
+                    | Some(Token::Or) => self.parse_expression_statement(),
+                    // Minus is ambiguous: could be binary (x - 5) or unary in command (add -5)
+                    // Check the token after minus to determine
+                    Some(Token::Minus) => {
+                        // Look at position + 2 (token after minus)
+                        match self.tokens.get(self.position + 2) {
+                            // If minus is followed by a value, treat as command syntax
+                            Some(Token::Number(_))
+                            | Some(Token::Ident(_))
+                            | Some(Token::LParen)
+                            | Some(Token::True)
+                            | Some(Token::False)
+                            | Some(Token::StringLiteral(_)) => self.parse_command_call(),
+                            // Otherwise treat as binary operator
+                            _ => self.parse_expression_statement(),
+                        }
+                    }
+                    // End of statement - just a variable expression
+                    Some(Token::Newline) | Some(Token::Eof) | Some(Token::Dedent) | None => {
+                        self.parse_expression_statement()
+                    }
+                    // Command Syntax: identifier followed by a value
+                    // e.g., add 10, 20 or print "hello"
+                    _ => self.parse_command_call(),
                 }
-                Ok(Statement::Expression(expr))
             }
+            _ => self.parse_expression_statement(),
         }
+    }
+
+    fn parse_expression_statement(&mut self) -> Result<Statement, String> {
+        let expr = self.parse_expression()?;
+        // Consume optional newline after expression
+        if let Some(Token::Newline) = self.peek() {
+            self.advance();
+        }
+        Ok(Statement::Expression(expr))
+    }
+
+    /// Parse Command Syntax: identifier arg1, arg2, ...
+    /// Examples:
+    ///   add 10, 20     -> add(10, 20)
+    ///   print "hello"  -> print("hello")
+    ///   square 5       -> square(5)
+    fn parse_command_call(&mut self) -> Result<Statement, String> {
+        let name = match self.peek() {
+            Some(Token::Ident(n)) => {
+                let n = n.clone();
+                self.advance();
+                n
+            }
+            _ => return Err("expected function name".to_string()),
+        };
+
+        let args = self.parse_command_args()?;
+
+        // Consume optional newline
+        if let Some(Token::Newline) = self.peek() {
+            self.advance();
+        }
+
+        Ok(Statement::Expression(Expr::FuncCall {
+            callee: Box::new(Expr::Variable(name)),
+            args,
+        }))
+    }
+
+    /// Parse command arguments (comma-separated expressions)
+    fn parse_command_args(&mut self) -> Result<Vec<Expr>, String> {
+        // Parse first argument
+        let first = self.parse_comparison()?;
+        let mut args = vec![first];
+
+        // Parse remaining arguments
+        while let Some(Token::Comma) = self.peek() {
+            self.advance();
+            let arg = self.parse_comparison()?;
+            args.push(arg);
+        }
+
+        Ok(args)
     }
 
     fn parse_function_def(&mut self) -> Result<Statement, String> {
@@ -674,7 +772,7 @@ impl<'a> ProgramParser<'a> {
     }
 
     fn parse_power(&mut self) -> Result<Expr, String> {
-        let base = self.parse_primary()?;
+        let base = self.parse_postfix()?;
 
         if let Some(Token::StarStar) = self.peek() {
             self.advance();
@@ -688,6 +786,58 @@ impl<'a> ProgramParser<'a> {
         }
 
         Ok(base)
+    }
+
+    /// Parse postfix operations: method calls (UFCS) and function calls
+    /// Examples:
+    ///   10.add(20)       -> add(10, 20)
+    ///   (1 + 2).double() -> double(1 + 2)
+    ///   foo()()          -> chained function calls
+    fn parse_postfix(&mut self) -> Result<Expr, String> {
+        let mut expr = self.parse_primary()?;
+
+        loop {
+            match self.peek() {
+                Some(Token::Dot) => {
+                    self.advance();
+                    // Parse method name
+                    let method_name = match self.peek() {
+                        Some(Token::Ident(name)) => {
+                            let name = name.clone();
+                            self.advance();
+                            name
+                        }
+                        _ => return Err("expected method name after '.'".to_string()),
+                    };
+
+                    // Expect '(' for method call
+                    self.expect(&Token::LParen)?;
+
+                    // Parse arguments (receiver is the first argument)
+                    let mut args = vec![expr];
+                    args.extend(self.parse_arg_list()?);
+                    self.expect(&Token::RParen)?;
+
+                    expr = Expr::FuncCall {
+                        callee: Box::new(Expr::Variable(method_name)),
+                        args,
+                    };
+                }
+                Some(Token::LParen) => {
+                    // Regular function call on expression result
+                    self.advance();
+                    let args = self.parse_arg_list()?;
+                    self.expect(&Token::RParen)?;
+                    expr = Expr::FuncCall {
+                        callee: Box::new(expr),
+                        args,
+                    };
+                }
+                _ => break,
+            }
+        }
+
+        Ok(expr)
     }
 
     fn parse_primary(&mut self) -> Result<Expr, String> {
@@ -723,20 +873,8 @@ impl<'a> ProgramParser<'a> {
             Some(Token::Ident(name)) => {
                 let name = name.clone();
                 self.advance();
-                let mut expr = Expr::Variable(name);
-
-                // Check for function call (possibly chained)
-                while let Some(Token::LParen) = self.peek() {
-                    self.advance();
-                    let args = self.parse_arg_list()?;
-                    self.expect(&Token::RParen)?;
-                    expr = Expr::FuncCall {
-                        callee: Box::new(expr),
-                        args,
-                    };
-                }
-
-                Ok(expr)
+                // Function calls are handled by parse_postfix()
+                Ok(Expr::Variable(name))
             }
             Some(Token::LParen) => {
                 self.advance();
@@ -1157,5 +1295,244 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    // ========================================
+    // UFCS (Uniform Function Call Syntax) Tests
+    // ========================================
+
+    #[test]
+    fn test_ufcs_basic() {
+        // 10.add(20) -> FuncCall { callee: Variable("add"), args: [Number(10), Number(20)] }
+        let expr = parse_expr("10.add(20)").unwrap();
+        match expr {
+            Expr::FuncCall { callee, args } => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "add"));
+                assert_eq!(args.len(), 2);
+                assert!(matches!(&args[0], Expr::Number(Value::Int(10))));
+                assert!(matches!(&args[1], Expr::Number(Value::Int(20))));
+            }
+            _ => panic!("Expected function call, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_ufcs_chained() {
+        // 10.add(5).mul(2) -> mul(add(10, 5), 2)
+        let expr = parse_expr("10.add(5).mul(2)").unwrap();
+        match expr {
+            Expr::FuncCall { callee, args } => {
+                // Outer call should be mul
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "mul"));
+                assert_eq!(args.len(), 2);
+
+                // First argument should be the result of add(10, 5)
+                match &args[0] {
+                    Expr::FuncCall {
+                        callee,
+                        args: inner_args,
+                    } => {
+                        assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "add"));
+                        assert_eq!(inner_args.len(), 2);
+                    }
+                    _ => panic!("Expected nested function call"),
+                }
+            }
+            _ => panic!("Expected function call, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_ufcs_on_expression() {
+        // (1 + 2).double() -> double(1 + 2)
+        let expr = parse_expr("(1 + 2).double()").unwrap();
+        match expr {
+            Expr::FuncCall { callee, args } => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "double"));
+                assert_eq!(args.len(), 1);
+                assert!(matches!(
+                    &args[0],
+                    Expr::BinaryOp {
+                        op: BinaryOp::Add,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected function call, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_ufcs_with_variable() {
+        // x.clamp(0, 10) -> clamp(x, 0, 10)
+        let expr = parse_expr("x.clamp(0, 10)").unwrap();
+        match expr {
+            Expr::FuncCall { callee, args } => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "clamp"));
+                assert_eq!(args.len(), 3);
+                assert!(matches!(&args[0], Expr::Variable(name) if name == "x"));
+            }
+            _ => panic!("Expected function call, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_float_literal_preserved() {
+        // 10.5 should remain a float literal, not UFCS
+        let expr = parse_expr("10.5").unwrap();
+        assert!(matches!(expr, Expr::Number(Value::Float(f)) if (f - 10.5).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_ufcs_no_args() {
+        // 42.to_string() -> to_string(42)
+        let expr = parse_expr("42.to_string()").unwrap();
+        match expr {
+            Expr::FuncCall { callee, args } => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "to_string"));
+                assert_eq!(args.len(), 1);
+                assert!(matches!(&args[0], Expr::Number(Value::Int(42))));
+            }
+            _ => panic!("Expected function call, got {:?}", expr),
+        }
+    }
+
+    // ========================================
+    // Command Syntax Tests
+    // ========================================
+
+    #[test]
+    fn test_command_basic() {
+        // add 10, 20 -> add(10, 20)
+        let program = parse("add 10, 20").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "add"));
+                assert_eq!(args.len(), 2);
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_command_single_arg() {
+        // square 5 -> square(5)
+        let program = parse("square 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "square"));
+                assert_eq!(args.len(), 1);
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_command_expression_args() {
+        // add 10 + 5, 20 * 2 -> add(15, 40) (as expressions, not evaluated)
+        let program = parse("add 10 + 5, 20 * 2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "add"));
+                assert_eq!(args.len(), 2);
+                // First arg should be 10 + 5
+                assert!(matches!(
+                    &args[0],
+                    Expr::BinaryOp {
+                        op: BinaryOp::Add,
+                        ..
+                    }
+                ));
+                // Second arg should be 20 * 2
+                assert!(matches!(
+                    &args[1],
+                    Expr::BinaryOp {
+                        op: BinaryOp::Multiply,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_command_string_arg() {
+        // print "hello" -> print("hello")
+        let program = parse("print \"hello\"").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "print"));
+                assert_eq!(args.len(), 1);
+                assert!(matches!(&args[0], Expr::Number(Value::Str(s)) if s == "hello"));
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_command_negative_arg() {
+        // add -5, 10 -> add(-5, 10)
+        let program = parse("add -5, 10").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "add"));
+                assert_eq!(args.len(), 2);
+                // First arg should be unary minus
+                assert!(matches!(
+                    &args[0],
+                    Expr::UnaryOp {
+                        op: UnaryOp::Neg,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_regular_function_call_not_command() {
+        // foo(1, 2) should remain a regular function call, not command syntax
+        let program = parse("foo(1, 2)").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::FuncCall { callee, args }) => {
+                assert!(matches!(callee.as_ref(), Expr::Variable(name) if name == "foo"));
+                assert_eq!(args.len(), 2);
+            }
+            _ => panic!("Expected function call expression"),
+        }
+    }
+
+    #[test]
+    fn test_assignment_not_command() {
+        // x = 10 should remain an assignment, not command syntax
+        let program = parse("x = 10").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::Assign { name, .. }) => {
+                assert_eq!(name, "x");
+            }
+            _ => panic!("Expected assignment expression"),
+        }
+    }
+
+    #[test]
+    fn test_variable_expression_not_command() {
+        // Just "x" should remain a variable expression, not command syntax
+        let program = parse("x").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::Expression(Expr::Variable(name)) => {
+                assert_eq!(name, "x");
+            }
+            _ => panic!("Expected variable expression"),
+        }
     }
 }
