@@ -1,0 +1,14 @@
+int(3.7)
+int(-2.9)
+int(true)
+int(false)
+int("100")
+
+float(42)
+float(true)
+float("3.14159")
+
+str(123)
+str(45.67)
+str(false)
+str((1, 2, 3))

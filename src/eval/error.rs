@@ -76,6 +76,14 @@ pub enum EvalError {
         func_name: String,
         signature: String,
     },
+    /// Type conversion error (e.g., parsing string to int)
+    ConversionError {
+        from_type: String,
+        to_type: String,
+        value: String,
+    },
+    /// Parse error wrapper
+    ParseError(String),
 }
 
 impl fmt::Display for EvalError {
@@ -210,6 +218,20 @@ impl fmt::Display for EvalError {
                     func_name, signature
                 )
             }
+            EvalError::ConversionError {
+                from_type,
+                to_type,
+                value,
+            } => {
+                write!(
+                    f,
+                    "Cannot convert {} value '{}' to {}",
+                    from_type, value, to_type
+                )
+            }
+            EvalError::ParseError(msg) => {
+                write!(f, "Parse error: {}", msg)
+            }
         }
     }
 }
@@ -338,6 +360,19 @@ impl PartialEq for EvalError {
                     signature: s2,
                 },
             ) => f1 == f2 && s1 == s2,
+            (
+                EvalError::ConversionError {
+                    from_type: f1,
+                    to_type: t1,
+                    value: v1,
+                },
+                EvalError::ConversionError {
+                    from_type: f2,
+                    to_type: t2,
+                    value: v2,
+                },
+            ) => f1 == f2 && t1 == t2 && v1 == v2,
+            (EvalError::ParseError(a), EvalError::ParseError(b)) => a == b,
             _ => false,
         }
     }

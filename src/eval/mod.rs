@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod builtins;
 pub mod context;
 pub mod error;
 pub mod lexer;
@@ -10,7 +11,7 @@ use std::sync::Arc;
 
 use ast::{BinaryOp, Block, Expr, Program, Statement, UnaryOp};
 use error::Result;
-use value::{FuncDef, FuncOverloads, FuncParam};
+use value::{FuncBody, FuncDef, FuncOverloads, FuncParam};
 
 // Re-exports for public API
 pub use context::Context;
@@ -253,18 +254,18 @@ pub fn execute_statement(stmt: &Statement, ctx: &mut Context) -> Result<Option<V
             return_type,
             body,
         } => {
-            let func_def = Arc::new(FuncDef {
-                name: Some(name.clone()),
-                params: params
+            let func_def = Arc::new(FuncDef::user_defined(
+                Some(name.clone()),
+                params
                     .iter()
                     .map(|(n, t)| FuncParam {
                         name: n.clone(),
                         type_annotation: t.clone(),
                     })
                     .collect(),
-                return_type: return_type.clone(),
-                body: body.clone(),
-            });
+                return_type.clone(),
+                body.clone(),
+            ));
 
             // Check if there's already a function with this name
             match ctx.get(name) {
@@ -353,16 +354,23 @@ fn call_function(func_def: &FuncDef, arg_values: &[Value], ctx: &mut Context) ->
         }
     }
 
-    // Create new scope and bind parameters
-    let mut guard = ScopeGuard::new(ctx);
-    for (param, value) in func_def.params.iter().zip(arg_values.iter().cloned()) {
-        guard
-            .context()
-            .set_typed(param.name.clone(), value, param.type_annotation.clone());
-    }
-
-    // Execute function body
-    let result = execute_function_body(&func_def.body, guard.context());
+    // Execute based on function body type
+    let result = match &func_def.body {
+        FuncBody::Block(block) => {
+            // User-defined function: create scope and execute body
+            let mut guard = ScopeGuard::new(ctx);
+            for (param, value) in func_def.params.iter().zip(arg_values.iter().cloned()) {
+                guard
+                    .context()
+                    .set_typed(param.name.clone(), value, param.type_annotation.clone());
+            }
+            execute_function_body(block, guard.context())
+        }
+        FuncBody::Native(native_fn) => {
+            // Native function: call directly
+            native_fn.call(arg_values).map(Some)
+        }
+    };
 
     // Handle return value
     match result {
