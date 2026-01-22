@@ -308,16 +308,55 @@ impl<'a> Lexer<'a> {
 
     fn parse_number(&mut self) -> Result<Token> {
         let start = self.position;
-        let mut has_dot = false;
 
+        // Check for special prefixes (0x, 0o, 0b)
+        if self.peek() == Some('0') {
+            self.advance();
+            match self.peek() {
+                Some('x') | Some('X') => {
+                    self.advance();
+                    return self.parse_hex_number();
+                }
+                Some('o') | Some('O') => {
+                    self.advance();
+                    return self.parse_octal_number();
+                }
+                Some('b') | Some('B') => {
+                    self.advance();
+                    return self.parse_binary_number();
+                }
+                _ => {
+                    // Continue parsing as decimal (might be 0, 0.5, 0e1, etc.)
+                }
+            }
+        }
+
+        let mut has_dot = false;
+        let mut has_exponent = false;
+
+        // Continue from current position (after initial '0' if present, or from start)
         while let Some(ch) = self.peek() {
             match ch {
                 '0'..='9' => {
                     self.advance();
                 }
-                '.' if !has_dot => {
+                '.' if !has_dot && !has_exponent => {
                     has_dot = true;
                     self.advance();
+                }
+                'e' | 'E' if !has_exponent => {
+                    has_exponent = true;
+                    self.advance();
+                    // Handle optional sign after exponent
+                    if let Some('+' | '-') = self.peek() {
+                        self.advance();
+                    }
+                    // Must have at least one digit after exponent
+                    if !matches!(self.peek(), Some('0'..='9')) {
+                        return Err(EvalError::LexerError(
+                            "invalid number: expected digit after exponent".to_string(),
+                        ));
+                    }
                 }
                 _ => break,
             }
@@ -325,7 +364,8 @@ impl<'a> Lexer<'a> {
 
         let num_str = &self.input[start..self.position];
 
-        if has_dot {
+        // Scientific notation always results in float
+        if has_dot || has_exponent {
             let value: f64 = num_str
                 .parse()
                 .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
@@ -336,6 +376,66 @@ impl<'a> Lexer<'a> {
                 .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
             Ok(Token::Number(Value::Int(value)))
         }
+    }
+
+    fn parse_hex_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ch.is_ascii_hexdigit() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let hex_str = &self.input[start..self.position];
+        if hex_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected hex digit after 0x".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(hex_str, 16)
+            .map_err(|_| EvalError::LexerError(format!("invalid hex number: 0x{}", hex_str)))?;
+        Ok(Token::Number(Value::Int(value)))
+    }
+
+    fn parse_octal_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ('0'..='7').contains(&ch) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let oct_str = &self.input[start..self.position];
+        if oct_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected octal digit after 0o".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(oct_str, 8)
+            .map_err(|_| EvalError::LexerError(format!("invalid octal number: 0o{}", oct_str)))?;
+        Ok(Token::Number(Value::Int(value)))
+    }
+
+    fn parse_binary_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ch == '0' || ch == '1' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let bin_str = &self.input[start..self.position];
+        if bin_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected binary digit after 0b".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(bin_str, 2)
+            .map_err(|_| EvalError::LexerError(format!("invalid binary number: 0b{}", bin_str)))?;
+        Ok(Token::Number(Value::Int(value)))
     }
 
     fn parse_string(&mut self) -> Result<Token> {

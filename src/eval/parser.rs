@@ -695,11 +695,10 @@ impl<'a> ProgramParser<'a> {
             Some(Token::Minus) => {
                 // Unary minus
                 self.advance();
-                let expr = self.parse_primary()?;
-                Ok(Expr::BinaryOp {
-                    op: BinaryOp::Subtract,
-                    left: Box::new(Expr::Number(Value::Int(0))),
-                    right: Box::new(expr),
+                let expr = self.parse_power()?; // Higher precedence than power
+                Ok(Expr::UnaryOp {
+                    op: UnaryOp::Neg,
+                    operand: Box::new(expr),
                 })
             }
             Some(Token::Number(value)) => {
