@@ -776,3 +776,386 @@ impl<'a> ProgramParser<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::lexer::Lexer;
+
+    fn parse_expr(input: &str) -> Result<Expr, String> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+        let mut parser = ProgramParser::new(&tokens);
+        parser.parse_expression()
+    }
+
+    fn parse(input: &str) -> Result<Program, String> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+        parse_program(&tokens)
+    }
+
+    // ========================================
+    // Operator Precedence Tests
+    // ========================================
+
+    #[test]
+    fn test_precedence_additive_over_comparison() {
+        // 1 + 2 < 3 + 4 should parse as (1 + 2) < (3 + 4)
+        let expr = parse_expr("1 + 2 < 3 + 4").unwrap();
+        match expr {
+            Expr::BinaryOp {
+                op: BinaryOp::LessThan,
+                left,
+                right,
+            } => {
+                assert!(matches!(
+                    left.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Add,
+                        ..
+                    }
+                ));
+                assert!(matches!(
+                    right.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Add,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected comparison at top level, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_precedence_multiplicative_over_additive() {
+        // 1 + 2 * 3 should parse as 1 + (2 * 3)
+        let expr = parse_expr("1 + 2 * 3").unwrap();
+        match expr {
+            Expr::BinaryOp {
+                op: BinaryOp::Add,
+                left,
+                right,
+            } => {
+                assert!(matches!(left.as_ref(), Expr::Number(_)));
+                assert!(matches!(
+                    right.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Multiply,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected addition at top level, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_precedence_power_over_multiplicative() {
+        // 2 * 3 ** 4 should parse as 2 * (3 ** 4)
+        let expr = parse_expr("2 * 3 ** 4").unwrap();
+        match expr {
+            Expr::BinaryOp {
+                op: BinaryOp::Multiply,
+                left,
+                right,
+            } => {
+                assert!(matches!(left.as_ref(), Expr::Number(_)));
+                assert!(matches!(
+                    right.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Power,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected multiplication at top level, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_precedence_unary_minus_with_power() {
+        // -2 ** 3 should parse as -(2 ** 3)
+        let expr = parse_expr("-2 ** 3").unwrap();
+        match expr {
+            Expr::UnaryOp {
+                op: UnaryOp::Neg,
+                operand,
+            } => {
+                assert!(matches!(
+                    operand.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Power,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected unary minus at top level, got {:?}", expr),
+        }
+    }
+
+    // ========================================
+    // Associativity Tests
+    // ========================================
+
+    #[test]
+    fn test_power_right_associative() {
+        // 2 ** 3 ** 4 should parse as 2 ** (3 ** 4)
+        let expr = parse_expr("2 ** 3 ** 4").unwrap();
+        match expr {
+            Expr::BinaryOp {
+                op: BinaryOp::Power,
+                left,
+                right,
+            } => {
+                assert!(matches!(left.as_ref(), Expr::Number(_)));
+                // Right side should be another power expression
+                assert!(matches!(
+                    right.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Power,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected power at top level, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_subtraction_left_associative() {
+        // 10 - 3 - 2 should parse as (10 - 3) - 2
+        let expr = parse_expr("10 - 3 - 2").unwrap();
+        match expr {
+            Expr::BinaryOp {
+                op: BinaryOp::Subtract,
+                left,
+                right,
+            } => {
+                // Right should be just a number (2)
+                assert!(matches!(right.as_ref(), Expr::Number(_)));
+                // Left should be another subtraction
+                assert!(matches!(
+                    left.as_ref(),
+                    Expr::BinaryOp {
+                        op: BinaryOp::Subtract,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected subtraction at top level, got {:?}", expr),
+        }
+    }
+
+    // ========================================
+    // Unary Operator Tests
+    // ========================================
+
+    #[test]
+    fn test_unary_minus_simple() {
+        let expr = parse_expr("-5").unwrap();
+        match expr {
+            Expr::UnaryOp {
+                op: UnaryOp::Neg,
+                operand,
+            } => {
+                assert!(matches!(operand.as_ref(), Expr::Number(_)));
+            }
+            _ => panic!("Expected unary minus, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_unary_not_simple() {
+        let expr = parse_expr("not true").unwrap();
+        match expr {
+            Expr::UnaryOp {
+                op: UnaryOp::Not,
+                operand,
+            } => {
+                assert!(matches!(operand.as_ref(), Expr::Number(_)));
+            }
+            _ => panic!("Expected unary not, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_double_negation() {
+        let expr = parse_expr("--5").unwrap();
+        match expr {
+            Expr::UnaryOp {
+                op: UnaryOp::Neg,
+                operand,
+            } => {
+                assert!(matches!(
+                    operand.as_ref(),
+                    Expr::UnaryOp {
+                        op: UnaryOp::Neg,
+                        ..
+                    }
+                ));
+            }
+            _ => panic!("Expected nested unary minus, got {:?}", expr),
+        }
+    }
+
+    // ========================================
+    // Statement Parsing Tests
+    // ========================================
+
+    #[test]
+    fn test_parse_if_statement() {
+        let program = parse("if x > 0:\n    y = 1\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::If {
+                if_branch,
+                elif_branches,
+                else_body,
+            } => {
+                // if_branch contains the condition
+                assert!(matches!(&if_branch.condition, Expr::BinaryOp { .. }));
+                assert!(elif_branches.is_empty());
+                assert!(else_body.is_none());
+            }
+            _ => panic!("Expected if statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_if_else_statement() {
+        let program = parse("if x > 0:\n    y = 1\nelse:\n    y = 2\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::If {
+                elif_branches,
+                else_body,
+                ..
+            } => {
+                assert!(elif_branches.is_empty());
+                assert!(else_body.is_some());
+            }
+            _ => panic!("Expected if-else statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_if_elif_else_statement() {
+        let program =
+            parse("if x > 0:\n    y = 1\nelif x < 0:\n    y = -1\nelse:\n    y = 0\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::If {
+                elif_branches,
+                else_body,
+                ..
+            } => {
+                assert_eq!(elif_branches.len(), 1); // 1 elif branch
+                assert!(else_body.is_some());
+            }
+            _ => panic!("Expected if-elif-else statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_while_statement() {
+        let program = parse("while x > 0:\n    x = x - 1\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(&program.statements[0], Statement::While { .. }));
+    }
+
+    #[test]
+    fn test_parse_function_definition() {
+        let program = parse("fn add(a, b):\n    return a + b\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::FuncDef { name, params, .. } => {
+                assert_eq!(name, "add");
+                assert_eq!(params.len(), 2);
+            }
+            _ => panic!("Expected function definition"),
+        }
+    }
+
+    #[test]
+    fn test_parse_typed_function() {
+        let program = parse("fn add(a: int, b: int) -> int:\n    return a + b\n").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        match &program.statements[0] {
+            Statement::FuncDef {
+                name,
+                params,
+                return_type,
+                ..
+            } => {
+                assert_eq!(name, "add");
+                assert_eq!(params.len(), 2);
+                assert!(return_type.is_some());
+            }
+            _ => panic!("Expected function definition"),
+        }
+    }
+
+    #[test]
+    fn test_parse_return_statement() {
+        let program = parse("fn foo():\n    return 42\n").unwrap();
+        match &program.statements[0] {
+            Statement::FuncDef { body, .. } => {
+                assert_eq!(body.statements.len(), 1);
+                assert!(matches!(&body.statements[0], Statement::Return(_)));
+            }
+            _ => panic!("Expected function definition"),
+        }
+    }
+
+    // ========================================
+    // Error Cases
+    // ========================================
+
+    #[test]
+    fn test_error_unexpected_token() {
+        let result = parse_expr("1 + + 2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_unclosed_paren() {
+        let result = parse_expr("(1 + 2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_error_empty_input() {
+        let result = parse_expr("");
+        assert!(result.is_err());
+    }
+
+    // ========================================
+    // Tuple Parsing Tests
+    // ========================================
+
+    #[test]
+    fn test_parse_tuple() {
+        let expr = parse_expr("(1, 2, 3)").unwrap();
+        match expr {
+            Expr::Tuple(elements) => {
+                assert_eq!(elements.len(), 3);
+            }
+            _ => panic!("Expected tuple, got {:?}", expr),
+        }
+    }
+
+    #[test]
+    fn test_parse_parenthesized_not_tuple() {
+        let expr = parse_expr("(1 + 2)").unwrap();
+        // Should NOT be a tuple, just a grouped expression
+        assert!(matches!(
+            expr,
+            Expr::BinaryOp {
+                op: BinaryOp::Add,
+                ..
+            }
+        ));
+    }
+}
