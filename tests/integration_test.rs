@@ -259,3 +259,169 @@ fn test_undefined_variable_error() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Undefined variable"));
 }
+
+// Helper function to parse and execute a program with context
+fn run_program_with_context(input: &str, ctx: &mut Context) -> Result<Option<Value>, String> {
+    use ry::{execute_program, parse_program, Lexer};
+    let mut lexer = Lexer::new(input);
+    let tokens = lexer.tokenize().map_err(|e| e.to_string())?;
+    let program = parse_program(&tokens)?;
+    execute_program(&program, ctx).map_err(|e| e.to_string())
+}
+
+// ========================================
+// UFCS (Uniform Function Call Syntax) Integration Tests
+// ========================================
+
+#[test]
+fn test_ufcs_basic_integration() {
+    // Define a function and call it using UFCS
+    let mut ctx = Context::new();
+
+    // Define add function
+    let result = run_program_with_context("fn add(a, b):\n    return a + b\n", &mut ctx);
+    assert!(result.is_ok());
+
+    // Call using UFCS: 10.add(20) -> add(10, 20)
+    let result = evaluate_expression_with_context("10.add(20)", &mut ctx);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Value::Int(30));
+}
+
+#[test]
+fn test_ufcs_chained_integration() {
+    let mut ctx = Context::new();
+
+    // Define add and mul functions
+    run_program_with_context(
+        "fn add(a, b):\n    return a + b\nfn mul(a, b):\n    return a * b\n",
+        &mut ctx,
+    )
+    .unwrap();
+
+    // Chained UFCS: 10.add(5).mul(2) -> mul(add(10, 5), 2) = 30
+    let result = evaluate_expression_with_context("10.add(5).mul(2)", &mut ctx);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Value::Int(30));
+}
+
+#[test]
+fn test_ufcs_on_expression_integration() {
+    let mut ctx = Context::new();
+
+    // Define double function
+    run_program_with_context("fn double(x):\n    return x * 2\n", &mut ctx).unwrap();
+
+    // UFCS on grouped expression: (1 + 2).double() -> double(3) = 6
+    let result = evaluate_expression_with_context("(1 + 2).double()", &mut ctx);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Value::Int(6));
+}
+
+#[test]
+fn test_ufcs_with_variable_integration() {
+    let mut ctx = Context::new();
+
+    // Define clamp function
+    run_program_with_context(
+        "fn clamp(x, lo, hi):\n    if x < lo:\n        return lo\n    if x > hi:\n        return hi\n    return x\n",
+        &mut ctx,
+    )
+    .unwrap();
+
+    // Set variable
+    evaluate_expression_with_context("x = 15", &mut ctx).unwrap();
+
+    // UFCS with variable: x.clamp(0, 10) -> clamp(15, 0, 10) = 10
+    let result = evaluate_expression_with_context("x.clamp(0, 10)", &mut ctx);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Value::Int(10));
+}
+
+#[test]
+fn test_float_literal_not_ufcs() {
+    // 10.5 should remain a float literal
+    let mut ctx = Context::new();
+    let result = evaluate_expression_with_context("10.5", &mut ctx);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), Value::Float(10.5));
+}
+
+// ========================================
+// Command Syntax Integration Tests
+// ========================================
+
+#[test]
+fn test_command_syntax_basic_integration() {
+    let mut ctx = Context::new();
+
+    // Define add function
+    run_program_with_context("fn add(a, b):\n    return a + b\n", &mut ctx).unwrap();
+
+    // Call using Command Syntax: add 10, 20 -> add(10, 20)
+    let result = run_program_with_context("add 10, 20\n", &mut ctx);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_command_syntax_single_arg_integration() {
+    let mut ctx = Context::new();
+
+    // Define square function
+    run_program_with_context("fn square(x):\n    return x * x\n", &mut ctx).unwrap();
+
+    // Call using Command Syntax: square 5 -> square(5)
+    let result = run_program_with_context("square 5\n", &mut ctx);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_command_syntax_expression_args_integration() {
+    let mut ctx = Context::new();
+
+    // Define add function
+    run_program_with_context("fn add(a, b):\n    return a + b\n", &mut ctx).unwrap();
+
+    // Call using Command Syntax with expression arguments:
+    // add 10 + 5, 20 * 2 -> add(15, 40) = 55
+    let result = run_program_with_context("add 10 + 5, 20 * 2\n", &mut ctx);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_command_syntax_in_file() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_command_syntax.ry");
+    let test_content = "fn greet(name):\n    return name\n\ngreet \"World\"\n";
+
+    // Create a temporary .ry file with command syntax
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_ok());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+}
+
+#[test]
+fn test_ufcs_in_file() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("test_ufcs.ry");
+    let test_content = "fn double(x):\n    return x * 2\n\n5.double()\n";
+
+    // Create a temporary .ry file with UFCS
+    let mut file = fs::File::create(&test_file).unwrap();
+    file.write_all(test_content.as_bytes()).unwrap();
+    drop(file);
+
+    // Test run_file function
+    let result = ry::run_file(test_file.to_str().unwrap());
+    assert!(result.is_ok());
+
+    // Cleanup
+    fs::remove_file(&test_file).unwrap();
+}

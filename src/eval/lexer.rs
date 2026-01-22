@@ -77,6 +77,11 @@ impl<'a> Lexer<'a> {
         self.chars.peek().copied()
     }
 
+    /// Peek at the next character (one position ahead of peek)
+    fn peek_next_char(&self) -> Option<char> {
+        self.input[self.position..].chars().nth(1)
+    }
+
     fn advance(&mut self) -> Option<char> {
         let ch = self.chars.next();
         if ch.is_some() {
@@ -290,6 +295,12 @@ impl<'a> Lexer<'a> {
                 }
             }
 
+            // Dot (for UFCS method call syntax)
+            '.' => {
+                self.advance();
+                Ok(Token::Dot)
+            }
+
             // Numbers
             '0'..='9' => self.parse_number(),
 
@@ -341,8 +352,20 @@ impl<'a> Lexer<'a> {
                     self.advance();
                 }
                 '.' if !has_dot && !has_exponent => {
-                    has_dot = true;
-                    self.advance();
+                    // Look ahead to distinguish float (10.5) from UFCS (10.add())
+                    if let Some(next_char) = self.peek_next_char() {
+                        if next_char.is_ascii_digit() {
+                            // Float literal: 10.5
+                            has_dot = true;
+                            self.advance();
+                        } else {
+                            // UFCS syntax: 10.add() - stop number parsing
+                            break;
+                        }
+                    } else {
+                        // No next char after '.', stop number parsing
+                        break;
+                    }
                 }
                 'e' | 'E' if !has_exponent => {
                     has_exponent = true;
@@ -1022,6 +1045,99 @@ mod tests {
                 Token::Arrow,
                 Token::IntType,
                 Token::Colon,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_dot_token() {
+        let mut lexer = Lexer::new(".");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Dot, Token::Eof]);
+    }
+
+    #[test]
+    fn test_ufcs_lexing() {
+        // 10.add(20) should tokenize as: Number(10), Dot, Ident("add"), LParen, Number(20), RParen
+        let mut lexer = Lexer::new("10.add(20)");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(10)),
+                Token::Dot,
+                Token::Ident("add".to_string()),
+                Token::LParen,
+                Token::Number(Value::Int(20)),
+                Token::RParen,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ufcs_vs_float_literal() {
+        // 10.5 should be a float literal
+        let mut lexer = Lexer::new("10.5");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Number(Value::Float(10.5)), Token::Eof]);
+
+        // 10.add should be UFCS
+        let mut lexer = Lexer::new("10.add");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(10)),
+                Token::Dot,
+                Token::Ident("add".to_string()),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_chained_ufcs_lexing() {
+        // 10.add(5).mul(2)
+        let mut lexer = Lexer::new("10.add(5).mul(2)");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(10)),
+                Token::Dot,
+                Token::Ident("add".to_string()),
+                Token::LParen,
+                Token::Number(Value::Int(5)),
+                Token::RParen,
+                Token::Dot,
+                Token::Ident("mul".to_string()),
+                Token::LParen,
+                Token::Number(Value::Int(2)),
+                Token::RParen,
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ufcs_on_expression() {
+        // (1 + 2).double()
+        let mut lexer = Lexer::new("(1 + 2).double()");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::LParen,
+                Token::Number(Value::Int(1)),
+                Token::Plus,
+                Token::Number(Value::Int(2)),
+                Token::RParen,
+                Token::Dot,
+                Token::Ident("double".to_string()),
+                Token::LParen,
+                Token::RParen,
                 Token::Eof,
             ]
         );

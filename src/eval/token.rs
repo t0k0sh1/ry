@@ -30,6 +30,7 @@ pub enum Token {
     Colon,  // :
     Comma,  // ,
     Pipe,   // |
+    Dot,    // .
 
     // Keywords
     If,
