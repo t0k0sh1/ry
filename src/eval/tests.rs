@@ -2081,7 +2081,7 @@ fn test_unary_minus_i64_min_overflow() {
     // Since -i64::MIN overflows, it should become a float
     match result {
         Value::Float(f) => {
-            // -(-9223372036854775808) = 9223372036854775808.0
+            // Negating i64::MIN (-9223372036854775808) should give 9223372036854775808.0
             assert!((f - 9223372036854775808.0).abs() < 1e10);
         }
         _ => panic!("Expected Float for negation of i64::MIN, got {:?}", result),
