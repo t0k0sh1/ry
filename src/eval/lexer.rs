@@ -475,6 +475,35 @@ impl<'a> Lexer<'a> {
                             self.advance();
                             result.push('"');
                         }
+                        Some('u') => {
+                            self.advance();
+                            // Parse 4 hex digits
+                            let mut hex_str = String::with_capacity(4);
+                            for _ in 0..4 {
+                                match self.peek() {
+                                    Some(ch) if ch.is_ascii_hexdigit() => {
+                                        hex_str.push(ch);
+                                        self.advance();
+                                    }
+                                    _ => {
+                                        return Err(EvalError::LexerError(
+                                            "invalid unicode escape: expected 4 hex digits"
+                                                .to_string(),
+                                        ));
+                                    }
+                                }
+                            }
+                            let code_point = u32::from_str_radix(&hex_str, 16).unwrap();
+                            match char::from_u32(code_point) {
+                                Some(ch) => result.push(ch),
+                                None => {
+                                    return Err(EvalError::LexerError(format!(
+                                        "invalid unicode code point: \\u{}",
+                                        hex_str
+                                    )));
+                                }
+                            }
+                        }
                         Some(ch) => {
                             return Err(EvalError::LexerError(format!(
                                 "unknown escape sequence: \\{}",
@@ -837,6 +866,80 @@ mod tests {
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn test_unicode_escape_basic() {
+        let mut lexer = Lexer::new("\"\\u0041\""); // A
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("A".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_japanese() {
+        let mut lexer = Lexer::new("\"\\u3042\""); // あ (hiragana a)
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("あ".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_in_string() {
+        let mut lexer = Lexer::new("\"hello\\u0020world\""); // space
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("hello world".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_multiple() {
+        let mut lexer = Lexer::new("\"\\u0048\\u0069\""); // Hi
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("Hi".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_too_few_digits() {
+        let mut lexer = Lexer::new("\"\\u00\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected 4 hex digits"));
+    }
+
+    #[test]
+    fn test_unicode_escape_invalid_hex() {
+        let mut lexer = Lexer::new("\"\\uGGGG\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected 4 hex digits"));
+    }
+
+    #[test]
+    fn test_unicode_escape_surrogate() {
+        // Surrogates (0xD800-0xDFFF) are invalid Unicode code points
+        let mut lexer = Lexer::new("\"\\uD800\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid unicode code point"));
     }
 
     #[test]
