@@ -83,6 +83,84 @@ fn test_decimal_numbers() {
 }
 
 #[test]
+fn test_scientific_notation_numbers() {
+    assert_eq!(evaluate_expression("1e10").unwrap(), Value::Float(1e10));
+    assert_eq!(evaluate_expression("2.5e-3").unwrap(), Value::Float(0.0025));
+    assert_eq!(evaluate_expression("1E+6").unwrap(), Value::Float(1e6));
+}
+
+#[test]
+fn test_hex_numbers() {
+    assert_eq!(evaluate_expression("0xFF").unwrap(), Value::Int(255));
+    assert_eq!(evaluate_expression("0x10").unwrap(), Value::Int(16));
+    assert_eq!(
+        evaluate_expression("0xabcdef").unwrap(),
+        Value::Int(0xabcdef)
+    );
+}
+
+#[test]
+fn test_hex_arithmetic() {
+    assert_eq!(evaluate_expression("0xFF + 1").unwrap(), Value::Int(256));
+    assert_eq!(evaluate_expression("0x10 * 2").unwrap(), Value::Int(32));
+}
+
+#[test]
+fn test_octal_numbers() {
+    assert_eq!(evaluate_expression("0o77").unwrap(), Value::Int(63));
+    assert_eq!(evaluate_expression("0o10").unwrap(), Value::Int(8));
+    assert_eq!(evaluate_expression("0O755").unwrap(), Value::Int(493));
+}
+
+#[test]
+fn test_octal_arithmetic() {
+    assert_eq!(evaluate_expression("0o10 + 0o10").unwrap(), Value::Int(16));
+}
+
+#[test]
+fn test_binary_numbers() {
+    assert_eq!(evaluate_expression("0b1010").unwrap(), Value::Int(10));
+    assert_eq!(evaluate_expression("0b0").unwrap(), Value::Int(0));
+    assert_eq!(evaluate_expression("0B1111").unwrap(), Value::Int(15));
+}
+
+#[test]
+fn test_binary_arithmetic() {
+    assert_eq!(
+        evaluate_expression("0b1010 + 0b0101").unwrap(),
+        Value::Int(15)
+    );
+}
+
+#[test]
+fn test_mixed_base_arithmetic() {
+    // 0xFF (255) + 0o10 (8) + 0b1010 (10) = 273
+    assert_eq!(
+        evaluate_expression("0xFF + 0o10 + 0b1010").unwrap(),
+        Value::Int(273)
+    );
+}
+
+#[test]
+fn test_hex_overflow() {
+    // Test that parsing a large hex number works (within i64 range)
+    assert_eq!(
+        evaluate_expression("0x7FFFFFFFFFFFFFFF").unwrap(),
+        Value::Int(i64::MAX)
+    );
+}
+
+#[test]
+fn test_binary_large() {
+    // Test parsing a 63-bit binary number
+    assert_eq!(
+        evaluate_expression("0b111111111111111111111111111111111111111111111111111111111111111")
+            .unwrap(),
+        Value::Int(i64::MAX)
+    );
+}
+
+#[test]
 fn test_type_promotion_int_to_float() {
     assert_eq!(evaluate_expression("1+1.5").unwrap(), Value::Float(2.5));
     assert_eq!(evaluate_expression("1.5+1").unwrap(), Value::Float(2.5));
@@ -1957,6 +2035,65 @@ fn test_not_not() {
         evaluate_expression("not not false").unwrap(),
         Value::Bool(false)
     );
+}
+
+// Unary minus tests
+#[test]
+fn test_unary_minus_integer() {
+    assert_eq!(evaluate_expression("-5").unwrap(), Value::Int(-5));
+}
+
+#[test]
+fn test_unary_minus_float() {
+    assert_eq!(evaluate_expression("-5.5").unwrap(), Value::Float(-5.5));
+}
+
+#[test]
+fn test_unary_minus_in_expression() {
+    // 2 * -3 = -6
+    assert_eq!(evaluate_expression("2 * -3").unwrap(), Value::Int(-6));
+}
+
+#[test]
+fn test_unary_minus_double_negation() {
+    // --5 = 5
+    assert_eq!(evaluate_expression("--5").unwrap(), Value::Int(5));
+}
+
+#[test]
+fn test_unary_minus_precedence_with_power() {
+    // -2 ** 3 should be -(2 ** 3) = -8, not (-2) ** 3 = -8
+    // (Both happen to equal -8, so test with -2 ** 2 instead)
+    // -2 ** 2 = -(2 ** 2) = -4, not (-2) ** 2 = 4
+    // Note: ** returns Float, so we check for Float(-4.0)
+    assert_eq!(evaluate_expression("-2 ** 2").unwrap(), Value::Float(-4.0));
+}
+
+#[test]
+fn test_unary_minus_i64_min_overflow() {
+    // Negating i64::MIN should fall back to float since -i64::MIN overflows
+    // Note: We can't write i64::MIN as a literal because the lexer can't parse
+    // 9223372036854775808 as i64 (it's larger than i64::MAX).
+    // Instead, we construct i64::MIN via arithmetic and test negation via context.
+    let mut ctx = Context::new();
+    ctx.set("x".to_string(), Value::Int(i64::MIN));
+    let result = evaluate_expression_with_context("-x", &mut ctx).unwrap();
+    // Since -i64::MIN overflows, it should become a float
+    match result {
+        Value::Float(f) => {
+            // Negating i64::MIN (-9223372036854775808) should give 9223372036854775808.0
+            assert!((f - 9223372036854775808.0).abs() < 1e10);
+        }
+        _ => panic!("Expected Float for negation of i64::MIN, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_unary_minus_type_error() {
+    // Negating a boolean should produce a type error
+    let result = evaluate_expression("-true");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("cannot negate"));
 }
 
 // Complex expressions

@@ -137,6 +137,23 @@ pub fn evaluate(expr: &Expr, ctx: &mut Context) -> Result<Value> {
                 let truthy = is_truthy(&val)?;
                 Ok(Value::Bool(!truthy))
             }
+            UnaryOp::Neg => {
+                let val = evaluate(operand, ctx)?;
+                match val {
+                    Value::Int(i) => {
+                        // Use checked negation to handle overflow (e.g., -i64::MIN)
+                        match i.checked_neg() {
+                            Some(negated) => Ok(Value::Int(negated)),
+                            None => Ok(Value::Float(-(i as f64))),
+                        }
+                    }
+                    Value::Float(f) => Ok(Value::Float(-f)),
+                    _ => Err(EvalError::TypeError(format!(
+                        "cannot negate value of type {}",
+                        val.type_name()
+                    ))),
+                }
+            }
         },
         Expr::FuncCall { callee, args } => {
             let callee_value = evaluate(callee, ctx)?;

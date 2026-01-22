@@ -308,16 +308,55 @@ impl<'a> Lexer<'a> {
 
     fn parse_number(&mut self) -> Result<Token> {
         let start = self.position;
-        let mut has_dot = false;
 
+        // Check for special prefixes (0x, 0o, 0b)
+        if self.peek() == Some('0') {
+            self.advance();
+            match self.peek() {
+                Some('x') | Some('X') => {
+                    self.advance();
+                    return self.parse_hex_number();
+                }
+                Some('o') | Some('O') => {
+                    self.advance();
+                    return self.parse_octal_number();
+                }
+                Some('b') | Some('B') => {
+                    self.advance();
+                    return self.parse_binary_number();
+                }
+                _ => {
+                    // Continue parsing as decimal (might be 0, 0.5, 0e1, etc.)
+                }
+            }
+        }
+
+        let mut has_dot = false;
+        let mut has_exponent = false;
+
+        // Continue from current position (after initial '0' if present, or from start)
         while let Some(ch) = self.peek() {
             match ch {
                 '0'..='9' => {
                     self.advance();
                 }
-                '.' if !has_dot => {
+                '.' if !has_dot && !has_exponent => {
                     has_dot = true;
                     self.advance();
+                }
+                'e' | 'E' if !has_exponent => {
+                    has_exponent = true;
+                    self.advance();
+                    // Handle optional sign after exponent
+                    if let Some('+' | '-') = self.peek() {
+                        self.advance();
+                    }
+                    // Must have at least one digit after exponent
+                    if !matches!(self.peek(), Some('0'..='9')) {
+                        return Err(EvalError::LexerError(
+                            "invalid number: expected digit after exponent".to_string(),
+                        ));
+                    }
                 }
                 _ => break,
             }
@@ -325,7 +364,8 @@ impl<'a> Lexer<'a> {
 
         let num_str = &self.input[start..self.position];
 
-        if has_dot {
+        // Scientific notation always results in float
+        if has_dot || has_exponent {
             let value: f64 = num_str
                 .parse()
                 .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
@@ -336,6 +376,66 @@ impl<'a> Lexer<'a> {
                 .map_err(|_| EvalError::LexerError(format!("invalid number: {}", num_str)))?;
             Ok(Token::Number(Value::Int(value)))
         }
+    }
+
+    fn parse_hex_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ch.is_ascii_hexdigit() {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let hex_str = &self.input[start..self.position];
+        if hex_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected hex digit after 0x".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(hex_str, 16)
+            .map_err(|_| EvalError::LexerError(format!("invalid hex number: 0x{}", hex_str)))?;
+        Ok(Token::Number(Value::Int(value)))
+    }
+
+    fn parse_octal_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ('0'..='7').contains(&ch) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let oct_str = &self.input[start..self.position];
+        if oct_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected octal digit after 0o".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(oct_str, 8)
+            .map_err(|_| EvalError::LexerError(format!("invalid octal number: 0o{}", oct_str)))?;
+        Ok(Token::Number(Value::Int(value)))
+    }
+
+    fn parse_binary_number(&mut self) -> Result<Token> {
+        let start = self.position;
+        while let Some(ch) = self.peek() {
+            if ch == '0' || ch == '1' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        let bin_str = &self.input[start..self.position];
+        if bin_str.is_empty() {
+            return Err(EvalError::LexerError(
+                "invalid number: expected binary digit after 0b".to_string(),
+            ));
+        }
+        let value = i64::from_str_radix(bin_str, 2)
+            .map_err(|_| EvalError::LexerError(format!("invalid binary number: 0b{}", bin_str)))?;
+        Ok(Token::Number(Value::Int(value)))
     }
 
     fn parse_string(&mut self) -> Result<Token> {
@@ -374,6 +474,35 @@ impl<'a> Lexer<'a> {
                         Some('"') => {
                             self.advance();
                             result.push('"');
+                        }
+                        Some('u') => {
+                            self.advance();
+                            // Parse 4 hex digits
+                            let mut hex_str = String::with_capacity(4);
+                            for _ in 0..4 {
+                                match self.peek() {
+                                    Some(ch) if ch.is_ascii_hexdigit() => {
+                                        hex_str.push(ch);
+                                        self.advance();
+                                    }
+                                    _ => {
+                                        return Err(EvalError::LexerError(
+                                            "invalid unicode escape: expected 4 hex digits"
+                                                .to_string(),
+                                        ));
+                                    }
+                                }
+                            }
+                            let code_point = u32::from_str_radix(&hex_str, 16).unwrap();
+                            match char::from_u32(code_point) {
+                                Some(ch) => result.push(ch),
+                                None => {
+                                    return Err(EvalError::LexerError(format!(
+                                        "invalid unicode code point: \\u{}",
+                                        hex_str
+                                    )));
+                                }
+                            }
                         }
                         Some(ch) => {
                             return Err(EvalError::LexerError(format!(
@@ -556,6 +685,136 @@ mod tests {
     }
 
     #[test]
+    fn test_scientific_notation() {
+        let mut lexer = Lexer::new("1e10 2.5e-3 1E+6");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Float(1e10)),
+                Token::Number(Value::Float(2.5e-3)),
+                Token::Number(Value::Float(1e6)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_scientific_notation_error() {
+        let mut lexer = Lexer::new("1e");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected digit after exponent"));
+    }
+
+    #[test]
+    fn test_hex_number() {
+        let mut lexer = Lexer::new("0xFF 0x10 0XAB");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(255)),
+                Token::Number(Value::Int(16)),
+                Token::Number(Value::Int(171)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hex_number_lowercase() {
+        let mut lexer = Lexer::new("0xabcdef");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::Number(Value::Int(0xabcdef)), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_hex_number_error() {
+        let mut lexer = Lexer::new("0x");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected hex digit after 0x"));
+    }
+
+    #[test]
+    fn test_octal_number() {
+        let mut lexer = Lexer::new("0o77 0o10 0O755");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(63)),
+                Token::Number(Value::Int(8)),
+                Token::Number(Value::Int(493)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_octal_number_error() {
+        let mut lexer = Lexer::new("0o");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected octal digit after 0o"));
+    }
+
+    #[test]
+    fn test_binary_number() {
+        let mut lexer = Lexer::new("0b1010 0b0 0B1111");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Number(Value::Int(10)),
+                Token::Number(Value::Int(0)),
+                Token::Number(Value::Int(15)),
+                Token::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_binary_number_error() {
+        let mut lexer = Lexer::new("0b");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected binary digit after 0b"));
+    }
+
+    #[test]
+    fn test_zero_literal() {
+        // Ensure plain 0 still works
+        let mut lexer = Lexer::new("0");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Number(Value::Int(0)), Token::Eof,]);
+    }
+
+    #[test]
+    fn test_zero_with_decimal() {
+        // Ensure 0.5 still works
+        let mut lexer = Lexer::new("0.5");
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(tokens, vec![Token::Number(Value::Float(0.5)), Token::Eof,]);
+    }
+
+    #[test]
     fn test_string_literal() {
         let mut lexer = Lexer::new("\"hello\"");
         let tokens = lexer.tokenize().unwrap();
@@ -607,6 +866,80 @@ mod tests {
                 Token::Eof,
             ]
         );
+    }
+
+    #[test]
+    fn test_unicode_escape_basic() {
+        let mut lexer = Lexer::new("\"\\u0041\""); // A
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("A".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_japanese() {
+        let mut lexer = Lexer::new("\"\\u3042\""); // あ (hiragana a)
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("あ".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_in_string() {
+        let mut lexer = Lexer::new("\"hello\\u0020world\""); // space
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("hello world".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_multiple() {
+        let mut lexer = Lexer::new("\"\\u0048\\u0069\""); // Hi
+        let tokens = lexer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![Token::StringLiteral("Hi".to_string()), Token::Eof,]
+        );
+    }
+
+    #[test]
+    fn test_unicode_escape_too_few_digits() {
+        let mut lexer = Lexer::new("\"\\u00\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected 4 hex digits"));
+    }
+
+    #[test]
+    fn test_unicode_escape_invalid_hex() {
+        let mut lexer = Lexer::new("\"\\uGGGG\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("expected 4 hex digits"));
+    }
+
+    #[test]
+    fn test_unicode_escape_surrogate() {
+        // Surrogates (0xD800-0xDFFF) are invalid Unicode code points
+        let mut lexer = Lexer::new("\"\\uD800\"");
+        let result = lexer.tokenize();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid unicode code point"));
     }
 
     #[test]
