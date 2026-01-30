@@ -1,4 +1,9 @@
-use std::io::{self, BufRead, Write};
+use std::env;
+use std::path::PathBuf;
+
+use rustyline::error::ReadlineError;
+use rustyline::hint::HistoryHinter;
+use rustyline::{Completer, Editor, Helper, Highlighter, Hinter, Validator};
 
 use crate::eval::{execute_statement, parse_program, Context, Lexer, Value};
 
@@ -59,6 +64,20 @@ fn starts_with_continuation_keyword(input: &str) -> bool {
     trimmed.starts_with("elif ") || trimmed.starts_with("else:")
 }
 
+#[derive(Completer, Helper, Highlighter, Hinter, Validator)]
+struct RyHelper {
+    #[rustyline(Hinter)]
+    hinter: HistoryHinter,
+}
+
+impl RyHelper {
+    fn new() -> Self {
+        Self {
+            hinter: HistoryHinter::new(),
+        }
+    }
+}
+
 /// Execute input string with context
 /// Used by both file execution and REPL
 pub fn execute_input(
@@ -87,8 +106,15 @@ pub fn execute_input(
 }
 
 pub fn run_repl() {
-    let stdin = io::stdin();
-    let mut handle = stdin.lock();
+    let helper = RyHelper::new();
+    let mut rl = Editor::new().expect("Failed to create editor");
+    rl.set_helper(Some(helper));
+
+    // Load history from file
+    let history_path = env::var_os("HOME")
+        .map(|h| PathBuf::from(h).join(".ry_history"))
+        .unwrap_or_else(|| PathBuf::from(".ry_history"));
+    let _ = rl.load_history(&history_path);
 
     // Create context for variable persistence across REPL lines
     let mut ctx = Context::with_builtins();
@@ -96,55 +122,49 @@ pub fn run_repl() {
     let mut in_multiline = false;
 
     loop {
-        if in_multiline {
-            let indent_level = calculate_indent_level(&buffer);
-            let indent = " ".repeat(indent_level);
-            print!("... {}", indent);
-        } else {
-            print!("ry> ");
-        }
-        io::stdout().flush().expect("Failed to flush stdout");
+        let prompt = if in_multiline { "... " } else { "ry> " };
 
-        let mut line = String::new();
-        match handle.read_line(&mut line) {
-            Ok(0) => {
-                // EOF (Ctrl+D)
-                println!();
-                break;
-            }
-            Ok(_) => {
+        let result = if in_multiline {
+            let indent = " ".repeat(calculate_indent_level(&buffer));
+            rl.readline_with_initial(prompt, (&indent, ""))
+        } else {
+            rl.readline(prompt)
+        };
+
+        match result {
+            Ok(line) => {
                 let trimmed = line.trim();
 
-                // Handle exit commands
+                // Handle exit commands (only in single-line mode)
                 if !in_multiline && (trimmed == "exit" || trimmed == "quit") {
                     break;
                 }
 
-                // Handle empty line in multiline mode
+                // Handle empty line in multiline mode - execute buffered input
                 if in_multiline && trimmed.is_empty() {
-                    // Empty line in multiline mode - try to execute
                     buffer.push('\n');
 
+                    // Add to history before execution
+                    let _ = rl.add_history_entry(&buffer);
+
                     // Execute the buffered input
-                    execute_multiline_input(&buffer, &mut ctx);
+                    if let Err(e) = execute_input(&buffer, &mut ctx, true) {
+                        eprintln!("Error: {}", e);
+                    }
                     buffer.clear();
                     in_multiline = false;
                     continue;
                 }
 
-                // Empty line in single-line mode
-                if trimmed.is_empty() {
+                // Skip empty lines in single-line mode
+                if !in_multiline && trimmed.is_empty() {
                     continue;
                 }
 
-                // In multiline mode, prepend auto-indent if the user didn't provide their own
-                if in_multiline && !line.starts_with(' ') && !line.starts_with('\t') {
-                    let indent_level = calculate_indent_level(&buffer);
-                    let indent = " ".repeat(indent_level);
-                    buffer.push_str(&indent);
-                }
-
                 // Accumulate input
+                if !buffer.is_empty() {
+                    buffer.push('\n');
+                }
                 buffer.push_str(&line);
 
                 // Check if we need to continue reading
@@ -153,28 +173,35 @@ pub fn run_repl() {
                     continue;
                 }
 
-                // Check if this is a multiline block that needs more input
-                // (e.g., after elif or else that ends with :)
-                if in_multiline {
-                    continue;
-                }
+                // Add to history
+                let _ = rl.add_history_entry(&buffer);
 
-                // Execute input using unified code path
-                execute_multiline_input(&buffer, &mut ctx);
+                // Execute input
+                if let Err(e) = execute_input(&buffer, &mut ctx, true) {
+                    eprintln!("Error: {}", e);
+                }
 
                 buffer.clear();
                 in_multiline = false;
             }
-            Err(e) => {
-                eprintln!("Error reading input: {}", e);
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl+C - cancel current input
+                buffer.clear();
+                in_multiline = false;
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl+D - exit
+                println!();
+                break;
+            }
+            Err(err) => {
+                eprintln!("Error: {:?}", err);
                 break;
             }
         }
     }
-}
 
-fn execute_multiline_input(input: &str, ctx: &mut Context) {
-    if let Err(e) = execute_input(input, ctx, true) {
-        eprintln!("Error: {}", e);
-    }
+    // Save history
+    let _ = rl.save_history(&history_path);
 }
