@@ -23,13 +23,21 @@ FetchContent_Declare(
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-# ===== メイン実行ファイル =====
-add_executable(ry src/main.cpp)
-target_include_directories(ry PRIVATE
+# ===== 共有ライブラリ =====
+add_library(ry_lib STATIC
+    src/lexer.cpp
+    src/parser.cpp
+    src/codegen.cpp
+)
+target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
 )
-target_link_libraries(ry PRIVATE ${LLVM_LIBS})
+target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS})
+
+# ===== メイン実行ファイル =====
+add_executable(ry src/main.cpp)
+target_link_libraries(ry PRIVATE ry_lib)
 
 # ===== テスト =====
 enable_testing()
@@ -39,12 +47,8 @@ add_executable(ry_tests
     tests/test_parser.cpp
     tests/test_codegen.cpp
 )
-target_include_directories(ry_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LLVM_INCLUDE_DIRS}
-)
 target_link_libraries(ry_tests PRIVATE
-    ${LLVM_LIBS}
+    ry_lib
     GTest::gtest_main
 )
 
