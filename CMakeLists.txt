@@ -11,9 +11,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 llvm_map_components_to_libnames(LLVM_LIBS
-  core
-  support
-  passes
+  core support passes
+  orcjit jitlink native nativecodegen
+  x86codegen x86asmparser targetparser
 )
 
 target_link_libraries(ry PRIVATE ${LLVM_LIBS})
