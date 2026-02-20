@@ -111,6 +111,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         llvm::Value *boolVal = toBool(val);
         return builder_.CreateNot(boolVal, "not"); // LLVM: xor i1 %v, true
     }
+    if (e->op == "~") {
+        if (val->getType()->isDoubleTy())
+            throw std::runtime_error("bitwise NOT (~) requires integer, got float");
+        if (val->getType() == i1Ty_)
+            val = builder_.CreateZExt(val, i64Ty_, "boolext");
+        return builder_.CreateNot(val, "bnot"); // xor %v, -1
+    }
     throw std::runtime_error("unknown unary operator: " + e->op);
 }
 
@@ -171,6 +178,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             return builder_.CreateOr(lhsBool, rhsBool, "or");
     }
     // ===== 論理演算子ここまで =====
+
+    // ===== ビット演算子 =====
+    if (op == "&" || op == "|" || op == "^" ||
+        op == "<<" || op == ">>") {
+        if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy())
+            throw std::runtime_error(
+                "bitwise operator '" + op + "' requires integer operands, got float");
+        if (lhs->getType() == i1Ty_) lhs = builder_.CreateZExt(lhs, i64Ty_, "lhs_i");
+        if (rhs->getType() == i1Ty_) rhs = builder_.CreateZExt(rhs, i64Ty_, "rhs_i");
+        if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band");
+        if (op == "|")  return builder_.CreateOr(lhs,  rhs,  "bor");
+        if (op == "^")  return builder_.CreateXor(lhs, rhs,  "bxor");
+        if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl");
+        if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr"); // 算術右シフト
+    }
+    // ===== ビット演算子ここまで =====
 
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {

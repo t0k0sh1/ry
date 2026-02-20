@@ -60,6 +60,9 @@ Token Lexer::readToken() {
     }
     if (c == '<') {
         ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '<') {
+            ++pos_; return {TokenKind::LessLess, "<<", line_};
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::LessEq, "<=", line_};
         }
@@ -67,11 +70,18 @@ Token Lexer::readToken() {
     }
     if (c == '>') {
         ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '>') {
+            ++pos_; return {TokenKind::GreaterGreater, ">>", line_};
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::GreaterEq, ">=", line_};
         }
         return {TokenKind::Greater, ">", line_};
     }
+    if (c == '&') { ++pos_; return {TokenKind::Amp,   "&", line_}; }
+    if (c == '|') { ++pos_; return {TokenKind::Pipe,  "|", line_}; }
+    if (c == '^') { ++pos_; return {TokenKind::Caret, "^", line_}; }
+    if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
 
     if (std::isdigit(c)) {
         std::string num;

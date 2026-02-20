@@ -202,3 +202,67 @@ TEST_F(CodeGenTest, MixedIntFloat) {
 TEST_F(CodeGenTest, ModuloFloat) {
     EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }
+
+// ===== ビット演算子テスト =====
+
+TEST_F(CodeGenTest, BitwiseAnd) {
+    // 1100 & 1010 = 1000 = 8
+    EXPECT_EQ(runSource("x = 12 & 10\nprint(x)"), "8\n");
+}
+
+TEST_F(CodeGenTest, BitwiseOr) {
+    // 1100 | 1010 = 1110 = 14
+    EXPECT_EQ(runSource("x = 12 | 10\nprint(x)"), "14\n");
+}
+
+TEST_F(CodeGenTest, BitwiseXor) {
+    // 1100 ^ 1010 = 0110 = 6
+    EXPECT_EQ(runSource("x = 12 ^ 10\nprint(x)"), "6\n");
+}
+
+TEST_F(CodeGenTest, LeftShift) {
+    EXPECT_EQ(runSource("x = 1 << 3\nprint(x)"), "8\n");
+}
+
+TEST_F(CodeGenTest, RightShift) {
+    EXPECT_EQ(runSource("x = 16 >> 2\nprint(x)"), "4\n");
+}
+
+TEST_F(CodeGenTest, RightShiftNeg) {
+    // 算術右シフト: -8 >> 1 = -4
+    EXPECT_EQ(runSource("x = -8 >> 1\nprint(x)"), "-4\n");
+}
+
+TEST_F(CodeGenTest, BitwiseNot) {
+    // ~0 = -1
+    EXPECT_EQ(runSource("x = ~0\nprint(x)"), "-1\n");
+}
+
+TEST_F(CodeGenTest, BitwiseNotOne) {
+    // ~1 = -2
+    EXPECT_EQ(runSource("x = ~1\nprint(x)"), "-2\n");
+}
+
+TEST_F(CodeGenTest, BitwiseBoolZExt) {
+    // true(i1=1) & 3 → ZExt → 1 & 3 = 1
+    EXPECT_EQ(runSource("x = true & 3\nprint(x)"), "1\n");
+}
+
+TEST_F(CodeGenTest, BitwiseFloatThrows) {
+    EXPECT_THROW(runSource("x = 1.0 & 2"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BitwisePrecedenceAndOverOr) {
+    // 1 | 2 & 3 = 1 | (2&3) = 1 | 2 = 3
+    EXPECT_EQ(runSource("x = 1 | 2 & 3\nprint(x)"), "3\n");
+}
+
+TEST_F(CodeGenTest, BitwisePrecedenceShiftOverOr) {
+    // 1 | 2 << 1 = 1 | (2<<1) = 1 | 4 = 5
+    EXPECT_EQ(runSource("x = 1 | 2 << 1\nprint(x)"), "5\n");
+}
+
+TEST_F(CodeGenTest, BitwisePrecedenceBitOverCmp) {
+    // 3 & 5 == 1 → (3&5)=1, 1==1=true
+    EXPECT_EQ(runSource("x = 3 & 5 == 1\nprint(x)"), "true\n");
+}

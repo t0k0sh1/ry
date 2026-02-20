@@ -19,6 +19,10 @@ private:
     ExprPtr parsePower();
     ExprPtr parsePrimary();
     ExprPtr parseComparison();
+    ExprPtr parseBitwiseOr();
+    ExprPtr parseBitwiseXor();
+    ExprPtr parseBitwiseAnd();
+    ExprPtr parseShift();
     ExprPtr parseLogicalNot();
     ExprPtr parseLogicalAnd();
     ExprPtr parseLogicalOr();

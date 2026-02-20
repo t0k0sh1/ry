@@ -167,3 +167,39 @@ TEST(LexerTest, UnknownCharIsError) {
     EXPECT_EQ(toks[0].kind, TokenKind::Error);
     EXPECT_EQ(toks[0].value, "@");
 }
+
+TEST(LexerTest, BitwiseSingleCharTokens) {
+    auto toks = tokenize("& | ^ ~");
+    EXPECT_EQ(toks[0].kind, TokenKind::Amp);
+    EXPECT_EQ(toks[0].value, "&");
+    EXPECT_EQ(toks[1].kind, TokenKind::Pipe);
+    EXPECT_EQ(toks[1].value, "|");
+    EXPECT_EQ(toks[2].kind, TokenKind::Caret);
+    EXPECT_EQ(toks[2].value, "^");
+    EXPECT_EQ(toks[3].kind, TokenKind::Tilde);
+    EXPECT_EQ(toks[3].value, "~");
+}
+
+TEST(LexerTest, LessLessVsLessAndLessEq) {
+    // << は LessLess
+    auto toks1 = tokenize("<<");
+    EXPECT_EQ(toks1[0].kind, TokenKind::LessLess);
+    EXPECT_EQ(toks1[0].value, "<<");
+
+    // 回帰: < と <= は変わらず
+    auto toks2 = tokenize("< <=");
+    EXPECT_EQ(toks2[0].kind, TokenKind::Less);
+    EXPECT_EQ(toks2[1].kind, TokenKind::LessEq);
+}
+
+TEST(LexerTest, GreaterGreaterVsGreaterAndGreaterEq) {
+    // >> は GreaterGreater
+    auto toks1 = tokenize(">>");
+    EXPECT_EQ(toks1[0].kind, TokenKind::GreaterGreater);
+    EXPECT_EQ(toks1[0].value, ">>");
+
+    // 回帰: > と >= は変わらず
+    auto toks2 = tokenize("> >=");
+    EXPECT_EQ(toks2[0].kind, TokenKind::Greater);
+    EXPECT_EQ(toks2[1].kind, TokenKind::GreaterEq);
+}

@@ -110,8 +110,10 @@ ExprPtr Parser::parsePower() {
 
 ExprPtr Parser::parsePrimary() {
     Token t = lex_.peek();
-    // 単項 + / -
-    if (t.kind == TokenKind::Plus || t.kind == TokenKind::Minus) {
+    // 単項 + / - / ~
+    if (t.kind == TokenKind::Plus  ||
+        t.kind == TokenKind::Minus ||
+        t.kind == TokenKind::Tilde) {
         lex_.next();
         ExprPtr operand = parsePrimary(); // 右結合
         auto unary = std::make_unique<UnaryExpr>();
@@ -153,13 +155,78 @@ ExprPtr Parser::parsePrimary() {
 }
 
 ExprPtr Parser::parseComparison() {
-    ExprPtr lhs = parseExpr();
+    ExprPtr lhs = parseBitwiseOr();
     for (;;) {
         TokenKind k = lex_.peek().kind;
         if (k != TokenKind::EqEq    && k != TokenKind::BangEq  &&
             k != TokenKind::Less    && k != TokenKind::LessEq  &&
             k != TokenKind::Greater && k != TokenKind::GreaterEq)
             break;
+        std::string op = lex_.next().value;
+        ExprPtr rhs = parseBitwiseOr();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op  = op;
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
+
+ExprPtr Parser::parseBitwiseOr() {
+    ExprPtr lhs = parseBitwiseXor();
+    while (lex_.peek().kind == TokenKind::Pipe) {
+        std::string op = lex_.next().value;
+        ExprPtr rhs = parseBitwiseXor();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op  = op;
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
+
+ExprPtr Parser::parseBitwiseXor() {
+    ExprPtr lhs = parseBitwiseAnd();
+    while (lex_.peek().kind == TokenKind::Caret) {
+        std::string op = lex_.next().value;
+        ExprPtr rhs = parseBitwiseAnd();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op  = op;
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
+
+ExprPtr Parser::parseBitwiseAnd() {
+    ExprPtr lhs = parseShift();
+    while (lex_.peek().kind == TokenKind::Amp) {
+        std::string op = lex_.next().value;
+        ExprPtr rhs = parseShift();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op  = op;
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
+
+ExprPtr Parser::parseShift() {
+    ExprPtr lhs = parseExpr();
+    while (lex_.peek().kind == TokenKind::LessLess ||
+           lex_.peek().kind == TokenKind::GreaterGreater) {
         std::string op = lex_.next().value;
         ExprPtr rhs = parseExpr();
         auto bin = std::make_unique<BinaryExpr>();

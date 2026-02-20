@@ -16,7 +16,14 @@ enum class TokenKind {
     GreaterEq,   // >=
     And,         // and
     Or,          // or
-    Not          // not
+    Not,         // not
+    // --- ビット演算子 ---
+    Amp,            // &
+    Pipe,           // |
+    Caret,          // ^
+    Tilde,          // ~
+    LessLess,       // <<
+    GreaterGreater, // >>
 };
 
 struct Token {
