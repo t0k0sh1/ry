@@ -31,7 +31,15 @@ enum class TokenKind {
     LParen, RParen, Comma, Newline, Eof, Error,
     Percent,     // %
     StarStar,    // **
-    SlashSlash   // //
+    SlashSlash,  // //
+    EqEq,        // ==
+    BangEq,      // !=
+    Less,        // <
+    LessEq,      // <=
+    Greater,     // >
+    GreaterEq,   // >=
+    And,         // and
+    Or           // or
 };
 
 struct Token {
@@ -93,10 +101,37 @@ private:
             }
             return {TokenKind::Slash, "/", line_};
         }
-        if (c == '=') { ++pos_; return {TokenKind::Equals, "=", line_}; }
+        if (c == '=') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::EqEq, "==", line_};
+            }
+            return {TokenKind::Equals, "=", line_};
+        }
         if (c == '(') { ++pos_; return {TokenKind::LParen, "(", line_}; }
         if (c == ')') { ++pos_; return {TokenKind::RParen, ")", line_}; }
         if (c == ',') { ++pos_; return {TokenKind::Comma,  ",", line_}; }
+        if (c == '!') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::BangEq, "!=", line_};
+            }
+            return {TokenKind::Error, "!", line_};
+        }
+        if (c == '<') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::LessEq, "<=", line_};
+            }
+            return {TokenKind::Less, "<", line_};
+        }
+        if (c == '>') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::GreaterEq, ">=", line_};
+            }
+            return {TokenKind::Greater, ">", line_};
+        }
 
         if (std::isdigit(c)) {
             std::string num;
@@ -115,6 +150,8 @@ private:
             std::string id;
             while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_'))
                 id += src_[pos_++];
+            if (id == "and") return {TokenKind::And, "and", line_};
+            if (id == "or")  return {TokenKind::Or,  "or",  line_};
             return {TokenKind::Ident, id, line_};
         }
 
@@ -187,17 +224,17 @@ private:
             lex_.next(); // consume '='
             AssignStmt s;
             s.name  = id.value;
-            s.value = parseExpr();
+            s.value = parseLogicalOr();
             return s;
         } else if (next.kind == TokenKind::LParen) {
             lex_.next(); // consume '('
             CallStmt s;
             s.callee = id.value;
             if (lex_.peek().kind != TokenKind::RParen) {
-                s.args.push_back(parseExpr());
+                s.args.push_back(parseLogicalOr());
                 while (lex_.peek().kind == TokenKind::Comma) {
                     lex_.next();
-                    s.args.push_back(parseExpr());
+                    s.args.push_back(parseLogicalOr());
                 }
             }
             if (lex_.peek().kind != TokenKind::RParen)
@@ -283,7 +320,7 @@ private:
         }
         if (t.kind == TokenKind::LParen) {
             lex_.next();
-            ExprPtr e = parseExpr();
+            ExprPtr e = parseLogicalOr();
             if (lex_.peek().kind != TokenKind::RParen)
                 throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
                                          ": expected ')'");
@@ -292,6 +329,59 @@ private:
         }
         throw std::runtime_error("line " + std::to_string(t.line) +
                                  ": unexpected token '" + t.value + "'");
+    }
+
+    ExprPtr parseComparison() {
+        ExprPtr lhs = parseExpr();
+        for (;;) {
+            TokenKind k = lex_.peek().kind;
+            if (k != TokenKind::EqEq    && k != TokenKind::BangEq  &&
+                k != TokenKind::Less    && k != TokenKind::LessEq  &&
+                k != TokenKind::Greater && k != TokenKind::GreaterEq)
+                break;
+            std::string op = lex_.next().value;
+            ExprPtr rhs = parseExpr();
+            auto bin = std::make_unique<BinaryExpr>();
+            bin->op  = op;
+            bin->lhs = std::move(lhs);
+            bin->rhs = std::move(rhs);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(bin);
+            lhs = std::move(node);
+        }
+        return lhs;
+    }
+
+    ExprPtr parseLogicalAnd() {
+        ExprPtr lhs = parseComparison();
+        while (lex_.peek().kind == TokenKind::And) {
+            std::string op = lex_.next().value;
+            ExprPtr rhs = parseComparison();
+            auto bin = std::make_unique<BinaryExpr>();
+            bin->op  = op;
+            bin->lhs = std::move(lhs);
+            bin->rhs = std::move(rhs);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(bin);
+            lhs = std::move(node);
+        }
+        return lhs;
+    }
+
+    ExprPtr parseLogicalOr() {
+        ExprPtr lhs = parseLogicalAnd();
+        while (lex_.peek().kind == TokenKind::Or) {
+            std::string op = lex_.next().value;
+            ExprPtr rhs = parseLogicalAnd();
+            auto bin = std::make_unique<BinaryExpr>();
+            bin->op  = op;
+            bin->lhs = std::move(lhs);
+            bin->rhs = std::move(rhs);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(bin);
+            lhs = std::move(node);
+        }
+        return lhs;
     }
 };
 
@@ -305,6 +395,7 @@ public:
         i64Ty_ = Type::getInt64Ty(*ctx_);
         i32Ty_ = Type::getInt32Ty(*ctx_);
         f64Ty_ = Type::getDoubleTy(*ctx_);
+        i1Ty_  = Type::getInt1Ty(*ctx_);
 
         // Register built-in functions
         builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
@@ -336,7 +427,7 @@ private:
     std::unique_ptr<Module> mod_;
     IRBuilder<> builder_;
     Function *fn_ = nullptr;
-    Type *i64Ty_, *i32Ty_, *f64Ty_;
+    Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_;
     std::unordered_map<std::string, AllocaInst*> vars_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
@@ -382,6 +473,8 @@ private:
     }
 
     Value *emitExprVariant(const VariableExpr &e) {
+        if (e.name == "true")  return ConstantInt::get(i1Ty_, 1, false);
+        if (e.name == "false") return ConstantInt::get(i1Ty_, 0, false);
         auto it = vars_.find(e.name);
         if (it == vars_.end())
             throw std::runtime_error("undefined variable: " + e.name);
@@ -395,6 +488,59 @@ private:
         Value *rhs = emitExpr(*e->rhs);
         const std::string &op = e->op;
 
+        // ===== 比較演算子 =====
+        if (op == "==" || op == "!=" || op == "<" ||
+            op == "<=" || op == ">"  || op == ">=") {
+
+            // i1（bool）は先に i64 に ZExt
+            if (lhs->getType() == i1Ty_) lhs = builder_.CreateZExt(lhs, i64Ty_, "lhs_i");
+            if (rhs->getType() == i1Ty_) rhs = builder_.CreateZExt(rhs, i64Ty_, "rhs_i");
+
+            bool lf = lhs->getType()->isDoubleTy();
+            bool rf = rhs->getType()->isDoubleTy();
+            if (lf || rf) {
+                if (!lf) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "cmp_lf");
+                if (!rf) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "cmp_rf");
+                CmpInst::Predicate pred;
+                if      (op == "==") pred = CmpInst::FCMP_OEQ;
+                else if (op == "!=") pred = CmpInst::FCMP_ONE;
+                else if (op == "<")  pred = CmpInst::FCMP_OLT;
+                else if (op == "<=") pred = CmpInst::FCMP_OLE;
+                else if (op == ">")  pred = CmpInst::FCMP_OGT;
+                else                 pred = CmpInst::FCMP_OGE;
+                return builder_.CreateFCmp(pred, lhs, rhs, "fcmp");
+            }
+            CmpInst::Predicate pred;
+            if      (op == "==") pred = CmpInst::ICMP_EQ;
+            else if (op == "!=") pred = CmpInst::ICMP_NE;
+            else if (op == "<")  pred = CmpInst::ICMP_SLT;
+            else if (op == "<=") pred = CmpInst::ICMP_SLE;
+            else if (op == ">")  pred = CmpInst::ICMP_SGT;
+            else                 pred = CmpInst::ICMP_SGE;
+            return builder_.CreateICmp(pred, lhs, rhs, "icmp");
+        }
+        // ===== 比較演算子ここまで =====
+
+        // ===== 論理演算子 =====
+        if (op == "and" || op == "or") {
+            auto toBool = [this](Value *v) -> Value* {
+                if (v->getType() == i1Ty_)
+                    return v;
+                if (v->getType()->isDoubleTy())
+                    return builder_.CreateFCmpONE(
+                        v, ConstantFP::get(f64Ty_, 0.0), "ftobool");
+                return builder_.CreateICmpNE(
+                    v, ConstantInt::get(v->getType(), 0), "itobool");
+            };
+            Value *lhsBool = toBool(lhs);
+            Value *rhsBool = toBool(rhs);
+            if (op == "and")
+                return builder_.CreateAnd(lhsBool, rhsBool, "and");
+            else
+                return builder_.CreateOr(lhsBool, rhsBool, "or");
+        }
+        // ===== 論理演算子ここまで =====
+
         // ** 累乗: 常にf64、libmのpow()を呼ぶ
         if (op == "**") {
             if (lhs->getType()->isIntegerTy()) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
@@ -406,6 +552,8 @@ private:
 
         // // 整数除算: f64入力はi64に変換してからsdiv
         if (op == "//") {
+            if (lhs->getType() == i1Ty_) lhs = builder_.CreateZExt(lhs, i64Ty_, "lhs_i");
+            if (rhs->getType() == i1Ty_) rhs = builder_.CreateZExt(rhs, i64Ty_, "rhs_i");
             if (lhs->getType()->isDoubleTy()) lhs = builder_.CreateFPToSI(lhs, i64Ty_, "lhs_i");
             if (rhs->getType()->isDoubleTy()) rhs = builder_.CreateFPToSI(rhs, i64Ty_, "rhs_i");
             return builder_.CreateSDiv(lhs, rhs, "idiv");
@@ -420,6 +568,8 @@ private:
 
         // % 剰余: 片方f64ならfrem、両方i64ならsrem
         if (op == "%") {
+            if (lhs->getType() == i1Ty_) lhs = builder_.CreateZExt(lhs, i64Ty_, "lhs_i");
+            if (rhs->getType() == i1Ty_) rhs = builder_.CreateZExt(rhs, i64Ty_, "rhs_i");
             bool lf = lhs->getType()->isDoubleTy();
             bool rf = rhs->getType()->isDoubleTy();
             if (lf || rf) {
@@ -431,6 +581,8 @@ private:
         }
 
         // +/-/*: 片方f64なら浮動小数点命令
+        if (lhs->getType() == i1Ty_) lhs = builder_.CreateZExt(lhs, i64Ty_, "lhs_i");
+        if (rhs->getType() == i1Ty_) rhs = builder_.CreateZExt(rhs, i64Ty_, "rhs_i");
         bool lf = lhs->getType()->isDoubleTy();
         bool rf = rhs->getType()->isDoubleTy();
         if (lf || rf) {
@@ -457,6 +609,15 @@ private:
         FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
 
         Value *val = emitExpr(*args[0]);
+
+        // Bool 出力
+        if (val->getType() == i1Ty_) {
+            Constant *trueStr  = builder_.CreateGlobalString("true\n",  ".fmt_true");
+            Constant *falseStr = builder_.CreateGlobalString("false\n", ".fmt_false");
+            Value *fmtPtr = builder_.CreateSelect(val, trueStr, falseStr, "bool_fmt");
+            builder_.CreateCall(printfFn, {fmtPtr});
+            return;
+        }
 
         Constant *fmt;
         if (val->getType()->isDoubleTy())
