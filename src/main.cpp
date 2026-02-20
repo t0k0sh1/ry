@@ -27,7 +27,7 @@ using namespace llvm::orc;
 // ===== Section 2: Lexer =====
 
 enum class TokenKind {
-    Number, Ident, Plus, Minus, Star, Equals,
+    Number, Float, Ident, Plus, Minus, Star, Slash, Equals,
     LParen, RParen, Comma, Newline, Eof, Error
 };
 
@@ -76,6 +76,7 @@ private:
         if (c == '+') { ++pos_; return {TokenKind::Plus,   "+", line_}; }
         if (c == '-') { ++pos_; return {TokenKind::Minus,  "-", line_}; }
         if (c == '*') { ++pos_; return {TokenKind::Star,   "*", line_}; }
+        if (c == '/') { ++pos_; return {TokenKind::Slash,  "/", line_}; }
         if (c == '=') { ++pos_; return {TokenKind::Equals, "=", line_}; }
         if (c == '(') { ++pos_; return {TokenKind::LParen, "(", line_}; }
         if (c == ')') { ++pos_; return {TokenKind::RParen, ")", line_}; }
@@ -85,6 +86,12 @@ private:
             std::string num;
             while (pos_ < src_.size() && std::isdigit(src_[pos_]))
                 num += src_[pos_++];
+            if (pos_ < src_.size() && src_[pos_] == '.') {
+                num += src_[pos_++];
+                while (pos_ < src_.size() && std::isdigit(src_[pos_]))
+                    num += src_[pos_++];
+                return {TokenKind::Float, num, line_};
+            }
             return {TokenKind::Number, num, line_};
         }
 
@@ -103,11 +110,13 @@ private:
 // ===== Section 3: AST =====
 
 struct NumberExpr   { int64_t value; };
+struct FloatExpr    { double value; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;
 
 struct ExprNode {
-    std::variant<NumberExpr, VariableExpr, std::unique_ptr<BinaryExpr>> data;
+    std::variant<NumberExpr, FloatExpr, VariableExpr,
+                 std::unique_ptr<BinaryExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -203,7 +212,8 @@ private:
 
     ExprPtr parseTerm() {
         ExprPtr lhs = parsePrimary();
-        while (lex_.peek().kind == TokenKind::Star) {
+        while (lex_.peek().kind == TokenKind::Star ||
+               lex_.peek().kind == TokenKind::Slash) {
             char op = lex_.next().value[0];
             ExprPtr rhs = parsePrimary();
             auto bin = std::make_unique<BinaryExpr>();
@@ -223,6 +233,12 @@ private:
             lex_.next();
             auto node = std::make_unique<ExprNode>();
             node->data = NumberExpr{std::stoll(t.value)};
+            return node;
+        }
+        if (t.kind == TokenKind::Float) {
+            lex_.next();
+            auto node = std::make_unique<ExprNode>();
+            node->data = FloatExpr{std::stod(t.value)};
             return node;
         }
         if (t.kind == TokenKind::Ident) {
@@ -254,6 +270,7 @@ public:
                 builder_(*ctx_) {
         i64Ty_ = Type::getInt64Ty(*ctx_);
         i32Ty_ = Type::getInt32Ty(*ctx_);
+        f64Ty_ = Type::getDoubleTy(*ctx_);
 
         // Register built-in functions
         builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
@@ -285,25 +302,28 @@ private:
     std::unique_ptr<Module> mod_;
     IRBuilder<> builder_;
     Function *fn_ = nullptr;
-    Type *i64Ty_, *i32Ty_;
+    Type *i64Ty_, *i32Ty_, *f64Ty_;
     std::unordered_map<std::string, AllocaInst*> vars_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
     // Insert alloca at entry block header (mem2reg-friendly)
-    AllocaInst *getOrCreateVar(const std::string &name) {
+    AllocaInst *getOrCreateVar(const std::string &name, Type *ty) {
         auto it = vars_.find(name);
-        if (it != vars_.end()) return it->second;
+        if (it != vars_.end()) {
+            if (it->second->getAllocatedType() == ty)
+                return it->second;
+        }
         IRBuilder<> entryBuilder(&fn_->getEntryBlock(),
                                   fn_->getEntryBlock().begin());
-        AllocaInst *alloca = entryBuilder.CreateAlloca(i64Ty_, nullptr, name);
+        AllocaInst *alloca = entryBuilder.CreateAlloca(ty, nullptr, name);
         vars_[name] = alloca;
         return alloca;
     }
 
     void emitStmt(AssignStmt &s) {
         Value *val = emitExpr(*s.value);
-        AllocaInst *ptr = getOrCreateVar(s.name);
+        AllocaInst *ptr = getOrCreateVar(s.name, val->getType());
         builder_.CreateStore(val, ptr);
     }
 
@@ -323,16 +343,47 @@ private:
         return ConstantInt::get(i64Ty_, e.value, true);
     }
 
+    Value *emitExprVariant(const FloatExpr &e) {
+        return ConstantFP::get(f64Ty_, e.value);
+    }
+
     Value *emitExprVariant(const VariableExpr &e) {
         auto it = vars_.find(e.name);
         if (it == vars_.end())
             throw std::runtime_error("undefined variable: " + e.name);
-        return builder_.CreateLoad(i64Ty_, it->second, e.name);
+        AllocaInst *alloca = it->second;
+        Type *ty = alloca->getAllocatedType();
+        return builder_.CreateLoad(ty, alloca, e.name);
     }
 
     Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         Value *lhs = emitExpr(*e->lhs);
         Value *rhs = emitExpr(*e->rhs);
+
+        // 除算: 常に f64
+        if (e->op == '/') {
+            if (lhs->getType()->isIntegerTy())
+                lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+            if (rhs->getType()->isIntegerTy())
+                rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+            return builder_.CreateFDiv(lhs, rhs, "div");
+        }
+
+        // +/-/*: 片方が f64 なら float 命令
+        bool lhsIsFloat = lhs->getType()->isDoubleTy();
+        bool rhsIsFloat = rhs->getType()->isDoubleTy();
+        if (lhsIsFloat || rhsIsFloat) {
+            if (!lhsIsFloat) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+            if (!rhsIsFloat) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+            switch (e->op) {
+            case '+': return builder_.CreateFAdd(lhs, rhs, "fadd");
+            case '-': return builder_.CreateFSub(lhs, rhs, "fsub");
+            case '*': return builder_.CreateFMul(lhs, rhs, "fmul");
+            default:  throw std::runtime_error(std::string("unknown operator: ") + e->op);
+            }
+        }
+
+        // 両方 i64: 既存の整数命令
         switch (e->op) {
         case '+': return builder_.CreateAdd(lhs, rhs, "add");
         case '-': return builder_.CreateSub(lhs, rhs, "sub");
@@ -350,10 +401,14 @@ private:
             i32Ty_, {PointerType::getUnqual(*ctx_)}, /*isVarArg=*/true);
         FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
 
-        // Format string "%ld\n"
-        Constant *fmt = builder_.CreateGlobalString("%ld\n", ".fmt");
-
         Value *val = emitExpr(*args[0]);
+
+        Constant *fmt;
+        if (val->getType()->isDoubleTy())
+            fmt = builder_.CreateGlobalString("%g\n", ".fmt_f");
+        else
+            fmt = builder_.CreateGlobalString("%ld\n", ".fmt_i");
+
         builder_.CreateCall(printfFn, {fmt, val});
     }
 };
