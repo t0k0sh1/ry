@@ -309,6 +309,17 @@ private:
 
     ExprPtr parsePrimary() {
         Token t = lex_.peek();
+        // 単項 + / -
+        if (t.kind == TokenKind::Plus || t.kind == TokenKind::Minus) {
+            lex_.next();
+            ExprPtr operand = parsePrimary(); // 右結合
+            auto unary = std::make_unique<UnaryExpr>();
+            unary->op = t.value;
+            unary->operand = std::move(operand);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(unary);
+            return node;
+        }
         if (t.kind == TokenKind::Number) {
             lex_.next();
             auto node = std::make_unique<ExprNode>();
@@ -508,6 +519,16 @@ private:
 
     Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         Value *val = emitExpr(*e->operand);
+        if (e->op == "+") {
+            return val;
+        }
+        if (e->op == "-") {
+            if (val->getType()->isDoubleTy())
+                return builder_.CreateFNeg(val, "fneg");
+            if (val->getType() == i1Ty_)
+                val = builder_.CreateZExt(val, i64Ty_, "boolext");
+            return builder_.CreateNeg(val, "neg");
+        }
         if (e->op == "not") {
             auto toBool = [this](Value *v) -> Value* {
                 if (v->getType() == i1Ty_)
