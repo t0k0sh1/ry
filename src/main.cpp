@@ -39,7 +39,8 @@ enum class TokenKind {
     Greater,     // >
     GreaterEq,   // >=
     And,         // and
-    Or           // or
+    Or,          // or
+    Not          // not
 };
 
 struct Token {
@@ -152,6 +153,7 @@ private:
                 id += src_[pos_++];
             if (id == "and") return {TokenKind::And, "and", line_};
             if (id == "or")  return {TokenKind::Or,  "or",  line_};
+            if (id == "not") return {TokenKind::Not, "not", line_};
             return {TokenKind::Ident, id, line_};
         }
 
@@ -166,16 +168,23 @@ struct NumberExpr   { int64_t value; };
 struct FloatExpr    { double value; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;
+struct UnaryExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, VariableExpr,
-                 std::unique_ptr<BinaryExpr>> data;
+                 std::unique_ptr<BinaryExpr>,
+                 std::unique_ptr<UnaryExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
 struct BinaryExpr {
     std::string op;
     ExprPtr lhs, rhs;
+};
+
+struct UnaryExpr {
+    std::string op;    // "not"
+    ExprPtr operand;
 };
 
 struct AssignStmt { std::string name; ExprPtr value; };
@@ -352,11 +361,25 @@ private:
         return lhs;
     }
 
+    ExprPtr parseLogicalNot() {
+        if (lex_.peek().kind == TokenKind::Not) {
+            lex_.next(); // consume 'not'
+            ExprPtr operand = parseLogicalNot(); // 右結合（not not a が動く）
+            auto unary = std::make_unique<UnaryExpr>();
+            unary->op = "not";
+            unary->operand = std::move(operand);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(unary);
+            return node;
+        }
+        return parseComparison();
+    }
+
     ExprPtr parseLogicalAnd() {
-        ExprPtr lhs = parseComparison();
+        ExprPtr lhs = parseLogicalNot();
         while (lex_.peek().kind == TokenKind::And) {
             std::string op = lex_.next().value;
-            ExprPtr rhs = parseComparison();
+            ExprPtr rhs = parseLogicalNot();
             auto bin = std::make_unique<BinaryExpr>();
             bin->op  = op;
             bin->lhs = std::move(lhs);
@@ -481,6 +504,24 @@ private:
         AllocaInst *alloca = it->second;
         Type *ty = alloca->getAllocatedType();
         return builder_.CreateLoad(ty, alloca, e.name);
+    }
+
+    Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
+        Value *val = emitExpr(*e->operand);
+        if (e->op == "not") {
+            auto toBool = [this](Value *v) -> Value* {
+                if (v->getType() == i1Ty_)
+                    return v;
+                if (v->getType()->isDoubleTy())
+                    return builder_.CreateFCmpONE(
+                        v, ConstantFP::get(f64Ty_, 0.0), "ftobool");
+                return builder_.CreateICmpNE(
+                    v, ConstantInt::get(v->getType(), 0), "itobool");
+            };
+            Value *boolVal = toBool(val);
+            return builder_.CreateNot(boolVal, "not"); // LLVM: xor i1 %v, true
+        }
+        throw std::runtime_error("unknown unary operator: " + e->op);
     }
 
     Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
