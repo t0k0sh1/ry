@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry.hpp"
+#include "ry/lexer.hpp"
 
 // 全トークンを取得するヘルパー
 static std::vector<Token> tokenize(const std::string &src) {

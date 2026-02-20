@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ry.hpp"
+#include "ry/parser.hpp"
 
 static Program parseStr(const std::string &src) {
     Lexer lex(src);

@@ -25,7 +25,10 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
-target_include_directories(ry PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_include_directories(ry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${LLVM_INCLUDE_DIRS}
+)
 target_link_libraries(ry PRIVATE ${LLVM_LIBS})
 
 # ===== テスト =====
@@ -37,7 +40,7 @@ add_executable(ry_tests
     tests/test_codegen.cpp
 )
 target_include_directories(ry_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
 )
 target_link_libraries(ry_tests PRIVATE

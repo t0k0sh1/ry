@@ -1,5 +1,10 @@
 #include <gtest/gtest.h>
-#include "ry.hpp"
+#include "ry/codegen.hpp"
+#include "ry/parser.hpp"
+#include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include <llvm/Support/TargetSelect.h>
+using namespace llvm;
+using namespace llvm::orc;
 
 #include <cstdio>
 #include <stdexcept>
@@ -152,4 +157,48 @@ TEST_F(CodeGenTest, UndefinedVariableThrows) {
 
 TEST_F(CodeGenTest, UnknownFunctionThrows) {
     EXPECT_THROW(runSource("foo(42)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SubtractIntegers) {
+    EXPECT_EQ(runSource("x = 5 - 3\nprint(x)"), "2\n");
+}
+
+TEST_F(CodeGenTest, MultiplyIntegers) {
+    EXPECT_EQ(runSource("x = 3 * 4\nprint(x)"), "12\n");
+}
+
+TEST_F(CodeGenTest, UnaryPlus) {
+    EXPECT_EQ(runSource("x = +5\nprint(x)"), "5\n");
+}
+
+TEST_F(CodeGenTest, NotEqual) {
+    EXPECT_EQ(runSource("x = 1 != 2\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("x = 2 != 2\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, LessOrEqual) {
+    EXPECT_EQ(runSource("x = 3 <= 3\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("x = 4 <= 3\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, GreaterThan) {
+    EXPECT_EQ(runSource("x = 5 > 3\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("x = 3 > 5\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, GreaterOrEqual) {
+    EXPECT_EQ(runSource("x = 5 >= 5\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("x = 4 >= 5\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, FloatArithmetic) {
+    EXPECT_EQ(runSource("x = 1.5 + 2.5\nprint(x)"), "4\n");
+}
+
+TEST_F(CodeGenTest, MixedIntFloat) {
+    EXPECT_EQ(runSource("x = 1 + 2.5\nprint(x)"), "3.5\n");
+}
+
+TEST_F(CodeGenTest, ModuloFloat) {
+    EXPECT_EQ(runSource("x = 5.5 % 2.0\nprint(x)"), "1.5\n");
 }

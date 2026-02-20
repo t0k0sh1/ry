@@ -1,0 +1,35 @@
+#pragma once
+
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <variant>
+#include <vector>
+
+struct NumberExpr   { int64_t value; };
+struct FloatExpr    { double value; };
+struct VariableExpr { std::string name; };
+struct BinaryExpr;
+struct UnaryExpr;
+
+struct ExprNode {
+    std::variant<NumberExpr, FloatExpr, VariableExpr,
+                 std::unique_ptr<BinaryExpr>,
+                 std::unique_ptr<UnaryExpr>> data;
+};
+using ExprPtr = std::unique_ptr<ExprNode>;
+
+struct BinaryExpr {
+    std::string op;
+    ExprPtr lhs, rhs;
+};
+
+struct UnaryExpr {
+    std::string op;
+    ExprPtr operand;
+};
+
+struct AssignStmt { std::string name; ExprPtr value; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
+using StmtNode = std::variant<AssignStmt, CallStmt>;
+using Program  = std::vector<StmtNode>;
