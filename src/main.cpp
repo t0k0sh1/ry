@@ -28,7 +28,10 @@ using namespace llvm::orc;
 
 enum class TokenKind {
     Number, Float, Ident, Plus, Minus, Star, Slash, Equals,
-    LParen, RParen, Comma, Newline, Eof, Error
+    LParen, RParen, Comma, Newline, Eof, Error,
+    Percent,     // %
+    StarStar,    // **
+    SlashSlash   // //
 };
 
 struct Token {
@@ -75,8 +78,21 @@ private:
         }
         if (c == '+') { ++pos_; return {TokenKind::Plus,   "+", line_}; }
         if (c == '-') { ++pos_; return {TokenKind::Minus,  "-", line_}; }
-        if (c == '*') { ++pos_; return {TokenKind::Star,   "*", line_}; }
-        if (c == '/') { ++pos_; return {TokenKind::Slash,  "/", line_}; }
+        if (c == '%') { ++pos_; return {TokenKind::Percent, "%", line_}; }
+        if (c == '*') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '*') {
+                ++pos_; return {TokenKind::StarStar, "**", line_};
+            }
+            return {TokenKind::Star, "*", line_};
+        }
+        if (c == '/') {
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '/') {
+                ++pos_; return {TokenKind::SlashSlash, "//", line_};
+            }
+            return {TokenKind::Slash, "/", line_};
+        }
         if (c == '=') { ++pos_; return {TokenKind::Equals, "=", line_}; }
         if (c == '(') { ++pos_; return {TokenKind::LParen, "(", line_}; }
         if (c == ')') { ++pos_; return {TokenKind::RParen, ")", line_}; }
@@ -121,7 +137,7 @@ struct ExprNode {
 using ExprPtr = std::unique_ptr<ExprNode>;
 
 struct BinaryExpr {
-    char op;
+    std::string op;
     ExprPtr lhs, rhs;
 };
 
@@ -197,7 +213,7 @@ private:
     ExprPtr parseExpr() {
         ExprPtr lhs = parseTerm();
         while (lex_.peek().kind == TokenKind::Plus || lex_.peek().kind == TokenKind::Minus) {
-            char op = lex_.next().value[0];
+            std::string op = lex_.next().value;
             ExprPtr rhs = parseTerm();
             auto bin = std::make_unique<BinaryExpr>();
             bin->op  = op;
@@ -211,11 +227,13 @@ private:
     }
 
     ExprPtr parseTerm() {
-        ExprPtr lhs = parsePrimary();
-        while (lex_.peek().kind == TokenKind::Star ||
-               lex_.peek().kind == TokenKind::Slash) {
-            char op = lex_.next().value[0];
-            ExprPtr rhs = parsePrimary();
+        ExprPtr lhs = parsePower();
+        while (lex_.peek().kind == TokenKind::Star   ||
+               lex_.peek().kind == TokenKind::Slash  ||
+               lex_.peek().kind == TokenKind::SlashSlash ||
+               lex_.peek().kind == TokenKind::Percent) {
+            std::string op = lex_.next().value;
+            ExprPtr rhs = parsePower();
             auto bin = std::make_unique<BinaryExpr>();
             bin->op  = op;
             bin->lhs = std::move(lhs);
@@ -223,6 +241,22 @@ private:
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(bin);
             lhs = std::move(node);
+        }
+        return lhs;
+    }
+
+    ExprPtr parsePower() {
+        ExprPtr lhs = parsePrimary();
+        if (lex_.peek().kind == TokenKind::StarStar) {
+            std::string op = lex_.next().value;
+            ExprPtr rhs = parsePower();  // 右結合: 再帰呼び出し
+            auto bin = std::make_unique<BinaryExpr>();
+            bin->op  = op;
+            bin->lhs = std::move(lhs);
+            bin->rhs = std::move(rhs);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(bin);
+            return node;
         }
         return lhs;
     }
@@ -359,37 +393,58 @@ private:
     Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         Value *lhs = emitExpr(*e->lhs);
         Value *rhs = emitExpr(*e->rhs);
+        const std::string &op = e->op;
 
-        // 除算: 常に f64
-        if (e->op == '/') {
-            if (lhs->getType()->isIntegerTy())
-                lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
-            if (rhs->getType()->isIntegerTy())
-                rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+        // ** 累乗: 常にf64、libmのpow()を呼ぶ
+        if (op == "**") {
+            if (lhs->getType()->isIntegerTy()) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+            if (rhs->getType()->isIntegerTy()) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+            FunctionType *powTy = FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
+            FunctionCallee powFn = mod_->getOrInsertFunction("pow", powTy);
+            return builder_.CreateCall(powFn, {lhs, rhs}, "pow");
+        }
+
+        // // 整数除算: f64入力はi64に変換してからsdiv
+        if (op == "//") {
+            if (lhs->getType()->isDoubleTy()) lhs = builder_.CreateFPToSI(lhs, i64Ty_, "lhs_i");
+            if (rhs->getType()->isDoubleTy()) rhs = builder_.CreateFPToSI(rhs, i64Ty_, "rhs_i");
+            return builder_.CreateSDiv(lhs, rhs, "idiv");
+        }
+
+        // / 除算: 常にf64
+        if (op == "/") {
+            if (lhs->getType()->isIntegerTy()) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+            if (rhs->getType()->isIntegerTy()) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
             return builder_.CreateFDiv(lhs, rhs, "div");
         }
 
-        // +/-/*: 片方が f64 なら float 命令
-        bool lhsIsFloat = lhs->getType()->isDoubleTy();
-        bool rhsIsFloat = rhs->getType()->isDoubleTy();
-        if (lhsIsFloat || rhsIsFloat) {
-            if (!lhsIsFloat) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
-            if (!rhsIsFloat) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
-            switch (e->op) {
-            case '+': return builder_.CreateFAdd(lhs, rhs, "fadd");
-            case '-': return builder_.CreateFSub(lhs, rhs, "fsub");
-            case '*': return builder_.CreateFMul(lhs, rhs, "fmul");
-            default:  throw std::runtime_error(std::string("unknown operator: ") + e->op);
+        // % 剰余: 片方f64ならfrem、両方i64ならsrem
+        if (op == "%") {
+            bool lf = lhs->getType()->isDoubleTy();
+            bool rf = rhs->getType()->isDoubleTy();
+            if (lf || rf) {
+                if (!lf) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+                if (!rf) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+                return builder_.CreateFRem(lhs, rhs, "frem");
             }
+            return builder_.CreateSRem(lhs, rhs, "srem");
         }
 
-        // 両方 i64: 既存の整数命令
-        switch (e->op) {
-        case '+': return builder_.CreateAdd(lhs, rhs, "add");
-        case '-': return builder_.CreateSub(lhs, rhs, "sub");
-        case '*': return builder_.CreateMul(lhs, rhs, "mul");
-        default:  throw std::runtime_error(std::string("unknown operator: ") + e->op);
+        // +/-/*: 片方f64なら浮動小数点命令
+        bool lf = lhs->getType()->isDoubleTy();
+        bool rf = rhs->getType()->isDoubleTy();
+        if (lf || rf) {
+            if (!lf) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+            if (!rf) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+            if (op == "+") return builder_.CreateFAdd(lhs, rhs, "fadd");
+            if (op == "-") return builder_.CreateFSub(lhs, rhs, "fsub");
+            if (op == "*") return builder_.CreateFMul(lhs, rhs, "fmul");
+            throw std::runtime_error("unknown operator: " + op);
         }
+        if (op == "+") return builder_.CreateAdd(lhs, rhs, "add");
+        if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
+        if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
+        throw std::runtime_error("unknown operator: " + op);
     }
 
     void emitPrint(const std::vector<ExprPtr> &args) {
