@@ -39,9 +39,10 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
 llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *ty) {
     auto it = vars_.find(name);
     if (it != vars_.end()) {
-        if (it->second->getAllocatedType() == ty)
-            return it->second;
+        // emitStmt で型一致を保証済み
+        return it->second;
     }
+    // 初回: エントリブロック先頭に alloca を作成
     llvm::IRBuilder<> entryBuilder(&fn_->getEntryBlock(),
                                     fn_->getEntryBlock().begin());
     llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(ty, nullptr, name);
@@ -51,7 +52,17 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
 
 void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Value *val = emitExpr(*s.value);
-    llvm::AllocaInst *ptr = getOrCreateVar(s.name, val->getType());
+    llvm::Type *newTy = val->getType();
+
+    // 型変更再代入を禁止
+    auto it = vars_.find(s.name);
+    if (it != vars_.end() && it->second->getAllocatedType() != newTy) {
+        throw std::runtime_error(
+            "type error: variable '" + s.name +
+            "' cannot be reassigned to a different type");
+    }
+
+    llvm::AllocaInst *ptr = getOrCreateVar(s.name, newTy);
     builder_.CreateStore(val, ptr);
 }
 

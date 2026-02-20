@@ -3,6 +3,9 @@ project(ry)
 
 set(CMAKE_CXX_STANDARD 17)
 
+# LLVM は -fno-rtti でビルドされているため合わせる
+add_compile_options(-fno-rtti)
+
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})

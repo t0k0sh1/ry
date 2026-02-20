@@ -266,3 +266,29 @@ TEST_F(CodeGenTest, BitwisePrecedenceBitOverCmp) {
     // 3 & 5 == 1 → (3&5)=1, 1==1=true
     EXPECT_EQ(runSource("x = 3 & 5 == 1\nprint(x)"), "true\n");
 }
+
+// ===== 型変更再代入テスト =====
+
+TEST_F(CodeGenTest, TypeChangeIntToFloatThrows) {
+    EXPECT_THROW(runSource("x = 1\nx = 1.5\nprint(x)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeChangeFloatToIntThrows) {
+    EXPECT_THROW(runSource("x = 1.5\nx = 2\nprint(x)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeChangeIntToBoolThrows) {
+    EXPECT_THROW(runSource("x = 1\nx = true\nprint(x)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeChangeBoolToIntThrows) {
+    EXPECT_THROW(runSource("x = true\nx = 1\nprint(x)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SameTypeReassignmentFloat) {
+    EXPECT_EQ(runSource("x = 1.5\nx = 2.5\nprint(x)"), "2.5\n");
+}
+
+TEST_F(CodeGenTest, TypeChangeAfterUseThrows) {
+    EXPECT_THROW(runSource("x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
+}
