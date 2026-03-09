@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 class CodeGen {
 public:
@@ -23,10 +24,13 @@ private:
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_;
     std::unordered_map<std::string, llvm::AllocaInst*> vars_;
+    std::unordered_set<std::string> const_vars_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
     llvm::AllocaInst *getOrCreateVar(const std::string &name, llvm::Type *ty);
+    void emitStmt(LetStmt &s);
+    void emitStmt(ConstStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
     llvm::Value *emitExpr(const ExprNode &node);

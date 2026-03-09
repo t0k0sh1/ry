@@ -113,6 +113,8 @@ Token Lexer::readToken() {
         if (id == "not")   return {TokenKind::Not,   "not",   line_};
         if (id == "true")  return {TokenKind::True,  "true",  line_};
         if (id == "false") return {TokenKind::False, "false", line_};
+        if (id == "let")   return {TokenKind::Let,   "let",   line_};
+        if (id == "const") return {TokenKind::Const, "const", line_};
         return {TokenKind::Ident, id, line_};
     }
 

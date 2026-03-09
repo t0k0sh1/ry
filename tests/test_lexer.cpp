@@ -265,6 +265,29 @@ TEST(LexerTest, ConsecutiveCommentLines) {
     EXPECT_EQ(toks[5].kind, TokenKind::Eof);
 }
 
+TEST(LexerTest, KeywordLet) {
+    auto toks = tokenize("let");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Let);
+    EXPECT_EQ(toks[0].value, "let");
+}
+
+TEST(LexerTest, KeywordConst) {
+    auto toks = tokenize("const");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Const);
+    EXPECT_EQ(toks[0].value, "const");
+}
+
+TEST(LexerTest, LetterAndConstantAreIdent) {
+    for (const auto &word : {"letter", "constant", "letting", "constructor"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+        EXPECT_EQ(toks[0].value, word) << "word: " << word;
+    }
+}
+
 TEST(LexerTest, TypeAnnotationTokens) {
     auto toks = tokenize("a: int = 10");
     ASSERT_EQ(toks.size(), 6u); // Ident Colon Ident Equals Number Eof

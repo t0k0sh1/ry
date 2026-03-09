@@ -27,6 +27,8 @@ enum class TokenKind {
     LessLess,       // <<
     GreaterGreater, // >>
     Colon,          // :
+    Let,            // let
+    Const,          // const
 };
 
 struct Token {

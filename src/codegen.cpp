@@ -50,33 +50,68 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
     return alloca;
 }
 
-void CodeGen::emitStmt(AssignStmt &s) {
+void CodeGen::emitStmt(LetStmt &s) {
+    if (vars_.count(s.name))
+        throw std::runtime_error("redeclared variable: " + s.name);
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
-    // 型アノテーション検証
     if (s.type_annotation) {
         llvm::Type *annotTy = nullptr;
         if (*s.type_annotation == "int")   annotTy = i64Ty_;
         else if (*s.type_annotation == "float") annotTy = f64Ty_;
         else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
-        if (annotTy && annotTy != newTy) {
+        if (annotTy && annotTy != newTy)
             throw std::runtime_error(
                 "type error: annotation '" + *s.type_annotation +
                 "' does not match expression type for variable '" + s.name + "'");
-        }
-    }
-
-    // 型変更再代入を禁止
-    auto it = vars_.find(s.name);
-    if (it != vars_.end() && it->second->getAllocatedType() != newTy) {
-        throw std::runtime_error(
-            "type error: variable '" + s.name +
-            "' cannot be reassigned to a different type");
     }
 
     llvm::AllocaInst *ptr = getOrCreateVar(s.name, newTy);
     builder_.CreateStore(val, ptr);
+}
+
+void CodeGen::emitStmt(ConstStmt &s) {
+    if (vars_.count(s.name))
+        throw std::runtime_error("redeclared variable: " + s.name);
+
+    llvm::Value *val = emitExpr(*s.value);
+    llvm::Type *newTy = val->getType();
+
+    if (s.type_annotation) {
+        llvm::Type *annotTy = nullptr;
+        if (*s.type_annotation == "int")   annotTy = i64Ty_;
+        else if (*s.type_annotation == "float") annotTy = f64Ty_;
+        else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
+        if (annotTy && annotTy != newTy)
+            throw std::runtime_error(
+                "type error: annotation '" + *s.type_annotation +
+                "' does not match expression type for variable '" + s.name + "'");
+    }
+
+    llvm::AllocaInst *ptr = getOrCreateVar(s.name, newTy);
+    builder_.CreateStore(val, ptr);
+    const_vars_.insert(s.name);
+}
+
+void CodeGen::emitStmt(AssignStmt &s) {
+    auto it = vars_.find(s.name);
+    if (it == vars_.end())
+        throw std::runtime_error("undeclared variable: " + s.name);
+
+    if (const_vars_.count(s.name))
+        throw std::runtime_error("cannot reassign const variable: " + s.name);
+
+    llvm::Value *val = emitExpr(*s.value);
+    llvm::Type *newTy = val->getType();
+
+    if (it->second->getAllocatedType() != newTy)
+        throw std::runtime_error(
+            "type error: variable '" + s.name +
+            "' cannot be reassigned to a different type");
+
+    builder_.CreateStore(val, it->second);
 }
 
 void CodeGen::emitStmt(CallStmt &s) {

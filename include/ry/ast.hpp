@@ -31,7 +31,9 @@ struct UnaryExpr {
     ExprPtr operand;
 };
 
-struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
+struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
+struct ConstStmt  { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
+struct AssignStmt { std::string name; ExprPtr value; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
-using StmtNode = std::variant<AssignStmt, CallStmt>;
+using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt>;
 using Program  = std::vector<StmtNode>;
