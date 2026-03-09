@@ -1,12 +1,113 @@
-# Ry
+# ry
 
-## build
+LLVM JIT ベースのシンプルなプログラミング言語。ソースコードを読み込み、LLVM ORC JIT でネイティブコードにコンパイル・即時実行します。
 
+## 特徴
+
+- **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
+- **3 つの型** — `int` (i64)、`float` (f64)、`bool` (i1)
+- **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
+- **型安全** — 変数への型変更再代入を禁止
+- **暗黙の型変換** — int/float 混合演算時に自動昇格
+
+## サンプルコード
+
+```python
+# 算術演算
+x = 10 + 3 * 2
+print(x)
+
+# 浮動小数点
+pi = 3.14159
+r = 5
+area = pi * r ** 2
+print(area)
+
+# 比較・論理演算
+a = 10 > 5 and 3 <= 3
+print(a)
+
+# ビット演算
+mask = 0xFF & (1 << 4)
+print(mask)
+
+# 論理否定・ブーリアン
+flag = not false
+print(flag)
 ```
-# Run CMake to configure the project
-cmake -B build \
-  -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm \
-  -DMLIR_DIR=/usr/local/llvm/lib/cmake/mlir
-# Build the project
+
+## 必要環境
+
+- LLVM 21
+- CMake 3.20+
+- C++17 対応コンパイラ
+
+## ビルド
+
+```bash
+cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
+
+## 実行
+
+```bash
+./build/ry <file.ry>
+```
+
+## テスト
+
+GoogleTest を使用したユニットテストが含まれています。
+
+```bash
+cd build && ctest --output-on-failure
+```
+
+## 言語仕様
+
+### 型
+
+| 型 | 内部表現 | リテラル例 |
+|---|---|---|
+| int | i64 | `42`, `-7` |
+| float | f64 | `3.14`, `0.5` |
+| bool | i1 | `true`, `false` |
+
+### 演算子（優先順位: 高→低）
+
+| 優先順位 | 演算子 | 説明 |
+|---|---|---|
+| 1 | `()` | グループ化 |
+| 2 | `+x` `-x` `~x` | 単項正負、ビットNOT |
+| 3 | `**` | 累乗（右結合） |
+| 4 | `*` `/` `%` `//` | 乗算・除算・剰余・整数除算 |
+| 5 | `+` `-` | 加算・減算 |
+| 6 | `<<` `>>` | ビットシフト |
+| 7 | `&` | ビットAND |
+| 8 | `^` | ビットXOR |
+| 9 | `\|` | ビットOR |
+| 10 | `==` `!=` `<` `<=` `>` `>=` | 比較 |
+| 11 | `not` | 論理NOT |
+| 12 | `and` | 論理AND |
+| 13 | `or` | 論理OR |
+
+### 演算の型規則
+
+- `/` は常に float を返す
+- `//` は常に int を返す（float 入力は切り捨て変換）
+- `**` は常に float を返す（libm `pow` を使用）
+- `%` は両辺が int なら int、片方でも float なら float
+- `+` `-` `*` は片方が float なら float に昇格
+- ビット演算子は int のみ（float を渡すとエラー）
+- 比較演算子は bool を返す
+
+### 組み込み関数
+
+| 関数 | 説明 |
+|---|---|
+| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false`） |
+
+### 制約
+
+- 変数の型変更再代入は禁止（例: `x = 1` の後に `x = 3.14` はエラー）
+- 関数定義・制御構文（if/for/while）は未実装
