@@ -53,9 +53,23 @@ TEST(LexerTest, KeywordNot) {
     EXPECT_EQ(toks[0].kind, TokenKind::Not);
 }
 
+TEST(LexerTest, KeywordTrue) {
+    auto toks = tokenize("true");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::True);
+    EXPECT_EQ(toks[0].value, "true");
+}
+
+TEST(LexerTest, KeywordFalse) {
+    auto toks = tokenize("false");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::False);
+    EXPECT_EQ(toks[0].value, "false");
+}
+
 TEST(LexerTest, IdentStartsWithKeyword) {
     // android / orbit / nothing は全部 Ident
-    for (const auto &word : {"android", "orbit", "nothing"}) {
+    for (const auto &word : {"android", "orbit", "nothing", "trueblood", "falsehood"}) {
         auto toks = tokenize(word);
         ASSERT_EQ(toks.size(), 2u) << "word: " << word;
         EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;

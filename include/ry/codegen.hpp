@@ -32,6 +32,7 @@ private:
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);
+    llvm::Value *emitExprVariant(const BoolExpr &e);
     llvm::Value *emitExprVariant(const VariableExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);

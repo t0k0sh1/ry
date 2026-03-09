@@ -102,7 +102,9 @@ Token Lexer::readToken() {
             id += src_[pos_++];
         if (id == "and") return {TokenKind::And, "and", line_};
         if (id == "or")  return {TokenKind::Or,  "or",  line_};
-        if (id == "not") return {TokenKind::Not, "not", line_};
+        if (id == "not")   return {TokenKind::Not,   "not",   line_};
+        if (id == "true")  return {TokenKind::True,  "true",  line_};
+        if (id == "false") return {TokenKind::False, "false", line_};
         return {TokenKind::Ident, id, line_};
     }
 

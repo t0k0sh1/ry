@@ -78,7 +78,22 @@ TEST(ParserTest, NotRightAssociative) {
     EXPECT_EQ(outer->op, "not");
     const auto &inner = std::get<std::unique_ptr<UnaryExpr>>(outer->operand->data);
     EXPECT_EQ(inner->op, "not");
-    EXPECT_EQ(std::get<VariableExpr>(inner->operand->data).name, "true");
+    EXPECT_TRUE(std::holds_alternative<BoolExpr>(inner->operand->data));
+    EXPECT_TRUE(std::get<BoolExpr>(inner->operand->data).value);
+}
+
+TEST(ParserTest, BoolTrueAssign) {
+    Program prog = parseStr("x = true");
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<BoolExpr>(assign.value->data));
+    EXPECT_TRUE(std::get<BoolExpr>(assign.value->data).value);
+}
+
+TEST(ParserTest, BoolFalseAssign) {
+    Program prog = parseStr("x = false");
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<BoolExpr>(assign.value->data));
+    EXPECT_FALSE(std::get<BoolExpr>(assign.value->data).value);
 }
 
 TEST(ParserTest, ComparisonOverAdd) {

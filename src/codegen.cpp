@@ -86,9 +86,11 @@ llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
     return llvm::ConstantFP::get(f64Ty_, e.value);
 }
 
+llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
+    return llvm::ConstantInt::get(i1Ty_, e.value ? 1 : 0, false);
+}
+
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
-    if (e.name == "true")  return llvm::ConstantInt::get(i1Ty_, 1, false);
-    if (e.name == "false") return llvm::ConstantInt::get(i1Ty_, 0, false);
     auto it = vars_.find(e.name);
     if (it == vars_.end())
         throw std::runtime_error("undefined variable: " + e.name);

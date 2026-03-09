@@ -8,12 +8,13 @@
 
 struct NumberExpr   { int64_t value; };
 struct FloatExpr    { double value; };
+struct BoolExpr     { bool value; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;
 struct UnaryExpr;
 
 struct ExprNode {
-    std::variant<NumberExpr, FloatExpr, VariableExpr,
+    std::variant<NumberExpr, FloatExpr, BoolExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
                  std::unique_ptr<UnaryExpr>> data;
 };

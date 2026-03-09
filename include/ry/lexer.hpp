@@ -17,6 +17,8 @@ enum class TokenKind {
     And,         // and
     Or,          // or
     Not,         // not
+    True,        // true
+    False,       // false
     // --- ビット演算子 ---
     Amp,            // &
     Pipe,           // |

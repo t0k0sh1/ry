@@ -135,6 +135,12 @@ ExprPtr Parser::parsePrimary() {
         node->data = FloatExpr{std::stod(t.value)};
         return node;
     }
+    if (t.kind == TokenKind::True || t.kind == TokenKind::False) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = BoolExpr{t.kind == TokenKind::True};
+        return node;
+    }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
