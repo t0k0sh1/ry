@@ -26,6 +26,7 @@ enum class TokenKind {
     Tilde,          // ~
     LessLess,       // <<
     GreaterGreater, // >>
+    Colon,          // :
 };
 
 struct Token {

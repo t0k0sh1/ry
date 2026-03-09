@@ -292,3 +292,29 @@ TEST_F(CodeGenTest, SameTypeReassignmentFloat) {
 TEST_F(CodeGenTest, TypeChangeAfterUseThrows) {
     EXPECT_THROW(runSource("x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
 }
+
+// ===== 型アノテーションテスト =====
+
+TEST_F(CodeGenTest, TypeAnnotationIntMatch) {
+    EXPECT_EQ(runSource("a: int = 10\nprint(a)"), "10\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationFloatMatch) {
+    EXPECT_EQ(runSource("b: float = 3.14\nprint(b)"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationBoolMatch) {
+    EXPECT_EQ(runSource("c: bool = true\nprint(c)"), "true\n");
+}
+
+TEST_F(CodeGenTest, TypeAnnotationIntMismatchThrows) {
+    EXPECT_THROW(runSource("a: int = 3.14"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeAnnotationFloatMismatchThrows) {
+    EXPECT_THROW(runSource("a: float = 10"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeAnnotationBoolMismatchThrows) {
+    EXPECT_THROW(runSource("a: bool = 10"), std::runtime_error);
+}

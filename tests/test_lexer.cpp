@@ -217,3 +217,23 @@ TEST(LexerTest, GreaterGreaterVsGreaterAndGreaterEq) {
     EXPECT_EQ(toks2[0].kind, TokenKind::Greater);
     EXPECT_EQ(toks2[1].kind, TokenKind::GreaterEq);
 }
+
+TEST(LexerTest, ColonToken) {
+    auto toks = tokenize(":");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Colon);
+    EXPECT_EQ(toks[0].value, ":");
+}
+
+TEST(LexerTest, TypeAnnotationTokens) {
+    auto toks = tokenize("a: int = 10");
+    ASSERT_EQ(toks.size(), 6u); // Ident Colon Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "a");
+    EXPECT_EQ(toks[1].kind, TokenKind::Colon);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "int");
+    EXPECT_EQ(toks[3].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[4].kind, TokenKind::Number);
+    EXPECT_EQ(toks[4].value, "10");
+}

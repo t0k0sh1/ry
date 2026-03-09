@@ -30,7 +30,26 @@ StmtNode Parser::parseStatement() {
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
-    if (next.kind == TokenKind::Equals) {
+    if (next.kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+        Token typeTok = lex_.peek();
+        if (typeTok.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(typeTok.line) +
+                                     ": expected type name after ':'");
+        if (typeTok.value != "int" && typeTok.value != "float" && typeTok.value != "bool")
+            throw std::runtime_error("line " + std::to_string(typeTok.line) +
+                                     ": unknown type '" + typeTok.value + "'");
+        lex_.next(); // consume type name
+        if (lex_.peek().kind != TokenKind::Equals)
+            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                     ": expected '=' after type annotation");
+        lex_.next(); // consume '='
+        AssignStmt s;
+        s.name = id.value;
+        s.type_annotation = typeTok.value;
+        s.value = parseLogicalOr();
+        return s;
+    } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = id.value;
@@ -54,7 +73,7 @@ StmtNode Parser::parseStatement() {
         return s;
     }
     throw std::runtime_error("line " + std::to_string(next.line) +
-                             ": expected '=' or '(' after identifier");
+                             ": expected '=', ':', or '(' after identifier");
 }
 
 ExprPtr Parser::parseExpr() {

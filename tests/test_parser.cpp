@@ -161,3 +161,53 @@ TEST(ParserTest, InvalidSyntaxThrows) {
     // 数値から始まる文はエラー
     EXPECT_THROW(parseStr("42 = x"), std::runtime_error);
 }
+
+TEST(ParserTest, TypeAnnotationInt) {
+    Program prog = parseStr("x: int = 42");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(assign.name, "x");
+    ASSERT_TRUE(assign.type_annotation.has_value());
+    EXPECT_EQ(*assign.type_annotation, "int");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(assign.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(assign.value->data).value, 42);
+}
+
+TEST(ParserTest, TypeAnnotationFloat) {
+    Program prog = parseStr("y: float = 3.14");
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(assign.name, "y");
+    ASSERT_TRUE(assign.type_annotation.has_value());
+    EXPECT_EQ(*assign.type_annotation, "float");
+    ASSERT_TRUE(std::holds_alternative<FloatExpr>(assign.value->data));
+}
+
+TEST(ParserTest, TypeAnnotationBool) {
+    Program prog = parseStr("z: bool = true");
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(assign.name, "z");
+    ASSERT_TRUE(assign.type_annotation.has_value());
+    EXPECT_EQ(*assign.type_annotation, "bool");
+    ASSERT_TRUE(std::holds_alternative<BoolExpr>(assign.value->data));
+}
+
+TEST(ParserTest, NoTypeAnnotation) {
+    Program prog = parseStr("x = 42");
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    EXPECT_FALSE(assign.type_annotation.has_value());
+}
+
+TEST(ParserTest, TypeAnnotationUnknownTypeThrows) {
+    EXPECT_THROW(parseStr("x: string = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, TypeAnnotationMissingEqualsThrows) {
+    EXPECT_THROW(parseStr("x: int 42"), std::runtime_error);
+}
+
+TEST(ParserTest, TypeAnnotationMixedWithInference) {
+    Program prog = parseStr("a: int = 1\nb = 2");
+    ASSERT_EQ(prog.size(), 2u);
+    EXPECT_TRUE(std::get<AssignStmt>(prog[0]).type_annotation.has_value());
+    EXPECT_FALSE(std::get<AssignStmt>(prog[1]).type_annotation.has_value());
+}

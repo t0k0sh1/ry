@@ -82,6 +82,7 @@ Token Lexer::readToken() {
     if (c == '|') { ++pos_; return {TokenKind::Pipe,  "|", line_}; }
     if (c == '^') { ++pos_; return {TokenKind::Caret, "^", line_}; }
     if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
+    if (c == ':') { ++pos_; return {TokenKind::Colon, ":", line_}; }
 
     if (std::isdigit(c)) {
         std::string num;

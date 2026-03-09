@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -30,7 +31,7 @@ struct UnaryExpr {
     ExprPtr operand;
 };
 
-struct AssignStmt { std::string name; ExprPtr value; };
+struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
 using StmtNode = std::variant<AssignStmt, CallStmt>;
 using Program  = std::vector<StmtNode>;

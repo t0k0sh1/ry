@@ -54,6 +54,19 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
+    // 型アノテーション検証
+    if (s.type_annotation) {
+        llvm::Type *annotTy = nullptr;
+        if (*s.type_annotation == "int")   annotTy = i64Ty_;
+        else if (*s.type_annotation == "float") annotTy = f64Ty_;
+        else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
+        if (annotTy && annotTy != newTy) {
+            throw std::runtime_error(
+                "type error: annotation '" + *s.type_annotation +
+                "' does not match expression type for variable '" + s.name + "'");
+        }
+    }
+
     // 型変更再代入を禁止
     auto it = vars_.find(s.name);
     if (it != vars_.end() && it->second->getAllocatedType() != newTy) {
