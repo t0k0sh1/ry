@@ -13,6 +13,13 @@ Token Lexer::readToken() {
     while (pos_ < src_.size() && (src_[pos_] == ' ' || src_[pos_] == '\t'))
         ++pos_;
 
+    // skip comment
+    if (pos_ < src_.size() && src_[pos_] == '#') {
+        while (pos_ < src_.size() && src_[pos_] != '\n' && src_[pos_] != '\r')
+            ++pos_;
+        return readToken();
+    }
+
     if (pos_ >= src_.size())
         return {TokenKind::Eof, "", line_};
 

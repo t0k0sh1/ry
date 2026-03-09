@@ -225,6 +225,46 @@ TEST(LexerTest, ColonToken) {
     EXPECT_EQ(toks[0].value, ":");
 }
 
+TEST(LexerTest, CommentAtEndOfLine) {
+    auto toks = tokenize("x = 10 # comment");
+    ASSERT_EQ(toks.size(), 4u); // Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "x");
+    EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[2].kind, TokenKind::Number);
+    EXPECT_EQ(toks[2].value, "10");
+    EXPECT_EQ(toks[3].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, CommentAtStartOfLine) {
+    auto toks = tokenize("# full line comment\nx = 1");
+    ASSERT_EQ(toks.size(), 5u); // Newline Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Newline);
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "x");
+    EXPECT_EQ(toks[2].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[3].kind, TokenKind::Number);
+    EXPECT_EQ(toks[3].value, "1");
+    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, CommentOnly) {
+    auto toks = tokenize("# just a comment");
+    ASSERT_EQ(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, ConsecutiveCommentLines) {
+    auto toks = tokenize("# line 1\n# line 2\nx = 1");
+    ASSERT_EQ(toks.size(), 6u); // Newline Newline Ident Equals Number Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Newline);
+    EXPECT_EQ(toks[1].kind, TokenKind::Newline);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[3].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[4].kind, TokenKind::Number);
+    EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+}
+
 TEST(LexerTest, TypeAnnotationTokens) {
     auto toks = tokenize("a: int = 10");
     ASSERT_EQ(toks.size(), 6u); // Ident Colon Ident Equals Number Eof
