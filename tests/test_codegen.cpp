@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ry/codegen.hpp"
+#include "ry/jit.hpp"
 #include "ry/module_loader.hpp"
 #include "ry/parser.hpp"
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -37,6 +38,8 @@ protected:
             throw std::runtime_error("Failed to create JIT");
         }
         auto &jit = *jitOrErr;
+
+        jit->getIRTransformLayer().setTransform(ry::optimizeModule);
 
         auto &mainJD = jit->getMainJITDylib();
         auto dlsg = DynamicLibrarySearchGenerator::GetForCurrentProcess(
@@ -850,6 +853,8 @@ protected:
             throw std::runtime_error("Failed to create JIT");
         }
         auto &jit = *jitOrErr;
+
+        jit->getIRTransformLayer().setTransform(ry::optimizeModule);
 
         auto &mainJD = jit->getMainJITDylib();
         auto dlsg = DynamicLibrarySearchGenerator::GetForCurrentProcess(

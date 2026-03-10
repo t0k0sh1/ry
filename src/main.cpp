@@ -2,6 +2,7 @@
 #include "ry/parser.hpp"
 #include "ry/module_loader.hpp"
 #include "ry/codegen.hpp"
+#include "ry/jit.hpp"
 #include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
@@ -57,6 +58,9 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         auto &jit = *jitOrErr;
+
+        // Apply O2 optimization pipeline
+        jit->getIRTransformLayer().setTransform(ry::optimizeModule);
 
         // Expose process symbols (for printf etc.)
         auto &es = jit->getExecutionSession();

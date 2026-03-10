@@ -63,7 +63,7 @@ public:
         current_ = readToken();
     }
 
-    Token peek() const { return current_; }
+    const Token& peek() const { return current_; }
     Token next();
 
 private:

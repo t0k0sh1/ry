@@ -156,37 +156,39 @@ Token Lexer::readToken() {
 
     if (c == '"') {
         ++pos_;
-        std::string str;
+        size_t start = pos_;
         while (pos_ < src_.size() && src_[pos_] != '"') {
             if (src_[pos_] == '\n' || src_[pos_] == '\r')
                 throw std::runtime_error("line " + std::to_string(line_) +
                                          ": unterminated string literal");
-            str += src_[pos_++];
+            ++pos_;
         }
         if (pos_ >= src_.size())
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unterminated string literal");
+        std::string str(src_, start, pos_ - start);
         ++pos_;
         return {TokenKind::String, str, line_};
     }
 
     if (std::isdigit(c)) {
-        std::string num;
+        size_t start = pos_;
         while (pos_ < src_.size() && std::isdigit(src_[pos_]))
-            num += src_[pos_++];
+            ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '.') {
-            num += src_[pos_++];
+            ++pos_;
             while (pos_ < src_.size() && std::isdigit(src_[pos_]))
-                num += src_[pos_++];
-            return {TokenKind::Float, num, line_};
+                ++pos_;
+            return {TokenKind::Float, std::string(src_, start, pos_ - start), line_};
         }
-        return {TokenKind::Number, num, line_};
+        return {TokenKind::Number, std::string(src_, start, pos_ - start), line_};
     }
 
     if (std::isalpha(c) || c == '_') {
-        std::string id;
+        size_t start = pos_;
         while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_'))
-            id += src_[pos_++];
+            ++pos_;
+        std::string id(src_, start, pos_ - start);
         if (id == "and")   return {TokenKind::And,   "and",   line_};
         if (id == "or")    return {TokenKind::Or,    "or",    line_};
         if (id == "not")   return {TokenKind::Not,   "not",   line_};
@@ -203,7 +205,7 @@ Token Lexer::readToken() {
         if (id == "from")   return {TokenKind::From,   "from",   line_};
         if (id == "import") return {TokenKind::Import, "import", line_};
         if (id == "type")   return {TokenKind::Type,   "type",   line_};
-        return {TokenKind::Ident, id, line_};
+        return {TokenKind::Ident, std::move(id), line_};
     }
 
     ++pos_;

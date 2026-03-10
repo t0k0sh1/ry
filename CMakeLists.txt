@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(ry)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 
 # LLVM は -fno-rtti でビルドされているため合わせる
@@ -32,6 +36,7 @@ add_library(ry_lib STATIC
     src/parser.cpp
     src/codegen.cpp
     src/module_loader.cpp
+    src/jit.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
