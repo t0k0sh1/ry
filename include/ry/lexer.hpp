@@ -5,7 +5,7 @@
 #include <vector>
 
 enum class TokenKind {
-    Number, Float, Ident, Plus, Minus, Star, Slash, Equals,
+    Number, Float, String, Ident, Plus, Minus, Star, Slash, Equals,
     LParen, RParen, Comma, Newline, Eof, Error,
     Percent,     // %
     StarStar,    // **

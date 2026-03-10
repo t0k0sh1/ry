@@ -107,7 +107,7 @@ StmtNode Parser::parseStatement() {
             if (typeTok.kind != TokenKind::Ident)
                 throw std::runtime_error("line " + std::to_string(typeTok.line) +
                                          ": expected type name after ':'");
-            if (typeTok.value != "int" && typeTok.value != "float" && typeTok.value != "bool")
+            if (typeTok.value != "int" && typeTok.value != "float" && typeTok.value != "bool" && typeTok.value != "string")
                 throw std::runtime_error("line " + std::to_string(typeTok.line) +
                                          ": unknown type '" + typeTok.value + "'");
             typeAnnotation = typeTok.value;
@@ -351,6 +351,12 @@ ExprPtr Parser::parsePrimary() {
         node->data = BoolExpr{t.kind == TokenKind::True};
         return node;
     }
+    if (t.kind == TokenKind::String) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = StringExpr{t.value};
+        return node;
+    }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
         if (lex_.peek().kind == TokenKind::LParen) {
@@ -556,7 +562,7 @@ StmtNode Parser::parseFnStatement() {
             if (paramType.kind != TokenKind::Ident)
                 throw std::runtime_error("line " + std::to_string(paramType.line) +
                                          ": expected type name");
-            if (paramType.value != "int" && paramType.value != "float" && paramType.value != "bool")
+            if (paramType.value != "int" && paramType.value != "float" && paramType.value != "bool" && paramType.value != "string")
                 throw std::runtime_error("line " + std::to_string(paramType.line) +
                                          ": unknown type '" + paramType.value + "'");
             lex_.next(); // consume type
@@ -583,7 +589,7 @@ StmtNode Parser::parseFnStatement() {
     if (retType.kind != TokenKind::Ident)
         throw std::runtime_error("line " + std::to_string(retType.line) +
                                  ": expected return type");
-    if (retType.value != "int" && retType.value != "float" && retType.value != "bool")
+    if (retType.value != "int" && retType.value != "float" && retType.value != "bool" && retType.value != "string")
         throw std::runtime_error("line " + std::to_string(retType.line) +
                                  ": unknown type '" + retType.value + "'");
     fnStmt->return_type = retType.value;

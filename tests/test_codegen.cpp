@@ -271,6 +271,36 @@ TEST_F(CodeGenTest, BitwisePrecedenceBitOverCmp) {
     EXPECT_EQ(runSource("let x = 3 & 5 == 1\nprint(x)"), "true\n");
 }
 
+// ===== string 型テスト =====
+
+TEST_F(CodeGenTest, PrintStringLiteral) {
+    EXPECT_EQ(runSource("print(\"hello\")"), "hello\n");
+}
+
+TEST_F(CodeGenTest, PrintEmptyString) {
+    EXPECT_EQ(runSource("print(\"\")"), "\n");
+}
+
+TEST_F(CodeGenTest, LetStringVariable) {
+    EXPECT_EQ(runSource("let s = \"world\"\nprint(s)"), "world\n");
+}
+
+TEST_F(CodeGenTest, ConstStringVariable) {
+    EXPECT_EQ(runSource("const s = \"hello\"\nprint(s)"), "hello\n");
+}
+
+TEST_F(CodeGenTest, StringTypeAnnotation) {
+    EXPECT_EQ(runSource("let s: string = \"typed\"\nprint(s)"), "typed\n");
+}
+
+TEST_F(CodeGenTest, StringTypeMismatchThrows) {
+    EXPECT_THROW(runSource("let s: string = 42"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntTypeAnnotationStringThrows) {
+    EXPECT_THROW(runSource("let s: int = \"hello\""), std::runtime_error);
+}
+
 // ===== 型変更再代入テスト =====
 
 TEST_F(CodeGenTest, TypeChangeIntToFloatThrows) {

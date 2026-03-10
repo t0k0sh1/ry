@@ -10,6 +10,7 @@ CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
     f64Ty_ = llvm::Type::getDoubleTy(*ctx_);
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
+    ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
     // Register built-in functions
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
@@ -91,6 +92,7 @@ void CodeGen::emitStmt(LetStmt &s) {
         if (*s.type_annotation == "int")   annotTy = i64Ty_;
         else if (*s.type_annotation == "float") annotTy = f64Ty_;
         else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
+        else if (*s.type_annotation == "string") annotTy = ptrTy_;
         if (annotTy && annotTy != newTy)
             throw std::runtime_error(
                 "type error: annotation '" + *s.type_annotation +
@@ -113,6 +115,7 @@ void CodeGen::emitStmt(ConstStmt &s) {
         if (*s.type_annotation == "int")   annotTy = i64Ty_;
         else if (*s.type_annotation == "float") annotTy = f64Ty_;
         else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
+        else if (*s.type_annotation == "string") annotTy = ptrTy_;
         if (annotTy && annotTy != newTy)
             throw std::runtime_error(
                 "type error: annotation '" + *s.type_annotation +
@@ -254,6 +257,10 @@ llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
     return llvm::ConstantInt::get(i1Ty_, e.value ? 1 : 0, false);
+}
+
+llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
+    return builder_.CreateGlobalString(e.value, ".str");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
@@ -435,6 +442,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "int")   return i64Ty_;
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
+    if (typeName == "string") return ptrTy_;
     throw std::runtime_error("unknown type: " + typeName);
 }
 
@@ -507,6 +515,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             builder_.CreateRet(llvm::ConstantFP::get(f64Ty_, 0.0));
         else if (retTy == i1Ty_)
             builder_.CreateRet(llvm::ConstantInt::get(i1Ty_, 0));
+        else if (retTy == ptrTy_)
+            builder_.CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)));
     }
 
     // Verify function
@@ -562,6 +572,13 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         llvm::Constant *falseStr = builder_.CreateGlobalString("false\n", ".fmt_false");
         llvm::Value *fmtPtr = builder_.CreateSelect(val, trueStr, falseStr, "bool_fmt");
         builder_.CreateCall(printfFn, {fmtPtr});
+        return;
+    }
+
+    // String 出力
+    if (val->getType()->isPointerTy()) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_s");
+        builder_.CreateCall(printfFn, {fmt, val});
         return;
     }
 

@@ -517,6 +517,42 @@ TEST(LexerTest, FromAndImportPrefixAreIdent) {
     }
 }
 
+// ===== 文字列リテラル =====
+
+TEST(LexerTest, StringLiteral) {
+    auto toks = tokenize("\"hello\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "hello");
+}
+
+TEST(LexerTest, EmptyString) {
+    auto toks = tokenize("\"\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "");
+}
+
+TEST(LexerTest, UnterminatedStringThrows) {
+    EXPECT_THROW(tokenize("\"hello"), std::runtime_error);
+}
+
+TEST(LexerTest, UnterminatedStringNewlineThrows) {
+    EXPECT_THROW(tokenize("\"hello\nworld\""), std::runtime_error);
+}
+
+TEST(LexerTest, StringInExpression) {
+    auto toks = tokenize("let s = \"world\"");
+    ASSERT_EQ(toks.size(), 5u); // Let Ident Equals String Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Let);
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "s");
+    EXPECT_EQ(toks[2].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[3].kind, TokenKind::String);
+    EXPECT_EQ(toks[3].value, "world");
+    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+}
+
 TEST(LexerTest, CommentLineDoesNotChangeIndent) {
     auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
     std::vector<TokenKind> expected = {

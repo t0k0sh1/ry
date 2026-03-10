@@ -154,6 +154,22 @@ Token Lexer::readToken() {
     if (c == ':') { ++pos_; return {TokenKind::Colon, ":", line_}; }
     if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
 
+    if (c == '"') {
+        ++pos_;
+        std::string str;
+        while (pos_ < src_.size() && src_[pos_] != '"') {
+            if (src_[pos_] == '\n' || src_[pos_] == '\r')
+                throw std::runtime_error("line " + std::to_string(line_) +
+                                         ": unterminated string literal");
+            str += src_[pos_++];
+        }
+        if (pos_ >= src_.size())
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unterminated string literal");
+        ++pos_;
+        return {TokenKind::String, str, line_};
+    }
+
     if (std::isdigit(c)) {
         std::string num;
         while (pos_ < src_.size() && std::isdigit(src_[pos_]))

@@ -235,7 +235,27 @@ TEST(ParserTest, TypeAnnotationBool) {
 }
 
 TEST(ParserTest, TypeAnnotationUnknownTypeThrows) {
-    EXPECT_THROW(parseStr("let x: string = 42"), std::runtime_error);
+    EXPECT_THROW(parseStr("let x: foo = 42"), std::runtime_error);
+}
+
+TEST(ParserTest, LetStringLiteral) {
+    Program prog = parseStr("let s = \"hello\"");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    EXPECT_EQ(s.name, "s");
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
+    EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "hello");
+}
+
+TEST(ParserTest, LetStringWithTypeAnnotation) {
+    Program prog = parseStr("let s: string = \"world\"");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    EXPECT_EQ(s.name, "s");
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "string");
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
+    EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "world");
 }
 
 TEST(ParserTest, TypeAnnotationMissingEqualsThrows) {

@@ -22,7 +22,7 @@ private:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
-    llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_;
+    llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> const_scope_stack_;
     std::unordered_map<std::string, llvm::Function*> functions_;
@@ -48,6 +48,7 @@ private:
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);
     llvm::Value *emitExprVariant(const BoolExpr &e);
+    llvm::Value *emitExprVariant(const StringExpr &e);
     llvm::Value *emitExprVariant(const VariableExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
