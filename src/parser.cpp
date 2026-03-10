@@ -21,9 +21,21 @@ void Parser::skipNewlines() {
 StmtNode Parser::parseStatement() {
     Token first = lex_.peek();
 
+    // fn statement
+    if (first.kind == TokenKind::Fn)
+        return parseFnStatement();
+
+    // return statement
+    if (first.kind == TokenKind::Return)
+        return parseReturnStatement();
+
     // if statement
     if (first.kind == TokenKind::If)
         return parseIfStatement();
+
+    // while statement
+    if (first.kind == TokenKind::While)
+        return parseWhileStatement();
 
     // let / const declaration
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Const) {
@@ -75,7 +87,7 @@ StmtNode Parser::parseStatement() {
     // identifier-leading statements: assignment or function call
     if (first.kind != TokenKind::Ident)
         throw std::runtime_error("line " + std::to_string(first.line) +
-                                 ": expected 'let', 'const', 'if', or identifier, got '" + first.value + "'");
+                                 ": expected 'let', 'const', 'if', 'while', 'fn', 'return', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -138,6 +150,21 @@ std::vector<StmtNode> Parser::parseBlock() {
         lex_.next(); // consume Dedent
 
     return stmts;
+}
+
+StmtNode Parser::parseWhileStatement() {
+    lex_.next(); // consume 'while'
+    ExprPtr cond = parseLogicalOr();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected ':' after while condition");
+    lex_.next(); // consume ':'
+
+    auto whileStmt = std::make_unique<WhileStmt>();
+    whileStmt->condition = std::move(cond);
+    whileStmt->body = parseBlock();
+    return whileStmt;
 }
 
 StmtNode Parser::parseIfStatement() {
@@ -274,6 +301,25 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
+        if (lex_.peek().kind == TokenKind::LParen) {
+            lex_.next(); // consume '('
+            auto call = std::make_unique<CallExpr>();
+            call->callee = t.value;
+            if (lex_.peek().kind != TokenKind::RParen) {
+                call->args.push_back(parseLogicalOr());
+                while (lex_.peek().kind == TokenKind::Comma) {
+                    lex_.next();
+                    call->args.push_back(parseLogicalOr());
+                }
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                         ": expected ')'");
+            lex_.next(); // consume ')'
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(call);
+            return node;
+        }
         auto node = std::make_unique<ExprNode>();
         node->data = VariableExpr{t.value};
         return node;
@@ -421,4 +467,88 @@ ExprPtr Parser::parseLogicalOr() {
         lhs = std::move(node);
     }
     return lhs;
+}
+
+StmtNode Parser::parseFnStatement() {
+    lex_.next(); // consume 'fn'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        throw std::runtime_error("line " + std::to_string(nameTok.line) +
+                                 ": expected function name after 'fn'");
+    lex_.next(); // consume name
+
+    if (lex_.peek().kind != TokenKind::LParen)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected '(' after function name");
+    lex_.next(); // consume '('
+
+    auto fnStmt = std::make_unique<FnStmt>();
+    fnStmt->name = nameTok.value;
+
+    // parse parameters
+    if (lex_.peek().kind != TokenKind::RParen) {
+        for (;;) {
+            Token paramName = lex_.peek();
+            if (paramName.kind != TokenKind::Ident)
+                throw std::runtime_error("line " + std::to_string(paramName.line) +
+                                         ": expected parameter name");
+            lex_.next(); // consume param name
+
+            if (lex_.peek().kind != TokenKind::Colon)
+                throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                         ": expected ':' after parameter name");
+            lex_.next(); // consume ':'
+
+            Token paramType = lex_.peek();
+            if (paramType.kind != TokenKind::Ident)
+                throw std::runtime_error("line " + std::to_string(paramType.line) +
+                                         ": expected type name");
+            if (paramType.value != "int" && paramType.value != "float" && paramType.value != "bool")
+                throw std::runtime_error("line " + std::to_string(paramType.line) +
+                                         ": unknown type '" + paramType.value + "'");
+            lex_.next(); // consume type
+
+            fnStmt->params.push_back({paramName.value, paramType.value});
+
+            if (lex_.peek().kind != TokenKind::Comma)
+                break;
+            lex_.next(); // consume ','
+        }
+    }
+
+    if (lex_.peek().kind != TokenKind::RParen)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected ')'");
+    lex_.next(); // consume ')'
+
+    if (lex_.peek().kind != TokenKind::Arrow)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected '->' after ')'");
+    lex_.next(); // consume '->'
+
+    Token retType = lex_.peek();
+    if (retType.kind != TokenKind::Ident)
+        throw std::runtime_error("line " + std::to_string(retType.line) +
+                                 ": expected return type");
+    if (retType.value != "int" && retType.value != "float" && retType.value != "bool")
+        throw std::runtime_error("line " + std::to_string(retType.line) +
+                                 ": unknown type '" + retType.value + "'");
+    fnStmt->return_type = retType.value;
+    lex_.next(); // consume return type
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected ':' after return type");
+    lex_.next(); // consume ':'
+
+    fnStmt->body = parseBlock();
+    return fnStmt;
+}
+
+StmtNode Parser::parseReturnStatement() {
+    lex_.next(); // consume 'return'
+    ReturnStmt s;
+    s.value = parseLogicalOr();
+    return s;
 }

@@ -397,6 +397,68 @@ TEST(LexerTest, BlankLineDoesNotChangeIndent) {
         EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
 }
 
+// ===== while キーワード =====
+
+TEST(LexerTest, KeywordWhile) {
+    auto toks = tokenize("while");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::While);
+    EXPECT_EQ(toks[0].value, "while");
+}
+
+TEST(LexerTest, WhilingIsIdent) {
+    auto toks = tokenize("whiling");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "whiling");
+}
+
+// ===== fn / return / -> トークン =====
+
+TEST(LexerTest, KeywordFn) {
+    auto toks = tokenize("fn");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Fn);
+    EXPECT_EQ(toks[0].value, "fn");
+}
+
+TEST(LexerTest, KeywordReturn) {
+    auto toks = tokenize("return");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Return);
+    EXPECT_EQ(toks[0].value, "return");
+}
+
+TEST(LexerTest, FnordAndReturningAreIdent) {
+    for (const auto &word : {"fnord", "returning"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+    }
+}
+
+TEST(LexerTest, ArrowToken) {
+    auto toks = tokenize("->");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Arrow);
+    EXPECT_EQ(toks[0].value, "->");
+}
+
+TEST(LexerTest, MinusStillWorks) {
+    auto toks = tokenize("-");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Minus);
+    EXPECT_EQ(toks[0].value, "-");
+}
+
+TEST(LexerTest, MinusNumberNotArrow) {
+    auto toks = tokenize("-5");
+    ASSERT_EQ(toks.size(), 3u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Minus);
+    EXPECT_EQ(toks[1].kind, TokenKind::Number);
+    EXPECT_EQ(toks[1].value, "5");
+}
+
 TEST(LexerTest, CommentLineDoesNotChangeIndent) {
     auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
     std::vector<TokenKind> expected = {

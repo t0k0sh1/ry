@@ -38,6 +38,11 @@ enum class TokenKind {
     If,             // if
     Elif,           // elif
     Else,           // else
+    While,          // while
+    // --- 関数定義 ---
+    Fn,             // fn
+    Return,         // return
+    Arrow,          // ->
 };
 
 struct Token {

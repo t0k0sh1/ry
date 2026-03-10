@@ -433,6 +433,149 @@ TEST_F(CodeGenTest, IfFalseFollowedByStatement) {
     EXPECT_EQ(runSource(src), "2\n");
 }
 
+// ===== while codegen テスト =====
+
+TEST_F(CodeGenTest, WhileFalseDoesNotExecute) {
+    EXPECT_EQ(runSource("while false:\n    print(1)"), "");
+}
+
+TEST_F(CodeGenTest, WhileCountdown) {
+    std::string src =
+        "let i = 3\n"
+        "while i > 0:\n"
+        "    print(i)\n"
+        "    i = i - 1";
+    EXPECT_EQ(runSource(src), "3\n2\n1\n");
+}
+
+TEST_F(CodeGenTest, WhileFollowedByStatement) {
+    std::string src =
+        "let i = 0\n"
+        "while i < 2:\n"
+        "    i = i + 1\n"
+        "print(i)";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, WhileZeroCondition) {
+    EXPECT_EQ(runSource("while 0:\n    print(1)"), "");
+}
+
+TEST_F(CodeGenTest, WhileNestedWhile) {
+    std::string src =
+        "let i = 0\n"
+        "while i < 2:\n"
+        "    let j = 0\n"
+        "    while j < 2:\n"
+        "        print(i + j)\n"
+        "        j = j + 1\n"
+        "    i = i + 1";
+    EXPECT_EQ(runSource(src), "0\n1\n1\n2\n");
+}
+
+TEST_F(CodeGenTest, WhileWithIf) {
+    std::string src =
+        "let i = 1\n"
+        "while i <= 4:\n"
+        "    if i % 2 == 0:\n"
+        "        print(i)\n"
+        "    i = i + 1";
+    EXPECT_EQ(runSource(src), "2\n4\n");
+}
+
+// ===== fn 関数定義テスト =====
+
+TEST_F(CodeGenTest, FnBasicAddCall) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let result = add(1, 2)\n"
+        "print(result)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, FnNoArgs) {
+    std::string src =
+        "fn zero() -> int:\n"
+        "    return 0\n"
+        "print(zero())";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, FnFloatReturn) {
+    std::string src =
+        "fn half(x: float) -> float:\n"
+        "    return x / 2.0\n"
+        "let r = half(7.0)\n"
+        "print(r)";
+    EXPECT_EQ(runSource(src), "3.5\n");
+}
+
+TEST_F(CodeGenTest, FnBoolReturn) {
+    std::string src =
+        "fn is_positive(x: int) -> bool:\n"
+        "    return x > 0\n"
+        "print(is_positive(5))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, FnWithIf) {
+    std::string src =
+        "fn abs(x: int) -> int:\n"
+        "    if x < 0:\n"
+        "        return -x\n"
+        "    return x\n"
+        "print(abs(-5))\n"
+        "print(abs(3))";
+    EXPECT_EQ(runSource(src), "5\n3\n");
+}
+
+TEST_F(CodeGenTest, FnCallAsStatement) {
+    std::string src =
+        "fn greet() -> int:\n"
+        "    print(42)\n"
+        "    return 0\n"
+        "greet()";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, FnRecursiveFactorial) {
+    std::string src =
+        "fn factorial(n: int) -> int:\n"
+        "    if n <= 1:\n"
+        "        return 1\n"
+        "    return n * factorial(n - 1)\n"
+        "print(factorial(5))";
+    EXPECT_EQ(runSource(src), "120\n");
+}
+
+TEST_F(CodeGenTest, FnUndefinedCallThrows) {
+    EXPECT_THROW(runSource("let x = unknown(1)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, FnArgCountMismatchThrows) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let x = add(1)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, FnArgTypeMismatchThrows) {
+    std::string src =
+        "fn inc(a: int) -> int:\n"
+        "    return a + 1\n"
+        "let x = inc(1.5)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, FnReturnTypeMismatchThrows) {
+    std::string src =
+        "fn bad() -> int:\n"
+        "    return 1.5";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, MultipleElif) {
     std::string src =
         "let x = 3\n"

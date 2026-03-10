@@ -9,7 +9,8 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
-- **制御構文** — `if`/`elif`/`else` による条件分岐（Python スタイルのインデントブロック）
+- **関数定義** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応）
+- **制御構文** — `if`/`elif`/`else`、`while` ループ（Python スタイルのインデントブロック）
 - **型安全** — 変数への型変更再代入を禁止、const 変数への再代入を禁止
 - **暗黙の型変換** — int/float 混合演算時に自動昇格
 
@@ -41,6 +42,21 @@ print(a)
 let mask = 0xFF & (1 << 4)
 print(mask)
 
+# 関数定義
+fn add(a: int, b: int) -> int:
+    return a + b
+
+let result = add(1, 2)
+print(result)
+
+# 再帰関数
+fn factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print(factorial(5))
+
 # 再代入（let で宣言した変数のみ）
 let count = 0
 count = count + 1
@@ -54,6 +70,12 @@ elif x > 5:
     print(2)
 else:
     print(3)
+
+# while ループ
+let i = 3
+while i > 0:
+    print(i)
+    i = i - 1
 ```
 
 ## 必要環境
@@ -156,6 +178,38 @@ else:
 - ブロック内で宣言した変数は外側のスコープでも参照できます（フラットスコープ）
 - ネスト可能
 
+#### while
+
+Python スタイルの `while` ループです。条件式が真の間、ブロックを繰り返し実行します。
+
+```python
+let i = 3
+while i > 0:
+    print(i)
+    i = i - 1
+```
+
+- 条件式は `bool` 以外も受け付けます（`int`: 0 が false、非 0 が true）
+- ネスト可能（while 内 while、while 内 if など）
+
+#### 関数定義
+
+`fn` キーワードでユーザー定義関数を宣言します。引数と戻り値には型宣言が必要です。
+
+```python
+fn add(a: int, b: int) -> int:
+    return a + b
+
+let result = add(1, 2)
+print(result)
+```
+
+- 引数の型宣言は必須（`name: type` 形式）
+- 戻り値の型は `->` の後に指定
+- `return` 文で値を返す
+- 再帰呼び出し対応
+- 関数は式レベルでも文レベルでも呼び出し可能（`let x = f(1)` / `f(1)`）
+
 ### 変数・定数宣言
 
 変数は `let`、定数は `const` で宣言します。型推論と型アノテーションの両方が使えます。
@@ -190,4 +244,4 @@ count = count + 1
 - 同じ名前の変数を再宣言するとエラー（`let x = 1` の後に `let x = 2` はエラー）
 - 変数の型変更再代入は禁止（例: `let x = 1` の後に `x = 3.14` はエラー）
 - 型アノテーションは暗黙的型変換を許容しない（strict）
-- 関数定義・ループ（for/while）は未実装
+- ループ（for）は未実装

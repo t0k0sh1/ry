@@ -306,3 +306,73 @@ TEST(ParserTest, IfMissingColonThrows) {
 TEST(ParserTest, IfEmptyBlockThrows) {
     EXPECT_THROW(parseStr("if true:\nprint(1)"), std::runtime_error);
 }
+
+// ===== while パーサーテスト =====
+
+TEST(ParserTest, WhileSimple) {
+    Program prog = parseStr("while true:\n    print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<WhileStmt>>(prog[0]));
+    const auto &ws = *std::get<std::unique_ptr<WhileStmt>>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<BoolExpr>(ws.condition->data));
+    ASSERT_EQ(ws.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ws.body[0]));
+}
+
+TEST(ParserTest, WhileBlockMultipleStatements) {
+    Program prog = parseStr("while true:\n    let x = 1\n    print(x)");
+    const auto &ws = *std::get<std::unique_ptr<WhileStmt>>(prog[0]);
+    ASSERT_EQ(ws.body.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<LetStmt>(ws.body[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ws.body[1]));
+}
+
+TEST(ParserTest, WhileMissingColonThrows) {
+    EXPECT_THROW(parseStr("while true\n    print(1)"), std::runtime_error);
+}
+
+// ===== fn / return / CallExpr パーサーテスト =====
+
+TEST(ParserTest, FnSimple) {
+    Program prog = parseStr("fn add(a: int, b: int) -> int:\n    return a + b");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.name, "add");
+    ASSERT_EQ(fn.params.size(), 2u);
+    EXPECT_EQ(fn.params[0].name, "a");
+    EXPECT_EQ(fn.params[0].type, "int");
+    EXPECT_EQ(fn.params[1].name, "b");
+    EXPECT_EQ(fn.params[1].type, "int");
+    EXPECT_EQ(fn.return_type, "int");
+    ASSERT_EQ(fn.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
+}
+
+TEST(ParserTest, ReturnStatement) {
+    Program prog = parseStr("fn f() -> int:\n    return 42");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
+    const auto &ret = std::get<ReturnStmt>(fn.body[0]);
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(ret.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(ret.value->data).value, 42);
+}
+
+TEST(ParserTest, CallExprInLet) {
+    Program prog = parseStr("let x = add(1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(call.callee, "add");
+    ASSERT_EQ(call.args.size(), 2u);
+}
+
+TEST(ParserTest, FnMissingColonThrows) {
+    EXPECT_THROW(parseStr("fn f() -> int\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, FnMissingArrowThrows) {
+    EXPECT_THROW(parseStr("fn f() int:\n    return 1"), std::runtime_error);
+}

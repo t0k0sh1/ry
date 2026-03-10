@@ -25,6 +25,7 @@ private:
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_;
     std::unordered_map<std::string, llvm::AllocaInst*> vars_;
     std::unordered_set<std::string> const_vars_;
+    std::unordered_map<std::string, llvm::Function*> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
@@ -33,7 +34,10 @@ private:
     void emitStmt(ConstStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
+    void emitStmt(ReturnStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
+    void emitStmt(std::unique_ptr<WhileStmt> &s);
+    void emitStmt(std::unique_ptr<FnStmt> &s);
     llvm::Value *toBool(llvm::Value *v);
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
@@ -42,5 +46,7 @@ private:
     llvm::Value *emitExprVariant(const VariableExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<CallExpr> &e);
+    llvm::Type *resolveType(const std::string &typeName);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

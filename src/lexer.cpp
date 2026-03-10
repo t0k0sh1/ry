@@ -88,7 +88,13 @@ Token Lexer::readToken() {
         return {TokenKind::Newline, "\n", line_++};
     }
     if (c == '+') { ++pos_; return {TokenKind::Plus,   "+", line_}; }
-    if (c == '-') { ++pos_; return {TokenKind::Minus,  "-", line_}; }
+    if (c == '-') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '>') {
+            ++pos_; return {TokenKind::Arrow, "->", line_};
+        }
+        return {TokenKind::Minus, "-", line_};
+    }
     if (c == '%') { ++pos_; return {TokenKind::Percent, "%", line_}; }
     if (c == '*') {
         ++pos_;
@@ -174,6 +180,9 @@ Token Lexer::readToken() {
         if (id == "if")    return {TokenKind::If,    "if",    line_};
         if (id == "elif")  return {TokenKind::Elif,  "elif",  line_};
         if (id == "else")  return {TokenKind::Else,  "else",  line_};
+        if (id == "while") return {TokenKind::While, "while", line_};
+        if (id == "fn")     return {TokenKind::Fn,     "fn",     line_};
+        if (id == "return") return {TokenKind::Return, "return", line_};
         return {TokenKind::Ident, id, line_};
     }
 

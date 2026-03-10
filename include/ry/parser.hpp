@@ -15,6 +15,9 @@ private:
     void skipNewlines();
     StmtNode parseStatement();
     StmtNode parseIfStatement();
+    StmtNode parseWhileStatement();
+    StmtNode parseFnStatement();
+    StmtNode parseReturnStatement();
     std::vector<StmtNode> parseBlock();
     ExprPtr parseExpr();
     ExprPtr parseTerm();

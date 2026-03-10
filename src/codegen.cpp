@@ -26,7 +26,8 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
     }
 
-    builder_.CreateRet(llvm::ConstantInt::get(i32Ty_, 0));
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateRet(llvm::ConstantInt::get(i32Ty_, 0));
 
     std::string err;
     llvm::raw_string_ostream errStream(err);
@@ -116,9 +117,30 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
 void CodeGen::emitStmt(CallStmt &s) {
     auto it = builtins_.find(s.callee);
-    if (it == builtins_.end())
+    if (it != builtins_.end()) {
+        it->second(s.args);
+        return;
+    }
+    auto fit = functions_.find(s.callee);
+    if (fit == functions_.end())
         throw std::runtime_error("unknown function: " + s.callee);
-    it->second(s.args);
+    llvm::Function *callee = fit->second;
+    if (s.args.size() != callee->arg_size())
+        throw std::runtime_error("function '" + s.callee + "': expected " +
+                                 std::to_string(callee->arg_size()) + " arguments, got " +
+                                 std::to_string(s.args.size()));
+    std::vector<llvm::Value*> argVals;
+    unsigned idx = 0;
+    for (auto &arg : s.args) {
+        llvm::Value *v = emitExpr(*arg);
+        llvm::Type *expected = callee->getFunctionType()->getParamType(idx);
+        if (v->getType() != expected)
+            throw std::runtime_error("function '" + s.callee + "': argument " +
+                                     std::to_string(idx + 1) + " type mismatch");
+        argVals.push_back(v);
+        ++idx;
+    }
+    builder_.CreateCall(callee, argVals);
 }
 
 llvm::Value *CodeGen::toBool(llvm::Value *v) {
@@ -129,6 +151,27 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
             v, llvm::ConstantFP::get(f64Ty_, 0.0), "ftobool");
     return builder_.CreateICmpNE(
         v, llvm::ConstantInt::get(v->getType(), 0), "itobool");
+}
+
+void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "while.body", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "while.end", fn_);
+
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *cond = emitExpr(*s->condition);
+    cond = toBool(cond);
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    for (auto &stmt : s->body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
@@ -145,7 +188,8 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
         builder_.SetInsertPoint(thenBB);
         for (auto &stmt : branch.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        builder_.CreateBr(mergeBB);
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(mergeBB);
 
         builder_.SetInsertPoint(elseBB);
     }
@@ -155,7 +199,8 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
         for (auto &stmt : s->else_body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
     }
-    builder_.CreateBr(mergeBB);
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
 }
@@ -351,6 +396,114 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
     if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
     throw std::runtime_error("unknown operator: " + op);
+}
+
+llvm::Type *CodeGen::resolveType(const std::string &typeName) {
+    if (typeName == "int")   return i64Ty_;
+    if (typeName == "float") return f64Ty_;
+    if (typeName == "bool")  return i1Ty_;
+    throw std::runtime_error("unknown type: " + typeName);
+}
+
+void CodeGen::emitStmt(ReturnStmt &s) {
+    llvm::Value *val = emitExpr(*s.value);
+    llvm::Type *retTy = fn_->getReturnType();
+    if (val->getType() != retTy)
+        throw std::runtime_error("return type mismatch");
+    builder_.CreateRet(val);
+    // Create dead block for code after return
+    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+    builder_.SetInsertPoint(deadBB);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
+    // Resolve parameter types and return type
+    std::vector<llvm::Type*> paramTypes;
+    for (auto &p : s->params)
+        paramTypes.push_back(resolveType(p.type));
+    llvm::Type *retTy = resolveType(s->return_type);
+
+    llvm::FunctionType *ft = llvm::FunctionType::get(retTy, paramTypes, false);
+    llvm::Function *func = llvm::Function::Create(
+        ft, llvm::Function::ExternalLinkage, s->name, *mod_);
+
+    // Register before emitting body (enables recursion)
+    functions_[s->name] = func;
+
+    // Save current context
+    llvm::Function *savedFn = fn_;
+    auto savedVars = std::move(vars_);
+    auto savedConstVars = std::move(const_vars_);
+    llvm::BasicBlock *savedBlock = builder_.GetInsertBlock();
+    llvm::BasicBlock::iterator savedPoint = builder_.GetInsertPoint();
+
+    // Set up new function
+    fn_ = func;
+    vars_.clear();
+    const_vars_.clear();
+
+    llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+    builder_.SetInsertPoint(entry);
+
+    // Allocate and store parameters
+    unsigned idx = 0;
+    for (auto &arg : func->args()) {
+        arg.setName(s->params[idx].name);
+        llvm::AllocaInst *alloca = builder_.CreateAlloca(
+            paramTypes[idx], nullptr, s->params[idx].name);
+        builder_.CreateStore(&arg, alloca);
+        vars_[s->params[idx].name] = alloca;
+        ++idx;
+    }
+
+    // Emit body
+    for (auto &stmt : s->body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+    // If no terminator, add default return
+    if (!builder_.GetInsertBlock()->getTerminator()) {
+        if (retTy == i64Ty_)
+            builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
+        else if (retTy == f64Ty_)
+            builder_.CreateRet(llvm::ConstantFP::get(f64Ty_, 0.0));
+        else if (retTy == i1Ty_)
+            builder_.CreateRet(llvm::ConstantInt::get(i1Ty_, 0));
+    }
+
+    // Verify function
+    std::string err;
+    llvm::raw_string_ostream errStream(err);
+    if (llvm::verifyFunction(*func, &errStream))
+        throw std::runtime_error("IR verify error in function '" + s->name + "': " + err);
+
+    // Restore context
+    fn_ = savedFn;
+    vars_ = std::move(savedVars);
+    const_vars_ = std::move(savedConstVars);
+    builder_.SetInsertPoint(savedBlock, savedPoint);
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    auto fit = functions_.find(e->callee);
+    if (fit == functions_.end())
+        throw std::runtime_error("undefined function: " + e->callee);
+    llvm::Function *callee = fit->second;
+    if (e->args.size() != callee->arg_size())
+        throw std::runtime_error("function '" + e->callee + "': expected " +
+                                 std::to_string(callee->arg_size()) + " arguments, got " +
+                                 std::to_string(e->args.size()));
+    std::vector<llvm::Value*> argVals;
+    unsigned idx = 0;
+    for (auto &arg : e->args) {
+        llvm::Value *v = emitExpr(*arg);
+        llvm::Type *expected = callee->getFunctionType()->getParamType(idx);
+        if (v->getType() != expected)
+            throw std::runtime_error("function '" + e->callee + "': argument " +
+                                     std::to_string(idx + 1) + " type mismatch");
+        argVals.push_back(v);
+        ++idx;
+    }
+    return builder_.CreateCall(callee, argVals, "calltmp");
 }
 
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
