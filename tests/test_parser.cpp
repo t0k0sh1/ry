@@ -234,8 +234,53 @@ TEST(ParserTest, TypeAnnotationBool) {
     ASSERT_TRUE(std::holds_alternative<BoolExpr>(s.value->data));
 }
 
-TEST(ParserTest, TypeAnnotationUnknownTypeThrows) {
-    EXPECT_THROW(parseStr("let x: foo = 42"), std::runtime_error);
+TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
+    Program prog = parseStr("let x: Point = p");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "Point");
+}
+
+// ===== type パーサーテスト =====
+
+TEST(ParserTest, TypeDefinition) {
+    Program prog = parseStr("type Point:\n    x: int\n    y: int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TypeStmt>(prog[0]));
+    const auto &ts = std::get<TypeStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Point");
+    ASSERT_EQ(ts.fields.size(), 2u);
+    EXPECT_EQ(ts.fields[0].name, "x");
+    EXPECT_EQ(ts.fields[0].type, "int");
+    EXPECT_EQ(ts.fields[1].name, "y");
+    EXPECT_EQ(ts.fields[1].type, "int");
+}
+
+TEST(ParserTest, FieldAccessSimple) {
+    Program prog = parseStr("let x = p.x");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
+    EXPECT_EQ(fa.field, "x");
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(fa.object->data));
+    EXPECT_EQ(std::get<VariableExpr>(fa.object->data).name, "p");
+}
+
+TEST(ParserTest, FieldAccessChained) {
+    Program prog = parseStr("let x = a.b.c");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    // a.b.c → FieldAccess(FieldAccess(a, b), c)
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
+    EXPECT_EQ(outer.field, "c");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(outer.object->data));
+    const auto &inner = *std::get<std::unique_ptr<FieldAccessExpr>>(outer.object->data);
+    EXPECT_EQ(inner.field, "b");
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(inner.object->data));
+    EXPECT_EQ(std::get<VariableExpr>(inner.object->data).name, "a");
 }
 
 TEST(ParserTest, LetStringLiteral) {

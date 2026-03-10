@@ -29,6 +29,12 @@ private:
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
+    struct StructInfo {
+        llvm::StructType *llvmType;
+        std::vector<FieldDef> fields;
+    };
+    std::unordered_map<std::string, StructInfo> struct_types_;
+
     void pushScope();
     void popScope();
     llvm::AllocaInst *findVar(const std::string &name);
@@ -40,6 +46,7 @@ private:
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
+    void emitStmt(TypeStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
@@ -53,6 +60,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CallExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e);
+    llvm::Value *emitStructConstructor(const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

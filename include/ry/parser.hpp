@@ -18,11 +18,13 @@ private:
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseFnStatement();
+    StmtNode parseTypeStatement();
     StmtNode parseReturnStatement();
     std::vector<StmtNode> parseBlock();
     ExprPtr parseExpr();
     ExprPtr parseTerm();
     ExprPtr parsePower();
+    ExprPtr parsePostfix();
     ExprPtr parsePrimary();
     ExprPtr parseComparison();
     ExprPtr parseBitwiseOr();

@@ -553,6 +553,21 @@ TEST(LexerTest, StringInExpression) {
     EXPECT_EQ(toks[4].kind, TokenKind::Eof);
 }
 
+TEST(LexerTest, KeywordType) {
+    auto toks = tokenize("type");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Type);
+    EXPECT_EQ(toks[0].value, "type");
+}
+
+TEST(LexerTest, TypePrefixIsIdent) {
+    for (const auto &word : {"typedef", "types", "typer"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+    }
+}
+
 TEST(LexerTest, CommentLineDoesNotChangeIndent) {
     auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
     std::vector<TokenKind> expected = {

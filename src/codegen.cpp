@@ -88,12 +88,8 @@ void CodeGen::emitStmt(LetStmt &s) {
     llvm::Type *newTy = val->getType();
 
     if (s.type_annotation) {
-        llvm::Type *annotTy = nullptr;
-        if (*s.type_annotation == "int")   annotTy = i64Ty_;
-        else if (*s.type_annotation == "float") annotTy = f64Ty_;
-        else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
-        else if (*s.type_annotation == "string") annotTy = ptrTy_;
-        if (annotTy && annotTy != newTy)
+        llvm::Type *annotTy = resolveType(*s.type_annotation);
+        if (annotTy != newTy)
             throw std::runtime_error(
                 "type error: annotation '" + *s.type_annotation +
                 "' does not match expression type for variable '" + s.name + "'");
@@ -111,12 +107,8 @@ void CodeGen::emitStmt(ConstStmt &s) {
     llvm::Type *newTy = val->getType();
 
     if (s.type_annotation) {
-        llvm::Type *annotTy = nullptr;
-        if (*s.type_annotation == "int")   annotTy = i64Ty_;
-        else if (*s.type_annotation == "float") annotTy = f64Ty_;
-        else if (*s.type_annotation == "bool")  annotTy = i1Ty_;
-        else if (*s.type_annotation == "string") annotTy = ptrTy_;
-        if (annotTy && annotTy != newTy)
+        llvm::Type *annotTy = resolveType(*s.type_annotation);
+        if (annotTy != newTy)
             throw std::runtime_error(
                 "type error: annotation '" + *s.type_annotation +
                 "' does not match expression type for variable '" + s.name + "'");
@@ -150,6 +142,10 @@ void CodeGen::emitStmt(CallStmt &s) {
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
         it->second(s.args);
+        return;
+    }
+    if (struct_types_.count(s.callee)) {
+        emitStructConstructor(s.callee, s.args);
         return;
     }
     auto fit = functions_.find(s.callee);
@@ -443,6 +439,8 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "string") return ptrTy_;
+    auto it = struct_types_.find(typeName);
+    if (it != struct_types_.end()) return it->second.llvmType;
     throw std::runtime_error("unknown type: " + typeName);
 }
 
@@ -517,6 +515,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             builder_.CreateRet(llvm::ConstantInt::get(i1Ty_, 0));
         else if (retTy == ptrTy_)
             builder_.CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)));
+        else if (llvm::isa<llvm::StructType>(retTy))
+            builder_.CreateRet(llvm::UndefValue::get(retTy));
     }
 
     // Verify function
@@ -533,6 +533,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    if (struct_types_.count(e->callee))
+        return emitStructConstructor(e->callee, e->args);
     auto fit = functions_.find(e->callee);
     if (fit == functions_.end())
         throw std::runtime_error("undefined function: " + e->callee);
@@ -555,6 +557,65 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     return builder_.CreateCall(callee, argVals, "calltmp");
 }
 
+void CodeGen::emitStmt(TypeStmt &s) {
+    if (struct_types_.count(s.name))
+        throw std::runtime_error("redefined type: " + s.name);
+
+    std::vector<llvm::Type*> fieldTypes;
+    for (auto &f : s.fields)
+        fieldTypes.push_back(resolveType(f.type));
+
+    llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
+    struct_types_[s.name] = {structTy, s.fields};
+}
+
+llvm::Value *CodeGen::emitStructConstructor(const std::string &name,
+                                             const std::vector<ExprPtr> &args) {
+    auto it = struct_types_.find(name);
+    const auto &info = it->second;
+
+    if (args.size() != info.fields.size())
+        throw std::runtime_error("type '" + name + "': expected " +
+                                 std::to_string(info.fields.size()) + " arguments, got " +
+                                 std::to_string(args.size()));
+
+    llvm::AllocaInst *alloca = builder_.CreateAlloca(info.llvmType, nullptr, name + "_tmp");
+
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        llvm::Value *val = emitExpr(*args[i]);
+        llvm::Type *expectedTy = info.llvmType->getElementType(i);
+        if (val->getType() != expectedTy)
+            throw std::runtime_error("type '" + name + "': field '" + info.fields[i].name +
+                                     "' type mismatch");
+        llvm::Value *fieldPtr = builder_.CreateStructGEP(info.llvmType, alloca, i);
+        builder_.CreateStore(val, fieldPtr);
+    }
+
+    return builder_.CreateLoad(info.llvmType, alloca, name + "_val");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e) {
+    llvm::Value *obj = emitExpr(*e->object);
+    llvm::Type *objTy = obj->getType();
+
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
+    if (!structTy)
+        throw std::runtime_error("field access on non-struct type");
+
+    std::string typeName = structTy->getName().str();
+    auto it = struct_types_.find(typeName);
+    if (it == struct_types_.end())
+        throw std::runtime_error("unknown struct type: " + typeName);
+
+    const auto &info = it->second;
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        if (info.fields[i].name == e->field)
+            return builder_.CreateExtractValue(obj, i, e->field);
+    }
+
+    throw std::runtime_error("type '" + typeName + "' has no field '" + e->field + "'");
+}
+
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
         throw std::runtime_error("print() takes exactly 1 argument");
@@ -565,6 +626,9 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
 
     llvm::Value *val = emitExpr(*args[0]);
+
+    if (llvm::isa<llvm::StructType>(val->getType()))
+        throw std::runtime_error("print() does not support struct types");
 
     // Bool 出力
     if (val->getType() == i1Ty_) {

@@ -684,6 +684,130 @@ TEST_F(CodeGenTest, MultipleElif) {
     EXPECT_EQ(runSource(src), "30\n");
 }
 
+// ===== 構造体型テスト =====
+
+TEST_F(CodeGenTest, StructBasicFieldAccess) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(10, 20)\n"
+        "print(p.x)\n"
+        "print(p.y)";
+    EXPECT_EQ(runSource(src), "10\n20\n");
+}
+
+TEST_F(CodeGenTest, StructFloatFields) {
+    std::string src =
+        "type Vec2:\n"
+        "    x: float\n"
+        "    y: float\n"
+        "let v = Vec2(1.5, 2.5)\n"
+        "print(v.x)\n"
+        "print(v.y)";
+    EXPECT_EQ(runSource(src), "1.5\n2.5\n");
+}
+
+TEST_F(CodeGenTest, StructInFnArg) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn get_x(p: Point) -> int:\n"
+        "    return p.x\n"
+        "let p = Point(42, 99)\n"
+        "print(get_x(p))";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, StructAsReturnValue) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn make_point(a: int, b: int) -> Point:\n"
+        "    return Point(a, b)\n"
+        "let p = make_point(7, 8)\n"
+        "print(p.x)\n"
+        "print(p.y)";
+    EXPECT_EQ(runSource(src), "7\n8\n");
+}
+
+TEST_F(CodeGenTest, StructNested) {
+    std::string src =
+        "type Inner:\n"
+        "    val: int\n"
+        "type Outer:\n"
+        "    inner: Inner\n"
+        "    extra: int\n"
+        "let i = Inner(42)\n"
+        "let o = Outer(i, 99)\n"
+        "print(o.inner.val)\n"
+        "print(o.extra)";
+    EXPECT_EQ(runSource(src), "42\n99\n");
+}
+
+TEST_F(CodeGenTest, StructConstructorArgCountMismatchThrows) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StructConstructorArgTypeMismatchThrows) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1.5, 2)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StructUnknownFieldThrows) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1, 2)\n"
+        "print(p.z)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, FieldAccessOnNonStructThrows) {
+    std::string src =
+        "let x = 42\n"
+        "print(x.field)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, PrintStructThrows) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1, 2)\n"
+        "print(p)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
+    EXPECT_THROW(runSource("let x: foo = 42"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StructFieldArithmetic) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let a = Point(10, 20)\n"
+        "let b = Point(3, 7)\n"
+        "let dx = a.x - b.x\n"
+        "print(dx)";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
 // ===== import 統合テスト =====
 
 class ImportTest : public CodeGenTest {

@@ -89,18 +89,21 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         loading_.erase(abs_path);
         loaded_.insert(abs_path);
 
-        // Collect function names for cache
+        // Collect exported names (functions + types) for cache
         std::unordered_set<std::string> fn_names;
         for (const auto &sub_stmt : sub_prog) {
             if (std::holds_alternative<std::unique_ptr<FnStmt>>(sub_stmt)) {
                 fn_names.insert(std::get<std::unique_ptr<FnStmt>>(sub_stmt)->name);
+            } else if (std::holds_alternative<TypeStmt>(sub_stmt)) {
+                fn_names.insert(std::get<TypeStmt>(sub_stmt).name);
             }
         }
         fn_cache_[abs_path] = fn_names;
 
         if (imp.names.empty()) {
             for (auto &sub_stmt : sub_prog) {
-                if (std::holds_alternative<std::unique_ptr<FnStmt>>(sub_stmt)) {
+                if (std::holds_alternative<std::unique_ptr<FnStmt>>(sub_stmt) ||
+                    std::holds_alternative<TypeStmt>(sub_stmt)) {
                     result.push_back(std::move(sub_stmt));
                 }
             }
@@ -114,12 +117,18 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                         found.insert(fn->name);
                         result.push_back(std::move(sub_stmt));
                     }
+                } else if (std::holds_alternative<TypeStmt>(sub_stmt)) {
+                    const auto &ts = std::get<TypeStmt>(sub_stmt);
+                    if (requested.count(ts.name)) {
+                        found.insert(ts.name);
+                        result.push_back(std::move(sub_stmt));
+                    }
                 }
             }
             for (const auto &name : imp.names) {
                 if (!found.count(name))
                     throw std::runtime_error("line " + std::to_string(imp.line) +
-                                             ": function '" + name +
+                                             ": '" + name +
                                              "' not found in module '" +
                                              imp.module_path + "'");
             }

@@ -47,6 +47,8 @@ enum class TokenKind {
     From,           // from
     Import,         // import
     Dot,            // .
+    // --- type ---
+    Type,           // type
 };
 
 struct Token {

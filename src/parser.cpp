@@ -73,6 +73,10 @@ StmtNode Parser::parseStatement() {
         throw std::runtime_error("line " + std::to_string(first.line) +
                                  ": 'from' import is only allowed at top level");
 
+    // type statement
+    if (first.kind == TokenKind::Type)
+        return parseTypeStatement();
+
     // fn statement
     if (first.kind == TokenKind::Fn)
         return parseFnStatement();
@@ -107,9 +111,6 @@ StmtNode Parser::parseStatement() {
             if (typeTok.kind != TokenKind::Ident)
                 throw std::runtime_error("line " + std::to_string(typeTok.line) +
                                          ": expected type name after ':'");
-            if (typeTok.value != "int" && typeTok.value != "float" && typeTok.value != "bool" && typeTok.value != "string")
-                throw std::runtime_error("line " + std::to_string(typeTok.line) +
-                                         ": unknown type '" + typeTok.value + "'");
             typeAnnotation = typeTok.value;
             lex_.next(); // consume type name
         }
@@ -303,7 +304,7 @@ ExprPtr Parser::parseTerm() {
 }
 
 ExprPtr Parser::parsePower() {
-    ExprPtr lhs = parsePrimary();
+    ExprPtr lhs = parsePostfix();
     if (lex_.peek().kind == TokenKind::StarStar) {
         std::string op = lex_.next().value;
         ExprPtr rhs = parsePower();  // 右結合: 再帰呼び出し
@@ -562,9 +563,6 @@ StmtNode Parser::parseFnStatement() {
             if (paramType.kind != TokenKind::Ident)
                 throw std::runtime_error("line " + std::to_string(paramType.line) +
                                          ": expected type name");
-            if (paramType.value != "int" && paramType.value != "float" && paramType.value != "bool" && paramType.value != "string")
-                throw std::runtime_error("line " + std::to_string(paramType.line) +
-                                         ": unknown type '" + paramType.value + "'");
             lex_.next(); // consume type
 
             fnStmt->params.push_back({paramName.value, paramType.value});
@@ -589,9 +587,6 @@ StmtNode Parser::parseFnStatement() {
     if (retType.kind != TokenKind::Ident)
         throw std::runtime_error("line " + std::to_string(retType.line) +
                                  ": expected return type");
-    if (retType.value != "int" && retType.value != "float" && retType.value != "bool" && retType.value != "string")
-        throw std::runtime_error("line " + std::to_string(retType.line) +
-                                 ": unknown type '" + retType.value + "'");
     fnStmt->return_type = retType.value;
     lex_.next(); // consume return type
 
@@ -609,4 +604,87 @@ StmtNode Parser::parseReturnStatement() {
     ReturnStmt s;
     s.value = parseLogicalOr();
     return s;
+}
+
+StmtNode Parser::parseTypeStatement() {
+    lex_.next(); // consume 'type'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        throw std::runtime_error("line " + std::to_string(nameTok.line) +
+                                 ": expected type name after 'type'");
+    lex_.next(); // consume name
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected ':' after type name");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected indented block");
+    lex_.next(); // consume Indent
+
+    TypeStmt ts;
+    ts.name = nameTok.value;
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        Token fieldName = lex_.peek();
+        if (fieldName.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(fieldName.line) +
+                                     ": expected field name");
+        lex_.next(); // consume field name
+
+        if (lex_.peek().kind != TokenKind::Colon)
+            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                     ": expected ':' after field name");
+        lex_.next(); // consume ':'
+
+        Token fieldType = lex_.peek();
+        if (fieldType.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(fieldType.line) +
+                                     ": expected type name");
+        lex_.next(); // consume type
+
+        ts.fields.push_back({fieldName.value, fieldType.value});
+
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (ts.fields.empty())
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": type definition must have at least one field");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return ts;
+}
+
+ExprPtr Parser::parsePostfix() {
+    ExprPtr expr = parsePrimary();
+    while (lex_.peek().kind == TokenKind::Dot) {
+        lex_.next(); // consume '.'
+        Token field = lex_.peek();
+        if (field.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(field.line) +
+                                     ": expected field name after '.'");
+        lex_.next(); // consume field name
+        auto fa = std::make_unique<FieldAccessExpr>();
+        fa->object = std::move(expr);
+        fa->field = field.value;
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(fa);
+        expr = std::move(node);
+    }
+    return expr;
 }

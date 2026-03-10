@@ -5,7 +5,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **4 つの型** — `int` (i64)、`float` (f64)、`bool` (i1)、`string` (ptr)
+- **4 つの組み込み型 + ユーザー定義型** — `int` (i64)、`float` (f64)、`bool` (i1)、`string` (ptr)、`type` による構造体定義
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
@@ -82,6 +82,22 @@ while i > 0:
     print(i)
     i = i - 1
 
+# 構造体定義
+type Point:
+    x: int
+    y: int
+
+let p = Point(10, 20)
+print(p.x)
+print(p.y)
+
+# 構造体を関数の引数に
+fn distance_x(a: Point, b: Point) -> int:
+    return a.x - b.x
+
+let d = distance_x(Point(10, 0), Point(3, 0))
+print(d)
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -133,6 +149,7 @@ x = 10  # 行末コメント
 | float | f64 | `3.14`, `0.5` |
 | bool | i1 | `true`, `false` |
 | string | ptr | `"hello"`, `""` |
+| ユーザー定義型 | LLVM StructType | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
 
@@ -247,7 +264,38 @@ count = count + 1
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `string`
+使用可能な型名: `int`, `float`, `bool`, `string`, およびユーザー定義型名
+
+#### 型定義（構造体）
+
+`type` キーワードでユーザー定義の構造体型を宣言します。フィールドはインデントブロック内に `name: type` 形式で記述します。
+
+```python
+type Point:
+    x: int
+    y: int
+
+# コンストラクタ呼び出し（関数呼び出しと同じ構文）
+let p = Point(10, 20)
+
+# フィールドアクセス（ドット記法）
+print(p.x)   # 10
+print(p.y)   # 20
+
+# 構造体を関数の引数・戻り値に使用
+fn make_point(x: int, y: int) -> Point:
+    return Point(x, y)
+
+# ネスト構造体
+type Line:
+    start: Point
+    end: Point
+```
+
+- 構造体はスタック上の値型として扱われます
+- コンストラクタの引数はフィールド定義順に対応
+- フィールドへの代入（`p.x = 10`）は未対応
+- `print()` に構造体を直接渡すとエラー
 
 #### モジュールインポート
 
