@@ -15,12 +15,41 @@ CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
 }
 
+void CodeGen::pushScope() {
+    scope_stack_.emplace_back();
+    const_scope_stack_.emplace_back();
+}
+
+void CodeGen::popScope() {
+    scope_stack_.pop_back();
+    const_scope_stack_.pop_back();
+}
+
+llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
+    for (auto it = scope_stack_.rbegin(); it != scope_stack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end())
+            return found->second;
+    }
+    return nullptr;
+}
+
+bool CodeGen::isConst(const std::string &name) const {
+    for (auto it = const_scope_stack_.rbegin(); it != const_scope_stack_.rend(); ++it) {
+        if (it->count(name))
+            return true;
+    }
+    return false;
+}
+
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     // Create entry function: i32 @__ry_main__()
     llvm::FunctionType *ft = llvm::FunctionType::get(i32Ty_, false);
     fn_ = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__ry_main__", *mod_);
     llvm::BasicBlock *bb = llvm::BasicBlock::Create(*ctx_, "entry", fn_);
     builder_.SetInsertPoint(bb);
+
+    pushScope();
 
     for (auto &stmt : prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
@@ -38,21 +67,20 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
 }
 
 llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *ty) {
-    auto it = vars_.find(name);
-    if (it != vars_.end()) {
-        // emitStmt で型一致を保証済み
+    auto &current = scope_stack_.back();
+    auto it = current.find(name);
+    if (it != current.end()) {
         return it->second;
     }
-    // 初回: エントリブロック先頭に alloca を作成
     llvm::IRBuilder<> entryBuilder(&fn_->getEntryBlock(),
                                     fn_->getEntryBlock().begin());
     llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(ty, nullptr, name);
-    vars_[name] = alloca;
+    current[name] = alloca;
     return alloca;
 }
 
 void CodeGen::emitStmt(LetStmt &s) {
-    if (vars_.count(s.name))
+    if (scope_stack_.back().count(s.name))
         throw std::runtime_error("redeclared variable: " + s.name);
 
     llvm::Value *val = emitExpr(*s.value);
@@ -74,7 +102,7 @@ void CodeGen::emitStmt(LetStmt &s) {
 }
 
 void CodeGen::emitStmt(ConstStmt &s) {
-    if (vars_.count(s.name))
+    if (scope_stack_.back().count(s.name))
         throw std::runtime_error("redeclared variable: " + s.name);
 
     llvm::Value *val = emitExpr(*s.value);
@@ -93,26 +121,26 @@ void CodeGen::emitStmt(ConstStmt &s) {
 
     llvm::AllocaInst *ptr = getOrCreateVar(s.name, newTy);
     builder_.CreateStore(val, ptr);
-    const_vars_.insert(s.name);
+    const_scope_stack_.back().insert(s.name);
 }
 
 void CodeGen::emitStmt(AssignStmt &s) {
-    auto it = vars_.find(s.name);
-    if (it == vars_.end())
+    llvm::AllocaInst *ptr = findVar(s.name);
+    if (!ptr)
         throw std::runtime_error("undeclared variable: " + s.name);
 
-    if (const_vars_.count(s.name))
+    if (isConst(s.name))
         throw std::runtime_error("cannot reassign const variable: " + s.name);
 
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
-    if (it->second->getAllocatedType() != newTy)
+    if (ptr->getAllocatedType() != newTy)
         throw std::runtime_error(
             "type error: variable '" + s.name +
             "' cannot be reassigned to a different type");
 
-    builder_.CreateStore(val, it->second);
+    builder_.CreateStore(val, ptr);
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
@@ -166,8 +194,10 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
+    pushScope();
     for (auto &stmt : s->body)
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    popScope();
     if (!builder_.GetInsertBlock()->getTerminator())
         builder_.CreateBr(condBB);
 
@@ -186,8 +216,10 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
         builder_.CreateCondBr(cond, thenBB, elseBB);
 
         builder_.SetInsertPoint(thenBB);
+        pushScope();
         for (auto &stmt : branch.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
             builder_.CreateBr(mergeBB);
 
@@ -196,8 +228,10 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
 
     // else body
     if (!s->else_body.empty()) {
+        pushScope();
         for (auto &stmt : s->else_body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
     }
     if (!builder_.GetInsertBlock()->getTerminator())
         builder_.CreateBr(mergeBB);
@@ -223,10 +257,9 @@ llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
-    auto it = vars_.find(e.name);
-    if (it == vars_.end())
+    llvm::AllocaInst *alloca = findVar(e.name);
+    if (!alloca)
         throw std::runtime_error("undefined variable: " + e.name);
-    llvm::AllocaInst *alloca = it->second;
     llvm::Type *ty = alloca->getAllocatedType();
     return builder_.CreateLoad(ty, alloca, e.name);
 }
@@ -432,15 +465,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // Save current context
     llvm::Function *savedFn = fn_;
-    auto savedVars = std::move(vars_);
-    auto savedConstVars = std::move(const_vars_);
+    auto savedScopeStack = std::move(scope_stack_);
+    auto savedConstScopeStack = std::move(const_scope_stack_);
     llvm::BasicBlock *savedBlock = builder_.GetInsertBlock();
     llvm::BasicBlock::iterator savedPoint = builder_.GetInsertPoint();
 
     // Set up new function
     fn_ = func;
-    vars_.clear();
-    const_vars_.clear();
+    scope_stack_.clear();
+    const_scope_stack_.clear();
+    pushScope();
 
     llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
     builder_.SetInsertPoint(entry);
@@ -452,7 +486,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         llvm::AllocaInst *alloca = builder_.CreateAlloca(
             paramTypes[idx], nullptr, s->params[idx].name);
         builder_.CreateStore(&arg, alloca);
-        vars_[s->params[idx].name] = alloca;
+        scope_stack_.back()[s->params[idx].name] = alloca;
         ++idx;
     }
 
@@ -478,8 +512,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // Restore context
     fn_ = savedFn;
-    vars_ = std::move(savedVars);
-    const_vars_ = std::move(savedConstVars);
+    scope_stack_ = std::move(savedScopeStack);
+    const_scope_stack_ = std::move(savedConstScopeStack);
     builder_.SetInsertPoint(savedBlock, savedPoint);
 }
 

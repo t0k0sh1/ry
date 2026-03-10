@@ -576,6 +576,64 @@ TEST_F(CodeGenTest, FnReturnTypeMismatchThrows) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== ブロックスコープテスト =====
+
+TEST_F(CodeGenTest, BlockScopeIfVarNotVisible) {
+    std::string src =
+        "if true:\n"
+        "    let x = 42\n"
+        "print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BlockScopeWhileVarNotVisible) {
+    std::string src =
+        "let i = 1\n"
+        "while i > 0:\n"
+        "    let x = 99\n"
+        "    i = 0\n"
+        "print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BlockScopeElseVarNotVisible) {
+    std::string src =
+        "if false:\n"
+        "    let a = 1\n"
+        "else:\n"
+        "    let b = 2\n"
+        "print(b)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BlockScopeInnerAccessesOuter) {
+    std::string src =
+        "let x = 1\n"
+        "if true:\n"
+        "    x = 42\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, BlockScopeShadowing) {
+    std::string src =
+        "let x = 1\n"
+        "if true:\n"
+        "    let x = 99\n"
+        "    print(x)\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "99\n1\n");
+}
+
+TEST_F(CodeGenTest, BlockScopeConstNotLeaks) {
+    std::string src =
+        "if true:\n"
+        "    const c = 10\n"
+        "let c = 20\n"
+        "print(c)";
+    EXPECT_EQ(runSource(src), "20\n");
+}
+
 TEST_F(CodeGenTest, MultipleElif) {
     std::string src =
         "let x = 3\n"

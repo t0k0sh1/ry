@@ -23,12 +23,16 @@ private:
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_;
-    std::unordered_map<std::string, llvm::AllocaInst*> vars_;
-    std::unordered_set<std::string> const_vars_;
+    std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
+    std::vector<std::unordered_set<std::string>> const_scope_stack_;
     std::unordered_map<std::string, llvm::Function*> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
+    void pushScope();
+    void popScope();
+    llvm::AllocaInst *findVar(const std::string &name);
+    bool isConst(const std::string &name) const;
     llvm::AllocaInst *getOrCreateVar(const std::string &name, llvm::Type *ty);
     void emitStmt(LetStmt &s);
     void emitStmt(ConstStmt &s);
