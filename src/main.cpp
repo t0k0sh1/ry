@@ -1,6 +1,8 @@
 #include "ry/lexer.hpp"
 #include "ry/parser.hpp"
+#include "ry/module_loader.hpp"
 #include "ry/codegen.hpp"
+#include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
 #include <llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h>
@@ -37,6 +39,11 @@ int main(int argc, char *argv[]) {
         Lexer  lexer(src);
         Parser parser(lexer);
         Program prog = parser.parseProgram();
+
+        // Resolve imports
+        std::string referrer_dir = std::filesystem::path(argv[1]).parent_path().string();
+        ModuleLoader loader;
+        prog = loader.resolveImports(prog, referrer_dir);
 
         // CodeGen -> ThreadSafeModule
         CodeGen cg;

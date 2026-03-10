@@ -31,6 +31,7 @@ add_library(ry_lib STATIC
     src/lexer.cpp
     src/parser.cpp
     src/codegen.cpp
+    src/module_loader.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

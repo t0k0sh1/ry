@@ -6,7 +6,11 @@ Program Parser::parseProgram() {
     Program prog;
     skipNewlines();
     while (lex_.peek().kind != TokenKind::Eof) {
-        prog.push_back(parseStatement());
+        if (lex_.peek().kind == TokenKind::From) {
+            prog.push_back(parseImportStatement());
+        } else {
+            prog.push_back(parseStatement());
+        }
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
         skipNewlines();
@@ -18,8 +22,56 @@ void Parser::skipNewlines() {
     while (lex_.peek().kind == TokenKind::Newline) lex_.next();
 }
 
+StmtNode Parser::parseImportStatement() {
+    Token fromTok = lex_.next(); // consume 'from'
+
+    // Parse module path: Ident (Dot Ident)*
+    Token modTok = lex_.peek();
+    if (modTok.kind != TokenKind::Ident)
+        throw std::runtime_error("line " + std::to_string(modTok.line) +
+                                 ": expected module name after 'from'");
+    std::string modulePath = lex_.next().value;
+
+    while (lex_.peek().kind == TokenKind::Dot) {
+        lex_.next(); // consume '.'
+        Token part = lex_.peek();
+        if (part.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(part.line) +
+                                     ": expected identifier after '.'");
+        modulePath += "/" + lex_.next().value;
+    }
+    modulePath += ".ry";
+
+    // Parse optional import list
+    std::vector<std::string> names;
+    if (lex_.peek().kind == TokenKind::Import) {
+        lex_.next(); // consume 'import'
+        Token name = lex_.peek();
+        if (name.kind != TokenKind::Ident)
+            throw std::runtime_error("line " + std::to_string(name.line) +
+                                     ": expected function name after 'import'");
+        names.push_back(lex_.next().value);
+
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            Token next = lex_.peek();
+            if (next.kind != TokenKind::Ident)
+                throw std::runtime_error("line " + std::to_string(next.line) +
+                                         ": expected function name after ','");
+            names.push_back(lex_.next().value);
+        }
+    }
+
+    return ImportStmt{modulePath, names, fromTok.line};
+}
+
 StmtNode Parser::parseStatement() {
     Token first = lex_.peek();
+
+    // from statement is only allowed at top level
+    if (first.kind == TokenKind::From)
+        throw std::runtime_error("line " + std::to_string(first.line) +
+                                 ": 'from' import is only allowed at top level");
 
     // fn statement
     if (first.kind == TokenKind::Fn)

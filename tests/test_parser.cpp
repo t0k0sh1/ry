@@ -376,3 +376,48 @@ TEST(ParserTest, FnMissingColonThrows) {
 TEST(ParserTest, FnMissingArrowThrows) {
     EXPECT_THROW(parseStr("fn f() int:\n    return 1"), std::runtime_error);
 }
+
+// ===== import パーサーテスト =====
+
+TEST(ParserTest, ImportAll) {
+    Program prog = parseStr("from math");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[0]));
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_TRUE(imp.names.empty());
+}
+
+TEST(ParserTest, ImportSingleFunction) {
+    Program prog = parseStr("from math import add");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "math.ry");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "add");
+}
+
+TEST(ParserTest, ImportMultipleFunctions) {
+    Program prog = parseStr("from math import add, sub");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "math.ry");
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[1], "sub");
+}
+
+TEST(ParserTest, ImportDotPath) {
+    Program prog = parseStr("from utils.math import add");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "utils/math.ry");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "add");
+}
+
+TEST(ParserTest, ImportExpectedModuleName) {
+    EXPECT_THROW(parseStr("from 42"), std::runtime_error);
+}
+
+TEST(ParserTest, ImportInBlockThrows) {
+    EXPECT_THROW(parseStr("if true:\n    from math import add"), std::runtime_error);
+}

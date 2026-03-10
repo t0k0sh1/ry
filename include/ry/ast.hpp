@@ -47,12 +47,18 @@ struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
 struct ReturnStmt { ExprPtr value; };
 struct FnParam { std::string name; std::string type; };
 
+struct ImportStmt {
+    std::string module_path;              // "utils/math.ry"
+    std::vector<std::string> names;       // {"add", "sub"} — empty means import all
+    int line;
+};
+
 struct IfStmt;
 struct WhileStmt;
 struct FnStmt;
 
 using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
-                              ReturnStmt,
+                              ReturnStmt, ImportStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<FnStmt>>;

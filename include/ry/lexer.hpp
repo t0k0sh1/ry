@@ -43,6 +43,10 @@ enum class TokenKind {
     Fn,             // fn
     Return,         // return
     Arrow,          // ->
+    // --- import ---
+    From,           // from
+    Import,         // import
+    Dot,            // .
 };
 
 struct Token {

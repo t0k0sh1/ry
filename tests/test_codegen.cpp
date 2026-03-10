@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ry/codegen.hpp"
+#include "ry/module_loader.hpp"
 #include "ry/parser.hpp"
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/Support/TargetSelect.h>
@@ -7,6 +8,9 @@ using namespace llvm;
 using namespace llvm::orc;
 
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 
@@ -648,4 +652,196 @@ TEST_F(CodeGenTest, MultipleElif) {
         "else:\n"
         "    print(50)";
     EXPECT_EQ(runSource(src), "30\n");
+}
+
+// ===== import 統合テスト =====
+
+class ImportTest : public CodeGenTest {
+protected:
+    std::filesystem::path tmp_dir_;
+
+    void SetUp() override {
+        tmp_dir_ = std::filesystem::temp_directory_path() / "ry_import_test";
+        std::filesystem::create_directories(tmp_dir_);
+    }
+
+    void TearDown() override {
+        std::filesystem::remove_all(tmp_dir_);
+    }
+
+    void writeFile(const std::string &relative_path, const std::string &content) {
+        auto path = tmp_dir_ / relative_path;
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream f(path);
+        f << content;
+    }
+
+    std::string runWithImports(const std::string &src,
+                               const std::string &referrer_dir = "",
+                               const std::vector<std::string> &search_paths = {}) {
+        Lexer lex(src);
+        Parser parser(lex);
+        Program prog = parser.parseProgram();
+
+        std::string dir = referrer_dir.empty() ? tmp_dir_.string() : referrer_dir;
+        ModuleLoader loader(search_paths);
+        prog = loader.resolveImports(prog, dir);
+
+        CodeGen cg;
+        auto tsm = cg.compile(prog);
+
+        auto jitOrErr = LLJITBuilder().create();
+        if (!jitOrErr) {
+            llvm::consumeError(jitOrErr.takeError());
+            throw std::runtime_error("Failed to create JIT");
+        }
+        auto &jit = *jitOrErr;
+
+        auto &mainJD = jit->getMainJITDylib();
+        auto dlsg = DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            jit->getDataLayout().getGlobalPrefix());
+        if (!dlsg) {
+            llvm::consumeError(dlsg.takeError());
+            throw std::runtime_error("Failed to create DynamicLibrarySearchGenerator");
+        }
+        mainJD.addGenerator(std::move(*dlsg));
+
+        if (auto err = jit->addIRModule(std::move(tsm))) {
+            llvm::consumeError(std::move(err));
+            throw std::runtime_error("Failed to add IR module");
+        }
+
+        auto symOrErr = jit->lookup("__ry_main__");
+        if (!symOrErr) {
+            llvm::consumeError(symOrErr.takeError());
+            throw std::runtime_error("Failed to lookup __ry_main__");
+        }
+
+        testing::internal::CaptureStdout();
+        symOrErr->toPtr<int(*)()>()();
+        fflush(stdout);
+        return testing::internal::GetCapturedStdout();
+    }
+};
+
+TEST_F(ImportTest, ImportAllFunctions) {
+    writeFile("math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn sub(a: int, b: int) -> int:\n"
+        "    return a - b\n");
+
+    EXPECT_EQ(runWithImports(
+        "from math\n"
+        "print(add(1, 2))\n"
+        "print(sub(5, 3))"),
+        "3\n2\n");
+}
+
+TEST_F(ImportTest, ImportSelectedFunction) {
+    writeFile("math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn sub(a: int, b: int) -> int:\n"
+        "    return a - b\n");
+
+    EXPECT_EQ(runWithImports(
+        "from math import add\n"
+        "print(add(10, 20))"),
+        "30\n");
+}
+
+TEST_F(ImportTest, ImportMultipleSelected) {
+    writeFile("math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn sub(a: int, b: int) -> int:\n"
+        "    return a - b\n"
+        "fn mul(a: int, b: int) -> int:\n"
+        "    return a * b\n");
+
+    EXPECT_EQ(runWithImports(
+        "from math import add, mul\n"
+        "print(add(2, 3))\n"
+        "print(mul(4, 5))"),
+        "5\n20\n");
+}
+
+TEST_F(ImportTest, ImportSubdirectory) {
+    writeFile("utils/math.ry",
+        "fn double_it(x: int) -> int:\n"
+        "    return x * 2\n");
+
+    EXPECT_EQ(runWithImports(
+        "from utils.math import double_it\n"
+        "print(double_it(21))"),
+        "42\n");
+}
+
+TEST_F(ImportTest, DuplicateImportIgnored) {
+    writeFile("math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n");
+
+    EXPECT_EQ(runWithImports(
+        "from math\n"
+        "from math\n"
+        "print(add(1, 2))"),
+        "3\n");
+}
+
+TEST_F(ImportTest, CircularImportError) {
+    writeFile("a.ry", "from b\n");
+    writeFile("b.ry", "from a\n");
+
+    EXPECT_THROW(runWithImports("from a"), std::runtime_error);
+}
+
+TEST_F(ImportTest, TransitiveImport) {
+    writeFile("base.ry",
+        "fn base_fn(x: int) -> int:\n"
+        "    return x + 100\n");
+    writeFile("mid.ry",
+        "from base\n"
+        "fn mid_fn(x: int) -> int:\n"
+        "    return base_fn(x) + 10\n");
+
+    EXPECT_EQ(runWithImports(
+        "from mid\n"
+        "print(mid_fn(1))"),
+        "111\n");
+}
+
+TEST_F(ImportTest, ModuleNotFoundError) {
+    EXPECT_THROW(runWithImports("from nonexistent"), std::runtime_error);
+}
+
+TEST_F(ImportTest, FunctionNotFoundError) {
+    writeFile("math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n");
+
+    EXPECT_THROW(runWithImports("from math import nope"), std::runtime_error);
+}
+
+TEST_F(ImportTest, SearchPathRYPATH) {
+    // Create a module in a separate directory
+    auto lib_dir = std::filesystem::temp_directory_path() / "ry_lib_test";
+    std::filesystem::create_directories(lib_dir);
+    {
+        std::ofstream f(lib_dir / "mylib.ry");
+        f << "fn greet() -> int:\n"
+             "    print(999)\n"
+             "    return 0\n";
+    }
+
+    // Use search_paths to simulate RY_PATH
+    EXPECT_EQ(runWithImports(
+        "from mylib import greet\n"
+        "greet()",
+        tmp_dir_.string(),
+        {lib_dir.string()}),
+        "999\n");
+
+    std::filesystem::remove_all(lib_dir);
 }

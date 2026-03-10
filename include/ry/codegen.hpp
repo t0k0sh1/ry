@@ -39,6 +39,7 @@ private:
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);
+    void emitStmt(ImportStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);

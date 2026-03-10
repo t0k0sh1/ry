@@ -152,6 +152,7 @@ Token Lexer::readToken() {
     if (c == '^') { ++pos_; return {TokenKind::Caret, "^", line_}; }
     if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
     if (c == ':') { ++pos_; return {TokenKind::Colon, ":", line_}; }
+    if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
 
     if (std::isdigit(c)) {
         std::string num;
@@ -183,6 +184,8 @@ Token Lexer::readToken() {
         if (id == "while") return {TokenKind::While, "while", line_};
         if (id == "fn")     return {TokenKind::Fn,     "fn",     line_};
         if (id == "return") return {TokenKind::Return, "return", line_};
+        if (id == "from")   return {TokenKind::From,   "from",   line_};
+        if (id == "import") return {TokenKind::Import, "import", line_};
         return {TokenKind::Ident, id, line_};
     }
 

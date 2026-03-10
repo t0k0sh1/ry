@@ -459,6 +459,64 @@ TEST(LexerTest, MinusNumberNotArrow) {
     EXPECT_EQ(toks[1].value, "5");
 }
 
+// ===== from / import / dot トークン =====
+
+TEST(LexerTest, KeywordFrom) {
+    auto toks = tokenize("from");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::From);
+    EXPECT_EQ(toks[0].value, "from");
+}
+
+TEST(LexerTest, KeywordImport) {
+    auto toks = tokenize("import");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Import);
+    EXPECT_EQ(toks[0].value, "import");
+}
+
+TEST(LexerTest, DotToken) {
+    auto toks = tokenize(".");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[0].value, ".");
+}
+
+TEST(LexerTest, FromImportTokenSequence) {
+    auto toks = tokenize("from math import add");
+    ASSERT_EQ(toks.size(), 5u); // From Ident Import Ident Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::From);
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "math");
+    EXPECT_EQ(toks[2].kind, TokenKind::Import);
+    EXPECT_EQ(toks[3].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[3].value, "add");
+    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, FromDotPathTokenSequence) {
+    auto toks = tokenize("from utils.math import add");
+    ASSERT_EQ(toks.size(), 7u); // From Ident Dot Ident Import Ident Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::From);
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "utils");
+    EXPECT_EQ(toks[2].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[3].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[3].value, "math");
+    EXPECT_EQ(toks[4].kind, TokenKind::Import);
+    EXPECT_EQ(toks[5].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[5].value, "add");
+    EXPECT_EQ(toks[6].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, FromAndImportPrefixAreIdent) {
+    for (const auto &word : {"fromage", "imported", "frothy"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+    }
+}
+
 TEST(LexerTest, CommentLineDoesNotChangeIndent) {
     auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
     std::vector<TokenKind> expected = {

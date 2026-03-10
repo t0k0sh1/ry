@@ -13,6 +13,7 @@ private:
     Lexer &lex_;
 
     void skipNewlines();
+    StmtNode parseImportStatement();
     StmtNode parseStatement();
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();

@@ -438,6 +438,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     throw std::runtime_error("unknown type: " + typeName);
 }
 
+void CodeGen::emitStmt(ImportStmt &s) {
+    throw std::runtime_error("unresolved import: " + s.module_path +
+                             " (ModuleLoader should have resolved this)");
+}
+
 void CodeGen::emitStmt(ReturnStmt &s) {
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *retTy = fn_->getReturnType();
