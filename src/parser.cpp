@@ -1,6 +1,60 @@
 #include "ry/parser.hpp"
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+
+// ===== A1: parseError helpers =====
+
+[[noreturn]] void Parser::parseError(int line, const std::string &msg) {
+    throw std::runtime_error("line " + std::to_string(line) + ": " + msg);
+}
+
+[[noreturn]] void Parser::parseError(const std::string &msg) {
+    parseError(lex_.peek().line, msg);
+}
+
+// ===== A2: parseBinaryLeft helper =====
+
+ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops) {
+    ExprPtr lhs = (this->*operand)();
+    for (;;) {
+        TokenKind k = lex_.peek().kind;
+        bool matched = false;
+        for (TokenKind op : ops) {
+            if (k == op) { matched = true; break; }
+        }
+        if (!matched) break;
+        std::string op = lex_.next().value;
+        ExprPtr rhs = (this->*operand)();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op  = op;
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
+
+// ===== A3: parseArgList helper =====
+
+std::vector<ExprPtr> Parser::parseArgList() {
+    std::vector<ExprPtr> args;
+    if (lex_.peek().kind != TokenKind::RParen) {
+        args.push_back(parseLogicalOr());
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next();
+            args.push_back(parseLogicalOr());
+        }
+    }
+    if (lex_.peek().kind != TokenKind::RParen)
+        parseError("expected ')'");
+    lex_.next(); // consume ')'
+    return args;
+}
+
+// ===== Core parse methods =====
 
 Program Parser::parseProgram() {
     Program prog;
@@ -25,39 +79,33 @@ void Parser::skipNewlines() {
 StmtNode Parser::parseImportStatement() {
     Token fromTok = lex_.next(); // consume 'from'
 
-    // Parse module path: Ident (Dot Ident)*
     Token modTok = lex_.peek();
     if (modTok.kind != TokenKind::Ident)
-        throw std::runtime_error("line " + std::to_string(modTok.line) +
-                                 ": expected module name after 'from'");
+        parseError(modTok.line, "expected module name after 'from'");
     std::string modulePath = lex_.next().value;
 
     while (lex_.peek().kind == TokenKind::Dot) {
         lex_.next(); // consume '.'
         Token part = lex_.peek();
         if (part.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(part.line) +
-                                     ": expected identifier after '.'");
+            parseError(part.line, "expected identifier after '.'");
         modulePath += "/" + lex_.next().value;
     }
     modulePath += ".ry";
 
-    // Parse optional import list
     std::vector<std::string> names;
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
         Token name = lex_.peek();
         if (name.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(name.line) +
-                                     ": expected function name after 'import'");
+            parseError(name.line, "expected function name after 'import'");
         names.push_back(lex_.next().value);
 
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
             Token next = lex_.peek();
             if (next.kind != TokenKind::Ident)
-                throw std::runtime_error("line " + std::to_string(next.line) +
-                                         ": expected function name after ','");
+                parseError(next.line, "expected function name after ','");
             names.push_back(lex_.next().value);
         }
     }
@@ -68,85 +116,36 @@ StmtNode Parser::parseImportStatement() {
 StmtNode Parser::parseStatement() {
     Token first = lex_.peek();
 
-    // from statement is only allowed at top level
     if (first.kind == TokenKind::From)
-        throw std::runtime_error("line " + std::to_string(first.line) +
-                                 ": 'from' import is only allowed at top level");
+        parseError(first.line, "'from' import is only allowed at top level");
 
-    // type statement
     if (first.kind == TokenKind::Type)
         return parseTypeStatement();
 
-    // fn statement
     if (first.kind == TokenKind::Fn)
         return parseFnStatement();
 
-    // return statement
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
 
-    // if statement
     if (first.kind == TokenKind::If)
         return parseIfStatement();
 
-    // while statement
     if (first.kind == TokenKind::While)
         return parseWhileStatement();
 
-    // let / const declaration
-    if (first.kind == TokenKind::Let || first.kind == TokenKind::Const) {
-        bool isConst = (first.kind == TokenKind::Const);
-        lex_.next(); // consume let/const
-
-        Token id = lex_.peek();
-        if (id.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(id.line) +
-                                     ": expected identifier after '" + first.value + "'");
-        lex_.next(); // consume ident
-
-        std::optional<std::string> typeAnnotation;
-        if (lex_.peek().kind == TokenKind::Colon) {
-            lex_.next(); // consume ':'
-            Token typeTok = lex_.peek();
-            if (typeTok.kind != TokenKind::Ident)
-                throw std::runtime_error("line " + std::to_string(typeTok.line) +
-                                         ": expected type name after ':'");
-            typeAnnotation = typeTok.value;
-            lex_.next(); // consume type name
-        }
-
-        if (lex_.peek().kind != TokenKind::Equals)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected '=' in " + first.value + " declaration");
-        lex_.next(); // consume '='
-
-        ExprPtr value = parseLogicalOr();
-
-        if (isConst) {
-            ConstStmt s;
-            s.name = id.value;
-            s.type_annotation = typeAnnotation;
-            s.value = std::move(value);
-            return s;
-        } else {
-            LetStmt s;
-            s.name = id.value;
-            s.type_annotation = typeAnnotation;
-            s.value = std::move(value);
-            return s;
-        }
-    }
+    // A4: let / const declaration
+    if (first.kind == TokenKind::Let || first.kind == TokenKind::Const)
+        return parseLetOrConst();
 
     // identifier-leading statements: assignment or function call
     if (first.kind != TokenKind::Ident)
-        throw std::runtime_error("line " + std::to_string(first.line) +
-                                 ": expected 'let', 'const', 'if', 'while', 'fn', 'return', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'fn', 'return', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
     if (next.kind == TokenKind::Colon) {
-        throw std::runtime_error("line " + std::to_string(next.line) +
-                                 ": type annotation requires 'let' or 'const'");
+        parseError(next.line, "type annotation requires 'let' or 'const'");
     } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
@@ -157,33 +156,62 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume '('
         CallStmt s;
         s.callee = first.value;
-        if (lex_.peek().kind != TokenKind::RParen) {
-            s.args.push_back(parseLogicalOr());
-            while (lex_.peek().kind == TokenKind::Comma) {
-                lex_.next();
-                s.args.push_back(parseLogicalOr());
-            }
-        }
-        if (lex_.peek().kind != TokenKind::RParen)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected ')'");
-        lex_.next(); // consume ')'
+        s.args = parseArgList();
         return s;
     }
-    throw std::runtime_error("line " + std::to_string(next.line) +
-                             ": expected '=', or '(' after identifier");
+    parseError(next.line, "expected '=', or '(' after identifier");
+}
+
+// ===== A4: parseLetOrConst =====
+
+StmtNode Parser::parseLetOrConst() {
+    Token first = lex_.next(); // consume let/const
+    bool isConst = (first.kind == TokenKind::Const);
+
+    Token id = lex_.peek();
+    if (id.kind != TokenKind::Ident)
+        parseError(id.line, "expected identifier after '" + first.value + "'");
+    lex_.next(); // consume ident
+
+    std::optional<std::string> typeAnnotation;
+    if (lex_.peek().kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+        Token typeTok = lex_.peek();
+        if (typeTok.kind != TokenKind::Ident)
+            parseError(typeTok.line, "expected type name after ':'");
+        typeAnnotation = typeTok.value;
+        lex_.next(); // consume type name
+    }
+
+    if (lex_.peek().kind != TokenKind::Equals)
+        parseError("expected '=' in " + first.value + " declaration");
+    lex_.next(); // consume '='
+
+    ExprPtr value = parseLogicalOr();
+
+    if (isConst) {
+        ConstStmt s;
+        s.name = id.value;
+        s.type_annotation = typeAnnotation;
+        s.value = std::move(value);
+        return s;
+    } else {
+        LetStmt s;
+        s.name = id.value;
+        s.type_annotation = typeAnnotation;
+        s.value = std::move(value);
+        return s;
+    }
 }
 
 std::vector<StmtNode> Parser::parseBlock() {
     if (lex_.peek().kind != TokenKind::Newline)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected newline after ':'");
+        parseError("expected newline after ':'");
     lex_.next(); // consume Newline
     skipNewlines();
 
     if (lex_.peek().kind != TokenKind::Indent)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected indented block");
+        parseError("expected indented block");
     lex_.next(); // consume Indent
 
     std::vector<StmtNode> stmts;
@@ -196,8 +224,7 @@ std::vector<StmtNode> Parser::parseBlock() {
     }
 
     if (stmts.empty())
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": empty block is not allowed");
+        parseError("empty block is not allowed");
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent
@@ -210,8 +237,7 @@ StmtNode Parser::parseWhileStatement() {
     ExprPtr cond = parseLogicalOr();
 
     if (lex_.peek().kind != TokenKind::Colon)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected ':' after while condition");
+        parseError("expected ':' after while condition");
     lex_.next(); // consume ':'
 
     auto whileStmt = std::make_unique<WhileStmt>();
@@ -223,13 +249,11 @@ StmtNode Parser::parseWhileStatement() {
 StmtNode Parser::parseIfStatement() {
     auto ifStmt = std::make_unique<IfStmt>();
 
-    // if branch
     lex_.next(); // consume 'if'
     ExprPtr cond = parseLogicalOr();
 
     if (lex_.peek().kind != TokenKind::Colon)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected ':' after if condition");
+        parseError("expected ':' after if condition");
     lex_.next(); // consume ':'
 
     IfBranch branch;
@@ -237,14 +261,12 @@ StmtNode Parser::parseIfStatement() {
     branch.body = parseBlock();
     ifStmt->branches.push_back(std::move(branch));
 
-    // elif branches
     while (lex_.peek().kind == TokenKind::Elif) {
         lex_.next(); // consume 'elif'
         ExprPtr elifCond = parseLogicalOr();
 
         if (lex_.peek().kind != TokenKind::Colon)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected ':' after elif condition");
+            parseError("expected ':' after elif condition");
         lex_.next(); // consume ':'
 
         IfBranch elifBranch;
@@ -253,13 +275,11 @@ StmtNode Parser::parseIfStatement() {
         ifStmt->branches.push_back(std::move(elifBranch));
     }
 
-    // else branch
     if (lex_.peek().kind == TokenKind::Else) {
         lex_.next(); // consume 'else'
 
         if (lex_.peek().kind != TokenKind::Colon)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected ':' after else");
+            parseError("expected ':' after else");
         lex_.next(); // consume ':'
 
         ifStmt->else_body = parseBlock();
@@ -268,40 +288,17 @@ StmtNode Parser::parseIfStatement() {
     return ifStmt;
 }
 
-ExprPtr Parser::parseExpr() {
-    ExprPtr lhs = parseTerm();
-    while (lex_.peek().kind == TokenKind::Plus || lex_.peek().kind == TokenKind::Minus) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseTerm();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
+// ===== A2: Binary expression parsers using parseBinaryLeft =====
 
-ExprPtr Parser::parseTerm() {
-    ExprPtr lhs = parsePower();
-    while (lex_.peek().kind == TokenKind::Star   ||
-           lex_.peek().kind == TokenKind::Slash  ||
-           lex_.peek().kind == TokenKind::SlashSlash ||
-           lex_.peek().kind == TokenKind::Percent) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parsePower();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
+ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
+ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogicalNot, {TokenKind::And}); }
+ExprPtr Parser::parseComparison() { return parseBinaryLeft(&Parser::parseBitwiseOr, {TokenKind::EqEq, TokenKind::BangEq, TokenKind::Less, TokenKind::LessEq, TokenKind::Greater, TokenKind::GreaterEq}); }
+ExprPtr Parser::parseBitwiseOr()  { return parseBinaryLeft(&Parser::parseBitwiseXor, {TokenKind::Pipe}); }
+ExprPtr Parser::parseBitwiseXor() { return parseBinaryLeft(&Parser::parseBitwiseAnd, {TokenKind::Caret}); }
+ExprPtr Parser::parseBitwiseAnd() { return parseBinaryLeft(&Parser::parseShift, {TokenKind::Amp}); }
+ExprPtr Parser::parseShift()      { return parseBinaryLeft(&Parser::parseExpr, {TokenKind::LessLess, TokenKind::GreaterGreater}); }
+ExprPtr Parser::parseExpr()       { return parseBinaryLeft(&Parser::parseTerm, {TokenKind::Plus, TokenKind::Minus}); }
+ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parsePower, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
 
 ExprPtr Parser::parsePower() {
     ExprPtr lhs = parsePostfix();
@@ -317,6 +314,20 @@ ExprPtr Parser::parsePower() {
         return node;
     }
     return lhs;
+}
+
+ExprPtr Parser::parseLogicalNot() {
+    if (lex_.peek().kind == TokenKind::Not) {
+        lex_.next(); // consume 'not'
+        ExprPtr operand = parseLogicalNot(); // 右結合
+        auto unary = std::make_unique<UnaryExpr>();
+        unary->op = "not";
+        unary->operand = std::move(operand);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(unary);
+        return node;
+    }
+    return parseComparison();
 }
 
 ExprPtr Parser::parsePrimary() {
@@ -364,17 +375,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
             call->callee = t.value;
-            if (lex_.peek().kind != TokenKind::RParen) {
-                call->args.push_back(parseLogicalOr());
-                while (lex_.peek().kind == TokenKind::Comma) {
-                    lex_.next();
-                    call->args.push_back(parseLogicalOr());
-                }
-            }
-            if (lex_.peek().kind != TokenKind::RParen)
-                throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                         ": expected ')'");
-            lex_.next(); // consume ')'
+            call->args = parseArgList();
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
             return node;
@@ -387,145 +388,11 @@ ExprPtr Parser::parsePrimary() {
         lex_.next();
         ExprPtr e = parseLogicalOr();
         if (lex_.peek().kind != TokenKind::RParen)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected ')'");
+            parseError("expected ')'");
         lex_.next();
         return e;
     }
-    throw std::runtime_error("line " + std::to_string(t.line) +
-                             ": unexpected token '" + t.value + "'");
-}
-
-ExprPtr Parser::parseComparison() {
-    ExprPtr lhs = parseBitwiseOr();
-    for (;;) {
-        TokenKind k = lex_.peek().kind;
-        if (k != TokenKind::EqEq    && k != TokenKind::BangEq  &&
-            k != TokenKind::Less    && k != TokenKind::LessEq  &&
-            k != TokenKind::Greater && k != TokenKind::GreaterEq)
-            break;
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseBitwiseOr();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseBitwiseOr() {
-    ExprPtr lhs = parseBitwiseXor();
-    while (lex_.peek().kind == TokenKind::Pipe) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseBitwiseXor();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseBitwiseXor() {
-    ExprPtr lhs = parseBitwiseAnd();
-    while (lex_.peek().kind == TokenKind::Caret) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseBitwiseAnd();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseBitwiseAnd() {
-    ExprPtr lhs = parseShift();
-    while (lex_.peek().kind == TokenKind::Amp) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseShift();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseShift() {
-    ExprPtr lhs = parseExpr();
-    while (lex_.peek().kind == TokenKind::LessLess ||
-           lex_.peek().kind == TokenKind::GreaterGreater) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseExpr();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseLogicalNot() {
-    if (lex_.peek().kind == TokenKind::Not) {
-        lex_.next(); // consume 'not'
-        ExprPtr operand = parseLogicalNot(); // 右結合（not not a が動く）
-        auto unary = std::make_unique<UnaryExpr>();
-        unary->op = "not";
-        unary->operand = std::move(operand);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(unary);
-        return node;
-    }
-    return parseComparison();
-}
-
-ExprPtr Parser::parseLogicalAnd() {
-    ExprPtr lhs = parseLogicalNot();
-    while (lex_.peek().kind == TokenKind::And) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseLogicalNot();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
-}
-
-ExprPtr Parser::parseLogicalOr() {
-    ExprPtr lhs = parseLogicalAnd();
-    while (lex_.peek().kind == TokenKind::Or) {
-        std::string op = lex_.next().value;
-        ExprPtr rhs = parseLogicalAnd();
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
-        bin->lhs = std::move(lhs);
-        bin->rhs = std::move(rhs);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(bin);
-        lhs = std::move(node);
-    }
-    return lhs;
+    parseError(t.line, "unexpected token '" + t.value + "'");
 }
 
 StmtNode Parser::parseFnStatement() {
@@ -533,13 +400,11 @@ StmtNode Parser::parseFnStatement() {
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
-        throw std::runtime_error("line " + std::to_string(nameTok.line) +
-                                 ": expected function name after 'fn'");
+        parseError(nameTok.line, "expected function name after 'fn'");
     lex_.next(); // consume name
 
     if (lex_.peek().kind != TokenKind::LParen)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected '(' after function name");
+        parseError("expected '(' after function name");
     lex_.next(); // consume '('
 
     auto fnStmt = std::make_unique<FnStmt>();
@@ -550,19 +415,16 @@ StmtNode Parser::parseFnStatement() {
         for (;;) {
             Token paramName = lex_.peek();
             if (paramName.kind != TokenKind::Ident)
-                throw std::runtime_error("line " + std::to_string(paramName.line) +
-                                         ": expected parameter name");
+                parseError(paramName.line, "expected parameter name");
             lex_.next(); // consume param name
 
             if (lex_.peek().kind != TokenKind::Colon)
-                throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                         ": expected ':' after parameter name");
+                parseError("expected ':' after parameter name");
             lex_.next(); // consume ':'
 
             Token paramType = lex_.peek();
             if (paramType.kind != TokenKind::Ident)
-                throw std::runtime_error("line " + std::to_string(paramType.line) +
-                                         ": expected type name");
+                parseError(paramType.line, "expected type name");
             lex_.next(); // consume type
 
             fnStmt->params.push_back({paramName.value, paramType.value});
@@ -574,25 +436,21 @@ StmtNode Parser::parseFnStatement() {
     }
 
     if (lex_.peek().kind != TokenKind::RParen)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected ')'");
+        parseError("expected ')'");
     lex_.next(); // consume ')'
 
     if (lex_.peek().kind != TokenKind::Arrow)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected '->' after ')'");
+        parseError("expected '->' after ')'");
     lex_.next(); // consume '->'
 
     Token retType = lex_.peek();
     if (retType.kind != TokenKind::Ident)
-        throw std::runtime_error("line " + std::to_string(retType.line) +
-                                 ": expected return type");
+        parseError(retType.line, "expected return type");
     fnStmt->return_type = retType.value;
     lex_.next(); // consume return type
 
     if (lex_.peek().kind != TokenKind::Colon)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected ':' after return type");
+        parseError("expected ':' after return type");
     lex_.next(); // consume ':'
 
     fnStmt->body = parseBlock();
@@ -611,49 +469,46 @@ StmtNode Parser::parseTypeStatement() {
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
-        throw std::runtime_error("line " + std::to_string(nameTok.line) +
-                                 ": expected type name after 'type'");
+        parseError(nameTok.line, "expected type name after 'type'");
     lex_.next(); // consume name
 
     if (lex_.peek().kind != TokenKind::Colon)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected ':' after type name");
+        parseError("expected ':' after type name");
     lex_.next(); // consume ':'
 
     if (lex_.peek().kind != TokenKind::Newline)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected newline after ':'");
+        parseError("expected newline after ':'");
     lex_.next(); // consume Newline
     skipNewlines();
 
     if (lex_.peek().kind != TokenKind::Indent)
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": expected indented block");
+        parseError("expected indented block");
     lex_.next(); // consume Indent
 
     TypeStmt ts;
     ts.name = nameTok.value;
+    std::unordered_set<std::string> seenFields;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(fieldName.line) +
-                                     ": expected field name");
+            parseError(fieldName.line, "expected field name");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind != TokenKind::Colon)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected ':' after field name");
+            parseError("expected ':' after field name");
         lex_.next(); // consume ':'
 
         Token fieldType = lex_.peek();
         if (fieldType.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(fieldType.line) +
-                                     ": expected type name");
+            parseError(fieldType.line, "expected type name");
         lex_.next(); // consume type
 
+        if (seenFields.count(fieldName.value))
+            parseError(fieldName.line, "duplicate field name '" + fieldName.value + "'");
         ts.fields.push_back({fieldName.value, fieldType.value});
+        seenFields.insert(fieldName.value);
 
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
@@ -661,8 +516,7 @@ StmtNode Parser::parseTypeStatement() {
     }
 
     if (ts.fields.empty())
-        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                 ": type definition must have at least one field");
+        parseError("type definition must have at least one field");
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent
@@ -676,8 +530,7 @@ ExprPtr Parser::parsePostfix() {
         lex_.next(); // consume '.'
         Token field = lex_.peek();
         if (field.kind != TokenKind::Ident)
-            throw std::runtime_error("line " + std::to_string(field.line) +
-                                     ": expected field name after '.'");
+            parseError(field.line, "expected field name after '.'");
         lex_.next(); // consume field name
         auto fa = std::make_unique<FieldAccessExpr>();
         fa->object = std::move(expr);

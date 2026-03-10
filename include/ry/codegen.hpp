@@ -35,11 +35,33 @@ private:
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
 
+    // RAII scope for function emission (B5)
+    class FnScope {
+    public:
+        explicit FnScope(CodeGen &cg);
+        ~FnScope();
+        FnScope(const FnScope&) = delete;
+        FnScope& operator=(const FnScope&) = delete;
+    private:
+        CodeGen &cg_;
+        llvm::Function *savedFn_;
+        std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> savedScope_;
+        std::vector<std::unordered_set<std::string>> savedConstScope_;
+        llvm::BasicBlock *savedBlock_;
+        llvm::BasicBlock::iterator savedPoint_;
+    };
+
     void pushScope();
     void popScope();
     llvm::AllocaInst *findVar(const std::string &name);
     bool isConst(const std::string &name) const;
     llvm::AllocaInst *getOrCreateVar(const std::string &name, llvm::Type *ty);
+
+    // Variable declaration (B3)
+    void emitVarDecl(const std::string &name,
+                     const std::optional<std::string> &type_annotation,
+                     ExprNode &value, bool is_const);
+
     void emitStmt(LetStmt &s);
     void emitStmt(ConstStmt &s);
     void emitStmt(AssignStmt &s);
@@ -51,6 +73,11 @@ private:
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
     llvm::Value *toBool(llvm::Value *v);
+
+    // Type promotion helpers (B1)
+    llvm::Value *promoteToInt(llvm::Value *v);
+    std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
+
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);
@@ -61,7 +88,17 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CallExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e);
-    llvm::Value *emitStructConstructor(const std::string &name, const std::vector<ExprPtr> &args);
+
+    // BinaryExpr sub-dispatchers (B2)
+    llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitLogicalOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+
+    // Function call helper (B4)
+    llvm::Value *emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args);
+
+    llvm::Value *emitStructConstructor(const StructInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

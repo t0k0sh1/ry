@@ -486,3 +486,7 @@ TEST(ParserTest, ImportExpectedModuleName) {
 TEST(ParserTest, ImportInBlockThrows) {
     EXPECT_THROW(parseStr("if true:\n    from math import add"), std::runtime_error);
 }
+
+TEST(ParserTest, DuplicateFieldNameThrows) {
+    EXPECT_THROW(parseStr("type Point:\n    x: int\n    x: int"), std::runtime_error);
+}
