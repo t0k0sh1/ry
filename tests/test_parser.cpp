@@ -261,3 +261,48 @@ TEST(ParserTest, TypeAnnotationWithoutLetOrConstThrows) {
     // x: int = 10 はエラー（let/const が必要）
     EXPECT_THROW(parseStr("x: int = 10"), std::runtime_error);
 }
+
+// ===== if/elif/else パーサーテスト =====
+
+TEST(ParserTest, IfSimple) {
+    Program prog = parseStr("if true:\n    print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfStmt>>(prog[0]));
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branches.size(), 1u);
+    EXPECT_TRUE(ifStmt.else_body.empty());
+    ASSERT_EQ(ifStmt.branches[0].body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branches[0].body[0]));
+}
+
+TEST(ParserTest, IfElse) {
+    Program prog = parseStr("if true:\n    print(1)\nelse:\n    print(2)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branches.size(), 1u);
+    ASSERT_EQ(ifStmt.else_body.size(), 1u);
+}
+
+TEST(ParserTest, IfElifElse) {
+    Program prog = parseStr("if true:\n    print(1)\nelif false:\n    print(2)\nelse:\n    print(3)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branches.size(), 2u);
+    ASSERT_EQ(ifStmt.else_body.size(), 1u);
+}
+
+TEST(ParserTest, IfBlockMultipleStatements) {
+    Program prog = parseStr("if true:\n    let x = 1\n    print(x)");
+    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(ifStmt.branches[0].body.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<LetStmt>(ifStmt.branches[0].body[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branches[0].body[1]));
+}
+
+TEST(ParserTest, IfMissingColonThrows) {
+    EXPECT_THROW(parseStr("if true\n    print(1)"), std::runtime_error);
+}
+
+TEST(ParserTest, IfEmptyBlockThrows) {
+    EXPECT_THROW(parseStr("if true:\nprint(1)"), std::runtime_error);
+}

@@ -33,6 +33,8 @@ private:
     void emitStmt(ConstStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
+    void emitStmt(std::unique_ptr<IfStmt> &s);
+    llvm::Value *toBool(llvm::Value *v);
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);

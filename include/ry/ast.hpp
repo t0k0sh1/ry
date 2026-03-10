@@ -35,5 +35,19 @@ struct LetStmt    { std::string name; std::optional<std::string> type_annotation
 struct ConstStmt  { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct AssignStmt { std::string name; ExprPtr value; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
-using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt>;
+
+struct IfStmt;
+
+using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
+                              std::unique_ptr<IfStmt>>;
 using Program  = std::vector<StmtNode>;
+
+struct IfBranch {
+    ExprPtr condition;
+    std::vector<StmtNode> body;
+};
+
+struct IfStmt {
+    std::vector<IfBranch> branches;    // if + elif*
+    std::vector<StmtNode> else_body;   // else（空なら else なし）
+};

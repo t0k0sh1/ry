@@ -300,3 +300,112 @@ TEST(LexerTest, TypeAnnotationTokens) {
     EXPECT_EQ(toks[4].kind, TokenKind::Number);
     EXPECT_EQ(toks[4].value, "10");
 }
+
+// ===== if/elif/else キーワード =====
+
+TEST(LexerTest, KeywordIf) {
+    auto toks = tokenize("if");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::If);
+    EXPECT_EQ(toks[0].value, "if");
+}
+
+TEST(LexerTest, KeywordElif) {
+    auto toks = tokenize("elif");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Elif);
+    EXPECT_EQ(toks[0].value, "elif");
+}
+
+TEST(LexerTest, KeywordElse) {
+    auto toks = tokenize("else");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Else);
+    EXPECT_EQ(toks[0].value, "else");
+}
+
+TEST(LexerTest, IfElifElseAreNotIdent) {
+    for (const auto &word : {"iffy", "elsewhere", "elbow", "iffier"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+    }
+}
+
+// ===== INDENT/DEDENT =====
+
+TEST(LexerTest, IndentDedentBasic) {
+    // "if x:\n    y\nz"
+    auto toks = tokenize("if x:\n    y\nz");
+    // If Ident(x) Colon Newline Indent Ident(y) Newline Dedent Ident(z) Eof
+    ASSERT_GE(toks.size(), 10u);
+    EXPECT_EQ(toks[0].kind, TokenKind::If);
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].kind, TokenKind::Colon);
+    EXPECT_EQ(toks[3].kind, TokenKind::Newline);
+    EXPECT_EQ(toks[4].kind, TokenKind::Indent);
+    EXPECT_EQ(toks[5].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[5].value, "y");
+    EXPECT_EQ(toks[6].kind, TokenKind::Newline);
+    EXPECT_EQ(toks[7].kind, TokenKind::Dedent);
+    EXPECT_EQ(toks[8].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[8].value, "z");
+    EXPECT_EQ(toks[9].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, MultipleDedents) {
+    // 2段インデントからの復帰
+    auto toks = tokenize("a:\n    b:\n        c\nd");
+    // a Colon Newline Indent b Colon Newline Indent Ident(c) Newline Dedent Dedent Ident(d) Eof
+    std::vector<TokenKind> expected = {
+        TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
+        TokenKind::Indent, TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
+        TokenKind::Indent, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Dedent, TokenKind::Dedent, TokenKind::Ident, TokenKind::Eof
+    };
+    ASSERT_EQ(toks.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
+}
+
+TEST(LexerTest, DedentAtEof) {
+    // EOF時に残ったインデントスタック分のDEDENTが生成される
+    auto toks = tokenize("a:\n    b");
+    // Ident(a) Colon Newline Indent Ident(b) Dedent Eof
+    std::vector<TokenKind> expected = {
+        TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
+        TokenKind::Indent, TokenKind::Ident,
+        TokenKind::Dedent, TokenKind::Eof
+    };
+    ASSERT_EQ(toks.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
+}
+
+TEST(LexerTest, BlankLineDoesNotChangeIndent) {
+    // 空行はインデントに影響しない
+    auto toks = tokenize("a:\n    b\n\n    c\nd");
+    // Ident Colon Newline Indent Ident(b) Newline Newline Ident(c) Newline Dedent Ident(d) Eof
+    std::vector<TokenKind> expected = {
+        TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
+        TokenKind::Indent, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Newline, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Dedent, TokenKind::Ident, TokenKind::Eof
+    };
+    ASSERT_EQ(toks.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
+}
+
+TEST(LexerTest, CommentLineDoesNotChangeIndent) {
+    auto toks = tokenize("a:\n    b\n    # comment\n    c\nd");
+    std::vector<TokenKind> expected = {
+        TokenKind::Ident, TokenKind::Colon, TokenKind::Newline,
+        TokenKind::Indent, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Newline, TokenKind::Ident, TokenKind::Newline,
+        TokenKind::Dedent, TokenKind::Ident, TokenKind::Eof
+    };
+    ASSERT_EQ(toks.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
+}

@@ -121,6 +121,45 @@ void CodeGen::emitStmt(CallStmt &s) {
     it->second(s.args);
 }
 
+llvm::Value *CodeGen::toBool(llvm::Value *v) {
+    if (v->getType() == i1Ty_)
+        return v;
+    if (v->getType()->isDoubleTy())
+        return builder_.CreateFCmpONE(
+            v, llvm::ConstantFP::get(f64Ty_, 0.0), "ftobool");
+    return builder_.CreateICmpNE(
+        v, llvm::ConstantInt::get(v->getType(), 0), "itobool");
+}
+
+void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
+
+    for (auto &branch : s->branches) {
+        llvm::Value *cond = emitExpr(*branch.condition);
+        cond = toBool(cond);
+
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
+        llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
+        builder_.CreateCondBr(cond, thenBB, elseBB);
+
+        builder_.SetInsertPoint(thenBB);
+        for (auto &stmt : branch.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(elseBB);
+    }
+
+    // else body
+    if (!s->else_body.empty()) {
+        for (auto &stmt : s->else_body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    }
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+}
+
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
     return std::visit([this](const auto &e) -> llvm::Value* { return emitExprVariant(e); },
                       node.data);

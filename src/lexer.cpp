@@ -9,26 +9,82 @@ Token Lexer::next() {
 }
 
 Token Lexer::readToken() {
-    // skip spaces/tabs
+    // 1. Return pending tokens (multiple DEDENTs)
+    if (!pending_.empty()) {
+        Token t = pending_.front();
+        pending_.pop();
+        return t;
+    }
+
+    // 2. Indent processing at line start
+    if (at_line_start_) {
+        at_line_start_ = false;
+
+        int indent = 0;
+        while (pos_ < src_.size() && src_[pos_] == ' ') {
+            ++indent;
+            ++pos_;
+        }
+
+        // Only process indent for lines with actual content
+        bool has_content = pos_ < src_.size() &&
+                           src_[pos_] != '\n' && src_[pos_] != '\r' &&
+                           src_[pos_] != '#' && src_[pos_] != '\t';
+
+        if (has_content) {
+            if (indent > indent_stack_.back()) {
+                indent_stack_.push_back(indent);
+                return {TokenKind::Indent, "", line_};
+            }
+            while (indent < indent_stack_.back()) {
+                indent_stack_.pop_back();
+                pending_.push({TokenKind::Dedent, "", line_});
+            }
+            if (indent != indent_stack_.back()) {
+                throw std::runtime_error(
+                    "line " + std::to_string(line_) +
+                    ": dedent does not match any outer indentation level");
+            }
+            if (!pending_.empty()) {
+                Token t = pending_.front();
+                pending_.pop();
+                return t;
+            }
+        }
+    }
+
+    // 3. Skip spaces/tabs
     while (pos_ < src_.size() && (src_[pos_] == ' ' || src_[pos_] == '\t'))
         ++pos_;
 
-    // skip comment
+    // 4. Skip comment
     if (pos_ < src_.size() && src_[pos_] == '#') {
         while (pos_ < src_.size() && src_[pos_] != '\n' && src_[pos_] != '\r')
             ++pos_;
         return readToken();
     }
 
-    if (pos_ >= src_.size())
+    // 5. EOF - generate remaining DEDENTs
+    if (pos_ >= src_.size()) {
+        if (indent_stack_.size() > 1) {
+            while (indent_stack_.size() > 1) {
+                indent_stack_.pop_back();
+                pending_.push({TokenKind::Dedent, "", line_});
+            }
+            Token t = pending_.front();
+            pending_.pop();
+            return t;
+        }
         return {TokenKind::Eof, "", line_};
+    }
 
     char c = src_[pos_];
 
-    if (c == '\n') { ++pos_; return {TokenKind::Newline, "\n", line_++}; }
+    if (c == '\n') { ++pos_; at_line_start_ = true; return {TokenKind::Newline, "\n", line_++}; }
     if (c == '\r') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '\n') ++pos_;
+        at_line_start_ = true;
         return {TokenKind::Newline, "\n", line_++};
     }
     if (c == '+') { ++pos_; return {TokenKind::Plus,   "+", line_}; }
@@ -108,13 +164,16 @@ Token Lexer::readToken() {
         std::string id;
         while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_'))
             id += src_[pos_++];
-        if (id == "and") return {TokenKind::And, "and", line_};
-        if (id == "or")  return {TokenKind::Or,  "or",  line_};
+        if (id == "and")   return {TokenKind::And,   "and",   line_};
+        if (id == "or")    return {TokenKind::Or,    "or",    line_};
         if (id == "not")   return {TokenKind::Not,   "not",   line_};
         if (id == "true")  return {TokenKind::True,  "true",  line_};
         if (id == "false") return {TokenKind::False, "false", line_};
         if (id == "let")   return {TokenKind::Let,   "let",   line_};
         if (id == "const") return {TokenKind::Const, "const", line_};
+        if (id == "if")    return {TokenKind::If,    "if",    line_};
+        if (id == "elif")  return {TokenKind::Elif,  "elif",  line_};
+        if (id == "else")  return {TokenKind::Else,  "else",  line_};
         return {TokenKind::Ident, id, line_};
     }
 

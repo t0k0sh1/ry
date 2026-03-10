@@ -7,12 +7,8 @@ Program Parser::parseProgram() {
     skipNewlines();
     while (lex_.peek().kind != TokenKind::Eof) {
         prog.push_back(parseStatement());
-        // expect newline or EOF after statement
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
-        else if (lex_.peek().kind != TokenKind::Eof)
-            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
-                                     ": expected newline, got '" + lex_.peek().value + "'");
         skipNewlines();
     }
     return prog;
@@ -24,6 +20,10 @@ void Parser::skipNewlines() {
 
 StmtNode Parser::parseStatement() {
     Token first = lex_.peek();
+
+    // if statement
+    if (first.kind == TokenKind::If)
+        return parseIfStatement();
 
     // let / const declaration
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Const) {
@@ -75,7 +75,7 @@ StmtNode Parser::parseStatement() {
     // identifier-leading statements: assignment or function call
     if (first.kind != TokenKind::Ident)
         throw std::runtime_error("line " + std::to_string(first.line) +
-                                 ": expected 'let', 'const', or identifier, got '" + first.value + "'");
+                                 ": expected 'let', 'const', 'if', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -107,6 +107,85 @@ StmtNode Parser::parseStatement() {
     }
     throw std::runtime_error("line " + std::to_string(next.line) +
                              ": expected '=', or '(' after identifier");
+}
+
+std::vector<StmtNode> Parser::parseBlock() {
+    if (lex_.peek().kind != TokenKind::Newline)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected indented block");
+    lex_.next(); // consume Indent
+
+    std::vector<StmtNode> stmts;
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        stmts.push_back(parseStatement());
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (stmts.empty())
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": empty block is not allowed");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return stmts;
+}
+
+StmtNode Parser::parseIfStatement() {
+    auto ifStmt = std::make_unique<IfStmt>();
+
+    // if branch
+    lex_.next(); // consume 'if'
+    ExprPtr cond = parseLogicalOr();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                 ": expected ':' after if condition");
+    lex_.next(); // consume ':'
+
+    IfBranch branch;
+    branch.condition = std::move(cond);
+    branch.body = parseBlock();
+    ifStmt->branches.push_back(std::move(branch));
+
+    // elif branches
+    while (lex_.peek().kind == TokenKind::Elif) {
+        lex_.next(); // consume 'elif'
+        ExprPtr elifCond = parseLogicalOr();
+
+        if (lex_.peek().kind != TokenKind::Colon)
+            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                     ": expected ':' after elif condition");
+        lex_.next(); // consume ':'
+
+        IfBranch elifBranch;
+        elifBranch.condition = std::move(elifCond);
+        elifBranch.body = parseBlock();
+        ifStmt->branches.push_back(std::move(elifBranch));
+    }
+
+    // else branch
+    if (lex_.peek().kind == TokenKind::Else) {
+        lex_.next(); // consume 'else'
+
+        if (lex_.peek().kind != TokenKind::Colon)
+            throw std::runtime_error("line " + std::to_string(lex_.peek().line) +
+                                     ": expected ':' after else");
+        lex_.next(); // consume ':'
+
+        ifStmt->else_body = parseBlock();
+    }
+
+    return ifStmt;
 }
 
 ExprPtr Parser::parseExpr() {

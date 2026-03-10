@@ -1,6 +1,8 @@
 #pragma once
 
+#include <queue>
 #include <string>
+#include <vector>
 
 enum class TokenKind {
     Number, Float, Ident, Plus, Minus, Star, Slash, Equals,
@@ -29,6 +31,13 @@ enum class TokenKind {
     Colon,          // :
     Let,            // let
     Const,          // const
+    // --- インデント ---
+    Indent,         // インデントレベル増加
+    Dedent,         // インデントレベル減少
+    // --- 制御構文 ---
+    If,             // if
+    Elif,           // elif
+    Else,           // else
 };
 
 struct Token {
@@ -51,6 +60,10 @@ private:
     size_t pos_;
     int line_;
     Token current_;
+
+    bool at_line_start_ = true;
+    std::vector<int> indent_stack_ = {0};
+    std::queue<Token> pending_;
 
     Token readToken();
 };

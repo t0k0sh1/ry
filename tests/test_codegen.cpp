@@ -352,3 +352,99 @@ TEST_F(CodeGenTest, RedeclaredConstThrows) {
 TEST_F(CodeGenTest, ConstWithTypeAnnotation) {
     EXPECT_EQ(runSource("const x: int = 42\nprint(x)"), "42\n");
 }
+
+// ===== if/elif/else codegen テスト =====
+
+TEST_F(CodeGenTest, IfTrueExecutes) {
+    EXPECT_EQ(runSource("if true:\n    print(1)"), "1\n");
+}
+
+TEST_F(CodeGenTest, IfFalseDoesNotExecute) {
+    EXPECT_EQ(runSource("if false:\n    print(1)"), "");
+}
+
+TEST_F(CodeGenTest, IfElseTrueBranch) {
+    EXPECT_EQ(runSource("if true:\n    print(1)\nelse:\n    print(2)"), "1\n");
+}
+
+TEST_F(CodeGenTest, IfElseFalseBranch) {
+    EXPECT_EQ(runSource("if false:\n    print(1)\nelse:\n    print(2)"), "2\n");
+}
+
+TEST_F(CodeGenTest, IfElifElseChain) {
+    std::string src =
+        "let x = 2\n"
+        "if x == 1:\n"
+        "    print(10)\n"
+        "elif x == 2:\n"
+        "    print(20)\n"
+        "else:\n"
+        "    print(30)";
+    EXPECT_EQ(runSource(src), "20\n");
+}
+
+TEST_F(CodeGenTest, IfElifElseChainElse) {
+    std::string src =
+        "let x = 99\n"
+        "if x == 1:\n"
+        "    print(10)\n"
+        "elif x == 2:\n"
+        "    print(20)\n"
+        "else:\n"
+        "    print(30)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
+
+TEST_F(CodeGenTest, IfVariableReassignment) {
+    std::string src =
+        "let x = 0\n"
+        "if true:\n"
+        "    x = 42\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, IfNonBoolConditionInt) {
+    EXPECT_EQ(runSource("if 1:\n    print(1)"), "1\n");
+    EXPECT_EQ(runSource("if 0:\n    print(1)"), "");
+}
+
+TEST_F(CodeGenTest, NestedIf) {
+    std::string src =
+        "if true:\n"
+        "    if true:\n"
+        "        print(1)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, IfFollowedByStatement) {
+    std::string src =
+        "if true:\n"
+        "    print(1)\n"
+        "print(2)";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
+TEST_F(CodeGenTest, IfFalseFollowedByStatement) {
+    std::string src =
+        "if false:\n"
+        "    print(1)\n"
+        "print(2)";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, MultipleElif) {
+    std::string src =
+        "let x = 3\n"
+        "if x == 1:\n"
+        "    print(10)\n"
+        "elif x == 2:\n"
+        "    print(20)\n"
+        "elif x == 3:\n"
+        "    print(30)\n"
+        "elif x == 4:\n"
+        "    print(40)\n"
+        "else:\n"
+        "    print(50)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
