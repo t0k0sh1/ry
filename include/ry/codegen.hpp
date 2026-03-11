@@ -27,7 +27,11 @@ private:
     llvm::StructType *mapHeaderTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> const_scope_stack_;
-    std::unordered_map<std::string, llvm::Function*> functions_;
+    struct OverloadEntry {
+        llvm::Function *func;
+        std::vector<llvm::Type*> paramTypes;
+    };
+    std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
@@ -108,6 +112,9 @@ private:
 
     // Function call helper (B4)
     llvm::Value *emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args);
+    llvm::Function *resolveOverload(const std::string &callee,
+                                    const std::vector<ExprPtr> &args,
+                                    std::vector<llvm::Value*> &outArgVals);
 
     llvm::Value *emitStructConstructor(const StructInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);

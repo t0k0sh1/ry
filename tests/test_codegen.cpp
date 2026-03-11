@@ -1462,3 +1462,102 @@ TEST_F(CodeGenTest, MapHasKey) {
 TEST_F(CodeGenTest, MapTypeMismatch) {
     EXPECT_THROW(runSource("let m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
 }
+
+// ===== 関数オーバーロードテスト =====
+
+TEST_F(CodeGenTest, OverloadByArgCount) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "fn f(x: int, y: int) -> int:\n"
+        "    return x + y\n"
+        "print(f(10))\n"
+        "print(f(3, 4))";
+    EXPECT_EQ(runSource(src), "10\n7\n");
+}
+
+TEST_F(CodeGenTest, OverloadByArgType) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x * 2\n"
+        "fn f(x: float) -> float:\n"
+        "    return x * 3.0\n"
+        "print(f(5))\n"
+        "print(f(2.0))";
+    EXPECT_EQ(runSource(src), "10\n6\n");
+}
+
+TEST_F(CodeGenTest, OverloadDifferentReturn) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "fn f(x: float) -> bool:\n"
+        "    return x > 0.0\n"
+        "print(f(42))\n"
+        "print(f(1.5))";
+    EXPECT_EQ(runSource(src), "42\ntrue\n");
+}
+
+TEST_F(CodeGenTest, OverloadSameSignatureError) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "fn f(x: int) -> int:\n"
+        "    return x + 1\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OverloadSameParamsDiffReturnError) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "fn f(x: int) -> float:\n"
+        "    return 1.0\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OverloadWithUFCS) {
+    std::string src =
+        "fn process(x: int) -> int:\n"
+        "    return x * 2\n"
+        "fn process(x: int, y: int) -> int:\n"
+        "    return x + y\n"
+        "let a = 5\n"
+        "print(a.process())\n"
+        "print(a.process(3))";
+    EXPECT_EQ(runSource(src), "10\n8\n");
+}
+
+TEST_F(CodeGenTest, OverloadNoMatchError) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "f(3.14)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OverloadWithNone) {
+    std::string src =
+        "fn f(x: Option<int>) -> int:\n"
+        "    return 0\n"
+        "fn f(x: int) -> int:\n"
+        "    return x\n"
+        "print(f(None))\n"
+        "print(f(42))";
+    EXPECT_EQ(runSource(src), "0\n42\n");
+}
+
+TEST_F(CodeGenTest, OverloadRecursive) {
+    std::string src =
+        "fn fact(n: int) -> int:\n"
+        "    if n <= 1:\n"
+        "        return 1\n"
+        "    return n * fact(n - 1)\n"
+        "fn fact(n: int, acc: int) -> int:\n"
+        "    if n <= 1:\n"
+        "        return acc\n"
+        "    return fact(n - 1, acc * n)\n"
+        "print(fact(5))\n"
+        "print(fact(5, 1))";
+    EXPECT_EQ(runSource(src), "120\n120\n");
+}

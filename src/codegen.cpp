@@ -264,40 +264,74 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
 // ===== B4: emitUserFnCall =====
 
-llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args) {
+llvm::Function *CodeGen::resolveOverload(const std::string &callee,
+                                          const std::vector<ExprPtr> &args,
+                                          std::vector<llvm::Value*> &outArgVals) {
     auto fit = functions_.find(callee);
     if (fit == functions_.end())
         throw std::runtime_error("undefined function: " + callee);
-    llvm::Function *fn = fit->second;
-    if (args.size() != fn->arg_size())
-        throw std::runtime_error("function '" + callee + "': expected " +
-                                 std::to_string(fn->arg_size()) + " arguments, got " +
-                                 std::to_string(args.size()));
-    std::vector<llvm::Value*> argVals;
-    unsigned idx = 0;
-    for (auto &arg : args) {
-        // Handle None literal as function argument
-        if (auto *ve = std::get_if<VariableExpr>(&arg->data); ve && ve->name == "None") {
-            llvm::Type *expected = fn->getFunctionType()->getParamType(idx);
-            if (!isOptionType(expected))
-                throw std::runtime_error("function '" + callee + "': argument " +
-                                         std::to_string(idx + 1) + " None requires Option type");
+
+    auto &overloads = fit->second;
+
+    // Identify which args are None literals
+    std::vector<bool> isNone(args.size(), false);
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (auto *ve = std::get_if<VariableExpr>(&args[i]->data); ve && ve->name == "None")
+            isNone[i] = true;
+    }
+
+    // Emit non-None args to get their types
+    std::vector<llvm::Value*> emittedArgs(args.size(), nullptr);
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (!isNone[i])
+            emittedArgs[i] = emitExpr(*args[i]);
+    }
+
+    // Filter candidates
+    std::vector<OverloadEntry*> candidates;
+    for (auto &entry : overloads) {
+        if (entry.paramTypes.size() != args.size())
+            continue;
+        bool match = true;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (isNone[i]) {
+                if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
+            } else {
+                if (emittedArgs[i]->getType() != entry.paramTypes[i]) { match = false; break; }
+            }
+        }
+        if (match)
+            candidates.push_back(&entry);
+    }
+
+    if (candidates.empty())
+        throw std::runtime_error("no matching overload for '" + callee + "'");
+    if (candidates.size() > 1)
+        throw std::runtime_error("ambiguous call to '" + callee + "'");
+
+    auto *chosen = candidates[0];
+
+    // Build final arg values (fill in None args with proper Option type)
+    outArgVals.clear();
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (isNone[i]) {
+            llvm::Type *expected = chosen->paramTypes[i];
             llvm::Value *val = llvm::UndefValue::get(expected);
             val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
             val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
                 llvm::cast<llvm::StructType>(expected)->getElementType(1)), 1);
-            argVals.push_back(val);
-            ++idx;
-            continue;
+            outArgVals.push_back(val);
+        } else {
+            outArgVals.push_back(emittedArgs[i]);
         }
-        llvm::Value *v = emitExpr(*arg);
-        llvm::Type *expected = fn->getFunctionType()->getParamType(idx);
-        if (v->getType() != expected)
-            throw std::runtime_error("function '" + callee + "': argument " +
-                                     std::to_string(idx + 1) + " type mismatch");
-        argVals.push_back(v);
-        ++idx;
     }
+
+    return chosen->func;
+}
+
+llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args) {
+    std::vector<llvm::Value*> argVals;
+    llvm::Function *fn = resolveOverload(callee, args, argVals);
     if (fn->getReturnType()->isVoidTy())
         return builder_.CreateCall(fn, argVals);
     return builder_.CreateCall(fn, argVals, "calltmp");
@@ -923,11 +957,29 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         paramTypes.push_back(resolveType(p.type));
     llvm::Type *retTy = resolveType(s->return_type);
 
+    // Check for duplicate signatures
+    auto &overloads = functions_[s->name];
+    for (auto &entry : overloads) {
+        if (entry.paramTypes == paramTypes) {
+            if (entry.func->getReturnType() == retTy)
+                throw std::runtime_error("function '" + s->name +
+                    "' is already defined with the same signature");
+            else
+                throw std::runtime_error("function '" + s->name +
+                    "': overloads with same parameter types but different return types");
+        }
+    }
+
+    // LLVM IR function name: first overload uses original name, subsequent use name.N
+    std::string irName = s->name;
+    if (!overloads.empty())
+        irName = s->name + "." + std::to_string(overloads.size());
+
     llvm::FunctionType *ft = llvm::FunctionType::get(retTy, paramTypes, false);
     llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::ExternalLinkage, s->name, *mod_);
+        ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
-    functions_[s->name] = func;
+    overloads.push_back({func, paramTypes});
 
     {
         FnScope guard(*this);
