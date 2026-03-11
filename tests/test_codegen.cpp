@@ -1843,3 +1843,236 @@ TEST_F(CodeGenTest, StringLessThanFalse) {
         "print(\"banana\" < \"apple\")";
     EXPECT_EQ(runSource(src), "false\n");
 }
+
+// ===== For loop =====
+
+TEST_F(CodeGenTest, ForLoopBasic) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "for x in xs:\n"
+        "    print(x)";
+    EXPECT_EQ(runSource(src), "10\n20\n30\n");
+}
+
+TEST_F(CodeGenTest, ForLoopRange) {
+    std::string src =
+        "for i in range(5):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "0\n1\n2\n3\n4\n");
+}
+
+TEST_F(CodeGenTest, ForLoopRangeStartEnd) {
+    std::string src =
+        "for i in range(2, 5):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "2\n3\n4\n");
+}
+
+TEST_F(CodeGenTest, ForLoopAccumulate) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let sum = 0\n"
+        "for x in xs:\n"
+        "    sum = sum + x\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, ForLoopNested) {
+    std::string src =
+        "for i in range(3):\n"
+        "    for j in range(2):\n"
+        "        print(i * 10 + j)";
+    EXPECT_EQ(runSource(src), "0\n1\n10\n11\n20\n21\n");
+}
+
+TEST_F(CodeGenTest, ForLoopStringList) {
+    std::string src =
+        "let words = [\"hello\", \"world\"]\n"
+        "for w in words:\n"
+        "    print(w)";
+    EXPECT_EQ(runSource(src), "hello\nworld\n");
+}
+
+// ===== Compound assignment =====
+
+TEST_F(CodeGenTest, CompoundAssignPlus) {
+    std::string src =
+        "let x = 10\n"
+        "x += 5\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignMinus) {
+    std::string src =
+        "let x = 10\n"
+        "x -= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignStar) {
+    std::string src =
+        "let x = 4\n"
+        "x *= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "12\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignSlash) {
+    std::string src =
+        "let x = 10.0\n"
+        "x /= 4.0\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "2.5\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignPercent) {
+    std::string src =
+        "let x = 10\n"
+        "x %= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignInLoop) {
+    std::string src =
+        "let sum = 0\n"
+        "for i in range(1, 6):\n"
+        "    sum += i\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+// ===== Break / Continue =====
+
+TEST_F(CodeGenTest, BreakInWhile) {
+    std::string src =
+        "let i = 0\n"
+        "while true:\n"
+        "    if i == 5:\n"
+        "        break\n"
+        "    i += 1\n"
+        "print(i)";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, ContinueInFor) {
+    std::string src =
+        "for i in range(5):\n"
+        "    if i == 2:\n"
+        "        continue\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "0\n1\n3\n4\n");
+}
+
+TEST_F(CodeGenTest, BreakInFor) {
+    std::string src =
+        "for i in range(10):\n"
+        "    if i == 3:\n"
+        "        break\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "0\n1\n2\n");
+}
+
+TEST_F(CodeGenTest, BreakInNestedLoop) {
+    std::string src =
+        "for i in range(3):\n"
+        "    for j in range(3):\n"
+        "        if j == 1:\n"
+        "            break\n"
+        "        print(i * 10 + j)\n";
+    EXPECT_EQ(runSource(src), "0\n10\n20\n");
+}
+
+TEST_F(CodeGenTest, ContinueInWhile) {
+    std::string src =
+        "let i = 0\n"
+        "let sum = 0\n"
+        "while i < 10:\n"
+        "    i += 1\n"
+        "    if i % 2 == 0:\n"
+        "        continue\n"
+        "    sum += i\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "25\n");
+}
+
+// ===== Struct field assignment =====
+
+TEST_F(CodeGenTest, StructFieldAssign) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1, 2)\n"
+        "p.x = 10\n"
+        "print(p.x)\n"
+        "print(p.y)";
+    EXPECT_EQ(runSource(src), "10\n2\n");
+}
+
+TEST_F(CodeGenTest, StructFieldAssignMultiple) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(0, 0)\n"
+        "p.x = 3\n"
+        "p.y = 4\n"
+        "print(p.x)\n"
+        "print(p.y)";
+    EXPECT_EQ(runSource(src), "3\n4\n");
+}
+
+TEST_F(CodeGenTest, StructFieldAssignConstError) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "const p = Point(1, 2)\n"
+        "p.x = 10";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+// ===== Escape sequences =====
+
+TEST_F(CodeGenTest, EscapeNewline) {
+    std::string src = "print(\"hello\\nworld\")";
+    EXPECT_EQ(runSource(src), "hello\nworld\n");
+}
+
+TEST_F(CodeGenTest, EscapeTab) {
+    std::string src = "print(\"a\\tb\")";
+    EXPECT_EQ(runSource(src), "a\tb\n");
+}
+
+TEST_F(CodeGenTest, EscapeBackslash) {
+    std::string src = "print(\"a\\\\b\")";
+    EXPECT_EQ(runSource(src), "a\\b\n");
+}
+
+TEST_F(CodeGenTest, EscapeQuote) {
+    std::string src = "print(\"say \\\"hi\\\"\")";
+    EXPECT_EQ(runSource(src), "say \"hi\"\n");
+}
+
+// ===== range() as expression =====
+
+TEST_F(CodeGenTest, RangeEmptyList) {
+    std::string src =
+        "let xs = range(0)\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, RangeUsedAsList) {
+    std::string src =
+        "let xs = range(3)\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "0\n1\n2\n3\n");
+}

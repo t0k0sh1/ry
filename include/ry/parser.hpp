@@ -24,6 +24,7 @@ private:
     StmtNode parseLetOrConst();
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
+    StmtNode parseForStatement();
     StmtNode parseFnStatement();
     StmtNode parseTypeStatement();
     StmtNode parseReturnStatement();

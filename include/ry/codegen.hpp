@@ -45,6 +45,9 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
 
+    // Loop context stack for break/continue (condBB, endBB)
+    std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
+
     // RAII scope for function emission (B5)
     class FnScope {
     public:
@@ -80,8 +83,12 @@ private:
     void emitStmt(ImportStmt &s);
     void emitStmt(TypeStmt &s);
     void emitStmt(IndexAssignStmt &s);
+    void emitStmt(BreakStmt &s);
+    void emitStmt(ContinueStmt &s);
+    void emitStmt(FieldAssignStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
+    void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
     llvm::Value *toBool(llvm::Value *v);
 

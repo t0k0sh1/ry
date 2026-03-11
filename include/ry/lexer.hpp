@@ -56,6 +56,18 @@ enum class TokenKind {
     // --- map ---
     LBrace,         // {
     RBrace,         // }
+    // --- for loop ---
+    For,            // for
+    In,             // in
+    // --- loop control ---
+    Break,          // break
+    Continue,       // continue
+    // --- compound assignment ---
+    PlusEq,         // +=
+    MinusEq,        // -=
+    StarEq,         // *=
+    SlashEq,        // /=
+    PercentEq,      // %=
 };
 
 struct Token {

@@ -97,15 +97,27 @@ struct FieldDef { std::string name; std::string type; };
 
 struct TypeStmt { std::string name; std::vector<FieldDef> fields; };
 
+struct BreakStmt {};
+struct ContinueStmt {};
+
+struct FieldAssignStmt {
+    ExprPtr object;
+    std::string field;
+    ExprPtr value;
+};
+
 struct IfStmt;
 struct WhileStmt;
+struct ForStmt;
 struct FnStmt;
 
 using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
-                              IndexAssignStmt,
+                              IndexAssignStmt, BreakStmt, ContinueStmt,
+                              FieldAssignStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
+                              std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>>;
 using Program  = std::vector<StmtNode>;
 
@@ -121,6 +133,12 @@ struct IfStmt {
 
 struct WhileStmt {
     ExprPtr condition;
+    std::vector<StmtNode> body;
+};
+
+struct ForStmt {
+    std::string var_name;
+    ExprPtr iterable;
     std::vector<StmtNode> body;
 };
 

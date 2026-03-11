@@ -87,19 +87,37 @@ Token Lexer::readToken() {
         at_line_start_ = true;
         return {TokenKind::Newline, "\n", line_++};
     }
-    if (c == '+') { ++pos_; return {TokenKind::Plus,   "+", line_}; }
+    if (c == '+') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::PlusEq, "+=", line_};
+        }
+        return {TokenKind::Plus, "+", line_};
+    }
     if (c == '-') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '>') {
             ++pos_; return {TokenKind::Arrow, "->", line_};
         }
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::MinusEq, "-=", line_};
+        }
         return {TokenKind::Minus, "-", line_};
     }
-    if (c == '%') { ++pos_; return {TokenKind::Percent, "%", line_}; }
+    if (c == '%') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::PercentEq, "%=", line_};
+        }
+        return {TokenKind::Percent, "%", line_};
+    }
     if (c == '*') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '*') {
             ++pos_; return {TokenKind::StarStar, "**", line_};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::StarEq, "*=", line_};
         }
         return {TokenKind::Star, "*", line_};
     }
@@ -107,6 +125,9 @@ Token Lexer::readToken() {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '/') {
             ++pos_; return {TokenKind::SlashSlash, "//", line_};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::SlashEq, "/=", line_};
         }
         return {TokenKind::Slash, "/", line_};
     }
@@ -160,17 +181,36 @@ Token Lexer::readToken() {
 
     if (c == '"') {
         ++pos_;
-        size_t start = pos_;
+        std::string str;
         while (pos_ < src_.size() && src_[pos_] != '"') {
             if (src_[pos_] == '\n' || src_[pos_] == '\r')
                 throw std::runtime_error("line " + std::to_string(line_) +
                                          ": unterminated string literal");
-            ++pos_;
+            if (src_[pos_] == '\\') {
+                ++pos_;
+                if (pos_ >= src_.size())
+                    throw std::runtime_error("line " + std::to_string(line_) +
+                                             ": unterminated escape sequence");
+                switch (src_[pos_]) {
+                    case 'n':  str += '\n'; break;
+                    case 't':  str += '\t'; break;
+                    case '\\': str += '\\'; break;
+                    case '"':  str += '"';  break;
+                    case '0':  str += '\0'; break;
+                    default:
+                        throw std::runtime_error("line " + std::to_string(line_) +
+                                                 ": unknown escape sequence '\\" +
+                                                 std::string(1, src_[pos_]) + "'");
+                }
+                ++pos_;
+            } else {
+                str += src_[pos_];
+                ++pos_;
+            }
         }
         if (pos_ >= src_.size())
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unterminated string literal");
-        std::string str(src_, start, pos_ - start);
         ++pos_;
         return {TokenKind::String, str, line_};
     }
@@ -204,6 +244,10 @@ Token Lexer::readToken() {
         if (id == "elif")  return {TokenKind::Elif,  "elif",  line_};
         if (id == "else")  return {TokenKind::Else,  "else",  line_};
         if (id == "while") return {TokenKind::While, "while", line_};
+        if (id == "for")      return {TokenKind::For,      "for",      line_};
+        if (id == "in")       return {TokenKind::In,       "in",       line_};
+        if (id == "break")    return {TokenKind::Break,    "break",    line_};
+        if (id == "continue") return {TokenKind::Continue, "continue", line_};
         if (id == "fn")     return {TokenKind::Fn,     "fn",     line_};
         if (id == "return") return {TokenKind::Return, "return", line_};
         if (id == "from")   return {TokenKind::From,   "from",   line_};

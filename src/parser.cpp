@@ -134,13 +134,26 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::While)
         return parseWhileStatement();
 
+    if (first.kind == TokenKind::For)
+        return parseForStatement();
+
+    if (first.kind == TokenKind::Break) {
+        lex_.next();
+        return BreakStmt{};
+    }
+
+    if (first.kind == TokenKind::Continue) {
+        lex_.next();
+        return ContinueStmt{};
+    }
+
     // A4: let / const declaration
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Const)
         return parseLetOrConst();
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'fn', 'return', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -164,11 +177,63 @@ StmtNode Parser::parseStatement() {
         s.index = std::move(index);
         s.value = std::move(val);
         return s;
+    } else if (next.kind == TokenKind::Dot) {
+        // field assignment: ident.field = value
+        lex_.next(); // consume '.'
+        Token fieldTok = lex_.peek();
+        if (fieldTok.kind != TokenKind::Ident)
+            parseError(fieldTok.line, "expected field name after '.'");
+        lex_.next(); // consume field name
+
+        if (lex_.peek().kind == TokenKind::LParen) {
+            // UFCS call statement: ident.method(args)
+            lex_.next(); // consume '('
+            CallStmt s;
+            s.callee = fieldTok.value;
+            auto obj = std::make_unique<ExprNode>();
+            obj->data = VariableExpr{first.value};
+            s.args.push_back(std::move(obj));
+            auto rest = parseArgList();
+            for (auto &arg : rest)
+                s.args.push_back(std::move(arg));
+            return s;
+        }
+
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError("expected '=' after field name");
+        lex_.next(); // consume '='
+        ExprPtr val = parseLogicalOr();
+        FieldAssignStmt s;
+        auto obj = std::make_unique<ExprNode>();
+        obj->data = VariableExpr{first.value};
+        s.object = std::move(obj);
+        s.field = fieldTok.value;
+        s.value = std::move(val);
+        return s;
     } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
         s.value = parseLogicalOr();
+        return s;
+    } else if (next.kind == TokenKind::PlusEq  || next.kind == TokenKind::MinusEq ||
+               next.kind == TokenKind::StarEq  || next.kind == TokenKind::SlashEq ||
+               next.kind == TokenKind::PercentEq) {
+        // Compound assignment: desugar x += e → x = x + e
+        Token opTok = lex_.next(); // consume +=, -=, etc.
+        std::string op(1, opTok.value[0]); // extract "+" from "+="
+        ExprPtr rhs = parseLogicalOr();
+        auto varRef = std::make_unique<ExprNode>();
+        varRef->data = VariableExpr{first.value};
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op = op;
+        bin->lhs = std::move(varRef);
+        bin->rhs = std::move(rhs);
+        auto binNode = std::make_unique<ExprNode>();
+        binNode->data = std::move(bin);
+        AssignStmt s;
+        s.name = first.value;
+        s.value = std::move(binNode);
         return s;
     } else if (next.kind == TokenKind::LParen) {
         lex_.next(); // consume '('
@@ -177,7 +242,7 @@ StmtNode Parser::parseStatement() {
         s.args = parseArgList();
         return s;
     }
-    parseError(next.line, "expected '=', '[', or '(' after identifier");
+    parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '.', '[', or '(' after identifier");
 }
 
 // ===== A4: parseLetOrConst =====
@@ -258,6 +323,31 @@ StmtNode Parser::parseWhileStatement() {
     whileStmt->condition = std::move(cond);
     whileStmt->body = parseBlock();
     return whileStmt;
+}
+
+StmtNode Parser::parseForStatement() {
+    lex_.next(); // consume 'for'
+
+    Token varTok = lex_.peek();
+    if (varTok.kind != TokenKind::Ident)
+        parseError(varTok.line, "expected variable name after 'for'");
+    lex_.next(); // consume var name
+
+    if (lex_.peek().kind != TokenKind::In)
+        parseError("expected 'in' after variable name in for loop");
+    lex_.next(); // consume 'in'
+
+    ExprPtr iterable = parseLogicalOr();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after for loop iterable");
+    lex_.next(); // consume ':'
+
+    auto forStmt = std::make_unique<ForStmt>();
+    forStmt->var_name = varTok.value;
+    forStmt->iterable = std::move(iterable);
+    forStmt->body = parseBlock();
+    return forStmt;
 }
 
 StmtNode Parser::parseIfStatement() {

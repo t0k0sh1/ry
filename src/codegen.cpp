@@ -336,14 +336,146 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
+    loop_stack_.push_back({condBB, endBB});
     pushScope();
     for (auto &stmt : s->body)
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
     popScope();
+    loop_stack_.pop_back();
     if (!builder_.GetInsertBlock()->getTerminator())
         builder_.CreateBr(condBB);
 
     builder_.SetInsertPoint(endBB);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
+    // Evaluate iterable
+    llvm::Value *iterable = emitExpr(*s->iterable);
+
+    // Check if this is a list (ptr type with known element type)
+    if (iterable->getType() != ptrTy_)
+        throw std::runtime_error("for loop requires list iterable");
+
+    llvm::Type *elemTy = getListElementType(iterable);
+    if (!elemTy)
+        throw std::runtime_error("cannot determine element type for for loop iterable");
+
+    // Get list length
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+
+    // Get data pointer
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+
+    // Create index variable
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.body", fn_);
+    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "for.step", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
+
+    builder_.CreateBr(condBB);
+
+    // cond: i < length
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    // body: load element and execute body
+    builder_.SetInsertPoint(bodyBB);
+    loop_stack_.push_back({stepBB, endBB});
+    pushScope();
+
+    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
+    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
+
+    // Create loop variable in scope
+    llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
+    builder_.CreateStore(elem, loopVar);
+
+    for (auto &stmt : s->body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+    popScope();
+    loop_stack_.pop_back();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(stepBB);
+
+    // step: i++
+    builder_.SetInsertPoint(stepBB);
+    llvm::Value *iNext = builder_.CreateAdd(
+        builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    builder_.CreateStore(iNext, iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
+}
+
+void CodeGen::emitStmt(BreakStmt &) {
+    if (loop_stack_.empty())
+        throw std::runtime_error("break outside of loop");
+    builder_.CreateBr(loop_stack_.back().second);
+    // Create unreachable block for subsequent code
+    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "break.dead", fn_);
+    builder_.SetInsertPoint(deadBB);
+}
+
+void CodeGen::emitStmt(ContinueStmt &) {
+    if (loop_stack_.empty())
+        throw std::runtime_error("continue outside of loop");
+    builder_.CreateBr(loop_stack_.back().first);
+    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "continue.dead", fn_);
+    builder_.SetInsertPoint(deadBB);
+}
+
+void CodeGen::emitStmt(FieldAssignStmt &s) {
+    // Get the variable name from the object expression
+    auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
+    if (!varExpr)
+        throw std::runtime_error("field assignment requires variable on left side");
+
+    llvm::AllocaInst *ptr = findVar(varExpr->name);
+    if (!ptr)
+        throw std::runtime_error("undefined variable: " + varExpr->name);
+
+    if (isConst(varExpr->name))
+        throw std::runtime_error("cannot modify field of const variable: " + varExpr->name);
+
+    llvm::Type *varTy = ptr->getAllocatedType();
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
+    if (!structTy)
+        throw std::runtime_error("field assignment on non-struct type");
+
+    std::string typeName = structTy->getName().str();
+    auto it = struct_types_.find(typeName);
+    if (it == struct_types_.end())
+        throw std::runtime_error("unknown struct type: " + typeName);
+
+    const auto &info = it->second;
+    int fieldIdx = -1;
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        if (info.fields[i].name == s.field) {
+            fieldIdx = static_cast<int>(i);
+            break;
+        }
+    }
+    if (fieldIdx < 0)
+        throw std::runtime_error("type '" + typeName + "' has no field '" + s.field + "'");
+
+    llvm::Value *newVal = emitExpr(*s.value);
+    llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
+    if (newVal->getType() != expectedTy)
+        throw std::runtime_error("field '" + s.field + "' type mismatch");
+
+    // Load current struct value, insert new field value, store back
+    llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
+    llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
+    builder_.CreateStore(updated, ptr);
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
@@ -1137,6 +1269,77 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 // ===== B4: CallExpr using emitUserFnCall =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    // range(n) or range(start, end) → list[int]
+    if (e->callee == "range") {
+        if (e->args.size() < 1 || e->args.size() > 2)
+            throw std::runtime_error("range() takes 1 or 2 arguments");
+
+        llvm::Value *start, *end;
+        if (e->args.size() == 1) {
+            start = llvm::ConstantInt::get(i64Ty_, 0);
+            end = emitExpr(*e->args[0]);
+        } else {
+            start = emitExpr(*e->args[0]);
+            end = emitExpr(*e->args[1]);
+        }
+
+        // count = max(0, end - start)
+        llvm::Value *diff = builder_.CreateSub(end, start, "range_diff");
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *isPos = builder_.CreateICmpSGT(diff, zero, "is_pos");
+        llvm::Value *count = builder_.CreateSelect(isPos, diff, zero, "range_count");
+
+        // Allocate list header
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *headerPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_header");
+
+        // Allocate data array
+        uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
+        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "range_data_size");
+        llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
+
+        // Fill data with start..end using a loop
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
+        builder_.CreateStore(zero, iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "range.body", fn_);
+        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "range.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ri");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "range_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ri_cur");
+        llvm::Value *val = builder_.CreateAdd(start, iCur, "range_val");
+        llvm::Value *elemPtr = builder_.CreateGEP(i64Ty_, dataPtr, {iCur}, "range_elem_ptr");
+        builder_.CreateStore(val, elemPtr);
+        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "ri_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+
+        // Store header fields
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "range_len_ptr");
+        builder_.CreateStore(count, lenPtr);
+        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "range_cap_ptr");
+        builder_.CreateStore(count, capPtr);
+        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "range_data_field");
+        builder_.CreateStore(dataPtr, dataPtrField);
+
+        list_element_types_[headerPtr] = i64Ty_;
+        return headerPtr;
+    }
+
     // len(xs) → list/map length
     if (e->callee == "len") {
         if (e->args.size() != 1)

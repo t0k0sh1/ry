@@ -6,11 +6,11 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
 - **6 つの組み込み型 + ユーザー定義型 + タプル + リスト + マップ** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`、マップ型 `map[K, V]`
-- **豊富な演算子** — 算術・比較・論理・ビット演算をサポート（ユーザー定義型への演算子オーバーロード対応）
+- **豊富な演算子** — 算術・比較・論理・ビット演算・複合代入（`+=`, `-=`, `*=`, `/=`, `%=`）をサポート（ユーザー定義型への演算子オーバーロード対応）
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
 - **関数定義** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応、オーバーロード対応）
-- **制御構文** — `if`/`elif`/`else`、`while` ループ（Python スタイルのインデントブロック）
+- **制御構文** — `if`/`elif`/`else`、`while` ループ、`for` ループ（`for x in xs:` / `for i in range(n):`）、`break`/`continue`（Python スタイルのインデントブロック）
 - **モジュールインポート** — `from ... import ...` 構文で別ファイルの関数をインポート（相対パス・`RY_PATH` 検索・循環検出）
 - **UFCS** — `a.f(b)` を `f(a, b)` として呼び出す Uniform Function Call Syntax
 - **型安全** — 変数への型変更再代入を禁止、const 変数への再代入を禁止
@@ -24,7 +24,7 @@ let a: int = 10
 let b: float = 3.14
 let c: bool = true
 
-# 文字列
+# 文字列（エスケープシーケンス対応: \n, \t, \\, \", \0）
 let greeting: str = "hello"
 print(greeting)
 print(len(greeting))               # 5
@@ -99,6 +99,31 @@ while i > 0:
     print(i)
     i = i - 1
 
+# for ループ
+for x in [10, 20, 30]:
+    print(x)
+
+# range を使った for ループ
+let sum = 0
+for i in range(1, 11):
+    sum += i
+print(sum)               # 55
+
+# break / continue
+for i in range(10):
+    if i == 5:
+        break
+    if i % 2 == 0:
+        continue
+    print(i)             # 1, 3
+
+# 複合代入
+let count = 0
+count += 10
+count -= 3
+count *= 2
+print(count)             # 14
+
 # 構造体定義
 type Point:
     x: int
@@ -107,6 +132,10 @@ type Point:
 let p = Point(10, 20)
 print(p.x)
 print(p.y)
+
+# 構造体フィールド代入
+p.x = 100
+print(p.x)               # 100
 
 # 構造体を関数の引数に
 fn distance_x(a: Point, b: Point) -> int:
@@ -247,7 +276,7 @@ x = 10  # 行末コメント
 | int | i64 | `42`, `-7` |
 | float | f64 | `3.14`, `0.5` |
 | bool | i1 | `true`, `false` |
-| str | ptr | `"hello"`, `""` |
+| str | ptr | `"hello"`, `""`, `"a\nb"` |
 | Unit | void | 戻り値なし関数の戻り値型 |
 | Option\<T\> | { i1, T } | `Some(42)`, `None` |
 | (T1, T2, ...) | LLVM StructType (literal) | `(1, 3.14)`, `(a, b, c)` |
@@ -281,6 +310,7 @@ x = 10  # 行末コメント
 - `%` は両辺が int なら int、片方でも float なら float
 - `+` `-` `*` は片方が float なら float に昇格
 - `+` は両辺が str の場合、文字列結合を返す
+- 文字列リテラルはエスケープシーケンス対応: `\n`（改行）、`\t`（タブ）、`\\`（バックスラッシュ）、`\"`（ダブルクォート）、`\0`（ヌル）
 - `==` `!=` `<` `<=` `>` `>=` は両辺が str の場合、辞書順で文字列比較を行う
 - ビット演算子は int のみ（float を渡すとエラー）
 - 比較演算子は bool を返す
@@ -297,6 +327,7 @@ x = 10  # 行末コメント
 | `contains(str, sub)` | 文字列に部分文字列が含まれるかを bool で返す（UFCS: `s.contains("x")`） |
 | `starts_with(str, prefix)` | 文字列が指定の接頭辞で始まるかを bool で返す（UFCS: `s.starts_with("x")`） |
 | `ends_with(str, suffix)` | 文字列が指定の接尾辞で終わるかを bool で返す（UFCS: `s.ends_with("x")`） |
+| `range(n)` / `range(start, end)` | `[0..n-1]` または `[start..end-1]` の `list[int]` を生成 |
 
 ### 制御構文
 
@@ -333,6 +364,46 @@ while i > 0:
 
 - 条件式は `bool` 以外も受け付けます（`int`: 0 が false、非 0 が true）
 - ネスト可能（while 内 while、while 内 if など）
+- `break` / `continue` 対応
+
+#### for
+
+Python スタイルの `for` ループです。リストの各要素に対してブロックを実行します。
+
+```python
+# リストの走査
+for x in [1, 2, 3]:
+    print(x)
+
+# range() を使った数値ループ
+for i in range(5):      # 0, 1, 2, 3, 4
+    print(i)
+
+for i in range(2, 5):   # 2, 3, 4
+    print(i)
+```
+
+- `range(n)` は `[0, 1, ..., n-1]` のリストを生成
+- `range(start, end)` は `[start, start+1, ..., end-1]` のリストを生成
+- ネスト可能
+- `break` / `continue` 対応
+
+#### break / continue
+
+ループ内で `break`（ループ脱出）と `continue`（次のイテレーションへスキップ）が使えます。
+
+```python
+for i in range(10):
+    if i == 5:
+        break       # ループを抜ける
+    if i % 2 == 0:
+        continue    # 偶数はスキップ
+    print(i)        # 1, 3
+```
+
+- `while` と `for` の両方で使用可能
+- ネストしたループでは最も内側のループにのみ作用
+- ループ外での使用はコンパイルエラー
 
 #### 関数定義
 
@@ -385,6 +456,11 @@ const z: bool = true
 # 再代入（let のみ）
 let count = 0
 count = count + 1
+
+# 複合代入演算子
+count += 5    # count = count + 5
+count -= 2    # count = count - 2
+count *= 3    # count = count * 3
 ```
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
@@ -420,7 +496,7 @@ type Line:
 - 構造体はスタック上の値型として扱われます
 - コンストラクタの引数はフィールド定義順に対応
 - 同一フィールド名の重複定義はエラー
-- フィールドへの代入（`p.x = 10`）は未対応
+- フィールドへの代入: `p.x = 10`（`let` 変数のみ、`const` 変数はエラー）
 - `print()` に構造体を直接渡すとエラー
 
 #### タプル型
@@ -570,4 +646,3 @@ export RY_PATH=/path/to/libs:/another/path
 - 同じ名前の変数を再宣言するとエラー（`let x = 1` の後に `let x = 2` はエラー）
 - 変数の型変更再代入は禁止（例: `let x = 1` の後に `x = 3.14` はエラー）
 - 型アノテーションは暗黙的型変換を許容しない（strict）
-- ループ（for）は未実装
