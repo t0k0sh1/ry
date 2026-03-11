@@ -45,6 +45,16 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
 
+    // Function type info for indirect calls (lambda / function pointers)
+    struct FnTypeInfo {
+        std::vector<llvm::Type*> paramTypes;
+        llvm::Type *returnType;
+        std::vector<std::string> capturedVars;   // for closure support
+        std::vector<llvm::Type*> capturedTypes;  // types of captured variables
+    };
+    std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
+    int lambda_counter_ = 0;
+
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
 
@@ -110,6 +120,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<ListExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<IndexExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<MapExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
 
     // Operator overload helpers
     llvm::Value *tryOperatorCall(const std::string &opFnName,
@@ -135,6 +146,7 @@ private:
     bool isOptionType(llvm::Type *ty);
     llvm::Value *buildNoneValue(llvm::Type *optionTy);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
+    FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);
     void emitPrintValue(llvm::Value *val, llvm::Type *ty,
                         llvm::FunctionCallee printfFn, const std::string &suffix);

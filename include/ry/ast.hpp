@@ -21,6 +21,7 @@ struct TupleExpr;
 struct ListExpr;
 struct IndexExpr;
 struct MapExpr;
+struct LambdaExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -31,7 +32,8 @@ struct ExprNode {
                  std::unique_ptr<TupleExpr>,
                  std::unique_ptr<ListExpr>,
                  std::unique_ptr<IndexExpr>,
-                 std::unique_ptr<MapExpr>> data;
+                 std::unique_ptr<MapExpr>,
+                 std::unique_ptr<LambdaExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -148,4 +150,11 @@ struct FnStmt {
     std::string return_type;
     std::vector<StmtNode> body;
     bool is_operator = false;
+};
+
+struct LambdaExpr {
+    std::vector<FnParam> params;
+    std::string return_type;
+    std::vector<StmtNode> body;   // multi-line lambda
+    ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
 };

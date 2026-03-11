@@ -68,6 +68,8 @@ enum class TokenKind {
     StarEq,         // *=
     SlashEq,        // /=
     PercentEq,      // %=
+    // --- lambda ---
+    FatArrow,       // =>
 };
 
 struct Token {
@@ -84,6 +86,18 @@ public:
 
     const Token& peek() const { return current_; }
     Token next();
+
+    // State save/restore for backtracking (used by lambda parsing)
+    struct State {
+        size_t pos;
+        int line;
+        bool at_line_start;
+        std::vector<int> indent_stack;
+        std::queue<Token> pending;
+        Token current;
+    };
+    State saveState() const;
+    void restoreState(State s);
 
 private:
     std::string src_;

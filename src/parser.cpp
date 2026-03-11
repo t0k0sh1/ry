@@ -537,6 +537,15 @@ ExprPtr Parser::parsePrimary() {
         return node;
     }
     if (t.kind == TokenKind::LParen) {
+        // Try lambda: save state and attempt lambda parse
+        auto saved = lex_.saveState();
+        try {
+            return parseLambdaExpr();
+        } catch (...) {
+            lex_.restoreState(std::move(saved));
+        }
+
+        // Not a lambda — parse as grouping or tuple
         lex_.next();
         ExprPtr first = parseLogicalOr();
         if (lex_.peek().kind == TokenKind::Comma) {
@@ -746,11 +755,59 @@ std::string Parser::parseTypeName() {
         return name;
     }
 
+    // fn(int, int) -> int  function type
+    if (lex_.peek().kind == TokenKind::Fn) {
+        lex_.next(); // consume 'fn'
+        std::string name = "fn";
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after 'fn' in function type");
+        lex_.next(); // consume '('
+        name += "(";
+        if (lex_.peek().kind != TokenKind::RParen) {
+            name += parseTypeName();
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                name += ", " + parseTypeName();
+            }
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' in function type");
+        lex_.next(); // consume ')'
+        name += ")";
+        if (lex_.peek().kind == TokenKind::Arrow) {
+            lex_.next(); // consume '->'
+            name += " -> " + parseTypeName();
+        }
+        return name;
+    }
+
     Token t = lex_.peek();
     if (t.kind != TokenKind::Ident)
         parseError(t.line, "expected type name");
     std::string name = t.value;
     lex_.next(); // consume type name
+
+    // fn(int, int) -> int  function type (when fn comes as an ident, shouldn't happen normally)
+    if (name == "fn" && lex_.peek().kind == TokenKind::LParen) {
+        lex_.next(); // consume '('
+        name += "(";
+        if (lex_.peek().kind != TokenKind::RParen) {
+            name += parseTypeName();
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                name += ", " + parseTypeName();
+            }
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' in function type");
+        lex_.next(); // consume ')'
+        name += ")";
+        if (lex_.peek().kind == TokenKind::Arrow) {
+            lex_.next(); // consume '->'
+            name += " -> " + parseTypeName();
+        }
+        return name;
+    }
 
     if (lex_.peek().kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
@@ -779,6 +836,91 @@ std::string Parser::parseTypeName() {
     }
 
     return name;
+}
+
+ExprPtr Parser::parseLambdaExpr() {
+    // (params): return_type => expr_or_block
+    if (lex_.peek().kind != TokenKind::LParen)
+        throw std::runtime_error("not a lambda");
+    lex_.next(); // consume '('
+
+    auto lambda = std::make_unique<LambdaExpr>();
+
+    // Parse parameters
+    if (lex_.peek().kind != TokenKind::RParen) {
+        for (;;) {
+            Token paramName = lex_.peek();
+            if (paramName.kind != TokenKind::Ident)
+                throw std::runtime_error("not a lambda");
+            lex_.next(); // consume param name
+
+            if (lex_.peek().kind != TokenKind::Colon)
+                throw std::runtime_error("not a lambda");
+            lex_.next(); // consume ':'
+
+            std::string paramType = parseTypeName();
+            lambda->params.push_back({paramName.value, paramType});
+
+            if (lex_.peek().kind != TokenKind::Comma)
+                break;
+            lex_.next(); // consume ','
+        }
+    }
+
+    if (lex_.peek().kind != TokenKind::RParen)
+        throw std::runtime_error("not a lambda");
+    lex_.next(); // consume ')'
+
+    // Return type annotation is required
+    if (lex_.peek().kind != TokenKind::Colon)
+        throw std::runtime_error("not a lambda");
+    lex_.next(); // consume ':'
+
+    lambda->return_type = parseTypeName();
+
+    if (lex_.peek().kind != TokenKind::FatArrow)
+        throw std::runtime_error("not a lambda");
+    lex_.next(); // consume '=>'
+
+    // Check for multi-line lambda (newline + indent)
+    if (lex_.peek().kind == TokenKind::Newline) {
+        // Peek ahead to see if indent follows
+        auto saved2 = lex_.saveState();
+        lex_.next(); // consume newline
+        skipNewlines();
+        if (lex_.peek().kind == TokenKind::Indent) {
+            lex_.restoreState(std::move(saved2));
+            // parseBlock expects newline then indent
+            // We need to provide the colon context; use parseBlock directly
+            // Actually parseBlock expects newline, then skips newlines, then indent
+            // We're at Newline now, so we can call parseBlock-like logic
+            lex_.next(); // consume newline
+            skipNewlines();
+            lex_.next(); // consume Indent
+
+            while (lex_.peek().kind != TokenKind::Dedent &&
+                   lex_.peek().kind != TokenKind::Eof) {
+                lambda->body.push_back(parseStatement());
+                if (lex_.peek().kind == TokenKind::Newline)
+                    lex_.next();
+                skipNewlines();
+            }
+            if (lambda->body.empty())
+                parseError("empty lambda body is not allowed");
+            if (lex_.peek().kind == TokenKind::Dedent)
+                lex_.next(); // consume Dedent
+        } else {
+            lex_.restoreState(std::move(saved2));
+            lambda->expr_body = parseLogicalOr();
+        }
+    } else {
+        // Single expression lambda
+        lambda->expr_body = parseLogicalOr();
+    }
+
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(lambda);
+    return node;
 }
 
 ExprPtr Parser::parsePostfix() {

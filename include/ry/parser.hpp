@@ -49,4 +49,5 @@ private:
     ExprPtr parseLogicalNot();
     ExprPtr parseLogicalAnd();
     ExprPtr parseLogicalOr();
+    ExprPtr parseLambdaExpr();
 };

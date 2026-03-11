@@ -8,6 +8,19 @@ Token Lexer::next() {
     return t;
 }
 
+Lexer::State Lexer::saveState() const {
+    return {pos_, line_, at_line_start_, indent_stack_, pending_, current_};
+}
+
+void Lexer::restoreState(State s) {
+    pos_ = s.pos;
+    line_ = s.line;
+    at_line_start_ = s.at_line_start;
+    indent_stack_ = std::move(s.indent_stack);
+    pending_ = std::move(s.pending);
+    current_ = std::move(s.current);
+}
+
 Token Lexer::readToken() {
     // 1. Return pending tokens (multiple DEDENTs)
     if (!pending_.empty()) {
@@ -135,6 +148,9 @@ Token Lexer::readToken() {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::EqEq, "==", line_};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '>') {
+            ++pos_; return {TokenKind::FatArrow, "=>", line_};
         }
         return {TokenKind::Equals, "=", line_};
     }

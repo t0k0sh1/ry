@@ -5,11 +5,11 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **6 つの組み込み型 + ユーザー定義型 + タプル + リスト + マップ** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`、マップ型 `map[K, V]`
+- **6 つの組み込み型 + ユーザー定義型 + タプル + リスト + マップ + 関数型** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`、マップ型 `map[K, V]`、関数型 `fn(T1, T2) -> R`
 - **豊富な演算子** — 算術・比較・論理・ビット演算・複合代入（`+=`, `-=`, `*=`, `/=`, `%=`）をサポート（ユーザー定義型への演算子オーバーロード対応）
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
-- **関数定義** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応、オーバーロード対応）
+- **関数定義 / ラムダ関数** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応、オーバーロード対応）、`=>` によるラムダ関数（クロージャ対応）、高階関数（関数を値として渡す）
 - **制御構文** — `if`/`elif`/`else`、`while` ループ、`for` ループ（`for x in xs:` / `for i in range(n):`）、`break`/`continue`（Python スタイルのインデントブロック）
 - **モジュールインポート** — `from ... import ...` 構文で別ファイルの関数をインポート（相対パス・`RY_PATH` 検索・循環検出）
 - **UFCS** — `a.f(b)` を `f(a, b)` として呼び出す Uniform Function Call Syntax
@@ -226,6 +226,36 @@ m["c"] = 3          # キー追加
 m["a"] = 99         # 値更新
 print(m.has_key("a"))  # true
 
+# ラムダ関数（アロー関数）
+let double = (x: int): int => x * 2
+print(double(5))             # 10
+
+# 高階関数
+fn apply(f: fn(int) -> int, x: int) -> int:
+    return f(x)
+
+print(apply(double, 3))     # 6
+print(apply((n: int): int => n + 1, 10))  # 11
+
+# クロージャ（外部変数キャプチャ）
+let offset = 10
+let add_offset = (x: int): int => x + offset
+print(add_offset(5))        # 15
+
+# 名前付き関数を値として渡す
+fn square(x: int) -> int:
+    return x * x
+
+print(apply(square, 4))     # 16
+
+# 複数行ラムダ
+let abs = (x: int): int =>
+    if x < 0:
+        return -x
+    return x
+
+print(abs(-7))              # 7
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -282,6 +312,7 @@ x = 10  # 行末コメント
 | (T1, T2, ...) | LLVM StructType (literal) | `(1, 3.14)`, `(a, b, c)` |
 | list[T] | ptr (ヒープ確保) | `[1, 2, 3]`, `["a", "b"]` |
 | map[K, V] | ptr (ヒープ確保) | `{"a": 1, "b": 2}` |
+| fn(T1, T2) -> R | ptr (関数ポインタ) | `(x: int): int => x * 2` |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
@@ -426,6 +457,7 @@ print(result)
   - 引数型が同一で戻り値型のみ異なる定義はコンパイルエラー
   - マッチするオーバーロードがない場合はコンパイルエラー
 - 関数は式レベルでも文レベルでも呼び出し可能（`let x = f(1)` / `f(1)`）
+- 関数は値として扱える: 変数に束縛可能、関数引数として渡せる（`fn(int) -> int` 型）
 - UFCS（Uniform Function Call Syntax）: `a.f(b)` は `f(a, b)` に脱糖される
   - チェーン可能: `a.f(b).g(c)` → `g(f(a, b), c)`
   - フィールドアクセスと混在可能: `p.x.f()` → `f(p.x)`
@@ -434,6 +466,52 @@ print(result)
   - 単項演算子: パラメータ 1 個（`fn operator-(a: Vec2) -> Vec2:`）
   - 対応演算子: `+`, `-`, `*`, `/`, `%`, `**`, `//`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `&`, `|`, `^`, `~`, `<<`, `>>`, `and`, `or`, `not`
   - 組み込み型（int, float, bool）の演算子はハードコードのまま維持（ユーザー定義が優先）
+
+#### ラムダ関数（アロー関数）
+
+`=>` 構文で無名関数（ラムダ）を定義できます。変数に束縛したり、関数の引数として渡せます。
+
+```python
+# 単一式ラムダ
+let double = (x: int): int => x * 2
+print(double(5))  # 10
+
+# 引数なしラムダ
+let answer = (): int => 42
+
+# 複数引数
+let add = (a: int, b: int): int => a + b
+
+# 複数行ラムダ
+let abs = (x: int): int =>
+    if x < 0:
+        return -x
+    return x
+
+# 高階関数に渡す
+fn apply(f: fn(int) -> int, x: int) -> int:
+    return f(x)
+
+print(apply(double, 3))                   # 6
+print(apply((n: int): int => n + 1, 10))  # 11
+
+# クロージャ（外部変数のキャプチャ）
+let offset = 10
+let add_offset = (x: int): int => x + offset
+print(add_offset(5))  # 15
+
+# 名前付き関数を値として渡す
+fn square(x: int) -> int:
+    return x * x
+
+print(apply(square, 4))  # 16
+```
+
+- 構文: `(params): return_type => expr` または `(params): return_type => <改行+インデントブロック>`
+- パラメータの型宣言と戻り値型は必須
+- 関数型は `fn(T1, T2) -> R` の形式で記述
+- クロージャは外側スコープの変数を値でキャプチャ（ラムダリフティング方式）
+- 名前付き関数（非オーバーロード）は変数と同様に値として参照可能
 
 ### 変数・定数宣言
 
@@ -465,7 +543,7 @@ count *= 3    # count = count * 3
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, `list[T]`, `map[K, V]`, およびユーザー定義型名
+使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, `list[T]`, `map[K, V]`, `fn(T1, T2) -> R`, およびユーザー定義型名
 
 #### 型定義（構造体）
 
