@@ -293,14 +293,14 @@ TEST_F(CodeGenTest, ConstStringVariable) {
 }
 
 TEST_F(CodeGenTest, StringTypeAnnotation) {
-    EXPECT_EQ(runSource("let s: string = \"typed\"\nprint(s)"), "typed\n");
+    EXPECT_EQ(runSource("let s: str = \"typed\"\nprint(s)"), "typed\n");
 }
 
 TEST_F(CodeGenTest, StringTypeMismatchThrows) {
-    EXPECT_THROW(runSource("let s: string = 42"), std::runtime_error);
+    EXPECT_THROW(runSource("let s: str = 42"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, IntTypeAnnotationStringThrows) {
+TEST_F(CodeGenTest, IntTypeAnnotationStrThrows) {
     EXPECT_THROW(runSource("let s: int = \"hello\""), std::runtime_error);
 }
 
@@ -811,6 +811,154 @@ TEST_F(CodeGenTest, StructFieldArithmetic) {
     EXPECT_EQ(runSource(src), "7\n");
 }
 
+// ===== Unit型テスト =====
+
+TEST_F(CodeGenTest, UnitFnNoReturnType) {
+    std::string src =
+        "fn greet():\n"
+        "    print(42)\n"
+        "greet()";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, UnitFnExplicit) {
+    std::string src =
+        "fn greet() -> Unit:\n"
+        "    print(99)\n"
+        "greet()";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, UnitFnReturnVoid) {
+    std::string src =
+        "fn noop():\n"
+        "    return\n"
+        "noop()";
+    EXPECT_EQ(runSource(src), "");
+}
+
+TEST_F(CodeGenTest, UnitFnReturnVoidEarly) {
+    std::string src =
+        "fn maybe_print(x: int):\n"
+        "    if x > 0:\n"
+        "        print(x)\n"
+        "        return\n"
+        "    print(0)\n"
+        "maybe_print(5)\n"
+        "maybe_print(-1)";
+    EXPECT_EQ(runSource(src), "5\n0\n");
+}
+
+TEST_F(CodeGenTest, UnitFnReturnValueThrows) {
+    std::string src =
+        "fn f():\n"
+        "    return 42\n"
+        "f()";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+// ===== Option<T>型テスト =====
+
+TEST_F(CodeGenTest, OptionIntSomePrint) {
+    std::string src =
+        "let x: Option<int> = Some(42)\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(42)\n");
+}
+
+TEST_F(CodeGenTest, OptionIntNonePrint) {
+    std::string src =
+        "let x: Option<int> = None\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, OptionFloatSomePrint) {
+    std::string src =
+        "let x: Option<float> = Some(3.14)\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(3.14)\n");
+}
+
+TEST_F(CodeGenTest, OptionFloatNonePrint) {
+    std::string src =
+        "let x: Option<float> = None\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, OptionBoolSomePrint) {
+    std::string src =
+        "let x: Option<bool> = Some(true)\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(true)\n");
+}
+
+TEST_F(CodeGenTest, OptionStrSomePrint) {
+    std::string src =
+        "let x: Option<str> = Some(\"hello\")\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(hello)\n");
+}
+
+TEST_F(CodeGenTest, UnwrapSome) {
+    std::string src =
+        "let x: Option<int> = Some(42)\n"
+        "let v = unwrap(x)\n"
+        "print(v)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, UnwrapNoneExits) {
+    std::string src =
+        "let x: Option<int> = None\n"
+        "let v = unwrap(x)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, OptionFnParamAndReturn) {
+    std::string src =
+        "fn maybe_double(x: Option<int>) -> Option<int>:\n"
+        "    return x\n"
+        "let a = maybe_double(Some(21))\n"
+        "print(a)";
+    EXPECT_EQ(runSource(src), "Some(21)\n");
+}
+
+TEST_F(CodeGenTest, OptionFnNoneArg) {
+    std::string src =
+        "fn f(x: Option<int>) -> int:\n"
+        "    return 0\n"
+        "let r = f(None)\n"
+        "print(r)";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, OptionTypeMismatchThrows) {
+    std::string src = "let x: Option<int> = Some(3.14)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NoneWithoutAnnotationThrows) {
+    EXPECT_THROW(runSource("let x = None"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OptionReassignSomeToNone) {
+    std::string src =
+        "let x: Option<int> = Some(42)\n"
+        "x = None\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, OptionReassignNoneToSome) {
+    std::string src =
+        "let x: Option<int> = None\n"
+        "x = Some(99)\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(99)\n");
+}
+
 // ===== import 統合テスト =====
 
 class ImportTest : public CodeGenTest {
@@ -981,6 +1129,40 @@ TEST_F(ImportTest, FunctionNotFoundError) {
         "    return a + b\n");
 
     EXPECT_THROW(runWithImports("from math import nope"), std::runtime_error);
+}
+
+// ===== UFCS コード生成テスト =====
+
+TEST_F(CodeGenTest, UFCSBasicCall) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let x = 1\n"
+        "print(x.add(2))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, UFCSChainedCall) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn mul(a: int, b: int) -> int:\n"
+        "    return a * b\n"
+        "let x = 2\n"
+        "print(x.add(3).mul(4))";
+    EXPECT_EQ(runSource(src), "20\n");
+}
+
+TEST_F(CodeGenTest, UFCSWithStruct) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn get_x(p: Point) -> int:\n"
+        "    return p.x\n"
+        "let p = Point(42, 99)\n"
+        "print(p.get_x())";
+    EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(ImportTest, SearchPathRYPATH) {

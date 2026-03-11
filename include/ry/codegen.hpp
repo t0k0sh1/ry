@@ -34,6 +34,7 @@ private:
         std::vector<FieldDef> fields;
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
+    std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
 
     // RAII scope for function emission (B5)
     class FnScope {
@@ -100,5 +101,7 @@ private:
 
     llvm::Value *emitStructConstructor(const StructInfo &info, const std::string &name, const std::vector<ExprPtr> &args);
     llvm::Type *resolveType(const std::string &typeName);
+    llvm::StructType *getOptionType(llvm::Type *innerTy);
+    bool isOptionType(llvm::Type *ty);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

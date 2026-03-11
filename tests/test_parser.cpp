@@ -293,12 +293,12 @@ TEST(ParserTest, LetStringLiteral) {
 }
 
 TEST(ParserTest, LetStringWithTypeAnnotation) {
-    Program prog = parseStr("let s: string = \"world\"");
+    Program prog = parseStr("let s: str = \"world\"");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<LetStmt>(prog[0]);
     EXPECT_EQ(s.name, "s");
     ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "string");
+    EXPECT_EQ(*s.type_annotation, "str");
     ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
     EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "world");
 }
@@ -438,8 +438,49 @@ TEST(ParserTest, FnMissingColonThrows) {
     EXPECT_THROW(parseStr("fn f() -> int\n    return 1"), std::runtime_error);
 }
 
-TEST(ParserTest, FnMissingArrowThrows) {
+TEST(ParserTest, FnMissingArrowWithTypeThrows) {
+    // fn f() int: → missing '->' before type, "int" is not ':'
     EXPECT_THROW(parseStr("fn f() int:\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, FnReturnTypeOmitted) {
+    // fn f(): → return type defaults to "Unit"
+    Program prog = parseStr("fn f():\n    return");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.name, "f");
+    EXPECT_EQ(fn.return_type, "Unit");
+    ASSERT_EQ(fn.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
+    const auto &ret = std::get<ReturnStmt>(fn.body[0]);
+    EXPECT_EQ(ret.value, nullptr);
+}
+
+TEST(ParserTest, FnExplicitUnitReturn) {
+    Program prog = parseStr("fn f() -> Unit:\n    return");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.return_type, "Unit");
+}
+
+TEST(ParserTest, TypeAnnotationOptionInt) {
+    Program prog = parseStr("let x: Option<int> = None");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "Option<int>");
+}
+
+TEST(ParserTest, FnParamOptionType) {
+    Program prog = parseStr("fn f(x: Option<int>) -> int:\n    return 0");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 1u);
+    EXPECT_EQ(fn.params[0].type, "Option<int>");
+}
+
+TEST(ParserTest, FnReturnOptionType) {
+    Program prog = parseStr("fn f() -> Option<int>:\n    return Some(1)");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.return_type, "Option<int>");
 }
 
 // ===== import パーサーテスト =====
@@ -489,4 +530,70 @@ TEST(ParserTest, ImportInBlockThrows) {
 
 TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("type Point:\n    x: int\n    x: int"), std::runtime_error);
+}
+
+// ===== UFCS パーサーテスト =====
+
+TEST(ParserTest, UFCSBasic) {
+    // a.f(b) → CallExpr{f, [a, b]}
+    Program prog = parseStr("let x = a.f(b)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(call.callee, "f");
+    ASSERT_EQ(call.args.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(call.args[0]->data));
+    EXPECT_EQ(std::get<VariableExpr>(call.args[0]->data).name, "a");
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(call.args[1]->data));
+    EXPECT_EQ(std::get<VariableExpr>(call.args[1]->data).name, "b");
+}
+
+TEST(ParserTest, UFCSNoArgs) {
+    // a.f() → CallExpr{f, [a]}
+    Program prog = parseStr("let x = a.f()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(call.callee, "f");
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(call.args[0]->data));
+    EXPECT_EQ(std::get<VariableExpr>(call.args[0]->data).name, "a");
+}
+
+TEST(ParserTest, UFCSChained) {
+    // a.f(b).g(c) → CallExpr{g, [CallExpr{f, [a, b]}, c]}
+    Program prog = parseStr("let x = a.f(b).g(c)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(outer.callee, "g");
+    ASSERT_EQ(outer.args.size(), 2u);
+    // first arg is CallExpr{f, [a, b]}
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(outer.args[0]->data));
+    const auto &inner = *std::get<std::unique_ptr<CallExpr>>(outer.args[0]->data);
+    EXPECT_EQ(inner.callee, "f");
+    ASSERT_EQ(inner.args.size(), 2u);
+    EXPECT_EQ(std::get<VariableExpr>(inner.args[0]->data).name, "a");
+    EXPECT_EQ(std::get<VariableExpr>(inner.args[1]->data).name, "b");
+    // second arg is c
+    EXPECT_EQ(std::get<VariableExpr>(outer.args[1]->data).name, "c");
+}
+
+TEST(ParserTest, UFCSWithFieldAccess) {
+    // p.x.f() → CallExpr{f, [FieldAccessExpr{p, x}]}
+    Program prog = parseStr("let r = p.x.f()");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
+    const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
+    EXPECT_EQ(call.callee, "f");
+    ASSERT_EQ(call.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(call.args[0]->data);
+    EXPECT_EQ(fa.field, "x");
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(fa.object->data));
+    EXPECT_EQ(std::get<VariableExpr>(fa.object->data).name, "p");
 }

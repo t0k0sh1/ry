@@ -123,6 +123,24 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (scope_stack_.back().count(name))
         throw std::runtime_error("redeclared variable: " + name);
 
+    // Handle None literal
+    if (auto *ve = std::get_if<VariableExpr>(&value.data); ve && ve->name == "None") {
+        if (!type_annotation)
+            throw std::runtime_error("type annotation required for None");
+        llvm::Type *annotTy = resolveType(*type_annotation);
+        if (!isOptionType(annotTy))
+            throw std::runtime_error("None can only be assigned to Option type");
+        llvm::Value *val = llvm::UndefValue::get(annotTy);
+        val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
+        val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
+            llvm::cast<llvm::StructType>(annotTy)->getElementType(1)), 1);
+        llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
+        builder_.CreateStore(val, ptr);
+        if (is_const)
+            const_scope_stack_.back().insert(name);
+        return;
+    }
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
@@ -152,6 +170,19 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isConst(s.name))
         throw std::runtime_error("cannot reassign const variable: " + s.name);
 
+    // Handle None literal in assignment
+    if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
+        llvm::Type *varTy = ptr->getAllocatedType();
+        if (!isOptionType(varTy))
+            throw std::runtime_error("None can only be assigned to Option type");
+        llvm::Value *val = llvm::UndefValue::get(varTy);
+        val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
+        val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
+            llvm::cast<llvm::StructType>(varTy)->getElementType(1)), 1);
+        builder_.CreateStore(val, ptr);
+        return;
+    }
+
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
@@ -177,6 +208,20 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     std::vector<llvm::Value*> argVals;
     unsigned idx = 0;
     for (auto &arg : args) {
+        // Handle None literal as function argument
+        if (auto *ve = std::get_if<VariableExpr>(&arg->data); ve && ve->name == "None") {
+            llvm::Type *expected = fn->getFunctionType()->getParamType(idx);
+            if (!isOptionType(expected))
+                throw std::runtime_error("function '" + callee + "': argument " +
+                                         std::to_string(idx + 1) + " None requires Option type");
+            llvm::Value *val = llvm::UndefValue::get(expected);
+            val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
+            val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
+                llvm::cast<llvm::StructType>(expected)->getElementType(1)), 1);
+            argVals.push_back(val);
+            ++idx;
+            continue;
+        }
         llvm::Value *v = emitExpr(*arg);
         llvm::Type *expected = fn->getFunctionType()->getParamType(idx);
         if (v->getType() != expected)
@@ -454,10 +499,37 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "int")   return i64Ty_;
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
-    if (typeName == "string") return ptrTy_;
+    if (typeName == "str")   return ptrTy_;
+    if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
+
+    // Option<T> parsing
+    if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
+        std::string inner = typeName.substr(7, typeName.size() - 8);
+        llvm::Type *innerTy = resolveType(inner);
+        return getOptionType(innerTy);
+    }
+
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
     throw std::runtime_error("unknown type: " + typeName);
+}
+
+llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
+    auto it = option_types_.find(innerTy);
+    if (it != option_types_.end()) return it->second;
+    llvm::StructType *optTy = llvm::StructType::create(
+        *ctx_, {i1Ty_, innerTy}, "Option");
+    option_types_[innerTy] = optTy;
+    return optTy;
+}
+
+bool CodeGen::isOptionType(llvm::Type *ty) {
+    auto *st = llvm::dyn_cast<llvm::StructType>(ty);
+    if (!st) return false;
+    for (auto &pair : option_types_) {
+        if (pair.second == st) return true;
+    }
+    return false;
 }
 
 void CodeGen::emitStmt(ImportStmt &s) {
@@ -466,11 +538,20 @@ void CodeGen::emitStmt(ImportStmt &s) {
 }
 
 void CodeGen::emitStmt(ReturnStmt &s) {
-    llvm::Value *val = emitExpr(*s.value);
-    llvm::Type *retTy = fn_->getReturnType();
-    if (val->getType() != retTy)
-        throw std::runtime_error("return type mismatch");
-    builder_.CreateRet(val);
+    if (!s.value) {
+        if (!fn_->getReturnType()->isVoidTy())
+            throw std::runtime_error("return without value in non-Unit function");
+        builder_.CreateRetVoid();
+    } else {
+        llvm::Value *val = emitExpr(*s.value);
+        llvm::Type *retTy = fn_->getReturnType();
+        if (retTy->isVoidTy())
+            throw std::runtime_error("cannot return a value from Unit function '" +
+                                     std::string(fn_->getName()) + "'");
+        if (val->getType() != retTy)
+            throw std::runtime_error("return type mismatch");
+        builder_.CreateRet(val);
+    }
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
     builder_.SetInsertPoint(deadBB);
 }
@@ -511,7 +592,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
         if (!builder_.GetInsertBlock()->getTerminator()) {
-            if (retTy == i64Ty_)
+            if (retTy->isVoidTy())
+                builder_.CreateRetVoid();
+            else if (retTy == i64Ty_)
                 builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
             else if (retTy == f64Ty_)
                 builder_.CreateRet(llvm::ConstantFP::get(f64Ty_, 0.0));
@@ -534,6 +617,60 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 // ===== B4: CallExpr using emitUserFnCall =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    // Some(x) → Option<T> constructor
+    if (e->callee == "Some") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("Some() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e->args[0]);
+        llvm::StructType *optTy = getOptionType(inner->getType());
+        llvm::Value *result = llvm::UndefValue::get(optTy);
+        result = builder_.CreateInsertValue(result, llvm::ConstantInt::get(i1Ty_, 1), 0);
+        result = builder_.CreateInsertValue(result, inner, 1);
+        return result;
+    }
+
+    // unwrap(opt) → extract value or runtime error
+    if (e->callee == "unwrap") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("unwrap() takes exactly 1 argument");
+        llvm::Value *opt = emitExpr(*e->args[0]);
+        if (!isOptionType(opt->getType()))
+            throw std::runtime_error("unwrap() requires Option type argument");
+
+        llvm::Value *hasValue = builder_.CreateExtractValue(opt, 0, "has_value");
+
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "unwrap.ok", fn_);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "unwrap.fail", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "unwrap.merge", fn_);
+
+        builder_.CreateCondBr(hasValue, okBB, failBB);
+
+        // fail: print error and exit
+        builder_.SetInsertPoint(failBB);
+        llvm::FunctionType *printfTy = llvm::FunctionType::get(
+            i32Ty_, {llvm::PointerType::getUnqual(*ctx_)}, true);
+        llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+        llvm::Constant *errMsg = builder_.CreateGlobalString(
+            "runtime error: unwrap() called on None\n", ".unwrap_err");
+        builder_.CreateCall(printfFn, {errMsg});
+
+        llvm::FunctionType *exitTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+        llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+        builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+        builder_.CreateUnreachable();
+
+        // ok: extract value
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *val = builder_.CreateExtractValue(opt, 1, "unwrap_val");
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(val->getType(), 1, "unwrap_result");
+        phi->addIncoming(val, okBB);
+        return phi;
+    }
+
     auto sit = struct_types_.find(e->callee);
     if (sit != struct_types_.end())
         return emitStructConstructor(sit->second, e->callee, e->args);
@@ -605,6 +742,53 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
 
     llvm::Value *val = emitExpr(*args[0]);
+
+    // Option type printing
+    if (isOptionType(val->getType())) {
+        llvm::Value *hasValue = builder_.CreateExtractValue(val, 0, "has_value");
+        llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "print.some", fn_);
+        llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "print.none", fn_);
+        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "print.end", fn_);
+
+        builder_.CreateCondBr(hasValue, someBB, noneBB);
+
+        // None branch
+        builder_.SetInsertPoint(noneBB);
+        llvm::Constant *noneFmt = builder_.CreateGlobalString("None\n", ".fmt_none");
+        builder_.CreateCall(printfFn, {noneFmt});
+        builder_.CreateBr(endBB);
+
+        // Some branch
+        builder_.SetInsertPoint(someBB);
+        llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "opt_value");
+        llvm::Type *innerTy = innerVal->getType();
+
+        llvm::Constant *somePrefix = builder_.CreateGlobalString("Some(", ".fmt_some_pre");
+        builder_.CreateCall(printfFn, {somePrefix});
+
+        if (innerTy == i1Ty_) {
+            llvm::Constant *trueStr  = builder_.CreateGlobalString("true", ".fmt_true_opt");
+            llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".fmt_false_opt");
+            llvm::Value *fmtPtr = builder_.CreateSelect(innerVal, trueStr, falseStr, "bool_fmt");
+            builder_.CreateCall(printfFn, {fmtPtr});
+        } else if (innerTy->isPointerTy()) {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_opt");
+            builder_.CreateCall(printfFn, {fmt, innerVal});
+        } else if (innerTy->isDoubleTy()) {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_opt");
+            builder_.CreateCall(printfFn, {fmt, innerVal});
+        } else {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_opt");
+            builder_.CreateCall(printfFn, {fmt, innerVal});
+        }
+
+        llvm::Constant *someSuffix = builder_.CreateGlobalString(")\n", ".fmt_some_post");
+        builder_.CreateCall(printfFn, {someSuffix});
+        builder_.CreateBr(endBB);
+
+        builder_.SetInsertPoint(endBB);
+        return;
+    }
 
     if (llvm::isa<llvm::StructType>(val->getType()))
         throw std::runtime_error("print() does not support struct types");

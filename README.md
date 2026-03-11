@@ -5,13 +5,14 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **4 つの組み込み型 + ユーザー定義型** — `int` (i64)、`float` (f64)、`bool` (i1)、`string` (ptr)、`type` による構造体定義
+- **6 つの組み込み型 + ユーザー定義型** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
 - **関数定義** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応）
 - **制御構文** — `if`/`elif`/`else`、`while` ループ（Python スタイルのインデントブロック）
 - **モジュールインポート** — `from ... import ...` 構文で別ファイルの関数をインポート（相対パス・`RY_PATH` 検索・循環検出）
+- **UFCS** — `a.f(b)` を `f(a, b)` として呼び出す Uniform Function Call Syntax
 - **型安全** — 変数への型変更再代入を禁止、const 変数への再代入を禁止
 - **暗黙の型変換** — int/float 混合演算時に自動昇格
 
@@ -24,7 +25,7 @@ let b: float = 3.14
 let c: bool = true
 
 # 文字列
-let greeting: string = "hello"
+let greeting: str = "hello"
 print(greeting)
 
 # 型推論による変数宣言
@@ -98,6 +99,35 @@ fn distance_x(a: Point, b: Point) -> int:
 let d = distance_x(Point(10, 0), Point(3, 0))
 print(d)
 
+# 戻り値型省略（Unit型）
+fn greet():
+    print(42)
+
+greet()
+
+# Option型
+let x: Option<int> = Some(42)
+print(x)
+
+let y: Option<int> = None
+print(y)
+
+let v = unwrap(x)
+print(v)
+
+# UFCS (Uniform Function Call Syntax)
+fn add(a: int, b: int) -> int:
+    return a + b
+
+let x = 1
+print(x.add(2))       # add(x, 2) → 3
+
+# チェーン呼び出し
+fn double(n: int) -> int:
+    return n * 2
+
+print(x.add(2).double())  # double(add(x, 2)) → 6
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -148,7 +178,9 @@ x = 10  # 行末コメント
 | int | i64 | `42`, `-7` |
 | float | f64 | `3.14`, `0.5` |
 | bool | i1 | `true`, `false` |
-| string | ptr | `"hello"`, `""` |
+| str | ptr | `"hello"`, `""` |
+| Unit | void | 戻り値なし関数の戻り値型 |
+| Option\<T\> | { i1, T } | `Some(42)`, `None` |
 | ユーザー定義型 | LLVM StructType | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
@@ -183,7 +215,9 @@ x = 10  # 行末コメント
 
 | 関数 | 説明 |
 |---|---|
-| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s`） |
+| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None`） |
+| `Some(expr)` | Option 型の値ありバリアントを構築 |
+| `unwrap(opt)` | Option 値を取り出す（None ならランタイムエラーで exit(1)） |
 
 ### 制御構文
 
@@ -234,10 +268,13 @@ print(result)
 ```
 
 - 引数の型宣言は必須（`name: type` 形式）
-- 戻り値の型は `->` の後に指定
-- `return` 文で値を返す
+- 戻り値の型は `->` の後に指定（省略時は `Unit` 型）
+- `return` 文で値を返す（`Unit` 関数では `return` のみ、または省略可能）
 - 再帰呼び出し対応
 - 関数は式レベルでも文レベルでも呼び出し可能（`let x = f(1)` / `f(1)`）
+- UFCS（Uniform Function Call Syntax）: `a.f(b)` は `f(a, b)` に脱糖される
+  - チェーン可能: `a.f(b).g(c)` → `g(f(a, b), c)`
+  - フィールドアクセスと混在可能: `p.x.f()` → `f(p.x)`
 
 ### 変数・定数宣言
 
@@ -264,7 +301,7 @@ count = count + 1
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `string`, およびユーザー定義型名
+使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, およびユーザー定義型名
 
 #### 型定義（構造体）
 

@@ -27,6 +27,7 @@ private:
     StmtNode parseFnStatement();
     StmtNode parseTypeStatement();
     StmtNode parseReturnStatement();
+    std::string parseTypeName();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
 

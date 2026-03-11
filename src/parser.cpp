@@ -176,11 +176,7 @@ StmtNode Parser::parseLetOrConst() {
     std::optional<std::string> typeAnnotation;
     if (lex_.peek().kind == TokenKind::Colon) {
         lex_.next(); // consume ':'
-        Token typeTok = lex_.peek();
-        if (typeTok.kind != TokenKind::Ident)
-            parseError(typeTok.line, "expected type name after ':'");
-        typeAnnotation = typeTok.value;
-        lex_.next(); // consume type name
+        typeAnnotation = parseTypeName();
     }
 
     if (lex_.peek().kind != TokenKind::Equals)
@@ -422,12 +418,9 @@ StmtNode Parser::parseFnStatement() {
                 parseError("expected ':' after parameter name");
             lex_.next(); // consume ':'
 
-            Token paramType = lex_.peek();
-            if (paramType.kind != TokenKind::Ident)
-                parseError(paramType.line, "expected type name");
-            lex_.next(); // consume type
+            std::string paramType = parseTypeName();
 
-            fnStmt->params.push_back({paramName.value, paramType.value});
+            fnStmt->params.push_back({paramName.value, paramType});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
@@ -439,15 +432,12 @@ StmtNode Parser::parseFnStatement() {
         parseError("expected ')'");
     lex_.next(); // consume ')'
 
-    if (lex_.peek().kind != TokenKind::Arrow)
-        parseError("expected '->' after ')'");
-    lex_.next(); // consume '->'
-
-    Token retType = lex_.peek();
-    if (retType.kind != TokenKind::Ident)
-        parseError(retType.line, "expected return type");
-    fnStmt->return_type = retType.value;
-    lex_.next(); // consume return type
+    if (lex_.peek().kind == TokenKind::Arrow) {
+        lex_.next(); // consume '->'
+        fnStmt->return_type = parseTypeName();
+    } else {
+        fnStmt->return_type = "Unit";
+    }
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after return type");
@@ -460,7 +450,12 @@ StmtNode Parser::parseFnStatement() {
 StmtNode Parser::parseReturnStatement() {
     lex_.next(); // consume 'return'
     ReturnStmt s;
-    s.value = parseLogicalOr();
+    TokenKind next = lex_.peek().kind;
+    if (next == TokenKind::Newline || next == TokenKind::Dedent || next == TokenKind::Eof) {
+        s.value = nullptr;
+    } else {
+        s.value = parseLogicalOr();
+    }
     return s;
 }
 
@@ -500,14 +495,11 @@ StmtNode Parser::parseTypeStatement() {
             parseError("expected ':' after field name");
         lex_.next(); // consume ':'
 
-        Token fieldType = lex_.peek();
-        if (fieldType.kind != TokenKind::Ident)
-            parseError(fieldType.line, "expected type name");
-        lex_.next(); // consume type
+        std::string fieldType = parseTypeName();
 
         if (seenFields.count(fieldName.value))
             parseError(fieldName.line, "duplicate field name '" + fieldName.value + "'");
-        ts.fields.push_back({fieldName.value, fieldType.value});
+        ts.fields.push_back({fieldName.value, fieldType});
         seenFields.insert(fieldName.value);
 
         if (lex_.peek().kind == TokenKind::Newline)
@@ -524,6 +516,25 @@ StmtNode Parser::parseTypeStatement() {
     return ts;
 }
 
+std::string Parser::parseTypeName() {
+    Token t = lex_.peek();
+    if (t.kind != TokenKind::Ident)
+        parseError(t.line, "expected type name");
+    std::string name = t.value;
+    lex_.next(); // consume type name
+
+    if (lex_.peek().kind == TokenKind::Less) {
+        lex_.next(); // consume '<'
+        std::string inner = parseTypeName();
+        if (lex_.peek().kind != TokenKind::Greater)
+            parseError("expected '>' after generic type parameter");
+        lex_.next(); // consume '>'
+        name += "<" + inner + ">";
+    }
+
+    return name;
+}
+
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
     while (lex_.peek().kind == TokenKind::Dot) {
@@ -532,12 +543,27 @@ ExprPtr Parser::parsePostfix() {
         if (field.kind != TokenKind::Ident)
             parseError(field.line, "expected field name after '.'");
         lex_.next(); // consume field name
-        auto fa = std::make_unique<FieldAccessExpr>();
-        fa->object = std::move(expr);
-        fa->field = field.value;
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(fa);
-        expr = std::move(node);
+        if (lex_.peek().kind == TokenKind::LParen) {
+            // UFCS: a.f(b, c) → f(a, b, c)
+            lex_.next(); // consume '('
+            auto call = std::make_unique<CallExpr>();
+            call->callee = field.value;
+            call->args.push_back(std::move(expr));
+            auto rest = parseArgList(); // consumes ')'
+            for (auto &arg : rest)
+                call->args.push_back(std::move(arg));
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(call);
+            expr = std::move(node);
+        } else {
+            // Field access: a.x
+            auto fa = std::make_unique<FieldAccessExpr>();
+            fa->object = std::move(expr);
+            fa->field = field.value;
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(fa);
+            expr = std::move(node);
+        }
     }
     return expr;
 }
