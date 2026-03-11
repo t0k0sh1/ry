@@ -1752,3 +1752,94 @@ TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
         "print(v3.y)";
     EXPECT_EQ(runSource(src), "4\n8\n");
 }
+
+// ===== List element assignment =====
+
+TEST_F(CodeGenTest, ListIndexAssignInt) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "xs[0] = 99\n"
+        "xs[1] = 88\n"
+        "xs[2] = 77\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])";
+    EXPECT_EQ(runSource(src), "99\n88\n77\n");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignFloat) {
+    std::string src =
+        "let xs = [1.0, 2.0, 3.0]\n"
+        "xs[1] = 9.5\n"
+        "print(xs[1])";
+    EXPECT_EQ(runSource(src), "9.5\n");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignBool) {
+    std::string src =
+        "let xs = [true, false, true]\n"
+        "xs[0] = false\n"
+        "print(xs[0])";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignStr) {
+    std::string src =
+        "let xs = [\"hello\", \"world\"]\n"
+        "xs[0] = \"goodbye\"\n"
+        "print(xs[0])";
+    EXPECT_EQ(runSource(src), "goodbye\n");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignOutOfRange) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "xs[5] = 99";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignNegative) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "xs[-1] = 99";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+// ===== String ordering comparisons =====
+
+TEST_F(CodeGenTest, StringLessThan) {
+    std::string src =
+        "print(\"apple\" < \"banana\")";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringGreaterThan) {
+    std::string src =
+        "print(\"banana\" > \"apple\")";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringLessEqual) {
+    std::string src =
+        "print(\"abc\" <= \"abc\")";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringGreaterEqualFalse) {
+    std::string src =
+        "print(\"abc\" >= \"abd\")";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, StringLessEqualSame) {
+    std::string src =
+        "print(\"xyz\" <= \"xyz\")\n"
+        "print(\"xyz\" >= \"xyz\")";
+    EXPECT_EQ(runSource(src), "true\ntrue\n");
+}
+
+TEST_F(CodeGenTest, StringLessThanFalse) {
+    std::string src =
+        "print(\"banana\" < \"apple\")";
+    EXPECT_EQ(runSource(src), "false\n");
+}

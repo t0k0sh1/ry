@@ -486,15 +486,17 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     // String comparison via strcmp
     if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
-        if (op != "==" && op != "!=")
-            throw std::runtime_error("strings only support == and != comparison");
         auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
         auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
         llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
-        if (op == "==")
-            return builder_.CreateICmpEQ(cmp, zero, "str_eq");
-        return builder_.CreateICmpNE(cmp, zero, "str_ne");
+        if (op == "==") return builder_.CreateICmpEQ(cmp, zero, "str_eq");
+        if (op == "!=") return builder_.CreateICmpNE(cmp, zero, "str_ne");
+        if (op == "<")  return builder_.CreateICmpSLT(cmp, zero, "str_lt");
+        if (op == "<=") return builder_.CreateICmpSLE(cmp, zero, "str_le");
+        if (op == ">")  return builder_.CreateICmpSGT(cmp, zero, "str_gt");
+        if (op == ">=") return builder_.CreateICmpSGE(cmp, zero, "str_ge");
+        throw std::runtime_error("unsupported string comparison: " + op);
     }
 
     lhs = promoteToInt(lhs);
