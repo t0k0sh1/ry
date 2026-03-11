@@ -1,4 +1,4 @@
-# 構造体
+# 構造体と列挙型
 
 [← 前: 関数](05-functions.md) | [次: コレクション →](07-collections.md)
 
@@ -94,6 +94,54 @@ print(line.end.x)     # 10
 ```
 
 ドット記法をチェーンすることでネストしたフィールドにアクセスできます。
+
+---
+
+## 列挙型（enum）
+
+`enum` キーワードで列挙型を定義できます。各バリアントは名前付きの定数として扱われます。
+
+### 定義
+
+```python
+enum Color:
+    Red
+    Green
+    Blue
+```
+
+### 使い方
+
+バリアントには `::` でアクセスします。
+
+```python
+let c = Color::Red
+print(c)   # Red
+```
+
+### 比較
+
+`==` や `!=` でバリアントを比較できます。
+
+```python
+if c == Color::Red:
+    print("red!")
+elif c == Color::Green:
+    print("green!")
+else:
+    print("blue!")
+```
+
+### 関数引数
+
+関数の引数型として enum 名を使えます。
+
+```python
+fn describe(c: Color) -> str:
+    if c == Color::Red:
+        return "warm"
+    return "cool"
+```
 
 ---
 

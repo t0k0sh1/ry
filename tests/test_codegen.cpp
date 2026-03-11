@@ -2176,3 +2176,174 @@ TEST_F(CodeGenTest, LambdaArgTypeError) {
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+// ===== Set テスト =====
+
+TEST_F(CodeGenTest, SetCreateAndIn) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(2 in s)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, SetNotIn) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(5 in s)";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, SetLen) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(len(s))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, SetAdd) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "s.add(4)\n"
+        "print(4 in s)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, SetAddDuplicate) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "s.add(1)\n"
+        "print(len(s))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, SetRemove) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "s.remove(2)\n"
+        "print(2 in s)";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, SetPrint) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "{1, 2, 3}\n");
+}
+
+TEST_F(CodeGenTest, SetStringElements) {
+    std::string src =
+        "let s = {\"a\", \"b\"}\n"
+        "print(\"a\" in s)\n"
+        "print(\"c\" in s)";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
+    std::string src =
+        "let s: set[int] = {}\n"
+        "print(len(s))\n"
+        "s.add(42)\n"
+        "print(42 in s)";
+    EXPECT_EQ(runSource(src), "0\ntrue\n");
+}
+
+TEST_F(CodeGenTest, SetInFunction) {
+    std::string src =
+        "fn has_element(s: set[int], x: int) -> bool:\n"
+        "    return x in s\n"
+        "let s = {10, 20, 30}\n"
+        "print(has_element(s, 20))\n"
+        "print(has_element(s, 40))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, SetForIn) {
+    std::string src =
+        "let s = {10, 20, 30}\n"
+        "let total = 0\n"
+        "for x in s:\n"
+        "    total += x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "60\n");
+}
+
+// ===== Enum テスト =====
+
+TEST_F(CodeGenTest, EnumBasic) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "print(c)";
+    EXPECT_EQ(runSource(src), "Red\n");
+}
+
+TEST_F(CodeGenTest, EnumComparison) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "print(c == Color::Red)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, EnumNotEqual) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "print(c != Color::Green)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, EnumInIf) {
+    std::string src =
+        "enum Direction:\n"
+        "    Up\n"
+        "    Down\n"
+        "    Left\n"
+        "    Right\n"
+        "let d = Direction::Up\n"
+        "if d == Direction::Up:\n"
+        "    print(1)\n"
+        "else:\n"
+        "    print(0)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, EnumAsParam) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "fn is_red(c: Color) -> bool:\n"
+        "    return c == Color::Red\n"
+        "print(is_red(Color::Red))\n"
+        "print(is_red(Color::Blue))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, EnumMultiple) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "enum Size:\n"
+        "    Small\n"
+        "    Medium\n"
+        "    Large\n"
+        "let c = Color::Green\n"
+        "let s = Size::Large\n"
+        "print(c)\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "Green\nLarge\n");
+}

@@ -18,6 +18,7 @@ CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_}, "MapHeader");
+    setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "SetHeader");
 }
 
 // ===== B5: FnScope RAII =====
@@ -128,6 +129,81 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (scope_stack_.back().count(name))
         throw std::runtime_error("redeclared variable: " + name);
 
+    // Handle empty set/map literal with type annotation
+    if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
+        if (!type_annotation)
+            throw std::runtime_error("empty {} literal requires type annotation");
+        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "set[") {
+            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+            llvm::Type *elemTy = resolveType(inner);
+
+            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+
+            uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
+            llvm::Value *headerPtr = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_set");
+
+            // Initial capacity = 4
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+            llvm::Value *elemsPtr = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_set_elems");
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0);
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
+            llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1);
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
+            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2);
+            builder_.CreateStore(elemsPtr, elemsPtrField);
+
+            llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
+            builder_.CreateStore(headerPtr, ptr);
+            set_element_types_[ptr] = elemTy;
+            if (is_const)
+                const_scope_stack_.back().insert(name);
+            return;
+        }
+        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "map[") {
+            auto [keyTy, valTy] = parseMapTypeAnnotation(*type_annotation);
+            if (!keyTy || !valTy)
+                throw std::runtime_error("invalid map type annotation: " + *type_annotation);
+
+            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+
+            uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
+            llvm::Value *headerPtr = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_map");
+
+            uint64_t keySize = dl.getTypeAllocSize(keyTy);
+            uint64_t valSize = dl.getTypeAllocSize(valTy);
+            llvm::Value *keysPtr = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * 4)}, "empty_map_keys");
+            llvm::Value *valsPtr = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * 4)}, "empty_map_vals");
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0);
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
+            llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1);
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
+            llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2);
+            builder_.CreateStore(keysPtr, keysPtrField);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3);
+            builder_.CreateStore(valsPtr, valsPtrField);
+
+            llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
+            builder_.CreateStore(headerPtr, ptr);
+            map_key_types_[ptr] = keyTy;
+            map_value_types_[ptr] = valTy;
+            if (is_const)
+                const_scope_stack_.back().insert(name);
+            return;
+        }
+        throw std::runtime_error("empty {} requires set[T] or map[K, V] type annotation");
+    }
+
     // Handle None literal
     if (auto *ve = std::get_if<VariableExpr>(&value.data); ve && ve->name == "None") {
         if (!type_annotation)
@@ -194,6 +270,21 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (keyTy) map_key_types_[ptr] = keyTy;
         if (valTy) map_value_types_[ptr] = valTy;
 
+        // --- Set tracking ---
+        llvm::Type *setElemTy = getSetElementType(val);
+        if (!setElemTy) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                setElemTy = getSetElementType(load->getPointerOperand());
+            }
+        }
+        if (!setElemTy && type_annotation && type_annotation->size() > 4 &&
+            type_annotation->substr(0, 4) == "set[") {
+            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+            setElemTy = resolveType(inner);
+        }
+        if (setElemTy)
+            set_element_types_[ptr] = setElemTy;
+
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
@@ -202,6 +293,15 @@ void CodeGen::emitVarDecl(const std::string &name,
                    type_annotation->substr(0, 3) == "fn(") {
             fn_type_info_[ptr] = parseFnTypeAnnotation(*type_annotation);
         }
+    }
+
+    // --- Enum value tracking (works for i64 values, not just ptr) ---
+    {
+        auto evIt = enum_value_types_.find(val);
+        if (evIt != enum_value_types_.end())
+            enum_value_types_[ptr] = evIt->second;
+        else if (type_annotation && enum_types_.count(*type_annotation))
+            enum_value_types_[ptr] = *type_annotation;
     }
 
     if (is_const)
@@ -328,6 +428,21 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
+    // Intercept add/remove for sets (UFCS: s.add(x) → add(s, x))
+    if ((s.callee == "add" || s.callee == "remove") && s.args.size() == 2) {
+        // Peek at first arg: is it a set variable?
+        if (auto *ve = std::get_if<VariableExpr>(&s.args[0]->data)) {
+            llvm::AllocaInst *alloca = findVar(ve->name);
+            if (alloca && getSetElementType(alloca)) {
+                // Route through CallExpr emitter which handles set add/remove
+                auto ce = std::make_unique<CallExpr>();
+                ce->callee = s.callee;
+                ce->args = std::move(s.args);
+                emitExprVariant(ce);
+                return;
+            }
+        }
+    }
     emitUserFnCall(s.callee, s.args);
 }
 
@@ -370,20 +485,26 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     // Evaluate iterable
     llvm::Value *iterable = emitExpr(*s->iterable);
 
-    // Check if this is a list (ptr type with known element type)
+    // Check if this is a list or set (ptr type with known element type)
     if (iterable->getType() != ptrTy_)
-        throw std::runtime_error("for loop requires list iterable");
+        throw std::runtime_error("for loop requires list or set iterable");
 
-    llvm::Type *elemTy = getListElementType(iterable);
+    // Try set first, then list
+    llvm::Type *elemTy = getSetElementType(iterable);
+    llvm::StructType *headerTy = setHeaderTy_;
+    if (!elemTy) {
+        elemTy = getListElementType(iterable);
+        headerTy = listHeaderTy_;
+    }
     if (!elemTy)
         throw std::runtime_error("cannot determine element type for for loop iterable");
 
-    // Get list length
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+    // Get length
+    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
 
     // Get data pointer
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
 
     // Create index variable
@@ -494,6 +615,34 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
     llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
     builder_.CreateStore(updated, ptr);
+}
+
+void CodeGen::emitStmt(EnumStmt &s) {
+    if (enum_types_.count(s.name))
+        throw std::runtime_error("enum '" + s.name + "' is already defined");
+
+    EnumInfo info;
+    info.name = s.name;
+    info.variantCount = s.variants.size();
+
+    // Create global string array for variant names (for printing)
+    std::vector<llvm::Constant*> nameStrings;
+    for (size_t i = 0; i < s.variants.size(); ++i) {
+        info.variants[s.variants[i]] = static_cast<int64_t>(i);
+        llvm::Constant *str = builder_.CreateGlobalString(
+            s.variants[i], ".enum_" + s.name + "_" + s.variants[i]);
+        nameStrings.push_back(str);
+    }
+
+    // Create global array of name pointers
+    auto *arrTy = llvm::ArrayType::get(ptrTy_, s.variants.size());
+    auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, arrTy, true, llvm::GlobalValue::PrivateLinkage,
+        init, ".enum_names_" + s.name);
+    info.nameArray = gv;
+
+    enum_types_[s.name] = std::move(info);
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
@@ -786,6 +935,19 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
+    // Handle 'in' operator: lhs in rhs (rhs is set)
+    if (e->op == "in") {
+        llvm::Value *elem = emitExpr(*e->lhs);
+        llvm::Value *setVal = emitExpr(*e->rhs);
+        llvm::Type *elemTy = getSetElementType(setVal);
+        if (!elemTy)
+            throw std::runtime_error("'in' operator requires a set on the right side");
+        if (elem->getType() != elemTy)
+            throw std::runtime_error("'in' operator: element type mismatch");
+        llvm::Value *idx = emitSetElementLookup(setVal, elem, elemTy);
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+    }
+
     llvm::Value *lhs = emitExpr(*e->lhs);
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
@@ -855,6 +1017,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // set[T] parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "set[" && typeName.back() == ']') {
+        return ptrTy_;
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -864,6 +1031,10 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
+
+    // enum name → i64
+    if (enum_types_.count(typeName)) return i64Ty_;
+
     throw std::runtime_error("unknown type: " + typeName);
 }
 
@@ -1015,6 +1186,76 @@ llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
         if (it2 != map_value_types_.end()) return it2->second;
     }
     return nullptr;
+}
+
+llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
+    auto it = set_element_types_.find(setVal);
+    if (it != set_element_types_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(setVal)) {
+        auto it2 = set_element_types_.find(load->getPointerOperand());
+        if (it2 != set_element_types_.end()) return it2->second;
+    }
+    return nullptr;
+}
+
+llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
+    // Linear scan of elements array, returns index (i64) or -1 if not found
+    llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
+    llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
+    llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
+
+    llvm::AllocaInst *resultVar = builder_.CreateAlloca(i64Ty_, nullptr, "set_lookup_result");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), resultVar);
+
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "set_lookup_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.body", fn_);
+    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.found", fn_);
+    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.next", fn_);
+    llvm::BasicBlock *exitBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.exit", fn_);
+
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "set_lookup_cond");
+    builder_.CreateCondBr(cond, bodyBB, exitBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, elemsPtr, {iCur}, "set_elem_ptr");
+    llvm::Value *elemVal = builder_.CreateLoad(elemTy, elemPtr, "set_elem");
+
+    llvm::Value *isEqual;
+    if (elemTy == ptrTy_) {
+        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elemVal, elem}, "strcmp_result");
+        isEqual = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
+    } else if (elemTy->isDoubleTy()) {
+        isEqual = builder_.CreateFCmpOEQ(elemVal, elem, "elem_eq");
+    } else {
+        isEqual = builder_.CreateICmpEQ(elemVal, elem, "elem_eq");
+    }
+    builder_.CreateCondBr(isEqual, foundBB, nextBB);
+
+    builder_.SetInsertPoint(foundBB);
+    llvm::Value *iFound = builder_.CreateLoad(i64Ty_, iVar, "i_found");
+    builder_.CreateStore(iFound, resultVar);
+    builder_.CreateBr(exitBB);
+
+    builder_.SetInsertPoint(nextBB);
+    llvm::Value *iNext = builder_.CreateAdd(
+        builder_.CreateLoad(i64Ty_, iVar, "i_next_load"),
+        llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    builder_.CreateStore(iNext, iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(exitBB);
+    return builder_.CreateLoad(i64Ty_, resultVar, "set_lookup_idx");
 }
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
@@ -1310,6 +1551,15 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 list_element_types_[alloca] = resolveType(inner);
             }
+            // Track set element type for set parameters
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "set[" && ptype.back() == ']') {
+                std::string inner = ptype.substr(4, ptype.size() - 5);
+                set_element_types_[alloca] = resolveType(inner);
+            }
+            // Track enum type for enum parameters
+            if (enum_types_.count(ptype)) {
+                enum_value_types_[alloca] = ptype;
+            }
             // Track map key/value types for map parameters
             if (ptype.size() > 4 && ptype.substr(0, 4) == "map[" && ptype.back() == ']') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
@@ -1430,6 +1680,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *ptr = emitExpr(*e->args[0]);
         if (ptr->getType() != ptrTy_)
             throw std::runtime_error("len() requires list, map, or str argument");
+        // Check if it's a set
+        if (getSetElementType(ptr)) {
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, ptr, 0, "set_len_ptr");
+            return builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
+        }
         // Check if it's a map
         llvm::Type *mapKeyTy = getMapKeyType(ptr);
         if (mapKeyTy) {
@@ -1498,6 +1753,119 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("has_key() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
+    }
+
+    // add(set, val) → add element to set (no-op if already present)
+    // Only intercept if first arg is a set (fall through to user function otherwise)
+    if (e->callee == "add" && e->args.size() == 2) {
+        llvm::Value *setPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getSetElementType(setPtr);
+        if (elemTy) {
+            llvm::Value *elem = emitExpr(*e->args[1]);
+            if (elem->getType() != elemTy)
+                throw std::runtime_error("add() element type mismatch");
+
+            llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+
+            llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "set.insert", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "set.add_end", fn_);
+            builder_.CreateCondBr(found, endBB, insertBB);
+
+            builder_.SetInsertPoint(insertBB);
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
+            llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 1, "set_cap_ptr");
+            llvm::Value *cap = builder_.CreateLoad(i64Ty_, capPtr, "set_cap");
+
+            llvm::Value *needGrow = builder_.CreateICmpEQ(length, cap, "need_grow");
+            llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "set.grow", fn_);
+            llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "set.store", fn_);
+            builder_.CreateCondBr(needGrow, growBB, storeBB);
+
+            builder_.SetInsertPoint(growBB);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+            llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
+            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "new_size");
+            llvm::Value *newElemsPtr = builder_.CreateCall(mallocFn, {newSize}, "new_elems");
+
+            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "elems_field");
+            llvm::Value *oldElemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "old_elems");
+            llvm::Value *oldSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "old_size");
+            builder_.CreateCall(memcpyFn, {newElemsPtr, oldElemsPtr, oldSize});
+
+            llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+            builder_.CreateCall(freeFn, {oldElemsPtr});
+
+            builder_.CreateStore(newElemsPtr, elemsPtrField);
+            builder_.CreateStore(newCap, capPtr);
+            builder_.CreateBr(storeBB);
+
+            builder_.SetInsertPoint(storeBB);
+            llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
+            llvm::Value *elemsPtrField2 = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "elems_field2");
+            llvm::Value *curElemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField2, "cur_elems");
+            llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, curElemsPtr, {curLen}, "new_elem_ptr");
+            builder_.CreateStore(elem, newElemPtr);
+
+            llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
+            builder_.CreateStore(newLen, lenPtr);
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(endBB);
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+        // Not a set — fall through to user function resolution
+    }
+
+    // remove(set, val) → remove element from set
+    if (e->callee == "remove" && e->args.size() == 2) {
+        llvm::Value *setPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getSetElementType(setPtr);
+        if (elemTy) {
+            llvm::Value *elem = emitExpr(*e->args[1]);
+            if (elem->getType() != elemTy)
+                throw std::runtime_error("remove() element type mismatch");
+
+            llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+
+            llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "set.remove_end", fn_);
+            builder_.CreateCondBr(found, removeBB, endBB);
+
+            builder_.SetInsertPoint(removeBB);
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
+            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
+            llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
+
+            const llvm::DataLayout &dl2 = mod_->getDataLayout();
+            uint64_t elemSize2 = dl2.getTypeAllocSize(elemTy);
+            llvm::Value *idxPlusOne = builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "idx_plus_one");
+            llvm::Value *dst = builder_.CreateGEP(elemTy, elemsPtr, {idx}, "remove_dst");
+            llvm::Value *src = builder_.CreateGEP(elemTy, elemsPtr, {idxPlusOne}, "remove_src");
+            llvm::Value *remaining = builder_.CreateSub(length, idxPlusOne, "remaining");
+            llvm::Value *moveSize = builder_.CreateMul(remaining, llvm::ConstantInt::get(i64Ty_, elemSize2), "move_size");
+
+            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            builder_.CreateCall(memmoveFn, {dst, src, moveSize});
+
+            llvm::Value *newLen = builder_.CreateSub(length, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
+            builder_.CreateStore(newLen, lenPtr);
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(endBB);
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+        // Not a set — fall through to user function resolution
     }
 
     // contains(s, sub) → bool
@@ -1852,6 +2220,76 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     return headerPtr;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
+    if (e->elements.empty()) {
+        // Empty set — requires type annotation (handled in emitVarDecl)
+        // If reached here directly, error
+        throw std::runtime_error("empty set literal requires type annotation");
+    }
+
+    // Evaluate all elements
+    std::vector<llvm::Value*> vals;
+    for (auto &el : e->elements)
+        vals.push_back(emitExpr(*el));
+
+    // Check all elements have the same type
+    llvm::Type *elemTy = vals[0]->getType();
+    for (size_t i = 1; i < vals.size(); ++i) {
+        if (vals[i]->getType() != elemTy)
+            throw std::runtime_error("set elements must all have the same type");
+    }
+
+    int64_t count = static_cast<int64_t>(vals.size());
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+
+    // Allocate SetHeader
+    uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
+    llvm::Value *headerPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "set_header");
+
+    // Allocate elements array
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    llvm::Value *elemsPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
+
+    // Store elements
+    for (int64_t i = 0; i < count; ++i) {
+        llvm::Value *ep = builder_.CreateGEP(elemTy, elemsPtr,
+            {llvm::ConstantInt::get(i64Ty_, i)}, "set_elem_ptr");
+        builder_.CreateStore(vals[i], ep);
+    }
+
+    // Store header fields: length, capacity, elements_ptr
+    llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0, "set_len_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
+
+    llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1, "set_cap_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
+
+    llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
+    builder_.CreateStore(elemsPtr, elemsPtrField);
+
+    // Track element type
+    set_element_types_[headerPtr] = elemTy;
+
+    return headerPtr;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
+    auto it = enum_types_.find(e.enum_name);
+    if (it == enum_types_.end())
+        throw std::runtime_error("undefined enum: " + e.enum_name);
+    auto vit = it->second.variants.find(e.variant_name);
+    if (vit == it->second.variants.end())
+        throw std::runtime_error("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
+    llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
+    enum_value_types_[val] = e.enum_name;
+    return val;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Collect free variables (captured from outer scope)
     std::vector<std::string> capturedNames;
@@ -2153,6 +2591,30 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
     llvm::Value *val = emitExpr(*args[0]);
 
+    // Enum printing: check if value is tracked as an enum
+    {
+        auto evIt = enum_value_types_.find(val);
+        if (evIt == enum_value_types_.end()) {
+            // Try to find via LoadInst source
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                evIt = enum_value_types_.find(load->getPointerOperand());
+            }
+        }
+        if (evIt != enum_value_types_.end()) {
+            auto &einfo = enum_types_[evIt->second];
+            // Use the name array to print the variant name
+            llvm::Value *namePtr = builder_.CreateGEP(
+                llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                einfo.nameArray,
+                {llvm::ConstantInt::get(i64Ty_, 0), val},
+                "enum_name_ptr");
+            llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+            builder_.CreateCall(printfFn, {fmt, nameStr});
+            return;
+        }
+    }
+
     // Option type printing
     if (isOptionType(val->getType())) {
         llvm::Value *hasValue = builder_.CreateExtractValue(val, 0, "has_value");
@@ -2186,8 +2648,61 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
-    // Map/List printing: check if ptr type
+    // Set/Map/List printing: check if ptr type
     if (val->getType() == ptrTy_) {
+        // Check if it's a set
+        llvm::Type *setElemTy = getSetElementType(val);
+        if (setElemTy) {
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, val, 0, "set_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
+            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, val, 2, "set_elems_ptr");
+            llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
+
+            llvm::Constant *lbrace = builder_.CreateGlobalString("{", ".fmt_set_lb");
+            llvm::Constant *rbrace = builder_.CreateGlobalString("}\n", ".fmt_set_rb");
+            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_set_comma");
+            builder_.CreateCall(printfFn, {lbrace});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "print_set.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "print_set.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "print_set.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "print_set_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+
+            llvm::Value *notFirst = builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), "not_first");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "print_set.comma", fn_);
+            llvm::BasicBlock *elemBB = llvm::BasicBlock::Create(*ctx_, "print_set.elem", fn_);
+            builder_.CreateCondBr(notFirst, commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(printfFn, {comma});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *iElem = builder_.CreateLoad(i64Ty_, iVar, "i_elem");
+            llvm::Value *elemPtr = builder_.CreateGEP(setElemTy, elemsPtr, {iElem}, "elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(setElemTy, elemPtr, "elem");
+            emitPrintValue(elem, setElemTy, printfFn, "_s");
+
+            llvm::Value *iNext = builder_.CreateAdd(iElem, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(printfFn, {rbrace});
+            return;
+        }
+
         // Check if it's a map first
         llvm::Type *mapKeyTy = getMapKeyType(val);
         llvm::Type *mapValTy = getMapValueType(val);

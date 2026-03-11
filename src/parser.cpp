@@ -122,6 +122,9 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Type)
         return parseTypeStatement();
 
+    if (first.kind == TokenKind::Enum)
+        return parseEnumStatement();
+
     if (first.kind == TokenKind::Fn)
         return parseFnStatement();
 
@@ -153,7 +156,7 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -396,7 +399,7 @@ StmtNode Parser::parseIfStatement() {
 
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogicalNot, {TokenKind::And}); }
-ExprPtr Parser::parseComparison() { return parseBinaryLeft(&Parser::parseBitwiseOr, {TokenKind::EqEq, TokenKind::BangEq, TokenKind::Less, TokenKind::LessEq, TokenKind::Greater, TokenKind::GreaterEq}); }
+ExprPtr Parser::parseComparison() { return parseBinaryLeft(&Parser::parseBitwiseOr, {TokenKind::EqEq, TokenKind::BangEq, TokenKind::Less, TokenKind::LessEq, TokenKind::Greater, TokenKind::GreaterEq, TokenKind::In}); }
 ExprPtr Parser::parseBitwiseOr()  { return parseBinaryLeft(&Parser::parseBitwiseXor, {TokenKind::Pipe}); }
 ExprPtr Parser::parseBitwiseXor() { return parseBinaryLeft(&Parser::parseBitwiseAnd, {TokenKind::Caret}); }
 ExprPtr Parser::parseBitwiseAnd() { return parseBinaryLeft(&Parser::parseShift, {TokenKind::Amp}); }
@@ -475,6 +478,16 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
+        if (lex_.peek().kind == TokenKind::ColonColon) {
+            lex_.next(); // consume '::'
+            Token variant = lex_.peek();
+            if (variant.kind != TokenKind::Ident)
+                parseError(variant.line, "expected variant name after '::'");
+            lex_.next(); // consume variant name
+            auto node = std::make_unique<ExprNode>();
+            node->data = EnumAccessExpr{t.value, variant.value};
+            return node;
+        }
         if (lex_.peek().kind == TokenKind::LParen) {
             lex_.next(); // consume '('
             auto call = std::make_unique<CallExpr>();
@@ -490,34 +503,55 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::LBrace) {
         lex_.next(); // consume '{'
-        auto map = std::make_unique<MapExpr>();
         if (lex_.peek().kind == TokenKind::RBrace) {
-            parseError(t.line, "empty map literal requires type annotation (use let m: map[K, V] = ...)");
+            // Empty {} — could be empty set or map depending on context
+            // Parser cannot decide, so return empty SetExpr (codegen resolves via type annotation)
+            lex_.next(); // consume '}'
+            auto set = std::make_unique<SetExpr>();
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(set);
+            return node;
         }
-        // Parse key: value pairs
-        ExprPtr key = parseLogicalOr();
-        if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after map key");
-        lex_.next(); // consume ':'
-        ExprPtr val = parseLogicalOr();
-        map->keys.push_back(std::move(key));
-        map->values.push_back(std::move(val));
-        while (lex_.peek().kind == TokenKind::Comma) {
-            lex_.next(); // consume ','
-            ExprPtr k = parseLogicalOr();
-            if (lex_.peek().kind != TokenKind::Colon)
-                parseError("expected ':' after map key");
+        // Parse first expression
+        ExprPtr first = parseLogicalOr();
+        if (lex_.peek().kind == TokenKind::Colon) {
+            // Map literal: first expression was the key
             lex_.next(); // consume ':'
-            ExprPtr v = parseLogicalOr();
-            map->keys.push_back(std::move(k));
-            map->values.push_back(std::move(v));
+            auto map = std::make_unique<MapExpr>();
+            ExprPtr val = parseLogicalOr();
+            map->keys.push_back(std::move(first));
+            map->values.push_back(std::move(val));
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                ExprPtr k = parseLogicalOr();
+                if (lex_.peek().kind != TokenKind::Colon)
+                    parseError("expected ':' after map key");
+                lex_.next(); // consume ':'
+                ExprPtr v = parseLogicalOr();
+                map->keys.push_back(std::move(k));
+                map->values.push_back(std::move(v));
+            }
+            if (lex_.peek().kind != TokenKind::RBrace)
+                parseError("expected '}'");
+            lex_.next(); // consume '}'
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(map);
+            return node;
+        } else {
+            // Set literal
+            auto set = std::make_unique<SetExpr>();
+            set->elements.push_back(std::move(first));
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                set->elements.push_back(parseLogicalOr());
+            }
+            if (lex_.peek().kind != TokenKind::RBrace)
+                parseError("expected '}'");
+            lex_.next(); // consume '}'
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(set);
+            return node;
         }
-        if (lex_.peek().kind != TokenKind::RBrace)
-            parseError("expected '}'");
-        lex_.next(); // consume '}'
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(map);
-        return node;
     }
     if (t.kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
@@ -737,6 +771,57 @@ StmtNode Parser::parseTypeStatement() {
         lex_.next(); // consume Dedent
 
     return ts;
+}
+
+StmtNode Parser::parseEnumStatement() {
+    lex_.next(); // consume 'enum'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        parseError(nameTok.line, "expected enum name after 'enum'");
+    lex_.next(); // consume name
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after enum name");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next(); // consume Indent
+
+    EnumStmt es;
+    es.name = nameTok.value;
+    std::unordered_set<std::string> seenVariants;
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        Token variantName = lex_.peek();
+        if (variantName.kind != TokenKind::Ident)
+            parseError(variantName.line, "expected variant name");
+        lex_.next(); // consume variant name
+
+        if (seenVariants.count(variantName.value))
+            parseError(variantName.line, "duplicate variant name '" + variantName.value + "'");
+        es.variants.push_back(variantName.value);
+        seenVariants.insert(variantName.value);
+
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (es.variants.empty())
+        parseError("enum definition must have at least one variant");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return es;
 }
 
 std::string Parser::parseTypeName() {

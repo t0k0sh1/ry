@@ -758,3 +758,84 @@ TEST(ParserTest, OperatorFnInvalidParamCount) {
         "    return 0\n";
     EXPECT_THROW(parseStr(src), std::runtime_error);
 }
+
+// ===== Set パーサーテスト =====
+
+TEST(ParserTest, SetLiteral) {
+    Program prog = parseStr("let s = {1, 2, 3}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SetExpr>>(s.value->data));
+    const auto &set = *std::get<std::unique_ptr<SetExpr>>(s.value->data);
+    ASSERT_EQ(set.elements.size(), 3u);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[1]->data).value, 2);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[2]->data).value, 3);
+}
+
+TEST(ParserTest, SetSingleElement) {
+    Program prog = parseStr("let s = {42}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SetExpr>>(s.value->data));
+    const auto &set = *std::get<std::unique_ptr<SetExpr>>(s.value->data);
+    ASSERT_EQ(set.elements.size(), 1u);
+    EXPECT_EQ(std::get<NumberExpr>(set.elements[0]->data).value, 42);
+}
+
+TEST(ParserTest, SetTypeAnnotation) {
+    Program prog = parseStr("let s: set[int] = {1}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "set[int]");
+}
+
+TEST(ParserTest, InOperator) {
+    Program prog = parseStr("let r = x in s");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(bin.op, "in");
+    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "x");
+    EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "s");
+}
+
+// ===== Enum パーサーテスト =====
+
+TEST(ParserTest, EnumDefinition) {
+    Program prog = parseStr("enum Color:\n    Red\n    Green\n    Blue");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EnumStmt>(prog[0]));
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.name, "Color");
+    ASSERT_EQ(es.variants.size(), 3u);
+    EXPECT_EQ(es.variants[0], "Red");
+    EXPECT_EQ(es.variants[1], "Green");
+    EXPECT_EQ(es.variants[2], "Blue");
+}
+
+TEST(ParserTest, EnumAccess) {
+    Program prog = parseStr("let c = Color::Red");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<EnumAccessExpr>(s.value->data));
+    const auto &ea = std::get<EnumAccessExpr>(s.value->data);
+    EXPECT_EQ(ea.enum_name, "Color");
+    EXPECT_EQ(ea.variant_name, "Red");
+}
+
+TEST(ParserTest, EnumComparison) {
+    Program prog = parseStr("let r = c == Color::Green");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(bin.op, "==");
+    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "c");
+    ASSERT_TRUE(std::holds_alternative<EnumAccessExpr>(bin.rhs->data));
+    const auto &ea = std::get<EnumAccessExpr>(bin.rhs->data);
+    EXPECT_EQ(ea.enum_name, "Color");
+    EXPECT_EQ(ea.variant_name, "Green");
+}

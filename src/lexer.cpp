@@ -188,7 +188,13 @@ Token Lexer::readToken() {
     if (c == '|') { ++pos_; return {TokenKind::Pipe,  "|", line_}; }
     if (c == '^') { ++pos_; return {TokenKind::Caret, "^", line_}; }
     if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
-    if (c == ':') { ++pos_; return {TokenKind::Colon, ":", line_}; }
+    if (c == ':') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == ':') {
+            ++pos_; return {TokenKind::ColonColon, "::", line_};
+        }
+        return {TokenKind::Colon, ":", line_};
+    }
     if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
     if (c == '[') { ++pos_; return {TokenKind::LBracket, "[", line_}; }
     if (c == ']') { ++pos_; return {TokenKind::RBracket, "]", line_}; }
@@ -270,6 +276,7 @@ Token Lexer::readToken() {
         if (id == "import") return {TokenKind::Import, "import", line_};
         if (id == "type")     return {TokenKind::Type,     "type",     line_};
         if (id == "operator") return {TokenKind::Operator, "operator", line_};
+        if (id == "enum")    return {TokenKind::Enum,     "enum",     line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 

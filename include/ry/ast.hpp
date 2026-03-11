@@ -21,7 +21,13 @@ struct TupleExpr;
 struct ListExpr;
 struct IndexExpr;
 struct MapExpr;
+struct SetExpr;
 struct LambdaExpr;
+
+struct EnumAccessExpr {
+    std::string enum_name;
+    std::string variant_name;
+};
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -33,6 +39,8 @@ struct ExprNode {
                  std::unique_ptr<ListExpr>,
                  std::unique_ptr<IndexExpr>,
                  std::unique_ptr<MapExpr>,
+                 std::unique_ptr<SetExpr>,
+                 EnumAccessExpr,
                  std::unique_ptr<LambdaExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
@@ -75,6 +83,10 @@ struct MapExpr {
     std::vector<ExprPtr> values;
 };
 
+struct SetExpr {
+    std::vector<ExprPtr> elements;
+};
+
 struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct ConstStmt  { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct AssignStmt { std::string name; ExprPtr value; };
@@ -102,6 +114,11 @@ struct TypeStmt { std::string name; std::vector<FieldDef> fields; };
 struct BreakStmt {};
 struct ContinueStmt {};
 
+struct EnumStmt {
+    std::string name;
+    std::vector<std::string> variants;
+};
+
 struct FieldAssignStmt {
     ExprPtr object;
     std::string field;
@@ -116,7 +133,7 @@ struct FnStmt;
 using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt,
-                              FieldAssignStmt,
+                              FieldAssignStmt, EnumStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,

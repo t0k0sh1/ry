@@ -25,6 +25,7 @@ private:
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
+    llvm::StructType *setHeaderTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> const_scope_stack_;
     struct OverloadEntry {
@@ -44,6 +45,16 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
+
+    struct EnumInfo {
+        std::string name;
+        std::unordered_map<std::string, int64_t> variants;
+        llvm::GlobalVariable *nameArray;
+        size_t variantCount;
+    };
+    std::unordered_map<std::string, EnumInfo> enum_types_;
+    std::unordered_map<llvm::Value*, std::string> enum_value_types_;
 
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
@@ -96,6 +107,7 @@ private:
     void emitStmt(BreakStmt &s);
     void emitStmt(ContinueStmt &s);
     void emitStmt(FieldAssignStmt &s);
+    void emitStmt(EnumStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
@@ -120,6 +132,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<ListExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<IndexExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<MapExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<SetExpr> &e);
+    llvm::Value *emitExprVariant(const EnumAccessExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
 
     // Operator overload helpers
@@ -154,5 +168,7 @@ private:
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
     llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
+    llvm::Type *getSetElementType(llvm::Value *setVal);
+    llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

@@ -15,7 +15,7 @@
 | 7 | `&` | ビット AND | 左 |
 | 8 | `^` | ビット XOR | 左 |
 | 9 | `\|` | ビット OR | 左 |
-| 10 | `==` `!=` `<` `<=` `>` `>=` | 比較 | 左 |
+| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | 比較・所属 | 左 |
 | 11 | `not` | 論理 NOT | 右 |
 | 12 | `and` | 論理 AND | 左 |
 | 13 | `or` | 論理 OR | 左 |
@@ -56,10 +56,13 @@ let s = "foo" + "bar"  # "foobar"
 
 - 数値型（int / float）とbool に対して使用可能。
 - `str` 同士は辞書順（バイト順）で比較。
+- `in` 演算子はセットに対する所属チェックに使用（`x in s`）。
 
 ```python
 let x = 3 < 5       # true
 let y = "abc" < "abd"  # true（辞書順）
+let s = {1, 2, 3}
+let z = 2 in s      # true
 ```
 
 ## 論理演算子
@@ -128,6 +131,7 @@ x *= 2    # x = 24
 | `%` | float または int（片方float） | — | float |
 | `+` | str | str | str |
 | `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
+| `in` | 任意 | set[T] | bool |
 | `& \| ^ ~ << >>` | int | int | int |
 | `and or not` | bool | bool | bool |
 

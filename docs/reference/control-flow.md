@@ -85,8 +85,8 @@ while true:
 ### 構文
 
 ```python
-# リスト走査
-for x in list_expr:
+# リスト / セット走査
+for x in iterable_expr:
     # x に各要素が代入される
 
 # range（0 始まり）
@@ -103,6 +103,10 @@ for i in range(start, end):
 ```python
 let xs = [10, 20, 30]
 for x in xs:
+    print(x)
+
+let s = {1, 2, 3}
+for x in s:
     print(x)
 
 for i in range(5):

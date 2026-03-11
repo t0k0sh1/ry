@@ -70,6 +70,9 @@ enum class TokenKind {
     PercentEq,      // %=
     // --- lambda ---
     FatArrow,       // =>
+    // --- enum ---
+    Enum,           // enum
+    ColonColon,     // ::
 };
 
 struct Token {

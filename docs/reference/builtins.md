@@ -7,11 +7,13 @@
 | `print(expr)` | 値を標準出力に表示 |
 | `Some(expr)` | Option型の値ありバリアントを構築 |
 | `unwrap(opt)` | Option値を取り出す |
-| `len(x)` | リスト・マップの要素数、文字列の長さを返す |
+| `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
 | `has_key(map, key)` | マップにキーが存在するかを返す |
 | `contains(str, sub)` | 文字列に部分文字列が含まれるかを返す |
 | `starts_with(str, prefix)` | 文字列が接頭辞で始まるかを返す |
 | `ends_with(str, suffix)` | 文字列が接尾辞で終わるかを返す |
+| `add(set, value)` | セットに要素を追加（重複は無視） |
+| `remove(set, value)` | セットから要素を削除 |
 | `range(n)` / `range(start, end)` | 整数のリストを生成 |
 
 ---
@@ -32,6 +34,8 @@
 | `Option` (None) | `None` |
 | `list` | `[要素1, 要素2, ...]` |
 | `map` | `{キー1: 値1, キー2: 値2, ...}` |
+| `set` | `{要素1, 要素2, ...}` |
+| `enum` | バリアント名（例: `Red`） |
 
 ```python
 print(42)          # 42
@@ -42,6 +46,7 @@ print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
+print({1, 2, 3})   # {1, 2, 3}
 ```
 
 **エラー条件:** 構造体・タプルを直接渡すとコンパイルエラー。
@@ -79,13 +84,14 @@ print(x.unwrap())   # 42 (UFCS)
 
 ## len
 
-**シグネチャ:** `len(x: list[T] | map[K, V] | str) -> int`
+**シグネチャ:** `len(x: list[T] | map[K, V] | set[T] | str) -> int`
 
-リスト・マップの要素数、または文字列のバイト長を返します。
+リスト・マップ・セットの要素数、または文字列のバイト長を返します。
 
 ```python
 print(len([1, 2, 3]))         # 3
 print(len({"a": 1, "b": 2})) # 2
+print(len({1, 2, 3}))         # 3
 print(len("hello"))           # 5
 ```
 
@@ -140,6 +146,36 @@ print("hello".starts_with("world"))  # false (UFCS)
 ```python
 print(ends_with("hello", "llo"))   # true
 print("hello".ends_with("world"))  # false (UFCS)
+```
+
+---
+
+## add
+
+**シグネチャ:** `add(s: set[T], value: T)`
+
+セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
+
+```python
+let s = {1, 2, 3}
+s.add(4)          # UFCS
+add(s, 5)         # 通常の呼び出し
+s.add(1)          # 既に存在するため無視
+print(len(s))     # 5
+```
+
+---
+
+## remove
+
+**シグネチャ:** `remove(s: set[T], value: T)`
+
+セットから要素を削除します。UFCS記法も使用可能です。
+
+```python
+let s = {1, 2, 3}
+s.remove(2)       # UFCS
+print(2 in s)     # false
 ```
 
 ---
