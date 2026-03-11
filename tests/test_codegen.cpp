@@ -1208,6 +1208,116 @@ TEST_F(ImportTest, FunctionNotFoundError) {
     EXPECT_THROW(runWithImports("from math import nope"), std::runtime_error);
 }
 
+// ===== リスト型テスト =====
+
+TEST_F(CodeGenTest, ListCreateAndAccess) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs[0])";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, ListLen) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ListMixedAccess) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])";
+    EXPECT_EQ(runSource(src), "10\n20\n30\n");
+}
+
+TEST_F(CodeGenTest, ListWithTypeAnnotation) {
+    std::string src =
+        "let xs: list[int] = [1, 2, 3]\n"
+        "print(xs[0])\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "1\n3\n");
+}
+
+TEST_F(CodeGenTest, ListIndexOutOfRange) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs[5])";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ListTypeMismatch) {
+    EXPECT_THROW(runSource("let xs = [1, 3.14]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ListEmpty) {
+    EXPECT_THROW(runSource("let xs = []"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ListPrint) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListInFunction) {
+    std::string src =
+        "fn first(xs: list[int]) -> int:\n"
+        "    return xs[0]\n"
+        "let xs = [10, 20, 30]\n"
+        "print(first(xs))";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, ListLenInFunction) {
+    std::string src =
+        "fn size(xs: list[int]) -> int:\n"
+        "    return len(xs)\n"
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "print(size(xs))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, ListFloatElements) {
+    std::string src =
+        "let xs = [1.5, 2.5, 3.5]\n"
+        "print(xs[1])";
+    EXPECT_EQ(runSource(src), "2.5\n");
+}
+
+TEST_F(CodeGenTest, ListPrintFloat) {
+    std::string src =
+        "let xs = [1.5, 2.5]\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
+}
+
+TEST_F(CodeGenTest, ListNegativeIndex) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs[-1])";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ListIndexWithExpression) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "let i = 1\n"
+        "print(xs[i])";
+    EXPECT_EQ(runSource(src), "20\n");
+}
+
+TEST_F(CodeGenTest, ListStringElements) {
+    std::string src =
+        "let xs = [\"hello\", \"world\"]\n"
+        "print(xs[0])\n"
+        "print(xs[1])";
+    EXPECT_EQ(runSource(src), "hello\nworld\n");
+}
+
 // ===== UFCS コード生成テスト =====
 
 TEST_F(CodeGenTest, UFCSBasicCall) {

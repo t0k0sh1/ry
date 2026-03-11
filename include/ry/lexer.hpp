@@ -49,6 +49,9 @@ enum class TokenKind {
     Dot,            // .
     // --- type ---
     Type,           // type
+    // --- list ---
+    LBracket,       // [
+    RBracket,       // ]
 };
 
 struct Token {

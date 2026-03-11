@@ -5,7 +5,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **6 つの組み込み型 + ユーザー定義型 + タプル** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`
+- **6 つの組み込み型 + ユーザー定義型 + タプル + リスト** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
@@ -141,6 +141,18 @@ let result = swap(1, 2)
 print(result.0)
 print(result.1)
 
+# リスト型
+let xs = [1, 2, 3]
+print(xs[0])       # 1
+print(len(xs))     # 3
+print(xs)          # [1, 2, 3]
+
+# リストを関数の引数に
+fn first(xs: list[int]) -> int:
+    return xs[0]
+
+print(first(xs))   # 1
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -195,6 +207,7 @@ x = 10  # 行末コメント
 | Unit | void | 戻り値なし関数の戻り値型 |
 | Option\<T\> | { i1, T } | `Some(42)`, `None` |
 | (T1, T2, ...) | LLVM StructType (literal) | `(1, 3.14)`, `(a, b, c)` |
+| list[T] | ptr (ヒープ確保) | `[1, 2, 3]`, `["a", "b"]` |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
@@ -229,9 +242,10 @@ x = 10  # 行末コメント
 
 | 関数 | 説明 |
 |---|---|
-| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None`） |
+| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None` / `[...]`） |
 | `Some(expr)` | Option 型の値ありバリアントを構築 |
 | `unwrap(opt)` | Option 値を取り出す（None ならランタイムエラーで exit(1)） |
+| `len(list)` | リストの要素数を返す |
 
 ### 制御構文
 
@@ -315,7 +329,7 @@ count = count + 1
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, およびユーザー定義型名
+使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, `list[T]`, およびユーザー定義型名
 
 #### 型定義（構造体）
 
@@ -377,6 +391,43 @@ print(result.1)  # 1
 - 要素へのアクセスは `.0`, `.1`, ... のインデックス記法
 - 範囲外のインデックスはコンパイルエラー
 - `print()` にタプルを直接渡すとエラー（要素ごとにアクセスして出力）
+
+#### リスト型
+
+リストは同じ型の要素を可変長で保持する型です。ヒープ上に確保されます。
+
+```python
+# リストリテラル
+let xs = [1, 2, 3]
+
+# 型アノテーション付き
+let xs: list[int] = [1, 2, 3]
+
+# インデックスアクセス
+print(xs[0])    # 1
+print(xs[2])    # 3
+
+# 変数によるインデックス
+let i = 1
+print(xs[i])    # 2
+
+# 長さ取得
+print(len(xs))  # 3
+
+# リスト全体の表示
+print(xs)       # [1, 2, 3]
+
+# 関数の引数に
+fn first(xs: list[int]) -> int:
+    return xs[0]
+
+print(first(xs))  # 1
+```
+
+- 全要素が同じ型でなければコンパイルエラー（`[1, 3.14]` はエラー）
+- 空リスト `[]` は型推論できないためエラー
+- 範囲外アクセス（負のインデックス含む）はランタイムエラーで exit(1)
+- `int`, `float`, `bool`, `str` の要素をサポート
 
 #### モジュールインポート
 

@@ -23,6 +23,7 @@ private:
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
+    llvm::StructType *listHeaderTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> const_scope_stack_;
     std::unordered_map<std::string, llvm::Function*> functions_;
@@ -35,6 +36,7 @@ private:
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
 
     // RAII scope for function emission (B5)
     class FnScope {
@@ -90,6 +92,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<CallExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<TupleExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<ListExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<IndexExpr> &e);
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
@@ -104,5 +108,6 @@ private:
     llvm::Type *resolveType(const std::string &typeName);
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
+    llvm::Type *getListElementType(llvm::Value *listAlloca);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

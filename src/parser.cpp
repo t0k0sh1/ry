@@ -380,6 +380,23 @@ ExprPtr Parser::parsePrimary() {
         node->data = VariableExpr{t.value};
         return node;
     }
+    if (t.kind == TokenKind::LBracket) {
+        lex_.next(); // consume '['
+        auto list = std::make_unique<ListExpr>();
+        if (lex_.peek().kind != TokenKind::RBracket) {
+            list->elements.push_back(parseLogicalOr());
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                list->elements.push_back(parseLogicalOr());
+            }
+        }
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']'");
+        lex_.next(); // consume ']'
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(list);
+        return node;
+    }
     if (t.kind == TokenKind::LParen) {
         lex_.next();
         ExprPtr first = parseLogicalOr();
@@ -554,7 +571,14 @@ std::string Parser::parseTypeName() {
     std::string name = t.value;
     lex_.next(); // consume type name
 
-    if (lex_.peek().kind == TokenKind::Less) {
+    if (lex_.peek().kind == TokenKind::LBracket) {
+        lex_.next(); // consume '['
+        std::string inner = parseTypeName();
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']' in list type");
+        lex_.next(); // consume ']'
+        name += "[" + inner + "]";
+    } else if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
         if (lex_.peek().kind != TokenKind::Greater)
@@ -568,7 +592,22 @@ std::string Parser::parseTypeName() {
 
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
-    while (lex_.peek().kind == TokenKind::Dot) {
+    while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket) {
+        if (lex_.peek().kind == TokenKind::LBracket) {
+            lex_.next(); // consume '['
+            ExprPtr index = parseLogicalOr();
+            if (lex_.peek().kind != TokenKind::RBracket)
+                parseError("expected ']'");
+            lex_.next(); // consume ']'
+            auto idx = std::make_unique<IndexExpr>();
+            idx->object = std::move(expr);
+            idx->index = std::move(index);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(idx);
+            expr = std::move(node);
+            continue;
+        }
+        // Dot access follows below
         lex_.next(); // consume '.'
         Token field = lex_.peek();
         if (field.kind != TokenKind::Ident && field.kind != TokenKind::Number)

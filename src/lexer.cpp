@@ -153,6 +153,8 @@ Token Lexer::readToken() {
     if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
     if (c == ':') { ++pos_; return {TokenKind::Colon, ":", line_}; }
     if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
+    if (c == '[') { ++pos_; return {TokenKind::LBracket, "[", line_}; }
+    if (c == ']') { ++pos_; return {TokenKind::RBracket, "]", line_}; }
 
     if (c == '"') {
         ++pos_;

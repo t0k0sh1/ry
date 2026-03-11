@@ -13,6 +13,8 @@ CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
+
+    listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
 }
 
 // ===== B5: FnScope RAII =====
@@ -154,6 +156,32 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
+
+    // Track list element type if this is a list value
+    if (newTy == ptrTy_) {
+        llvm::Type *elemTy = nullptr;
+        // Direct mapping (from ListExpr)
+        auto it = list_element_types_.find(val);
+        if (it != list_element_types_.end()) {
+            elemTy = it->second;
+        }
+        // From variable load (from another list variable)
+        if (!elemTy) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto it2 = list_element_types_.find(load->getPointerOperand());
+                if (it2 != list_element_types_.end())
+                    elemTy = it2->second;
+            }
+        }
+        // From type annotation
+        if (!elemTy && type_annotation && type_annotation->size() > 5 &&
+            type_annotation->substr(0, 5) == "list[") {
+            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+            elemTy = resolveType(inner);
+        }
+        if (elemTy)
+            list_element_types_[ptr] = elemTy;
+    }
 
     if (is_const)
         const_scope_stack_.back().insert(name);
@@ -526,6 +554,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return llvm::StructType::get(*ctx_, elementTypes);
     }
 
+    // list[T] parsing
+    if (typeName.size() > 5 && typeName.substr(0, 5) == "list[" && typeName.back() == ']') {
+        return ptrTy_;
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -554,6 +587,13 @@ bool CodeGen::isOptionType(llvm::Type *ty) {
         if (pair.second == st) return true;
     }
     return false;
+}
+
+llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
+    auto it = list_element_types_.find(listAlloca);
+    if (it != list_element_types_.end())
+        return it->second;
+    return nullptr;
 }
 
 void CodeGen::emitStmt(ImportStmt &s) {
@@ -609,6 +649,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 paramTypes[idx], nullptr, s->params[idx].name);
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s->params[idx].name] = alloca;
+            // Track list element type for list parameters
+            const std::string &ptype = s->params[idx].type;
+            if (ptype.size() > 5 && ptype.substr(0, 5) == "list[" && ptype.back() == ']') {
+                std::string inner = ptype.substr(5, ptype.size() - 6);
+                list_element_types_[alloca] = resolveType(inner);
+            }
             ++idx;
         }
 
@@ -641,6 +687,19 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 // ===== B4: CallExpr using emitUserFnCall =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    // len(xs) → list length
+    if (e->callee == "len") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("len() takes exactly 1 argument");
+        // We need the alloca to look up element type; evaluate and get list ptr
+        llvm::Value *listPtr = emitExpr(*e->args[0]);
+        if (listPtr->getType() != ptrTy_)
+            throw std::runtime_error("len() requires list argument");
+        // Load length field from list header (field 0)
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "len_ptr");
+        return builder_.CreateLoad(i64Ty_, lenPtr, "len");
+    }
+
     // Some(x) → Option<T> constructor
     if (e->callee == "Some") {
         if (e->args.size() != 1)
@@ -780,6 +839,131 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
     return result;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
+    if (e->elements.empty())
+        throw std::runtime_error("empty list literal requires type annotation (not yet supported)");
+
+    // Evaluate all elements
+    std::vector<llvm::Value*> vals;
+    for (auto &el : e->elements)
+        vals.push_back(emitExpr(*el));
+
+    // Check all elements have the same type
+    llvm::Type *elemTy = vals[0]->getType();
+    for (size_t i = 1; i < vals.size(); ++i) {
+        if (vals[i]->getType() != elemTy)
+            throw std::runtime_error("list elements must all have the same type");
+    }
+
+    int64_t count = static_cast<int64_t>(vals.size());
+
+    // Allocate list header: { i64 length, i64 capacity, ptr data }
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+
+    // Allocate header
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+    llvm::Value *headerPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "list_header");
+
+    // Allocate data
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * count);
+    llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
+
+    // Store elements into data
+    for (int64_t i = 0; i < count; ++i) {
+        llvm::Value *elemPtr = builder_.CreateGEP(
+            elemTy, dataPtr, {llvm::ConstantInt::get(i64Ty_, i)}, "elem_ptr");
+        builder_.CreateStore(vals[i], elemPtr);
+    }
+
+    // Store length, capacity, data pointer into header
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "len_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
+
+    llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "cap_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
+
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "data_ptr");
+    builder_.CreateStore(dataPtr, dataPtrField);
+
+    // Track element type
+    list_element_types_[headerPtr] = elemTy;
+
+    return headerPtr;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
+    llvm::Value *listPtr = emitExpr(*e->object);
+    llvm::Value *index = emitExpr(*e->index);
+
+    if (listPtr->getType() != ptrTy_)
+        throw std::runtime_error("index operator requires list");
+
+    // Find element type - check if the object is a variable load, trace back to alloca
+    llvm::Type *elemTy = nullptr;
+
+    // Check direct list_element_types_ mapping (for literals)
+    auto it = list_element_types_.find(listPtr);
+    if (it != list_element_types_.end()) {
+        elemTy = it->second;
+    }
+
+    // If not found, check the underlying alloca (for variables)
+    if (!elemTy) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listPtr)) {
+            auto it2 = list_element_types_.find(load->getPointerOperand());
+            if (it2 != list_element_types_.end())
+                elemTy = it2->second;
+        }
+    }
+
+    if (!elemTy)
+        throw std::runtime_error("cannot determine list element type for index access");
+
+    // Convert bool index to i64
+    if (index->getType() == i1Ty_)
+        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
+
+    // Runtime bounds check
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
+
+    // Check index < 0 || index >= length
+    llvm::Value *negCheck = builder_.CreateICmpSLT(index, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
+    llvm::Value *overCheck = builder_.CreateICmpSGE(index, length, "over_check");
+    llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
+
+    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "index.oob", fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "index.ok", fn_);
+
+    builder_.CreateCondBr(outOfBounds, oobBB, okBB);
+
+    // Out of bounds: print error and exit
+    builder_.SetInsertPoint(oobBB);
+    llvm::FunctionType *printfTy = llvm::FunctionType::get(
+        i32Ty_, {ptrTy_}, true);
+    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    llvm::Constant *errMsg = builder_.CreateGlobalString(
+        "runtime error: list index out of range\n", ".idx_err");
+    builder_.CreateCall(printfFn, {errMsg});
+
+    llvm::FunctionType *exitTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+    builder_.CreateUnreachable();
+
+    // OK: access element
+    builder_.SetInsertPoint(okBB);
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "data_ptr");
+    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
+    return builder_.CreateLoad(elemTy, elemPtr, "elem");
+}
+
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
         throw std::runtime_error("print() takes exactly 1 argument");
@@ -835,6 +1019,94 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
         builder_.SetInsertPoint(endBB);
         return;
+    }
+
+    // List printing: check if ptr type and in list_element_types_
+    if (val->getType() == ptrTy_) {
+        // Check if it's a list - try to find element type
+        llvm::Type *elemTy = nullptr;
+        auto it = list_element_types_.find(val);
+        if (it != list_element_types_.end()) {
+            elemTy = it->second;
+        }
+        if (!elemTy) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto it2 = list_element_types_.find(load->getPointerOperand());
+                if (it2 != list_element_types_.end())
+                    elemTy = it2->second;
+            }
+        }
+        if (elemTy) {
+            // Print list as [elem, elem, ...]
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, val, 0, "len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, val, 2, "data_ptr");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+
+            llvm::Constant *lbracket = builder_.CreateGlobalString("[", ".fmt_lb");
+            llvm::Constant *rbracketNl = builder_.CreateGlobalString("]\n", ".fmt_rb");
+            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_comma");
+            builder_.CreateCall(printfFn, {lbracket});
+
+            // Loop through elements
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "print_list.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "print_list.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "print_list.end", fn_);
+
+            // i = 0
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "print_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            // cond: i < length
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            // body: print comma if i > 0, then print element
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::Value *notFirst = builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), "not_first");
+
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "print_list.comma", fn_);
+            llvm::BasicBlock *elemBB = llvm::BasicBlock::Create(*ctx_, "print_list.elem", fn_);
+            builder_.CreateCondBr(notFirst, commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(printfFn, {comma});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *iElem = builder_.CreateLoad(i64Ty_, iVar, "i_elem");
+            llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iElem}, "elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
+
+            if (elemTy == i1Ty_) {
+                llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".fmt_true_l");
+                llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".fmt_false_l");
+                llvm::Value *fmtPtr = builder_.CreateSelect(elem, trueStr, falseStr, "bool_fmt");
+                builder_.CreateCall(printfFn, {fmtPtr});
+            } else if (elemTy->isPointerTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_l");
+                builder_.CreateCall(printfFn, {fmt, elem});
+            } else if (elemTy->isDoubleTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_l");
+                builder_.CreateCall(printfFn, {fmt, elem});
+            } else {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_l");
+                builder_.CreateCall(printfFn, {fmt, elem});
+            }
+
+            // i = i + 1
+            llvm::Value *iNext = builder_.CreateAdd(iElem, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(printfFn, {rbracketNl});
+            return;
+        }
     }
 
     if (llvm::isa<llvm::StructType>(val->getType()))
