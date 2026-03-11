@@ -208,7 +208,8 @@ Token Lexer::readToken() {
         if (id == "return") return {TokenKind::Return, "return", line_};
         if (id == "from")   return {TokenKind::From,   "from",   line_};
         if (id == "import") return {TokenKind::Import, "import", line_};
-        if (id == "type")   return {TokenKind::Type,   "type",   line_};
+        if (id == "type")     return {TokenKind::Type,     "type",     line_};
+        if (id == "operator") return {TokenKind::Operator, "operator", line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 

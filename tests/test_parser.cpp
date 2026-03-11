@@ -700,3 +700,61 @@ TEST(ParserTest, MapTypeAnnotation) {
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "map[str, int]");
 }
+
+// ===== Operator overloading =====
+
+TEST(ParserTest, OperatorFnBinaryPlus) {
+    std::string src =
+        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return a\n";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "operator+");
+    EXPECT_TRUE(fn->is_operator);
+    ASSERT_EQ(fn->params.size(), 2u);
+    EXPECT_EQ(fn->params[0].name, "a");
+    EXPECT_EQ(fn->params[0].type, "Vec2");
+    EXPECT_EQ(fn->params[1].name, "b");
+    EXPECT_EQ(fn->params[1].type, "Vec2");
+    EXPECT_EQ(fn->return_type, "Vec2");
+}
+
+TEST(ParserTest, OperatorFnUnaryMinus) {
+    std::string src =
+        "fn operator-(a: Vec2) -> Vec2:\n"
+        "    return a\n";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "operator-");
+    EXPECT_TRUE(fn->is_operator);
+    ASSERT_EQ(fn->params.size(), 1u);
+}
+
+TEST(ParserTest, OperatorFnEqEq) {
+    std::string src =
+        "fn operator==(a: Vec2, b: Vec2) -> bool:\n"
+        "    return true\n";
+    Program prog = parseStr(src);
+    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "operator==");
+    EXPECT_TRUE(fn->is_operator);
+}
+
+TEST(ParserTest, OperatorFnTildeUnaryOnly) {
+    // ~ with 2 params should fail
+    std::string src =
+        "fn operator~(a: int, b: int) -> int:\n"
+        "    return a\n";
+    EXPECT_THROW(parseStr(src), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorFnInvalidParamCount) {
+    // Binary operator with 0 params should fail
+    std::string src =
+        "fn operator+() -> int:\n"
+        "    return 0\n";
+    EXPECT_THROW(parseStr(src), std::runtime_error);
+}

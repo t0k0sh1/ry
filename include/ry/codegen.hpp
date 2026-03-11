@@ -104,6 +104,12 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<IndexExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<MapExpr> &e);
 
+    // Operator overload helpers
+    llvm::Value *tryOperatorCall(const std::string &opFnName,
+                                 llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *tryUnaryOperatorCall(const std::string &opFnName,
+                                      llvm::Value *operand);
+
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitLogicalOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
@@ -120,6 +126,11 @@ private:
     llvm::Type *resolveType(const std::string &typeName);
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
+    llvm::Value *buildNoneValue(llvm::Type *optionTy);
+    std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
+    void emitRuntimeError(const std::string &message, const std::string &globalName);
+    void emitPrintValue(llvm::Value *val, llvm::Type *ty,
+                        llvm::FunctionCallee printfFn, const std::string &suffix);
     llvm::Type *getListElementType(llvm::Value *listAlloca);
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);

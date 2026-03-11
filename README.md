@@ -6,7 +6,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
 - **6 つの組み込み型 + ユーザー定義型 + タプル + リスト + マップ** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`、マップ型 `map[K, V]`
-- **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
+- **豊富な演算子** — 算術・比較・論理・ビット演算をサポート（ユーザー定義型への演算子オーバーロード対応）
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
 - **関数定義** — `fn` キーワードによるユーザー定義関数（引数・戻り値の型宣言、再帰対応、オーバーロード対応）
@@ -124,6 +124,24 @@ print(y)
 
 let v = unwrap(x)
 print(v)
+
+# 演算子オーバーロード
+type Vec2:
+    x: int
+    y: int
+
+fn operator+(a: Vec2, b: Vec2) -> Vec2:
+    return Vec2(a.x + b.x, a.y + b.y)
+
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+let v1 = Vec2(1, 2)
+let v2 = Vec2(3, 4)
+let v3 = v1 + v2
+print(v3.x)             # 4
+print(v3.y)             # 6
+print(v1 == v2)         # false
 
 # UFCS (Uniform Function Call Syntax)
 fn add(a: int, b: int) -> int:
@@ -329,6 +347,11 @@ print(result)
 - UFCS（Uniform Function Call Syntax）: `a.f(b)` は `f(a, b)` に脱糖される
   - チェーン可能: `a.f(b).g(c)` → `g(f(a, b), c)`
   - フィールドアクセスと混在可能: `p.x.f()` → `f(p.x)`
+- 演算子オーバーロード: `fn operator<op>(params) -> RetType:` 構文でユーザー定義型に演算子を定義可能
+  - 二項演算子: パラメータ 2 個（`fn operator+(a: Vec2, b: Vec2) -> Vec2:`）
+  - 単項演算子: パラメータ 1 個（`fn operator-(a: Vec2) -> Vec2:`）
+  - 対応演算子: `+`, `-`, `*`, `/`, `%`, `**`, `//`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `&`, `|`, `^`, `~`, `<<`, `>>`, `and`, `or`, `not`
+  - 組み込み型（int, float, bool）の演算子はハードコードのまま維持（ユーザー定義が優先）
 
 ### 変数・定数宣言
 

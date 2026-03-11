@@ -1561,3 +1561,88 @@ TEST_F(CodeGenTest, OverloadRecursive) {
         "print(fact(5, 1))";
     EXPECT_EQ(runSource(src), "120\n120\n");
 }
+
+// ===== Operator overloading =====
+
+TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
+    std::string src =
+        "type Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return Vec2(a.x + b.x, a.y + b.y)\n"
+        "let v1 = Vec2(1, 2)\n"
+        "let v2 = Vec2(3, 4)\n"
+        "let v3 = v1 + v2\n"
+        "print(v3.x)\n"
+        "print(v3.y)";
+    EXPECT_EQ(runSource(src), "4\n6\n");
+}
+
+TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
+    std::string src =
+        "type Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator-(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return Vec2(a.x - b.x, a.y - b.y)\n"
+        "let v1 = Vec2(5, 8)\n"
+        "let v2 = Vec2(2, 3)\n"
+        "let v3 = v1 - v2\n"
+        "print(v3.x)\n"
+        "print(v3.y)";
+    EXPECT_EQ(runSource(src), "3\n5\n");
+}
+
+TEST_F(CodeGenTest, OperatorOverloadStructEq) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator==(a: Point, b: Point) -> bool:\n"
+        "    return a.x == b.x and a.y == b.y\n"
+        "let p1 = Point(1, 2)\n"
+        "let p2 = Point(1, 2)\n"
+        "let p3 = Point(3, 4)\n"
+        "print(p1 == p2)\n"
+        "print(p1 == p3)";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, OperatorOverloadUnaryMinus) {
+    std::string src =
+        "type Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator-(a: Vec2) -> Vec2:\n"
+        "    return Vec2(0 - a.x, 0 - a.y)\n"
+        "let v = Vec2(3, 5)\n"
+        "let neg = -v\n"
+        "print(neg.x)\n"
+        "print(neg.y)";
+    EXPECT_EQ(runSource(src), "-3\n-5\n");
+}
+
+TEST_F(CodeGenTest, OperatorOverloadBuiltinUnchanged) {
+    // Built-in int + still works without operator overload
+    EXPECT_EQ(runSource("print(3 + 4)"), "7\n");
+    EXPECT_EQ(runSource("print(10 - 3)"), "7\n");
+    EXPECT_EQ(runSource("print(2 * 5)"), "10\n");
+}
+
+TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
+    std::string src =
+        "type Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return Vec2(a.x + b.x, a.y + b.y)\n"
+        "fn operator*(a: Vec2, s: int) -> Vec2:\n"
+        "    return Vec2(a.x * s, a.y * s)\n"
+        "let v = Vec2(1, 2)\n"
+        "let v2 = v * 3\n"
+        "let v3 = v + v2\n"
+        "print(v3.x)\n"
+        "print(v3.y)";
+    EXPECT_EQ(runSource(src), "4\n8\n");
+}

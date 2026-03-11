@@ -133,10 +133,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         llvm::Type *annotTy = resolveType(*type_annotation);
         if (!isOptionType(annotTy))
             throw std::runtime_error("None can only be assigned to Option type");
-        llvm::Value *val = llvm::UndefValue::get(annotTy);
-        val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
-        val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
-            llvm::cast<llvm::StructType>(annotTy)->getElementType(1)), 1);
+        llvm::Value *val = buildNoneValue(annotTy);
         llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
         builder_.CreateStore(val, ptr);
         if (is_const)
@@ -161,18 +158,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     // Track list/map element types if this is a ptr value
     if (newTy == ptrTy_) {
         // --- List tracking ---
-        llvm::Type *elemTy = nullptr;
-        auto it = list_element_types_.find(val);
-        if (it != list_element_types_.end()) {
-            elemTy = it->second;
-        }
-        if (!elemTy) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto it2 = list_element_types_.find(load->getPointerOperand());
-                if (it2 != list_element_types_.end())
-                    elemTy = it2->second;
-            }
-        }
+        llvm::Type *elemTy = getListElementType(val);
         if (!elemTy && type_annotation && type_annotation->size() > 5 &&
             type_annotation->substr(0, 5) == "list[") {
             std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
@@ -201,23 +187,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         // From type annotation: map[K, V]
         if (!keyTy && type_annotation && type_annotation->size() > 4 &&
             type_annotation->substr(0, 4) == "map[") {
-            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
-            // Split by ", " respecting depth
-            size_t depth = 0;
-            for (size_t i = 0; i < inner.size(); ++i) {
-                if (inner[i] == '[') ++depth;
-                else if (inner[i] == ']') --depth;
-                else if (inner[i] == ',' && depth == 0) {
-                    std::string kStr = inner.substr(0, i);
-                    std::string vStr = inner.substr(i + 1);
-                    // trim spaces
-                    while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
-                    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-                    keyTy = resolveType(kStr);
-                    valTy = resolveType(vStr);
-                    break;
-                }
-            }
+            std::tie(keyTy, valTy) = parseMapTypeAnnotation(*type_annotation);
         }
         if (keyTy) map_key_types_[ptr] = keyTy;
         if (valTy) map_value_types_[ptr] = valTy;
@@ -243,10 +213,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         llvm::Type *varTy = ptr->getAllocatedType();
         if (!isOptionType(varTy))
             throw std::runtime_error("None can only be assigned to Option type");
-        llvm::Value *val = llvm::UndefValue::get(varTy);
-        val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
-        val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
-            llvm::cast<llvm::StructType>(varTy)->getElementType(1)), 1);
+        llvm::Value *val = buildNoneValue(varTy);
         builder_.CreateStore(val, ptr);
         return;
     }
@@ -315,12 +282,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     outArgVals.clear();
     for (size_t i = 0; i < args.size(); ++i) {
         if (isNone[i]) {
-            llvm::Type *expected = chosen->paramTypes[i];
-            llvm::Value *val = llvm::UndefValue::get(expected);
-            val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
-            val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
-                llvm::cast<llvm::StructType>(expected)->getElementType(1)), 1);
-            outArgVals.push_back(val);
+            outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
         } else {
             outArgVals.push_back(emittedArgs[i]);
         }
@@ -449,6 +411,12 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     llvm::Value *val = emitExpr(*e->operand);
+
+    // Try user-defined unary operator first
+    std::string opFnName = "operator" + e->op;
+    if (auto *result = tryUnaryOperatorCall(opFnName, val))
+        return result;
+
     if (e->op == "+") {
         return val;
     }
@@ -469,6 +437,48 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         return builder_.CreateNot(val, "bnot");
     }
     throw std::runtime_error("unknown unary operator: " + e->op);
+}
+
+// ===== Operator overload helpers =====
+
+llvm::Value *CodeGen::tryOperatorCall(const std::string &opFnName,
+                                       llvm::Value *lhs, llvm::Value *rhs) {
+    auto fit = functions_.find(opFnName);
+    if (fit == functions_.end())
+        return nullptr;
+
+    llvm::Type *lhsTy = lhs->getType();
+    llvm::Type *rhsTy = rhs->getType();
+
+    for (auto &entry : fit->second) {
+        if (entry.paramTypes.size() == 2 &&
+            entry.paramTypes[0] == lhsTy &&
+            entry.paramTypes[1] == rhsTy) {
+            if (entry.func->getReturnType()->isVoidTy())
+                return builder_.CreateCall(entry.func, {lhs, rhs});
+            return builder_.CreateCall(entry.func, {lhs, rhs}, "opcall");
+        }
+    }
+    return nullptr;
+}
+
+llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
+                                            llvm::Value *operand) {
+    auto fit = functions_.find(opFnName);
+    if (fit == functions_.end())
+        return nullptr;
+
+    llvm::Type *opTy = operand->getType();
+
+    for (auto &entry : fit->second) {
+        if (entry.paramTypes.size() == 1 &&
+            entry.paramTypes[0] == opTy) {
+            if (entry.func->getReturnType()->isVoidTy())
+                return builder_.CreateCall(entry.func, {operand});
+            return builder_.CreateCall(entry.func, {operand}, "opcall");
+        }
+    }
+    return nullptr;
 }
 
 // ===== B2: BinaryExpr sub-dispatchers =====
@@ -583,6 +593,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
 
+    // Try user-defined binary operator first
+    std::string opFnName = "operator" + op;
+    if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
+        return result;
+
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
         return emitComparisonOp(op, lhs, rhs);
@@ -668,10 +683,70 @@ bool CodeGen::isOptionType(llvm::Type *ty) {
     return false;
 }
 
+std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
+    std::string inner = typeStr.substr(4, typeStr.size() - 5);
+    size_t depth = 0;
+    for (size_t i = 0; i < inner.size(); ++i) {
+        if (inner[i] == '[') ++depth;
+        else if (inner[i] == ']') --depth;
+        else if (inner[i] == ',' && depth == 0) {
+            std::string kStr = inner.substr(0, i);
+            std::string vStr = inner.substr(i + 1);
+            while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
+            while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+            return {resolveType(kStr), resolveType(vStr)};
+        }
+    }
+    return {nullptr, nullptr};
+}
+
+llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
+    llvm::Value *val = llvm::UndefValue::get(optionTy);
+    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
+    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
+        llvm::cast<llvm::StructType>(optionTy)->getElementType(1)), 1);
+    return val;
+}
+
+void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
+    llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
+    builder_.CreateCall(printfFn, {errMsg});
+    llvm::FunctionType *exitTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+    builder_.CreateUnreachable();
+}
+
+void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
+                              llvm::FunctionCallee printfFn, const std::string &suffix) {
+    if (ty == i1Ty_) {
+        llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true" + suffix);
+        llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false" + suffix);
+        builder_.CreateCall(printfFn, {builder_.CreateSelect(val, t, f, "bool_fmt")});
+    } else if (ty->isPointerTy()) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s" + suffix);
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty->isDoubleTy()) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
+        builder_.CreateCall(printfFn, {fmt, val});
+    }
+}
+
 llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
     auto it = list_element_types_.find(listAlloca);
     if (it != list_element_types_.end())
         return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listAlloca)) {
+        auto it2 = list_element_types_.find(load->getPointerOperand());
+        if (it2 != list_element_types_.end())
+            return it2->second;
+    }
     return nullptr;
 }
 
@@ -889,11 +964,6 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
     // List index assignment
     llvm::Type *elemTy = getListElementType(objPtr);
-    if (!elemTy) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr)) {
-            elemTy = getListElementType(load->getPointerOperand());
-        }
-    }
     if (!elemTy)
         throw std::runtime_error("cannot determine list element type for index assignment");
 
@@ -912,16 +982,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     builder_.CreateCondBr(outOfBounds, oobBB, okBB);
 
     builder_.SetInsertPoint(oobBB);
-    llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
-    llvm::Constant *errMsg = builder_.CreateGlobalString(
-        "runtime error: list index out of range\n", ".idx_assign_err");
-    builder_.CreateCall(printfFn, {errMsg});
-    llvm::FunctionType *exitTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
-    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
-    builder_.CreateUnreachable();
+    emitRuntimeError("runtime error: list index out of range\n", ".idx_assign_err");
 
     builder_.SetInsertPoint(okBB);
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
@@ -1004,21 +1065,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
             // Track map key/value types for map parameters
             if (ptype.size() > 4 && ptype.substr(0, 4) == "map[" && ptype.back() == ']') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                size_t depth = 0;
-                for (size_t i = 0; i < inner.size(); ++i) {
-                    if (inner[i] == '[') ++depth;
-                    else if (inner[i] == ']') --depth;
-                    else if (inner[i] == ',' && depth == 0) {
-                        std::string kStr = inner.substr(0, i);
-                        std::string vStr = inner.substr(i + 1);
-                        while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
-                        while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-                        map_key_types_[alloca] = resolveType(kStr);
-                        map_value_types_[alloca] = resolveType(vStr);
-                        break;
-                    }
-                }
+                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
+                if (kTy) map_key_types_[alloca] = kTy;
+                if (vTy) map_value_types_[alloca] = vTy;
             }
             ++idx;
         }
@@ -1094,34 +1143,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "unwrap.ok", fn_);
         llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "unwrap.fail", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "unwrap.merge", fn_);
 
         builder_.CreateCondBr(hasValue, okBB, failBB);
 
         // fail: print error and exit
         builder_.SetInsertPoint(failBB);
-        llvm::FunctionType *printfTy = llvm::FunctionType::get(
-            i32Ty_, {llvm::PointerType::getUnqual(*ctx_)}, true);
-        llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
-        llvm::Constant *errMsg = builder_.CreateGlobalString(
-            "runtime error: unwrap() called on None\n", ".unwrap_err");
-        builder_.CreateCall(printfFn, {errMsg});
-
-        llvm::FunctionType *exitTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-        llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
-        builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
-        builder_.CreateUnreachable();
+        emitRuntimeError("runtime error: unwrap() called on None\n", ".unwrap_err");
 
         // ok: extract value
         builder_.SetInsertPoint(okBB);
-        llvm::Value *val = builder_.CreateExtractValue(opt, 1, "unwrap_val");
-        builder_.CreateBr(mergeBB);
-
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(val->getType(), 1, "unwrap_result");
-        phi->addIncoming(val, okBB);
-        return phi;
+        return builder_.CreateExtractValue(opt, 1, "unwrap_val");
     }
 
     // has_key(map, key) → bool
@@ -1387,16 +1418,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
         // Not found: print error and exit
         builder_.SetInsertPoint(failBB);
-        llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-        llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
-        llvm::Constant *errMsg = builder_.CreateGlobalString(
-            "runtime error: map key not found\n", ".map_key_err");
-        builder_.CreateCall(printfFn, {errMsg});
-        llvm::FunctionType *exitTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-        llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
-        builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
-        builder_.CreateUnreachable();
+        emitRuntimeError("runtime error: map key not found\n", ".map_key_err");
 
         // Found: get value
         builder_.SetInsertPoint(okBB);
@@ -1407,21 +1429,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     }
 
     // List index access
-    llvm::Type *elemTy = nullptr;
-
-    auto it = list_element_types_.find(objPtr);
-    if (it != list_element_types_.end()) {
-        elemTy = it->second;
-    }
-
-    if (!elemTy) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr)) {
-            auto it2 = list_element_types_.find(load->getPointerOperand());
-            if (it2 != list_element_types_.end())
-                elemTy = it2->second;
-        }
-    }
-
+    llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
         throw std::runtime_error("cannot determine list element type for index access");
 
@@ -1441,17 +1449,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     builder_.CreateCondBr(outOfBounds, oobBB, okBB2);
 
     builder_.SetInsertPoint(oobBB);
-    llvm::FunctionType *printfTy2 = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    llvm::FunctionCallee printfFn2 = mod_->getOrInsertFunction("printf", printfTy2);
-    llvm::Constant *errMsg2 = builder_.CreateGlobalString(
-        "runtime error: list index out of range\n", ".idx_err");
-    builder_.CreateCall(printfFn2, {errMsg2});
-
-    llvm::FunctionType *exitTy2 = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn2 = mod_->getOrInsertFunction("exit", exitTy2);
-    builder_.CreateCall(exitFn2, {llvm::ConstantInt::get(i32Ty_, 1)});
-    builder_.CreateUnreachable();
+    emitRuntimeError("runtime error: list index out of range\n", ".idx_err");
 
     builder_.SetInsertPoint(okBB2);
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
@@ -1493,21 +1491,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         llvm::Constant *somePrefix = builder_.CreateGlobalString("Some(", ".fmt_some_pre");
         builder_.CreateCall(printfFn, {somePrefix});
 
-        if (innerTy == i1Ty_) {
-            llvm::Constant *trueStr  = builder_.CreateGlobalString("true", ".fmt_true_opt");
-            llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".fmt_false_opt");
-            llvm::Value *fmtPtr = builder_.CreateSelect(innerVal, trueStr, falseStr, "bool_fmt");
-            builder_.CreateCall(printfFn, {fmtPtr});
-        } else if (innerTy->isPointerTy()) {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_opt");
-            builder_.CreateCall(printfFn, {fmt, innerVal});
-        } else if (innerTy->isDoubleTy()) {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_opt");
-            builder_.CreateCall(printfFn, {fmt, innerVal});
-        } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_opt");
-            builder_.CreateCall(printfFn, {fmt, innerVal});
-        }
+        emitPrintValue(innerVal, innerTy, printfFn, "_opt");
 
         llvm::Constant *someSuffix = builder_.CreateGlobalString(")\n", ".fmt_some_post");
         builder_.CreateCall(printfFn, {someSuffix});
@@ -1570,40 +1554,14 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             // Print key
             llvm::Value *keyPtr = builder_.CreateGEP(mapKeyTy, keysPtr, {iKV}, "key_ptr");
             llvm::Value *keyVal = builder_.CreateLoad(mapKeyTy, keyPtr, "key_val");
-            if (mapKeyTy == i1Ty_) {
-                llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true_mk");
-                llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false_mk");
-                builder_.CreateCall(printfFn, {builder_.CreateSelect(keyVal, t, f)});
-            } else if (mapKeyTy->isPointerTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_mk");
-                builder_.CreateCall(printfFn, {fmt, keyVal});
-            } else if (mapKeyTy->isDoubleTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_mk");
-                builder_.CreateCall(printfFn, {fmt, keyVal});
-            } else {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_mk");
-                builder_.CreateCall(printfFn, {fmt, keyVal});
-            }
+            emitPrintValue(keyVal, mapKeyTy, printfFn, "_mk");
 
             builder_.CreateCall(printfFn, {colon});
 
             // Print value
             llvm::Value *valPtr = builder_.CreateGEP(mapValTy, valsPtr, {iKV}, "val_ptr");
             llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "val_val");
-            if (mapValTy == i1Ty_) {
-                llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true_mv");
-                llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false_mv");
-                builder_.CreateCall(printfFn, {builder_.CreateSelect(valVal, t, f)});
-            } else if (mapValTy->isPointerTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_mv");
-                builder_.CreateCall(printfFn, {fmt, valVal});
-            } else if (mapValTy->isDoubleTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_mv");
-                builder_.CreateCall(printfFn, {fmt, valVal});
-            } else {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_mv");
-                builder_.CreateCall(printfFn, {fmt, valVal});
-            }
+            emitPrintValue(valVal, mapValTy, printfFn, "_mv");
 
             // i++
             llvm::Value *iNext = builder_.CreateAdd(iKV, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
@@ -1616,18 +1574,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         }
 
         // Check if it's a list - try to find element type
-        llvm::Type *elemTy = nullptr;
-        auto it = list_element_types_.find(val);
-        if (it != list_element_types_.end()) {
-            elemTy = it->second;
-        }
-        if (!elemTy) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto it2 = list_element_types_.find(load->getPointerOperand());
-                if (it2 != list_element_types_.end())
-                    elemTy = it2->second;
-            }
-        }
+        llvm::Type *elemTy = getListElementType(val);
         if (elemTy) {
             // Print list as [elem, elem, ...]
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, val, 0, "len_ptr");
@@ -1674,21 +1621,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iElem}, "elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
 
-            if (elemTy == i1Ty_) {
-                llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".fmt_true_l");
-                llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".fmt_false_l");
-                llvm::Value *fmtPtr = builder_.CreateSelect(elem, trueStr, falseStr, "bool_fmt");
-                builder_.CreateCall(printfFn, {fmtPtr});
-            } else if (elemTy->isPointerTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_l");
-                builder_.CreateCall(printfFn, {fmt, elem});
-            } else if (elemTy->isDoubleTy()) {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_l");
-                builder_.CreateCall(printfFn, {fmt, elem});
-            } else {
-                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_l");
-                builder_.CreateCall(printfFn, {fmt, elem});
-            }
+            emitPrintValue(elem, elemTy, printfFn, "_l");
 
             // i = i + 1
             llvm::Value *iNext = builder_.CreateAdd(iElem, llvm::ConstantInt::get(i64Ty_, 1), "i_next");

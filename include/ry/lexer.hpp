@@ -49,6 +49,7 @@ enum class TokenKind {
     Dot,            // .
     // --- type ---
     Type,           // type
+    Operator,       // operator
     // --- list ---
     LBracket,       // [
     RBracket,       // ]

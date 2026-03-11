@@ -129,4 +129,5 @@ struct FnStmt {
     std::vector<FnParam> params;
     std::string return_type;
     std::vector<StmtNode> body;
+    bool is_operator = false;
 };

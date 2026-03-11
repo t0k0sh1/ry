@@ -476,17 +476,46 @@ ExprPtr Parser::parsePrimary() {
 StmtNode Parser::parseFnStatement() {
     lex_.next(); // consume 'fn'
 
-    Token nameTok = lex_.peek();
-    if (nameTok.kind != TokenKind::Ident)
-        parseError(nameTok.line, "expected function name after 'fn'");
-    lex_.next(); // consume name
+    auto fnStmt = std::make_unique<FnStmt>();
+
+    if (lex_.peek().kind == TokenKind::Operator) {
+        lex_.next(); // consume 'operator'
+        fnStmt->is_operator = true;
+
+        // Read the operator symbol
+        Token opTok = lex_.peek();
+        std::string opName;
+        switch (opTok.kind) {
+            case TokenKind::Plus: case TokenKind::Minus:
+            case TokenKind::Star: case TokenKind::Slash:
+            case TokenKind::Percent: case TokenKind::StarStar:
+            case TokenKind::SlashSlash:
+            case TokenKind::EqEq: case TokenKind::BangEq:
+            case TokenKind::Less: case TokenKind::LessEq:
+            case TokenKind::Greater: case TokenKind::GreaterEq:
+            case TokenKind::Amp: case TokenKind::Pipe:
+            case TokenKind::Caret: case TokenKind::Tilde:
+            case TokenKind::LessLess: case TokenKind::GreaterGreater:
+            case TokenKind::And: case TokenKind::Or:
+            case TokenKind::Not:
+                opName = opTok.value;
+                lex_.next(); // consume operator
+                break;
+            default:
+                parseError(opTok.line, "expected operator symbol after 'operator'");
+        }
+        fnStmt->name = "operator" + opName;
+    } else {
+        Token nameTok = lex_.peek();
+        if (nameTok.kind != TokenKind::Ident)
+            parseError(nameTok.line, "expected function name after 'fn'");
+        lex_.next(); // consume name
+        fnStmt->name = nameTok.value;
+    }
 
     if (lex_.peek().kind != TokenKind::LParen)
         parseError("expected '(' after function name");
     lex_.next(); // consume '('
-
-    auto fnStmt = std::make_unique<FnStmt>();
-    fnStmt->name = nameTok.value;
 
     // parse parameters
     if (lex_.peek().kind != TokenKind::RParen) {
@@ -519,6 +548,19 @@ StmtNode Parser::parseFnStatement() {
         fnStmt->return_type = parseTypeName();
     } else {
         fnStmt->return_type = "Unit";
+    }
+
+    // Validate operator parameter count
+    if (fnStmt->is_operator) {
+        size_t nParams = fnStmt->params.size();
+        const std::string &opName = fnStmt->name;
+        // Unary-only operators
+        if (opName == "operator~" || opName == "operatornot") {
+            if (nParams != 1)
+                parseError("unary operator requires exactly 1 parameter");
+        } else if (nParams != 1 && nParams != 2) {
+            parseError("operator function requires 1 or 2 parameters");
+        }
     }
 
     if (lex_.peek().kind != TokenKind::Colon)
