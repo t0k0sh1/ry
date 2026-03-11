@@ -52,6 +52,9 @@ enum class TokenKind {
     // --- list ---
     LBracket,       // [
     RBracket,       // ]
+    // --- map ---
+    LBrace,         // {
+    RBrace,         // }
 };
 
 struct Token {

@@ -1373,3 +1373,92 @@ TEST_F(ImportTest, SearchPathRYPATH) {
 
     std::filesystem::remove_all(lib_dir);
 }
+
+// ===== Map型テスト =====
+
+TEST_F(CodeGenTest, MapCreateAndAccess) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "print(m[\"a\"])";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, MapAccessSecondKey) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "print(m[\"b\"])";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, MapLen) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "print(len(m))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, MapPrint) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "print(m)";
+    EXPECT_EQ(runSource(src), "{a: 1, b: 2}\n");
+}
+
+TEST_F(CodeGenTest, MapKeyAssign) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m[\"c\"] = 3\n"
+        "print(m[\"c\"])\n"
+        "print(len(m))";
+    EXPECT_EQ(runSource(src), "3\n3\n");
+}
+
+TEST_F(CodeGenTest, MapKeyUpdate) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m[\"a\"] = 99\n"
+        "print(m[\"a\"])";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, MapKeyNotFound) {
+    std::string src =
+        "let m = {\"a\": 1}\n"
+        "print(m[\"z\"])";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, MapWithTypeAnnotation) {
+    std::string src =
+        "let m: map[str, int] = {\"x\": 42}\n"
+        "print(m[\"x\"])";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, MapIntKeys) {
+    std::string src =
+        "let m = {1: \"hello\", 2: \"world\"}\n"
+        "print(m[1])";
+    EXPECT_EQ(runSource(src), "hello\n");
+}
+
+TEST_F(CodeGenTest, MapInFunction) {
+    std::string src =
+        "fn get_val(m: map[str, int], k: str) -> int:\n"
+        "    return m[k]\n"
+        "let m = {\"a\": 10, \"b\": 20}\n"
+        "print(get_val(m, \"b\"))";
+    EXPECT_EQ(runSource(src), "20\n");
+}
+
+TEST_F(CodeGenTest, MapHasKey) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "print(m.has_key(\"a\"))\n"
+        "print(m.has_key(\"z\"))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, MapTypeMismatch) {
+    EXPECT_THROW(runSource("let m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
+}

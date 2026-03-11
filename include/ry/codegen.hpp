@@ -24,6 +24,7 @@ private:
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
     llvm::StructType *listHeaderTy_;
+    llvm::StructType *mapHeaderTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> const_scope_stack_;
     std::unordered_map<std::string, llvm::Function*> functions_;
@@ -37,6 +38,8 @@ private:
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
 
     // RAII scope for function emission (B5)
     class FnScope {
@@ -72,6 +75,7 @@ private:
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
     void emitStmt(TypeStmt &s);
+    void emitStmt(IndexAssignStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
@@ -94,6 +98,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<TupleExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ListExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<IndexExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<MapExpr> &e);
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
@@ -109,5 +114,8 @@ private:
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
     llvm::Type *getListElementType(llvm::Value *listAlloca);
+    llvm::Type *getMapKeyType(llvm::Value *mapVal);
+    llvm::Type *getMapValueType(llvm::Value *mapVal);
+    llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
     void emitPrint(const std::vector<ExprPtr> &args);
 };

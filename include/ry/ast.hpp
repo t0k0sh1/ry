@@ -20,6 +20,7 @@ struct FieldAccessExpr;
 struct TupleExpr;
 struct ListExpr;
 struct IndexExpr;
+struct MapExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -29,7 +30,8 @@ struct ExprNode {
                  std::unique_ptr<FieldAccessExpr>,
                  std::unique_ptr<TupleExpr>,
                  std::unique_ptr<ListExpr>,
-                 std::unique_ptr<IndexExpr>> data;
+                 std::unique_ptr<IndexExpr>,
+                 std::unique_ptr<MapExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -66,6 +68,11 @@ struct IndexExpr {
     ExprPtr index;
 };
 
+struct MapExpr {
+    std::vector<ExprPtr> keys;
+    std::vector<ExprPtr> values;
+};
+
 struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct ConstStmt  { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
 struct AssignStmt { std::string name; ExprPtr value; };
@@ -80,6 +87,12 @@ struct ImportStmt {
     int line;
 };
 
+struct IndexAssignStmt {
+    ExprPtr object;
+    ExprPtr index;
+    ExprPtr value;
+};
+
 struct FieldDef { std::string name; std::string type; };
 
 struct TypeStmt { std::string name; std::vector<FieldDef> fields; };
@@ -90,6 +103,7 @@ struct FnStmt;
 
 using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
+                              IndexAssignStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<FnStmt>>;

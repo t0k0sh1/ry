@@ -15,6 +15,7 @@ CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
+    mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_}, "MapHeader");
 }
 
 // ===== B5: FnScope RAII =====
@@ -157,15 +158,14 @@ void CodeGen::emitVarDecl(const std::string &name,
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
 
-    // Track list element type if this is a list value
+    // Track list/map element types if this is a ptr value
     if (newTy == ptrTy_) {
+        // --- List tracking ---
         llvm::Type *elemTy = nullptr;
-        // Direct mapping (from ListExpr)
         auto it = list_element_types_.find(val);
         if (it != list_element_types_.end()) {
             elemTy = it->second;
         }
-        // From variable load (from another list variable)
         if (!elemTy) {
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
                 auto it2 = list_element_types_.find(load->getPointerOperand());
@@ -173,7 +173,6 @@ void CodeGen::emitVarDecl(const std::string &name,
                     elemTy = it2->second;
             }
         }
-        // From type annotation
         if (!elemTy && type_annotation && type_annotation->size() > 5 &&
             type_annotation->substr(0, 5) == "list[") {
             std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
@@ -181,6 +180,47 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         if (elemTy)
             list_element_types_[ptr] = elemTy;
+
+        // --- Map tracking ---
+        llvm::Type *keyTy = nullptr;
+        llvm::Type *valTy = nullptr;
+        // Direct mapping (from MapExpr)
+        auto mk = map_key_types_.find(val);
+        if (mk != map_key_types_.end()) keyTy = mk->second;
+        auto mv = map_value_types_.find(val);
+        if (mv != map_value_types_.end()) valTy = mv->second;
+        // From variable load
+        if (!keyTy) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto mk2 = map_key_types_.find(load->getPointerOperand());
+                if (mk2 != map_key_types_.end()) keyTy = mk2->second;
+                auto mv2 = map_value_types_.find(load->getPointerOperand());
+                if (mv2 != map_value_types_.end()) valTy = mv2->second;
+            }
+        }
+        // From type annotation: map[K, V]
+        if (!keyTy && type_annotation && type_annotation->size() > 4 &&
+            type_annotation->substr(0, 4) == "map[") {
+            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+            // Split by ", " respecting depth
+            size_t depth = 0;
+            for (size_t i = 0; i < inner.size(); ++i) {
+                if (inner[i] == '[') ++depth;
+                else if (inner[i] == ']') --depth;
+                else if (inner[i] == ',' && depth == 0) {
+                    std::string kStr = inner.substr(0, i);
+                    std::string vStr = inner.substr(i + 1);
+                    // trim spaces
+                    while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
+                    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+                    keyTy = resolveType(kStr);
+                    valTy = resolveType(vStr);
+                    break;
+                }
+            }
+        }
+        if (keyTy) map_key_types_[ptr] = keyTy;
+        if (valTy) map_value_types_[ptr] = valTy;
     }
 
     if (is_const)
@@ -559,6 +599,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // map[K, V] parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "map[" && typeName.back() == ']') {
+        return ptrTy_;
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -596,9 +641,259 @@ llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
     return nullptr;
 }
 
+llvm::Type *CodeGen::getMapKeyType(llvm::Value *mapVal) {
+    auto it = map_key_types_.find(mapVal);
+    if (it != map_key_types_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
+        auto it2 = map_key_types_.find(load->getPointerOperand());
+        if (it2 != map_key_types_.end()) return it2->second;
+    }
+    return nullptr;
+}
+
+llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
+    auto it = map_value_types_.find(mapVal);
+    if (it != map_value_types_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
+        auto it2 = map_value_types_.find(load->getPointerOperand());
+        if (it2 != map_value_types_.end()) return it2->second;
+    }
+    return nullptr;
+}
+
+llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
+    // Linear scan of keys array, returns index (i64) or -1 if not found
+    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 0, "map_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 2, "map_keys_ptr");
+    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "map_keys");
+
+    // Allocate result variable
+    llvm::AllocaInst *resultVar = builder_.CreateAlloca(i64Ty_, nullptr, "lookup_result");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), resultVar);
+
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lookup_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lookup.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lookup.body", fn_);
+    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "lookup.found", fn_);
+    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "lookup.next", fn_);
+    llvm::BasicBlock *exitBB = llvm::BasicBlock::Create(*ctx_, "lookup.exit", fn_);
+
+    builder_.CreateBr(condBB);
+
+    // cond: i < length
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "lookup_cond");
+    builder_.CreateCondBr(cond, bodyBB, exitBB);
+
+    // body: compare keys[i] with key
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+    llvm::Value *keyElemPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "key_elem_ptr");
+    llvm::Value *keyElem = builder_.CreateLoad(keyTy, keyElemPtr, "key_elem");
+
+    llvm::Value *isEqual;
+    if (keyTy == ptrTy_) {
+        // String comparison using strcmp
+        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {keyElem, key}, "strcmp_result");
+        isEqual = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
+    } else if (keyTy->isDoubleTy()) {
+        isEqual = builder_.CreateFCmpOEQ(keyElem, key, "key_eq");
+    } else {
+        isEqual = builder_.CreateICmpEQ(keyElem, key, "key_eq");
+    }
+    builder_.CreateCondBr(isEqual, foundBB, nextBB);
+
+    // found: store index
+    builder_.SetInsertPoint(foundBB);
+    llvm::Value *iFound = builder_.CreateLoad(i64Ty_, iVar, "i_found");
+    builder_.CreateStore(iFound, resultVar);
+    builder_.CreateBr(exitBB);
+
+    // next: i++
+    builder_.SetInsertPoint(nextBB);
+    llvm::Value *iNext = builder_.CreateAdd(
+        builder_.CreateLoad(i64Ty_, iVar, "i_next_load"),
+        llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    builder_.CreateStore(iNext, iVar);
+    builder_.CreateBr(condBB);
+
+    // exit: return result
+    builder_.SetInsertPoint(exitBB);
+    return builder_.CreateLoad(i64Ty_, resultVar, "lookup_idx");
+}
+
 void CodeGen::emitStmt(ImportStmt &s) {
     throw std::runtime_error("unresolved import: " + s.module_path +
                              " (ModuleLoader should have resolved this)");
+}
+
+void CodeGen::emitStmt(IndexAssignStmt &s) {
+    llvm::Value *objPtr = emitExpr(*s.object);
+    llvm::Value *key = emitExpr(*s.index);
+    llvm::Value *val = emitExpr(*s.value);
+
+    if (objPtr->getType() != ptrTy_)
+        throw std::runtime_error("index assignment requires list or map");
+
+    llvm::Type *mapKeyTy = getMapKeyType(objPtr);
+    if (mapKeyTy) {
+        // Map index assignment
+        llvm::Type *mapValTy = getMapValueType(objPtr);
+        if (!mapValTy)
+            throw std::runtime_error("cannot determine map value type");
+        if (key->getType() != mapKeyTy)
+            throw std::runtime_error("map key type mismatch");
+        if (val->getType() != mapValTy)
+            throw std::runtime_error("map value type mismatch");
+
+        // Lookup key
+        llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
+        llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+
+        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "map.update", fn_);
+        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "map.insert", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "map.assign_end", fn_);
+
+        builder_.CreateCondBr(found, updateBB, insertBB);
+
+        // Update existing value
+        builder_.SetInsertPoint(updateBB);
+        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
+        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
+        llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
+        builder_.CreateStore(val, valElemPtr);
+        builder_.CreateBr(endBB);
+
+        // Insert new key-value pair
+        builder_.SetInsertPoint(insertBB);
+        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 0, "map_len_ptr");
+        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 1, "map_cap_ptr");
+        llvm::Value *cap = builder_.CreateLoad(i64Ty_, capPtr, "map_cap");
+
+        // Check if we need to grow
+        llvm::Value *needGrow = builder_.CreateICmpEQ(length, cap, "need_grow");
+        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "map.grow", fn_);
+        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "map.store", fn_);
+        builder_.CreateCondBr(needGrow, growBB, storeBB);
+
+        // Grow: realloc keys and values arrays
+        builder_.SetInsertPoint(growBB);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t keySize = dl.getTypeAllocSize(mapKeyTy);
+        uint64_t valSize = dl.getTypeAllocSize(mapValTy);
+
+        llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+
+        // New keys array
+        llvm::Value *newKeySize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, keySize), "new_key_size");
+        llvm::Value *newKeysPtr = builder_.CreateCall(mallocFn, {newKeySize}, "new_keys");
+
+        // New values array
+        llvm::Value *newValSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, valSize), "new_val_size");
+        llvm::Value *newValsPtr = builder_.CreateCall(mallocFn, {newValSize}, "new_vals");
+
+        // memcpy old data
+        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(
+            ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+        llvm::Value *keysPtrField2 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field");
+        llvm::Value *oldKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField2, "old_keys");
+        llvm::Value *oldKeySize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, keySize), "old_key_size");
+        builder_.CreateCall(memcpyFn, {newKeysPtr, oldKeysPtr, oldKeySize});
+
+        llvm::Value *valsPtrField2 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field");
+        llvm::Value *oldValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField2, "old_vals");
+        llvm::Value *oldValSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, valSize), "old_val_size");
+        builder_.CreateCall(memcpyFn, {newValsPtr, oldValsPtr, oldValSize});
+
+        // Free old arrays
+        llvm::FunctionType *freeTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+        builder_.CreateCall(freeFn, {oldKeysPtr});
+        builder_.CreateCall(freeFn, {oldValsPtr});
+
+        // Update header pointers and capacity
+        builder_.CreateStore(newKeysPtr, keysPtrField2);
+        builder_.CreateStore(newValsPtr, valsPtrField2);
+        builder_.CreateStore(newCap, capPtr);
+
+        builder_.CreateBr(storeBB);
+
+        // Store new key-value at index = length
+        builder_.SetInsertPoint(storeBB);
+        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
+        llvm::Value *keysPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field3");
+        llvm::Value *curKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField3, "cur_keys");
+        llvm::Value *newKeyPtr = builder_.CreateGEP(mapKeyTy, curKeysPtr, {curLen}, "new_key_ptr");
+        builder_.CreateStore(key, newKeyPtr);
+
+        llvm::Value *valsPtrField3 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "vals_field3");
+        llvm::Value *curValsPtr = builder_.CreateLoad(ptrTy_, valsPtrField3, "cur_vals");
+        llvm::Value *newValPtr = builder_.CreateGEP(mapValTy, curValsPtr, {curLen}, "new_val_ptr");
+        builder_.CreateStore(val, newValPtr);
+
+        // length++
+        llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
+        builder_.CreateStore(newLen, lenPtr);
+        builder_.CreateBr(endBB);
+
+        builder_.SetInsertPoint(endBB);
+        return;
+    }
+
+    // List index assignment
+    llvm::Type *elemTy = getListElementType(objPtr);
+    if (!elemTy) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr)) {
+            elemTy = getListElementType(load->getPointerOperand());
+        }
+    }
+    if (!elemTy)
+        throw std::runtime_error("cannot determine list element type for index assignment");
+
+    if (key->getType() == i1Ty_)
+        key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
+
+    // Bounds check
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
+    llvm::Value *negCheck = builder_.CreateICmpSLT(key, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
+    llvm::Value *overCheck = builder_.CreateICmpSGE(key, length, "over_check");
+    llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
+
+    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.oob", fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.ok", fn_);
+    builder_.CreateCondBr(outOfBounds, oobBB, okBB);
+
+    builder_.SetInsertPoint(oobBB);
+    llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    llvm::Constant *errMsg = builder_.CreateGlobalString(
+        "runtime error: list index out of range\n", ".idx_assign_err");
+    builder_.CreateCall(printfFn, {errMsg});
+    llvm::FunctionType *exitTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+    builder_.CreateUnreachable();
+
+    builder_.SetInsertPoint(okBB);
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
+    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
+    builder_.CreateStore(val, elemPtr);
 }
 
 void CodeGen::emitStmt(ReturnStmt &s) {
@@ -655,6 +950,24 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 list_element_types_[alloca] = resolveType(inner);
             }
+            // Track map key/value types for map parameters
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "map[" && ptype.back() == ']') {
+                std::string inner = ptype.substr(4, ptype.size() - 5);
+                size_t depth = 0;
+                for (size_t i = 0; i < inner.size(); ++i) {
+                    if (inner[i] == '[') ++depth;
+                    else if (inner[i] == ']') --depth;
+                    else if (inner[i] == ',' && depth == 0) {
+                        std::string kStr = inner.substr(0, i);
+                        std::string vStr = inner.substr(i + 1);
+                        while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
+                        while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+                        map_key_types_[alloca] = resolveType(kStr);
+                        map_value_types_[alloca] = resolveType(vStr);
+                        break;
+                    }
+                }
+            }
             ++idx;
         }
 
@@ -687,16 +1000,21 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 // ===== B4: CallExpr using emitUserFnCall =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    // len(xs) → list length
+    // len(xs) → list/map length
     if (e->callee == "len") {
         if (e->args.size() != 1)
             throw std::runtime_error("len() takes exactly 1 argument");
-        // We need the alloca to look up element type; evaluate and get list ptr
-        llvm::Value *listPtr = emitExpr(*e->args[0]);
-        if (listPtr->getType() != ptrTy_)
-            throw std::runtime_error("len() requires list argument");
-        // Load length field from list header (field 0)
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "len_ptr");
+        llvm::Value *ptr = emitExpr(*e->args[0]);
+        if (ptr->getType() != ptrTy_)
+            throw std::runtime_error("len() requires list or map argument");
+        // Check if it's a map
+        llvm::Type *mapKeyTy = getMapKeyType(ptr);
+        if (mapKeyTy) {
+            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, ptr, 0, "map_len_ptr");
+            return builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        }
+        // List
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
         return builder_.CreateLoad(i64Ty_, lenPtr, "len");
     }
 
@@ -752,6 +1070,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::PHINode *phi = builder_.CreatePHI(val->getType(), 1, "unwrap_result");
         phi->addIncoming(val, okBB);
         return phi;
+    }
+
+    // has_key(map, key) → bool
+    if (e->callee == "has_key") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("has_key() takes exactly 2 arguments");
+        llvm::Value *mapPtr = emitExpr(*e->args[0]);
+        if (mapPtr->getType() != ptrTy_)
+            throw std::runtime_error("has_key() requires map as first argument");
+        llvm::Type *keyTy = getMapKeyType(mapPtr);
+        if (!keyTy)
+            throw std::runtime_error("has_key() requires map as first argument");
+        llvm::Value *key = emitExpr(*e->args[1]);
+        if (key->getType() != keyTy)
+            throw std::runtime_error("has_key() key type mismatch");
+        llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
+        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
     }
 
     auto sit = struct_types_.find(e->callee);
@@ -895,25 +1230,140 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     return headerPtr;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
+    if (e->keys.empty())
+        throw std::runtime_error("empty map literal requires type annotation");
+
+    // Evaluate all keys and values
+    std::vector<llvm::Value*> keyVals, valVals;
+    for (auto &k : e->keys) keyVals.push_back(emitExpr(*k));
+    for (auto &v : e->values) valVals.push_back(emitExpr(*v));
+
+    // Check all keys have the same type
+    llvm::Type *keyTy = keyVals[0]->getType();
+    for (size_t i = 1; i < keyVals.size(); ++i) {
+        if (keyVals[i]->getType() != keyTy)
+            throw std::runtime_error("map keys must all have the same type");
+    }
+
+    // Check all values have the same type
+    llvm::Type *valTy = valVals[0]->getType();
+    for (size_t i = 1; i < valVals.size(); ++i) {
+        if (valVals[i]->getType() != valTy)
+            throw std::runtime_error("map values must all have the same type");
+    }
+
+    int64_t count = static_cast<int64_t>(keyVals.size());
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+
+    // Allocate MapHeader
+    uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
+    llvm::Value *headerPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
+
+    // Allocate keys array
+    uint64_t keySize = dl.getTypeAllocSize(keyTy);
+    llvm::Value *keysPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * count)}, "map_keys");
+
+    // Allocate values array
+    uint64_t valSize = dl.getTypeAllocSize(valTy);
+    llvm::Value *valsPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * count)}, "map_vals");
+
+    // Store keys and values
+    for (int64_t i = 0; i < count; ++i) {
+        llvm::Value *kp = builder_.CreateGEP(keyTy, keysPtr,
+            {llvm::ConstantInt::get(i64Ty_, i)}, "key_ptr");
+        builder_.CreateStore(keyVals[i], kp);
+        llvm::Value *vp = builder_.CreateGEP(valTy, valsPtr,
+            {llvm::ConstantInt::get(i64Ty_, i)}, "val_ptr");
+        builder_.CreateStore(valVals[i], vp);
+    }
+
+    // Store header fields: length, capacity, keys_ptr, values_ptr
+    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0, "map_len_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
+
+    llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1, "map_cap_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
+
+    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2, "map_keys_field");
+    builder_.CreateStore(keysPtr, keysPtrField);
+
+    llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3, "map_vals_field");
+    builder_.CreateStore(valsPtr, valsPtrField);
+
+    // Track types
+    map_key_types_[headerPtr] = keyTy;
+    map_value_types_[headerPtr] = valTy;
+
+    return headerPtr;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
-    llvm::Value *listPtr = emitExpr(*e->object);
+    llvm::Value *objPtr = emitExpr(*e->object);
     llvm::Value *index = emitExpr(*e->index);
 
-    if (listPtr->getType() != ptrTy_)
-        throw std::runtime_error("index operator requires list");
+    if (objPtr->getType() != ptrTy_)
+        throw std::runtime_error("index operator requires list or map");
 
-    // Find element type - check if the object is a variable load, trace back to alloca
+    // Check if this is a map
+    llvm::Type *mapKeyTy = getMapKeyType(objPtr);
+    if (mapKeyTy) {
+        llvm::Type *mapValTy = getMapValueType(objPtr);
+        if (!mapValTy)
+            throw std::runtime_error("cannot determine map value type");
+
+        // Check key type matches
+        if (index->getType() != mapKeyTy)
+            throw std::runtime_error("map key type mismatch");
+
+        // Lookup key
+        llvm::Value *idx = emitMapKeyLookup(objPtr, index, mapKeyTy);
+
+        // Check if found
+        llvm::Value *notFound = builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0), "not_found");
+
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "map.notfound", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "map.found", fn_);
+
+        builder_.CreateCondBr(notFound, failBB, okBB);
+
+        // Not found: print error and exit
+        builder_.SetInsertPoint(failBB);
+        llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+        llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+        llvm::Constant *errMsg = builder_.CreateGlobalString(
+            "runtime error: map key not found\n", ".map_key_err");
+        builder_.CreateCall(printfFn, {errMsg});
+        llvm::FunctionType *exitTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+        llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+        builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+        builder_.CreateUnreachable();
+
+        // Found: get value
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
+        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
+        llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
+        return builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
+    }
+
+    // List index access
     llvm::Type *elemTy = nullptr;
 
-    // Check direct list_element_types_ mapping (for literals)
-    auto it = list_element_types_.find(listPtr);
+    auto it = list_element_types_.find(objPtr);
     if (it != list_element_types_.end()) {
         elemTy = it->second;
     }
 
-    // If not found, check the underlying alloca (for variables)
     if (!elemTy) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listPtr)) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr)) {
             auto it2 = list_element_types_.find(load->getPointerOperand());
             if (it2 != list_element_types_.end())
                 elemTy = it2->second;
@@ -923,42 +1373,36 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (!elemTy)
         throw std::runtime_error("cannot determine list element type for index access");
 
-    // Convert bool index to i64
     if (index->getType() == i1Ty_)
         index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
 
-    // Runtime bounds check
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "len_ptr");
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
-    // Check index < 0 || index >= length
     llvm::Value *negCheck = builder_.CreateICmpSLT(index, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
     llvm::Value *overCheck = builder_.CreateICmpSGE(index, length, "over_check");
     llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
 
     llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "index.oob", fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "index.ok", fn_);
+    llvm::BasicBlock *okBB2 = llvm::BasicBlock::Create(*ctx_, "index.ok", fn_);
 
-    builder_.CreateCondBr(outOfBounds, oobBB, okBB);
+    builder_.CreateCondBr(outOfBounds, oobBB, okBB2);
 
-    // Out of bounds: print error and exit
     builder_.SetInsertPoint(oobBB);
-    llvm::FunctionType *printfTy = llvm::FunctionType::get(
-        i32Ty_, {ptrTy_}, true);
-    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
-    llvm::Constant *errMsg = builder_.CreateGlobalString(
+    llvm::FunctionType *printfTy2 = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    llvm::FunctionCallee printfFn2 = mod_->getOrInsertFunction("printf", printfTy2);
+    llvm::Constant *errMsg2 = builder_.CreateGlobalString(
         "runtime error: list index out of range\n", ".idx_err");
-    builder_.CreateCall(printfFn, {errMsg});
+    builder_.CreateCall(printfFn2, {errMsg2});
 
-    llvm::FunctionType *exitTy = llvm::FunctionType::get(
+    llvm::FunctionType *exitTy2 = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
-    builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
+    llvm::FunctionCallee exitFn2 = mod_->getOrInsertFunction("exit", exitTy2);
+    builder_.CreateCall(exitFn2, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
 
-    // OK: access element
-    builder_.SetInsertPoint(okBB);
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "data_ptr");
+    builder_.SetInsertPoint(okBB2);
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
     return builder_.CreateLoad(elemTy, elemPtr, "elem");
@@ -1021,8 +1465,104 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
-    // List printing: check if ptr type and in list_element_types_
+    // Map/List printing: check if ptr type
     if (val->getType() == ptrTy_) {
+        // Check if it's a map first
+        llvm::Type *mapKeyTy = getMapKeyType(val);
+        llvm::Type *mapValTy = getMapValueType(val);
+        if (mapKeyTy && mapValTy) {
+            // Print map as {key: value, key: value}
+            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, val, 0, "map_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+            llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, val, 2, "map_keys_ptr");
+            llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "map_keys");
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, val, 3, "map_vals_ptr");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
+
+            llvm::Constant *lbrace = builder_.CreateGlobalString("{", ".fmt_lbrace");
+            llvm::Constant *rbrace = builder_.CreateGlobalString("}\n", ".fmt_rbrace");
+            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_comma_m");
+            llvm::Constant *colon = builder_.CreateGlobalString(": ", ".fmt_colon");
+            builder_.CreateCall(printfFn, {lbrace});
+
+            // Loop through entries
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "print_map.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "print_map.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "print_map.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "print_map_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+
+            // Print comma if not first
+            llvm::Value *notFirst = builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), "not_first");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "print_map.comma", fn_);
+            llvm::BasicBlock *kvBB = llvm::BasicBlock::Create(*ctx_, "print_map.kv", fn_);
+            builder_.CreateCondBr(notFirst, commaBB, kvBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(printfFn, {comma});
+            builder_.CreateBr(kvBB);
+
+            builder_.SetInsertPoint(kvBB);
+            llvm::Value *iKV = builder_.CreateLoad(i64Ty_, iVar, "i_kv");
+
+            // Print key
+            llvm::Value *keyPtr = builder_.CreateGEP(mapKeyTy, keysPtr, {iKV}, "key_ptr");
+            llvm::Value *keyVal = builder_.CreateLoad(mapKeyTy, keyPtr, "key_val");
+            if (mapKeyTy == i1Ty_) {
+                llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true_mk");
+                llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false_mk");
+                builder_.CreateCall(printfFn, {builder_.CreateSelect(keyVal, t, f)});
+            } else if (mapKeyTy->isPointerTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_mk");
+                builder_.CreateCall(printfFn, {fmt, keyVal});
+            } else if (mapKeyTy->isDoubleTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_mk");
+                builder_.CreateCall(printfFn, {fmt, keyVal});
+            } else {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_mk");
+                builder_.CreateCall(printfFn, {fmt, keyVal});
+            }
+
+            builder_.CreateCall(printfFn, {colon});
+
+            // Print value
+            llvm::Value *valPtr = builder_.CreateGEP(mapValTy, valsPtr, {iKV}, "val_ptr");
+            llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "val_val");
+            if (mapValTy == i1Ty_) {
+                llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true_mv");
+                llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false_mv");
+                builder_.CreateCall(printfFn, {builder_.CreateSelect(valVal, t, f)});
+            } else if (mapValTy->isPointerTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s_mv");
+                builder_.CreateCall(printfFn, {fmt, valVal});
+            } else if (mapValTy->isDoubleTy()) {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f_mv");
+                builder_.CreateCall(printfFn, {fmt, valVal});
+            } else {
+                llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i_mv");
+                builder_.CreateCall(printfFn, {fmt, valVal});
+            }
+
+            // i++
+            llvm::Value *iNext = builder_.CreateAdd(iKV, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(printfFn, {rbrace});
+            return;
+        }
+
         // Check if it's a list - try to find element type
         llvm::Type *elemTy = nullptr;
         auto it = list_element_types_.find(val);

@@ -5,7 +5,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **6 つの組み込み型 + ユーザー定義型 + タプル + リスト** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`
+- **6 つの組み込み型 + ユーザー定義型 + タプル + リスト + マップ** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`、リスト型 `list[T]`、マップ型 `map[K, V]`
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
@@ -153,6 +153,16 @@ fn first(xs: list[int]) -> int:
 
 print(first(xs))   # 1
 
+# マップ型
+let m = {"a": 1, "b": 2}
+print(m["a"])       # 1
+print(len(m))       # 2
+print(m)            # {a: 1, b: 2}
+
+m["c"] = 3          # キー追加
+m["a"] = 99         # 値更新
+print(m.has_key("a"))  # true
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -208,6 +218,7 @@ x = 10  # 行末コメント
 | Option\<T\> | { i1, T } | `Some(42)`, `None` |
 | (T1, T2, ...) | LLVM StructType (literal) | `(1, 3.14)`, `(a, b, c)` |
 | list[T] | ptr (ヒープ確保) | `[1, 2, 3]`, `["a", "b"]` |
+| map[K, V] | ptr (ヒープ確保) | `{"a": 1, "b": 2}` |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
@@ -242,10 +253,11 @@ x = 10  # 行末コメント
 
 | 関数 | 説明 |
 |---|---|
-| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None` / `[...]`） |
+| `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None` / `[...]` / `{...}`） |
 | `Some(expr)` | Option 型の値ありバリアントを構築 |
 | `unwrap(opt)` | Option 値を取り出す（None ならランタイムエラーで exit(1)） |
-| `len(list)` | リストの要素数を返す |
+| `len(list_or_map)` | リストまたはマップの要素数を返す |
+| `has_key(map, key)` | マップにキーが存在するかを bool で返す（UFCS: `m.has_key(k)`） |
 
 ### 制御構文
 
@@ -329,7 +341,7 @@ count = count + 1
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, `list[T]`, およびユーザー定義型名
+使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, `list[T]`, `map[K, V]`, およびユーザー定義型名
 
 #### 型定義（構造体）
 
@@ -428,6 +440,45 @@ print(first(xs))  # 1
 - 空リスト `[]` は型推論できないためエラー
 - 範囲外アクセス（負のインデックス含む）はランタイムエラーで exit(1)
 - `int`, `float`, `bool`, `str` の要素をサポート
+
+#### マップ型
+
+マップはキーと値のペアを保持する型です（Python の辞書に相当）。ヒープ上に確保されます。
+
+```python
+# マップリテラル
+let m = {"a": 1, "b": 2}
+
+# 型アノテーション付き
+let m: map[str, int] = {"a": 1, "b": 2}
+
+# キーアクセス
+print(m["a"])    # 1
+
+# キー代入（挿入/更新）
+m["c"] = 3      # 新規キー追加
+m["a"] = 99     # 既存キー更新
+
+# 長さ取得
+print(len(m))    # 3
+
+# マップ全体の表示
+print(m)         # {a: 99, b: 2, c: 3}
+
+# キー存在チェック（UFCS）
+print(m.has_key("a"))  # true
+print(m.has_key("z"))  # false
+
+# 関数の引数に
+fn get_val(m: map[str, int], k: str) -> int:
+    return m[k]
+```
+
+- 全キーが同じ型、全値が同じ型でなければコンパイルエラー
+- 空マップ `{}` は型推論できないためエラー
+- 存在しないキーへのアクセスはランタイムエラーで exit(1)
+- キーの検索は線形スキャン（`str` は `strcmp`、その他は値比較）
+- 容量超過時は自動的に2倍に拡張
 
 #### モジュールインポート
 

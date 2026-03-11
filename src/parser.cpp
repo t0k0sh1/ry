@@ -138,7 +138,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Const)
         return parseLetOrConst();
 
-    // identifier-leading statements: assignment or function call
+    // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
         parseError(first.line, "expected 'let', 'const', 'if', 'while', 'fn', 'return', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
@@ -146,6 +146,24 @@ StmtNode Parser::parseStatement() {
     Token next = lex_.peek();
     if (next.kind == TokenKind::Colon) {
         parseError(next.line, "type annotation requires 'let' or 'const'");
+    } else if (next.kind == TokenKind::LBracket) {
+        // index assignment: ident[expr] = value
+        lex_.next(); // consume '['
+        ExprPtr index = parseLogicalOr();
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']'");
+        lex_.next(); // consume ']'
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError("expected '=' after index expression");
+        lex_.next(); // consume '='
+        ExprPtr val = parseLogicalOr();
+        IndexAssignStmt s;
+        auto obj = std::make_unique<ExprNode>();
+        obj->data = VariableExpr{first.value};
+        s.object = std::move(obj);
+        s.index = std::move(index);
+        s.value = std::move(val);
+        return s;
     } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
@@ -159,7 +177,7 @@ StmtNode Parser::parseStatement() {
         s.args = parseArgList();
         return s;
     }
-    parseError(next.line, "expected '=', or '(' after identifier");
+    parseError(next.line, "expected '=', '[', or '(' after identifier");
 }
 
 // ===== A4: parseLetOrConst =====
@@ -380,6 +398,37 @@ ExprPtr Parser::parsePrimary() {
         node->data = VariableExpr{t.value};
         return node;
     }
+    if (t.kind == TokenKind::LBrace) {
+        lex_.next(); // consume '{'
+        auto map = std::make_unique<MapExpr>();
+        if (lex_.peek().kind == TokenKind::RBrace) {
+            parseError(t.line, "empty map literal requires type annotation (use let m: map[K, V] = ...)");
+        }
+        // Parse key: value pairs
+        ExprPtr key = parseLogicalOr();
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' after map key");
+        lex_.next(); // consume ':'
+        ExprPtr val = parseLogicalOr();
+        map->keys.push_back(std::move(key));
+        map->values.push_back(std::move(val));
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            ExprPtr k = parseLogicalOr();
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after map key");
+            lex_.next(); // consume ':'
+            ExprPtr v = parseLogicalOr();
+            map->keys.push_back(std::move(k));
+            map->values.push_back(std::move(v));
+        }
+        if (lex_.peek().kind != TokenKind::RBrace)
+            parseError("expected '}'");
+        lex_.next(); // consume '}'
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(map);
+        return node;
+    }
     if (t.kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
         auto list = std::make_unique<ListExpr>();
@@ -574,10 +623,20 @@ std::string Parser::parseTypeName() {
     if (lex_.peek().kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
         std::string inner = parseTypeName();
-        if (lex_.peek().kind != TokenKind::RBracket)
-            parseError("expected ']' in list type");
-        lex_.next(); // consume ']'
-        name += "[" + inner + "]";
+        if (name == "map" && lex_.peek().kind == TokenKind::Comma) {
+            // map[K, V] parsing
+            lex_.next(); // consume ','
+            std::string valueTy = parseTypeName();
+            if (lex_.peek().kind != TokenKind::RBracket)
+                parseError("expected ']' in map type");
+            lex_.next(); // consume ']'
+            name += "[" + inner + ", " + valueTy + "]";
+        } else {
+            if (lex_.peek().kind != TokenKind::RBracket)
+                parseError("expected ']' in list type");
+            lex_.next(); // consume ']'
+            name += "[" + inner + "]";
+        }
     } else if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();

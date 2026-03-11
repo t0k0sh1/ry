@@ -580,3 +580,30 @@ TEST(LexerTest, CommentLineDoesNotChangeIndent) {
     for (size_t i = 0; i < expected.size(); ++i)
         EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
 }
+
+// ===== Map: LBrace/RBrace トークンテスト =====
+
+TEST(LexerTest, LBrace) {
+    auto toks = tokenize("{");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::LBrace);
+    EXPECT_EQ(toks[0].value, "{");
+}
+
+TEST(LexerTest, RBrace) {
+    auto toks = tokenize("}");
+    ASSERT_GE(toks.size(), 1u);
+    EXPECT_EQ(toks[0].kind, TokenKind::RBrace);
+    EXPECT_EQ(toks[0].value, "}");
+}
+
+TEST(LexerTest, MapLiteralTokens) {
+    auto toks = tokenize("{\"a\": 1}");
+    std::vector<TokenKind> expected = {
+        TokenKind::LBrace, TokenKind::String, TokenKind::Colon,
+        TokenKind::Number, TokenKind::RBrace, TokenKind::Eof
+    };
+    ASSERT_EQ(toks.size(), expected.size());
+    for (size_t i = 0; i < expected.size(); ++i)
+        EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
+}

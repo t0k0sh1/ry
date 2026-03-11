@@ -662,3 +662,41 @@ TEST(ParserTest, UFCSWithFieldAccess) {
     ASSERT_TRUE(std::holds_alternative<VariableExpr>(fa.object->data));
     EXPECT_EQ(std::get<VariableExpr>(fa.object->data).name, "p");
 }
+
+// ===== Map パーステスト =====
+
+TEST(ParserTest, MapLiteral) {
+    Program prog = parseStr("let m = {\"a\": 1, \"b\": 2}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    EXPECT_EQ(s.name, "m");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MapExpr>>(s.value->data));
+    const auto &map = *std::get<std::unique_ptr<MapExpr>>(s.value->data);
+    ASSERT_EQ(map.keys.size(), 2u);
+    ASSERT_EQ(map.values.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(map.keys[0]->data));
+    EXPECT_EQ(std::get<StringExpr>(map.keys[0]->data).value, "a");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(map.values[0]->data));
+    EXPECT_EQ(std::get<NumberExpr>(map.values[0]->data).value, 1);
+}
+
+TEST(ParserTest, IndexAssignStmt) {
+    Program prog = parseStr("let m = {\"a\": 1}\nm[\"b\"] = 2");
+    ASSERT_EQ(prog.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[1]));
+    const auto &s = std::get<IndexAssignStmt>(prog[1]);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.object->data));
+    EXPECT_EQ(std::get<VariableExpr>(s.object->data).name, "m");
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.index->data));
+    EXPECT_EQ(std::get<StringExpr>(s.index->data).value, "b");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 2);
+}
+
+TEST(ParserTest, MapTypeAnnotation) {
+    Program prog = parseStr("let m: map[str, int] = {\"a\": 1}");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "map[str, int]");
+}
