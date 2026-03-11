@@ -1459,6 +1459,112 @@ TEST_F(CodeGenTest, MapHasKey) {
     EXPECT_EQ(runSource(src), "true\nfalse\n");
 }
 
+// ===== 文字列メソッドテスト =====
+
+TEST_F(CodeGenTest, StringLen) {
+    EXPECT_EQ(runSource("print(len(\"hello\"))"), "5\n");
+}
+
+TEST_F(CodeGenTest, StringLenEmpty) {
+    EXPECT_EQ(runSource("print(len(\"\"))"), "0\n");
+}
+
+TEST_F(CodeGenTest, StringLenUFCS) {
+    EXPECT_EQ(runSource("let s = \"hello\"\nprint(s.len())"), "5\n");
+}
+
+TEST_F(CodeGenTest, StringEqual) {
+    std::string src =
+        "let a = \"hello\"\n"
+        "let b = \"hello\"\n"
+        "print(a == b)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringNotEqual) {
+    std::string src =
+        "let a = \"hello\"\n"
+        "let b = \"world\"\n"
+        "print(a != b)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringEqualFalse) {
+    EXPECT_EQ(runSource("print(\"abc\" == \"def\")"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringNotEqualFalse) {
+    EXPECT_EQ(runSource("print(\"abc\" != \"abc\")"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringConcat) {
+    std::string src =
+        "let a = \"hello\"\n"
+        "let b = \" world\"\n"
+        "print(a + b)";
+    EXPECT_EQ(runSource(src), "hello world\n");
+}
+
+TEST_F(CodeGenTest, StringConcatLiterals) {
+    EXPECT_EQ(runSource("print(\"foo\" + \"bar\")"), "foobar\n");
+}
+
+TEST_F(CodeGenTest, StringConcatEmpty) {
+    EXPECT_EQ(runSource("print(\"hello\" + \"\")"), "hello\n");
+}
+
+TEST_F(CodeGenTest, StringContains) {
+    std::string src =
+        "let s = \"hello world\"\n"
+        "print(contains(s, \"world\"))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringContainsFalse) {
+    EXPECT_EQ(runSource("print(contains(\"hello\", \"xyz\"))"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringContainsUFCS) {
+    std::string src =
+        "let s = \"hello world\"\n"
+        "print(s.contains(\"hello\"))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringStartsWith) {
+    EXPECT_EQ(runSource("print(starts_with(\"hello world\", \"hello\"))"), "true\n");
+}
+
+TEST_F(CodeGenTest, StringStartsWithFalse) {
+    EXPECT_EQ(runSource("print(starts_with(\"hello world\", \"world\"))"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringStartsWithUFCS) {
+    std::string src =
+        "let s = \"hello\"\n"
+        "print(s.starts_with(\"hel\"))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, StringEndsWith) {
+    EXPECT_EQ(runSource("print(ends_with(\"hello world\", \"world\"))"), "true\n");
+}
+
+TEST_F(CodeGenTest, StringEndsWithFalse) {
+    EXPECT_EQ(runSource("print(ends_with(\"hello world\", \"hello\"))"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringEndsWithSuffixTooLong) {
+    EXPECT_EQ(runSource("print(ends_with(\"hi\", \"hello\"))"), "false\n");
+}
+
+TEST_F(CodeGenTest, StringEndsWithUFCS) {
+    std::string src =
+        "let s = \"hello\"\n"
+        "print(s.ends_with(\"llo\"))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
 TEST_F(CodeGenTest, MapTypeMismatch) {
     EXPECT_THROW(runSource("let m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
 }

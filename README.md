@@ -27,6 +27,12 @@ let c: bool = true
 # 文字列
 let greeting: str = "hello"
 print(greeting)
+print(len(greeting))               # 5
+print("hello" + " world")          # hello world
+print("hello" == "hello")          # true
+print(greeting.contains("ell"))    # true
+print(greeting.starts_with("hel")) # true
+print(greeting.ends_with("llo"))   # true
 
 # 型推論による変数宣言
 let x = 10 + 3 * 2
@@ -274,6 +280,8 @@ x = 10  # 行末コメント
 - `**` は常に float を返す（libm `pow` を使用）
 - `%` は両辺が int なら int、片方でも float なら float
 - `+` `-` `*` は片方が float なら float に昇格
+- `+` は両辺が str の場合、文字列結合を返す
+- `==` `!=` は両辺が str の場合、文字列比較を行う（`<` `<=` `>` `>=` は未対応）
 - ビット演算子は int のみ（float を渡すとエラー）
 - 比較演算子は bool を返す
 
@@ -284,8 +292,11 @@ x = 10  # 行末コメント
 | `print(expr)` | 値を標準出力に表示（型に応じて `%ld` / `%g` / `true`/`false` / `%s` / `Some(...)` / `None` / `[...]` / `{...}`） |
 | `Some(expr)` | Option 型の値ありバリアントを構築 |
 | `unwrap(opt)` | Option 値を取り出す（None ならランタイムエラーで exit(1)） |
-| `len(list_or_map)` | リストまたはマップの要素数を返す |
+| `len(list_or_map_or_str)` | リスト・マップの要素数、または文字列の長さを返す |
 | `has_key(map, key)` | マップにキーが存在するかを bool で返す（UFCS: `m.has_key(k)`） |
+| `contains(str, sub)` | 文字列に部分文字列が含まれるかを bool で返す（UFCS: `s.contains("x")`） |
+| `starts_with(str, prefix)` | 文字列が指定の接頭辞で始まるかを bool で返す（UFCS: `s.starts_with("x")`） |
+| `ends_with(str, suffix)` | 文字列が指定の接尾辞で終わるかを bool で返す（UFCS: `s.ends_with("x")`） |
 
 ### 制御構文
 

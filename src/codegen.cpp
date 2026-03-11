@@ -484,6 +484,19 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+    // String comparison via strcmp
+    if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+        if (op != "==" && op != "!=")
+            throw std::runtime_error("strings only support == and != comparison");
+        auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+        auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+        llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
+        llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
+        if (op == "==")
+            return builder_.CreateICmpEQ(cmp, zero, "str_eq");
+        return builder_.CreateICmpNE(cmp, zero, "str_ne");
+    }
+
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
 
@@ -540,6 +553,27 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         llvm::FunctionType *powTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
         llvm::FunctionCallee powFn = mod_->getOrInsertFunction("pow", powTy);
         return builder_.CreateCall(powFn, {lhs, rhs}, "pow");
+    }
+
+    // String concatenation
+    if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto strcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto strcpyFn = mod_->getOrInsertFunction("strcpy", strcpyTy);
+        auto strcatTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto strcatFn = mod_->getOrInsertFunction("strcat", strcatTy);
+
+        llvm::Value *lenL = builder_.CreateCall(strlenFn, {lhs}, "len_l");
+        llvm::Value *lenR = builder_.CreateCall(strlenFn, {rhs}, "len_r");
+        llvm::Value *total = builder_.CreateAdd(lenL, lenR, "total_len");
+        total = builder_.CreateAdd(total, llvm::ConstantInt::get(i64Ty_, 1), "total_plus_null");
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {total}, "concat_buf");
+        builder_.CreateCall(strcpyFn, {buf, lhs});
+        builder_.CreateCall(strcatFn, {buf, rhs});
+        return buf;
     }
 
     // // 整数除算: f64入力はi64に変換してからsdiv
@@ -1107,16 +1141,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("len() takes exactly 1 argument");
         llvm::Value *ptr = emitExpr(*e->args[0]);
         if (ptr->getType() != ptrTy_)
-            throw std::runtime_error("len() requires list or map argument");
+            throw std::runtime_error("len() requires list, map, or str argument");
         // Check if it's a map
         llvm::Type *mapKeyTy = getMapKeyType(ptr);
         if (mapKeyTy) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, ptr, 0, "map_len_ptr");
             return builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
         }
-        // List
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
-        return builder_.CreateLoad(i64Ty_, lenPtr, "len");
+        // Check if it's a list
+        if (getListElementType(ptr)) {
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
+            return builder_.CreateLoad(i64Ty_, lenPtr, "len");
+        }
+        // String: call strlen
+        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+        return builder_.CreateCall(strlenFn, {ptr}, "str_len");
     }
 
     // Some(x) → Option<T> constructor
@@ -1170,6 +1210,78 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("has_key() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
+    }
+
+    // contains(s, sub) → bool
+    if (e->callee == "contains") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("contains() takes exactly 2 arguments");
+        llvm::Value *s = emitExpr(*e->args[0]);
+        llvm::Value *sub = emitExpr(*e->args[1]);
+        if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
+            throw std::runtime_error("contains() requires str arguments");
+        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+        llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
+        llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        return builder_.CreateICmpNE(result, null, "contains");
+    }
+
+    // starts_with(s, prefix) → bool
+    if (e->callee == "starts_with") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("starts_with() takes exactly 2 arguments");
+        llvm::Value *s = emitExpr(*e->args[0]);
+        llvm::Value *prefix = emitExpr(*e->args[1]);
+        if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
+            throw std::runtime_error("starts_with() requires str arguments");
+        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
+        llvm::Value *cmp = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
+        return builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
+    }
+
+    // ends_with(s, suffix) → bool
+    if (e->callee == "ends_with") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("ends_with() takes exactly 2 arguments");
+        llvm::Value *s = emitExpr(*e->args[0]);
+        llvm::Value *suffix = emitExpr(*e->args[1]);
+        if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
+            throw std::runtime_error("ends_with() requires str arguments");
+        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
+        llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
+
+        // if suffixLen > sLen, return false; else strncmp(s + offset, suffix, suffixLen) == 0
+        llvm::Value *tooLong = builder_.CreateICmpUGT(suffixLen, sLen, "too_long");
+
+        llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "ew.check", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ew.merge", fn_);
+        llvm::BasicBlock *curBB = builder_.GetInsertBlock();
+
+        builder_.CreateCondBr(tooLong, mergeBB, checkBB);
+
+        // checkBB: compute strncmp
+        builder_.SetInsertPoint(checkBB);
+        llvm::Value *offset = builder_.CreateSub(sLen, suffixLen, "offset");
+        llvm::Value *tailPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, offset, "tail_ptr");
+        llvm::Value *cmp = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
+        llvm::Value *match = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match");
+        builder_.CreateBr(mergeBB);
+
+        // mergeBB: PHI
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ends_with");
+        phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
+        phi->addIncoming(match, checkBB);
+        return phi;
     }
 
     auto sit = struct_types_.find(e->callee);
