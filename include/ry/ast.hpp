@@ -17,13 +17,15 @@ struct UnaryExpr;
 
 struct CallExpr;
 struct FieldAccessExpr;
+struct TupleExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
                  std::unique_ptr<UnaryExpr>,
                  std::unique_ptr<CallExpr>,
-                 std::unique_ptr<FieldAccessExpr>> data;
+                 std::unique_ptr<FieldAccessExpr>,
+                 std::unique_ptr<TupleExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -45,6 +47,10 @@ struct CallExpr {
 struct FieldAccessExpr {
     ExprPtr object;
     std::string field;
+};
+
+struct TupleExpr {
+    std::vector<ExprPtr> elements;
 };
 
 struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };

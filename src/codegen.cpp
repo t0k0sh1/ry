@@ -502,6 +502,30 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
 
+    // Tuple type: "(int, float)"
+    if (!typeName.empty() && typeName.front() == '(') {
+        // Parse element types from "(T1, T2, ...)"
+        std::string inner = typeName.substr(1, typeName.size() - 2); // strip parens
+        std::vector<llvm::Type*> elementTypes;
+        size_t depth = 0;
+        size_t start = 0;
+        for (size_t i = 0; i <= inner.size(); ++i) {
+            if (i < inner.size() && inner[i] == '(') ++depth;
+            else if (i < inner.size() && inner[i] == ')') --depth;
+            else if ((i == inner.size() || inner[i] == ',') && depth == 0) {
+                std::string elem = inner.substr(start, i - start);
+                // trim leading/trailing spaces
+                size_t s = elem.find_first_not_of(' ');
+                size_t e = elem.find_last_not_of(' ');
+                if (s != std::string::npos)
+                    elem = elem.substr(s, e - s + 1);
+                elementTypes.push_back(resolveType(elem));
+                start = i + 1;
+            }
+        }
+        return llvm::StructType::get(*ctx_, elementTypes);
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -719,6 +743,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     if (!structTy)
         throw std::runtime_error("field access on non-struct type");
 
+    // Numeric index access for tuples (.0, .1, ...)
+    if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
+        unsigned idx = std::stoul(e->field);
+        if (idx >= structTy->getNumElements())
+            throw std::runtime_error("tuple index " + e->field + " out of range");
+        return builder_.CreateExtractValue(obj, idx, "tuple." + e->field);
+    }
+
     std::string typeName = structTy->getName().str();
     auto it = struct_types_.find(typeName);
     if (it == struct_types_.end())
@@ -731,6 +763,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     }
 
     throw std::runtime_error("type '" + typeName + "' has no field '" + e->field + "'");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
+    std::vector<llvm::Type*> types;
+    std::vector<llvm::Value*> vals;
+    for (auto &el : e->elements) {
+        llvm::Value *v = emitExpr(*el);
+        types.push_back(v->getType());
+        vals.push_back(v);
+    }
+    llvm::StructType *tupleType = llvm::StructType::get(*ctx_, types);
+    llvm::Value *result = llvm::UndefValue::get(tupleType);
+    for (unsigned i = 0; i < vals.size(); ++i)
+        result = builder_.CreateInsertValue(result, vals[i], i);
+    return result;
 }
 
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {

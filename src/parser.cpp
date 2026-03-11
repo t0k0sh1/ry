@@ -382,11 +382,27 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::LParen) {
         lex_.next();
-        ExprPtr e = parseLogicalOr();
+        ExprPtr first = parseLogicalOr();
+        if (lex_.peek().kind == TokenKind::Comma) {
+            // Tuple literal: (expr, expr, ...)
+            auto tuple = std::make_unique<TupleExpr>();
+            tuple->elements.push_back(std::move(first));
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                tuple->elements.push_back(parseLogicalOr());
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')'");
+            lex_.next();
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(tuple);
+            return node;
+        }
+        // Grouping: (expr)
         if (lex_.peek().kind != TokenKind::RParen)
             parseError("expected ')'");
         lex_.next();
-        return e;
+        return first;
     }
     parseError(t.line, "unexpected token '" + t.value + "'");
 }
@@ -517,6 +533,21 @@ StmtNode Parser::parseTypeStatement() {
 }
 
 std::string Parser::parseTypeName() {
+    // Tuple type: (int, float)
+    if (lex_.peek().kind == TokenKind::LParen) {
+        lex_.next(); // consume '('
+        std::string name = "(" + parseTypeName();
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            name += ", " + parseTypeName();
+        }
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' in tuple type");
+        lex_.next(); // consume ')'
+        name += ")";
+        return name;
+    }
+
     Token t = lex_.peek();
     if (t.kind != TokenKind::Ident)
         parseError(t.line, "expected type name");
@@ -540,9 +571,9 @@ ExprPtr Parser::parsePostfix() {
     while (lex_.peek().kind == TokenKind::Dot) {
         lex_.next(); // consume '.'
         Token field = lex_.peek();
-        if (field.kind != TokenKind::Ident)
-            parseError(field.line, "expected field name after '.'");
-        lex_.next(); // consume field name
+        if (field.kind != TokenKind::Ident && field.kind != TokenKind::Number)
+            parseError(field.line, "expected field name or index after '.'");
+        lex_.next(); // consume field name/number
         if (lex_.peek().kind == TokenKind::LParen) {
             // UFCS: a.f(b, c) → f(a, b, c)
             lex_.next(); // consume '('

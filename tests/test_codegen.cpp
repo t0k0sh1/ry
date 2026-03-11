@@ -959,6 +959,83 @@ TEST_F(CodeGenTest, OptionReassignNoneToSome) {
     EXPECT_EQ(runSource(src), "Some(99)\n");
 }
 
+// ===== タプル型テスト =====
+
+TEST_F(CodeGenTest, TupleCreateAndAccess) {
+    std::string src =
+        "let t = (10, 20)\n"
+        "print(t.0)\n"
+        "print(t.1)";
+    EXPECT_EQ(runSource(src), "10\n20\n");
+}
+
+TEST_F(CodeGenTest, TupleMixedTypes) {
+    std::string src =
+        "let t = (42, 3.14)\n"
+        "print(t.0)\n"
+        "print(t.1)";
+    EXPECT_EQ(runSource(src), "42\n3.14\n");
+}
+
+TEST_F(CodeGenTest, TupleWithTypeAnnotation) {
+    std::string src =
+        "let t: (int, float) = (42, 3.14)\n"
+        "print(t.0)\n"
+        "print(t.1)";
+    EXPECT_EQ(runSource(src), "42\n3.14\n");
+}
+
+TEST_F(CodeGenTest, TupleThreeElements) {
+    std::string src =
+        "let t = (1, 2, 3)\n"
+        "print(t.0)\n"
+        "print(t.1)\n"
+        "print(t.2)";
+    EXPECT_EQ(runSource(src), "1\n2\n3\n");
+}
+
+TEST_F(CodeGenTest, TupleFnReturn) {
+    std::string src =
+        "fn swap(a: int, b: int) -> (int, int):\n"
+        "    return (b, a)\n"
+        "let result = swap(1, 2)\n"
+        "print(result.0)\n"
+        "print(result.1)";
+    EXPECT_EQ(runSource(src), "2\n1\n");
+}
+
+TEST_F(CodeGenTest, TupleFnReturnAccessDirect) {
+    std::string src =
+        "fn make_pair(a: int, b: float) -> (int, float):\n"
+        "    return (a, b)\n"
+        "let p = make_pair(42, 3.14)\n"
+        "print(p.0)\n"
+        "print(p.1)";
+    EXPECT_EQ(runSource(src), "42\n3.14\n");
+}
+
+TEST_F(CodeGenTest, TupleIndexOutOfRangeThrows) {
+    std::string src =
+        "let t = (1, 2)\n"
+        "print(t.2)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TupleTypeAnnotationMismatchThrows) {
+    std::string src = "let t: (int, int) = (1, 3.14)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TupleLetAssign) {
+    std::string src =
+        "let a = (1, 2)\n"
+        "let x = a.0\n"
+        "let y = a.1\n"
+        "print(x)\n"
+        "print(y)";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
 // ===== import 統合テスト =====
 
 class ImportTest : public CodeGenTest {

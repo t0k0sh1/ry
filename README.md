@@ -5,7 +5,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **6 つの組み込み型 + ユーザー定義型** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義
+- **6 つの組み込み型 + ユーザー定義型 + タプル** — `int` (i64)、`float` (f64)、`bool` (i1)、`str` (ptr)、`Unit` (void)、`Option<T>` (nullable)、`type` による構造体定義、タプル型 `(T1, T2, ...)`
 - **豊富な演算子** — 算術・比較・論理・ビット演算をサポート
 - **let / const** — `let x = 42`（変数）/ `const x = 42`（定数）による明示的宣言
 - **型アノテーション** — `let a: int = 10` のように明示的な型宣言が可能
@@ -128,6 +128,19 @@ fn double(n: int) -> int:
 
 print(x.add(2).double())  # double(add(x, 2)) → 6
 
+# タプル型
+let t = (1, 3.14)
+print(t.0)
+print(t.1)
+
+# タプルを返す関数
+fn swap(a: int, b: int) -> (int, int):
+    return (b, a)
+
+let result = swap(1, 2)
+print(result.0)
+print(result.1)
+
 # モジュールインポート
 from math import add, sub
 print(add(1, 2))
@@ -181,7 +194,8 @@ x = 10  # 行末コメント
 | str | ptr | `"hello"`, `""` |
 | Unit | void | 戻り値なし関数の戻り値型 |
 | Option\<T\> | { i1, T } | `Some(42)`, `None` |
-| ユーザー定義型 | LLVM StructType | `type Point: ...` で定義 |
+| (T1, T2, ...) | LLVM StructType (literal) | `(1, 3.14)`, `(a, b, c)` |
+| ユーザー定義型 | LLVM StructType (named) | `type Point: ...` で定義 |
 
 ### 演算子（優先順位: 高→低）
 
@@ -301,7 +315,7 @@ count = count + 1
 
 型アノテーションを付けた場合、右辺の式の型がアノテーションと一致しなければコンパイルエラーになります。暗黙的な型変換は行いません（例: `let a: float = 10` はエラー）。
 
-使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, およびユーザー定義型名
+使用可能な型名: `int`, `float`, `bool`, `str`, `Unit`, `Option<T>`, `(T1, T2, ...)`, およびユーザー定義型名
 
 #### 型定義（構造体）
 
@@ -334,6 +348,35 @@ type Line:
 - 同一フィールド名の重複定義はエラー
 - フィールドへの代入（`p.x = 10`）は未対応
 - `print()` に構造体を直接渡すとエラー
+
+#### タプル型
+
+タプルは複数の値をまとめて扱うための型です。関数から複数の値を返す場合に便利です。
+
+```python
+# タプルリテラル
+let t = (1, 3.14)
+
+# 型アノテーション付き
+let t: (int, float) = (1, 3.14)
+
+# 要素アクセス（.0, .1, ...）
+print(t.0)    # 1
+print(t.1)    # 3.14
+
+# 関数の戻り値にタプル
+fn swap(a: int, b: int) -> (int, int):
+    return (b, a)
+
+let result = swap(1, 2)
+print(result.0)  # 2
+print(result.1)  # 1
+```
+
+- タプルは LLVM の literal StructType として実装（構造的等価）
+- 要素へのアクセスは `.0`, `.1`, ... のインデックス記法
+- 範囲外のインデックスはコンパイルエラー
+- `print()` にタプルを直接渡すとエラー（要素ごとにアクセスして出力）
 
 #### モジュールインポート
 

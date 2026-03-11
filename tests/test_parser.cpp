@@ -532,6 +532,71 @@ TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("type Point:\n    x: int\n    x: int"), std::runtime_error);
 }
 
+// ===== タプル パーサーテスト =====
+
+TEST(ParserTest, TupleLiteral) {
+    Program prog = parseStr("let t = (1, 2)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 2u);
+    EXPECT_EQ(std::get<NumberExpr>(tuple.elements[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(tuple.elements[1]->data).value, 2);
+}
+
+TEST(ParserTest, TupleMixedTypes) {
+    Program prog = parseStr("let t = (1, 3.14)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<NumberExpr>(tuple.elements[0]->data));
+    EXPECT_TRUE(std::holds_alternative<FloatExpr>(tuple.elements[1]->data));
+}
+
+TEST(ParserTest, TupleThreeElements) {
+    Program prog = parseStr("let t = (1, 2, 3)");
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 3u);
+}
+
+TEST(ParserTest, TupleTypeAnnotation) {
+    Program prog = parseStr("let t: (int, float) = (1, 3.14)");
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "(int, float)");
+}
+
+TEST(ParserTest, TupleIndexAccess) {
+    // t.0 → FieldAccessExpr with field "0"
+    Program prog = parseStr("let x = t.0");
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
+    const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
+    EXPECT_EQ(fa.field, "0");
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(fa.object->data));
+    EXPECT_EQ(std::get<VariableExpr>(fa.object->data).name, "t");
+}
+
+TEST(ParserTest, FnReturnTupleType) {
+    Program prog = parseStr("fn swap(a: int, b: int) -> (int, int):\n    return (b, a)");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.return_type, "(int, int)");
+}
+
+TEST(ParserTest, ParenGroupingStillWorks) {
+    // Single expression in parens is still grouping, not tuple
+    Program prog = parseStr("let x = (1 + 2) * 3");
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(outer.op, "*");
+}
+
 // ===== UFCS パーサーテスト =====
 
 TEST(ParserTest, UFCSBasic) {

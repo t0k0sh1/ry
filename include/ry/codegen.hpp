@@ -89,6 +89,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CallExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<TupleExpr> &e);
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
