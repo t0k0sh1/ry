@@ -21,7 +21,7 @@ private:
     void skipNewlines();
     StmtNode parseImportStatement();
     StmtNode parseStatement();
-    StmtNode parseLetOrConst();
+    StmtNode parseLetOrVar();
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();

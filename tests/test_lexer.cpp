@@ -272,15 +272,15 @@ TEST(LexerTest, KeywordLet) {
     EXPECT_EQ(toks[0].value, "let");
 }
 
-TEST(LexerTest, KeywordConst) {
-    auto toks = tokenize("const");
+TEST(LexerTest, KeywordVar) {
+    auto toks = tokenize("var");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Const);
-    EXPECT_EQ(toks[0].value, "const");
+    EXPECT_EQ(toks[0].kind, TokenKind::Var);
+    EXPECT_EQ(toks[0].value, "var");
 }
 
-TEST(LexerTest, LetterAndConstantAreIdent) {
-    for (const auto &word : {"letter", "constant", "letting", "constructor"}) {
+TEST(LexerTest, LetterAndVariableAreIdent) {
+    for (const auto &word : {"letter", "variable", "letting", "variant"}) {
         auto toks = tokenize(word);
         ASSERT_EQ(toks.size(), 2u) << "word: " << word;
         EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;

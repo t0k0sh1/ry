@@ -159,18 +159,18 @@ StmtNode Parser::parseStatement() {
         return ContinueStmt{};
     }
 
-    // A4: let / const declaration
-    if (first.kind == TokenKind::Let || first.kind == TokenKind::Const)
-        return parseLetOrConst();
+    // A4: let / var declaration
+    if (first.kind == TokenKind::Let || first.kind == TokenKind::Var)
+        return parseLetOrVar();
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'match', 'describe', 'expect', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'match', 'describe', 'expect', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
     if (next.kind == TokenKind::Colon) {
-        parseError(next.line, "type annotation requires 'let' or 'const'");
+        parseError(next.line, "type annotation requires 'let' or 'var'");
     } else if (next.kind == TokenKind::LBracket) {
         // index assignment: ident[expr] = value
         lex_.next(); // consume '['
@@ -257,11 +257,11 @@ StmtNode Parser::parseStatement() {
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '.', '[', or '(' after identifier");
 }
 
-// ===== A4: parseLetOrConst =====
+// ===== A4: parseLetOrVar =====
 
-StmtNode Parser::parseLetOrConst() {
-    Token first = lex_.next(); // consume let/const
-    bool isConst = (first.kind == TokenKind::Const);
+StmtNode Parser::parseLetOrVar() {
+    Token first = lex_.next(); // consume let/var
+    bool isVar = (first.kind == TokenKind::Var);
 
     Token id = lex_.peek();
     if (id.kind != TokenKind::Ident)
@@ -280,8 +280,8 @@ StmtNode Parser::parseLetOrConst() {
 
     ExprPtr value = parseLogicalOr();
 
-    if (isConst) {
-        ConstStmt s;
+    if (isVar) {
+        VarStmt s;
         s.name = id.value;
         s.type_annotation = typeAnnotation;
         s.value = std::move(value);

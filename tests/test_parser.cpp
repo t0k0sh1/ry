@@ -18,11 +18,11 @@ TEST(ParserTest, LetSimpleInt) {
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
 
-TEST(ParserTest, ConstSimpleInt) {
-    Program prog = parseStr("const x = 42");
+TEST(ParserTest, VarSimpleInt) {
+    Program prog = parseStr("var x = 42");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<ConstStmt>(prog[0]));
-    const auto &s = std::get<ConstStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<VarStmt>(prog[0]));
+    const auto &s = std::get<VarStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     EXPECT_FALSE(s.type_annotation.has_value());
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
@@ -40,9 +40,9 @@ TEST(ParserTest, LetWithTypeAnnotation) {
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
 
-TEST(ParserTest, ConstWithTypeAnnotation) {
-    Program prog = parseStr("const y: float = 3.14");
-    const auto &s = std::get<ConstStmt>(prog[0]);
+TEST(ParserTest, VarWithTypeAnnotation) {
+    Program prog = parseStr("var y: float = 3.14");
+    const auto &s = std::get<VarStmt>(prog[0]);
     EXPECT_EQ(s.name, "y");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "float");
@@ -58,9 +58,9 @@ TEST(ParserTest, LetFloat) {
 }
 
 TEST(ParserTest, AssignStmt) {
-    Program prog = parseStr("let x = 1\nx = 2");
+    Program prog = parseStr("var x = 1\nx = 2");
     ASSERT_EQ(prog.size(), 2u);
-    ASSERT_TRUE(std::holds_alternative<LetStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<VarStmt>(prog[0]));
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
     const auto &assign = std::get<AssignStmt>(prog[1]);
     EXPECT_EQ(assign.name, "x");
@@ -322,8 +322,8 @@ TEST(ParserTest, BareAssignmentWithoutDeclaration) {
     EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "x");
 }
 
-TEST(ParserTest, TypeAnnotationWithoutLetOrConstThrows) {
-    // x: int = 10 はエラー（let/const が必要）
+TEST(ParserTest, TypeAnnotationWithoutLetOrVarThrows) {
+    // x: int = 10 はエラー（let/var が必要）
     EXPECT_THROW(parseStr("x: int = 10"), std::runtime_error);
 }
 

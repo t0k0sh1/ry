@@ -73,7 +73,7 @@ TEST_F(CodeGenTest, PrintInteger) {
 }
 
 TEST_F(CodeGenTest, PrintNegativeInteger) {
-    EXPECT_EQ(runSource("let x = -10\nprint(x)"), "-10\n");
+    EXPECT_EQ(runSource("var x = -10\nprint(x)"), "-10\n");
 }
 
 TEST_F(CodeGenTest, PrintFloat) {
@@ -151,7 +151,7 @@ TEST_F(CodeGenTest, NotNotTrue) {
 }
 
 TEST_F(CodeGenTest, VariableReassignment) {
-    EXPECT_EQ(runSource("let x = 1\nx = 2\nprint(x)"), "2\n");
+    EXPECT_EQ(runSource("var x = 1\nx = 2\nprint(x)"), "2\n");
 }
 
 TEST_F(CodeGenTest, MultipleStatements) {
@@ -288,8 +288,8 @@ TEST_F(CodeGenTest, LetStringVariable) {
     EXPECT_EQ(runSource("let s = \"world\"\nprint(s)"), "world\n");
 }
 
-TEST_F(CodeGenTest, ConstStringVariable) {
-    EXPECT_EQ(runSource("const s = \"hello\"\nprint(s)"), "hello\n");
+TEST_F(CodeGenTest, LetStringImmutable) {
+    EXPECT_EQ(runSource("let s = \"hello\"\nprint(s)"), "hello\n");
 }
 
 TEST_F(CodeGenTest, StringTypeAnnotation) {
@@ -307,27 +307,27 @@ TEST_F(CodeGenTest, IntTypeAnnotationStrThrows) {
 // ===== 型変更再代入テスト =====
 
 TEST_F(CodeGenTest, TypeChangeIntToFloatThrows) {
-    EXPECT_THROW(runSource("let x = 1\nx = 1.5\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("var x = 1\nx = 1.5\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TypeChangeFloatToIntThrows) {
-    EXPECT_THROW(runSource("let x = 1.5\nx = 2\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("var x = 1.5\nx = 2\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TypeChangeIntToBoolThrows) {
-    EXPECT_THROW(runSource("let x = 1\nx = true\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("var x = 1\nx = true\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TypeChangeBoolToIntThrows) {
-    EXPECT_THROW(runSource("let x = true\nx = 1\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("var x = true\nx = 1\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, SameTypeReassignmentFloat) {
-    EXPECT_EQ(runSource("let x = 1.5\nx = 2.5\nprint(x)"), "2.5\n");
+    EXPECT_EQ(runSource("var x = 1.5\nx = 2.5\nprint(x)"), "2.5\n");
 }
 
 TEST_F(CodeGenTest, TypeChangeAfterUseThrows) {
-    EXPECT_THROW(runSource("let x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
+    EXPECT_THROW(runSource("var x = 1\nprint(x)\nx = 1.5"), std::runtime_error);
 }
 
 // ===== 型アノテーションテスト =====
@@ -356,22 +356,22 @@ TEST_F(CodeGenTest, TypeAnnotationBoolMismatchThrows) {
     EXPECT_THROW(runSource("let a: bool = 10"), std::runtime_error);
 }
 
-// ===== let / const テスト =====
+// ===== let / var テスト =====
 
 TEST_F(CodeGenTest, LetPrint) {
     EXPECT_EQ(runSource("let x = 10\nprint(x)"), "10\n");
 }
 
-TEST_F(CodeGenTest, ConstPrint) {
-    EXPECT_EQ(runSource("const x = 10\nprint(x)"), "10\n");
+TEST_F(CodeGenTest, VarPrint) {
+    EXPECT_EQ(runSource("var x = 10\nprint(x)"), "10\n");
 }
 
-TEST_F(CodeGenTest, LetReassign) {
-    EXPECT_EQ(runSource("let x = 1\nx = 2\nprint(x)"), "2\n");
+TEST_F(CodeGenTest, VarReassign) {
+    EXPECT_EQ(runSource("var x = 1\nx = 2\nprint(x)"), "2\n");
 }
 
-TEST_F(CodeGenTest, ConstReassignThrows) {
-    EXPECT_THROW(runSource("const x = 1\nx = 2"), std::runtime_error);
+TEST_F(CodeGenTest, LetReassignThrows) {
+    EXPECT_THROW(runSource("let x = 1\nx = 2"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, UndeclaredAssignThrows) {
@@ -382,12 +382,12 @@ TEST_F(CodeGenTest, RedeclaredLetThrows) {
     EXPECT_THROW(runSource("let x = 1\nlet x = 2"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, RedeclaredConstThrows) {
-    EXPECT_THROW(runSource("const x = 1\nconst x = 2"), std::runtime_error);
+TEST_F(CodeGenTest, RedeclaredVarThrows) {
+    EXPECT_THROW(runSource("var x = 1\nvar x = 2"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, ConstWithTypeAnnotation) {
-    EXPECT_EQ(runSource("const x: int = 42\nprint(x)"), "42\n");
+TEST_F(CodeGenTest, LetWithTypeAnnotation) {
+    EXPECT_EQ(runSource("let x: int = 42\nprint(x)"), "42\n");
 }
 
 // ===== if/elif/else codegen テスト =====
@@ -434,7 +434,7 @@ TEST_F(CodeGenTest, IfElifElseChainElse) {
 
 TEST_F(CodeGenTest, IfVariableReassignment) {
     std::string src =
-        "let x = 0\n"
+        "var x = 0\n"
         "if true:\n"
         "    x = 42\n"
         "print(x)";
@@ -478,7 +478,7 @@ TEST_F(CodeGenTest, WhileFalseDoesNotExecute) {
 
 TEST_F(CodeGenTest, WhileCountdown) {
     std::string src =
-        "let i = 3\n"
+        "var i = 3\n"
         "while i > 0:\n"
         "    print(i)\n"
         "    i = i - 1";
@@ -487,7 +487,7 @@ TEST_F(CodeGenTest, WhileCountdown) {
 
 TEST_F(CodeGenTest, WhileFollowedByStatement) {
     std::string src =
-        "let i = 0\n"
+        "var i = 0\n"
         "while i < 2:\n"
         "    i = i + 1\n"
         "print(i)";
@@ -500,9 +500,9 @@ TEST_F(CodeGenTest, WhileZeroCondition) {
 
 TEST_F(CodeGenTest, WhileNestedWhile) {
     std::string src =
-        "let i = 0\n"
+        "var i = 0\n"
         "while i < 2:\n"
-        "    let j = 0\n"
+        "    var j = 0\n"
         "    while j < 2:\n"
         "        print(i + j)\n"
         "        j = j + 1\n"
@@ -512,7 +512,7 @@ TEST_F(CodeGenTest, WhileNestedWhile) {
 
 TEST_F(CodeGenTest, WhileWithIf) {
     std::string src =
-        "let i = 1\n"
+        "var i = 1\n"
         "while i <= 4:\n"
         "    if i % 2 == 0:\n"
         "        print(i)\n"
@@ -625,7 +625,7 @@ TEST_F(CodeGenTest, BlockScopeIfVarNotVisible) {
 
 TEST_F(CodeGenTest, BlockScopeWhileVarNotVisible) {
     std::string src =
-        "let i = 1\n"
+        "var i = 1\n"
         "while i > 0:\n"
         "    let x = 99\n"
         "    i = 0\n"
@@ -645,7 +645,7 @@ TEST_F(CodeGenTest, BlockScopeElseVarNotVisible) {
 
 TEST_F(CodeGenTest, BlockScopeInnerAccessesOuter) {
     std::string src =
-        "let x = 1\n"
+        "var x = 1\n"
         "if true:\n"
         "    x = 42\n"
         "print(x)";
@@ -662,10 +662,10 @@ TEST_F(CodeGenTest, BlockScopeShadowing) {
     EXPECT_EQ(runSource(src), "99\n1\n");
 }
 
-TEST_F(CodeGenTest, BlockScopeConstNotLeaks) {
+TEST_F(CodeGenTest, BlockScopeLetNotLeaks) {
     std::string src =
         "if true:\n"
-        "    const c = 10\n"
+        "    let c = 10\n"
         "let c = 20\n"
         "print(c)";
     EXPECT_EQ(runSource(src), "20\n");
@@ -945,7 +945,7 @@ TEST_F(CodeGenTest, NoneWithoutAnnotationThrows) {
 
 TEST_F(CodeGenTest, OptionReassignSomeToNone) {
     std::string src =
-        "let x: Option<int> = Some(42)\n"
+        "var x: Option<int> = Some(42)\n"
         "x = None\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
@@ -953,7 +953,7 @@ TEST_F(CodeGenTest, OptionReassignSomeToNone) {
 
 TEST_F(CodeGenTest, OptionReassignNoneToSome) {
     std::string src =
-        "let x: Option<int> = None\n"
+        "var x: Option<int> = None\n"
         "x = Some(99)\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(99)\n");
@@ -1871,7 +1871,7 @@ TEST_F(CodeGenTest, ForLoopRangeStartEnd) {
 TEST_F(CodeGenTest, ForLoopAccumulate) {
     std::string src =
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let sum = 0\n"
+        "var sum = 0\n"
         "for x in xs:\n"
         "    sum = sum + x\n"
         "print(sum)";
@@ -1898,7 +1898,7 @@ TEST_F(CodeGenTest, ForLoopStringList) {
 
 TEST_F(CodeGenTest, CompoundAssignPlus) {
     std::string src =
-        "let x = 10\n"
+        "var x = 10\n"
         "x += 5\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "15\n");
@@ -1906,7 +1906,7 @@ TEST_F(CodeGenTest, CompoundAssignPlus) {
 
 TEST_F(CodeGenTest, CompoundAssignMinus) {
     std::string src =
-        "let x = 10\n"
+        "var x = 10\n"
         "x -= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "7\n");
@@ -1914,7 +1914,7 @@ TEST_F(CodeGenTest, CompoundAssignMinus) {
 
 TEST_F(CodeGenTest, CompoundAssignStar) {
     std::string src =
-        "let x = 4\n"
+        "var x = 4\n"
         "x *= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "12\n");
@@ -1922,7 +1922,7 @@ TEST_F(CodeGenTest, CompoundAssignStar) {
 
 TEST_F(CodeGenTest, CompoundAssignSlash) {
     std::string src =
-        "let x = 10.0\n"
+        "var x = 10.0\n"
         "x /= 4.0\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "2.5\n");
@@ -1930,7 +1930,7 @@ TEST_F(CodeGenTest, CompoundAssignSlash) {
 
 TEST_F(CodeGenTest, CompoundAssignPercent) {
     std::string src =
-        "let x = 10\n"
+        "var x = 10\n"
         "x %= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "1\n");
@@ -1938,7 +1938,7 @@ TEST_F(CodeGenTest, CompoundAssignPercent) {
 
 TEST_F(CodeGenTest, CompoundAssignInLoop) {
     std::string src =
-        "let sum = 0\n"
+        "var sum = 0\n"
         "for i in range(1, 6):\n"
         "    sum += i\n"
         "print(sum)";
@@ -1949,7 +1949,7 @@ TEST_F(CodeGenTest, CompoundAssignInLoop) {
 
 TEST_F(CodeGenTest, BreakInWhile) {
     std::string src =
-        "let i = 0\n"
+        "var i = 0\n"
         "while true:\n"
         "    if i == 5:\n"
         "        break\n"
@@ -1988,8 +1988,8 @@ TEST_F(CodeGenTest, BreakInNestedLoop) {
 
 TEST_F(CodeGenTest, ContinueInWhile) {
     std::string src =
-        "let i = 0\n"
-        "let sum = 0\n"
+        "var i = 0\n"
+        "var sum = 0\n"
         "while i < 10:\n"
         "    i += 1\n"
         "    if i % 2 == 0:\n"
@@ -2006,7 +2006,7 @@ TEST_F(CodeGenTest, StructFieldAssign) {
         "type Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1, 2)\n"
+        "var p = Point(1, 2)\n"
         "p.x = 10\n"
         "print(p.x)\n"
         "print(p.y)";
@@ -2018,7 +2018,7 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
         "type Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(0, 0)\n"
+        "var p = Point(0, 0)\n"
         "p.x = 3\n"
         "p.y = 4\n"
         "print(p.x)\n"
@@ -2026,12 +2026,12 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
     EXPECT_EQ(runSource(src), "3\n4\n");
 }
 
-TEST_F(CodeGenTest, StructFieldAssignConstError) {
+TEST_F(CodeGenTest, StructFieldAssignLetError) {
     std::string src =
         "type Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "const p = Point(1, 2)\n"
+        "let p = Point(1, 2)\n"
         "p.x = 10";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -2261,7 +2261,7 @@ TEST_F(CodeGenTest, SetInFunction) {
 TEST_F(CodeGenTest, SetForIn) {
     std::string src =
         "let s = {10, 20, 30}\n"
-        "let total = 0\n"
+        "var total = 0\n"
         "for x in s:\n"
         "    total += x\n"
         "print(total)";
@@ -2563,7 +2563,7 @@ TEST_F(CodeGenTest, UnionLetStr) {
 
 TEST_F(CodeGenTest, UnionReassign) {
     std::string src =
-        "let x: int | str = 42\n"
+        "var x: int | str = 42\n"
         "print(x)\n"
         "x = \"hello\"\n"
         "print(x)\n";

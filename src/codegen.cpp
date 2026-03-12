@@ -329,8 +329,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         const_scope_stack_.back().insert(name);
 }
 
-void CodeGen::emitStmt(LetStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, false); }
-void CodeGen::emitStmt(ConstStmt &s) { emitVarDecl(s.name, s.type_annotation, *s.value, true); }
+void CodeGen::emitStmt(LetStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, true); }
+void CodeGen::emitStmt(VarStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, false); }
 
 void CodeGen::emitStmt(AssignStmt &s) {
     llvm::AllocaInst *ptr = findVar(s.name);
@@ -338,7 +338,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         throw std::runtime_error("undeclared variable: " + s.name);
 
     if (isConst(s.name))
-        throw std::runtime_error("cannot reassign const variable: " + s.name);
+        throw std::runtime_error("cannot reassign let variable: " + s.name);
 
     // Handle None literal in assignment
     if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
@@ -627,7 +627,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         throw std::runtime_error("undefined variable: " + varExpr->name);
 
     if (isConst(varExpr->name))
-        throw std::runtime_error("cannot modify field of const variable: " + varExpr->name);
+        throw std::runtime_error("cannot modify field of let variable: " + varExpr->name);
 
     llvm::Type *varTy = ptr->getAllocatedType();
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
@@ -2431,7 +2431,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, LetStmt>) {
                 scanExpr(*s.value);
-            } else if constexpr (std::is_same_v<T, ConstStmt>) {
+            } else if constexpr (std::is_same_v<T, VarStmt>) {
                 scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, AssignStmt>) {
                 scanExpr(*s.value);

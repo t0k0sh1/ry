@@ -87,8 +87,8 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
-struct ConstStmt  { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };
+struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // immutable
+struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // mutable
 struct AssignStmt { std::string name; ExprPtr value; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
 
@@ -139,7 +139,7 @@ struct ExpectStmt {
     int line;
 };
 
-using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
+using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt,

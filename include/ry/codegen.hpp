@@ -109,7 +109,7 @@ private:
                      ExprNode &value, bool is_const);
 
     void emitStmt(LetStmt &s);
-    void emitStmt(ConstStmt &s);
+    void emitStmt(VarStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);
