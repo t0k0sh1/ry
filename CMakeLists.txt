@@ -35,6 +35,11 @@ add_library(ry_lib STATIC
     src/lexer.cpp
     src/parser.cpp
     src/codegen.cpp
+    src/codegen_builtin.cpp
+    src/codegen_stmt.cpp
+    src/codegen_expr.cpp
+    src/codegen_call.cpp
+    src/codegen_lambda.cpp
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
@@ -57,6 +62,9 @@ add_executable(ry_tests
     tests/test_lexer.cpp
     tests/test_parser.cpp
     tests/test_codegen.cpp
+    tests/test_codegen_stmt.cpp
+    tests/test_codegen_collection.cpp
+    tests/test_codegen_advanced.cpp
     tests/test_project_config.cpp
 )
 target_link_libraries(ry_tests PRIVATE
