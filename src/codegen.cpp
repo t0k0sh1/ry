@@ -2386,6 +2386,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                scanExpr(*s->subject);
+                for (auto &arm : s->arms) {
+                    if (arm.guard) scanExpr(*arm.guard);
+                    for (auto &st : arm.body) scanStmt(st);
+                }
             }
         }, stmt);
     };
@@ -3043,4 +3049,225 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
     // Continue block
     builder_.SetInsertPoint(contBB);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
+    llvm::Value *subject = emitExpr(*s->subject);
+    llvm::Type *subjectTy = subject->getType();
+
+    // --- Exhaustiveness check ---
+    bool hasWildcardOrVar = false;
+    bool hasGuardedArm = false;
+    for (auto &arm : s->arms) {
+        if (std::holds_alternative<WildcardPattern>(arm.pattern) ||
+            std::holds_alternative<VariablePattern>(arm.pattern)) {
+            if (!arm.guard)
+                hasWildcardOrVar = true;
+        }
+        if (arm.guard)
+            hasGuardedArm = true;
+    }
+
+    if (!hasWildcardOrVar) {
+        // Check enum exhaustiveness
+        std::string enumName;
+        for (auto &arm : s->arms) {
+            if (auto *ep = std::get_if<EnumPattern>(&arm.pattern)) {
+                enumName = ep->enum_name;
+                break;
+            }
+        }
+        if (!enumName.empty()) {
+            auto it = enum_types_.find(enumName);
+            if (it != enum_types_.end()) {
+                std::unordered_set<std::string> covered;
+                for (auto &arm : s->arms) {
+                    if (auto *ep = std::get_if<EnumPattern>(&arm.pattern)) {
+                        if (!arm.guard)
+                            covered.insert(ep->variant_name);
+                    }
+                }
+                for (auto &[vname, _] : it->second.variants) {
+                    if (!covered.count(vname))
+                        throw std::runtime_error("non-exhaustive match: missing variant '" +
+                            enumName + "::" + vname + "'");
+                }
+            }
+        }
+
+        // Check Option exhaustiveness
+        bool hasSome = false, hasNone = false;
+        for (auto &arm : s->arms) {
+            if (std::holds_alternative<SomePattern>(arm.pattern) && !arm.guard)
+                hasSome = true;
+            if (std::holds_alternative<NonePattern>(arm.pattern) && !arm.guard)
+                hasNone = true;
+        }
+        if ((hasSome && !hasNone) || (!hasSome && hasNone))
+            throw std::runtime_error("non-exhaustive match: Option requires both Some and None cases (or use '_')");
+
+        // Check bool exhaustiveness
+        bool hasTrue = false, hasFalse = false;
+        for (auto &arm : s->arms) {
+            if (auto *lp = std::get_if<LiteralPattern>(&arm.pattern)) {
+                if (auto *be = std::get_if<BoolExpr>(&lp->value->data)) {
+                    if (be->value && !arm.guard) hasTrue = true;
+                    if (!be->value && !arm.guard) hasFalse = true;
+                }
+            }
+        }
+        if (subjectTy == i1Ty_ && !(hasTrue && hasFalse) && !hasWildcardOrVar)
+            throw std::runtime_error("non-exhaustive match: bool requires both true and false cases (or use '_')");
+
+        // For int/float/string literals without wildcard
+        if (enumName.empty() && !hasSome && !hasNone && !hasTrue && !hasFalse)
+            throw std::runtime_error("non-exhaustive match: literal patterns require a wildcard '_' case");
+    }
+
+    // --- Code generation: chain of conditional branches ---
+    llvm::BasicBlock *matchEndBB = llvm::BasicBlock::Create(*ctx_, "match.end", fn_);
+
+    // Store subject for potential repeated use
+    llvm::AllocaInst *subjectAlloca = builder_.CreateAlloca(subjectTy, nullptr, "match.subject");
+    builder_.CreateStore(subject, subjectAlloca);
+
+    // Track enum type for subject
+    std::string subjectEnumType;
+    {
+        auto evIt = enum_value_types_.find(subject);
+        if (evIt != enum_value_types_.end()) {
+            subjectEnumType = evIt->second;
+        } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(subject)) {
+            evIt = enum_value_types_.find(load->getPointerOperand());
+            if (evIt != enum_value_types_.end())
+                subjectEnumType = evIt->second;
+        }
+        if (!subjectEnumType.empty())
+            enum_value_types_[subjectAlloca] = subjectEnumType;
+    }
+
+    for (size_t i = 0; i < s->arms.size(); ++i) {
+        auto &arm = s->arms[i];
+        llvm::BasicBlock *armBodyBB = llvm::BasicBlock::Create(*ctx_, "match.arm.body", fn_);
+        llvm::BasicBlock *nextArmBB = (i + 1 < s->arms.size())
+            ? llvm::BasicBlock::Create(*ctx_, "match.arm.test", fn_)
+            : matchEndBB;
+
+        llvm::Value *subjectVal = builder_.CreateLoad(subjectTy, subjectAlloca, "match.subj");
+
+        // Generate pattern test
+        llvm::Value *testResult = nullptr;
+        std::visit([&](auto &pat) {
+            using T = std::decay_t<decltype(pat)>;
+            if constexpr (std::is_same_v<T, WildcardPattern>) {
+                testResult = llvm::ConstantInt::get(i1Ty_, 1);
+            } else if constexpr (std::is_same_v<T, LiteralPattern>) {
+                llvm::Value *litVal = emitExpr(*pat.value);
+                if (subjectTy == i64Ty_ && litVal->getType() == i64Ty_) {
+                    testResult = builder_.CreateICmpEQ(subjectVal, litVal, "match.eq");
+                } else if (subjectTy == f64Ty_ && litVal->getType() == f64Ty_) {
+                    testResult = builder_.CreateFCmpOEQ(subjectVal, litVal, "match.feq");
+                } else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_) {
+                    testResult = builder_.CreateICmpEQ(subjectVal, litVal, "match.beq");
+                } else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
+                    auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                    auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                    llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
+                    testResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match.streq");
+                } else {
+                    throw std::runtime_error("match: incompatible types in literal pattern");
+                }
+            } else if constexpr (std::is_same_v<T, VariablePattern>) {
+                testResult = llvm::ConstantInt::get(i1Ty_, 1);
+            } else if constexpr (std::is_same_v<T, EnumPattern>) {
+                auto enumIt = enum_types_.find(pat.enum_name);
+                if (enumIt == enum_types_.end())
+                    throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                auto varIt = enumIt->second.variants.find(pat.variant_name);
+                if (varIt == enumIt->second.variants.end())
+                    throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
+            } else if constexpr (std::is_same_v<T, SomePattern>) {
+                if (!isOptionType(subjectTy))
+                    throw std::runtime_error("match: Some pattern requires Option type");
+                llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
+                testResult = hasValue;
+            } else if constexpr (std::is_same_v<T, NonePattern>) {
+                if (!isOptionType(subjectTy))
+                    throw std::runtime_error("match: None pattern requires Option type");
+                llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
+                testResult = builder_.CreateNot(hasValue, "is_none");
+            }
+        }, arm.pattern);
+
+        // For guarded arms with variable/Some bindings, we need to create
+        // bindings before evaluating the guard
+        if (arm.guard) {
+            // Create a pre-guard block for bindings
+            llvm::BasicBlock *guardBB = llvm::BasicBlock::Create(*ctx_, "match.guard", fn_);
+            builder_.CreateCondBr(testResult, guardBB, nextArmBB);
+            builder_.SetInsertPoint(guardBB);
+
+            pushScope();
+            // Create bindings
+            std::visit([&](auto &pat) {
+                using T = std::decay_t<decltype(pat)>;
+                if constexpr (std::is_same_v<T, VariablePattern>) {
+                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, pat.name);
+                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
+                    builder_.CreateStore(sv, varAlloca);
+                    if (!subjectEnumType.empty())
+                        enum_value_types_[varAlloca] = subjectEnumType;
+                } else if constexpr (std::is_same_v<T, SomePattern>) {
+                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
+                    llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
+                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
+                    builder_.CreateStore(inner, varAlloca);
+                }
+            }, arm.pattern);
+
+            // Evaluate guard
+            llvm::Value *guardVal = emitExpr(*arm.guard);
+            guardVal = toBool(guardVal);
+            popScope();
+
+            builder_.CreateCondBr(guardVal, armBodyBB, nextArmBB);
+        } else {
+            builder_.CreateCondBr(testResult, armBodyBB, nextArmBB);
+        }
+
+        // Arm body
+        builder_.SetInsertPoint(armBodyBB);
+        pushScope();
+
+        // Create pattern bindings in body scope
+        std::visit([&](auto &pat) {
+            using T = std::decay_t<decltype(pat)>;
+            if constexpr (std::is_same_v<T, VariablePattern>) {
+                llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, pat.name);
+                llvm::AllocaInst *varAlloca = getOrCreateVar(pat.name, subjectTy);
+                builder_.CreateStore(sv, varAlloca);
+                if (!subjectEnumType.empty())
+                    enum_value_types_[varAlloca] = subjectEnumType;
+            } else if constexpr (std::is_same_v<T, SomePattern>) {
+                llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
+                llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
+                llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
+                builder_.CreateStore(inner, varAlloca);
+            }
+        }, arm.pattern);
+
+        for (auto &stmt : arm.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        popScope();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(matchEndBB);
+
+        if (i + 1 < s->arms.size())
+            builder_.SetInsertPoint(nextArmBB);
+    }
+
+    builder_.SetInsertPoint(matchEndBB);
 }

@@ -73,6 +73,9 @@ enum class TokenKind {
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::
+    // --- match ---
+    Match,          // match
+    Case,           // case
     // --- test ---
     Describe,       // describe
     It,             // it

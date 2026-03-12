@@ -116,6 +116,7 @@ private:
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
     void emitStmt(std::unique_ptr<DescribeStmt> &s);
+    void emitStmt(std::unique_ptr<MatchStmt> &s);
     llvm::Value *toBool(llvm::Value *v);
 
     // Type promotion helpers (B1)

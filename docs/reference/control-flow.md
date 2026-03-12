@@ -153,11 +153,99 @@ for i in range(5):
 
 ---
 
+## match
+
+### 構文
+
+```python
+match 式:
+    case パターン:
+        # 本体
+    case パターン if ガード条件:
+        # ガード付き本体
+    case _:
+        # ワイルドカード（何にでもマッチ）
+```
+
+### パターンの種類
+
+| パターン | 例 | 説明 |
+|----------|-----|------|
+| ワイルドカード | `_` | 何にでもマッチ |
+| リテラル | `0`, `"hello"`, `true` | 値の等値比較 |
+| 変数束縛 | `n` | 何にでもマッチし、変数に束縛 |
+| enum バリアント | `Color::Red` | enum タグの比較 |
+| `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
+| `None` | `None` | Option が値なしの場合 |
+
+### guard 節
+
+`case パターン if 条件式:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
+
+### 網羅性チェック
+
+- enum 型: すべてのバリアントをカバーするか `_` が必要。
+- Option 型: `Some` と `None` の両方をカバーするか `_` が必要。
+- bool 型: `true` と `false` の両方をカバーするか `_` が必要。
+- int / float / str リテラル: `_` が必須。
+- ガード付きアームは網羅性にカウントされない。
+
+### 例
+
+```python
+# enum マッチ
+enum Color:
+    Red
+    Green
+    Blue
+
+match color:
+    case Color::Red:
+        print("red")
+    case Color::Green:
+        print("green")
+    case Color::Blue:
+        print("blue")
+
+# Option マッチ
+let x: Option<int> = Some(42)
+match x:
+    case Some(v):
+        print(v)
+    case None:
+        print("nothing")
+
+# リテラルマッチ
+match x:
+    case 0:
+        print("zero")
+    case 1:
+        print("one")
+    case _:
+        print("other")
+
+# guard 節
+match x:
+    case n if n > 0:
+        print("positive")
+    case n if n < 0:
+        print("negative")
+    case _:
+        print("zero")
+```
+
+### スコープルール
+
+- 各 `case` アームはブロックスコープを持つ。
+- 変数束縛パターン (`n`) や `Some(x)` で束縛された変数はそのアーム内でのみ有効。
+
+---
+
 ## スコープルール
 
 ### ブロックスコープ
 
-- `if` / `elif` / `else` / `while` / `for` の各ブロックはブロックスコープを持つ。
+- `if` / `elif` / `else` / `while` / `for` / `match` の各ブロックはブロックスコープを持つ。
 - ブロック内で宣言した変数はブロックの終了と同時にスコープから外れる。
 
 ```python

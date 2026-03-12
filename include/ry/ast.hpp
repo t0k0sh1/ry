@@ -130,6 +130,7 @@ struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
 struct DescribeStmt;
+struct MatchStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
@@ -146,7 +147,8 @@ using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<DescribeStmt>>;
+                              std::unique_ptr<DescribeStmt>,
+                              std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -193,4 +195,29 @@ struct ItBlock {
 struct DescribeStmt {
     std::string description;
     std::vector<ItBlock> cases;
+};
+
+// ===== Match patterns =====
+
+struct WildcardPattern {};
+struct LiteralPattern { ExprPtr value; };
+struct VariablePattern { std::string name; };
+struct EnumPattern { std::string enum_name; std::string variant_name; };
+struct SomePattern { std::string binding; };
+struct NonePattern {};
+
+using Pattern = std::variant<
+    WildcardPattern, LiteralPattern, VariablePattern,
+    EnumPattern, SomePattern, NonePattern
+>;
+
+struct MatchArm {
+    Pattern pattern;
+    ExprPtr guard;
+    std::vector<StmtNode> body;
+};
+
+struct MatchStmt {
+    ExprPtr subject;
+    std::vector<MatchArm> arms;
 };

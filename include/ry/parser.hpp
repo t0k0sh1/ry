@@ -31,6 +31,8 @@ private:
     StmtNode parseReturnStatement();
     StmtNode parseDescribeStatement();
     StmtNode parseExpectStatement();
+    StmtNode parseMatchStatement();
+    Pattern parsePattern();
     std::string parseTypeName();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();

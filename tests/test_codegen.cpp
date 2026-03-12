@@ -2347,3 +2347,200 @@ TEST_F(CodeGenTest, EnumMultiple) {
         "print(s)";
     EXPECT_EQ(runSource(src), "Green\nLarge\n");
 }
+
+// ===== Match statement tests =====
+
+TEST_F(CodeGenTest, MatchEnumAllVariants) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Green\n"
+        "match c:\n"
+        "    case Color::Red:\n"
+        "        print(\"red\")\n"
+        "    case Color::Green:\n"
+        "        print(\"green\")\n"
+        "    case Color::Blue:\n"
+        "        print(\"blue\")\n";
+    EXPECT_EQ(runSource(src), "green\n");
+}
+
+TEST_F(CodeGenTest, MatchEnumWithWildcard) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Blue\n"
+        "match c:\n"
+        "    case Color::Red:\n"
+        "        print(\"red\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "other\n");
+}
+
+TEST_F(CodeGenTest, MatchOptionSomeNone) {
+    std::string src =
+        "let x: Option<int> = Some(42)\n"
+        "match x:\n"
+        "    case Some(v):\n"
+        "        print(v)\n"
+        "    case None:\n"
+        "        print(\"nothing\")\n"
+        "let y: Option<int> = None\n"
+        "match y:\n"
+        "    case Some(v):\n"
+        "        print(v)\n"
+        "    case None:\n"
+        "        print(\"nothing\")\n";
+    EXPECT_EQ(runSource(src), "42\nnothing\n");
+}
+
+TEST_F(CodeGenTest, MatchIntLiteral) {
+    std::string src =
+        "let x = 2\n"
+        "match x:\n"
+        "    case 0:\n"
+        "        print(\"zero\")\n"
+        "    case 1:\n"
+        "        print(\"one\")\n"
+        "    case 2:\n"
+        "        print(\"two\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "two\n");
+}
+
+TEST_F(CodeGenTest, MatchStringLiteral) {
+    std::string src =
+        "let s = \"hello\"\n"
+        "match s:\n"
+        "    case \"world\":\n"
+        "        print(\"world\")\n"
+        "    case \"hello\":\n"
+        "        print(\"hello!\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "hello!\n");
+}
+
+TEST_F(CodeGenTest, MatchBoolLiteral) {
+    std::string src =
+        "let b = true\n"
+        "match b:\n"
+        "    case true:\n"
+        "        print(\"yes\")\n"
+        "    case false:\n"
+        "        print(\"no\")\n";
+    EXPECT_EQ(runSource(src), "yes\n");
+}
+
+TEST_F(CodeGenTest, MatchVariableBinding) {
+    std::string src =
+        "let x = 42\n"
+        "match x:\n"
+        "    case n:\n"
+        "        print(n)\n";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, MatchGuard) {
+    std::string src =
+        "let x = 5\n"
+        "match x:\n"
+        "    case n if n > 0:\n"
+        "        print(\"positive\")\n"
+        "    case n if n < 0:\n"
+        "        print(\"negative\")\n"
+        "    case _:\n"
+        "        print(\"zero\")\n";
+    EXPECT_EQ(runSource(src), "positive\n");
+}
+
+TEST_F(CodeGenTest, MatchGuardZero) {
+    std::string src =
+        "let x = 0\n"
+        "match x:\n"
+        "    case n if n > 0:\n"
+        "        print(\"positive\")\n"
+        "    case n if n < 0:\n"
+        "        print(\"negative\")\n"
+        "    case _:\n"
+        "        print(\"zero\")\n";
+    EXPECT_EQ(runSource(src), "zero\n");
+}
+
+TEST_F(CodeGenTest, MatchNonExhaustiveEnum) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "match c:\n"
+        "    case Color::Red:\n"
+        "        print(\"red\")\n"
+        "    case Color::Green:\n"
+        "        print(\"green\")\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MatchNonExhaustiveOption) {
+    std::string src =
+        "let x: Option<int> = Some(1)\n"
+        "match x:\n"
+        "    case Some(v):\n"
+        "        print(v)\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MatchNonExhaustiveBool) {
+    std::string src =
+        "let b = true\n"
+        "match b:\n"
+        "    case true:\n"
+        "        print(\"yes\")\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MatchNonExhaustiveLiteral) {
+    std::string src =
+        "let x = 1\n"
+        "match x:\n"
+        "    case 0:\n"
+        "        print(\"zero\")\n"
+        "    case 1:\n"
+        "        print(\"one\")\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, MatchNested) {
+    std::string src =
+        "enum Dir:\n"
+        "    Up\n"
+        "    Down\n"
+        "let d = Dir::Up\n"
+        "if true:\n"
+        "    match d:\n"
+        "        case Dir::Up:\n"
+        "            print(\"up\")\n"
+        "        case Dir::Down:\n"
+        "            print(\"down\")\n";
+    EXPECT_EQ(runSource(src), "up\n");
+}
+
+TEST_F(CodeGenTest, MatchNegativeLiteral) {
+    std::string src =
+        "let x = -1\n"
+        "match x:\n"
+        "    case -1:\n"
+        "        print(\"neg one\")\n"
+        "    case 0:\n"
+        "        print(\"zero\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "neg one\n");
+}

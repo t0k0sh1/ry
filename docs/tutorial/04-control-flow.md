@@ -181,4 +181,73 @@ print(x)       # 1
 
 ---
 
+## match
+
+`match` は値に応じた分岐を行う構文です。enum や Option を安全に処理できます。
+
+```python
+enum Color:
+    Red
+    Green
+    Blue
+
+let c = Color::Green
+match c:
+    case Color::Red:
+        print("red")
+    case Color::Green:
+        print("green")
+    case Color::Blue:
+        print("blue")
+# green
+```
+
+### Option のマッチ
+
+`unwrap()` の代わりに `match` を使うことで、`None` の場合も安全に処理できます。
+
+```python
+let x: Option<int> = Some(42)
+match x:
+    case Some(v):
+        print(v)
+    case None:
+        print("nothing")
+# 42
+```
+
+### ワイルドカードとリテラル
+
+`_` は何にでもマッチするワイルドカードパターンです。リテラル値（数値・文字列・真偽値）でもマッチできます。
+
+```python
+let n = 5
+match n:
+    case 0:
+        print("zero")
+    case 1:
+        print("one")
+    case _:
+        print("other")
+# other
+```
+
+### guard 節
+
+`if` でガード条件を追加できます。
+
+```python
+match n:
+    case x if x > 0:
+        print("positive")
+    case x if x < 0:
+        print("negative")
+    case _:
+        print("zero")
+```
+
+> **注意**: `match` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
+
+---
+
 [← 前: 演算子](03-operators.md) | [次: 関数 →](05-functions.md)

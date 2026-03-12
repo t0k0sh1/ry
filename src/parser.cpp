@@ -137,6 +137,9 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
 
+    if (first.kind == TokenKind::Match)
+        return parseMatchStatement();
+
     if (first.kind == TokenKind::If)
         return parseIfStatement();
 
@@ -162,7 +165,7 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'describe', 'expect', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'match', 'describe', 'expect', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -1165,4 +1168,151 @@ StmtNode Parser::parseExpectStatement() {
     lex_.next(); // consume ')'
 
     return es;
+}
+
+Pattern Parser::parsePattern() {
+    Token t = lex_.peek();
+
+    // Wildcard: _
+    if (t.kind == TokenKind::Ident && t.value == "_") {
+        lex_.next();
+        return WildcardPattern{};
+    }
+
+    // None pattern
+    if (t.kind == TokenKind::Ident && t.value == "None") {
+        lex_.next();
+        return NonePattern{};
+    }
+
+    // Some(binding) pattern
+    if (t.kind == TokenKind::Ident && t.value == "Some") {
+        lex_.next(); // consume 'Some'
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after 'Some'");
+        lex_.next(); // consume '('
+        Token binding = lex_.peek();
+        if (binding.kind != TokenKind::Ident)
+            parseError(binding.line, "expected variable name in Some pattern");
+        lex_.next(); // consume binding name
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' after Some binding");
+        lex_.next(); // consume ')'
+        return SomePattern{binding.value};
+    }
+
+    // Literal patterns: number, float, string, true, false
+    if (t.kind == TokenKind::Number) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = NumberExpr{std::stoll(t.value)};
+        return LiteralPattern{std::move(node)};
+    }
+    if (t.kind == TokenKind::Float) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = FloatExpr{std::stod(t.value)};
+        return LiteralPattern{std::move(node)};
+    }
+    if (t.kind == TokenKind::String) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = StringExpr{t.value};
+        return LiteralPattern{std::move(node)};
+    }
+    if (t.kind == TokenKind::True || t.kind == TokenKind::False) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = BoolExpr{t.kind == TokenKind::True};
+        return LiteralPattern{std::move(node)};
+    }
+
+    // Negative number literal: -N
+    if (t.kind == TokenKind::Minus) {
+        lex_.next(); // consume '-'
+        Token num = lex_.peek();
+        if (num.kind == TokenKind::Number) {
+            lex_.next();
+            auto node = std::make_unique<ExprNode>();
+            node->data = NumberExpr{-std::stoll(num.value)};
+            return LiteralPattern{std::move(node)};
+        }
+        if (num.kind == TokenKind::Float) {
+            lex_.next();
+            auto node = std::make_unique<ExprNode>();
+            node->data = FloatExpr{-std::stod(num.value)};
+            return LiteralPattern{std::move(node)};
+        }
+        parseError(num.line, "expected number after '-' in pattern");
+    }
+
+    // Identifier: could be Enum::Variant or variable binding
+    if (t.kind == TokenKind::Ident) {
+        lex_.next(); // consume ident
+        if (lex_.peek().kind == TokenKind::ColonColon) {
+            lex_.next(); // consume '::'
+            Token variant = lex_.peek();
+            if (variant.kind != TokenKind::Ident)
+                parseError(variant.line, "expected variant name after '::'");
+            lex_.next(); // consume variant name
+            return EnumPattern{t.value, variant.value};
+        }
+        return VariablePattern{t.value};
+    }
+
+    parseError(t.line, "expected pattern");
+}
+
+StmtNode Parser::parseMatchStatement() {
+    lex_.next(); // consume 'match'
+    ExprPtr subject = parseLogicalOr();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after match subject");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next(); // consume Indent
+
+    auto matchStmt = std::make_unique<MatchStmt>();
+    matchStmt->subject = std::move(subject);
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        if (lex_.peek().kind != TokenKind::Case)
+            parseError(lex_.peek().line, "expected 'case' in match block");
+        lex_.next(); // consume 'case'
+
+        MatchArm arm;
+        arm.pattern = parsePattern();
+
+        // Optional guard: if <expr>
+        if (lex_.peek().kind == TokenKind::If) {
+            lex_.next(); // consume 'if'
+            arm.guard = parseLogicalOr();
+        }
+
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' after case pattern");
+        lex_.next(); // consume ':'
+
+        arm.body = parseBlock();
+        matchStmt->arms.push_back(std::move(arm));
+
+        skipNewlines();
+    }
+
+    if (matchStmt->arms.empty())
+        parseError("match block must have at least one case");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return matchStmt;
 }
