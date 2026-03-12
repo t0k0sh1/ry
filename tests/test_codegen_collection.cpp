@@ -714,3 +714,338 @@ TEST_F(CodeGenTest, CompoundAssignInLoop) {
         "print(sum)";
     EXPECT_EQ(runSource(src), "15\n");
 }
+
+// ===== Phase 1: 基本文字列操作テスト =====
+
+TEST_F(CodeGenTest, ToIntBasic) {
+    EXPECT_EQ(runSource("print(to_int(\"42\"))"), "42\n");
+}
+
+TEST_F(CodeGenTest, ToIntNegative) {
+    EXPECT_EQ(runSource("print(to_int(\"-7\"))"), "-7\n");
+}
+
+TEST_F(CodeGenTest, ToIntZero) {
+    EXPECT_EQ(runSource("print(to_int(\"0\"))"), "0\n");
+}
+
+TEST_F(CodeGenTest, ToIntUFCS) {
+    EXPECT_EQ(runSource("let s = \"123\"\nprint(s.to_int())"), "123\n");
+}
+
+TEST_F(CodeGenTest, ToFloatBasic) {
+    EXPECT_EQ(runSource("print(to_float(\"3.14\"))"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, ToFloatInteger) {
+    EXPECT_EQ(runSource("print(to_float(\"42\"))"), "42\n");
+}
+
+TEST_F(CodeGenTest, ToFloatUFCS) {
+    EXPECT_EQ(runSource("let s = \"2.5\"\nprint(s.to_float())"), "2.5\n");
+}
+
+TEST_F(CodeGenTest, ToStrInt) {
+    EXPECT_EQ(runSource("print(to_str(42))"), "42\n");
+}
+
+TEST_F(CodeGenTest, ToStrNegativeInt) {
+    EXPECT_EQ(runSource("print(to_str(-7))"), "-7\n");
+}
+
+TEST_F(CodeGenTest, ToStrFloat) {
+    EXPECT_EQ(runSource("print(to_str(3.14))"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, ToStrBoolTrue) {
+    EXPECT_EQ(runSource("print(to_str(true))"), "true\n");
+}
+
+TEST_F(CodeGenTest, ToStrBoolFalse) {
+    EXPECT_EQ(runSource("print(to_str(false))"), "false\n");
+}
+
+TEST_F(CodeGenTest, ToStrStr) {
+    EXPECT_EQ(runSource("print(to_str(\"hello\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, ToStrUFCS) {
+    EXPECT_EQ(runSource("let x = 99\nprint(x.to_str())"), "99\n");
+}
+
+TEST_F(CodeGenTest, FindBasic) {
+    EXPECT_EQ(runSource("print(find(\"hello world\", \"world\"))"), "6\n");
+}
+
+TEST_F(CodeGenTest, FindNotFound) {
+    EXPECT_EQ(runSource("print(find(\"hello\", \"xyz\"))"), "-1\n");
+}
+
+TEST_F(CodeGenTest, FindAtStart) {
+    EXPECT_EQ(runSource("print(find(\"hello\", \"hel\"))"), "0\n");
+}
+
+TEST_F(CodeGenTest, FindEmpty) {
+    EXPECT_EQ(runSource("print(find(\"hello\", \"\"))"), "0\n");
+}
+
+TEST_F(CodeGenTest, FindUFCS) {
+    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.find(\"cd\"))"), "2\n");
+}
+
+TEST_F(CodeGenTest, SubstringBasic) {
+    EXPECT_EQ(runSource("print(substring(\"hello world\", 0, 5))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, SubstringMiddle) {
+    EXPECT_EQ(runSource("print(substring(\"hello world\", 6, 11))"), "world\n");
+}
+
+TEST_F(CodeGenTest, SubstringEmpty) {
+    EXPECT_EQ(runSource("print(substring(\"hello\", 2, 2))"), "\n");
+}
+
+TEST_F(CodeGenTest, SubstringUFCS) {
+    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.substring(1, 4))"), "bcd\n");
+}
+
+TEST_F(CodeGenTest, CharAtBasic) {
+    EXPECT_EQ(runSource("print(char_at(\"hello\", 0))"), "h\n");
+}
+
+TEST_F(CodeGenTest, CharAtMiddle) {
+    EXPECT_EQ(runSource("print(char_at(\"hello\", 4))"), "o\n");
+}
+
+TEST_F(CodeGenTest, CharAtUFCS) {
+    EXPECT_EQ(runSource("let s = \"abc\"\nprint(s.char_at(1))"), "b\n");
+}
+
+TEST_F(CodeGenTest, ReplaceBasic) {
+    EXPECT_EQ(runSource("print(replace(\"hello world\", \"world\", \"ry\"))"), "hello ry\n");
+}
+
+TEST_F(CodeGenTest, ReplaceMultiple) {
+    EXPECT_EQ(runSource("print(replace(\"aaa\", \"a\", \"bb\"))"), "bbbbbb\n");
+}
+
+TEST_F(CodeGenTest, ReplaceNotFound) {
+    EXPECT_EQ(runSource("print(replace(\"hello\", \"xyz\", \"abc\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, ReplaceEmpty) {
+    EXPECT_EQ(runSource("print(replace(\"hello\", \"l\", \"\"))"), "heo\n");
+}
+
+TEST_F(CodeGenTest, ReplaceUFCS) {
+    EXPECT_EQ(runSource("let s = \"foo bar foo\"\nprint(s.replace(\"foo\", \"baz\"))"), "baz bar baz\n");
+}
+
+// ===== Phase 2: テキスト変換テスト =====
+
+TEST_F(CodeGenTest, ToUpperBasic) {
+    EXPECT_EQ(runSource("print(to_upper(\"hello\"))"), "HELLO\n");
+}
+
+TEST_F(CodeGenTest, ToUpperMixed) {
+    EXPECT_EQ(runSource("print(to_upper(\"Hello World\"))"), "HELLO WORLD\n");
+}
+
+TEST_F(CodeGenTest, ToUpperAlreadyUpper) {
+    EXPECT_EQ(runSource("print(to_upper(\"ABC\"))"), "ABC\n");
+}
+
+TEST_F(CodeGenTest, ToUpperEmpty) {
+    EXPECT_EQ(runSource("print(to_upper(\"\"))"), "\n");
+}
+
+TEST_F(CodeGenTest, ToUpperUFCS) {
+    EXPECT_EQ(runSource("let s = \"hi\"\nprint(s.to_upper())"), "HI\n");
+}
+
+TEST_F(CodeGenTest, ToLowerBasic) {
+    EXPECT_EQ(runSource("print(to_lower(\"HELLO\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, ToLowerMixed) {
+    EXPECT_EQ(runSource("print(to_lower(\"Hello World\"))"), "hello world\n");
+}
+
+TEST_F(CodeGenTest, ToLowerAlreadyLower) {
+    EXPECT_EQ(runSource("print(to_lower(\"abc\"))"), "abc\n");
+}
+
+TEST_F(CodeGenTest, ToLowerEmpty) {
+    EXPECT_EQ(runSource("print(to_lower(\"\"))"), "\n");
+}
+
+TEST_F(CodeGenTest, ToLowerUFCS) {
+    EXPECT_EQ(runSource("let s = \"HI\"\nprint(s.to_lower())"), "hi\n");
+}
+
+TEST_F(CodeGenTest, TrimBasic) {
+    EXPECT_EQ(runSource("print(trim(\"  hello  \"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TrimTabs) {
+    EXPECT_EQ(runSource("print(trim(\"\\thello\\t\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TrimNoWhitespace) {
+    EXPECT_EQ(runSource("print(trim(\"hello\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TrimAllWhitespace) {
+    EXPECT_EQ(runSource("print(trim(\"   \"))"), "\n");
+}
+
+TEST_F(CodeGenTest, TrimEmpty) {
+    EXPECT_EQ(runSource("print(trim(\"\"))"), "\n");
+}
+
+TEST_F(CodeGenTest, TrimUFCS) {
+    EXPECT_EQ(runSource("let s = \"  hi  \"\nprint(s.trim())"), "hi\n");
+}
+
+TEST_F(CodeGenTest, TrimStartBasic) {
+    EXPECT_EQ(runSource("print(trim_start(\"  hello  \"))"), "hello  \n");
+}
+
+TEST_F(CodeGenTest, TrimStartNoWhitespace) {
+    EXPECT_EQ(runSource("print(trim_start(\"hello\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TrimStartUFCS) {
+    EXPECT_EQ(runSource("let s = \"  hi\"\nprint(s.trim_start())"), "hi\n");
+}
+
+TEST_F(CodeGenTest, TrimEndBasic) {
+    EXPECT_EQ(runSource("print(trim_end(\"  hello  \"))"), "  hello\n");
+}
+
+TEST_F(CodeGenTest, TrimEndNoWhitespace) {
+    EXPECT_EQ(runSource("print(trim_end(\"hello\"))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, TrimEndUFCS) {
+    EXPECT_EQ(runSource("let s = \"hi  \"\nprint(s.trim_end())"), "hi\n");
+}
+
+TEST_F(CodeGenTest, RepeatBasic) {
+    EXPECT_EQ(runSource("print(repeat(\"ab\", 3))"), "ababab\n");
+}
+
+TEST_F(CodeGenTest, RepeatOne) {
+    EXPECT_EQ(runSource("print(repeat(\"hello\", 1))"), "hello\n");
+}
+
+TEST_F(CodeGenTest, RepeatZero) {
+    EXPECT_EQ(runSource("print(repeat(\"hello\", 0))"), "\n");
+}
+
+TEST_F(CodeGenTest, RepeatUFCS) {
+    EXPECT_EQ(runSource("let s = \"ha\"\nprint(s.repeat(3))"), "hahaha\n");
+}
+
+TEST_F(CodeGenTest, ReverseBasic) {
+    EXPECT_EQ(runSource("print(reverse(\"hello\"))"), "olleh\n");
+}
+
+TEST_F(CodeGenTest, ReverseEmpty) {
+    EXPECT_EQ(runSource("print(reverse(\"\"))"), "\n");
+}
+
+TEST_F(CodeGenTest, ReverseSingleChar) {
+    EXPECT_EQ(runSource("print(reverse(\"a\"))"), "a\n");
+}
+
+TEST_F(CodeGenTest, ReversePalindrome) {
+    EXPECT_EQ(runSource("print(reverse(\"abcba\"))"), "abcba\n");
+}
+
+TEST_F(CodeGenTest, ReverseUFCS) {
+    EXPECT_EQ(runSource("let s = \"abc\"\nprint(s.reverse())"), "cba\n");
+}
+
+// ===== Phase 3: list[str] 連携テスト =====
+
+TEST_F(CodeGenTest, SplitBasic) {
+    std::string src =
+        "let parts = split(\"a,b,c\", \",\")\n"
+        "print(parts[0])\n"
+        "print(parts[1])\n"
+        "print(parts[2])";
+    EXPECT_EQ(runSource(src), "a\nb\nc\n");
+}
+
+TEST_F(CodeGenTest, SplitNoDelimiter) {
+    std::string src =
+        "let parts = split(\"hello\", \",\")\n"
+        "print(len(parts))\n"
+        "print(parts[0])";
+    EXPECT_EQ(runSource(src), "1\nhello\n");
+}
+
+TEST_F(CodeGenTest, SplitMultiCharDelim) {
+    std::string src =
+        "let parts = split(\"a::b::c\", \"::\")\n"
+        "print(parts[0])\n"
+        "print(parts[1])\n"
+        "print(parts[2])";
+    EXPECT_EQ(runSource(src), "a\nb\nc\n");
+}
+
+TEST_F(CodeGenTest, SplitLen) {
+    EXPECT_EQ(runSource("print(len(split(\"a,b,c,d\", \",\")))"), "4\n");
+}
+
+TEST_F(CodeGenTest, SplitUFCS) {
+    std::string src =
+        "let s = \"hello world\"\n"
+        "let parts = s.split(\" \")\n"
+        "print(parts[0])\n"
+        "print(parts[1])";
+    EXPECT_EQ(runSource(src), "hello\nworld\n");
+}
+
+TEST_F(CodeGenTest, SplitForLoop) {
+    std::string src =
+        "for part in split(\"x,y,z\", \",\"):\n"
+        "    print(part)";
+    EXPECT_EQ(runSource(src), "x\ny\nz\n");
+}
+
+TEST_F(CodeGenTest, JoinBasic) {
+    std::string src =
+        "let parts = [\"a\", \"b\", \"c\"]\n"
+        "print(join(parts, \",\"))";
+    EXPECT_EQ(runSource(src), "a,b,c\n");
+}
+
+TEST_F(CodeGenTest, JoinSingleElement) {
+    std::string src =
+        "let parts = [\"hello\"]\n"
+        "print(join(parts, \",\"))";
+    EXPECT_EQ(runSource(src), "hello\n");
+}
+
+TEST_F(CodeGenTest, JoinWithSpace) {
+    std::string src =
+        "let words = [\"hello\", \"world\"]\n"
+        "print(join(words, \" \"))";
+    EXPECT_EQ(runSource(src), "hello world\n");
+}
+
+TEST_F(CodeGenTest, JoinUFCS) {
+    std::string src =
+        "let parts = [\"x\", \"y\", \"z\"]\n"
+        "print(parts.join(\"-\"))";
+    EXPECT_EQ(runSource(src), "x-y-z\n");
+}
+
+TEST_F(CodeGenTest, SplitJoinRoundTrip) {
+    std::string src =
+        "let s = \"hello,world,ry\"\n"
+        "print(join(split(s, \",\"), \",\"))";
+    EXPECT_EQ(runSource(src), "hello,world,ry\n");
+}
