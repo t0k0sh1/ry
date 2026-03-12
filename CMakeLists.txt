@@ -38,6 +38,7 @@ add_library(ry_lib STATIC
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
+    src/project_config.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -56,6 +57,7 @@ add_executable(ry_tests
     tests/test_lexer.cpp
     tests/test_parser.cpp
     tests/test_codegen.cpp
+    tests/test_project_config.cpp
 )
 target_link_libraries(ry_tests PRIVATE
     ry_lib

@@ -39,4 +39,5 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [組み込み関数](reference/builtins.md) | print・len・Some・unwrap 等 |
 | [モジュールシステム](reference/modules.md) | from/import の文法と探索ルール |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
+| [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
 | [エラー一覧](reference/errors.md) | コンパイルエラーと実行時エラーの説明 |

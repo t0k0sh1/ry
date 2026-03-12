@@ -4,6 +4,7 @@
 #include "ry/codegen.hpp"
 #include "ry/jit.hpp"
 #include "ry/test_runtime.hpp"
+#include "ry/project_config.hpp"
 #include <cstring>
 #include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -17,6 +18,11 @@ using namespace llvm;
 using namespace llvm::orc;
 
 int main(int argc, char *argv[]) {
+    // Handle subcommands that don't need LLVM initialization
+    if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
+        return cmd_init();
+    }
+
     InitLLVM X(argc, argv);
 
     bool test_mode = false;
@@ -30,6 +36,7 @@ int main(int argc, char *argv[]) {
     } else {
         errs() << "Usage: ry <file.ry>\n";
         errs() << "       ry test <file.ry>\n";
+        errs() << "       ry init\n";
         return 1;
     }
 
