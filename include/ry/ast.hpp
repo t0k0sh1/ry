@@ -129,15 +129,24 @@ struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
+struct DescribeStmt;
+
+struct ExpectStmt {
+    ExprPtr actual;
+    std::string matcher;   // "to_eq", "to_be_true", "to_be_false", "to_be_none"
+    ExprPtr expected;      // to_eq only
+    int line;
+};
 
 using StmtNode = std::variant<LetStmt, ConstStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt,
-                              FieldAssignStmt, EnumStmt,
+                              FieldAssignStmt, EnumStmt, ExpectStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
-                              std::unique_ptr<FnStmt>>;
+                              std::unique_ptr<FnStmt>,
+                              std::unique_ptr<DescribeStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -174,4 +183,14 @@ struct LambdaExpr {
     std::string return_type;
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
+};
+
+struct ItBlock {
+    std::string description;
+    std::vector<StmtNode> body;
+};
+
+struct DescribeStmt {
+    std::string description;
+    std::vector<ItBlock> cases;
 };

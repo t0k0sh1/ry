@@ -276,7 +276,10 @@ Token Lexer::readToken() {
         if (id == "import") return {TokenKind::Import, "import", line_};
         if (id == "type")     return {TokenKind::Type,     "type",     line_};
         if (id == "operator") return {TokenKind::Operator, "operator", line_};
-        if (id == "enum")    return {TokenKind::Enum,     "enum",     line_};
+        if (id == "enum")     return {TokenKind::Enum,     "enum",     line_};
+        if (id == "describe") return {TokenKind::Describe, "describe", line_};
+        if (id == "it")       return {TokenKind::It,       "it",       line_};
+        if (id == "expect")   return {TokenKind::Expect,   "expect",   line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 

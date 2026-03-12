@@ -3,6 +3,8 @@
 #include "ry/module_loader.hpp"
 #include "ry/codegen.hpp"
 #include "ry/jit.hpp"
+#include "ry/test_runtime.hpp"
+#include <cstring>
 #include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
@@ -17,8 +19,17 @@ using namespace llvm::orc;
 int main(int argc, char *argv[]) {
     InitLLVM X(argc, argv);
 
-    if (argc != 2) {
+    bool test_mode = false;
+    const char *filename = nullptr;
+
+    if (argc == 2) {
+        filename = argv[1];
+    } else if (argc == 3 && std::strcmp(argv[1], "test") == 0) {
+        test_mode = true;
+        filename = argv[2];
+    } else {
         errs() << "Usage: ry <file.ry>\n";
+        errs() << "       ry test <file.ry>\n";
         return 1;
     }
 
@@ -28,9 +39,9 @@ int main(int argc, char *argv[]) {
     InitializeNativeTargetAsmParser();
 
     // Read source file
-    auto bufOrErr = MemoryBuffer::getFile(argv[1]);
+    auto bufOrErr = MemoryBuffer::getFile(filename);
     if (!bufOrErr) {
-        errs() << "Error reading file: " << argv[1] << "\n";
+        errs() << "Error reading file: " << filename << "\n";
         return 1;
     }
     std::string src = (*bufOrErr)->getBuffer().str();
@@ -42,12 +53,12 @@ int main(int argc, char *argv[]) {
         Program prog = parser.parseProgram();
 
         // Resolve imports
-        std::string referrer_dir = std::filesystem::path(argv[1]).parent_path().string();
+        std::string referrer_dir = std::filesystem::path(filename).parent_path().string();
         ModuleLoader loader;
         prog = loader.resolveImports(prog, referrer_dir);
 
         // CodeGen -> ThreadSafeModule
-        CodeGen cg;
+        CodeGen cg(test_mode);
         ThreadSafeModule tsm = cg.compile(prog);
 
         // Build LLJIT
@@ -74,6 +85,28 @@ int main(int argc, char *argv[]) {
         }
         mainJD.addGenerator(std::move(*dlsg));
 
+        // Register test runtime symbols if in test mode
+        if (test_mode) {
+            SymbolMap testSymbols;
+            testSymbols[es.intern("__ry_test_describe_begin")] =
+                {ExecutorAddr::fromPtr(&__ry_test_describe_begin), JITSymbolFlags::Exported};
+            testSymbols[es.intern("__ry_test_describe_end")] =
+                {ExecutorAddr::fromPtr(&__ry_test_describe_end), JITSymbolFlags::Exported};
+            testSymbols[es.intern("__ry_test_it_begin")] =
+                {ExecutorAddr::fromPtr(&__ry_test_it_begin), JITSymbolFlags::Exported};
+            testSymbols[es.intern("__ry_test_it_end")] =
+                {ExecutorAddr::fromPtr(&__ry_test_it_end), JITSymbolFlags::Exported};
+            testSymbols[es.intern("__ry_test_expect_fail")] =
+                {ExecutorAddr::fromPtr(&__ry_test_expect_fail), JITSymbolFlags::Exported};
+            testSymbols[es.intern("__ry_test_summary")] =
+                {ExecutorAddr::fromPtr(&__ry_test_summary), JITSymbolFlags::Exported};
+            if (auto err = mainJD.define(absoluteSymbols(std::move(testSymbols)))) {
+                errs() << "Failed to define test symbols: ";
+                logAllUnhandledErrors(std::move(err), errs());
+                return 1;
+            }
+        }
+
         // Add module
         if (auto err = jit->addIRModule(std::move(tsm))) {
             errs() << "Failed to add IR module: ";
@@ -89,7 +122,8 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         auto *fn = symOrErr->toPtr<int(*)()>();
-        fn();
+        int result = fn();
+        return result;
 
     } catch (const std::exception &e) {
         errs() << "Error: " << e.what() << "\n";

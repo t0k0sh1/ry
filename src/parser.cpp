@@ -119,6 +119,12 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
+    if (first.kind == TokenKind::Describe)
+        return parseDescribeStatement();
+
+    if (first.kind == TokenKind::Expect)
+        return parseExpectStatement();
+
     if (first.kind == TokenKind::Type)
         return parseTypeStatement();
 
@@ -156,7 +162,7 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'const', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'describe', 'expect', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -1054,4 +1060,109 @@ ExprPtr Parser::parsePostfix() {
         }
     }
     return expr;
+}
+
+StmtNode Parser::parseDescribeStatement() {
+    lex_.next(); // consume 'describe'
+
+    Token descTok = lex_.peek();
+    if (descTok.kind != TokenKind::String)
+        parseError(descTok.line, "expected string after 'describe'");
+    lex_.next(); // consume string
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after describe description");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next(); // consume Indent
+
+    auto desc = std::make_unique<DescribeStmt>();
+    desc->description = descTok.value;
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        if (lex_.peek().kind != TokenKind::It)
+            parseError(lex_.peek().line, "expected 'it' inside describe block");
+        lex_.next(); // consume 'it'
+
+        Token itDescTok = lex_.peek();
+        if (itDescTok.kind != TokenKind::String)
+            parseError(itDescTok.line, "expected string after 'it'");
+        lex_.next(); // consume string
+
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' after it description");
+        lex_.next(); // consume ':'
+
+        ItBlock itBlock;
+        itBlock.description = itDescTok.value;
+        itBlock.body = parseBlock();
+
+        desc->cases.push_back(std::move(itBlock));
+
+        skipNewlines();
+    }
+
+    if (desc->cases.empty())
+        parseError("describe block must have at least one 'it' case");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return desc;
+}
+
+StmtNode Parser::parseExpectStatement() {
+    Token expectTok = lex_.next(); // consume 'expect'
+
+    if (lex_.peek().kind != TokenKind::LParen)
+        parseError("expected '(' after 'expect'");
+    lex_.next(); // consume '('
+
+    ExprPtr actual = parseLogicalOr();
+
+    if (lex_.peek().kind != TokenKind::RParen)
+        parseError("expected ')'");
+    lex_.next(); // consume ')'
+
+    if (lex_.peek().kind != TokenKind::Dot)
+        parseError("expected '.' after expect(...)");
+    lex_.next(); // consume '.'
+
+    Token matcherTok = lex_.peek();
+    if (matcherTok.kind != TokenKind::Ident)
+        parseError(matcherTok.line, "expected matcher name after '.'");
+    lex_.next(); // consume matcher name
+
+    std::string matcher = matcherTok.value;
+
+    ExpectStmt es;
+    es.actual = std::move(actual);
+    es.matcher = matcher;
+    es.line = expectTok.line;
+
+    if (lex_.peek().kind != TokenKind::LParen)
+        parseError("expected '(' after matcher name");
+    lex_.next(); // consume '('
+
+    if (matcher == "to_eq") {
+        es.expected = parseLogicalOr();
+    } else if (matcher == "to_be_true" || matcher == "to_be_false" || matcher == "to_be_none") {
+        // no argument
+    } else {
+        parseError(matcherTok.line, "unknown matcher '" + matcher + "'");
+    }
+
+    if (lex_.peek().kind != TokenKind::RParen)
+        parseError("expected ')'");
+    lex_.next(); // consume ')'
+
+    return es;
 }

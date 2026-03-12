@@ -73,6 +73,10 @@ enum class TokenKind {
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::
+    // --- test ---
+    Describe,       // describe
+    It,             // it
+    Expect,         // expect
 };
 
 struct Token {

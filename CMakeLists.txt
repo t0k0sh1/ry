@@ -37,6 +37,7 @@ add_library(ry_lib STATIC
     src/codegen.cpp
     src/module_loader.cpp
     src/jit.cpp
+    src/test_runtime.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

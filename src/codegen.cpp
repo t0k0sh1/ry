@@ -5,9 +5,10 @@
 #include <stdexcept>
 #include <unordered_set>
 
-CodeGen::CodeGen() : ctx_(std::make_unique<llvm::LLVMContext>()),
+CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
                      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
-                     builder_(*ctx_) {
+                     builder_(*ctx_),
+                     test_mode_(test_mode) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
     f64Ty_ = llvm::Type::getDoubleTy(*ctx_);
@@ -81,8 +82,17 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
     }
 
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateRet(llvm::ConstantInt::get(i32Ty_, 0));
+    if (!builder_.GetInsertBlock()->getTerminator()) {
+        if (test_mode_) {
+            // Call __ry_test_summary() and return its result as exit code
+            llvm::FunctionType *summaryTy = llvm::FunctionType::get(i32Ty_, false);
+            llvm::FunctionCallee summaryFn = mod_->getOrInsertFunction("__ry_test_summary", summaryTy);
+            llvm::Value *result = builder_.CreateCall(summaryFn, {}, "test_result");
+            builder_.CreateRet(result);
+        } else {
+            builder_.CreateRet(llvm::ConstantInt::get(i32Ty_, 0));
+        }
+    }
 
     std::string err;
     llvm::raw_string_ostream errStream(err);
@@ -2858,4 +2868,179 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         fmt = builder_.CreateGlobalString("%ld\n", ".fmt_i");
 
     builder_.CreateCall(printfFn, {fmt, val});
+}
+
+// ===== Test: DescribeStmt =====
+
+void CodeGen::emitStmt(std::unique_ptr<DescribeStmt> &s) {
+    if (!test_mode_)
+        throw std::runtime_error("'describe' is only allowed in test mode (use 'ry test')");
+
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionType *voidTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), false);
+
+    llvm::FunctionCallee descBeginFn = mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy);
+    llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
+    llvm::FunctionCallee itBeginFn   = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
+    llvm::FunctionCallee itEndFn     = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
+
+    // describe_begin
+    llvm::Value *descName = builder_.CreateGlobalString(s->description, ".desc_name");
+    builder_.CreateCall(descBeginFn, {descName});
+
+    for (auto &itCase : s->cases) {
+        // Create a test function for this it-block
+        std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
+        llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
+        llvm::Function *testFunc = llvm::Function::Create(
+            testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = testFunc;
+            pushScope();
+
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
+            builder_.SetInsertPoint(entry);
+
+            for (auto &stmt : itCase.body)
+                std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+            if (!builder_.GetInsertBlock()->getTerminator())
+                builder_.CreateRetVoid();
+
+            std::string err;
+            llvm::raw_string_ostream errStream(err);
+            if (llvm::verifyFunction(*testFunc, &errStream))
+                throw std::runtime_error("IR verify error in test '" + itCase.description + "': " + err);
+        }
+
+        // Call it_begin, test function, it_end
+        llvm::Value *itName = builder_.CreateGlobalString(itCase.description, ".it_name");
+        builder_.CreateCall(itBeginFn, {itName});
+        builder_.CreateCall(testFunc);
+        builder_.CreateCall(itEndFn);
+    }
+
+    builder_.CreateCall(descEndFn);
+}
+
+// ===== Test: ExpectStmt =====
+
+void CodeGen::emitStmt(ExpectStmt &s) {
+    if (!test_mode_)
+        throw std::runtime_error("'expect' is only allowed in test mode (use 'ry test')");
+
+    llvm::Value *actualVal = emitExpr(*s.actual);
+    llvm::Type *actualTy = actualVal->getType();
+
+    llvm::Value *cmpResult = nullptr;
+
+    if (s.matcher == "to_eq") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        llvm::Type *expectedTy = expectedVal->getType();
+
+        if (actualTy == i64Ty_ && expectedTy == i64Ty_) {
+            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+        } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
+            cmpResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
+        } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
+            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+        } else if (actualTy == ptrTy_ && expectedTy == ptrTy_) {
+            // String comparison via strcmp
+            llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+            llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+            llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
+            cmpResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
+        } else if ((actualTy == i64Ty_ && expectedTy == f64Ty_) ||
+                   (actualTy == f64Ty_ && expectedTy == i64Ty_)) {
+            auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
+            cmpResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
+        } else {
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_eq: unsupported types for comparison");
+        }
+    } else if (s.matcher == "to_be_true") {
+        if (actualTy != i1Ty_)
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_be_true: expected bool");
+        cmpResult = actualVal;
+    } else if (s.matcher == "to_be_false") {
+        if (actualTy != i1Ty_)
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_be_false: expected bool");
+        cmpResult = builder_.CreateNot(actualVal, "not");
+    } else if (s.matcher == "to_be_none") {
+        if (!isOptionType(actualTy))
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_be_none: expected Option type");
+        llvm::Value *hasVal = builder_.CreateExtractValue(actualVal, {0}, "has_val");
+        cmpResult = builder_.CreateNot(hasVal, "is_none");
+    }
+
+    // Branch: if cmpResult is false, call __ry_test_expect_fail
+    llvm::Function *currentFn = builder_.GetInsertBlock()->getParent();
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "expect.fail", currentFn);
+    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "expect.cont", currentFn);
+
+    builder_.CreateCondBr(cmpResult, contBB, failBB);
+
+    // Fail block: call __ry_test_expect_fail(line, actual_str, expected_str)
+    builder_.SetInsertPoint(failBB);
+
+    llvm::FunctionType *failFnTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee failFn = mod_->getOrInsertFunction("__ry_test_expect_fail", failFnTy);
+
+    // For now, format actual and expected as string representations
+    // Use snprintf to format values at runtime
+    llvm::FunctionType *snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    llvm::FunctionCallee snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
+
+    auto formatValue = [&](llvm::Value *val, llvm::Type *ty, const std::string &bufName) -> llvm::Value* {
+        llvm::Value *buf = builder_.CreateAlloca(
+            llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 64), nullptr, bufName);
+        llvm::Value *bufSize = llvm::ConstantInt::get(i64Ty_, 64);
+
+        if (ty == i64Ty_) {
+            llvm::Value *fmt = builder_.CreateGlobalString("%ld", ".fmt_i");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
+        } else if (ty == f64Ty_) {
+            llvm::Value *fmt = builder_.CreateGlobalString("%g", ".fmt_f");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
+        } else if (ty == i1Ty_) {
+            llvm::Value *trueStr = builder_.CreateGlobalString("true", ".true");
+            llvm::Value *falseStr = builder_.CreateGlobalString("false", ".false");
+            return builder_.CreateSelect(val, trueStr, falseStr, "bool_str");
+        } else if (ty == ptrTy_) {
+            // Assume string pointer, return directly
+            return val;
+        } else {
+            llvm::Value *fmt = builder_.CreateGlobalString("<value>", ".fmt_val");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
+        }
+        return buf;
+    };
+
+    llvm::Value *actualStr = formatValue(actualVal, actualTy, "actual_buf");
+
+    llvm::Value *expectedStr;
+    if (s.matcher == "to_eq") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        expectedStr = formatValue(expectedVal, expectedVal->getType(), "expected_buf");
+    } else if (s.matcher == "to_be_true") {
+        expectedStr = builder_.CreateGlobalString("true", ".exp_true");
+    } else if (s.matcher == "to_be_false") {
+        expectedStr = builder_.CreateGlobalString("false", ".exp_false");
+    } else {
+        expectedStr = builder_.CreateGlobalString("None", ".exp_none");
+    }
+
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.line), actualStr, expectedStr});
+    builder_.CreateBr(contBB);
+
+    // Continue block
+    builder_.SetInsertPoint(contBB);
 }

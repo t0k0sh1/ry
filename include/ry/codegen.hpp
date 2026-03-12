@@ -14,7 +14,7 @@
 
 class CodeGen {
 public:
-    CodeGen();
+    explicit CodeGen(bool test_mode = false);
     llvm::orc::ThreadSafeModule compile(Program &prog);
 
 private:
@@ -65,6 +65,8 @@ private:
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     int lambda_counter_ = 0;
+    bool test_mode_ = false;
+    int test_fn_counter_ = 0;
 
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
@@ -108,10 +110,12 @@ private:
     void emitStmt(ContinueStmt &s);
     void emitStmt(FieldAssignStmt &s);
     void emitStmt(EnumStmt &s);
+    void emitStmt(ExpectStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
+    void emitStmt(std::unique_ptr<DescribeStmt> &s);
     llvm::Value *toBool(llvm::Value *v);
 
     // Type promotion helpers (B1)

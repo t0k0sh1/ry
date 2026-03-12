@@ -29,6 +29,8 @@ private:
     StmtNode parseTypeStatement();
     StmtNode parseEnumStatement();
     StmtNode parseReturnStatement();
+    StmtNode parseDescribeStatement();
+    StmtNode parseExpectStatement();
     std::string parseTypeName();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
