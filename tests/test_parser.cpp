@@ -839,3 +839,34 @@ TEST(ParserTest, EnumComparison) {
     EXPECT_EQ(ea.enum_name, "Color");
     EXPECT_EQ(ea.variant_name, "Green");
 }
+
+// ===== Union 型パーサーテスト =====
+
+TEST(ParserTest, LetUnionTypeAnnotation) {
+    Program prog = parseStr("let x: int | str = 42");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "int | str");
+}
+
+TEST(ParserTest, FnUnionParam) {
+    Program prog = parseStr("fn f(x: int | str) -> int:\n    return 0");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 1u);
+    EXPECT_EQ(fn.params[0].type, "int | str");
+}
+
+TEST(ParserTest, FnUnionReturn) {
+    Program prog = parseStr("fn f() -> int | str:\n    return 0");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.return_type, "int | str");
+}
+
+TEST(ParserTest, UnionThreeTypes) {
+    Program prog = parseStr("let x: int | float | str = 42");
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "int | float | str");
+}

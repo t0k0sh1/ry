@@ -34,6 +34,7 @@ private:
     StmtNode parseMatchStatement();
     Pattern parsePattern();
     std::string parseTypeName();
+    std::string parseTypeNameSingle();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
 

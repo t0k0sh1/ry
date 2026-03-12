@@ -834,6 +834,15 @@ StmtNode Parser::parseEnumStatement() {
 }
 
 std::string Parser::parseTypeName() {
+    std::string name = parseTypeNameSingle();
+    while (lex_.peek().kind == TokenKind::Pipe) {
+        lex_.next(); // consume '|'
+        name += " | " + parseTypeNameSingle();
+    }
+    return name;
+}
+
+std::string Parser::parseTypeNameSingle() {
     // Tuple type: (int, float)
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('

@@ -2544,3 +2544,75 @@ TEST_F(CodeGenTest, MatchNegativeLiteral) {
         "        print(\"other\")\n";
     EXPECT_EQ(runSource(src), "neg one\n");
 }
+
+// ===== Union 型テスト =====
+
+TEST_F(CodeGenTest, UnionLetInt) {
+    std::string src =
+        "let x: int | str = 42\n"
+        "print(x)\n";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, UnionLetStr) {
+    std::string src =
+        "let x: int | str = \"hello\"\n"
+        "print(x)\n";
+    EXPECT_EQ(runSource(src), "hello\n");
+}
+
+TEST_F(CodeGenTest, UnionReassign) {
+    std::string src =
+        "let x: int | str = 42\n"
+        "print(x)\n"
+        "x = \"hello\"\n"
+        "print(x)\n";
+    EXPECT_EQ(runSource(src), "42\nhello\n");
+}
+
+TEST_F(CodeGenTest, UnionFnParam) {
+    std::string src =
+        "fn show(x: int | str) -> int:\n"
+        "    print(x)\n"
+        "    return 0\n"
+        "show(42)\n"
+        "show(\"hi\")\n";
+    EXPECT_EQ(runSource(src), "42\nhi\n");
+}
+
+TEST_F(CodeGenTest, UnionFnReturn) {
+    std::string src =
+        "fn get_val(flag: bool) -> int | str:\n"
+        "    if flag:\n"
+        "        return 42\n"
+        "    return \"hello\"\n"
+        "let a = get_val(true)\n"
+        "print(a)\n"
+        "let b = get_val(false)\n"
+        "print(b)\n";
+    EXPECT_EQ(runSource(src), "42\nhello\n");
+}
+
+TEST_F(CodeGenTest, UnionPrint) {
+    std::string src =
+        "let x: int | str = 99\n"
+        "print(x)\n";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, UnionTypeMismatch) {
+    std::string src =
+        "let x: int | str = 3.14\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BitwiseOrStillWorks) {
+    EXPECT_EQ(runSource("print(1 | 2)"), "3\n");
+}
+
+TEST_F(CodeGenTest, UnionThreeTypes) {
+    std::string src =
+        "let x: int | float | str = 3.14\n"
+        "print(x)\n";
+    EXPECT_EQ(runSource(src), "3.14\n");
+}

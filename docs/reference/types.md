@@ -17,6 +17,7 @@
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int): int => x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
 | `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
+| `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
 
 ## 型アノテーション構文
 
@@ -33,6 +34,7 @@ let xs: list[int] = [1, 2, 3]
 let m: map[str, int] = {"a": 1}
 let s: set[int] = {1, 2, 3}
 let fn_val: fn(int) -> int = (x: int): int => x * 2
+let u: int | str = 42
 ```
 
 ## 使用可能な型名一覧
@@ -50,7 +52,41 @@ let fn_val: fn(int) -> int = (x: int): int => x * 2
 | `map[K, V]` | ジェネリックハッシュマップ型 |
 | `set[T]` | ジェネリック集合型 |
 | `fn(T1, ...) -> R` | 関数型 |
+| `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
 | ユーザー定義型名 | `type` または `enum` キーワードで宣言した型 |
+
+## union 型
+
+`|` を使って複数の型を持ちうる変数を宣言できます。
+
+```python
+let x: int | str = 42
+x = "hello"     # 再代入可能（union のいずれかの型）
+print(x)        # hello
+```
+
+### 関数引数・戻り値での使用
+
+```python
+fn show(x: int | str) -> int:
+    print(x)
+    return 0
+
+fn get_val(flag: bool) -> int | str:
+    if flag:
+        return 42
+    return "hello"
+```
+
+### 内部表現
+
+union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` は各コンポーネント型のインデックス（アルファベット順ソート後）を示し、`data` は最大コンポーネントサイズ分のバイト配列です。
+
+### 制約
+
+- union に含まれない型を代入するとコンパイルエラー
+- `int | str` と `str | int` は同じ型（正規化される）
+- `print()` で union 値を出力すると、実行時のタグに基づいて適切な型で表示される
 
 ## 型規則（演算時の型変換）
 

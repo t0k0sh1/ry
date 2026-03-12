@@ -234,14 +234,25 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     if (type_annotation) {
         llvm::Type *annotTy = resolveType(*type_annotation);
-        if (annotTy != newTy)
-            throw std::runtime_error(
-                "type error: annotation '" + *type_annotation +
-                "' does not match expression type for variable '" + name + "'");
+        if (annotTy != newTy) {
+            if (isUnionType(*type_annotation)) {
+                val = wrapInUnion(val, *type_annotation);
+                newTy = val->getType();
+            } else {
+                throw std::runtime_error(
+                    "type error: annotation '" + *type_annotation +
+                    "' does not match expression type for variable '" + name + "'");
+            }
+        }
     }
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
+
+    // Track union value type
+    if (type_annotation && isUnionType(*type_annotation)) {
+        union_value_types_[ptr] = normalizeUnionType(*type_annotation);
+    }
 
     // Track list/map element types if this is a ptr value
     if (newTy == ptrTy_) {
@@ -342,10 +353,16 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Value *val = emitExpr(*s.value);
     llvm::Type *newTy = val->getType();
 
-    if (ptr->getAllocatedType() != newTy)
-        throw std::runtime_error(
-            "type error: variable '" + s.name +
-            "' cannot be reassigned to a different type");
+    if (ptr->getAllocatedType() != newTy) {
+        auto uvIt = union_value_types_.find(ptr);
+        if (uvIt != union_value_types_.end()) {
+            val = wrapInUnion(val, uvIt->second);
+        } else {
+            throw std::runtime_error(
+                "type error: variable '" + s.name +
+                "' cannot be reassigned to a different type");
+        }
+    }
 
     builder_.CreateStore(val, ptr);
 
@@ -392,7 +409,20 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
             } else {
-                if (emittedArgs[i]->getType() != entry.paramTypes[i]) { match = false; break; }
+                if (emittedArgs[i]->getType() != entry.paramTypes[i]) {
+                    // Check if param is a union type that accepts this arg type
+                    if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
+                        std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
+                        auto uIt = union_type_info_.find(norm);
+                        if (uIt != union_type_info_.end()) {
+                            bool found = false;
+                            for (auto *ct : uIt->second.componentTypes) {
+                                if (ct == emittedArgs[i]->getType()) { found = true; break; }
+                            }
+                            if (!found) { match = false; break; }
+                        } else { match = false; break; }
+                    } else { match = false; break; }
+                }
             }
         }
         if (match)
@@ -406,11 +436,15 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
 
     auto *chosen = candidates[0];
 
-    // Build final arg values (fill in None args with proper Option type)
+    // Build final arg values (fill in None args with proper Option type, wrap union args)
     outArgVals.clear();
     for (size_t i = 0; i < args.size(); ++i) {
         if (isNone[i]) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
+        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
+                   i < chosen->paramTypeNames.size() &&
+                   isUnionType(chosen->paramTypeNames[i])) {
+            outArgVals.push_back(wrapInUnion(emittedArgs[i], chosen->paramTypeNames[i]));
         } else {
             outArgVals.push_back(emittedArgs[i]);
         }
@@ -988,6 +1022,30 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
 
+    // Union type: "int | str"
+    if (typeName.find(" | ") != std::string::npos) {
+        std::string normalized = normalizeUnionType(typeName);
+        auto it = union_type_info_.find(normalized);
+        if (it != union_type_info_.end()) return it->second.llvmType;
+
+        auto components = parseUnionComponents(normalized);
+        std::vector<llvm::Type*> compTypes;
+        uint64_t maxSize = 0;
+        const auto &dl = mod_->getDataLayout();
+        for (auto &c : components) {
+            auto *ty = resolveType(c);
+            compTypes.push_back(ty);
+            maxSize = std::max(maxSize, (uint64_t)dl.getTypeAllocSize(ty));
+        }
+        auto *dataTy = llvm::ArrayType::get(
+            llvm::Type::getInt8Ty(*ctx_), maxSize);
+        auto *unionTy = llvm::StructType::create(
+            *ctx_, {i64Ty_, dataTy}, "union." + normalized);
+
+        union_type_info_[normalized] = {unionTy, components, compTypes};
+        return unionTy;
+    }
+
     // Tuple type: "(int, float)"
     if (!typeName.empty() && typeName.front() == '(') {
         // Parse element types from "(T1, T2, ...)"
@@ -1500,8 +1558,13 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         if (retTy->isVoidTy())
             throw std::runtime_error("cannot return a value from Unit function '" +
                                      std::string(fn_->getName()) + "'");
-        if (val->getType() != retTy)
-            throw std::runtime_error("return type mismatch");
+        if (val->getType() != retTy) {
+            if (isUnionType(current_fn_return_type_)) {
+                val = wrapInUnion(val, current_fn_return_type_);
+            } else {
+                throw std::runtime_error("return type mismatch");
+            }
+        }
         builder_.CreateRet(val);
     }
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
@@ -1538,11 +1601,15 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     llvm::Function *func = llvm::Function::Create(
         ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
-    overloads.push_back({func, paramTypes});
+    std::vector<std::string> paramTypeNames;
+    for (auto &p : s->params)
+        paramTypeNames.push_back(p.type);
+    overloads.push_back({func, paramTypes, paramTypeNames});
 
     {
         FnScope guard(*this);
         fn_ = func;
+        current_fn_return_type_ = s->return_type;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
@@ -1579,6 +1646,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track fn type info for function-typed parameters
             if (ptype.size() > 3 && ptype.substr(0, 3) == "fn(") {
                 fn_type_info_[alloca] = parseFnTypeAnnotation(ptype);
+            }
+            // Track union type for union parameters
+            if (isUnionType(ptype)) {
+                union_value_types_[alloca] = normalizeUnionType(ptype);
             }
             ++idx;
         }
@@ -2850,6 +2921,46 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         }
     }
 
+    // Union type printing: check if value is a union
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(val->getType())) {
+        std::string unionName;
+        // Try to find union info by struct type
+        for (auto &[name, info] : union_type_info_) {
+            if (info.llvmType == st) { unionName = name; break; }
+        }
+        if (!unionName.empty()) {
+            auto &info = union_type_info_[unionName];
+            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "union.tag");
+
+            // Store the union value in memory so we can extract data via GEP
+            llvm::AllocaInst *unionTmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.print.tmp");
+            builder_.CreateStore(val, unionTmp);
+            auto *dataPtr = builder_.CreateStructGEP(info.llvmType, unionTmp, 1, "union.data.ptr");
+
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "union.print.end", fn_);
+            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, endBB, info.componentTypes.size());
+
+            for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+                llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                    *ctx_, "union.print.case" + std::to_string(i), fn_);
+                sw->addCase(llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
+                builder_.SetInsertPoint(caseBB);
+
+                llvm::Value *innerVal = builder_.CreateLoad(
+                    info.componentTypes[i], dataPtr, "union.inner");
+
+                emitPrintValue(innerVal, info.componentTypes[i], printfFn, "_union" + std::to_string(i));
+
+                llvm::Constant *nl = builder_.CreateGlobalString("\n", ".fmt_nl_union" + std::to_string(i));
+                builder_.CreateCall(printfFn, {nl});
+                builder_.CreateBr(endBB);
+            }
+
+            builder_.SetInsertPoint(endBB);
+            return;
+        }
+    }
+
     if (llvm::isa<llvm::StructType>(val->getType()))
         throw std::runtime_error("print() does not support struct types");
 
@@ -3270,4 +3381,67 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     }
 
     builder_.SetInsertPoint(matchEndBB);
+}
+
+// ===== Union type helpers =====
+
+std::vector<std::string> CodeGen::parseUnionComponents(const std::string &typeName) {
+    std::vector<std::string> components;
+    size_t start = 0;
+    while (start < typeName.size()) {
+        size_t pos = typeName.find(" | ", start);
+        if (pos == std::string::npos) {
+            std::string comp = typeName.substr(start);
+            size_t s = comp.find_first_not_of(' ');
+            size_t e = comp.find_last_not_of(' ');
+            if (s != std::string::npos)
+                components.push_back(comp.substr(s, e - s + 1));
+            break;
+        }
+        std::string comp = typeName.substr(start, pos - start);
+        size_t s = comp.find_first_not_of(' ');
+        size_t e = comp.find_last_not_of(' ');
+        if (s != std::string::npos)
+            components.push_back(comp.substr(s, e - s + 1));
+        start = pos + 3;
+    }
+    return components;
+}
+
+std::string CodeGen::normalizeUnionType(const std::string &typeName) {
+    auto components = parseUnionComponents(typeName);
+    std::sort(components.begin(), components.end());
+    std::string result;
+    for (size_t i = 0; i < components.size(); ++i) {
+        if (i > 0) result += " | ";
+        result += components[i];
+    }
+    return result;
+}
+
+bool CodeGen::isUnionType(const std::string &typeName) {
+    return typeName.find(" | ") != std::string::npos;
+}
+
+llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionTypeName) {
+    std::string norm = normalizeUnionType(unionTypeName);
+    auto infoIt = union_type_info_.find(norm);
+    if (infoIt == union_type_info_.end()) {
+        resolveType(norm);
+        infoIt = union_type_info_.find(norm);
+    }
+    auto &info = infoIt->second;
+    int tagIdx = -1;
+    for (size_t i = 0; i < info.componentTypes.size(); ++i) {
+        if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
+    }
+    if (tagIdx < 0)
+        throw std::runtime_error("type is not in union " + norm);
+
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.tmp");
+    auto *tagPtr = builder_.CreateStructGEP(info.llvmType, tmp, 0, "union.tag");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, tagIdx), tagPtr);
+    auto *dataPtr = builder_.CreateStructGEP(info.llvmType, tmp, 1, "union.data");
+    builder_.CreateStore(val, dataPtr);
+    return builder_.CreateLoad(info.llvmType, tmp, "union.val");
 }

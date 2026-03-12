@@ -31,6 +31,7 @@ private:
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
+        std::vector<std::string> paramTypeNames;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
@@ -46,6 +47,15 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
+
+    struct UnionTypeInfo {
+        llvm::StructType *llvmType;
+        std::vector<std::string> componentNames;
+        std::vector<llvm::Type*> componentTypes;
+    };
+    std::unordered_map<std::string, UnionTypeInfo> union_type_info_;
+    std::unordered_map<llvm::Value*, std::string> union_value_types_;
+    std::string current_fn_return_type_;
 
     struct EnumInfo {
         std::string name;
@@ -176,4 +186,10 @@ private:
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     void emitPrint(const std::vector<ExprPtr> &args);
+
+    // Union type helpers
+    std::vector<std::string> parseUnionComponents(const std::string &typeName);
+    std::string normalizeUnionType(const std::string &typeName);
+    bool isUnionType(const std::string &typeName);
+    llvm::Value *wrapInUnion(llvm::Value *val, const std::string &unionTypeName);
 };
