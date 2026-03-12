@@ -22,7 +22,7 @@ private:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
-    llvm::Type *i64Ty_, *i32Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
+    llvm::Type *i64Ty_, *i32Ty_, *i8Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;

@@ -9,6 +9,7 @@ CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
                      test_mode_(test_mode) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
+    i8Ty_  = llvm::Type::getInt8Ty(*ctx_);
     f64Ty_ = llvm::Type::getDoubleTy(*ctx_);
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
@@ -118,14 +119,24 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
 llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
+    if (v->getType() == i8Ty_)
+        return builder_.CreateZExt(v, i64Ty_, "byteext");
     return v;
 }
 
 std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, llvm::Value *rhs) {
-    if (!lhs->getType()->isDoubleTy())
-        lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
-    if (!rhs->getType()->isDoubleTy())
-        rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+    if (!lhs->getType()->isDoubleTy()) {
+        if (lhs->getType() == i8Ty_)
+            lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
+        else
+            lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+    }
+    if (!rhs->getType()->isDoubleTy()) {
+        if (rhs->getType() == i8Ty_)
+            rhs = builder_.CreateUIToFP(rhs, f64Ty_, "rhs_f");
+        else
+            rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+    }
     return {lhs, rhs};
 }
 
@@ -258,6 +269,7 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
 
 llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "int")   return i64Ty_;
+    if (typeName == "byte")  return i8Ty_;
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "str")   return ptrTy_;
@@ -456,6 +468,10 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     } else if (ty->isPointerTy()) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty == i8Ty_) {
+        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
+        builder_.CreateCall(printfFn, {fmt, ext});
     } else if (ty->isDoubleTy()) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});

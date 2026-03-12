@@ -107,7 +107,17 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (type_annotation) {
         llvm::Type *annotTy = resolveType(*type_annotation);
         if (annotTy != newTy) {
-            if (isUnionType(*type_annotation)) {
+            if (annotTy == i8Ty_ && newTy == i64Ty_) {
+                // int literal → byte: static range check for constants
+                if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                    int64_t v = ci->getSExtValue();
+                    if (v < 0 || v > 255)
+                        throw std::runtime_error(
+                            "byte value out of range (0-255): " + std::to_string(v));
+                }
+                val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
+                newTy = i8Ty_;
+            } else if (isUnionType(*type_annotation)) {
                 val = wrapInUnion(val, *type_annotation);
                 newTy = val->getType();
             } else {
@@ -226,13 +236,24 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Type *newTy = val->getType();
 
     if (ptr->getAllocatedType() != newTy) {
-        auto uvIt = union_value_types_.find(ptr);
-        if (uvIt != union_value_types_.end()) {
-            val = wrapInUnion(val, uvIt->second);
+        // byte variable assigned from int expression
+        if (ptr->getAllocatedType() == i8Ty_ && newTy == i64Ty_) {
+            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                int64_t v = ci->getSExtValue();
+                if (v < 0 || v > 255)
+                    throw std::runtime_error(
+                        "byte value out of range (0-255): " + std::to_string(v));
+            }
+            val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
         } else {
-            throw std::runtime_error(
-                "type error: variable '" + s.name +
-                "' cannot be reassigned to a different type");
+            auto uvIt = union_value_types_.find(ptr);
+            if (uvIt != union_value_types_.end()) {
+                val = wrapInUnion(val, uvIt->second);
+            } else {
+                throw std::runtime_error(
+                    "type error: variable '" + s.name +
+                    "' cannot be reassigned to a different type");
+            }
         }
     }
 
@@ -740,6 +761,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 builder_.CreateRetVoid();
             else if (retTy == i64Ty_)
                 builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
+            else if (retTy == i8Ty_)
+                builder_.CreateRet(llvm::ConstantInt::get(i8Ty_, 0));
             else if (retTy == f64Ty_)
                 builder_.CreateRet(llvm::ConstantFP::get(f64Ty_, 0.0));
             else if (retTy == i1Ty_)

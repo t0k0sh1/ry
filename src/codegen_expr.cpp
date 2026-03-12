@@ -182,8 +182,14 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {
-        if (lhs->getType()->isIntegerTy()) lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
-        if (rhs->getType()->isIntegerTy()) rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
+        if (lhs->getType() == i8Ty_)
+            lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
+        else if (lhs->getType()->isIntegerTy())
+            lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
+        if (rhs->getType() == i8Ty_)
+            rhs = builder_.CreateUIToFP(rhs, f64Ty_, "rhs_f");
+        else if (rhs->getType()->isIntegerTy())
+            rhs = builder_.CreateSIToFP(rhs, f64Ty_, "rhs_f");
         llvm::FunctionType *powTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
         llvm::FunctionCallee powFn = mod_->getOrInsertFunction("pow", powTy);
         return builder_.CreateCall(powFn, {lhs, rhs}, "pow");

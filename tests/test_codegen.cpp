@@ -321,3 +321,77 @@ TEST_F(CodeGenTest, RedeclaredVarThrows) {
 TEST_F(CodeGenTest, LetWithTypeAnnotation) {
     EXPECT_EQ(runSource("let x: int = 42\nprint(x)"), "42\n");
 }
+
+// ===== byte 型テスト =====
+
+TEST_F(CodeGenTest, ByteDeclareAndPrint) {
+    EXPECT_EQ(runSource("let b: byte = 42\nprint(b)"), "42\n");
+}
+
+TEST_F(CodeGenTest, ByteZeroPrint) {
+    EXPECT_EQ(runSource("let b: byte = 0\nprint(b)"), "0\n");
+}
+
+TEST_F(CodeGenTest, ByteMaxPrint) {
+    EXPECT_EQ(runSource("let b: byte = 255\nprint(b)"), "255\n");
+}
+
+TEST_F(CodeGenTest, ByteAddPromotesToInt) {
+    // byte + byte → int (i64)
+    EXPECT_EQ(runSource("let a: byte = 10\nlet b: byte = 20\nlet c = a + b\nprint(c)"), "30\n");
+}
+
+TEST_F(CodeGenTest, ByteAddIntPromotesToInt) {
+    // byte + int → int
+    EXPECT_EQ(runSource("let a: byte = 10\nlet b = 100\nlet c = a + b\nprint(c)"), "110\n");
+}
+
+TEST_F(CodeGenTest, ByteSubtract) {
+    EXPECT_EQ(runSource("let a: byte = 50\nlet b: byte = 20\nlet c = a - b\nprint(c)"), "30\n");
+}
+
+TEST_F(CodeGenTest, ByteMultiply) {
+    EXPECT_EQ(runSource("let a: byte = 3\nlet b: byte = 4\nlet c = a * b\nprint(c)"), "12\n");
+}
+
+TEST_F(CodeGenTest, ByteComparisonEq) {
+    EXPECT_EQ(runSource("let a: byte = 10\nlet b: byte = 10\nprint(a == b)"), "true\n");
+}
+
+TEST_F(CodeGenTest, ByteComparisonLt) {
+    EXPECT_EQ(runSource("let a: byte = 5\nlet b: byte = 10\nprint(a < b)"), "true\n");
+}
+
+TEST_F(CodeGenTest, ByteBitwiseAnd) {
+    // 0xFF & 0x0F = 0x0F = 15
+    EXPECT_EQ(runSource("let a: byte = 255\nlet b: byte = 15\nlet c = a & b\nprint(c)"), "15\n");
+}
+
+TEST_F(CodeGenTest, ByteBitwiseOr) {
+    EXPECT_EQ(runSource("let a: byte = 12\nlet b: byte = 10\nlet c = a | b\nprint(c)"), "14\n");
+}
+
+TEST_F(CodeGenTest, ByteBitwiseXor) {
+    EXPECT_EQ(runSource("let a: byte = 12\nlet b: byte = 10\nlet c = a ^ b\nprint(c)"), "6\n");
+}
+
+TEST_F(CodeGenTest, ByteOutOfRangeHighThrows) {
+    EXPECT_THROW(runSource("let b: byte = 256"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ByteOutOfRangeNegativeThrows) {
+    EXPECT_THROW(runSource("let b: byte = -1"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ByteVarReassign) {
+    EXPECT_EQ(runSource("var b: byte = 10\nb = 20\nprint(b)"), "20\n");
+}
+
+TEST_F(CodeGenTest, ByteVarReassignOutOfRangeThrows) {
+    EXPECT_THROW(runSource("var b: byte = 10\nb = 256"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ByteDivisionProducesFloat) {
+    // byte / byte → float
+    EXPECT_EQ(runSource("let a: byte = 7\nlet b: byte = 2\nlet c = a / b\nprint(c)"), "3.5\n");
+}
