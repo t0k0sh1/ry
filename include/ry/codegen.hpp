@@ -27,7 +27,7 @@ private:
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
-    std::vector<std::unordered_set<std::string>> const_scope_stack_;
+    std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
@@ -100,13 +100,13 @@ private:
     void pushScope();
     void popScope();
     llvm::AllocaInst *findVar(const std::string &name);
-    bool isConst(const std::string &name) const;
+    bool isImmutable(const std::string &name) const;
     llvm::AllocaInst *getOrCreateVar(const std::string &name, llvm::Type *ty);
 
     // Variable declaration (B3)
     void emitVarDecl(const std::string &name,
                      const std::optional<std::string> &type_annotation,
-                     ExprNode &value, bool is_const);
+                     ExprNode &value, bool is_immutable);
 
     void emitStmt(LetStmt &s);
     void emitStmt(VarStmt &s);

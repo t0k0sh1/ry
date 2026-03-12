@@ -27,17 +27,17 @@ CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
 CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedFn_ = cg_.fn_;
     savedScope_ = std::move(cg_.scope_stack_);
-    savedConstScope_ = std::move(cg_.const_scope_stack_);
+    savedConstScope_ = std::move(cg_.immutable_scope_stack_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     cg_.scope_stack_.clear();
-    cg_.const_scope_stack_.clear();
+    cg_.immutable_scope_stack_.clear();
 }
 
 CodeGen::FnScope::~FnScope() {
     cg_.fn_ = savedFn_;
     cg_.scope_stack_ = std::move(savedScope_);
-    cg_.const_scope_stack_ = std::move(savedConstScope_);
+    cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
 }
 
@@ -45,12 +45,12 @@ CodeGen::FnScope::~FnScope() {
 
 void CodeGen::pushScope() {
     scope_stack_.emplace_back();
-    const_scope_stack_.emplace_back();
+    immutable_scope_stack_.emplace_back();
 }
 
 void CodeGen::popScope() {
     scope_stack_.pop_back();
-    const_scope_stack_.pop_back();
+    immutable_scope_stack_.pop_back();
 }
 
 llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
@@ -62,8 +62,8 @@ llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
     return nullptr;
 }
 
-bool CodeGen::isConst(const std::string &name) const {
-    for (auto it = const_scope_stack_.rbegin(); it != const_scope_stack_.rend(); ++it) {
+bool CodeGen::isImmutable(const std::string &name) const {
+    for (auto it = immutable_scope_stack_.rbegin(); it != immutable_scope_stack_.rend(); ++it) {
         if (it->count(name))
             return true;
     }
@@ -135,7 +135,7 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
 
 void CodeGen::emitVarDecl(const std::string &name,
                            const std::optional<std::string> &type_annotation,
-                           ExprNode &value, bool is_const) {
+                           ExprNode &value, bool is_immutable) {
     if (scope_stack_.back().count(name))
         throw std::runtime_error("redeclared variable: " + name);
 
@@ -170,8 +170,8 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             set_element_types_[ptr] = elemTy;
-            if (is_const)
-                const_scope_stack_.back().insert(name);
+            if (is_immutable)
+                immutable_scope_stack_.back().insert(name);
             return;
         }
         if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "map[") {
@@ -207,8 +207,8 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(headerPtr, ptr);
             map_key_types_[ptr] = keyTy;
             map_value_types_[ptr] = valTy;
-            if (is_const)
-                const_scope_stack_.back().insert(name);
+            if (is_immutable)
+                immutable_scope_stack_.back().insert(name);
             return;
         }
         throw std::runtime_error("empty {} requires set[T] or map[K, V] type annotation");
@@ -224,8 +224,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         llvm::Value *val = buildNoneValue(annotTy);
         llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
         builder_.CreateStore(val, ptr);
-        if (is_const)
-            const_scope_stack_.back().insert(name);
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
         return;
     }
 
@@ -325,8 +325,8 @@ void CodeGen::emitVarDecl(const std::string &name,
             enum_value_types_[ptr] = *type_annotation;
     }
 
-    if (is_const)
-        const_scope_stack_.back().insert(name);
+    if (is_immutable)
+        immutable_scope_stack_.back().insert(name);
 }
 
 void CodeGen::emitStmt(LetStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, true); }
@@ -337,7 +337,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (!ptr)
         throw std::runtime_error("undeclared variable: " + s.name);
 
-    if (isConst(s.name))
+    if (isImmutable(s.name))
         throw std::runtime_error("cannot reassign let variable: " + s.name);
 
     // Handle None literal in assignment
@@ -626,7 +626,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (!ptr)
         throw std::runtime_error("undefined variable: " + varExpr->name);
 
-    if (isConst(varExpr->name))
+    if (isImmutable(varExpr->name))
         throw std::runtime_error("cannot modify field of let variable: " + varExpr->name);
 
     llvm::Type *varTy = ptr->getAllocatedType();
@@ -1677,7 +1677,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         if (llvm::verifyFunction(*func, &errStream))
             throw std::runtime_error("IR verify error in function '" + s->name + "': " + err);
     }
-    // FnScope destructor restores fn_, scope_stack_, const_scope_stack_, builder_ insert point
+    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point
 }
 
 // ===== B4: CallExpr using emitUserFnCall =====
