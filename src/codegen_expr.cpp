@@ -501,6 +501,33 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3, "map_vals_field");
     builder_.CreateStore(valsPtr, valsPtrField);
 
+    // Initialize hash table buckets via rehash
+    int64_t initBucketCount = 8;
+    while (initBucketCount * 3 < count * 4) initBucketCount *= 2;
+    {
+        std::string rehashName;
+        llvm::Type *rehashKeyTy;
+        if (keyTy == ptrTy_) {
+            rehashName = "__ry_ht_rehash_str";
+            rehashKeyTy = ptrTy_;
+        } else if (keyTy->isDoubleTy()) {
+            rehashName = "__ry_ht_rehash_f64";
+            rehashKeyTy = f64Ty_;
+        } else {
+            rehashName = "__ry_ht_rehash_i64";
+            rehashKeyTy = i64Ty_;
+        }
+        llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
+        llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashName, rehashTy);
+        llvm::Value *buckets = builder_.CreateCall(rehashFn,
+            {keysPtr, llvm::ConstantInt::get(i64Ty_, count),
+             llvm::ConstantInt::get(i64Ty_, initBucketCount)}, "map_buckets");
+        llvm::Value *bcPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 4, "map_bc_ptr");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initBucketCount), bcPtr);
+        llvm::Value *bpPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 5, "map_bp_ptr");
+        builder_.CreateStore(buckets, bpPtr);
+    }
+
     // Track types
     map_key_types_[headerPtr] = keyTy;
     map_value_types_[headerPtr] = valTy;
@@ -559,6 +586,29 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
     builder_.CreateStore(elemsPtr, elemsPtrField);
+
+    // Initialize hash table buckets via rehash
+    int64_t initBucketCount = 8;
+    while (initBucketCount * 3 < count * 4) initBucketCount *= 2;
+    {
+        std::string rehashName;
+        if (elemTy == ptrTy_) {
+            rehashName = "__ry_ht_rehash_str";
+        } else if (elemTy->isDoubleTy()) {
+            rehashName = "__ry_ht_rehash_f64";
+        } else {
+            rehashName = "__ry_ht_rehash_i64";
+        }
+        llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
+        llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashName, rehashTy);
+        llvm::Value *buckets = builder_.CreateCall(rehashFn,
+            {elemsPtr, llvm::ConstantInt::get(i64Ty_, count),
+             llvm::ConstantInt::get(i64Ty_, initBucketCount)}, "set_buckets");
+        llvm::Value *bcPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 3, "set_bc_ptr");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initBucketCount), bcPtr);
+        llvm::Value *bpPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 4, "set_bp_ptr");
+        builder_.CreateStore(buckets, bpPtr);
+    }
 
     // Track element type
     set_element_types_[headerPtr] = elemTy;

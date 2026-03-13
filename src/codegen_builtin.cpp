@@ -48,130 +48,177 @@ llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
 }
 
 llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    // Linear scan of elements array, returns index (i64) or -1 if not found
+    // Hash table lookup via __ry_ht_find_*
+    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "set_bc_ptr");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "set_bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "set_bmask");
+    llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 4, "set_buckets_ptr");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "set_buckets");
+
     llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
     llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
 
-    llvm::AllocaInst *resultVar = builder_.CreateAlloca(i64Ty_, nullptr, "set_lookup_result");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), resultVar);
-
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "set_lookup_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.body", fn_);
-    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.found", fn_);
-    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.next", fn_);
-    llvm::BasicBlock *exitBB = llvm::BasicBlock::Create(*ctx_, "set_lookup.exit", fn_);
-
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "set_lookup_cond");
-    builder_.CreateCondBr(cond, bodyBB, exitBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, elemsPtr, {iCur}, "set_elem_ptr");
-    llvm::Value *elemVal = builder_.CreateLoad(elemTy, elemPtr, "set_elem");
-
-    llvm::Value *isEqual;
+    std::string fnName;
+    llvm::Type *keyArgTy;
     if (elemTy == ptrTy_) {
-        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
-        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elemVal, elem}, "strcmp_result");
-        isEqual = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
+        fnName = "__ry_ht_find_str";
+        keyArgTy = ptrTy_;
     } else if (elemTy->isDoubleTy()) {
-        isEqual = builder_.CreateFCmpOEQ(elemVal, elem, "elem_eq");
+        fnName = "__ry_ht_find_f64";
+        keyArgTy = f64Ty_;
     } else {
-        isEqual = builder_.CreateICmpEQ(elemVal, elem, "elem_eq");
+        fnName = "__ry_ht_find_i64";
+        keyArgTy = i64Ty_;
     }
-    builder_.CreateCondBr(isEqual, foundBB, nextBB);
 
-    builder_.SetInsertPoint(foundBB);
-    llvm::Value *iFound = builder_.CreateLoad(i64Ty_, iVar, "i_found");
-    builder_.CreateStore(iFound, resultVar);
-    builder_.CreateBr(exitBB);
+    llvm::FunctionType *findTy = llvm::FunctionType::get(
+        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy}, false);
+    llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
 
-    builder_.SetInsertPoint(nextBB);
-    llvm::Value *iNext = builder_.CreateAdd(
-        builder_.CreateLoad(i64Ty_, iVar, "i_next_load"),
-        llvm::ConstantInt::get(i64Ty_, 1), "i_next");
-    builder_.CreateStore(iNext, iVar);
-    builder_.CreateBr(condBB);
+    llvm::Value *keyArg = elem;
+    if (elemTy != keyArgTy && elemTy == i1Ty_)
+        keyArg = builder_.CreateZExt(elem, i64Ty_, "elem_ext");
 
-    builder_.SetInsertPoint(exitBB);
-    return builder_.CreateLoad(i64Ty_, resultVar, "set_lookup_idx");
+    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, elemsPtr, length, keyArg}, "set_lookup_idx");
 }
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
-    // Linear scan of keys array, returns index (i64) or -1 if not found
+    // Hash table lookup via __ry_ht_find_*
+    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 4, "map_bc_ptr");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "map_bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "map_bmask");
+    llvm::Value *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 5, "map_buckets_ptr");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "map_buckets");
+
     llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 0, "map_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
     llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 2, "map_keys_ptr");
     llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "map_keys");
 
-    // Allocate result variable
-    llvm::AllocaInst *resultVar = builder_.CreateAlloca(i64Ty_, nullptr, "lookup_result");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), resultVar);
-
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lookup_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lookup.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lookup.body", fn_);
-    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "lookup.found", fn_);
-    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "lookup.next", fn_);
-    llvm::BasicBlock *exitBB = llvm::BasicBlock::Create(*ctx_, "lookup.exit", fn_);
-
-    builder_.CreateBr(condBB);
-
-    // cond: i < length
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "lookup_cond");
-    builder_.CreateCondBr(cond, bodyBB, exitBB);
-
-    // body: compare keys[i] with key
-    builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-    llvm::Value *keyElemPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "key_elem_ptr");
-    llvm::Value *keyElem = builder_.CreateLoad(keyTy, keyElemPtr, "key_elem");
-
-    llvm::Value *isEqual;
+    std::string fnName;
+    llvm::Type *keyArgTy;
     if (keyTy == ptrTy_) {
-        // String comparison using strcmp
-        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
-        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {keyElem, key}, "strcmp_result");
-        isEqual = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
+        fnName = "__ry_ht_find_str";
+        keyArgTy = ptrTy_;
     } else if (keyTy->isDoubleTy()) {
-        isEqual = builder_.CreateFCmpOEQ(keyElem, key, "key_eq");
+        fnName = "__ry_ht_find_f64";
+        keyArgTy = f64Ty_;
     } else {
-        isEqual = builder_.CreateICmpEQ(keyElem, key, "key_eq");
+        fnName = "__ry_ht_find_i64";
+        keyArgTy = i64Ty_;
     }
-    builder_.CreateCondBr(isEqual, foundBB, nextBB);
 
-    // found: store index
-    builder_.SetInsertPoint(foundBB);
-    llvm::Value *iFound = builder_.CreateLoad(i64Ty_, iVar, "i_found");
-    builder_.CreateStore(iFound, resultVar);
-    builder_.CreateBr(exitBB);
+    llvm::FunctionType *findTy = llvm::FunctionType::get(
+        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy}, false);
+    llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
 
-    // next: i++
-    builder_.SetInsertPoint(nextBB);
-    llvm::Value *iNext = builder_.CreateAdd(
-        builder_.CreateLoad(i64Ty_, iVar, "i_next_load"),
-        llvm::ConstantInt::get(i64Ty_, 1), "i_next");
-    builder_.CreateStore(iNext, iVar);
-    builder_.CreateBr(condBB);
+    llvm::Value *keyArg = key;
+    if (keyTy != keyArgTy && keyTy == i1Ty_)
+        keyArg = builder_.CreateZExt(key, i64Ty_, "key_ext");
 
-    // exit: return result
-    builder_.SetInsertPoint(exitBB);
-    return builder_.CreateLoad(i64Ty_, resultVar, "lookup_idx");
+    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "lookup_idx");
+}
+
+// Helper: initialize bucket array fields in a header
+void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
+                              unsigned bucketCountIdx, unsigned bucketsPtrIdx,
+                              int64_t initialBucketCount) {
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    llvm::FunctionType *memsetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
+    llvm::FunctionCallee memsetFn = mod_->getOrInsertFunction("memset", memsetTy);
+
+    int64_t bucketBytes = initialBucketCount * 8; // sizeof(int64_t)
+    llvm::Value *bucketsPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, bucketBytes)}, "buckets");
+    // Fill with 0xFF bytes → each int64_t becomes -1 (EMPTY)
+    builder_.CreateCall(memsetFn, {bucketsPtr,
+        llvm::ConstantInt::get(i32Ty_, 0xFF),
+        llvm::ConstantInt::get(i64Ty_, bucketBytes)});
+
+    llvm::Value *bcPtr = builder_.CreateStructGEP(headerTy, headerPtr, bucketCountIdx, "bc_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initialBucketCount), bcPtr);
+    llvm::Value *bpPtr = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_ptr");
+    builder_.CreateStore(bucketsPtr, bpPtr);
+}
+
+// Helper: insert key into bucket + check load factor and rehash if needed
+void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
+                                              unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
+                                              llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
+    // Get hash function and rehash function names
+    std::string hashFnName, rehashFnName;
+    llvm::Type *hashArgTy;
+    if (keyTy == ptrTy_) {
+        hashFnName = "__ry_hash_str";
+        rehashFnName = "__ry_ht_rehash_str";
+        hashArgTy = ptrTy_;
+    } else if (keyTy->isDoubleTy()) {
+        hashFnName = "__ry_hash_f64";
+        rehashFnName = "__ry_ht_rehash_f64";
+        hashArgTy = f64Ty_;
+    } else {
+        hashFnName = "__ry_hash_i64";
+        rehashFnName = "__ry_ht_rehash_i64";
+        hashArgTy = i64Ty_;
+    }
+
+    // Compute hash
+    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hashArgTy}, false);
+    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hashFnName, hashTy);
+    llvm::Value *hashVal = builder_.CreateCall(hashFn, {key}, "hash_val");
+
+    // Insert into buckets
+    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "buckets");
+    llvm::Value *bcField = builder_.CreateStructGEP(headerTy, headerPtr, bucketCountIdx, "bc_field");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "bmask");
+
+    llvm::FunctionType *insertTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionCallee insertFn = mod_->getOrInsertFunction("__ry_ht_insert", insertTy);
+    builder_.CreateCall(insertFn, {bucketsPtr, bucketMask, hashVal, denseIndex});
+
+    // Check load factor: len * 4 > bucketCount * 3 (i.e. len/bucketCount > 75%)
+    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, headerPtr, lenIdx, "len_for_rehash");
+    llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "len_rehash");
+    llvm::Value *len4 = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, 4), "len4");
+    llvm::Value *bc3 = builder_.CreateMul(bucketCount, llvm::ConstantInt::get(i64Ty_, 3), "bc3");
+    llvm::Value *needRehash = builder_.CreateICmpSGT(len4, bc3, "need_rehash");
+
+    llvm::BasicBlock *rehashBB = llvm::BasicBlock::Create(*ctx_, "rehash", fn_);
+    llvm::BasicBlock *doneRehashBB = llvm::BasicBlock::Create(*ctx_, "rehash.done", fn_);
+    builder_.CreateCondBr(needRehash, rehashBB, doneRehashBB);
+
+    builder_.SetInsertPoint(rehashBB);
+    // newBucketCount = bucketCount * 2
+    llvm::Value *bcCur = builder_.CreateLoad(i64Ty_, bcField, "bc_cur");
+    llvm::Value *newBc = builder_.CreateMul(bcCur, llvm::ConstantInt::get(i64Ty_, 2), "new_bc");
+
+    // Get keys/elems pointer (field index 2 for both map and set)
+    llvm::Value *keysField = builder_.CreateStructGEP(headerTy, headerPtr, 2, "keys_for_rehash");
+    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysField, "keys_rehash");
+    llvm::Value *lenForRehash = builder_.CreateLoad(i64Ty_, lenPtr, "len_for_rehash2");
+
+    llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashFnName, rehashTy);
+    llvm::Value *newBuckets = builder_.CreateCall(rehashFn, {keysPtr, lenForRehash, newBc}, "new_buckets");
+
+    // Free old buckets
+    llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+    llvm::Value *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsField, "old_buckets");
+    builder_.CreateCall(freeFn, {oldBuckets});
+
+    // Store new buckets and count
+    builder_.CreateStore(newBuckets, bucketsField);
+    builder_.CreateStore(newBc, bcField);
+
+    builder_.CreateBr(doneRehashBB);
+    builder_.SetInsertPoint(doneRehashBB);
 }
 
 // ===== emitPrint =====

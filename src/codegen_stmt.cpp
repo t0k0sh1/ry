@@ -38,6 +38,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
             llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2);
             builder_.CreateStore(elemsPtr, elemsPtrField);
+            emitBucketInit(headerPtr, setHeaderTy_, 3, 4, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
@@ -74,6 +75,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(keysPtr, keysPtrField);
             llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3);
             builder_.CreateStore(valsPtr, valsPtrField);
+            emitBucketInit(headerPtr, mapHeaderTy_, 4, 5, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
@@ -611,6 +613,10 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         // length++
         llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
         builder_.CreateStore(newLen, lenPtr);
+
+        // Insert into hash table buckets and check rehash
+        emitBucketInsertAndRehashCheck(objPtr, mapHeaderTy_, 0, 4, 5, key, mapKeyTy, curLen);
+
         builder_.CreateBr(endBB);
 
         builder_.SetInsertPoint(endBB);

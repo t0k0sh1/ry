@@ -185,6 +185,12 @@ private:
     llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
+    void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
+                        unsigned bucketCountIdx, unsigned bucketsPtrIdx,
+                        int64_t initialBucketCount);
+    void emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
+                                         unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
+                                         llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
 
     // Union type helpers

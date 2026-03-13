@@ -17,8 +17,8 @@ CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
-    mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_}, "MapHeader");
-    setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "SetHeader");
+    mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
+    setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
 }
 
 // ===== B5: FnScope RAII =====

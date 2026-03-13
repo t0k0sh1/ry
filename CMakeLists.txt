@@ -43,6 +43,7 @@ add_library(ry_lib STATIC
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
+    src/runtime_hash.cpp
     src/project_config.cpp
 )
 target_include_directories(ry_lib PUBLIC
@@ -53,7 +54,11 @@ target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS})
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
-target_link_libraries(ry PRIVATE ry_lib)
+if(APPLE)
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
+else()
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive)
+endif()
 
 # ===== テスト =====
 enable_testing()
@@ -67,10 +72,18 @@ add_executable(ry_tests
     tests/test_codegen_advanced.cpp
     tests/test_project_config.cpp
 )
-target_link_libraries(ry_tests PRIVATE
-    ry_lib
-    GTest::gtest_main
-)
+if(APPLE)
+    target_link_libraries(ry_tests PRIVATE
+        -Wl,-force_load,$<TARGET_FILE:ry_lib>
+        ry_lib
+        GTest::gtest_main
+    )
+else()
+    target_link_libraries(ry_tests PRIVATE
+        -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
+        GTest::gtest_main
+    )
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(ry_tests)
