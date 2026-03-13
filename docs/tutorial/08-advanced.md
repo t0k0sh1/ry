@@ -6,31 +6,31 @@
 
 ## ラムダ関数
 
-ラムダ関数（アロー関数）は、関数を式として記述する構文です。`(引数): 戻り値型 => 式` の形で書きます。
+ラムダ関数は、関数を式として記述する構文です。`(引数) -> 式` の形で書きます。戻り値型は自動推論されます。
 
 ### 単一式ラムダ
 
 ```python
-let double = (x: int): int => x * 2
+let double = (x: int) -> x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int): int => a + b
+let add = (a: int, b: int) -> a + b
 print(add(3, 4))  # 7
 ```
 
 ### 引数なしラムダ
 
 ```python
-let answer = (): int => 42
+let answer = () -> 42
 print(answer())  # 42
 ```
 
 ### 複数行ラムダ
 
-`=>` の後に改行してインデントすることで、複数の文を書けます。
+`->` の後に改行してインデントすることで、複数の文を書けます。
 
 ```python
-let abs = (x: int): int =>
+let abs = (x: int) ->
     if x < 0:
         return -x
     return x
@@ -47,7 +47,7 @@ print(abs(3))   # 3
 
 ```python
 let offset = 10
-let add_offset = (x: int): int => x + offset
+let add_offset = (x: int) -> x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -61,9 +61,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int): int => x * 2
-print(apply(double, 3))                   # 6
-print(apply((n: int): int => n + 1, 10))  # 11
+let double = (x: int) -> x * 2
+print(apply(double, 3))                # 6
+print(apply((n: int) -> n + 1, 10))    # 11
 ```
 
 ---

@@ -977,16 +977,11 @@ ExprPtr Parser::parseLambdaExpr() {
         throw std::runtime_error("not a lambda");
     lex_.next(); // consume ')'
 
-    // Return type annotation is required
-    if (lex_.peek().kind != TokenKind::Colon)
+    // -> で直接ボディへ（戻り値型は推論）
+    if (lex_.peek().kind != TokenKind::Arrow)
         throw std::runtime_error("not a lambda");
-    lex_.next(); // consume ':'
-
-    lambda->return_type = parseTypeName();
-
-    if (lex_.peek().kind != TokenKind::FatArrow)
-        throw std::runtime_error("not a lambda");
-    lex_.next(); // consume '=>'
+    lex_.next(); // consume '->'
+    lambda->return_type = "";  // 推論に委ねる
 
     // Check for multi-line lambda (newline + indent)
     if (lex_.peek().kind == TokenKind::Newline) {

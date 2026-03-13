@@ -97,30 +97,29 @@ fn log_typed(msg: str) -> Unit:
 ### 構文
 
 ```python
-# 単一式（式の値が返る）
-(引数名: 型, ...): 戻り値型 => 式
+# 単一式（式の値が返る。戻り値型は推論）
+(引数名: 型, ...) -> 式
 
 # 複数行ブロック
-(引数名: 型, ...): 戻り値型 => {
+(引数名: 型, ...) ->
     # 複数の文
     return 値
-}
 ```
 
 ### 例
 
 ```python
-let double = (x: int): int => x * 2
+let double = (x: int) -> x * 2
 let result = double(5)   # 10
 
-let add = (a: int, b: int): int => a + b
+let add = (a: int, b: int) -> a + b
 let sum = add(3, 4)      # 7
 
 # 複数行ラムダ
-let compute = (x: int): int => {
-    let tmp = x * x
-    return tmp + 1
-}
+let abs = (x: int) ->
+    if x < 0:
+        return -x
+    return x
 ```
 
 ---
@@ -131,7 +130,7 @@ let compute = (x: int): int => {
 
 ```python
 let base = 10
-let add_base = (x: int): int => x + base   # base を値でキャプチャ
+let add_base = (x: int) -> x + base   # base を値でキャプチャ
 
 base = 99          # キャプチャ済みの値には影響しない
 let r = add_base(5)   # 15（キャプチャ時の base = 10 を使用）
@@ -160,8 +159,8 @@ fn(引数型1, 引数型2, ...) -> 戻り値型
 ### 例
 
 ```python
-let f: fn(int) -> int = (x: int): int => x * 2
-let g: fn(int, int) -> int = (a: int, b: int): int => a + b
+let f: fn(int) -> int = (x: int) -> x * 2
+let g: fn(int, int) -> int = (a: int, b: int) -> a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
@@ -182,7 +181,7 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-let doubled = map_list([1, 2, 3], (x: int): int => x * 2)
+let doubled = map_list([1, 2, 3], (x: int) -> x * 2)
 # [2, 4, 6]
 ```
 

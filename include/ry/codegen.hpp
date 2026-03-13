@@ -193,6 +193,12 @@ private:
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
 
+    // Lambda return type inference
+    llvm::Type *inferExprType(const ExprNode &expr,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+    llvm::Type *inferReturnType(const std::vector<StmtNode> &body,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+
     // Union type helpers
     std::vector<std::string> parseUnionComponents(const std::string &typeName);
     std::string normalizeUnionType(const std::string &typeName);

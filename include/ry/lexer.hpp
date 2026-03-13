@@ -68,8 +68,6 @@ enum class TokenKind {
     StarEq,         // *=
     SlashEq,        // /=
     PercentEq,      // %=
-    // --- lambda ---
-    FatArrow,       // =>
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::

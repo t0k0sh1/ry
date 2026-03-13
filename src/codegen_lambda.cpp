@@ -118,7 +118,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     for (auto *t : capturedTypes)
         allParamTypes.push_back(t);
 
-    llvm::Type *retTy = resolveType(e->return_type);
+    llvm::Type *retTy;
+    if (e->return_type.empty()) {
+        // 戻り値型を推論
+        std::unordered_map<std::string, llvm::Type*> paramTypeMap;
+        for (auto &p : e->params)
+            paramTypeMap[p.name] = resolveType(p.type);
+
+        if (e->expr_body) {
+            retTy = inferExprType(*e->expr_body, paramTypeMap);
+        } else {
+            retTy = inferReturnType(e->body, paramTypeMap);
+        }
+    } else {
+        retTy = resolveType(e->return_type);
+    }
 
     // Create the LLVM function
     std::string lambdaName = "__lambda." + std::to_string(lambda_counter_++);
@@ -230,4 +244,80 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     fn_type_info_[closurePtr] = info;
 
     return closurePtr;
+}
+
+// ===== Lambda return type inference =====
+
+llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    return std::visit([&](const auto &v) -> llvm::Type* {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, NumberExpr>) {
+            return i64Ty_;
+        } else if constexpr (std::is_same_v<T, FloatExpr>) {
+            return f64Ty_;
+        } else if constexpr (std::is_same_v<T, BoolExpr>) {
+            return i1Ty_;
+        } else if constexpr (std::is_same_v<T, StringExpr>) {
+            return ptrTy_;
+        } else if constexpr (std::is_same_v<T, VariableExpr>) {
+            auto it = paramTypeMap.find(v.name);
+            if (it != paramTypeMap.end())
+                return it->second;
+            if (llvm::AllocaInst *alloca = findVar(v.name))
+                return alloca->getAllocatedType();
+            return i64Ty_; // fallback
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
+            const std::string &op = v->op;
+            if (op == "==" || op == "!=" || op == "<" || op == "<=" ||
+                op == ">" || op == ">=" || op == "and" || op == "or")
+                return i1Ty_;
+            llvm::Type *lhsTy = inferExprType(*v->lhs, paramTypeMap);
+            llvm::Type *rhsTy = inferExprType(*v->rhs, paramTypeMap);
+            if (op == "+") {
+                if (lhsTy == ptrTy_ || rhsTy == ptrTy_)
+                    return ptrTy_;
+            }
+            if (lhsTy == f64Ty_ || rhsTy == f64Ty_)
+                return f64Ty_;
+            return i64Ty_;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+            if (v->op == "not")
+                return i1Ty_;
+            return inferExprType(*v->operand, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            // Look up the function return type
+            auto it = functions_.find(v->callee);
+            if (it != functions_.end() && !it->second.empty())
+                return it->second[0].func->getReturnType();
+            return i64Ty_; // fallback
+        } else {
+            return i64Ty_; // fallback
+        }
+    }, expr.data);
+}
+
+llvm::Type *CodeGen::inferReturnType(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
+    // Scan for ReturnStmt with a value
+    for (auto &stmt : body) {
+        auto result = std::visit([&](const auto &s) -> llvm::Type* {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, ReturnStmt>) {
+                if (s.value)
+                    return inferExprType(*s.value, paramTypeMap);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                for (auto &br : s->branches) {
+                    auto *ty = inferReturnType(br.body, paramTypeMap);
+                    if (ty) return ty;
+                }
+                auto *ty = inferReturnType(s->else_body, paramTypeMap);
+                if (ty) return ty;
+            }
+            return static_cast<llvm::Type*>(nullptr);
+        }, stmt);
+        if (result) return result;
+    }
+    // No return found → void
+    return llvm::Type::getVoidTy(*ctx_);
 }

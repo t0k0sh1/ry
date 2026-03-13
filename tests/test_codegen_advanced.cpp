@@ -136,28 +136,28 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
-        "let double = (x: int): int => x * 2\n"
+        "let double = (x: int) -> x * 2\n"
         "print(double(5))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, LambdaNoParams) {
     std::string src =
-        "let answer = (): int => 42\n"
+        "let answer = () ->42\n"
         "print(answer())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, LambdaMultipleParams) {
     std::string src =
-        "let add = (a: int, b: int): int => a + b\n"
+        "let add = (a: int, b: int) -> a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
 
 TEST_F(CodeGenTest, LambdaFloat) {
     std::string src =
-        "let half = (x: float): float => x / 2.0\n"
+        "let half = (x: float) -> x / 2.0\n"
         "print(half(7.0))";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
@@ -166,7 +166,7 @@ TEST_F(CodeGenTest, LambdaAsArgument) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "let doubled = apply((n: int): int => n * 2, 10)\n"
+        "let doubled = apply((n: int) -> n * 2, 10)\n"
         "print(doubled)";
     EXPECT_EQ(runSource(src), "20\n");
 }
@@ -175,7 +175,7 @@ TEST_F(CodeGenTest, LambdaStoredAndPassed) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "let triple = (n: int): int => n * 3\n"
+        "let triple = (n: int) -> n * 3\n"
         "print(apply(triple, 5))";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -192,7 +192,7 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "let is_positive = (x: int): bool => x > 0\n"
+        "let is_positive = (x: int) -> x > 0\n"
         "print(is_positive(5))\n"
         "print(is_positive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -200,7 +200,7 @@ TEST_F(CodeGenTest, LambdaBoolReturn) {
 
 TEST_F(CodeGenTest, LambdaMultiLine) {
     std::string src =
-        "let abs = (x: int): int =>\n"
+        "let abs = (x: int) ->\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
@@ -212,7 +212,7 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "let offset = 10\n"
-        "let add_offset = (x: int): int => x + offset\n"
+        "let add_offset = (x: int) -> x + offset\n"
         "print(add_offset(5))\n"
         "print(add_offset(20))";
     EXPECT_EQ(runSource(src), "15\n30\n");
@@ -220,14 +220,14 @@ TEST_F(CodeGenTest, LambdaClosure) {
 
 TEST_F(CodeGenTest, LambdaArgCountError) {
     std::string src =
-        "let f = (x: int): int => x\n"
+        "let f = (x: int) -> x\n"
         "f(1, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, LambdaArgTypeError) {
     std::string src =
-        "let f = (x: int): int => x\n"
+        "let f = (x: int) -> x\n"
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }

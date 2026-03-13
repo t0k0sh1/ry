@@ -15,7 +15,7 @@
 | `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
-| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int): int => x * 2` | 関数型 |
+| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) -> x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
 | `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
@@ -35,7 +35,7 @@ let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
 let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = (x: int): int => x * 2
+let fn_val: fn(int) -> int = (x: int) -> x * 2
 let u: int | str = 42
 ```
 
