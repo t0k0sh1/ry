@@ -49,8 +49,8 @@
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `split` | `(str, str) → list[str]` | デリミタで分割 |
-| `join` | `(list[str], str) → str` | セパレータで結合 |
+| `split` | `(str, str) → list<str>` | デリミタで分割 |
+| `join` | `(list<str>, str) → str` | セパレータで結合 |
 
 ### 型変換
 
@@ -249,9 +249,9 @@ print("abc".reverse())     # cba (UFCS)
 
 ## split
 
-**シグネチャ:** `split(s: str, delim: str) -> list[str]`
+**シグネチャ:** `split(s: str, delim: str) -> list<str>`
 
-文字列 `s` をデリミタ `delim` で分割し、`list[str]` を返します。
+文字列 `s` をデリミタ `delim` で分割し、`list<str>` を返します。
 
 ```python
 let parts = split("a,b,c", ",")
@@ -269,7 +269,7 @@ for word in "hello world".split(" "):
 
 ## join
 
-**シグネチャ:** `join(xs: list[str], sep: str) -> str`
+**シグネチャ:** `join(xs: list<str>, sep: str) -> str`
 
 文字列リストの要素をセパレータ `sep` で結合した文字列を返します。
 

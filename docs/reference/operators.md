@@ -131,7 +131,7 @@ x *= 2    # x = 24
 | `%` | float または int（片方float） | — | float |
 | `+` | str | str | str |
 | `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
-| `in` | 任意 | set[T] | bool |
+| `in` | 任意 | set<T> | bool |
 | `& \| ^ ~ << >>` | int | int | int |
 | `and or not` | bool | bool | bool |
 

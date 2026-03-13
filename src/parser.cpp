@@ -912,30 +912,23 @@ std::string Parser::parseTypeNameSingle() {
         return name;
     }
 
-    if (lex_.peek().kind == TokenKind::LBracket) {
-        lex_.next(); // consume '['
-        std::string inner = parseTypeName();
-        if (name == "map" && lex_.peek().kind == TokenKind::Comma) {
-            // map[K, V] parsing
-            lex_.next(); // consume ','
-            std::string valueTy = parseTypeName();
-            if (lex_.peek().kind != TokenKind::RBracket)
-                parseError("expected ']' in map type");
-            lex_.next(); // consume ']'
-            name += "[" + inner + ", " + valueTy + "]";
-        } else {
-            if (lex_.peek().kind != TokenKind::RBracket)
-                parseError("expected ']' in list type");
-            lex_.next(); // consume ']'
-            name += "[" + inner + "]";
-        }
-    } else if (lex_.peek().kind == TokenKind::Less) {
+    if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
-        if (lex_.peek().kind != TokenKind::Greater)
-            parseError("expected '>' after generic type parameter");
-        lex_.next(); // consume '>'
-        name += "<" + inner + ">";
+        if (name == "map" && lex_.peek().kind == TokenKind::Comma) {
+            // map<K, V> parsing
+            lex_.next(); // consume ','
+            std::string valueTy = parseTypeName();
+            if (lex_.peek().kind != TokenKind::Greater)
+                parseError("expected '>' in map type");
+            lex_.next(); // consume '>'
+            name += "<" + inner + ", " + valueTy + ">";
+        } else {
+            if (lex_.peek().kind != TokenKind::Greater)
+                parseError("expected '>' after generic type parameter");
+            lex_.next(); // consume '>'
+            name += "<" + inner + ">";
+        }
     }
 
     return name;

@@ -176,8 +176,8 @@ let result = apply(f, 5)   # 10
 関数を引数として受け取ったり、戻り値として返したりできる。
 
 ```python
-fn map_list(xs: list[int], f: fn(int) -> int) -> list[int]:
-    let result: list[int] = []
+fn map_list(xs: list<int>, f: fn(int) -> int) -> list<int>:
+    let result: list<int> = []
     for x in xs:
         result += [f(x)]
     return result

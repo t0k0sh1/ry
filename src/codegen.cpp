@@ -328,18 +328,18 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
-    // list[T] parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "list[" && typeName.back() == ']') {
+    // list<T> parsing
+    if (typeName.size() > 5 && typeName.substr(0, 5) == "list<" && typeName.back() == '>') {
         return ptrTy_;
     }
 
-    // map[K, V] parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "map[" && typeName.back() == ']') {
+    // map<K, V> parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "map<" && typeName.back() == '>') {
         return ptrTy_;
     }
 
-    // set[T] parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "set[" && typeName.back() == ']') {
+    // set<T> parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "set<" && typeName.back() == '>') {
         return ptrTy_;
     }
 
@@ -381,8 +381,8 @@ std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::s
     std::string inner = typeStr.substr(4, typeStr.size() - 5);
     size_t depth = 0;
     for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '[') ++depth;
-        else if (inner[i] == ']') --depth;
+        if (inner[i] == '<') ++depth;
+        else if (inner[i] == '>') --depth;
         else if (inner[i] == ',' && depth == 0) {
             std::string kStr = inner.substr(0, i);
             std::string vStr = inner.substr(i + 1);

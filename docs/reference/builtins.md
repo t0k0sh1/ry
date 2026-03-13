@@ -114,7 +114,7 @@ print(x.unwrap())   # 42 (UFCS)
 
 ## len
 
-**シグネチャ:** `len(x: list[T] | map[K, V] | set[T] | str) -> int`
+**シグネチャ:** `len(x: list<T> | map<K, V> | set<T> | str) -> int`
 
 リスト・マップ・セットの要素数、または文字列のバイト長を返します。
 
@@ -129,7 +129,7 @@ print(len("hello"))           # 5
 
 ## has_key
 
-**シグネチャ:** `has_key(m: map[K, V], key: K) -> bool`
+**シグネチャ:** `has_key(m: map<K, V>, key: K) -> bool`
 
 マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
 
@@ -143,7 +143,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 ## add
 
-**シグネチャ:** `add(s: set[T], value: T)`
+**シグネチャ:** `add(s: set<T>, value: T)`
 
 セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
 
@@ -159,7 +159,7 @@ print(len(s))     # 5
 
 ## remove
 
-**シグネチャ:** `remove(s: set[T], value: T)`
+**シグネチャ:** `remove(s: set<T>, value: T)`
 
 セットから要素を削除します。UFCS記法も使用可能です。
 
@@ -173,7 +173,7 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(n: int) -> list[int]` / `range(start: int, end: int) -> list[int]`
+**シグネチャ:** `range(n: int) -> list<int>` / `range(start: int, end: int) -> list<int>`
 
 整数のリストを生成します。
 

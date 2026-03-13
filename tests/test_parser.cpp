@@ -694,11 +694,11 @@ TEST(ParserTest, IndexAssignStmt) {
 }
 
 TEST(ParserTest, MapTypeAnnotation) {
-    Program prog = parseStr("let m: map[str, int] = {\"a\": 1}");
+    Program prog = parseStr("let m: map<str, int> = {\"a\": 1}");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<LetStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "map[str, int]");
+    EXPECT_EQ(*s.type_annotation, "map<str, int>");
 }
 
 // ===== Operator overloading =====
@@ -784,11 +784,11 @@ TEST(ParserTest, SetSingleElement) {
 }
 
 TEST(ParserTest, SetTypeAnnotation) {
-    Program prog = parseStr("let s: set[int] = {1}");
+    Program prog = parseStr("let s: set<int> = {1}");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<LetStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "set[int]");
+    EXPECT_EQ(*s.type_annotation, "set<int>");
 }
 
 TEST(ParserTest, InOperator) {

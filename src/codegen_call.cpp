@@ -4,7 +4,7 @@
 // ===== CallExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    // range(n) or range(start, end) → list[int]
+    // range(n) or range(start, end) → list<int>
     if (e->callee == "range") {
         if (e->args.size() < 1 || e->args.size() > 2)
             throw std::runtime_error("range() takes 1 or 2 arguments");
@@ -997,9 +997,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return buf;
     }
 
-    // ===== Phase 3: list[str] 連携 =====
+    // ===== Phase 3: list<str> 連携 =====
 
-    // split(s, delim) → list[str]
+    // split(s, delim) → list<str>
     if (e->callee == "split") {
         if (e->args.size() != 2)
             throw std::runtime_error("split() takes exactly 2 arguments");
@@ -1125,9 +1125,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *listPtr = emitExpr(*e->args[0]);
         llvm::Value *sep = emitExpr(*e->args[1]);
         if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
-            throw std::runtime_error("join() requires list[str] and str arguments");
+            throw std::runtime_error("join() requires list<str> and str arguments");
         if (getListElementType(listPtr) != ptrTy_)
-            throw std::runtime_error("join() requires list[str] as first argument");
+            throw std::runtime_error("join() requires list<str> as first argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);

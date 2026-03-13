@@ -60,7 +60,7 @@ print(result.1)   # 1
 
 ```python
 let xs = [1, 2, 3]
-let xs: list[int] = [1, 2, 3]
+let xs: list<int> = [1, 2, 3]
 ```
 
 ### 対応する要素型
@@ -128,7 +128,7 @@ for x in xs:
 
 ```python
 let m = {"a": 1, "b": 2}
-let m: map[str, int] = {"a": 1, "b": 2}
+let m: map<str, int> = {"a": 1, "b": 2}
 ```
 
 ### キーアクセス
@@ -174,7 +174,7 @@ print(m.has_key("z"))   # false
 |------|------|
 | 全キーは同一型 | 異なる型のキーが混在するとコンパイルエラー |
 | 全値は同一型 | 異なる型の値が混在するとコンパイルエラー |
-| 空マップ | 型注釈が必要（`let m: map[str, int] = {"a": 1}` など） |
+| 空マップ | 型注釈が必要（`let m: map<str, int> = {"a": 1}` など） |
 | 存在しないキーアクセス | ランタイムエラー（exit(1)） |
 | キー検索 | 線形スキャン |
 | 容量超過時 | 自動で2倍に拡張 |
@@ -191,7 +191,7 @@ print(m.has_key("z"))   # false
 
 ```python
 let s = {1, 2, 3}
-let s: set[int] = {1, 2, 3}
+let s: set<int> = {1, 2, 3}
 ```
 
 ### 対応する要素型
@@ -252,13 +252,13 @@ for x in s:
 空セットは型注釈が必要です。
 
 ```python
-let s: set[int] = {}
+let s: set<int> = {}
 ```
 
 ### 関数引数
 
 ```python
-fn has_value(s: set[int], v: int) -> bool:
+fn has_value(s: set<int>, v: int) -> bool:
     return v in s
 ```
 

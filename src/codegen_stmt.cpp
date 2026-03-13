@@ -15,7 +15,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!type_annotation)
             throw std::runtime_error("empty {} literal requires type annotation");
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "set[") {
+        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "set<") {
             std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
@@ -46,7 +46,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "map[") {
+        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "map<") {
             auto [keyTy, valTy] = parseMapTypeAnnotation(*type_annotation);
             if (!keyTy || !valTy)
                 throw std::runtime_error("invalid map type annotation: " + *type_annotation);
@@ -83,7 +83,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        throw std::runtime_error("empty {} requires set[T] or map[K, V] type annotation");
+        throw std::runtime_error("empty {} requires set<T> or map<K, V> type annotation");
     }
 
     // Handle None literal
@@ -141,7 +141,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
         if (!elemTy && type_annotation && type_annotation->size() > 5 &&
-            type_annotation->substr(0, 5) == "list[") {
+            type_annotation->substr(0, 5) == "list<") {
             std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
             elemTy = resolveType(inner);
         }
@@ -165,9 +165,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                 if (mv2 != map_value_types_.end()) valTy = mv2->second;
             }
         }
-        // From type annotation: map[K, V]
+        // From type annotation: map<K, V>
         if (!keyTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "map[") {
+            type_annotation->substr(0, 4) == "map<") {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*type_annotation);
         }
         if (keyTy) map_key_types_[ptr] = keyTy;
@@ -181,7 +181,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
         }
         if (!setElemTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "set[") {
+            type_annotation->substr(0, 4) == "set<") {
             std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
             setElemTy = resolveType(inner);
         }
@@ -723,12 +723,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             scope_stack_.back()[s->params[idx].name] = alloca;
             // Track list element type for list parameters
             const std::string &ptype = s->params[idx].type;
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "list[" && ptype.back() == ']') {
+            if (ptype.size() > 5 && ptype.substr(0, 5) == "list<" && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 list_element_types_[alloca] = resolveType(inner);
             }
             // Track set element type for set parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "set[" && ptype.back() == ']') {
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "set<" && ptype.back() == '>') {
                 std::string inner = ptype.substr(4, ptype.size() - 5);
                 set_element_types_[alloca] = resolveType(inner);
             }
@@ -737,7 +737,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 enum_value_types_[alloca] = ptype;
             }
             // Track map key/value types for map parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "map[" && ptype.back() == ']') {
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "map<" && ptype.back() == '>') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
                 if (kTy) map_key_types_[alloca] = kTy;
                 if (vTy) map_value_types_[alloca] = vTy;
