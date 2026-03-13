@@ -37,6 +37,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [構造体・列挙型](reference/structs.md) | type 定義・enum 定義の完全な文法 |
 | [タプル・リスト・マップ・セット](reference/collections.md) | コレクション型の操作方法 |
 | [組み込み関数](reference/builtins.md) | print・len・Some・unwrap 等 |
+| [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
 | [モジュールシステム](reference/modules.md) | from/import の文法と探索ルール |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
 | [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
