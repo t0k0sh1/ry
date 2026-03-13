@@ -239,6 +239,23 @@ Token Lexer::readToken() {
 
     if (std::isdigit(c)) {
         size_t start = pos_;
+        if (c == '0' && pos_ + 1 < src_.size()) {
+            char next = src_[pos_ + 1];
+            if (next == 'x' || next == 'X') {
+                pos_ += 2; // skip "0x"
+                if (pos_ >= src_.size() || !std::isxdigit(src_[pos_]))
+                    throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
+                while (pos_ < src_.size() && std::isxdigit(src_[pos_])) ++pos_;
+                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_};
+            }
+            if (next == 'b' || next == 'B') {
+                pos_ += 2; // skip "0b"
+                if (pos_ >= src_.size() || (src_[pos_] != '0' && src_[pos_] != '1'))
+                    throw std::runtime_error("line " + std::to_string(line_) + ": invalid binary literal");
+                while (pos_ < src_.size() && (src_[pos_] == '0' || src_[pos_] == '1')) ++pos_;
+                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_};
+            }
+        }
         while (pos_ < src_.size() && std::isdigit(src_[pos_]))
             ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '.') {

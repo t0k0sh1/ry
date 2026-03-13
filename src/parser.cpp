@@ -3,6 +3,16 @@
 #include <string>
 #include <unordered_set>
 
+// ===== Helper: parse integer literals (decimal, hex, binary) =====
+
+static int64_t parseIntLiteral(const std::string& s) {
+    if (s.size() > 2 && s[0] == '0') {
+        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
+        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
+    }
+    return std::stoll(s);
+}
+
 // ===== A1: parseError helpers =====
 
 [[noreturn]] void Parser::parseError(int line, const std::string &msg) {
@@ -464,7 +474,7 @@ ExprPtr Parser::parsePrimary() {
     if (t.kind == TokenKind::Number) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
-        node->data = NumberExpr{std::stoll(t.value)};
+        node->data = NumberExpr{parseIntLiteral(t.value)};
         return node;
     }
     if (t.kind == TokenKind::Float) {
@@ -1207,7 +1217,7 @@ Pattern Parser::parsePattern() {
     if (t.kind == TokenKind::Number) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
-        node->data = NumberExpr{std::stoll(t.value)};
+        node->data = NumberExpr{parseIntLiteral(t.value)};
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::Float) {
@@ -1236,7 +1246,7 @@ Pattern Parser::parsePattern() {
         if (num.kind == TokenKind::Number) {
             lex_.next();
             auto node = std::make_unique<ExprNode>();
-            node->data = NumberExpr{-std::stoll(num.value)};
+            node->data = NumberExpr{-parseIntLiteral(num.value)};
             return LiteralPattern{std::move(node)};
         }
         if (num.kind == TokenKind::Float) {

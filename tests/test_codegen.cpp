@@ -395,3 +395,33 @@ TEST_F(CodeGenTest, ByteDivisionProducesFloat) {
     // byte / byte → float
     EXPECT_EQ(runSource("let a: byte = 7\nlet b: byte = 2\nlet c = a / b\nprint(c)"), "3.5\n");
 }
+
+// ===== Hex / Binary literal tests =====
+
+TEST_F(CodeGenTest, HexLiteral) {
+    EXPECT_EQ(runSource("print(0xFF)"), "255\n");
+}
+
+TEST_F(CodeGenTest, HexLiteralArithmetic) {
+    EXPECT_EQ(runSource("print(0x10 + 0x20)"), "48\n");
+}
+
+TEST_F(CodeGenTest, BinaryLiteral) {
+    EXPECT_EQ(runSource("print(0b1010)"), "10\n");
+}
+
+TEST_F(CodeGenTest, BinaryLiteralBitwiseAnd) {
+    EXPECT_EQ(runSource("print(0b1100 & 0b1010)"), "8\n");
+}
+
+TEST_F(CodeGenTest, HexByteAssignment) {
+    EXPECT_EQ(runSource("let b: byte = 0xFF\nprint(b)"), "255\n");
+}
+
+TEST_F(CodeGenTest, BinaryByteAssignment) {
+    EXPECT_EQ(runSource("let b: byte = 0b11111111\nprint(b)"), "255\n");
+}
+
+TEST_F(CodeGenTest, NegativeHexLiteral) {
+    EXPECT_EQ(runSource("print(-0xFF)"), "-255\n");
+}

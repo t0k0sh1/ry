@@ -607,3 +607,57 @@ TEST(LexerTest, MapLiteralTokens) {
     for (size_t i = 0; i < expected.size(); ++i)
         EXPECT_EQ(toks[i].kind, expected[i]) << "index: " << i;
 }
+
+// ===== Hex / Binary literal tests =====
+
+TEST(LexerTest, HexLiteral) {
+    auto toks = tokenize("0xFF");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0xFF");
+}
+
+TEST(LexerTest, HexLiteralUpperCase) {
+    auto toks = tokenize("0X1A2B");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0X1A2B");
+}
+
+TEST(LexerTest, HexLiteralZero) {
+    auto toks = tokenize("0x0");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0x0");
+}
+
+TEST(LexerTest, HexLiteralInvalidThrows) {
+    EXPECT_THROW(tokenize("0x"), std::runtime_error);
+    EXPECT_THROW(tokenize("0xG"), std::runtime_error);
+}
+
+TEST(LexerTest, BinaryLiteral) {
+    auto toks = tokenize("0b1010");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0b1010");
+}
+
+TEST(LexerTest, BinaryLiteralUpperCase) {
+    auto toks = tokenize("0B1100");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0B1100");
+}
+
+TEST(LexerTest, BinaryLiteralZero) {
+    auto toks = tokenize("0b0");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "0b0");
+}
+
+TEST(LexerTest, BinaryLiteralInvalidThrows) {
+    EXPECT_THROW(tokenize("0b"), std::runtime_error);
+    EXPECT_THROW(tokenize("0b2"), std::runtime_error);
+}
