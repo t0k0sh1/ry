@@ -5,7 +5,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, タプル, `list<T>`, `map<K,V>`, `set<T>`, `enum`, 関数型, ユーザー定義構造体
+- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義構造体
 - **演算子** — 算術・比較・論理・ビット演算・複合代入・`in` 演算子（演算子オーバーロード対応）
 - **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
 - **制御構文** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`

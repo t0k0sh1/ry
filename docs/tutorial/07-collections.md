@@ -65,7 +65,7 @@ let xs = [1, 2, 3]
 ### 型アノテーション
 
 ```python
-let xs: list<int> = [1, 2, 3]
+let xs: List<int> = [1, 2, 3]
 ```
 
 ### インデックスアクセス
@@ -105,7 +105,7 @@ for x in xs:
 ### 関数引数
 
 ```python
-fn first(xs: list<int>) -> int:
+fn first(xs: List<int>) -> int:
     return xs[0]
 ```
 
@@ -131,7 +131,7 @@ let m = {"a": 1, "b": 2}
 ### 型アノテーション
 
 ```python
-let m: map<str, int> = {"a": 1, "b": 2}
+let m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
 ### キーアクセス
@@ -172,7 +172,7 @@ print(m.has_key("a"))   # true
 ### 関数引数
 
 ```python
-fn get_val(m: map<str, int>, k: str) -> int:
+fn get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
@@ -197,7 +197,7 @@ let s = {1, 2, 3}
 ### 型アノテーション
 
 ```python
-let s: set<int> = {1, 2, 3}
+let s: Set<int> = {1, 2, 3}
 ```
 
 ### in 演算子
@@ -236,7 +236,7 @@ for x in s:
 空セットは型注釈が必要です。
 
 ```python
-let empty: set<int> = {}
+let empty: Set<int> = {}
 ```
 
 ### 制限事項

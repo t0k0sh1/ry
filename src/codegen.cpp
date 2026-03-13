@@ -328,18 +328,18 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
-    // list<T> parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "list<" && typeName.back() == '>') {
+    // List<T> parsing
+    if (typeName.size() > 5 && typeName.substr(0, 5) == "List<" && typeName.back() == '>') {
         return ptrTy_;
     }
 
-    // map<K, V> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "map<" && typeName.back() == '>') {
+    // Map<K, V> parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "Map<" && typeName.back() == '>') {
         return ptrTy_;
     }
 
-    // set<T> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "set<" && typeName.back() == '>') {
+    // Set<T> parsing
+    if (typeName.size() > 4 && typeName.substr(0, 4) == "Set<" && typeName.back() == '>') {
         return ptrTy_;
     }
 

@@ -296,7 +296,7 @@ TEST_F(CodeGenTest, SetStringElements) {
 
 TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
     std::string src =
-        "let s: set<int> = {}\n"
+        "let s: Set<int> = {}\n"
         "print(len(s))\n"
         "s.add(42)\n"
         "print(42 in s)";
@@ -305,7 +305,7 @@ TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
 
 TEST_F(CodeGenTest, SetInFunction) {
     std::string src =
-        "fn has_element(s: set<int>, x: int) -> bool:\n"
+        "fn has_element(s: Set<int>, x: int) -> bool:\n"
         "    return x in s\n"
         "let s = {10, 20, 30}\n"
         "print(has_element(s, 20))\n"

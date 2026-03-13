@@ -12,9 +12,9 @@
 | `Unit` | void | （戻り値なし） | 戻り値型省略時の暗黙の戻り値型 |
 | `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | 値が存在するかもしれない型 |
 | `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | タプル型 |
-| `list<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
-| `map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
-| `set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
+| `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
+| `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
+| `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int): int => x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
 | `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
@@ -32,9 +32,9 @@ let s: str = "hello"
 let b: bool = true
 let opt: Option<int> = Some(10)
 let t: (int, float) = (1, 3.14)
-let xs: list<int> = [1, 2, 3]
-let m: map<str, int> = {"a": 1}
-let s: set<int> = {1, 2, 3}
+let xs: List<int> = [1, 2, 3]
+let m: Map<str, int> = {"a": 1}
+let s: Set<int> = {1, 2, 3}
 let fn_val: fn(int) -> int = (x: int): int => x * 2
 let u: int | str = 42
 ```
@@ -51,9 +51,9 @@ let u: int | str = 42
 | `Unit` | 戻り値なし関数の戻り値型 |
 | `Option<T>` | ジェネリック型（T は任意の型） |
 | `(T1, T2, ...)` | タプル型（要素数・型の組み合わせは任意） |
-| `list<T>` | ジェネリック動的配列型 |
-| `map<K, V>` | ジェネリックハッシュマップ型 |
-| `set<T>` | ジェネリック集合型 |
+| `List<T>` | ジェネリック動的配列型 |
+| `Map<K, V>` | ジェネリックハッシュマップ型 |
+| `Set<T>` | ジェネリック集合型 |
 | `fn(T1, ...) -> R` | 関数型 |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
 | ユーザー定義型名 | `type` または `enum` キーワードで宣言した型 |
@@ -106,7 +106,7 @@ union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` �
 | `+` | str | str | str | 文字列結合 |
 | `==` `!=` `<` `<=` `>` `>=` | str | str | bool | 辞書順比較 |
 | `==` `!=` `<` `<=` `>` `>=` | 数値または bool | 数値または bool | bool | |
-| `in` | 任意 | set<T> | bool | 要素がセットに含まれるか |
+| `in` | 任意 | Set<T> | bool | 要素がセットに含まれるか |
 | `&` `\|` `^` `~` `<<` `>>` | int | int | int | float にはエラー |
 
 ### エスケープシーケンス（str リテラル内）

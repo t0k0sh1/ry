@@ -27,7 +27,7 @@ TEST_F(CodeGenTest, ListMixedAccess) {
 
 TEST_F(CodeGenTest, ListWithTypeAnnotation) {
     std::string src =
-        "let xs: list<int> = [1, 2, 3]\n"
+        "let xs: List<int> = [1, 2, 3]\n"
         "print(xs[0])\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "1\n3\n");
@@ -57,7 +57,7 @@ TEST_F(CodeGenTest, ListPrint) {
 
 TEST_F(CodeGenTest, ListInFunction) {
     std::string src =
-        "fn first(xs: list<int>) -> int:\n"
+        "fn first(xs: List<int>) -> int:\n"
         "    return xs[0]\n"
         "let xs = [10, 20, 30]\n"
         "print(first(xs))";
@@ -66,7 +66,7 @@ TEST_F(CodeGenTest, ListInFunction) {
 
 TEST_F(CodeGenTest, ListLenInFunction) {
     std::string src =
-        "fn size(xs: list<int>) -> int:\n"
+        "fn size(xs: List<int>) -> int:\n"
         "    return len(xs)\n"
         "let xs = [1, 2, 3, 4, 5]\n"
         "print(size(xs))";
@@ -200,7 +200,7 @@ TEST_F(CodeGenTest, MapKeyNotFound) {
 
 TEST_F(CodeGenTest, MapWithTypeAnnotation) {
     std::string src =
-        "let m: map<str, int> = {\"x\": 42}\n"
+        "let m: Map<str, int> = {\"x\": 42}\n"
         "print(m[\"x\"])";
     EXPECT_EQ(runSource(src), "42\n");
 }
@@ -214,7 +214,7 @@ TEST_F(CodeGenTest, MapIntKeys) {
 
 TEST_F(CodeGenTest, MapInFunction) {
     std::string src =
-        "fn get_val(m: map<str, int>, k: str) -> int:\n"
+        "fn get_val(m: Map<str, int>, k: str) -> int:\n"
         "    return m[k]\n"
         "let m = {\"a\": 10, \"b\": 20}\n"
         "print(get_val(m, \"b\"))";
@@ -967,7 +967,7 @@ TEST_F(CodeGenTest, ReverseUFCS) {
     EXPECT_EQ(runSource("let s = \"abc\"\nprint(s.reverse())"), "cba\n");
 }
 
-// ===== Phase 3: list<str> 連携テスト =====
+// ===== Phase 3: List<str> 連携テスト =====
 
 TEST_F(CodeGenTest, SplitBasic) {
     std::string src =

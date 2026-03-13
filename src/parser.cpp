@@ -915,8 +915,8 @@ std::string Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
-        if (name == "map" && lex_.peek().kind == TokenKind::Comma) {
-            // map<K, V> parsing
+        if (name == "Map" && lex_.peek().kind == TokenKind::Comma) {
+            // Map<K, V> parsing
             lex_.next(); // consume ','
             std::string valueTy = parseTypeName();
             if (lex_.peek().kind != TokenKind::Greater)
