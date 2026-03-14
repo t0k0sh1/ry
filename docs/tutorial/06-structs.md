@@ -1,12 +1,14 @@
-# 構造体と列挙型
+[English](06-structs.md) | [日本語](../ja/tutorial/06-structs.md) | [繁體中文](../zh/tutorial/06-structs.md)
 
-[← 前: 関数](05-functions.md) | [次: コレクション →](07-collections.md)
+# Structs and Enums
+
+[<- Prev: Functions](05-functions.md) | [Next: Collections ->](07-collections.md)
 
 ---
 
-## type による構造体定義
+## Defining Structs with type
 
-`type` キーワードで構造体を定義します。各フィールドは `name: type` の形式で記述します。
+Structs are defined with the `type` keyword. Each field is described in the `name: type` format.
 
 ```python
 type Point:
@@ -14,13 +16,13 @@ type Point:
     y: int
 ```
 
-構造体はスタック上の値型です。
+Structs are value types allocated on the stack.
 
 ---
 
-## コンストラクタの使い方
+## Using Constructors
 
-構造体名を関数のように呼び出してインスタンスを生成します。引数はフィールドの定義順に指定します。
+Create an instance by calling the struct name as a function. Arguments are specified in the order the fields are defined.
 
 ```python
 let p = Point(10, 20)
@@ -28,9 +30,9 @@ let p = Point(10, 20)
 
 ---
 
-## フィールドアクセス（ドット記法）
+## Field Access (Dot Notation)
 
-フィールドにはドット記法でアクセスします。
+Fields are accessed using dot notation.
 
 ```python
 let p = Point(10, 20)
@@ -38,13 +40,13 @@ print(p.x)   # 10
 print(p.y)   # 20
 ```
 
-> **注意**: `print` に構造体を直接渡すとエラーになります。フィールドを個別に渡してください。
+> **Note**: Passing a struct directly to `print` causes an error. Pass individual fields instead.
 
 ---
 
-## フィールドへの代入
+## Field Assignment
 
-`var` で宣言した変数のフィールドは再代入できます。
+Fields of variables declared with `var` can be reassigned.
 
 ```python
 var p = Point(10, 20)
@@ -52,13 +54,13 @@ p.x = 100
 print(p.x)   # 100
 ```
 
-> **注意**: `let` で宣言した変数のフィールドへの代入はコンパイルエラーになります。
+> **Note**: Assigning to fields of a `let` variable causes a compile error.
 
 ---
 
-## 関数の引数としての構造体
+## Structs as Function Parameters
 
-構造体を関数の引数として渡せます。
+Structs can be passed as function arguments.
 
 ```python
 type Point:
@@ -75,9 +77,9 @@ print(distance_x(p1, p2))   # 6
 
 ---
 
-## ネスト構造体
+## Nested Structs
 
-構造体のフィールドに別の構造体を使えます。
+A struct's field can be another struct.
 
 ```python
 type Point:
@@ -93,15 +95,15 @@ print(line.start.x)   # 0
 print(line.end.x)     # 10
 ```
 
-ドット記法をチェーンすることでネストしたフィールドにアクセスできます。
+You can access nested fields by chaining dot notation.
 
 ---
 
-## 列挙型（enum）
+## Enums
 
-`enum` キーワードで列挙型を定義できます。各バリアントは名前付きの定数として扱われます。
+Enums are defined with the `enum` keyword. Each variant is treated as a named constant.
 
-### 定義
+### Definition
 
 ```python
 enum Color:
@@ -110,18 +112,18 @@ enum Color:
     Blue
 ```
 
-### 使い方
+### Usage
 
-バリアントには `::` でアクセスします。
+Variants are accessed with `::`.
 
 ```python
 let c = Color::Red
 print(c)   # Red
 ```
 
-### 比較
+### Comparison
 
-`==` や `!=` でバリアントを比較できます。
+Variants can be compared using `==` and `!=`.
 
 ```python
 if c == Color::Red:
@@ -132,9 +134,9 @@ else:
     print("blue!")
 ```
 
-### 関数引数
+### Function Parameters
 
-関数の引数型として enum 名を使えます。
+Enum names can be used as function parameter types.
 
 ```python
 fn describe(c: Color) -> str:
@@ -145,4 +147,4 @@ fn describe(c: Color) -> str:
 
 ---
 
-[← 前: 関数](05-functions.md) | [次: コレクション →](07-collections.md)
+[<- Prev: Functions](05-functions.md) | [Next: Collections ->](07-collections.md)

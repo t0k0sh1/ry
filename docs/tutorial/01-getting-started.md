@@ -1,35 +1,37 @@
-# 01 - はじめに
+[English](01-getting-started.md) | [日本語](../ja/tutorial/01-getting-started.md) | [繁體中文](../zh/tutorial/01-getting-started.md)
 
-次のチュートリアル → [02 - 変数と型](02-variables-and-types.md)
+# 01 - Getting Started
+
+Next tutorial -> [02 - Variables and Types](02-variables-and-types.md)
 
 ---
 
-## 必要環境
+## Prerequisites
 
-Ry をビルドして実行するには以下が必要です。
+To build and run Ry, you need the following:
 
 - **LLVM 21**
-- **CMake 3.20 以上**
-- **C++17 対応コンパイラ**（GCC 7+ / Clang 5+ 等）
+- **CMake 3.20 or later**
+- **A C++17 compatible compiler** (GCC 7+ / Clang 5+, etc.)
 
 ---
 
-## ビルド手順
+## Build Instructions
 
-リポジトリのルートで以下のコマンドを実行します。
+Run the following commands from the repository root:
 
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-ビルドが成功すると `build/ry` という実行ファイルが生成されます。
+On a successful build, an executable named `build/ry` will be generated.
 
 ---
 
-## プロジェクトの初期化
+## Project Initialization
 
-`ry init` コマンドで新しいプロジェクトを作成できます。
+You can create a new project with the `ry init` command:
 
 ```bash
 mkdir my-project
@@ -37,31 +39,31 @@ cd my-project
 ry init
 ```
 
-これにより以下のファイルとディレクトリが生成されます。
+This generates the following files and directories:
 
-- `ry.toml` — プロジェクト設定ファイル
-- `src/main.ry` — エントリポイント（サンプルコード付き）
-- `test/` — テストコード用ディレクトリ
+- `ry.toml` -- Project configuration file
+- `src/main.ry` -- Entry point (with sample code)
+- `test/` -- Directory for test code
 
-詳細は [プロジェクト管理](../reference/project.md) を参照してください。
+See [Project Management](../reference/project.md) for details.
 
 ---
 
-## 最初のプログラム
+## Your First Program
 
-以下の内容を `hello.ry` というファイルに保存してください。
+Save the following content to a file named `hello.ry`:
 
 ```python
 print("Hello, World!")
 ```
 
-次のコマンドで実行します。
+Run it with the following command:
 
 ```bash
 ./build/ry hello.ry
 ```
 
-出力:
+Output:
 
 ```
 Hello, World!
@@ -69,17 +71,17 @@ Hello, World!
 
 ---
 
-## コメントの書き方
+## Writing Comments
 
-`#` から行末までがコメントとして扱われます。
+Everything from `#` to the end of the line is treated as a comment.
 
 ```python
-# これはコメントです
-print("Hello")  # 行末コメントも使えます
+# This is a comment
+print("Hello")  # End-of-line comments are also supported
 ```
 
-コメントはコードの動作に影響を与えません。
+Comments do not affect the behavior of the code.
 
 ---
 
-次のチュートリアル → [02 - 変数と型](02-variables-and-types.md)
+Next tutorial -> [02 - Variables and Types](02-variables-and-types.md)

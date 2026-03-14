@@ -1,36 +1,38 @@
-# モジュール
+[English](09-modules.md) | [日本語](../ja/tutorial/09-modules.md) | [繁體中文](../zh/tutorial/09-modules.md)
 
-[← 前: 高度な機能](08-advanced.md)
+# Modules
 
-モジュールを使うと、コードを複数のファイルに分割して管理できます。
+[<- Prev: Advanced Features](08-advanced.md)
+
+Modules allow you to split and manage your code across multiple files.
 
 ---
 
-## from/import 構文
+## from/import Syntax
 
-別ファイルの関数をインポートするには `from` 構文を使います。
+Use the `from` syntax to import functions from another file.
 
 ```python
 from math import add, sub
 ```
 
-これで `math.ry` に定義された `add` と `sub` が使えるようになります。
+This makes `add` and `sub` defined in `math.ry` available for use.
 
 ---
 
-## 選択インポート vs 全関数インポート
+## Selective Import vs Full Import
 
-### 選択インポート
+### Selective Import
 
-必要な関数だけを明示的にインポートします。
+Explicitly import only the functions you need.
 
 ```python
 from math import add, sub
 ```
 
-### 全関数インポート
+### Full Import
 
-モジュール名だけを指定すると、そのモジュールのすべての関数をインポートします。
+Specifying only the module name imports all functions from that module.
 
 ```python
 from math
@@ -38,52 +40,52 @@ from math
 
 ---
 
-## サブディレクトリ（ドット区切り）
+## Subdirectories (Dot-Separated Paths)
 
-ドット区切りでサブディレクトリ内のモジュールを指定できます。
+Use dot-separated paths to specify modules in subdirectories.
 
 ```python
-from utils.math import add   # utils/math.ry をインポート
+from utils.math import add   # Import from utils/math.ry
 ```
 
-ドット1つがディレクトリの区切りに対応します。
+Each dot corresponds to a directory separator.
 
 ---
 
-## 検索パスの優先順位
+## Search Path Priority
 
-モジュールファイルは以下の順序で検索されます。
+Module files are searched in the following order:
 
-1. **インポート元ファイルのディレクトリ** — インポートを記述したファイルと同じディレクトリを最初に探します。
-2. **`RY_PATH` 環境変数** — 見つからない場合は `RY_PATH` に指定されたディレクトリを順番に検索します。
+1. **Directory of the importing file** -- The directory containing the file with the import statement is searched first.
+2. **`RY_PATH` environment variable** -- If not found, directories specified in `RY_PATH` are searched in order.
 
 ---
 
-## RY_PATH 環境変数
+## RY_PATH Environment Variable
 
-複数のディレクトリをコロン区切りで指定できます。
+Multiple directories can be specified separated by colons.
 
 ```python
-# シェルで設定する例
+# Example of setting in the shell
 export RY_PATH=/home/user/ry-libs:/usr/local/ry-libs
 ```
 
-設定後は、指定ディレクトリ内のモジュールをどこからでもインポートできます。
+Once set, modules in the specified directories can be imported from anywhere.
 
 ---
 
-## 制限事項
+## Limitations
 
-- `from` 文はファイルの**トップレベル**にのみ記述できます。関数やブロックの内部には書けません。
-- 同じモジュールを複数回インポートしても、自動的にスキップされます（二重インポートは発生しません）。
-- **循環インポート**（A が B をインポートし、B が A をインポートする）はエラーになります。
+- `from` statements can only be written at the **top level** of a file. They cannot be placed inside functions or blocks.
+- Importing the same module multiple times is automatically skipped (no duplicate imports).
+- **Circular imports** (A imports B and B imports A) result in an error.
 
 ```python
-# エラー例: a.ry と b.ry が互いをインポートしている場合
+# Error example: a.ry and b.ry import each other
 # a.ry: from b import foo
-# b.ry: from a import bar  ← 循環インポートエラー
+# b.ry: from a import bar  <- circular import error
 ```
 
 ---
 
-[← 前: 高度な機能](08-advanced.md)
+[<- Prev: Advanced Features](08-advanced.md)

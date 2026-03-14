@@ -1,77 +1,79 @@
-# エラーリファレンス
+[English](errors.md) | [日本語](../ja/reference/errors.md) | [繁體中文](../zh/reference/errors.md)
 
-## コンパイルエラー一覧
+# Error Reference
 
-| エラー内容 | 原因 | 例 |
+## Compile Errors
+
+| Error | Cause | Example |
 |-----------|------|-----|
-| 未宣言変数への代入 | 宣言されていない変数に代入した | `x = 1`（`x` が未宣言） |
-| let変数への再代入 | `let` で宣言した変数に再代入した | `let x = 1` → `x = 2` |
-| 同名変数の再宣言 | 同スコープで同名の変数を再宣言した | `let x = 1` → `let x = 2` |
-| 変数の型変更再代入 | 変数に異なる型の値を代入した | `let x = 1` → `x = 3.14` |
-| 型アノテーション不一致 | 宣言時の型と代入値の型が異なる | `let x: int = 3.14` |
-| オーバーロード戻り値型の重複 | 引数型が同一で戻り値型のみ異なるオーバーロードを定義した | 引数 `(int, int)` で戻り値が `int` と `float` の2つの関数 |
-| オーバーロード解決失敗 | 引数型に一致するオーバーロードが存在しない | `fn add(a: int, b: int)` に `add(1.0, 2.0)` |
-| ビット演算にfloatを渡す | `&`, `\|`, `^`, `~`, `<<`, `>>` に `float` 型を渡した | `3.14 & 1` |
-| 空リスト | 空リストリテラル `[]` から型を推論できない | `let xs = []` |
-| 空マップ | 空マップリテラル `{}` から型を推論できない | `let m = {}` |
-| タプル範囲外インデックス | タプルの存在しないインデックスにアクセスした | `let t = (1, 2)` → `t.2` |
-| ループ外でのbreak/continue | `for`/`while` ループの外で `break` または `continue` を使用した | 関数トップレベルで `break` |
-| ブロック内でのモジュールインポート | `from` 文を関数・条件ブロック内で使用した | 関数内で `from math` |
-| 循環インポート | モジュールが相互にインポートし合っている | `a.ry` が `b.ry` を、`b.ry` が `a.ry` をインポート |
-| 同一フィールド名の重複 | 構造体内で同じフィールド名を2回定義した | `type T: x: int` の中に `x` を2つ定義 |
-| match の網羅性不足 | match がすべてのパターンを網羅していない | enum の一部バリアントが未カバー、Option で `None` が欠落、リテラルに `_` なし |
+| Assignment to undeclared variable | Assigned to a variable that has not been declared | `x = 1` (`x` is undeclared) |
+| Reassignment to let variable | Reassigned to a variable declared with `let` | `let x = 1` -> `x = 2` |
+| Redeclaration of same-named variable | Redeclared a variable with the same name in the same scope | `let x = 1` -> `let x = 2` |
+| Type-changing reassignment | Assigned a value of a different type to a variable | `let x = 1` -> `x = 3.14` |
+| Type annotation mismatch | Declared type and assigned value type differ | `let x: int = 3.14` |
+| Overload return type conflict | Defined overloads with the same parameter types but different return types only | Two functions with parameters `(int, int)` returning `int` and `float` |
+| Overload resolution failure | No overload matches the argument types | `fn add(a: int, b: int)` called with `add(1.0, 2.0)` |
+| Float in bitwise operation | Passed `float` type to `&`, `\|`, `^`, `~`, `<<`, `>>` | `3.14 & 1` |
+| Empty list | Cannot infer type from empty list literal `[]` | `let xs = []` |
+| Empty map | Cannot infer type from empty map literal `{}` | `let m = {}` |
+| Tuple out-of-range index | Accessed a non-existent index on a tuple | `let t = (1, 2)` -> `t.2` |
+| break/continue outside loop | Used `break` or `continue` outside a `for`/`while` loop | `break` at function top level |
+| Module import inside block | Used `from` statement inside a function or conditional block | `from math` inside a function |
+| Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
+| Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
+| Non-exhaustive match | match does not cover all patterns | Some enum variants uncovered, missing `None` for Option, no `_` for literals |
 
-### コンパイルエラーの例
+### Compile Error Examples
 
 ```python
-# let変数への再代入
+# Reassignment to let variable
 let x = 10
-x = 20   # エラー
+x = 20   # Error
 
-# 型変更再代入
+# Type-changing reassignment
 let n = 1
-n = "hello"   # エラー: int型にstr型を代入
+n = "hello"   # Error: assigning str to int variable
 
-# 空リスト
-let xs = []   # エラー: 型推論不可
+# Empty list
+let xs = []   # Error: type cannot be inferred
 
-# ループ外でのbreak
-break   # エラー: ループの外
+# break outside loop
+break   # Error: outside loop
 
-# ブロック内でのインポート
+# Import inside block
 fn foo():
-    from math   # エラー: トップレベルのみ
+    from math   # Error: top level only
 
-# 同一フィールド名の重複
+# Duplicate field name
 type Bad:
     x: int
-    x: float   # エラー: xが重複
+    x: float   # Error: x is duplicated
 ```
 
 ---
 
-## ランタイムエラー一覧
+## Runtime Errors
 
-| エラー内容 | 原因 | 例 |
+| Error | Cause | Example |
 |-----------|------|-----|
-| リスト範囲外アクセス | リストのインデックスが範囲を超えている | `let xs = [1, 2, 3]` → `xs[5]` |
-| マップ存在しないキーアクセス | マップに存在しないキーを参照した | `let m = {"a": 1}` → `m["b"]` |
-| unwrap(None) | `None` 値に対して `unwrap` を呼び出した | `unwrap(None)` |
+| List out-of-range access | List index exceeds bounds | `let xs = [1, 2, 3]` -> `xs[5]` |
+| Map non-existent key access | Referenced a key that does not exist in the map | `let m = {"a": 1}` -> `m["b"]` |
+| unwrap(None) | Called `unwrap` on a `None` value | `unwrap(None)` |
 
-すべてのランタイムエラーはプロセスを `exit(1)` で終了します。
+All runtime errors terminate the process with `exit(1)`.
 
-### ランタイムエラーの例
+### Runtime Error Examples
 
 ```python
-# リスト範囲外アクセス
+# List out-of-range access
 let xs = [1, 2, 3]
-print(xs[10])   # ランタイムエラー: exit(1)
+print(xs[10])   # Runtime error: exit(1)
 
-# マップ存在しないキーアクセス
+# Map non-existent key access
 let m = {"a": 1}
-print(m["z"])   # ランタイムエラー: exit(1)
+print(m["z"])   # Runtime error: exit(1)
 
 # unwrap(None)
 let x: Option<int> = None
-print(unwrap(x))   # ランタイムエラー: exit(1)
+print(unwrap(x))   # Runtime error: exit(1)
 ```
