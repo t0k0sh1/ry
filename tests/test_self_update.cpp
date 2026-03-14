@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "ry/self_update.hpp"
 
+using namespace ry::self_update;
+using namespace ry::self_update::detail;
+
 TEST(SelfUpdate, IsPrereleaseStable) {
     EXPECT_FALSE(is_prerelease("v0.0.1"));
     EXPECT_FALSE(is_prerelease("0.1.0"));
@@ -63,7 +66,18 @@ TEST(SelfUpdate, DetectPlatformNonEmpty) {
     auto platform = detect_platform();
     EXPECT_FALSE(platform.os.empty());
     EXPECT_FALSE(platform.arch.empty());
-    // On macOS CI/dev
     EXPECT_TRUE(platform.os == "darwin" || platform.os == "linux");
     EXPECT_TRUE(platform.arch == "arm64" || platform.arch == "amd64");
+}
+
+TEST(SelfUpdate, IsValidTag) {
+    EXPECT_TRUE(is_valid_tag("v0.0.1"));
+    EXPECT_TRUE(is_valid_tag("0.1.0"));
+    EXPECT_TRUE(is_valid_tag("v1.0.0-rc.1"));
+    EXPECT_TRUE(is_valid_tag("v0.0.2-dev.20250101"));
+
+    EXPECT_FALSE(is_valid_tag("v0.0.1; rm -rf /"));
+    EXPECT_FALSE(is_valid_tag("v0.0.1' && echo pwned"));
+    EXPECT_FALSE(is_valid_tag("$(whoami)"));
+    EXPECT_FALSE(is_valid_tag(""));
 }

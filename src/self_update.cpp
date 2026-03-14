@@ -5,13 +5,24 @@
 #include <iostream>
 #include <array>
 #include <algorithm>
+#include <regex>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
 
+namespace ry::self_update {
+
 static const char *REPO = "pricklywiggles/ry";
+
+bool is_valid_tag(const std::string &tag) {
+    static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
+    return std::regex_match(tag, pattern);
+}
+
+namespace detail {
 
 PlatformInfo detect_platform() {
     PlatformInfo info;
@@ -67,31 +78,27 @@ std::string extract_json_string(const std::string &json, const std::string &key)
     auto pos = json.find(pattern);
     if (pos == std::string::npos) return "";
 
-    // Skip past key and find the colon
     pos += pattern.size();
     pos = json.find(':', pos);
     if (pos == std::string::npos) return "";
-    pos++; // skip ':'
+    pos++;
 
-    // Skip whitespace
     while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r'))
         pos++;
 
     if (pos >= json.size()) return "";
 
-    // Handle boolean/null values
     if (json[pos] == 't') return "true";
     if (json[pos] == 'f') return "false";
     if (json[pos] == 'n') return "null";
 
-    // Expect a quoted string
     if (json[pos] != '"') return "";
-    pos++; // skip opening quote
+    pos++;
 
     std::string value;
     while (pos < json.size() && json[pos] != '"') {
         if (json[pos] == '\\' && pos + 1 < json.size()) {
-            pos++; // skip escape char
+            pos++;
         }
         value += json[pos];
         pos++;
@@ -113,19 +120,17 @@ std::vector<std::string> extract_all_json_strings(const std::string &json, const
         if (pos == std::string::npos) break;
         pos++;
 
-        // Skip whitespace
         while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r'))
             pos++;
 
         if (pos >= json.size()) break;
 
-        // Handle boolean/null
         if (json[pos] == 't') { results.push_back("true"); search_pos = pos + 4; continue; }
         if (json[pos] == 'f') { results.push_back("false"); search_pos = pos + 5; continue; }
         if (json[pos] == 'n') { results.push_back("null"); search_pos = pos + 4; continue; }
 
         if (json[pos] != '"') { search_pos = pos + 1; continue; }
-        pos++; // skip opening quote
+        pos++;
 
         std::string value;
         while (pos < json.size() && json[pos] != '"') {
@@ -142,7 +147,6 @@ std::vector<std::string> extract_all_json_strings(const std::string &json, const
 }
 
 bool is_prerelease(const std::string &version) {
-    // Strip leading 'v' if present
     std::string v = version;
     if (!v.empty() && v[0] == 'v') v = v.substr(1);
     return v.find('-') != std::string::npos;
@@ -158,8 +162,7 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
     UpdateTarget target;
 
     if (mode == "stable") {
-        // Use /releases/latest endpoint
-        std::string cmd = "curl -sL -H 'Accept: application/json' "
+        std::string cmd = "curl -sfL -H 'Accept: application/json' "
                           "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
         std::string json = shell_exec(cmd);
         if (json.empty()) {
@@ -173,8 +176,7 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
         target.download_url = build_download_url(target.tag, platform);
     } else if (mode == "nightly") {
-        // Fetch recent releases and find first prerelease
-        std::string cmd = "curl -sL -H 'Accept: application/json' "
+        std::string cmd = "curl -sfL -H 'Accept: application/json' "
                           "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
         std::string json = shell_exec(cmd);
         if (json.empty()) {
@@ -182,7 +184,6 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
             return target;
         }
 
-        // Find prerelease entries: look for "prerelease": true paired with tag_name
         auto tags = extract_all_json_strings(json, "tag_name");
         auto prereleases = extract_all_json_strings(json, "prerelease");
 
@@ -200,11 +201,15 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         if (!tag.empty() && tag[0] != 'v') {
             tag = "v" + tag;
         }
-        // Verify the release exists with HEAD request
+
+        if (!is_valid_tag(tag)) {
+            std::cerr << "Error: Invalid version format: " << tag << "\n";
+            return target;
+        }
+
         std::string url = build_download_url(tag, platform);
-        std::string cmd = "curl -sL -o /dev/null -w '%{http_code}' --head '" + url + "'";
+        std::string cmd = "curl -sfL -o /dev/null -w '%{http_code}' --head '" + url + "'";
         std::string status = shell_exec(cmd);
-        // Remove whitespace
         status.erase(std::remove_if(status.begin(), status.end(), ::isspace), status.end());
 
         if (status.empty() || (status != "200" && status != "302")) {
@@ -219,16 +224,17 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
 }
 
 bool download_file(const std::string &url, const std::string &dest_path) {
-    std::string cmd = "curl -sL -o '" + dest_path + "' '" + url + "'";
-    std::string result = shell_exec(cmd);
-    // shell_exec returns "" on non-zero exit, but for curl -o the output goes to file
-    // Re-check: use system() for download since we need exit code
-    int status = system(("curl -sfL -o '" + dest_path + "' '" + url + "'").c_str());
+    std::string cmd = "curl -sfL -o '" + dest_path + "' '" + url + "'";
+    int status = system(cmd.c_str());
     return status == 0;
 }
 
+static bool file_exists(const std::string &path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+
 bool replace_binary(const std::string &download_url, const std::string &binary_path) {
-    // Create temp directory
     char tmp_dir[] = "/tmp/ry-update-XXXXXX";
     if (mkdtemp(tmp_dir) == nullptr) {
         std::cerr << "Error: Failed to create temporary directory.\n";
@@ -238,7 +244,6 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
     std::string tmp_dir_str(tmp_dir);
     std::string archive_path = tmp_dir_str + "/ry.tar.gz";
 
-    // Download
     std::cerr << "Downloading..." << std::flush;
     if (!download_file(download_url, archive_path)) {
         std::cerr << " failed.\n";
@@ -248,7 +253,6 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
     }
     std::cerr << " done.\n";
 
-    // Extract
     std::string extract_cmd = "tar xzf '" + archive_path + "' -C '" + tmp_dir_str + "'";
     if (system(extract_cmd.c_str()) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
@@ -256,16 +260,22 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
         return false;
     }
 
-    // Find the extracted binary
     std::string new_binary = tmp_dir_str + "/ry";
 
-    // Set permissions
-    std::string chmod_cmd = "chmod 755 '" + new_binary + "'";
-    system(chmod_cmd.c_str());
+    if (!file_exists(new_binary)) {
+        std::cerr << "Error: Expected binary not found in archive.\n";
+        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        return false;
+    }
 
-    // Atomic replace: rename over the existing binary
+    if (chmod(new_binary.c_str(), 0755) != 0) {
+        std::cerr << "Error: Failed to set permissions on downloaded binary.\n";
+        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        return false;
+    }
+
     if (rename(new_binary.c_str(), binary_path.c_str()) != 0) {
-        // rename() may fail across filesystems, try cp + chmod
+        // rename() may fail across filesystems, try cp fallback
         std::string cp_cmd = "cp '" + new_binary + "' '" + binary_path + "'";
         if (system(cp_cmd.c_str()) != 0) {
             std::cerr << "Error: Failed to replace binary at " << binary_path << "\n";
@@ -275,15 +285,19 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
         }
     }
 
-    // Cleanup
     system(("rm -rf '" + tmp_dir_str + "'").c_str());
     return true;
 }
 
+} // namespace detail
+} // namespace ry::self_update
+
 int cmd_self_update(int argc, char *argv[]) {
+    using namespace ry::self_update;
+    using namespace ry::self_update::detail;
+
     std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
-    // Parse arguments to determine mode
     std::string mode = "stable";
     if (argc >= 1) {
         std::string arg = argv[0];
@@ -298,7 +312,11 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
             return 0;
         } else {
-            mode = arg; // explicit version tag
+            if (!is_valid_tag(arg)) {
+                std::cerr << "Error: Invalid version format: " << arg << "\n";
+                return 1;
+            }
+            mode = arg;
         }
     }
 
@@ -308,7 +326,6 @@ int cmd_self_update(int argc, char *argv[]) {
         return 1;
     }
 
-    // Compare with current version
     std::string current_tag = std::string("v") + RY_VERSION;
     if (target.tag == current_tag) {
         std::cerr << "Already up to date.\n";

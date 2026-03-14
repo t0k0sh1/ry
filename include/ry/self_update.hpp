@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 
+namespace ry::self_update {
+
 struct PlatformInfo {
     std::string os;    // "darwin" or "linux"
     std::string arch;  // "arm64" or "amd64"
@@ -12,9 +14,10 @@ struct UpdateTarget {
     std::string download_url;
 };
 
-int cmd_self_update(int argc, char *argv[]);
+bool is_valid_tag(const std::string &tag);
 
-// Testable helper functions
+namespace detail {
+
 PlatformInfo detect_platform();
 std::string get_executable_path();
 std::string shell_exec(const std::string &cmd);
@@ -25,3 +28,8 @@ std::string build_download_url(const std::string &tag, const PlatformInfo &platf
 UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &platform);
 bool download_file(const std::string &url, const std::string &dest_path);
 bool replace_binary(const std::string &download_url, const std::string &binary_path);
+
+} // namespace detail
+} // namespace ry::self_update
+
+int cmd_self_update(int argc, char *argv[]);
