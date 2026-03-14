@@ -183,4 +183,37 @@ let v = unwrap(x)   # 42
 
 ---
 
+## Result 型別
+
+表示成功（`Ok`）或失敗（`Err`）的型別。適用於函式可能失敗、且希望明確處理錯誤而非直接終止程式的情況。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a / b)
+
+let r: Result<int, str> = divide(10, 0)
+```
+
+### 檢查與取值
+
+```python
+print(is_ok(r))       # false
+print(is_err(r))      # true
+print(unwrap_or(r, 0))  # 0
+```
+
+### 匹配
+
+```python
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)

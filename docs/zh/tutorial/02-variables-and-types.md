@@ -105,6 +105,26 @@ print("say \"hi\"")     # 包含雙引號的字串
 
 ---
 
+## 字串插值（f-string）
+
+使用 f-string 可以在字串內直接嵌入表達式，以 `{}` 包圍。
+
+```python
+let name = "World"
+let n = 42
+print(f"Hello {name}!")        # Hello World!
+print(f"n = {n}")              # n = 42
+print(f"sum = {10 + 20}")      # sum = 30
+```
+
+使用 `{{` 和 `}}` 可以輸出字面大括號。
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+---
+
 ## 重新賦值規則
 
 使用 `var` 宣告的變數可以重新賦值，但有以下限制：

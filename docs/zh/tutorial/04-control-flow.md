@@ -218,6 +218,22 @@ match x:
 # 42
 ```
 
+### Result 的匹配
+
+可以對 `Result<T, E>` 的值進行匹配，以處理成功和錯誤的情況。
+
+```python
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)       # 42
+    case Err(e):
+        print(e)
+```
+
 ### 萬用字元與字面值
 
 `_` 是可匹配任何值的萬用字元模式。也可以使用字面值（數值、字串、布林值）進行匹配。
@@ -248,7 +264,7 @@ match n:
         print("zero")
 ```
 
-> **注意**：`match` 必須涵蓋所有模式。enum 必須包含所有變體，Option 必須包含 `Some` 和 `None`，字面值則需要 `_`。
+> **注意**：`match` 必須涵蓋所有模式。enum 必須包含所有變體，Option 必須包含 `Some` 和 `None`，Result 必須包含 `Ok` 和 `Err`，字面值則需要 `_`。
 
 ---
 

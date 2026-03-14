@@ -105,6 +105,26 @@ print("say \"hi\"")     # String containing double quotes
 
 ---
 
+## String Interpolation (f-string)
+
+F-strings allow you to embed expressions directly inside strings using `{}`.
+
+```python
+let name = "World"
+let n = 42
+print(f"Hello {name}!")        # Hello World!
+print(f"n = {n}")              # n = 42
+print(f"sum = {10 + 20}")      # sum = 30
+```
+
+Use `{{` and `}}` to include literal braces.
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+---
+
 ## Reassignment Rules
 
 Variables declared with `var` can be reassigned. However, the following restrictions apply:

@@ -19,6 +19,16 @@
 | `Some(expr)` | Constructs the value-present variant of an Option type |
 | `unwrap(opt)` | Extracts the value from an Option |
 
+### Result
+
+| Function | Description |
+|------|------|
+| `Ok(expr)` | Constructs the success variant of a Result type |
+| `Err(expr)` | Constructs the error variant of a Result type |
+| `is_ok(r)` | Returns whether the Result is Ok |
+| `is_err(r)` | Returns whether the Result is Err |
+| `unwrap_or(r, default)` | Returns the Ok value, or a default if Err |
+
 ### Collection Operations
 
 | Function | Description |
@@ -111,6 +121,74 @@ print(x.unwrap())   # 42 (UFCS)
 ```
 
 **Error condition:** Passing `None` causes a runtime error (exit(1)).
+
+---
+
+## Ok
+
+**Signature:** `Ok(expr) -> Result<T, E>`
+
+Constructs the success variant of a Result type.
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))   # true
+```
+
+---
+
+## Err
+
+**Signature:** `Err(expr) -> Result<T, E>`
+
+Constructs the error variant of a Result type.
+
+```python
+let r: Result<int, str> = Err("not found")
+print(is_err(r))   # true
+```
+
+---
+
+## is_ok
+
+**Signature:** `is_ok(r: Result<T, E>) -> bool`
+
+Returns whether a Result contains an Ok value.
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))    # true
+```
+
+---
+
+## is_err
+
+**Signature:** `is_err(r: Result<T, E>) -> bool`
+
+Returns whether a Result contains an Err value.
+
+```python
+let r: Result<int, str> = Err("fail")
+print(is_err(r))   # true
+```
+
+---
+
+## unwrap_or
+
+**Signature:** `unwrap_or(r: Result<T, E>, default: T) -> T`
+
+Returns the Ok value if the Result is Ok, otherwise returns the default value.
+
+```python
+let r: Result<int, str> = Err("fail")
+print(unwrap_or(r, 0))   # 0
+
+let s: Result<int, str> = Ok(42)
+print(unwrap_or(s, 0))   # 42
+```
 
 ---
 

@@ -425,3 +425,44 @@ TEST_F(CodeGenTest, BinaryByteAssignment) {
 TEST_F(CodeGenTest, NegativeHexLiteral) {
     EXPECT_EQ(runSource("print(-0xFF)"), "-255\n");
 }
+
+// ===== as cast operator =====
+
+TEST_F(CodeGenTest, CastIntToFloat) {
+    EXPECT_EQ(runSource("let x = 42 as float\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, CastFloatToInt) {
+    EXPECT_EQ(runSource("let x = 3.14 as int\nprint(x)"), "3\n");
+}
+
+TEST_F(CodeGenTest, CastIntToByte) {
+    EXPECT_EQ(runSource("let x = 200 as byte\nprint(x)"), "200\n");
+}
+
+TEST_F(CodeGenTest, CastByteToInt) {
+    EXPECT_EQ(runSource("let b: byte = 200\nlet x = b as int\nprint(x)"), "200\n");
+}
+
+TEST_F(CodeGenTest, CastByteToFloat) {
+    EXPECT_EQ(runSource("let b: byte = 65\nlet x = b as float\nprint(x)"), "65\n");
+}
+
+TEST_F(CodeGenTest, CastBoolToInt) {
+    EXPECT_EQ(runSource("let x = true as int\nprint(x)"), "1\n");
+    EXPECT_EQ(runSource("let x = false as int\nprint(x)"), "0\n");
+}
+
+TEST_F(CodeGenTest, CastIntToBool) {
+    EXPECT_EQ(runSource("let x = 0 as bool\nprint(x)"), "false\n");
+    EXPECT_EQ(runSource("let x = 42 as bool\nprint(x)"), "true\n");
+}
+
+TEST_F(CodeGenTest, CastChained) {
+    // int -> float -> int round-trip
+    EXPECT_EQ(runSource("let x = 42 as float as int\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, CastInExpression) {
+    EXPECT_EQ(runSource("let x = 7 as float / 2.0\nprint(x)"), "3.5\n");
+}

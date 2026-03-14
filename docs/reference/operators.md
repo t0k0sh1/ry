@@ -10,17 +10,18 @@ Lower numbers indicate higher precedence (evaluated first).
 |---|---|---|---|
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
-| 3 | `**` | Exponentiation | Right |
-| 4 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
-| 5 | `+` `-` | Addition, subtraction | Left |
-| 6 | `<<` `>>` | Bit shift | Left |
-| 7 | `&` | Bitwise AND | Left |
-| 8 | `^` | Bitwise XOR | Left |
-| 9 | `\|` | Bitwise OR | Left |
-| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | Comparison, membership | Left |
-| 11 | `not` | Logical NOT | Right |
-| 12 | `and` | Logical AND | Left |
-| 13 | `or` | Logical OR | Left |
+| 3 | `as` | Type cast | Left |
+| 4 | `**` | Exponentiation | Right |
+| 5 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
+| 6 | `+` `-` | Addition, subtraction | Left |
+| 7 | `<<` `>>` | Bit shift | Left |
+| 8 | `&` | Bitwise AND | Left |
+| 9 | `^` | Bitwise XOR | Left |
+| 10 | `\|` | Bitwise OR | Left |
+| 11 | `==` `!=` `<` `<=` `>` `>=` `in` | Comparison, membership | Left |
+| 12 | `not` | Logical NOT | Right |
+| 13 | `and` | Logical AND | Left |
+| 14 | `or` | Logical OR | Left |
 
 ## Arithmetic Operators
 
@@ -118,6 +119,41 @@ x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
 ```
+
+## Type Cast Operator (`as`)
+
+Explicitly converts a value from one type to another.
+
+```python
+let x = 42 as float      # 42.0
+let y = 3.14 as int       # 3
+let b: byte = 200
+let n = b as int           # 200
+```
+
+### Supported Conversions
+
+| From | To | Conversion |
+|---|---|---|
+| `int` | `float` | `SIToFP` |
+| `float` | `int` | `FPToSI` (truncation) |
+| `int` | `byte` | Truncation to 8 bits |
+| `byte` | `int` | Zero extension |
+| `byte` | `float` | `UIToFP` |
+| `float` | `byte` | `FPToSI` then truncation |
+| `bool` | `int` | `false` -> `0`, `true` -> `1` |
+| `bool` | `float` | `false` -> `0.0`, `true` -> `1.0` |
+| `int` | `bool` | `0` -> `false`, non-zero -> `true` |
+
+### Precedence
+
+`as` has higher precedence than `**`, so it binds tightly to the value:
+
+```python
+let x = 7 as float / 2.0   # (7 as float) / 2.0 = 3.5
+```
+
+---
 
 ## Type Rules for Operations
 

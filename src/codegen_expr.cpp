@@ -616,6 +616,47 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     return headerPtr;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
+    llvm::Value *val = emitExpr(*e->value);
+    llvm::Type *srcTy = val->getType();
+    llvm::Type *dstTy = resolveType(e->target_type);
+
+    if (srcTy == dstTy)
+        return val;
+
+    // int -> float
+    if (srcTy == i64Ty_ && dstTy == f64Ty_)
+        return builder_.CreateSIToFP(val, f64Ty_, "cast_itof");
+    // float -> int
+    if (srcTy == f64Ty_ && dstTy == i64Ty_)
+        return builder_.CreateFPToSI(val, i64Ty_, "cast_ftoi");
+    // int -> byte
+    if (srcTy == i64Ty_ && dstTy == i8Ty_)
+        return builder_.CreateTrunc(val, i8Ty_, "cast_itob");
+    // byte -> int
+    if (srcTy == i8Ty_ && dstTy == i64Ty_)
+        return builder_.CreateZExt(val, i64Ty_, "cast_btoi");
+    // byte -> float
+    if (srcTy == i8Ty_ && dstTy == f64Ty_)
+        return builder_.CreateUIToFP(val, f64Ty_, "cast_btof");
+    // float -> byte
+    if (srcTy == f64Ty_ && dstTy == i8Ty_) {
+        llvm::Value *intVal = builder_.CreateFPToSI(val, i64Ty_, "cast_ftoi_tmp");
+        return builder_.CreateTrunc(intVal, i8Ty_, "cast_ftob");
+    }
+    // bool -> int
+    if (srcTy == i1Ty_ && dstTy == i64Ty_)
+        return builder_.CreateZExt(val, i64Ty_, "cast_booltoi");
+    // bool -> float
+    if (srcTy == i1Ty_ && dstTy == f64Ty_)
+        return builder_.CreateUIToFP(val, f64Ty_, "cast_booltof");
+    // int -> bool
+    if (srcTy == i64Ty_ && dstTy == i1Ty_)
+        return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i64Ty_, 0), "cast_itobool");
+
+    throw std::runtime_error("unsupported cast from type to '" + e->target_type + "'");
+}
+
 llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
@@ -698,5 +739,91 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
     return builder_.CreateLoad(elemTy, elemPtr, "elem");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
+    // Get C library functions
+    auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+    auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto strcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    auto strcpyFn = mod_->getOrInsertFunction("strcpy", strcpyTy);
+    auto strcatTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    auto strcatFn = mod_->getOrInsertFunction("strcat", strcatTy);
+    auto snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    auto snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
+
+    // Convert each expression to a string (ptr type)
+    std::vector<llvm::Value*> strParts;  // all string segments to concatenate
+
+    for (size_t i = 0; i < e->exprs.size(); ++i) {
+        // Add literal text part
+        if (!e->parts[i].empty()) {
+            strParts.push_back(builder_.CreateGlobalString(e->parts[i], ".fstr"));
+        }
+
+        // Evaluate expression and convert to string
+        llvm::Value *val = emitExpr(*e->exprs[i]);
+        llvm::Type *ty = val->getType();
+
+        if (ty == ptrTy_) {
+            // Already a string
+            strParts.push_back(val);
+        } else if (ty == i64Ty_) {
+            // int -> string via snprintf
+            llvm::Value *buf = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "int_buf");
+            llvm::Value *fmt = builder_.CreateGlobalString("%lld", ".fmt_int");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+            strParts.push_back(buf);
+        } else if (ty == f64Ty_) {
+            // float -> string via snprintf
+            llvm::Value *buf = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "float_buf");
+            llvm::Value *fmt = builder_.CreateGlobalString("%g", ".fmt_float");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
+            strParts.push_back(buf);
+        } else if (ty == i1Ty_) {
+            // bool -> "true"/"false"
+            llvm::Value *trueStr = builder_.CreateGlobalString("true", ".bool_true");
+            llvm::Value *falseStr = builder_.CreateGlobalString("false", ".bool_false");
+            strParts.push_back(builder_.CreateSelect(val, trueStr, falseStr, "bool_str"));
+        } else if (ty == i8Ty_) {
+            // byte -> string via snprintf
+            llvm::Value *buf = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, 8)}, "byte_buf");
+            llvm::Value *fmt = builder_.CreateGlobalString("%u", ".fmt_byte");
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 8), fmt, ext});
+            strParts.push_back(buf);
+        } else {
+            throw std::runtime_error("f-string: unsupported expression type for interpolation");
+        }
+    }
+    // Add trailing literal text
+    if (!e->parts.back().empty()) {
+        strParts.push_back(builder_.CreateGlobalString(e->parts.back(), ".fstr"));
+    }
+
+    if (strParts.empty()) {
+        return builder_.CreateGlobalString("", ".empty_fstr");
+    }
+
+    // Calculate total length
+    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 1); // null terminator
+    for (auto *s : strParts) {
+        llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "part_len");
+        totalLen = builder_.CreateAdd(totalLen, len, "acc_len");
+    }
+
+    // Allocate buffer and concatenate
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {totalLen}, "fstr_buf");
+    builder_.CreateCall(strcpyFn, {buf, strParts[0]});
+    for (size_t i = 1; i < strParts.size(); ++i) {
+        builder_.CreateCall(strcatFn, {buf, strParts[i]});
+    }
+
+    return buf;
 }
 

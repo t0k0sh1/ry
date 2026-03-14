@@ -19,6 +19,16 @@
 | `Some(expr)` | Option型の値ありバリアントを構築 |
 | `unwrap(opt)` | Option値を取り出す |
 
+### Result
+
+| 関数 | 説明 |
+|------|------|
+| `Ok(expr)` | Result型の成功バリアントを構築 |
+| `Err(expr)` | Result型のエラーバリアントを構築 |
+| `is_ok(r)` | Result が Ok かどうかを返す |
+| `is_err(r)` | Result が Err かどうかを返す |
+| `unwrap_or(r, default)` | Ok の値を返す。Err の場合はデフォルト値を返す |
+
 ### コレクション操作
 
 | 関数 | 説明 |
@@ -111,6 +121,74 @@ print(x.unwrap())   # 42 (UFCS)
 ```
 
 **エラー条件:** `None` を渡すとランタイムエラー（exit(1)）。
+
+---
+
+## Ok
+
+**シグネチャ:** `Ok(expr) -> Result<T, E>`
+
+Result型の成功バリアントを構築します。
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))   # true
+```
+
+---
+
+## Err
+
+**シグネチャ:** `Err(expr) -> Result<T, E>`
+
+Result型のエラーバリアントを構築します。
+
+```python
+let r: Result<int, str> = Err("not found")
+print(is_err(r))   # true
+```
+
+---
+
+## is_ok
+
+**シグネチャ:** `is_ok(r: Result<T, E>) -> bool`
+
+Result が Ok の値を含むかどうかを返します。
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))    # true
+```
+
+---
+
+## is_err
+
+**シグネチャ:** `is_err(r: Result<T, E>) -> bool`
+
+Result が Err の値を含むかどうかを返します。
+
+```python
+let r: Result<int, str> = Err("fail")
+print(is_err(r))   # true
+```
+
+---
+
+## unwrap_or
+
+**シグネチャ:** `unwrap_or(r: Result<T, E>, default: T) -> T`
+
+Result が Ok の場合はその値を返し、Err の場合はデフォルト値を返します。
+
+```python
+let r: Result<int, str> = Err("fail")
+print(unwrap_or(r, 0))   # 0
+
+let s: Result<int, str> = Ok(42)
+print(unwrap_or(s, 0))   # 42
+```
 
 ---
 

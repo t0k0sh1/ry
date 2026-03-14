@@ -137,6 +137,25 @@ x /= 4    # x == 6.0 (becomes float)
 
 ---
 
+## Type Cast Operator (`as`)
+
+You can explicitly convert values between types using the `as` operator.
+
+```python
+let x = 42 as float      # 42.0
+let y = 3.14 as int       # 3 (truncated)
+let b: byte = 200
+let n = b as int           # 200
+```
+
+`as` has high precedence, binding tighter than arithmetic operators:
+
+```python
+let x = 7 as float / 2.0   # 3.5 (7 is cast to float first, then divided)
+```
+
+---
+
 ## Type Promotion Rules
 
 The following describes the behavior when `int` and `float` are mixed in operations.

@@ -103,7 +103,15 @@ void CodeGen::emitVarDecl(const std::string &name,
         return;
     }
 
+    // Set result type context for Ok/Err constructors
+    std::string savedResultCtx = result_type_context_;
+    if (type_annotation && type_annotation->size() > 7 &&
+        type_annotation->substr(0, 7) == "Result<") {
+        result_type_context_ = *type_annotation;
+    }
+
     llvm::Value *val = emitExpr(value);
+    result_type_context_ = savedResultCtx;
     llvm::Type *newTy = val->getType();
 
     if (type_annotation) {
@@ -198,6 +206,16 @@ void CodeGen::emitVarDecl(const std::string &name,
                    type_annotation->substr(0, 3) == "fn(") {
             fn_type_info_[ptr] = parseFnTypeAnnotation(*type_annotation);
         }
+    }
+
+    // --- Result type tracking ---
+    {
+        auto rvIt = result_value_types_.find(val);
+        if (rvIt != result_value_types_.end())
+            result_value_types_[ptr] = rvIt->second;
+        else if (type_annotation && type_annotation->size() > 7 &&
+                 type_annotation->substr(0, 7) == "Result<")
+            result_value_types_[ptr] = *type_annotation;
     }
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
@@ -755,6 +773,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track union type for union parameters
             if (isUnionType(ptype)) {
                 union_value_types_[alloca] = normalizeUnionType(ptype);
+            }
+            // Track result type for result parameters
+            if (ptype.size() > 7 && ptype.substr(0, 7) == "Result<") {
+                result_value_types_[alloca] = ptype;
             }
             ++idx;
         }

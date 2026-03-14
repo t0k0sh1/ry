@@ -104,6 +104,102 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return builder_.CreateCall(strlenFn, {ptr}, "str_len");
     }
 
+    // Ok(x) → Result<T, E> constructor (tag = 0)
+    if (e->callee == "Ok") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("Ok() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e->args[0]);
+        std::string resultTypeStr = !result_type_context_.empty() ? result_type_context_ : current_fn_return_type_;
+        if (resultTypeStr.size() > 7 && resultTypeStr.substr(0, 7) == "Result<") {
+            auto *resultTy = getResultType(resultTypeStr);
+            auto &info = result_types_[resultTypeStr];
+            if (inner->getType() != info.okType)
+                throw std::runtime_error("Ok() value type mismatch");
+            llvm::AllocaInst *tmp = builder_.CreateAlloca(resultTy, nullptr, "ok.tmp");
+            auto *tagPtr = builder_.CreateStructGEP(resultTy, tmp, 0, "ok.tag");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), tagPtr);
+            auto *dataPtr = builder_.CreateStructGEP(resultTy, tmp, 1, "ok.data");
+            builder_.CreateStore(inner, dataPtr);
+            llvm::Value *result = builder_.CreateLoad(resultTy, tmp, "ok.val");
+            result_value_types_[result] = resultTypeStr;
+            return result;
+        }
+        throw std::runtime_error("Ok() requires Result type context");
+    }
+
+    // Err(x) → Result<T, E> constructor (tag = 1)
+    if (e->callee == "Err") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("Err() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e->args[0]);
+        std::string resultTypeStr = !result_type_context_.empty() ? result_type_context_ : current_fn_return_type_;
+        if (resultTypeStr.size() > 7 && resultTypeStr.substr(0, 7) == "Result<") {
+            auto *resultTy = getResultType(resultTypeStr);
+            auto &info = result_types_[resultTypeStr];
+            if (inner->getType() != info.errType)
+                throw std::runtime_error("Err() value type mismatch");
+            llvm::AllocaInst *tmp = builder_.CreateAlloca(resultTy, nullptr, "err.tmp");
+            auto *tagPtr = builder_.CreateStructGEP(resultTy, tmp, 0, "err.tag");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), tagPtr);
+            auto *dataPtr = builder_.CreateStructGEP(resultTy, tmp, 1, "err.data");
+            builder_.CreateStore(inner, dataPtr);
+            llvm::Value *result = builder_.CreateLoad(resultTy, tmp, "err.val");
+            result_value_types_[result] = resultTypeStr;
+            return result;
+        }
+        throw std::runtime_error("Err() requires Result type context");
+    }
+
+    // is_ok(result) → bool
+    if (e->callee == "is_ok") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("is_ok() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e->args[0]);
+        if (!isResultType(val->getType()))
+            throw std::runtime_error("is_ok() requires Result type argument");
+        llvm::Value *tag = builder_.CreateExtractValue(val, 0, "result.tag");
+        return builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 0), "is_ok");
+    }
+
+    // is_err(result) → bool
+    if (e->callee == "is_err") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("is_err() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e->args[0]);
+        if (!isResultType(val->getType()))
+            throw std::runtime_error("is_err() requires Result type argument");
+        llvm::Value *tag = builder_.CreateExtractValue(val, 0, "result.tag");
+        return builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 1), "is_err");
+    }
+
+    // unwrap_or(result, default) → T
+    if (e->callee == "unwrap_or") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("unwrap_or() takes exactly 2 arguments");
+        llvm::Value *val = emitExpr(*e->args[0]);
+        llvm::Value *defaultVal = emitExpr(*e->args[1]);
+
+        if (isOptionType(val->getType())) {
+            llvm::Value *hasValue = builder_.CreateExtractValue(val, 0, "has_value");
+            llvm::Value *inner = builder_.CreateExtractValue(val, 1, "unwrap_or_val");
+            return builder_.CreateSelect(hasValue, inner, defaultVal, "unwrap_or");
+        }
+        if (isResultType(val->getType())) {
+            std::string key = getResultTypeKey(val->getType());
+            auto &info = result_types_[key];
+            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "result.tag");
+            llvm::Value *isOk = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 0), "is_ok");
+            // Extract ok data
+            auto *resultTy = info.llvmType;
+            llvm::AllocaInst *tmp = builder_.CreateAlloca(resultTy, nullptr, "unwrap_or.tmp");
+            builder_.CreateStore(val, tmp);
+            auto *dataPtr = builder_.CreateStructGEP(resultTy, tmp, 1, "unwrap_or.data");
+            llvm::Value *okVal = builder_.CreateLoad(info.okType, dataPtr, "unwrap_or.ok");
+            return builder_.CreateSelect(isOk, okVal, defaultVal, "unwrap_or");
+        }
+        throw std::runtime_error("unwrap_or() requires Option or Result type argument");
+    }
+
     // Some(x) → Option<T> constructor
     if (e->callee == "Some") {
         if (e->args.size() != 1)

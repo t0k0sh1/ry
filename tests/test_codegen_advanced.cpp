@@ -671,3 +671,158 @@ TEST_F(CodeGenTest, UnionThreeTypes) {
         "print(x)\n";
     EXPECT_EQ(runSource(src), "3.14\n");
 }
+
+// ===== Result<T, E> type =====
+
+TEST_F(CodeGenTest, ResultOkConstruct) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Ok(42)\n"
+        "let r: Result<int, str> = get_value()\n"
+        "print(is_ok(r))\n";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ResultErrConstruct) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Err(\"not found\")\n"
+        "let r: Result<int, str> = get_value()\n"
+        "print(is_err(r))\n";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ResultIsOkFalse) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Err(\"error\")\n"
+        "let r: Result<int, str> = get_value()\n"
+        "print(is_ok(r))\n";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, ResultMatchOk) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Ok(42)\n"
+        "let r: Result<int, str> = get_value()\n"
+        "match r:\n"
+        "    case Ok(v):\n"
+        "        print(v)\n"
+        "    case Err(e):\n"
+        "        print(e)\n";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, ResultMatchErr) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Err(\"oops\")\n"
+        "let r: Result<int, str> = get_value()\n"
+        "match r:\n"
+        "    case Ok(v):\n"
+        "        print(v)\n"
+        "    case Err(e):\n"
+        "        print(e)\n";
+    EXPECT_EQ(runSource(src), "oops\n");
+}
+
+TEST_F(CodeGenTest, ResultUnwrapOr) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Err(\"fail\")\n"
+        "let r: Result<int, str> = get_value()\n"
+        "let v = unwrap_or(r, 0)\n"
+        "print(v)\n";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, ResultUnwrapOrOk) {
+    std::string src =
+        "fn get_value() -> Result<int, str>:\n"
+        "    return Ok(99)\n"
+        "let r: Result<int, str> = get_value()\n"
+        "let v = unwrap_or(r, 0)\n"
+        "print(v)\n";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, ResultVarDeclOk) {
+    std::string src =
+        "let r: Result<int, str> = Ok(42)\n"
+        "print(is_ok(r))\n";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ResultVarDeclErr) {
+    std::string src =
+        "let r: Result<int, str> = Err(\"bad\")\n"
+        "print(is_err(r))\n";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+// ===== F-string interpolation =====
+
+TEST_F(CodeGenTest, FStringSimple) {
+    std::string src =
+        "let name = \"world\"\n"
+        "print(f\"hello {name}\")";
+    EXPECT_EQ(runSource(src), "hello world\n");
+}
+
+TEST_F(CodeGenTest, FStringInt) {
+    std::string src =
+        "let n = 42\n"
+        "print(f\"n = {n}\")";
+    EXPECT_EQ(runSource(src), "n = 42\n");
+}
+
+TEST_F(CodeGenTest, FStringFloat) {
+    std::string src =
+        "let x = 3.14\n"
+        "print(f\"x = {x}\")";
+    EXPECT_EQ(runSource(src), "x = 3.14\n");
+}
+
+TEST_F(CodeGenTest, FStringBool) {
+    std::string src =
+        "let b = true\n"
+        "print(f\"b = {b}\")";
+    EXPECT_EQ(runSource(src), "b = true\n");
+}
+
+TEST_F(CodeGenTest, FStringMultipleExprs) {
+    std::string src =
+        "let name = \"Alice\"\n"
+        "let age = 30\n"
+        "print(f\"{name} is {age} years old\")";
+    EXPECT_EQ(runSource(src), "Alice is 30 years old\n");
+}
+
+TEST_F(CodeGenTest, FStringExpression) {
+    std::string src =
+        "let a = 10\n"
+        "let b = 20\n"
+        "print(f\"sum = {a + b}\")";
+    EXPECT_EQ(runSource(src), "sum = 30\n");
+}
+
+TEST_F(CodeGenTest, FStringNoInterpolation) {
+    std::string src =
+        "print(f\"plain string\")";
+    EXPECT_EQ(runSource(src), "plain string\n");
+}
+
+TEST_F(CodeGenTest, FStringEscapeBraces) {
+    std::string src =
+        "print(f\"{{literal braces}}\")";
+    EXPECT_EQ(runSource(src), "{literal braces}\n");
+}
+
+TEST_F(CodeGenTest, FStringAdjacentExprs) {
+    std::string src =
+        "let a = 1\n"
+        "let b = 2\n"
+        "print(f\"{a}{b}\")";
+    EXPECT_EQ(runSource(src), "12\n");
+}

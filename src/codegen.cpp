@@ -343,6 +343,11 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // Result<T, E> parsing
+    if (typeName.size() > 7 && typeName.substr(0, 7) == "Result<" && typeName.back() == '>') {
+        return getResultType(typeName);
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -445,6 +450,62 @@ llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
     val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
         llvm::cast<llvm::StructType>(optionTy)->getElementType(1)), 1);
     return val;
+}
+
+std::pair<std::string, std::string> CodeGen::parseResultTypeAnnotation(const std::string &typeStr) {
+    // Parse "Result<T, E>"
+    std::string inner = typeStr.substr(7, typeStr.size() - 8);
+    size_t depth = 0;
+    for (size_t i = 0; i < inner.size(); ++i) {
+        if (inner[i] == '<') ++depth;
+        else if (inner[i] == '>') --depth;
+        else if (inner[i] == ',' && depth == 0) {
+            std::string tStr = inner.substr(0, i);
+            std::string eStr = inner.substr(i + 1);
+            while (!tStr.empty() && tStr.back() == ' ') tStr.pop_back();
+            while (!eStr.empty() && eStr.front() == ' ') eStr = eStr.substr(1);
+            return {tStr, eStr};
+        }
+    }
+    return {"", ""};
+}
+
+llvm::StructType *CodeGen::getResultType(const std::string &typeStr) {
+    auto it = result_types_.find(typeStr);
+    if (it != result_types_.end()) return it->second.llvmType;
+
+    auto [tStr, eStr] = parseResultTypeAnnotation(typeStr);
+    if (tStr.empty())
+        throw std::runtime_error("invalid Result type: " + typeStr);
+
+    llvm::Type *okTy = resolveType(tStr);
+    llvm::Type *errTy = resolveType(eStr);
+
+    const auto &dl = mod_->getDataLayout();
+    uint64_t okSize = dl.getTypeAllocSize(okTy);
+    uint64_t errSize = dl.getTypeAllocSize(errTy);
+    uint64_t maxSize = std::max(okSize, errSize);
+
+    auto *dataTy = llvm::ArrayType::get(i8Ty_, maxSize);
+    auto *resultTy = llvm::StructType::create(
+        *ctx_, {i64Ty_, dataTy}, "Result." + tStr + "." + eStr);
+
+    result_types_[typeStr] = {resultTy, okTy, errTy};
+    return resultTy;
+}
+
+bool CodeGen::isResultType(llvm::Type *ty) {
+    for (auto &pair : result_types_) {
+        if (pair.second.llvmType == ty) return true;
+    }
+    return false;
+}
+
+std::string CodeGen::getResultTypeKey(llvm::Type *ty) {
+    for (auto &pair : result_types_) {
+        if (pair.second.llvmType == ty) return pair.first;
+    }
+    return "";
 }
 
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {

@@ -17,6 +17,7 @@
 | `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
+| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 成功または失敗を表す型 |
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) -> x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
 | `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
@@ -33,6 +34,7 @@ let f: float = 3.14
 let s: str = "hello"
 let b: bool = true
 let opt: Option<int> = Some(10)
+let res: Result<int, str> = Ok(42)
 let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
@@ -52,6 +54,7 @@ let u: int | str = 42
 | `str` | 組み込み文字列型 |
 | `Unit` | 戻り値なし関数の戻り値型 |
 | `Option<T>` | ジェネリック型（T は任意の型） |
+| `Result<T, E>` | ジェネリック結果型（T は成功型、E はエラー型） |
 | `(T1, T2, ...)` | タプル型（要素数・型の組み合わせは任意） |
 | `List<T>` | ジェネリック動的配列型 |
 | `Map<K, V>` | ジェネリックハッシュマップ型 |
@@ -92,6 +95,81 @@ union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` �
 - union に含まれない型を代入するとコンパイルエラー
 - `int | str` と `str | int` は同じ型（正規化される）
 - `print()` で union 値を出力すると、実行時のタグに基づいて適切な型で表示される
+
+## Result 型
+
+成功（`Ok`）または失敗（`Err`）のいずれかを表す型です。
+
+```python
+let r: Result<int, str> = Ok(42)
+let e: Result<int, str> = Err("not found")
+
+match r:
+    case Ok(v):
+        print(v)       # 42
+    case Err(msg):
+        print(msg)
+```
+
+### コンストラクタと関数
+
+| 関数 | 説明 |
+|---|---|
+| `Ok(value)` | 成功の Result を構築 |
+| `Err(value)` | エラーの Result を構築 |
+| `is_ok(r)` | `r` が `Ok` なら `true` を返す |
+| `is_err(r)` | `r` が `Err` なら `true` を返す |
+| `unwrap_or(r, default)` | `Ok` の値を返す。`Err` の場合は `default` を返す |
+
+### 内部表現
+
+`Result<T, E>` は `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` として表現されます。`tag` は `Ok` が `0`、`Err` が `1` です。
+
+### マッチの網羅性
+
+`Result` に対してマッチする場合、`Ok` と `Err` の両方のパターンをカバーするか `_` が必要です。
+
+---
+
+## 文字列補間（f-string）
+
+f-string を使うと、`{}` を使って文字列リテラルの中に式を埋め込めます。
+
+```python
+let name = "world"
+let n = 42
+print(f"hello {name}, n = {n}")   # hello world, n = 42
+```
+
+### 補間でサポートされる型
+
+| 型 | フォーマット |
+|---|---|
+| `str` | そのまま |
+| `int` | `%lld` |
+| `float` | `%g` |
+| `bool` | `true` / `false` |
+| `byte` | 符号なし整数 |
+
+### 波括弧のエスケープ
+
+`{{` と `}}` を使うとリテラルの波括弧を表現できます。
+
+```python
+print(f"{{literal braces}}")   # {literal braces}
+```
+
+### 式のサポート
+
+`{}` の中には任意の式を使用できます。
+
+```python
+let a = 10
+let b = 20
+print(f"sum = {a + b}")   # sum = 30
+```
+
+---
 
 ## 型規則（演算時の型変換）
 

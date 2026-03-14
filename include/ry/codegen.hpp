@@ -43,6 +43,14 @@ private:
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
+
+    struct ResultTypeInfo {
+        llvm::StructType *llvmType;
+        llvm::Type *okType;
+        llvm::Type *errType;
+    };
+    std::unordered_map<std::string, ResultTypeInfo> result_types_;
+    std::unordered_map<llvm::Value*, std::string> result_value_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
@@ -56,6 +64,7 @@ private:
     std::unordered_map<std::string, UnionTypeInfo> union_type_info_;
     std::unordered_map<llvm::Value*, std::string> union_value_types_;
     std::string current_fn_return_type_;
+    std::string result_type_context_;
 
     struct EnumInfo {
         std::string name;
@@ -150,6 +159,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<SetExpr> &e);
     llvm::Value *emitExprVariant(const EnumAccessExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
 
     // Operator overload helpers
     llvm::Value *tryOperatorCall(const std::string &opFnName,
@@ -174,6 +185,10 @@ private:
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
     llvm::Value *buildNoneValue(llvm::Type *optionTy);
+    llvm::StructType *getResultType(const std::string &typeStr);
+    bool isResultType(llvm::Type *ty);
+    std::string getResultTypeKey(llvm::Type *ty);
+    std::pair<std::string, std::string> parseResultTypeAnnotation(const std::string &typeStr);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);

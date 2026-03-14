@@ -179,6 +179,8 @@ match 運算式:
 | enum 變體 | `Color::Red` | enum 標籤的比較 |
 | `Some(x)` | `Some(v)` | 當 Option 有值時，綁定其內容 |
 | `None` | `None` | 當 Option 無值時 |
+| `Ok(x)` | `Ok(v)` | 當 Result 為成功時，綁定 Ok 的值 |
+| `Err(x)` | `Err(e)` | 當 Result 為失敗時，綁定 Err 的值 |
 
 ### guard 子句
 
@@ -188,6 +190,7 @@ match 運算式:
 
 - enum 型別：必須覆蓋所有變體或包含 `_`。
 - Option 型別：必須覆蓋 `Some` 和 `None` 或包含 `_`。
+- Result 型別：必須覆蓋 `Ok` 和 `Err` 或包含 `_`。
 - bool 型別：必須覆蓋 `true` 和 `false` 或包含 `_`。
 - int / float / str 字面值：`_` 為必要。
 - 帶守衛的分支不計入窮舉性。
@@ -216,6 +219,16 @@ match x:
         print(v)
     case None:
         print("nothing")
+
+# Result 匹配
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
 
 # 字面值匹配
 match x:

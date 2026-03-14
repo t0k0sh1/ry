@@ -9,7 +9,7 @@ Token Lexer::next() {
 }
 
 Lexer::State Lexer::saveState() const {
-    return {pos_, line_, at_line_start_, indent_stack_, pending_, current_};
+    return {pos_, line_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_};
 }
 
 void Lexer::restoreState(State s) {
@@ -19,6 +19,7 @@ void Lexer::restoreState(State s) {
     indent_stack_ = std::move(s.indent_stack);
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
+    fstring_brace_depth_ = s.fstring_brace_depth;
 }
 
 Token Lexer::readToken() {
@@ -195,8 +196,28 @@ Token Lexer::readToken() {
     if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
     if (c == '[') { ++pos_; return {TokenKind::LBracket, "[", line_}; }
     if (c == ']') { ++pos_; return {TokenKind::RBracket, "]", line_}; }
-    if (c == '{') { ++pos_; return {TokenKind::LBrace,   "{", line_}; }
-    if (c == '}') { ++pos_; return {TokenKind::RBrace,   "}", line_}; }
+    if (c == '{') {
+        ++pos_;
+        if (fstring_brace_depth_ > 0) fstring_brace_depth_++;
+        return {TokenKind::LBrace, "{", line_};
+    }
+    if (c == '}') {
+        if (fstring_brace_depth_ > 0) {
+            fstring_brace_depth_--;
+            if (fstring_brace_depth_ == 0) {
+                ++pos_; // consume '}'
+                return readFStringSegment(false);
+            }
+        }
+        ++pos_;
+        return {TokenKind::RBrace, "}", line_};
+    }
+
+    // f-string: f"..."
+    if (c == 'f' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
+        pos_ += 2; // skip f"
+        return readFStringSegment(true);
+    }
 
     if (c == '"') {
         ++pos_;
@@ -296,9 +317,75 @@ Token Lexer::readToken() {
         if (id == "describe") return {TokenKind::Describe, "describe", line_};
         if (id == "it")       return {TokenKind::It,       "it",       line_};
         if (id == "expect")   return {TokenKind::Expect,   "expect",   line_};
+        if (id == "as")       return {TokenKind::As,       "as",       line_};
+        if (id == "Ok")       return {TokenKind::Ok,       "Ok",       line_};
+        if (id == "Err")      return {TokenKind::Err,      "Err",      line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 
     ++pos_;
     return {TokenKind::Error, std::string(1, c), line_};
+}
+
+Token Lexer::readFStringSegment(bool isStart) {
+    // Read text until '{' or '"'
+    // pos_ is right after f" (for start) or right after } (for mid/end)
+    std::string text;
+    while (pos_ < src_.size()) {
+        char ch = src_[pos_];
+        if (ch == '"') {
+            ++pos_; // consume closing quote
+            if (isStart) {
+                // f"text" with no interpolation - return as FStringEnd (complete string)
+                return {TokenKind::FStringEnd, text, line_};
+            }
+            return {TokenKind::FStringEnd, text, line_};
+        }
+        if (ch == '{') {
+            // Check for {{ escape
+            if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '{') {
+                text += '{';
+                pos_ += 2;
+                continue;
+            }
+            ++pos_; // consume '{'
+            fstring_brace_depth_ = 1;
+            if (isStart)
+                return {TokenKind::FStringStart, text, line_};
+            else
+                return {TokenKind::FStringMid, text, line_};
+        }
+        if (ch == '}' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '}') {
+            text += '}';
+            pos_ += 2;
+            continue;
+        }
+        if (ch == '\\') {
+            ++pos_;
+            if (pos_ >= src_.size())
+                throw std::runtime_error("line " + std::to_string(line_) +
+                                         ": unterminated escape in f-string");
+            switch (src_[pos_]) {
+                case 'n':  text += '\n'; break;
+                case 't':  text += '\t'; break;
+                case '\\': text += '\\'; break;
+                case '"':  text += '"';  break;
+                case '{':  text += '{';  break;
+                case '}':  text += '}';  break;
+                default:
+                    throw std::runtime_error("line " + std::to_string(line_) +
+                                             ": unknown escape in f-string '\\" +
+                                             std::string(1, src_[pos_]) + "'");
+            }
+            ++pos_;
+            continue;
+        }
+        if (ch == '\n' || ch == '\r')
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unterminated f-string literal");
+        text += ch;
+        ++pos_;
+    }
+    throw std::runtime_error("line " + std::to_string(line_) +
+                             ": unterminated f-string literal");
 }
