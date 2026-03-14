@@ -69,13 +69,28 @@ from math import add
 print(add(1, 2))
 ```
 
-## 必要環境
+## インストール
 
+### ワンライナー（macOS Apple Silicon）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
+```
+
+特定バージョンを指定する場合:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
+```
+
+デフォルトでは `~/.local/bin` にインストールされます。`RY_INSTALL_DIR` 環境変数で変更可能です。
+
+### ソースからビルド
+
+必要環境:
 - LLVM 21
 - CMake 3.20+
 - C++17 対応コンパイラ
-
-## ビルド
 
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
@@ -85,7 +100,7 @@ cmake --build build
 ## 実行
 
 ```bash
-./build/ry <file.ry>
+ry <file.ry>
 ```
 
 ## テスト

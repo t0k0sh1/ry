@@ -1,11 +1,14 @@
 name: Dev Release
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: ['v[0-9]*']
 
 jobs:
   dev-release:
     runs-on: macos-14
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
     steps:

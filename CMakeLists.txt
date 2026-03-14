@@ -70,6 +70,8 @@ if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
 else()
     target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive)
+    # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
+    target_link_options(ry PRIVATE -rdynamic)
 endif()
 
 # ===== テスト =====
@@ -95,6 +97,8 @@ else()
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         GTest::gtest_main
     )
+    # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
+    target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
 
 include(GoogleTest)
