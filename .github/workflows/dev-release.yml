@@ -1,26 +1,45 @@
 name: Dev Release
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: ['v[0-9]*']
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
-  dev-release:
-    runs-on: macos-14
-    if: github.event.workflow_run.conclusion == 'success'
-    permissions:
-      contents: write
+  # スケジュール実行: v* ブランチを自動検出
+  discover:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      branches: ${{ steps.find.outputs.branches }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: find
+        run: |
+          branches=$(git branch -r --list 'origin/v[0-9]*' \
+            | sed 's| *origin/||' \
+            | jq -Rsc 'split("\n") | map(select(. != ""))')
+          echo "branches=$branches" >> "$GITHUB_OUTPUT"
+
+  nightly:
+    needs: discover
+    if: github.event_name == 'schedule' && needs.discover.outputs.branches != '[]'
+    runs-on: macos-14
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        branch: ${{ fromJSON(needs.discover.outputs.branches) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch }}
       - name: Install LLVM 21
         run: brew install llvm@21
-      - name: Compute version
+      - name: Set version
         id: version
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          TIMESTAMP="$(date +%s)"
-          echo "version=${BRANCH}-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${{ matrix.branch }}-nightly" >> "$GITHUB_OUTPUT"
       - name: Build
         run: |
           cmake -B build \
@@ -37,6 +56,73 @@ jobs:
           cd dist
           tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
           shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Cleanup old prereleases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="${{ matrix.branch }}"
+          gh release list --json tagName,isPrerelease -q \
+            ".[] | select(.isPrerelease and (.tagName | startswith(\"${BRANCH}-\"))) | .tagName" \
+            | while read -r tag; do
+                echo "Deleting old release: $tag"
+                gh release delete "$tag" --yes --cleanup-tag || true
+              done
+      - name: Create Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "${{ steps.version.outputs.version }}" \
+            --notes "Nightly build from branch ${{ matrix.branch }}" \
+            --prerelease \
+            dist/ry-*.tar.gz dist/checksums.txt
+
+  # 手動実行: 現在のブランチでビルド
+  manual:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - name: Validate branch
+        run: |
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^v[0-9] ]]; then
+            echo "::error::Dev release can only run on v* branches (current: ${GITHUB_REF_NAME})"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: Install LLVM 21
+        run: brew install llvm@21
+      - name: Set version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME}-nightly" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          cmake -B build \
+            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRY_VERSION="${{ steps.version.outputs.version }}"
+          cmake --build build
+      - name: Test
+        run: ./build/ry_tests
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/ry dist/ry
+          cd dist
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Cleanup old prereleases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          gh release list --json tagName,isPrerelease -q \
+            ".[] | select(.isPrerelease and (.tagName | startswith(\"${BRANCH}-\"))) | .tagName" \
+            | while read -r tag; do
+                echo "Deleting old release: $tag"
+                gh release delete "$tag" --yes --cleanup-tag || true
+              done
       - name: Create Pre-release
         env:
           GH_TOKEN: ${{ github.token }}
