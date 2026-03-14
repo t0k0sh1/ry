@@ -1,0 +1,51 @@
+name: Release
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 21
+        run: brew install llvm@21
+      - name: Read version
+        id: version
+        run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "refs/tags/${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag ${{ steps.version.outputs.version }} already exists. Skipping release."
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
+      - name: Build
+        if: env.SKIP != 'true'
+        run: |
+          cmake -B build \
+            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Test
+        if: env.SKIP != 'true'
+        run: ./build/ry_tests
+      - name: Package
+        if: env.SKIP != 'true'
+        run: |
+          mkdir -p dist
+          cp build/ry dist/ry
+          cd dist
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Create Release
+        if: env.SKIP != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest \
+            dist/ry-*.tar.gz dist/checksums.txt

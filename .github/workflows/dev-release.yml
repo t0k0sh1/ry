@@ -1,0 +1,45 @@
+name: Dev Release
+on:
+  push:
+    branches: ['v[0-9]*']
+
+jobs:
+  dev-release:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 21
+        run: brew install llvm@21
+      - name: Compute version
+        id: version
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          TIMESTAMP="$(date +%s)"
+          echo "version=${BRANCH}-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          cmake -B build \
+            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DRY_VERSION="${{ steps.version.outputs.version }}"
+          cmake --build build
+      - name: Test
+        run: ./build/ry_tests
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/ry dist/ry
+          cd dist
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Create Pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.version }}" \
+            --title "${{ steps.version.outputs.version }}" \
+            --notes "Dev build from branch ${GITHUB_REF_NAME}" \
+            --prerelease \
+            dist/ry-*.tar.gz dist/checksums.txt

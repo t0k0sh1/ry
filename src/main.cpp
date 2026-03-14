@@ -18,6 +18,11 @@ using namespace llvm;
 using namespace llvm::orc;
 
 int main(int argc, char *argv[]) {
+    if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
+        llvm::outs() << "ry " << RY_VERSION << "\n";
+        return 0;
+    }
+
     // Handle subcommands that don't need LLVM initialization
     if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
         return cmd_init();
@@ -37,6 +42,7 @@ int main(int argc, char *argv[]) {
         errs() << "Usage: ry <file.ry>\n";
         errs() << "       ry test <file.ry>\n";
         errs() << "       ry init\n";
+        errs() << "       ry --version\n";
         return 1;
     }
 

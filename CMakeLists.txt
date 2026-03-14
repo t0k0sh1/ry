@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(ry)
 
+if(NOT RY_VERSION)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" RY_VERSION)
+    string(STRIP "${RY_VERSION}" RY_VERSION)
+endif()
+add_compile_definitions(RY_VERSION="${RY_VERSION}")
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
@@ -14,10 +20,16 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+    set(RY_ARCH_COMPONENTS aarch64codegen aarch64asmparser)
+else()
+    set(RY_ARCH_COMPONENTS x86codegen x86asmparser)
+endif()
+
 llvm_map_components_to_libnames(LLVM_LIBS
     core support passes
     orcjit jitlink native nativecodegen
-    x86codegen x86asmparser targetparser
+    ${RY_ARCH_COMPONENTS} targetparser
 )
 
 # ===== GoogleTest (FetchContent) =====

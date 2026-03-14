@@ -1,0 +1,24 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev
+      - name: Build
+        run: |
+          cmake -B build -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+          cmake --build build
+      - name: Test
+        run: ./build/ry_tests
