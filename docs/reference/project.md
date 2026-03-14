@@ -53,8 +53,8 @@ ry self-update v0.0.1       # Update to a specified version
 ### Notes
 
 - Requires `curl` and `tar` commands
-- If permissions are needed for the install location, a `sudo` prompt is displayed
-- Even if an error occurs during download, the original binary is not corrupted (temporary file approach)
+- If replacing the binary fails due to insufficient permissions, a message suggesting `sudo` is displayed (sudo is not invoked automatically)
+- Downloads are performed to a temporary directory first; however, if the cross-filesystem `cp` fallback is interrupted, the destination binary may be left in a partial state
 
 ---
 
