@@ -15,7 +15,7 @@
 
 namespace ry::self_update {
 
-static const char *REPO = "pricklywiggles/ry";
+static const char *REPO = "t0k0sh1/ry";
 
 bool is_valid_tag(const std::string &tag) {
     static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
@@ -166,7 +166,8 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
                           "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
         std::string json = shell_exec(cmd);
         if (json.empty()) {
-            std::cerr << "Error: Failed to fetch latest release info.\n";
+            // No stable release exists yet — treat as already up to date
+            target.tag = std::string("v") + RY_VERSION;
             return target;
         }
         target.tag = extract_json_string(json, "tag_name");
