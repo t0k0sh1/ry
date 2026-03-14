@@ -183,4 +183,37 @@ let v = unwrap(x)   # 42
 
 ---
 
+## Result Type
+
+A type that represents either a success (`Ok`) or a failure (`Err`). Use it when a function can fail and you want to handle the error explicitly instead of crashing.
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a / b)
+
+let r: Result<int, str> = divide(10, 0)
+```
+
+### Checking and Extracting
+
+```python
+print(is_ok(r))       # false
+print(is_err(r))      # true
+print(unwrap_or(r, 0))  # 0
+```
+
+### Matching
+
+```python
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)

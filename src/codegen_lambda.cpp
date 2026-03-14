@@ -57,6 +57,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
                 if (v->expr_body) scanExpr(*v->expr_body);
                 for (auto &st : v->body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
+                scanExpr(*v->value);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
+                for (auto &expr : v->exprs) scanExpr(*expr);
             }
         }, node.data);
     };

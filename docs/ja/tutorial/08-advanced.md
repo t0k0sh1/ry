@@ -183,4 +183,37 @@ let v = unwrap(x)   # 42
 
 ---
 
+## Result 型
+
+成功（`Ok`）または失敗（`Err`）を表す型です。関数が失敗しうる場合に、クラッシュの代わりにエラーを明示的に処理したいときに使用します。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a / b)
+
+let r: Result<int, str> = divide(10, 0)
+```
+
+### 確認と取り出し
+
+```python
+print(is_ok(r))       # false
+print(is_err(r))      # true
+print(unwrap_or(r, 0))  # 0
+```
+
+### マッチ
+
+```python
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)

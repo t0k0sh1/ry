@@ -426,8 +426,23 @@ ExprPtr Parser::parseShift()      { return parseBinaryLeft(&Parser::parseExpr, {
 ExprPtr Parser::parseExpr()       { return parseBinaryLeft(&Parser::parseTerm, {TokenKind::Plus, TokenKind::Minus}); }
 ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parsePower, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
 
+ExprPtr Parser::parseCast() {
+    ExprPtr expr = parsePostfix();
+    while (lex_.peek().kind == TokenKind::As) {
+        lex_.next(); // consume 'as'
+        std::string targetType = parseTypeNameSingle();
+        auto cast = std::make_unique<CastExpr>();
+        cast->value = std::move(expr);
+        cast->target_type = targetType;
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(cast);
+        expr = std::move(node);
+    }
+    return expr;
+}
+
 ExprPtr Parser::parsePower() {
-    ExprPtr lhs = parsePostfix();
+    ExprPtr lhs = parseCast();
     if (lex_.peek().kind == TokenKind::StarStar) {
         std::string op = lex_.next().value;
         ExprPtr rhs = parsePower();  // 右結合: 再帰呼び出し
@@ -493,6 +508,44 @@ ExprPtr Parser::parsePrimary() {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = StringExpr{t.value};
+        return node;
+    }
+    // f-string: f"text{expr}text{expr}text"
+    if (t.kind == TokenKind::FStringEnd) {
+        // f"text" with no interpolation — just a plain string
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = StringExpr{t.value};
+        return node;
+    }
+    if (t.kind == TokenKind::FStringStart) {
+        lex_.next();
+        auto interp = std::make_unique<InterpolatedStringExpr>();
+        interp->parts.push_back(t.value);  // text before first {
+        interp->exprs.push_back(parseLogicalOr());
+        while (lex_.peek().kind == TokenKind::FStringMid) {
+            interp->parts.push_back(lex_.peek().value);
+            lex_.next();
+            interp->exprs.push_back(parseLogicalOr());
+        }
+        if (lex_.peek().kind != TokenKind::FStringEnd)
+            parseError("expected end of f-string");
+        interp->parts.push_back(lex_.peek().value);  // text after last }
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(interp);
+        return node;
+    }
+    if (t.kind == TokenKind::Ok || t.kind == TokenKind::Err) {
+        lex_.next(); // consume 'Ok' or 'Err'
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after '" + t.value + "'");
+        lex_.next(); // consume '('
+        auto call = std::make_unique<CallExpr>();
+        call->callee = t.value;
+        call->args = parseArgList();
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(call);
         return node;
     }
     if (t.kind == TokenKind::Ident) {
@@ -925,8 +978,8 @@ std::string Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
-        if (name == "Map" && lex_.peek().kind == TokenKind::Comma) {
-            // Map<K, V> parsing
+        if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
+            // Map<K, V> / Result<T, E> parsing
             lex_.next(); // consume ','
             std::string valueTy = parseTypeName();
             if (lex_.peek().kind != TokenKind::Greater)
@@ -1190,6 +1243,38 @@ Pattern Parser::parsePattern() {
     if (t.kind == TokenKind::Ident && t.value == "None") {
         lex_.next();
         return NonePattern{};
+    }
+
+    // Ok(binding) pattern
+    if (t.kind == TokenKind::Ok) {
+        lex_.next(); // consume 'Ok'
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after 'Ok'");
+        lex_.next(); // consume '('
+        Token binding = lex_.peek();
+        if (binding.kind != TokenKind::Ident)
+            parseError(binding.line, "expected variable name in Ok pattern");
+        lex_.next(); // consume binding name
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' after Ok binding");
+        lex_.next(); // consume ')'
+        return OkPattern{binding.value};
+    }
+
+    // Err(binding) pattern
+    if (t.kind == TokenKind::Err) {
+        lex_.next(); // consume 'Err'
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after 'Err'");
+        lex_.next(); // consume '('
+        Token binding = lex_.peek();
+        if (binding.kind != TokenKind::Ident)
+            parseError(binding.line, "expected variable name in Err pattern");
+        lex_.next(); // consume binding name
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' after Err binding");
+        lex_.next(); // consume ')'
+        return ErrPattern{binding.value};
     }
 
     // Some(binding) pattern

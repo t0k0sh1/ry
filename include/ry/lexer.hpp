@@ -78,6 +78,13 @@ enum class TokenKind {
     Describe,       // describe
     It,             // it
     Expect,         // expect
+    As,             // as
+    Ok,             // Ok
+    Err,            // Err
+    // --- f-string ---
+    FStringStart,   // f"...{ — text before first interpolation
+    FStringMid,     // }...{  — text between interpolations
+    FStringEnd,     // }..."  — text after last interpolation (or whole f"..." with no interpolation)
 };
 
 struct Token {
@@ -103,6 +110,7 @@ public:
         std::vector<int> indent_stack;
         std::queue<Token> pending;
         Token current;
+        int fstring_brace_depth;
     };
     State saveState() const;
     void restoreState(State s);
@@ -116,6 +124,8 @@ private:
     bool at_line_start_ = true;
     std::vector<int> indent_stack_ = {0};
     std::queue<Token> pending_;
+    int fstring_brace_depth_ = 0;  // > 0 when inside f-string interpolation
 
     Token readToken();
+    Token readFStringSegment(bool isStart);
 };

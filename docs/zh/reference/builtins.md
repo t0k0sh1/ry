@@ -19,6 +19,16 @@
 | `Some(expr)` | 建構 Option 型別的有值變體 |
 | `unwrap(opt)` | 取出 Option 值 |
 
+### Result
+
+| 函式 | 說明 |
+|------|------|
+| `Ok(expr)` | 建構 Result 型別的成功變體 |
+| `Err(expr)` | 建構 Result 型別的錯誤變體 |
+| `is_ok(r)` | 回傳 Result 是否為 Ok |
+| `is_err(r)` | 回傳 Result 是否為 Err |
+| `unwrap_or(r, default)` | 回傳 Ok 的值，若為 Err 則回傳預設值 |
+
 ### 集合操作
 
 | 函式 | 說明 |
@@ -111,6 +121,74 @@ print(x.unwrap())   # 42 (UFCS)
 ```
 
 **錯誤條件：** 傳入 `None` 會產生執行時錯誤（exit(1)）。
+
+---
+
+## Ok
+
+**簽名：** `Ok(expr) -> Result<T, E>`
+
+建構 Result 型別的成功變體。
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))   # true
+```
+
+---
+
+## Err
+
+**簽名：** `Err(expr) -> Result<T, E>`
+
+建構 Result 型別的錯誤變體。
+
+```python
+let r: Result<int, str> = Err("not found")
+print(is_err(r))   # true
+```
+
+---
+
+## is_ok
+
+**簽名：** `is_ok(r: Result<T, E>) -> bool`
+
+回傳 Result 是否包含 Ok 值。
+
+```python
+let r: Result<int, str> = Ok(42)
+print(is_ok(r))    # true
+```
+
+---
+
+## is_err
+
+**簽名：** `is_err(r: Result<T, E>) -> bool`
+
+回傳 Result 是否包含 Err 值。
+
+```python
+let r: Result<int, str> = Err("fail")
+print(is_err(r))   # true
+```
+
+---
+
+## unwrap_or
+
+**簽名：** `unwrap_or(r: Result<T, E>, default: T) -> T`
+
+若 Result 為 Ok 則回傳 Ok 的值，否則回傳預設值。
+
+```python
+let r: Result<int, str> = Err("fail")
+print(unwrap_or(r, 0))   # 0
+
+let s: Result<int, str> = Ok(42)
+print(unwrap_or(s, 0))   # 42
+```
 
 ---
 

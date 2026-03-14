@@ -218,6 +218,22 @@ match x:
 # 42
 ```
 
+### Result のマッチ
+
+`Result<T, E>` の値をマッチして、成功とエラーの両方を処理できます。
+
+```python
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)       # 42
+    case Err(e):
+        print(e)
+```
+
 ### ワイルドカードとリテラル
 
 `_` は何にでもマッチするワイルドカードパターンです。リテラル値（数値・文字列・真偽値）でもマッチできます。
@@ -248,7 +264,7 @@ match n:
         print("zero")
 ```
 
-> **注意**: `match` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
+> **注意**: `match` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、Result は `Ok` と `Err` の両方、リテラルは `_` が必要です。
 
 ---
 

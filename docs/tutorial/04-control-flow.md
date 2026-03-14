@@ -218,6 +218,22 @@ match x:
 # 42
 ```
 
+### Result Matching
+
+You can match on `Result<T, E>` values to handle success and error cases.
+
+```python
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)       # 42
+    case Err(e):
+        print(e)
+```
+
 ### Wildcards and Literals
 
 `_` is a wildcard pattern that matches anything. You can also match against literal values (numbers, strings, booleans).
@@ -248,7 +264,7 @@ match n:
         print("zero")
 ```
 
-> **Note**: `match` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
+> **Note**: `match` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For Results, both `Ok` and `Err` are required. For literals, a `_` wildcard is needed.
 
 ---
 

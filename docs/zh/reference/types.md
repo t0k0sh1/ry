@@ -17,6 +17,7 @@
 | `List<T>` | ptr（堆積） | `[1, 2, 3]` | 動態陣列 |
 | `Map<K, V>` | ptr（堆積） | `{"a": 1}` | 雜湊映射 |
 | `Set<T>` | ptr（堆積） | `{1, 2, 3}` | 不重複的集合 |
+| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 表示成功或失敗的型別 |
 | `fn(T1, T2) -> R` | ptr（函式指標） | `(x: int) -> x * 2` | 函式型別 |
 | 使用者定義型別 | LLVM StructType (named) | `type Point: ...` | 以 `type` 關鍵字定義的結構體 |
 | `enum` | i64 | `Color::Red` | 以 `enum` 關鍵字定義的列舉型別 |
@@ -33,6 +34,7 @@ let f: float = 3.14
 let s: str = "hello"
 let b: bool = true
 let opt: Option<int> = Some(10)
+let res: Result<int, str> = Ok(42)
 let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
@@ -52,6 +54,7 @@ let u: int | str = 42
 | `str` | 內建字串型別 |
 | `Unit` | 無回傳值函式的回傳型別 |
 | `Option<T>` | 泛型型別（T 為任意型別） |
+| `Result<T, E>` | 泛型結果型別（T 為成功型別，E 為錯誤型別） |
 | `(T1, T2, ...)` | 元組型別（元素數量和型別組合任意） |
 | `List<T>` | 泛型動態陣列型別 |
 | `Map<K, V>` | 泛型雜湊映射型別 |
@@ -92,6 +95,81 @@ union 型別以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各組成型�
 - 賦值不屬於 union 的型別會產生編譯錯誤
 - `int | str` 和 `str | int` 是相同的型別（會被正規化）
 - 使用 `print()` 輸出 union 值時，會根據執行時的 tag 以適當的型別顯示
+
+## Result 型別
+
+表示成功（`Ok`）或失敗（`Err`）的型別。
+
+```python
+let r: Result<int, str> = Ok(42)
+let e: Result<int, str> = Err("not found")
+
+match r:
+    case Ok(v):
+        print(v)       # 42
+    case Err(msg):
+        print(msg)
+```
+
+### 建構子與函式
+
+| 函式 | 說明 |
+|---|---|
+| `Ok(value)` | 建構成功的結果 |
+| `Err(value)` | 建構錯誤的結果 |
+| `is_ok(r)` | 若 `r` 為 `Ok` 則回傳 `true` |
+| `is_err(r)` | 若 `r` 為 `Err` 則回傳 `true` |
+| `unwrap_or(r, default)` | 回傳 `Ok` 的值，若為 `Err` 則回傳 `default` |
+
+### 內部表示
+
+`Result<T, E>` 以 `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` 表示。`tag` 在 `Ok` 時為 `0`，在 `Err` 時為 `1`。
+
+### 匹配的窮舉性
+
+對 `Result` 進行匹配時，必須同時覆蓋 `Ok` 和 `Err` 模式（或使用 `_`）。
+
+---
+
+## 字串插值（f-string）
+
+f-string 允許在字串字面值內使用 `{}` 嵌入表達式。
+
+```python
+let name = "world"
+let n = 42
+print(f"hello {name}, n = {n}")   # hello world, n = 42
+```
+
+### 插值支援的型別
+
+| 型別 | 格式 |
+|---|---|
+| `str` | 原樣輸出 |
+| `int` | `%lld` |
+| `float` | `%g` |
+| `bool` | `true` / `false` |
+| `byte` | 無號整數 |
+
+### 跳脫大括號
+
+使用 `{{` 和 `}}` 可以輸出字面大括號。
+
+```python
+print(f"{{literal braces}}")   # {literal braces}
+```
+
+### 表達式支援
+
+`{}` 內可以使用任意表達式。
+
+```python
+let a = 10
+let b = 20
+print(f"sum = {a + b}")   # sum = 30
+```
+
+---
 
 ## 型別規則（運算時的型別轉換）
 

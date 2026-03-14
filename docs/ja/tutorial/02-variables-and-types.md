@@ -105,6 +105,26 @@ print("say \"hi\"")     # ダブルクォートを含む文字列
 
 ---
 
+## 文字列補間（f-string）
+
+f-string を使うと、`{}` を使って文字列の中に式を直接埋め込めます。
+
+```python
+let name = "World"
+let n = 42
+print(f"Hello {name}!")        # Hello World!
+print(f"n = {n}")              # n = 42
+print(f"sum = {10 + 20}")      # sum = 30
+```
+
+`{{` と `}}` を使うとリテラルの波括弧を表現できます。
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+---
+
 ## 再代入のルール
 
 `var` で宣言した変数は再代入できます。ただし、以下の制限があります。

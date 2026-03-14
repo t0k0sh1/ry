@@ -137,6 +137,25 @@ x /= 4    # x == 6.0（會變為 float）
 
 ---
 
+## 型別轉換運算子（`as`）
+
+使用 `as` 運算子可以明確地在型別之間轉換值。
+
+```python
+let x = 42 as float      # 42.0
+let y = 3.14 as int       # 3（截斷）
+let b: byte = 200
+let n = b as int           # 200
+```
+
+`as` 的優先順序較高，會比算術運算子先結合：
+
+```python
+let x = 7 as float / 2.0   # 3.5（先將 7 轉換為 float，再除法）
+```
+
+---
+
 ## 型別提升規則
 
 以下說明運算中 `int` 與 `float` 混合時的行為。

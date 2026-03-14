@@ -179,6 +179,8 @@ match 式:
 | enum バリアント | `Color::Red` | enum タグの比較 |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
+| `Ok(x)` | `Ok(v)` | Result が成功の場合、Ok の値を束縛 |
+| `Err(x)` | `Err(e)` | Result が失敗の場合、Err の値を束縛 |
 
 ### guard 節
 
@@ -188,6 +190,7 @@ match 式:
 
 - enum 型: すべてのバリアントをカバーするか `_` が必要。
 - Option 型: `Some` と `None` の両方をカバーするか `_` が必要。
+- Result 型: `Ok` と `Err` の両方をカバーするか `_` が必要。
 - bool 型: `true` と `false` の両方をカバーするか `_` が必要。
 - int / float / str リテラル: `_` が必須。
 - ガード付きアームは網羅性にカウントされない。
@@ -216,6 +219,16 @@ match x:
         print(v)
     case None:
         print("nothing")
+
+# Result マッチ
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
 
 # リテラルマッチ
 match x:

@@ -179,6 +179,8 @@ match expression:
 | enum variant | `Color::Red` | Compares enum tag |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
+| `Ok(x)` | `Ok(v)` | When Result is success, binds the Ok value |
+| `Err(x)` | `Err(e)` | When Result is failure, binds the Err value |
 
 ### Guard Clause
 
@@ -188,6 +190,7 @@ A guard condition can be specified in the form `case pattern if condition:`. The
 
 - enum types: Must cover all variants or include `_`.
 - Option types: Must cover both `Some` and `None` or include `_`.
+- Result types: Must cover both `Ok` and `Err` or include `_`.
 - bool type: Must cover both `true` and `false` or include `_`.
 - int / float / str literals: `_` is required.
 - Guarded arms do not count toward exhaustiveness.
@@ -216,6 +219,16 @@ match x:
         print(v)
     case None:
         print("nothing")
+
+# Result match
+fn get_value() -> Result<int, str>:
+    return Ok(42)
+let r: Result<int, str> = get_value()
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
 
 # Literal match
 match x:

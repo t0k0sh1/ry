@@ -45,6 +45,7 @@ private:
     ExprPtr parseExpr();
     ExprPtr parseTerm();
     ExprPtr parsePower();
+    ExprPtr parseCast();
     ExprPtr parsePostfix();
     ExprPtr parsePrimary();
     ExprPtr parseComparison();
