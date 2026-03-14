@@ -1,20 +1,22 @@
-# 構造体リファレンス
+[English](structs.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
 
-## 概要
+# Struct Reference
 
-構造体はスタック上の値型です。`type` キーワードで定義します。
+## Overview
+
+Structs are value types allocated on the stack. They are defined with the `type` keyword.
 
 ---
 
-## 定義構文
+## Definition Syntax
 
 ```python
-type 型名:
-    フィールド名: 型
-    フィールド名: 型
+type TypeName:
+    field_name: type
+    field_name: type
 ```
 
-### 例
+### Example
 
 ```python
 type Point:
@@ -28,9 +30,9 @@ type Rectangle:
 
 ---
 
-## コンストラクタ
+## Constructor
 
-フィールド定義順に引数を渡します。名前付き引数はサポートされていません。
+Arguments are passed in the order of field definitions. Named arguments are not supported.
 
 ```python
 let p = Point(10, 20)
@@ -39,9 +41,9 @@ let r = Rectangle(3.0, 4.5)
 
 ---
 
-## フィールドアクセス
+## Field Access
 
-ドット記法でフィールドを読み取ります。
+Fields are read using dot notation.
 
 ```python
 let p = Point(10, 20)
@@ -51,24 +53,24 @@ print(p.y)   # 20
 
 ---
 
-## フィールド代入
+## Field Assignment
 
-| 変数宣言 | フィールド代入 |
+| Variable Declaration | Field Assignment |
 |---------|--------------|
-| `var`   | 可能         |
-| `let`   | コンパイルエラー |
+| `var`   | Allowed      |
+| `let`   | Compile error |
 
 ```python
 var p = Point(10, 20)
-p.x = 100    # OK: var変数
+p.x = 100    # OK: var variable
 
 let q = Point(10, 20)
-q.x = 100    # エラー: let変数のフィールドは変更不可
+q.x = 100    # Error: fields of let variables cannot be modified
 ```
 
 ---
 
-## 関数引数・戻り値としての使用
+## Usage as Function Parameters and Return Values
 
 ```python
 fn distance(p: Point) -> float:
@@ -80,9 +82,9 @@ fn make_point(x: int, y: int) -> Point:
 
 ---
 
-## ネスト構造体
+## Nested Structs
 
-構造体を別の構造体のフィールドとして使用できます。
+Structs can be used as fields of other structs.
 
 ```python
 type Point:
@@ -99,43 +101,43 @@ print(c.center.x)   # 0
 
 ---
 
-## 制約とエラー
+## Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 同一フィールド名の重複 | コンパイルエラー |
-| `let` 変数のフィールド代入 | コンパイルエラー |
-| `print` に構造体を直接渡す | コンパイルエラー（print非対応） |
+| Duplicate field names | Compile error |
+| Field assignment on `let` variables | Compile error |
+| Passing a struct directly to `print` | Compile error (not supported by print) |
 
 ```python
-# エラー例: 同一フィールド名の重複
+# Error example: Duplicate field names
 type Bad:
     x: int
-    x: int   # エラー
+    x: int   # Error
 
-# エラー例: printに構造体を渡す
+# Error example: Passing a struct to print
 let p = Point(1, 2)
-print(p)   # エラー
+print(p)   # Error
 ```
 
 ---
 
-## 列挙型（enum）
+## Enumerations (enum)
 
-### 概要
+### Overview
 
-列挙型は名前付き定数の集合です。内部的には i64 整数（0, 1, 2, ...）として表現されます。
+Enumerations are a set of named constants. Internally, they are represented as i64 integers (0, 1, 2, ...).
 
-### 定義構文
+### Definition Syntax
 
 ```python
-enum 型名:
-    バリアント名
-    バリアント名
+enum TypeName:
+    VariantName
+    VariantName
     ...
 ```
 
-### 例
+### Example
 
 ```python
 enum Color:
@@ -144,25 +146,25 @@ enum Color:
     Blue
 ```
 
-### バリアントアクセス
+### Variant Access
 
-`::` 演算子でバリアントにアクセスします。
+Variants are accessed using the `::` operator.
 
 ```python
 let c = Color::Red
 print(c)   # Red
 ```
 
-### 比較
+### Comparison
 
-enum 値は整数なので `==` / `!=` でそのまま比較できます。
+Since enum values are integers, they can be compared directly with `==` / `!=`.
 
 ```python
 print(Color::Red == Color::Red)    # true
 print(Color::Red != Color::Green)  # true
 ```
 
-### if 文での使用
+### Usage in if Statements
 
 ```python
 let c = Color::Green
@@ -174,9 +176,9 @@ else:
     print("blue")
 ```
 
-### 関数引数
+### Function Parameters
 
-型名として enum 名を使用します。
+Use the enum name as the type name.
 
 ```python
 fn is_red(c: Color) -> bool:
@@ -188,17 +190,17 @@ print(is_red(Color::Green))  # false
 
 ### print
 
-`print()` でバリアント名が出力されます。
+`print()` outputs the variant name.
 
 ```python
 let c = Color::Blue
 print(c)   # Blue
 ```
 
-### 制約とエラー
+### Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| バリアントアクセスは `EnumName::VariantName` | `::` 演算子が必須 |
-| バリアント値は自動割り当て | 0, 1, 2, ... の連番（手動指定不可） |
-| 比較は整数比較 | `==`, `!=` が使用可能 |
+| Variant access requires `EnumName::VariantName` | The `::` operator is required |
+| Variant values are auto-assigned | Sequential numbers 0, 1, 2, ... (manual specification is not supported) |
+| Comparison uses integer comparison | `==`, `!=` can be used |

@@ -1,71 +1,73 @@
-# 組み込み関数リファレンス
+[English](builtins.md) | [日本語](../ja/reference/builtins.md) | [繁體中文](../zh/reference/builtins.md)
 
-## 関数一覧
+# Built-in Function Reference
 
-### コア
+## Function List
 
-| 関数 | 説明 |
+### Core
+
+| Function | Description |
 |------|------|
-| `print(expr)` | 値を標準出力に表示 |
-| `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
-| `range(n)` / `range(start, end)` | 整数のリストを生成 |
+| `print(expr)` | Prints a value to standard output |
+| `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
+| `range(n)` / `range(start, end)` | Generates a list of integers |
 
 ### Option
 
-| 関数 | 説明 |
+| Function | Description |
 |------|------|
-| `Some(expr)` | Option型の値ありバリアントを構築 |
-| `unwrap(opt)` | Option値を取り出す |
+| `Some(expr)` | Constructs the value-present variant of an Option type |
+| `unwrap(opt)` | Extracts the value from an Option |
 
-### コレクション操作
+### Collection Operations
 
-| 関数 | 説明 |
+| Function | Description |
 |------|------|
-| `has_key(map, key)` | マップにキーが存在するかを返す |
-| `add(set, value)` | セットに要素を追加（重複は無視） |
-| `remove(set, value)` | セットから要素を削除 |
+| `has_key(map, key)` | Returns whether a key exists in the map |
+| `add(set, value)` | Adds an element to a set (duplicates are ignored) |
+| `remove(set, value)` | Removes an element from a set |
 
-### [文字列操作](builtins-string.md)
+### [String Operations](builtins-string.md)
 
-| 関数 | 説明 |
+| Function | Description |
 |------|------|
-| `contains(s, sub)` | 部分文字列が含まれるか |
-| `starts_with(s, prefix)` | 接頭辞で始まるか |
-| `ends_with(s, suffix)` | 接尾辞で終わるか |
-| `find(s, sub)` | 部分文字列の位置（未発見は -1） |
-| `substring(s, start, end)` | 部分文字列を取得 |
-| `char_at(s, i)` | 指定位置の文字を取得 |
-| `replace(s, old, new)` | 部分文字列を全置換 |
-| `to_upper(s)` / `to_lower(s)` | 大文字・小文字変換 |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | 空白除去 |
-| `repeat(s, n)` | 文字列を n 回繰り返す |
-| `reverse(s)` | 文字列を逆順にする |
-| `split(s, delim)` | 文字列を分割してリストを返す |
-| `join(list, sep)` | リストの文字列をセパレータで結合 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換 |
+| `contains(s, sub)` | Whether a substring is contained |
+| `starts_with(s, prefix)` | Whether it starts with a prefix |
+| `ends_with(s, suffix)` | Whether it ends with a suffix |
+| `find(s, sub)` | Position of a substring (-1 if not found) |
+| `substring(s, start, end)` | Extract a substring |
+| `char_at(s, i)` | Get the character at a specified position |
+| `replace(s, old, new)` | Replace all occurrences of a substring |
+| `to_upper(s)` / `to_lower(s)` | Uppercase / lowercase conversion |
+| `trim(s)` / `trim_start(s)` / `trim_end(s)` | Whitespace removal |
+| `repeat(s, n)` | Repeat a string n times |
+| `reverse(s)` | Reverse a string |
+| `split(s, delim)` | Split a string into a list |
+| `join(list, sep)` | Join list elements with a separator |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion |
 
-→ 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
+-> See **[String Operation Function Reference](builtins-string.md)** for details
 
 ---
 
 ## print
 
-**シグネチャ:** `print(expr)`
+**Signature:** `print(expr)`
 
-値を標準出力に表示します。末尾に改行が付きます。
+Prints a value to standard output. A newline is appended at the end.
 
-| 型 | 出力形式 |
+| Type | Output Format |
 |----|---------|
 | `int` | `%ld` |
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
-| `Option` (Some) | `Some(値)` |
+| `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
-| `list` | `[要素1, 要素2, ...]` |
-| `map` | `{キー1: 値1, キー2: 値2, ...}` |
-| `set` | `{要素1, 要素2, ...}` |
-| `enum` | バリアント名（例: `Red`） |
+| `list` | `[elem1, elem2, ...]` |
+| `map` | `{key1: val1, key2: val2, ...}` |
+| `set` | `{elem1, elem2, ...}` |
+| `enum` | Variant name (e.g., `Red`) |
 
 ```python
 print(42)          # 42
@@ -79,15 +81,15 @@ print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
 ```
 
-**エラー条件:** 構造体・タプルを直接渡すとコンパイルエラー。
+**Error condition:** Passing a struct or tuple directly causes a compile error.
 
 ---
 
 ## Some
 
-**シグネチャ:** `Some(expr) -> Option<T>`
+**Signature:** `Some(expr) -> Option<T>`
 
-Option型の値ありバリアントを構築します。
+Constructs the value-present variant of an Option type.
 
 ```python
 let x: Option<int> = Some(42)
@@ -98,9 +100,9 @@ print(x)   # Some(42)
 
 ## unwrap
 
-**シグネチャ:** `unwrap(opt: Option<T>) -> T`
+**Signature:** `unwrap(opt: Option<T>) -> T`
 
-Option値から中身を取り出します。UFCS記法も使用可能です。
+Extracts the inner value from an Option. UFCS notation is also available.
 
 ```python
 let x = Some(42)
@@ -108,15 +110,15 @@ print(unwrap(x))    # 42
 print(x.unwrap())   # 42 (UFCS)
 ```
 
-**エラー条件:** `None` を渡すとランタイムエラー（exit(1)）。
+**Error condition:** Passing `None` causes a runtime error (exit(1)).
 
 ---
 
 ## len
 
-**シグネチャ:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-リスト・マップ・セットの要素数、または文字列のバイト長を返します。
+Returns the number of elements in a list, map, or set, or the byte length of a string.
 
 ```python
 print(len([1, 2, 3]))         # 3
@@ -129,9 +131,9 @@ print(len("hello"))           # 5
 
 ## has_key
 
-**シグネチャ:** `has_key(m: Map<K, V>, key: K) -> bool`
+**Signature:** `has_key(m: Map<K, V>, key: K) -> bool`
 
-マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
+Returns whether a specified key exists in the map. UFCS notation is also available.
 
 ```python
 let m = {"a": 1, "b": 2}
@@ -143,15 +145,15 @@ print(m.has_key("z"))     # false (UFCS)
 
 ## add
 
-**シグネチャ:** `add(s: Set<T>, value: T)`
+**Signature:** `add(s: Set<T>, value: T)`
 
-セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
+Adds an element to a set. Does nothing if the element already exists. UFCS notation is also available.
 
 ```python
 let s = {1, 2, 3}
 s.add(4)          # UFCS
-add(s, 5)         # 通常の呼び出し
-s.add(1)          # 既に存在するため無視
+add(s, 5)         # Normal call
+s.add(1)          # Ignored because it already exists
 print(len(s))     # 5
 ```
 
@@ -159,9 +161,9 @@ print(len(s))     # 5
 
 ## remove
 
-**シグネチャ:** `remove(s: Set<T>, value: T)`
+**Signature:** `remove(s: Set<T>, value: T)`
 
-セットから要素を削除します。UFCS記法も使用可能です。
+Removes an element from a set. UFCS notation is also available.
 
 ```python
 let s = {1, 2, 3}
@@ -173,11 +175,11 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**Signature:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
 
-整数のリストを生成します。
+Generates a list of integers.
 
-| 形式 | 生成される値 |
+| Form | Generated Values |
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |

@@ -1,44 +1,46 @@
-# モジュールリファレンス
+[English](modules.md) | [日本語](../ja/reference/modules.md) | [繁體中文](../zh/reference/modules.md)
 
-## 概要
+# Module Reference
 
-Ry はファイル単位でモジュールを管理します。`from` 文でモジュールをインポートします。
+## Overview
+
+Ry manages modules on a per-file basis. Use the `from` statement to import modules.
 
 ---
 
-## インポート構文
+## Import Syntax
 
-### 全関数インポート
+### Import All Functions
 
 ```python
 from math
 ```
 
-モジュール内のすべての関数をインポートします。
+Imports all functions from the module.
 
-### 選択インポート
+### Selective Import
 
 ```python
 from math import add
 ```
 
-指定した関数のみをインポートします。
+Imports only the specified function.
 
-### 複数選択インポート
+### Multiple Selective Import
 
 ```python
 from math import add, sub
 ```
 
-カンマ区切りで複数の関数を選択インポートします。
+Imports multiple functions separated by commas.
 
 ---
 
-## サブディレクトリのモジュール
+## Subdirectory Modules
 
-ドット区切りでサブディレクトリを指定します。
+Subdirectories are specified using dot-separated notation.
 
-| インポート文 | 対応するファイルパス |
+| Import Statement | Corresponding File Path |
 |-------------|-------------------|
 | `from math` | `math.ry` |
 | `from utils.math` | `utils/math.ry` |
@@ -49,20 +51,20 @@ from utils.math import add
 from net.http import get
 ```
 
-モジュール名には拡張子（`.ry`）は含めません。
+The file extension (`.ry`) is not included in the module name.
 
 ---
 
-## 検索パスの優先順位
+## Search Path Priority
 
-1. インポート元ファイルのディレクトリ
-2. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
+1. The directory of the importing file
+2. Paths specified in the `RY_PATH` environment variable (colon-separated)
 
 ---
 
-## RY_PATH 環境変数
+## RY_PATH Environment Variable
 
-`RY_PATH` にコロン区切りでディレクトリを指定すると、モジュール検索パスに追加されます。
+Specifying colon-separated directories in `RY_PATH` adds them to the module search path.
 
 ```bash
 export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
@@ -70,27 +72,27 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-modules"
 
 ---
 
-## 制約
+## Constraints
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 使用可能な位置 | トップレベルのみ（関数・ブロック内は不可） |
-| 二重インポート | 自動でスキップ（エラーにならない） |
-| 循環インポート | コンパイルエラー |
+| Allowed location | Top level only (not inside functions or blocks) |
+| Duplicate imports | Automatically skipped (no error) |
+| Circular imports | Compile error |
 
 ```python
-# エラー例: ブロック内でのインポート
+# Error example: Import inside a block
 fn main():
-    from math   # エラー: トップレベル以外ではインポート不可
+    from math   # Error: imports only allowed at top level
 
-# OK: 同じモジュールを複数回インポートしてもエラーにならない
+# OK: Importing the same module multiple times does not cause an error
 from math
-from math   # スキップされる
+from math   # Skipped
 ```
 
 ---
 
-## モジュールファイルの作成
+## Creating Module Files
 
 ```python
 # math.ry

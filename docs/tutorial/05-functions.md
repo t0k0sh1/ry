@@ -1,27 +1,29 @@
-# 関数
+[English](05-functions.md) | [日本語](../ja/tutorial/05-functions.md) | [繁體中文](../zh/tutorial/05-functions.md)
 
-[← 前: 制御構文](04-control-flow.md) | [次: 構造体 →](06-structs.md)
+# Functions
+
+[<- Prev: Control Flow](04-control-flow.md) | [Next: Structs ->](06-structs.md)
 
 ---
 
-## 基本的な関数定義
+## Basic Function Definition
 
-関数は `fn` キーワードで定義します。引数の型宣言は必須で `name: type` の形式で指定します。戻り値の型は `->` の後に指定します。
+Functions are defined with the `fn` keyword. Parameter type declarations are required and use the `name: type` format. The return type is specified after `->`.
 
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
 ```
 
-- 引数の型宣言は必須です。
-- 戻り値型は `->` の後に指定します。
-- `return` 文で値を返します。
+- Parameter type declarations are required.
+- The return type is specified after `->`.
+- Use `return` to return a value.
 
 ---
 
-## 関数の呼び出し
+## Calling Functions
 
-定義した関数は名前と引数を指定して呼び出します。
+Call a defined function by its name with arguments.
 
 ```python
 fn multiply(x: int, y: int) -> int:
@@ -33,9 +35,9 @@ print(result)   # 12
 
 ---
 
-## 再帰関数
+## Recursive Functions
 
-関数は自分自身を呼び出せます（再帰）。
+Functions can call themselves (recursion).
 
 ```python
 fn factorial(n: int) -> int:
@@ -49,9 +51,9 @@ print(factorial(0))   # 1
 
 ---
 
-## 関数オーバーロード
+## Function Overloading
 
-引数の数や型が異なる同名の関数を複数定義できます。
+You can define multiple functions with the same name but different parameter counts or types.
 
 ```python
 fn add(a: int, b: int) -> int:
@@ -64,15 +66,15 @@ print(add(1, 2))       # 3
 print(add(1.5, 2.5))   # 4
 ```
 
-呼び出し時の引数の型に応じて、適切な関数が自動的に選択されます。
+The appropriate function is automatically selected based on the argument types at the call site.
 
-> **注意**: 引数の型が同一で戻り値の型だけが異なる関数を定義するとコンパイルエラーになります。
+> **Note**: Defining functions with identical parameter types but different return types causes a compile error.
 
 ---
 
-## 戻り値型の省略（Unit 型）
+## Omitting the Return Type (Unit Type)
 
-戻り値が不要な関数は `->` を省略できます。この場合、関数は Unit 型を返します。
+If a function does not need to return a value, you can omit `->`. In this case, the function returns the Unit type.
 
 ```python
 fn greet():
@@ -81,8 +83,8 @@ fn greet():
 greet()   # 42
 ```
 
-引数なし・戻り値なしの最もシンプルな関数形式です。
+This is the simplest form of a function with no parameters and no return value.
 
 ---
 
-[← 前: 制御構文](04-control-flow.md) | [次: 構造体 →](06-structs.md)
+[<- Prev: Control Flow](04-control-flow.md) | [Next: Structs ->](06-structs.md)

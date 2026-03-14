@@ -1,26 +1,28 @@
+[English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
+
 # ry
 
-LLVM JIT ベースのシンプルなプログラミング言語。ソースコードを読み込み、LLVM ORC JIT でネイティブコードにコンパイル・即時実行します。
+A simple programming language based on LLVM JIT. It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
 
-## 特徴
+## Features
 
-- **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義構造体
-- **演算子** — 算術・比較・論理・ビット演算・複合代入・`in` 演算子（演算子オーバーロード対応）
-- **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
-- **制御構文** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
-- **モジュール** — `from ... import ...` による関数インポート
-- **型安全** — 型推論・型アノテーション・型変更再代入禁止・let/var
+- **LLVM JIT Compilation** — Fast native execution powered by ORC LLJIT
+- **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
+- **Operators** — Arithmetic, comparison, logical, bitwise, compound assignment, `in` operator (with operator overloading support)
+- **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
+- **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
+- **Modules** — Function imports via `from ... import ...`
+- **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
 
-## サンプルコード
+## Sample Code
 
 ```python
-# 変数と型
+# Variables and types
 let x: int = 42
 let name: str = "hello"
 let pi = 3.14159
 
-# 関数定義
+# Function definition
 fn factorial(n: int) -> int:
     if n <= 1:
         return 1
@@ -28,12 +30,12 @@ fn factorial(n: int) -> int:
 
 print(factorial(5))    # 120
 
-# ラムダとクロージャ
+# Lambdas and closures
 let offset = 10
 let add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
-# 構造体
+# Structs
 type Point:
     x: int
     y: int
@@ -44,7 +46,7 @@ fn operator+(a: Point, b: Point) -> Point:
 let p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
-# コレクション
+# Collections
 let xs = [1, 2, 3]
 let m = {"a": 1, "b": 2}
 let s = {1, 2, 3}
@@ -55,7 +57,7 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
-# 列挙型
+# Enums
 enum Color:
     Red
     Green
@@ -64,51 +66,51 @@ enum Color:
 let c = Color::Red
 print(c)               # Red
 
-# モジュールインポート
+# Module import
 from math import add
 print(add(1, 2))
 ```
 
-## インストール
+## Installation
 
-### ワンライナー（macOS Apple Silicon）
+### One-liner (macOS Apple Silicon)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-特定バージョンを指定する場合:
+To specify a particular version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
 ```
 
-デフォルトでは `~/.local/bin` にインストールされます。`RY_INSTALL_DIR` 環境変数で変更可能です。
+By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.
 
-### ソースからビルド
+### Build from Source
 
-必要環境:
+Requirements:
 - LLVM 21
 - CMake 3.20+
-- C++17 対応コンパイラ
+- C++17 compatible compiler
 
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-## 実行
+## Run
 
 ```bash
 ry <file.ry>
 ```
 
-## テスト
+## Test
 
 ```bash
 cd build && ctest --output-on-failure
 ```
 
-## ドキュメント
+## Documentation
 
-詳しい言語仕様・チュートリアルは [docs/](docs/README.md) を参照してください。
+For detailed language specifications and tutorials, see [docs/](docs/README.md).

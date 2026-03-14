@@ -1,48 +1,50 @@
-# 関数リファレンス
+[English](functions.md) | [日本語](../ja/reference/functions.md) | [繁體中文](../zh/reference/functions.md)
 
-## 関数定義の構文
+# Function Reference
+
+## Function Definition Syntax
 
 ```python
-fn 関数名(引数名: 型, ...) -> 戻り値型:
-    # 本体
-    return 値
+fn function_name(param_name: type, ...) -> return_type:
+    # body
+    return value
 ```
 
-- 引数の型は必須。
-- 戻り値型は省略可能（省略時は `Unit`）。
-- 本体はインデントされたブロック。
+- Parameter types are required.
+- Return type is optional (defaults to `Unit` when omitted).
+- The body is an indented block.
 
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
 
 fn greet(name: str):
-    print("Hello, " + name)   # 戻り値型は Unit
+    print("Hello, " + name)   # Return type is Unit
 ```
 
 ---
 
-## 引数と戻り値の型
+## Parameter and Return Types
 
-| 項目 | 説明 |
+| Item | Description |
 |---|---|
-| 引数型 | 必須。すべての引数に型アノテーションが必要 |
-| 戻り値型 | 省略可能。省略時は `Unit`（void相当） |
-| `Unit` | 値を返さない関数の戻り値型 |
+| Parameter type | Required. All parameters must have type annotations |
+| Return type | Optional. Defaults to `Unit` (equivalent to void) when omitted |
+| `Unit` | Return type for functions that return no value |
 
 ```python
-fn no_return(x: int):      # 戻り値型 Unit（省略）
+fn no_return(x: int):      # Return type Unit (omitted)
     print(x)
 
-fn get_value() -> int:     # 戻り値型 int
+fn get_value() -> int:     # Return type int
     return 42
 ```
 
 ---
 
-## 再帰
+## Recursion
 
-関数は自身を呼び出せる。
+Functions can call themselves.
 
 ```python
 fn factorial(n: int) -> int:
@@ -53,15 +55,15 @@ fn factorial(n: int) -> int:
 
 ---
 
-## オーバーロード
+## Overloading
 
-引数の数や型が異なる同名の関数を複数定義できる。
+Multiple functions with the same name can be defined if they differ in the number or types of parameters.
 
-### ルール
+### Rules
 
-- 引数の数または型が異なれば同名の関数を定義可能。
-- 呼び出し時は引数の型と数に基づいて適切な関数が選択される。
-- 戻り値型だけが異なるオーバーロードはできない。
+- Functions with the same name can be defined if the number or types of parameters differ.
+- The appropriate function is selected at the call site based on the argument types and count.
+- Overloading by return type alone is not allowed.
 
 ```python
 fn area(side: int) -> int:
@@ -76,9 +78,9 @@ let b = area(3, 4)    # 12
 
 ---
 
-## Unit 型関数
+## Unit Type Functions
 
-戻り値のない関数は `Unit` を返す。戻り値型は省略可能。
+Functions without a return value return `Unit`. The return type can be omitted.
 
 ```python
 fn log(msg: str):
@@ -90,23 +92,23 @@ fn log_typed(msg: str) -> Unit:
 
 ---
 
-## ラムダ関数
+## Lambda Functions
 
-無名関数をその場で定義できる。
+Anonymous functions can be defined inline.
 
-### 構文
+### Syntax
 
 ```python
-# 単一式（式の値が返る。戻り値型は推論）
-(引数名: 型, ...) -> 式
+# Single expression (the expression value is returned; return type is inferred)
+(param_name: type, ...) -> expression
 
-# 複数行ブロック
-(引数名: 型, ...) ->
-    # 複数の文
-    return 値
+# Multi-line block
+(param_name: type, ...) ->
+    # multiple statements
+    return value
 ```
 
-### 例
+### Example
 
 ```python
 let double = (x: int) -> x * 2
@@ -115,7 +117,7 @@ let result = double(5)   # 10
 let add = (a: int, b: int) -> a + b
 let sum = add(3, 4)      # 7
 
-# 複数行ラムダ
+# Multi-line lambda
 let abs = (x: int) ->
     if x < 0:
         return -x
@@ -124,39 +126,39 @@ let abs = (x: int) ->
 
 ---
 
-## クロージャ
+## Closures
 
-ラムダ関数は定義された時点の外側スコープの変数を**値でキャプチャ**する。
+Lambda functions **capture by value** the variables from the outer scope at the time of definition.
 
 ```python
 let base = 10
-let add_base = (x: int) -> x + base   # base を値でキャプチャ
+let add_base = (x: int) -> x + base   # Captures base by value
 
-base = 99          # キャプチャ済みの値には影響しない
-let r = add_base(5)   # 15（キャプチャ時の base = 10 を使用）
+base = 99          # Does not affect the captured value
+let r = add_base(5)   # 15 (uses base = 10 from capture time)
 ```
 
-### キャプチャルール
+### Capture Rules
 
-| 項目 | 内容 |
+| Item | Details |
 |---|---|
-| キャプチャ方式 | 値キャプチャ（コピー） |
-| キャプチャタイミング | ラムダ定義時 |
-| 外側変数の変更の影響 | ない（コピーのため） |
+| Capture method | Capture by value (copy) |
+| Capture timing | At lambda definition time |
+| Effect of outer variable changes | None (because it is a copy) |
 
 ---
 
-## 関数型
+## Function Type
 
-関数を値として扱うための型。
+A type for treating functions as values.
 
-### 構文
+### Syntax
 
 ```python
-fn(引数型1, 引数型2, ...) -> 戻り値型
+fn(param_type1, param_type2, ...) -> return_type
 ```
 
-### 例
+### Example
 
 ```python
 let f: fn(int) -> int = (x: int) -> x * 2
@@ -170,9 +172,9 @@ let result = apply(f, 5)   # 10
 
 ---
 
-## 高階関数
+## Higher-Order Functions
 
-関数を引数として受け取ったり、戻り値として返したりできる。
+Functions can accept functions as arguments or return them as values.
 
 ```python
 fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
@@ -187,21 +189,21 @@ let doubled = map_list([1, 2, 3], (x: int) -> x * 2)
 
 ---
 
-## UFCS（統一関数呼び出し構文）
+## UFCS (Uniform Function Call Syntax)
 
-`a.f(b)` の形式で `f(a, b)` を呼び出せる。メソッドチェーンに使いやすい。
+`a.f(b)` can be used to call `f(a, b)`. Useful for method chaining.
 
-### 構文
+### Syntax
 
 ```python
-# 通常呼び出し
+# Normal call
 f(a, b)
 
-# UFCS 呼び出し（等価）
+# UFCS call (equivalent)
 a.f(b)
 ```
 
-### チェーン
+### Chaining
 
 ```python
 fn double(x: int) -> int:
@@ -210,64 +212,64 @@ fn double(x: int) -> int:
 fn add_one(x: int) -> int:
     return x + 1
 
-let result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
+let result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
 ```
 
-### フィールドアクセスとの混在
+### Mixing with Field Access
 
-フィールドアクセス（`.field`）と UFCS（`.method()`）は同じドット記法で書けるが、引数の有無で区別される。
+Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are distinguished by the presence of arguments.
 
 ```python
 let p = Point(3, 4)
-let len = p.x.to_float()   # フィールドアクセス + UFCS
+let len = p.x.to_float()   # Field access + UFCS
 ```
 
 ---
 
-## 演算子オーバーロード
+## Operator Overloading
 
-ユーザー定義型に対して演算子の振る舞いを定義できる。
+You can define operator behavior for user-defined types.
 
-### 構文
+### Syntax
 
 ```python
-# 二項演算子（引数2個）
-fn operator<op>(a: 型, b: 型) -> 戻り値型:
+# Binary operator (2 parameters)
+fn operator<op>(a: type, b: type) -> return_type:
     ...
 
-# 単項演算子（引数1個）
-fn operator<op>(a: 型) -> 戻り値型:
+# Unary operator (1 parameter)
+fn operator<op>(a: type) -> return_type:
     ...
 ```
 
-### オーバーロード可能な演算子
+### Overloadable Operators
 
-| 種別 | 演算子 |
+| Category | Operators |
 |---|---|
-| 算術（二項） | `+` `-` `*` `/` `%` `**` `//` |
-| 比較（二項） | `==` `!=` `<` `<=` `>` `>=` |
-| ビット（二項） | `&` `\|` `^` `<<` `>>` |
-| 論理（二項） | `and` `or` |
-| 単項 | `-` `~` `not` |
+| Arithmetic (binary) | `+` `-` `*` `/` `%` `**` `//` |
+| Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
+| Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
+| Logical (binary) | `and` `or` |
+| Unary | `-` `~` `not` |
 
-### 二項 / 単項の区別
+### Distinguishing Binary and Unary
 
-引数の個数で区別する。
+Distinguished by the number of parameters.
 
 ```python
 type Vec2:
     x: float
     y: float
 
-# 二項 +
+# Binary +
 fn operator+(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
-# 単項 -
+# Unary -
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 
-# 比較
+# Comparison
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 

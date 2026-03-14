@@ -1,38 +1,40 @@
-# 演算子リファレンス
+[English](operators.md) | [日本語](../ja/reference/operators.md) | [繁體中文](../zh/reference/operators.md)
 
-## 優先順位テーブル
+# Operator Reference
 
-優先順位は数字が小さいほど高い（先に評価される）。
+## Precedence Table
 
-| 優先順位 | 演算子 | 説明 | 結合性 |
+Lower numbers indicate higher precedence (evaluated first).
+
+| Precedence | Operator | Description | Associativity |
 |---|---|---|---|
-| 1 | `()` | グループ化 | — |
-| 2 | `+x` `-x` `~x` | 単項正・負、ビット NOT | 右 |
-| 3 | `**` | 累乗 | 右結合 |
-| 4 | `*` `/` `%` `//` | 乗算・除算・剰余・整数除算 | 左 |
-| 5 | `+` `-` | 加算・減算 | 左 |
-| 6 | `<<` `>>` | ビットシフト | 左 |
-| 7 | `&` | ビット AND | 左 |
-| 8 | `^` | ビット XOR | 左 |
-| 9 | `\|` | ビット OR | 左 |
-| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | 比較・所属 | 左 |
-| 11 | `not` | 論理 NOT | 右 |
-| 12 | `and` | 論理 AND | 左 |
-| 13 | `or` | 論理 OR | 左 |
+| 1 | `()` | Grouping | -- |
+| 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
+| 3 | `**` | Exponentiation | Right |
+| 4 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
+| 5 | `+` `-` | Addition, subtraction | Left |
+| 6 | `<<` `>>` | Bit shift | Left |
+| 7 | `&` | Bitwise AND | Left |
+| 8 | `^` | Bitwise XOR | Left |
+| 9 | `\|` | Bitwise OR | Left |
+| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | Comparison, membership | Left |
+| 11 | `not` | Logical NOT | Right |
+| 12 | `and` | Logical AND | Left |
+| 13 | `or` | Logical OR | Left |
 
-## 算術演算子
+## Arithmetic Operators
 
-| 演算子 | 説明 | 例 |
+| Operator | Description | Example |
 |---|---|---|
-| `+` | 加算 / 文字列結合 | `1 + 2` → `3`、`"a" + "b"` → `"ab"` |
-| `-` | 減算 | `5 - 3` → `2` |
-| `*` | 乗算 | `4 * 3` → `12` |
-| `/` | 除算（常に float） | `7 / 2` → `3.5` |
-| `//` | 整数除算（切り捨て） | `7 // 2` → `3` |
-| `%` | 剰余 | `7 % 3` → `1` |
-| `**` | 累乗（常に float） | `2 ** 10` → `1024.0` |
-| `-x` | 単項マイナス | `-5`, `-3.14` |
-| `+x` | 単項プラス | `+5`（符号変更なし） |
+| `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"` |
+| `-` | Subtraction | `5 - 3` -> `2` |
+| `*` | Multiplication | `4 * 3` -> `12` |
+| `/` | Division (always float) | `7 / 2` -> `3.5` |
+| `//` | Integer division (truncated) | `7 // 2` -> `3` |
+| `%` | Modulo | `7 % 3` -> `1` |
+| `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
+| `-x` | Unary minus | `-5`, `-3.14` |
+| `+x` | Unary plus | `+5` (no sign change) |
 
 ```python
 let a = 10 // 3    # 3 (int)
@@ -41,37 +43,37 @@ let c = 2 ** 8     # 256.0 (float)
 let s = "foo" + "bar"  # "foobar"
 ```
 
-## 比較演算子
+## Comparison Operators
 
-すべて `bool` を返す。
+All return `bool`.
 
-| 演算子 | 説明 |
+| Operator | Description |
 |---|---|
-| `==` | 等しい |
-| `!=` | 等しくない |
-| `<` | より小さい |
-| `<=` | 以下 |
-| `>` | より大きい |
-| `>=` | 以上 |
+| `==` | Equal |
+| `!=` | Not equal |
+| `<` | Less than |
+| `<=` | Less than or equal |
+| `>` | Greater than |
+| `>=` | Greater than or equal |
 
-- 数値型（int / float）とbool に対して使用可能。
-- `str` 同士は辞書順（バイト順）で比較。
-- `in` 演算子はセットに対する所属チェックに使用（`x in s`）。
+- Can be used with numeric types (int / float) and bool.
+- `str` values are compared lexicographically (byte order).
+- The `in` operator is used for membership checks on sets (`x in s`).
 
 ```python
 let x = 3 < 5       # true
-let y = "abc" < "abd"  # true（辞書順）
+let y = "abc" < "abd"  # true (lexicographic)
 let s = {1, 2, 3}
 let z = 2 in s      # true
 ```
 
-## 論理演算子
+## Logical Operators
 
-| 演算子 | 説明 | 型 |
+| Operator | Description | Type |
 |---|---|---|
-| `and` | 論理 AND | `bool` × `bool` → `bool` |
-| `or` | 論理 OR | `bool` × `bool` → `bool` |
-| `not` | 論理 NOT | `bool` → `bool` |
+| `and` | Logical AND | `bool` x `bool` -> `bool` |
+| `or` | Logical OR | `bool` x `bool` -> `bool` |
+| `not` | Logical NOT | `bool` -> `bool` |
 
 ```python
 let a = true and false   # false
@@ -79,18 +81,18 @@ let b = true or false    # true
 let c = not true         # false
 ```
 
-## ビット演算子
+## Bitwise Operators
 
-`int` 型のみ使用可能。`float` や `bool` に適用するとコンパイルエラー。
+Only available for `int` type. Applying to `float` or `bool` causes a compile error.
 
-| 演算子 | 説明 | 例 |
+| Operator | Description | Example |
 |---|---|---|
-| `&` | ビット AND | `0b1100 & 0b1010` → `0b1000` |
-| `\|` | ビット OR | `0b1100 \| 0b1010` → `0b1110` |
-| `^` | ビット XOR | `0b1100 ^ 0b1010` → `0b0110` |
-| `~` | ビット NOT（単項） | `~0` → `-1` |
-| `<<` | 左シフト | `1 << 4` → `16` |
-| `>>` | 右シフト | `16 >> 2` → `4` |
+| `&` | Bitwise AND | `0b1100 & 0b1010` -> `0b1000` |
+| `\|` | Bitwise OR | `0b1100 \| 0b1010` -> `0b1110` |
+| `^` | Bitwise XOR | `0b1100 ^ 0b1010` -> `0b0110` |
+| `~` | Bitwise NOT (unary) | `~0` -> `-1` |
+| `<<` | Left shift | `1 << 4` -> `16` |
+| `>>` | Right shift | `16 >> 2` -> `4` |
 
 ```python
 let flags = 0b0001 | 0b0010   # 3
@@ -98,11 +100,11 @@ let masked = flags & 0b0011   # 3
 let shifted = 1 << 8          # 256
 ```
 
-## 複合代入演算子
+## Compound Assignment Operators
 
-変数を更新するショートハンド。`x op= y` は `x = x op y` と等価。
+Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 
-| 演算子 | 等価な式 |
+| Operator | Equivalent Expression |
 |---|---|
 | `x += y` | `x = x + y` |
 | `x -= y` | `x = x - y` |
@@ -117,60 +119,60 @@ x -= 3    # x = 12
 x *= 2    # x = 24
 ```
 
-## 演算の型規則
+## Type Rules for Operations
 
-| 演算 | 左辺型 | 右辺型 | 結果型 |
+| Operation | Left Type | Right Type | Result Type |
 |---|---|---|---|
 | `+ - *` | int | int | int |
 | `+ - *` | float | int / float | float |
 | `+ - *` | int | float | float |
-| `/` | 任意の数値 | 任意の数値 | float |
-| `//` | 任意の数値 | 任意の数値 | int |
-| `**` | 任意の数値 | 任意の数値 | float |
+| `/` | any numeric | any numeric | float |
+| `//` | any numeric | any numeric | int |
+| `**` | any numeric | any numeric | float |
 | `%` | int | int | int |
-| `%` | float または int（片方float） | — | float |
+| `%` | float or int (one is float) | -- | float |
 | `+` | str | str | str |
-| `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
-| `in` | 任意 | Set<T> | bool |
+| `== != < <= > >=` | numeric / bool / str | same type | bool |
+| `in` | any | Set<T> | bool |
 | `& \| ^ ~ << >>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
-## 演算子オーバーロード
+## Operator Overloading
 
-ユーザー定義型に対して演算子の動作を定義できます。
+You can define operator behavior for user-defined types.
 
-### 構文
+### Syntax
 
 ```python
-# 二項演算子（引数2個）
+# Binary operator (2 parameters)
 fn operator+(a: MyType, b: MyType) -> MyType:
     ...
 
-# 単項演算子（引数1個）
+# Unary operator (1 parameter)
 fn operator-(a: MyType) -> MyType:
     ...
 ```
 
-### オーバーロード可能な演算子一覧
+### Overloadable Operators
 
-| 種別 | 演算子 |
+| Category | Operators |
 |---|---|
-| 算術（二項） | `+` `-` `*` `/` `%` `**` `//` |
-| 比較（二項） | `==` `!=` `<` `<=` `>` `>=` |
-| ビット（二項） | `&` `\|` `^` `<<` `>>` |
-| 論理（二項） | `and` `or` |
-| 単項 | `-` `~` `not` |
+| Arithmetic (binary) | `+` `-` `*` `/` `%` `**` `//` |
+| Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
+| Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
+| Logical (binary) | `and` `or` |
+| Unary | `-` `~` `not` |
 
-### 二項 / 単項の区別
+### Distinguishing Binary and Unary
 
-引数の個数で区別します。
+Distinguished by the number of parameters.
 
 ```python
-# 二項 -
+# Binary -
 fn operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
 
-# 単項 -
+# Unary -
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```

@@ -1,12 +1,14 @@
-# 制御構文
+[English](04-control-flow.md) | [日本語](../ja/tutorial/04-control-flow.md) | [繁體中文](../zh/tutorial/04-control-flow.md)
 
-[← 前: 演算子](03-operators.md) | [次: 関数 →](05-functions.md)
+# Control Flow
+
+[<- Prev: Operators](03-operators.md) | [Next: Functions ->](05-functions.md)
 
 ---
 
 ## if / elif / else
 
-条件に応じて処理を分岐させるには `if` を使います。
+Use `if` to branch execution based on conditions.
 
 ```python
 let x = 10
@@ -19,9 +21,9 @@ else:
     print(-1)
 ```
 
-- `elif` と `else` は省略できます。
-- 条件式には `bool` 以外も指定できます。`int` の場合、`0` が偽、非 `0` が真として扱われます。
-- `if` はネストできます。
+- `elif` and `else` are optional.
+- Conditions are not limited to `bool` values. For `int`, `0` is treated as false and non-`0` as true.
+- `if` statements can be nested.
 
 ```python
 let a = 5
@@ -34,9 +36,9 @@ if a > 0:
 
 ---
 
-## while ループ
+## while Loop
 
-条件が真である間、ブロックを繰り返し実行します。
+Repeatedly executes a block as long as the condition is true.
 
 ```python
 let i = 3
@@ -50,9 +52,9 @@ while i > 0:
 
 ---
 
-## for ループと range
+## for Loop and range
 
-リストまたは `range` を使ってイテレーションできます。
+You can iterate over a list or using `range`.
 
 ```python
 for x in [1, 2, 3]:
@@ -62,7 +64,7 @@ for x in [1, 2, 3]:
 # 3
 ```
 
-`range(n)` は `0` から `n - 1` までの整数を生成します。
+`range(n)` generates integers from `0` to `n - 1`.
 
 ```python
 for i in range(5):
@@ -74,7 +76,7 @@ for i in range(5):
 # 4
 ```
 
-`range(start, end)` は `start` から `end - 1` までの整数を生成します。
+`range(start, end)` generates integers from `start` to `end - 1`.
 
 ```python
 for i in range(2, 5):
@@ -86,9 +88,9 @@ for i in range(2, 5):
 
 ---
 
-## break と continue
+## break and continue
 
-`break` はループを即座に抜けます。`continue` は現在の反復をスキップして次の反復へ進みます。
+`break` immediately exits the loop. `continue` skips the current iteration and proceeds to the next one.
 
 ```python
 for i in range(10):
@@ -101,7 +103,7 @@ for i in range(10):
 # 3
 ```
 
-`while` でも同様に使用できます。
+They can also be used with `while` loops.
 
 ```python
 let n = 0
@@ -118,13 +120,13 @@ while true:
 # 7
 ```
 
-> **注意**: ネストしたループの中では、`break` / `continue` は最も内側のループにのみ作用します。ループ外で使用するとコンパイルエラーになります。
+> **Note**: In nested loops, `break` / `continue` only affect the innermost loop. Using them outside a loop results in a compile error.
 
 ---
 
-## ネストの例
+## Nesting Example
 
-`for` と `while` はネストできます。
+`for` and `while` loops can be nested.
 
 ```python
 for i in range(1, 4):
@@ -142,23 +144,23 @@ for i in range(1, 4):
 
 ---
 
-## スコープのルール
+## Scope Rules
 
-制御構文のブロックはスコープを持ちます。
+Control flow blocks have their own scope.
 
-### ブロックスコープ
+### Block Scope
 
-ブロック内で宣言した変数はブロック外から参照できません。
+Variables declared inside a block cannot be referenced from outside the block.
 
 ```python
 if true:
     let inner = 42
-# ここで inner を参照するとコンパイルエラー
+# Referencing inner here causes a compile error
 ```
 
-### 外側の変数への参照・再代入
+### Referencing and Reassigning Outer Variables
 
-ブロック内から外側の変数を参照・再代入できます。
+You can reference and reassign outer variables from within a block.
 
 ```python
 let count = 0
@@ -167,9 +169,9 @@ for i in range(5):
 print(count)   # 10
 ```
 
-### シャドーイング
+### Shadowing
 
-外側と同名の変数をブロック内で宣言すると、ブロック内ではその新しい変数が使われます（シャドーイング）。外側の変数は変化しません。
+If you declare a variable with the same name as an outer variable inside a block, the new variable is used within that block (shadowing). The outer variable remains unchanged.
 
 ```python
 let x = 1
@@ -183,7 +185,7 @@ print(x)       # 1
 
 ## match
 
-`match` は値に応じた分岐を行う構文です。enum や Option を安全に処理できます。
+`match` is a construct for branching based on a value. It can safely handle enums and Options.
 
 ```python
 enum Color:
@@ -202,9 +204,9 @@ match c:
 # green
 ```
 
-### Option のマッチ
+### Option Matching
 
-`unwrap()` の代わりに `match` を使うことで、`None` の場合も安全に処理できます。
+Instead of using `unwrap()`, you can use `match` to safely handle the `None` case as well.
 
 ```python
 let x: Option<int> = Some(42)
@@ -216,9 +218,9 @@ match x:
 # 42
 ```
 
-### ワイルドカードとリテラル
+### Wildcards and Literals
 
-`_` は何にでもマッチするワイルドカードパターンです。リテラル値（数値・文字列・真偽値）でもマッチできます。
+`_` is a wildcard pattern that matches anything. You can also match against literal values (numbers, strings, booleans).
 
 ```python
 let n = 5
@@ -232,9 +234,9 @@ match n:
 # other
 ```
 
-### guard 節
+### Guard Clauses
 
-`if` でガード条件を追加できます。
+You can add guard conditions with `if`.
 
 ```python
 match n:
@@ -246,8 +248,8 @@ match n:
         print("zero")
 ```
 
-> **注意**: `match` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
+> **Note**: `match` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
 
 ---
 
-[← 前: 演算子](03-operators.md) | [次: 関数 →](05-functions.md)
+[<- Prev: Operators](03-operators.md) | [Next: Functions ->](05-functions.md)

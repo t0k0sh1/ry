@@ -5,6 +5,7 @@
 #include "ry/jit.hpp"
 #include "ry/test_runtime.hpp"
 #include "ry/project_config.hpp"
+#include "ry/self_update.hpp"
 #include <cstring>
 #include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -24,6 +25,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Handle subcommands that don't need LLVM initialization
+    if (argc >= 2 && std::strcmp(argv[1], "self-update") == 0) {
+        return cmd_self_update(argc - 2, argv + 2);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
         return cmd_init();
     }
@@ -42,6 +46,7 @@ int main(int argc, char *argv[]) {
         errs() << "Usage: ry <file.ry>\n";
         errs() << "       ry test <file.ry>\n";
         errs() << "       ry init\n";
+        errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";
         return 1;
     }

@@ -1,63 +1,65 @@
-# テスト機能
+[English](testing.md) | [日本語](../ja/reference/testing.md) | [繁體中文](../zh/reference/testing.md)
 
-Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコマンドでテストファイルを実行します。
+# Testing
+
+Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry test` subcommand.
 
 ---
 
-## 実行方法
+## Running Tests
 
 ```bash
 ry test test_file.ry
 ```
 
-テストの終了コードは失敗したテスト数です（0 = 全パス）。
+The exit code is the number of failed tests (0 = all passed).
 
 ---
 
-## 構文
+## Syntax
 
 ### describe / it
 
 ```
-describe "説明文":
-    it "テストケース名":
-        # テスト本体
-        expect(実際の値).to_eq(期待値)
+describe "description":
+    it "test case name":
+        # test body
+        expect(actual_value).to_eq(expected_value)
 ```
 
-- `describe` ブロック内には `it` ブロックのみ記述可能
-- 各 `it` ブロックは独立したテストケース
-- `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
+- Only `it` blocks can be written inside a `describe` block
+- Each `it` block is an independent test case
+- `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
 
-### expect / マッチャー
+### expect / Matchers
 
-| マッチャー | 説明 | 対応型 |
+| Matcher | Description | Supported Types |
 |---|---|---|
-| `to_eq(expected)` | 等値比較 | int, float, bool, str |
-| `to_be_true()` | `true` であること | bool |
-| `to_be_false()` | `false` であること | bool |
-| `to_be_none()` | `None` であること | Option |
+| `to_eq(expected)` | Equality comparison | int, float, bool, str |
+| `to_be_true()` | Asserts `true` | bool |
+| `to_be_false()` | Asserts `false` | bool |
+| `to_be_none()` | Asserts `None` | Option |
 
 ---
 
-## 出力形式
+## Output Format
 
 ```
 Calculator
   + adds numbers
   + subtracts
-  - fails test (赤色)
+  - fails test (red)
     line 10: expected 3, got 2
 
 2 passed, 1 failed
 ```
 
-- `+` は成功（緑色）、`-` は失敗（赤色）
-- 失敗時は行番号と期待値/実際の値を表示
+- `+` indicates pass (green), `-` indicates failure (red)
+- On failure, the line number and expected/actual values are displayed
 
 ---
 
-## 例
+## Example
 
 ```
 describe "Arithmetic":
@@ -77,8 +79,8 @@ describe "Booleans":
 
 ---
 
-## 制限事項
+## Limitations
 
-- `describe` のネストは未対応
-- `before_each` / `after_each` は未対応
-- テストファイルのglob実行（`ry test tests/`）は未対応
+- Nesting of `describe` is not supported
+- `before_each` / `after_each` are not supported
+- Glob execution of test files (`ry test tests/`) is not supported

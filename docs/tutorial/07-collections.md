@@ -1,30 +1,32 @@
-# コレクション
+[English](07-collections.md) | [日本語](../ja/tutorial/07-collections.md) | [繁體中文](../zh/tutorial/07-collections.md)
 
-[← 前: 構造体](06-structs.md) | [次: 高度な機能 →](08-advanced.md)
+# Collections
 
-Ry には4種類のコレクション型があります: **タプル**、**リスト**、**マップ**、**セット**。
+[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)
+
+Ry has four collection types: **Tuples**, **Lists**, **Maps**, and **Sets**.
 
 ---
 
-## タプル
+## Tuples
 
-タプルは複数の値を一つにまとめた不変のデータ構造です。異なる型の要素を保持できます。
+A tuple is an immutable data structure that groups multiple values together. It can hold elements of different types.
 
-### 生成
+### Creation
 
 ```python
 let t = (1, 3.14)
 ```
 
-### 型アノテーション
+### Type Annotation
 
 ```python
 let t: (int, float) = (1, 3.14)
 ```
 
-### 要素アクセス
+### Element Access
 
-`.0`, `.1`, ... のようにインデックスでアクセスします。
+Elements are accessed by index using `.0`, `.1`, etc.
 
 ```python
 let t = (1, 3.14)
@@ -32,9 +34,9 @@ print(t.0)   # 1
 print(t.1)   # 3.14
 ```
 
-### 関数の戻り値
+### As Function Return Values
 
-複数の値を返したいときにタプルが便利です。
+Tuples are useful when you want to return multiple values.
 
 ```python
 fn swap(a: int, b: int) -> (int, int):
@@ -45,30 +47,30 @@ print(result.0)  # 2
 print(result.1)  # 1
 ```
 
-### 制限事項
+### Limitations
 
-- 範囲外のインデックス（例: 要素数2のタプルに `.2` でアクセス）はコンパイルエラーになります。
-- `print` にタプルを直接渡すとエラーになります。各要素を個別に渡してください。
+- Accessing an out-of-bounds index (e.g., `.2` on a tuple with 2 elements) causes a compile error.
+- Passing a tuple directly to `print` causes an error. Pass each element individually.
 
 ---
 
-## リスト
+## Lists
 
-リストは同じ型の要素を並べた可変長のデータ構造です。
+A list is a variable-length data structure containing elements of the same type.
 
-### 生成
+### Creation
 
 ```python
 let xs = [1, 2, 3]
 ```
 
-### 型アノテーション
+### Type Annotation
 
 ```python
 let xs: List<int> = [1, 2, 3]
 ```
 
-### インデックスアクセス
+### Index Access
 
 ```python
 print(xs[0])   # 1
@@ -77,7 +79,7 @@ let i = 1
 print(xs[i])   # 2
 ```
 
-### インデックス代入
+### Index Assignment
 
 ```python
 xs[0] = 99
@@ -95,58 +97,58 @@ print(len(xs))   # 3
 print(xs)   # [1, 2, 3]
 ```
 
-### for 走査
+### Iteration with for
 
 ```python
 for x in xs:
     print(x)
 ```
 
-### 関数引数
+### Function Parameters
 
 ```python
 fn first(xs: List<int>) -> int:
     return xs[0]
 ```
 
-### 制限事項
+### Limitations
 
-- 全要素が同じ型である必要があります。異なる型を混在させることはできません。
-- 空リスト `[]` はエラーになります。
-- 範囲外アクセスはランタイムエラー（`exit(1)`）になります。
-- 要素の型として `int`, `float`, `bool`, `str` をサポートしています。
+- All elements must be of the same type. Mixing different types is not allowed.
+- An empty list `[]` causes an error.
+- Out-of-bounds access results in a runtime error (`exit(1)`).
+- Supported element types are `int`, `float`, `bool`, and `str`.
 
 ---
 
-## マップ
+## Maps
 
-マップはキーと値のペアを管理する連想配列です。
+A map is an associative array that manages key-value pairs.
 
-### 生成
+### Creation
 
 ```python
 let m = {"a": 1, "b": 2}
 ```
 
-### 型アノテーション
+### Type Annotation
 
 ```python
 let m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
-### キーアクセス
+### Key Access
 
 ```python
 print(m["a"])   # 1
 ```
 
-### 挿入 / 更新
+### Insertion / Update
 
-新規キーへの代入で挿入、既存キーへの代入で更新します。
+Assigning to a new key inserts it; assigning to an existing key updates it.
 
 ```python
-m["c"] = 3    # 新規追加
-m["a"] = 99   # 更新
+m["c"] = 3    # Insert new entry
+m["a"] = 99   # Update existing entry
 ```
 
 ### len
@@ -163,46 +165,46 @@ print(m)   # {a: 99, b: 2, c: 3}
 
 ### has_key
 
-キーが存在するか確認します。
+Checks whether a key exists.
 
 ```python
 print(m.has_key("a"))   # true
 ```
 
-### 関数引数
+### Function Parameters
 
 ```python
 fn get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
-### 制限事項
+### Limitations
 
-- 全キーが同じ型、全値が同じ型である必要があります。
-- 空マップは型注釈が必要です。
-- 存在しないキーへのアクセスはランタイムエラー（`exit(1)`）になります。
+- All keys must be of the same type, and all values must be of the same type.
+- An empty map requires a type annotation.
+- Accessing a nonexistent key results in a runtime error (`exit(1)`).
 
 ---
 
-## セット
+## Sets
 
-セットは同じ型の要素を重複なしで保持するコレクションです。
+A set is a collection that holds elements of the same type without duplicates.
 
-### 生成
+### Creation
 
 ```python
 let s = {1, 2, 3}
 ```
 
-### 型アノテーション
+### Type Annotation
 
 ```python
 let s: Set<int> = {1, 2, 3}
 ```
 
-### in 演算子
+### in Operator
 
-要素がセットに含まれるかを `in` 演算子で確認できます。
+Use the `in` operator to check if an element is in the set.
 
 ```python
 print(2 in s)   # true
@@ -212,9 +214,9 @@ print(5 in s)   # false
 ### add / remove
 
 ```python
-s.add(4)       # 要素追加
-s.remove(1)    # 要素削除
-s.add(2)       # 既に存在するため無視
+s.add(4)       # Add element
+s.remove(1)    # Remove element
+s.add(2)       # Ignored since it already exists
 ```
 
 ### len / print
@@ -224,26 +226,26 @@ print(len(s))  # 3
 print(s)       # {2, 3, 4}
 ```
 
-### for 走査
+### Iteration with for
 
 ```python
 for x in s:
     print(x)
 ```
 
-### 空セット
+### Empty Set
 
-空セットは型注釈が必要です。
+An empty set requires a type annotation.
 
 ```python
 let empty: Set<int> = {}
 ```
 
-### 制限事項
+### Limitations
 
-- 全要素が同じ型である必要があります。
-- 要素の型として `int`, `float`, `bool`, `str` をサポートしています。
+- All elements must be of the same type.
+- Supported element types are `int`, `float`, `bool`, and `str`.
 
 ---
 
-[← 前: 構造体](06-structs.md) | [次: 高度な機能 →](08-advanced.md)
+[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)

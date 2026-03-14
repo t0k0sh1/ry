@@ -1,14 +1,16 @@
-# 高度な機能
+[English](08-advanced.md) | [日本語](../ja/tutorial/08-advanced.md) | [繁體中文](../zh/tutorial/08-advanced.md)
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+# Advanced Features
+
+[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
 
 ---
 
-## ラムダ関数
+## Lambda Functions
 
-ラムダ関数は、関数を式として記述する構文です。`(引数) -> 式` の形で書きます。戻り値型は自動推論されます。
+Lambda functions are a syntax for writing functions as expressions. They use the form `(parameters) -> expression`. The return type is automatically inferred.
 
-### 単一式ラムダ
+### Single-Expression Lambda
 
 ```python
 let double = (x: int) -> x * 2
@@ -18,16 +20,16 @@ let add = (a: int, b: int) -> a + b
 print(add(3, 4))  # 7
 ```
 
-### 引数なしラムダ
+### No-Parameter Lambda
 
 ```python
 let answer = () -> 42
 print(answer())  # 42
 ```
 
-### 複数行ラムダ
+### Multi-Line Lambda
 
-`->` の後に改行してインデントすることで、複数の文を書けます。
+You can write multiple statements by adding a newline after `->` and indenting.
 
 ```python
 let abs = (x: int) ->
@@ -41,9 +43,9 @@ print(abs(3))   # 3
 
 ---
 
-## クロージャ
+## Closures
 
-ラムダ関数は定義時のスコープにある変数をキャプチャできます。
+Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 let offset = 10
@@ -53,9 +55,9 @@ print(add_offset(5))  # 15
 
 ---
 
-## 高階関数
+## Higher-Order Functions
 
-関数を引数として受け取る関数を定義できます。関数型は `fn(引数型) -> 戻り値型` と書きます。
+You can define functions that take other functions as arguments. Function types are written as `fn(parameter_types) -> return_type`.
 
 ```python
 fn apply(f: fn(int) -> int, x: int) -> int:
@@ -68,9 +70,9 @@ print(apply((n: int) -> n + 1, 10))    # 11
 
 ---
 
-## 関数を値として扱う
+## Functions as Values
 
-名前付き関数も変数に束縛したり、引数として渡したりできます。
+Named functions can also be bound to variables or passed as arguments.
 
 ```python
 fn square(x: int) -> int:
@@ -79,46 +81,46 @@ fn square(x: int) -> int:
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-# 名前付き関数を引数として渡す
+# Pass a named function as an argument
 print(apply(square, 4))  # 16
 
-# 変数に束縛する
+# Bind to a variable
 let sq = square
 print(sq(5))  # 25
 ```
 
 ---
 
-## UFCS（Uniform Function Call Syntax）
+## UFCS (Uniform Function Call Syntax)
 
-UFCS を使うと、`f(a, b)` の呼び出しを `a.f(b)` と書けます。メソッドチェーンのような記述が可能になります。
+With UFCS, you can write `f(a, b)` as `a.f(b)`. This enables method-chaining-style notation.
 
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
 
 let x = 1
-print(x.add(2))   # add(x, 2) → 3
+print(x.add(2))   # add(x, 2) -> 3
 ```
 
-### チェーン呼び出し
+### Chained Calls
 
 ```python
 fn double(n: int) -> int:
     return n * 2
 
-print(x.add(2).double())   # double(add(x, 2)) → 6
+print(x.add(2).double())   # double(add(x, 2)) -> 6
 ```
 
 ---
 
-## 演算子オーバーロード
+## Operator Overloading
 
-`fn operator演算子` 構文でカスタム型に演算子を定義できます。
+You can define operators for custom types using the `fn operator` syntax.
 
-### 二項演算子
+### Binary Operators
 
-パラメータを2個取ります。
+Takes two parameters.
 
 ```python
 type Vec2:
@@ -138,29 +140,29 @@ print(v3.x)       # 4
 print(v1 == v2)   # false
 ```
 
-### 単項演算子
+### Unary Operators
 
-パラメータを1個取ります。
+Takes one parameter.
 
 ```python
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
-### 対応演算子一覧
+### Supported Operators
 
-| 種別 | 演算子 |
-|------|--------|
-| 算術 | `+`, `-`, `*`, `/`, `%`, `**`, `//` |
-| 比較 | `==`, `!=`, `<`, `<=`, `>`, `>=` |
-| ビット | `&`, `\|`, `^`, `~`, `<<`, `>>` |
-| 論理 | `and`, `or`, `not` |
+| Category | Operators |
+|----------|-----------|
+| Arithmetic | `+`, `-`, `*`, `/`, `%`, `**`, `//` |
+| Comparison | `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| Bitwise | `&`, `\|`, `^`, `~`, `<<`, `>>` |
+| Logical | `and`, `or`, `not` |
 
 ---
 
-## Option 型
+## Option Type
 
-値が存在するかどうかを表す型です。`Some(値)` または `None` をとります。
+A type that represents whether a value exists or not. It takes either `Some(value)` or `None`.
 
 ```python
 let x: Option<int> = Some(42)
@@ -172,13 +174,13 @@ print(y)   # None
 
 ### unwrap
 
-`unwrap` で内部の値を取り出します。`None` に対して `unwrap` を呼ぶとランタイムエラーになります。
+Use `unwrap` to extract the inner value. Calling `unwrap` on `None` causes a runtime error.
 
 ```python
 let v = unwrap(x)   # 42
-# unwrap(y) → ランタイムエラー
+# unwrap(y) -> runtime error
 ```
 
 ---
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)

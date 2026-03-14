@@ -1,28 +1,30 @@
-# コレクションリファレンス（タプル・リスト・マップ・セット）
+[English](collections.md) | [日本語](../ja/reference/collections.md) | [繁體中文](../zh/reference/collections.md)
 
-## タプル
+# Collection Reference (Tuple, List, Map, Set)
 
-### 概要
+## Tuple
 
-固定長・異種型の値の組み合わせ。LLVM literal StructType として実装されたスタック上の値型です。
+### Overview
 
-### 構文
+A fixed-length combination of heterogeneous values. Implemented as a stack-allocated value type using LLVM literal StructType.
+
+### Syntax
 
 ```python
 let t = (1, 3.14)
 let t: (int, float) = (1, 3.14)
 ```
 
-### 型アノテーション
+### Type Annotation
 
 ```python
 let pair: (int, str) = (42, "hello")
 let triple: (int, float, bool) = (1, 2.0, true)
 ```
 
-### 要素アクセス
+### Element Access
 
-`.0`, `.1`, ... の数値インデックスでアクセスします。
+Access elements using numeric indices `.0`, `.1`, etc.
 
 ```python
 let t = (10, 3.14)
@@ -30,7 +32,7 @@ print(t.0)   # 10
 print(t.1)   # 3.14
 ```
 
-### 関数戻り値
+### Function Return Values
 
 ```python
 fn swap(a: int, b: int) -> (int, int):
@@ -41,33 +43,33 @@ print(result.0)   # 2
 print(result.1)   # 1
 ```
 
-### 制約とエラー
+### Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 範囲外インデックス | コンパイルエラー |
-| `print` にタプルを直接渡す | コンパイルエラー（print非対応） |
+| Out-of-range index | Compile error |
+| Passing a tuple directly to `print` | Compile error (not supported by print) |
 
 ---
 
-## リスト
+## List
 
-### 概要
+### Overview
 
-同一型の可変長シーケンス。ヒープ上に確保されます。
+A variable-length sequence of elements of the same type. Allocated on the heap.
 
-### 構文
+### Syntax
 
 ```python
 let xs = [1, 2, 3]
 let xs: List<int> = [1, 2, 3]
 ```
 
-### 対応する要素型
+### Supported Element Types
 
 `int`, `float`, `bool`, `str`
 
-### インデックスアクセス
+### Index Access
 
 ```python
 let xs = [1, 2, 3]
@@ -75,7 +77,7 @@ print(xs[0])   # 1
 print(xs[2])   # 3
 ```
 
-### インデックス代入
+### Index Assignment
 
 ```python
 let xs = [1, 2, 3]
@@ -97,7 +99,7 @@ let xs = [1, 2, 3]
 print(xs)   # [1, 2, 3]
 ```
 
-### for 走査
+### for Iteration
 
 ```python
 let xs = [10, 20, 30]
@@ -108,42 +110,42 @@ for x in xs:
 # 30
 ```
 
-### 制約とエラー
+### Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 全要素は同一型 | 異なる型が混在するとコンパイルエラー |
-| 空リスト `[]` | 型推論できないためコンパイルエラー |
-| 範囲外アクセス | ランタイムエラー（exit(1)） |
+| All elements must be the same type | Mixed types cause a compile error |
+| Empty list `[]` | Compile error because type cannot be inferred |
+| Out-of-range access | Runtime error (exit(1)) |
 
 ---
 
-## マップ
+## Map
 
-### 概要
+### Overview
 
-キーと値の対応表。ヒープ上に確保されます。
+A key-value mapping. Allocated on the heap.
 
-### 構文
+### Syntax
 
 ```python
 let m = {"a": 1, "b": 2}
 let m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
-### キーアクセス
+### Key Access
 
 ```python
 let m = {"a": 1, "b": 2}
 print(m["a"])   # 1
 ```
 
-### 挿入・更新
+### Insert and Update
 
 ```python
 let m = {"a": 1}
-m["b"] = 2     # 新規追加
-m["a"] = 99    # 更新
+m["b"] = 2     # Insert new entry
+m["a"] = 99    # Update existing entry
 ```
 
 ### len
@@ -168,37 +170,37 @@ print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
 ```
 
-### 制約とエラー
+### Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 全キーは同一型 | 異なる型のキーが混在するとコンパイルエラー |
-| 全値は同一型 | 異なる型の値が混在するとコンパイルエラー |
-| 空マップ | 型注釈が必要（`let m: Map<str, int> = {"a": 1}` など） |
-| 存在しないキーアクセス | ランタイムエラー（exit(1)） |
-| キー検索 | 線形スキャン |
-| 容量超過時 | 自動で2倍に拡張 |
+| All keys must be the same type | Mixed key types cause a compile error |
+| All values must be the same type | Mixed value types cause a compile error |
+| Empty map | Type annotation is required (e.g., `let m: Map<str, int> = {"a": 1}`) |
+| Accessing a non-existent key | Runtime error (exit(1)) |
+| Key lookup | Linear scan |
+| Capacity overflow | Automatically doubles in size |
 
 ---
 
-## セット
+## Set
 
-### 概要
+### Overview
 
-同一型の要素を重複なしで保持するコレクション。ヒープ上に確保されます。
+A collection that holds elements of the same type without duplicates. Allocated on the heap.
 
-### 構文
+### Syntax
 
 ```python
 let s = {1, 2, 3}
 let s: Set<int> = {1, 2, 3}
 ```
 
-### 対応する要素型
+### Supported Element Types
 
 `int`, `float`, `bool`, `str`
 
-### in 演算子（所属チェック）
+### in Operator (Membership Check)
 
 ```python
 let s = {1, 2, 3}
@@ -220,18 +222,18 @@ let s = {1, 2, 3}
 print(s)   # {1, 2, 3}
 ```
 
-### add（要素追加）
+### add (Add Element)
 
-重複する要素を追加した場合は無視されます。
+Duplicate elements are ignored when added.
 
 ```python
 let s = {1, 2, 3}
-s.add(4)         # 追加
-s.add(1)         # 既に存在するため無視
+s.add(4)         # Add
+s.add(1)         # Ignored because it already exists
 print(len(s))    # 4
 ```
 
-### remove（要素削除）
+### remove (Remove Element)
 
 ```python
 let s = {1, 2, 3}
@@ -239,7 +241,7 @@ s.remove(2)
 print(2 in s)   # false
 ```
 
-### for 走査
+### for Iteration
 
 ```python
 let s = {10, 20, 30}
@@ -247,26 +249,26 @@ for x in s:
     print(x)
 ```
 
-### 空セット
+### Empty Set
 
-空セットは型注釈が必要です。
+An empty set requires a type annotation.
 
 ```python
 let s: Set<int> = {}
 ```
 
-### 関数引数
+### Function Parameters
 
 ```python
 fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 
-### 制約とエラー
+### Constraints and Errors
 
-| 制約 | 詳細 |
+| Constraint | Details |
 |------|------|
-| 全要素は同一型 | 異なる型が混在するとコンパイルエラー |
-| 空セット `{}` | 型注釈が必要 |
-| 要素検索 | 線形スキャン |
-| 容量超過時 | 自動で2倍に拡張 |
+| All elements must be the same type | Mixed types cause a compile error |
+| Empty set `{}` | Type annotation is required |
+| Element lookup | Linear scan |
+| Capacity overflow | Automatically doubles in size |

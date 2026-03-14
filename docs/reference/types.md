@@ -1,28 +1,30 @@
-# 型リファレンス
+[English](types.md) | [日本語](../ja/reference/types.md) | [繁體中文](../zh/reference/types.md)
 
-## 型一覧
+# Type Reference
 
-| 型 | 内部表現 | リテラル例 | 説明 |
+## Type List
+
+| Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
-| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64ビット符号付き整数 |
-| `byte` | i8 | （専用リテラルなし） | 符号なし8ビット整数（0-255）。型アノテーション `let b: byte = 42` で使用 |
-| `float` | f64 | `3.14`, `0.5` | 64ビット浮動小数点数 |
-| `bool` | i1 | `true`, `false` | 真偽値 |
-| `str` | ptr | `"hello"`, `""`, `"a\nb"` | 文字列（ヒープ上の不変バイト列） |
-| `Unit` | void | （戻り値なし） | 戻り値型省略時の暗黙の戻り値型 |
-| `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | 値が存在するかもしれない型 |
-| `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | タプル型 |
-| `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
-| `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
-| `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
-| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) -> x * 2` | 関数型 |
-| ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
-| `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
-| `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
+| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64-bit signed integer |
+| `byte` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `let b: byte = 42` |
+| `float` | f64 | `3.14`, `0.5` | 64-bit floating-point number |
+| `bool` | i1 | `true`, `false` | Boolean value |
+| `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
+| `Unit` | void | (no return value) | Implicit return type when return type is omitted |
+| `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | A type that may or may not contain a value |
+| `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | Tuple type |
+| `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
+| `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
+| `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
+| `fn(T1, T2) -> R` | ptr (function pointer) | `(x: int) -> x * 2` | Function type |
+| User-defined type | LLVM StructType (named) | `type Point: ...` | Struct defined with the `type` keyword |
+| `enum` | i64 | `Color::Red` | Enumeration defined with the `enum` keyword |
+| `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 
-## 型アノテーション構文
+## Type Annotation Syntax
 
-変数宣言時に型を明示できます。型が推論可能な場合は省略可能です。
+You can explicitly specify the type when declaring a variable. The annotation can be omitted when the type is inferrable.
 
 ```python
 let x: int = 42
@@ -39,36 +41,36 @@ let fn_val: fn(int) -> int = (x: int) -> x * 2
 let u: int | str = 42
 ```
 
-## 使用可能な型名一覧
+## Available Type Names
 
-| 型名 | 備考 |
+| Type Name | Notes |
 |---|---|
-| `int` | 組み込みスカラー型 |
-| `byte` | 組み込みスカラー型（符号なし 0-255） |
-| `float` | 組み込みスカラー型 |
-| `bool` | 組み込みスカラー型 |
-| `str` | 組み込み文字列型 |
-| `Unit` | 戻り値なし関数の戻り値型 |
-| `Option<T>` | ジェネリック型（T は任意の型） |
-| `(T1, T2, ...)` | タプル型（要素数・型の組み合わせは任意） |
-| `List<T>` | ジェネリック動的配列型 |
-| `Map<K, V>` | ジェネリックハッシュマップ型 |
-| `Set<T>` | ジェネリック集合型 |
-| `fn(T1, ...) -> R` | 関数型 |
-| `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
-| ユーザー定義型名 | `type` または `enum` キーワードで宣言した型 |
+| `int` | Built-in scalar type |
+| `byte` | Built-in scalar type (unsigned 0-255) |
+| `float` | Built-in scalar type |
+| `bool` | Built-in scalar type |
+| `str` | Built-in string type |
+| `Unit` | Return type of functions that return no value |
+| `Option<T>` | Generic type (T is any type) |
+| `(T1, T2, ...)` | Tuple type (arbitrary number and combination of element types) |
+| `List<T>` | Generic dynamic array type |
+| `Map<K, V>` | Generic hash map type |
+| `Set<T>` | Generic set type |
+| `fn(T1, ...) -> R` | Function type |
+| `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
+| User-defined type name | Type declared with the `type` or `enum` keyword |
 
-## union 型
+## Union Type
 
-`|` を使って複数の型を持ちうる変数を宣言できます。
+You can declare a variable that may hold one of multiple types using `|`.
 
 ```python
 let x: int | str = 42
-x = "hello"     # 再代入可能（union のいずれかの型）
+x = "hello"     # Reassignment is allowed (any type in the union)
 print(x)        # hello
 ```
 
-### 関数引数・戻り値での使用
+### Usage in Function Parameters and Return Types
 
 ```python
 fn show(x: int | str) -> int:
@@ -81,47 +83,47 @@ fn get_val(flag: bool) -> int | str:
     return "hello"
 ```
 
-### 内部表現
+### Internal Representation
 
-union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` は各コンポーネント型のインデックス（アルファベット順ソート後）を示し、`data` は最大コンポーネントサイズ分のバイト配列です。
+A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates the index of each component type (sorted alphabetically), and `data` is a byte array sized to the largest component type.
 
-### 制約
+### Constraints
 
-- union に含まれない型を代入するとコンパイルエラー
-- `int | str` と `str | int` は同じ型（正規化される）
-- `print()` で union 値を出力すると、実行時のタグに基づいて適切な型で表示される
+- Assigning a type not included in the union causes a compile error
+- `int | str` and `str | int` are the same type (normalized)
+- When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
 
-## 型規則（演算時の型変換）
+## Type Rules (Type Conversion in Operations)
 
-| 演算 | 左辺 | 右辺 | 結果型 | 備考 |
+| Operation | Left | Right | Result Type | Notes |
 |---|---|---|---|---|
 | `+` `-` `*` | int | int | int | |
-| `+` `-` `*` | byte | byte または int | int | byte は演算時に int へ ZExt 昇格 |
-| `+` `-` `*` | float または int | float または int（片方がfloat） | float | 暗黙のfloat昇格 |
-| `/` | 任意の数値 | 任意の数値 | float | 常にfloat |
-| `//` | 任意の数値 | 任意の数値 | int | float入力は切り捨て変換 |
-| `**` | 任意の数値 | 任意の数値 | float | libm `pow` 使用 |
+| `+` `-` `*` | byte | byte or int | int | byte is ZExt-promoted to int during operations |
+| `+` `-` `*` | float or int | float or int (one is float) | float | Implicit float promotion |
+| `/` | any numeric | any numeric | float | Always float |
+| `//` | any numeric | any numeric | int | Float input is truncated |
+| `**` | any numeric | any numeric | float | Uses libm `pow` |
 | `%` | int | int | int | |
-| `%` | float または int | float または int（片方がfloat） | float | |
-| `+` | str | str | str | 文字列結合 |
-| `==` `!=` `<` `<=` `>` `>=` | str | str | bool | 辞書順比較 |
-| `==` `!=` `<` `<=` `>` `>=` | 数値または bool | 数値または bool | bool | |
-| `in` | 任意 | Set<T> | bool | 要素がセットに含まれるか |
-| `&` `\|` `^` `~` `<<` `>>` | int | int | int | float にはエラー |
+| `%` | float or int | float or int (one is float) | float | |
+| `+` | str | str | str | String concatenation |
+| `==` `!=` `<` `<=` `>` `>=` | str | str | bool | Lexicographic comparison |
+| `==` `!=` `<` `<=` `>` `>=` | numeric or bool | numeric or bool | bool | |
+| `in` | any | Set<T> | bool | Whether the element is in the set |
+| `&` `\|` `^` `~` `<<` `>>` | int | int | int | Error for float |
 
-### エスケープシーケンス（str リテラル内）
+### Escape Sequences (in str Literals)
 
-| シーケンス | 意味 |
+| Sequence | Meaning |
 |---|---|
-| `\n` | 改行 |
-| `\t` | タブ |
-| `\\` | バックスラッシュ |
-| `\"` | ダブルクォート |
-| `\0` | ヌル文字 |
+| `\n` | Newline |
+| `\t` | Tab |
+| `\\` | Backslash |
+| `\"` | Double quote |
+| `\0` | Null character |
 
-## 型安全性の制約
+## Type Safety Constraints
 
-- **暗黙の型変換はない** — `int` と `float` を混在させると float への昇格が発生するが、それ以外の暗黙変換は存在しない。`byte` は演算時に `int` へ自動昇格する（ZExt）。型アノテーション `let b: byte = 42` でのみ `int` リテラルから `byte` への縮小変換が許可される。
-- **変数の型は宣言時に固定される** — 一度 `int` として宣言した変数に `float` を再代入することはできない。
-- **ビット演算は `int` のみ** — `float` や `bool` に対してビット演算を適用するとコンパイルエラー。
-- **`bool` 以外の型も条件式に使える** — `if` の条件式には `int`（0 = false、非0 = true）など `bool` 以外も使用可能。
+- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `byte` is automatically promoted to `int` during operations (ZExt). Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `let b: byte = 42`.
+- **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
+- **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
+- **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
