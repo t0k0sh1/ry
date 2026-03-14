@@ -1,0 +1,4 @@
+pre-commit:
+  scripts:
+    "protect-branch.sh":
+      runner: bash
