@@ -22,10 +22,10 @@ TEST(SelfUpdate, BuildDownloadUrl) {
     PlatformInfo linux_amd64{"linux", "amd64"};
 
     auto url1 = build_download_url("v0.0.1", darwin_arm64);
-    EXPECT_EQ(url1, "https://github.com/pricklywiggles/ry/releases/download/v0.0.1/ry-darwin-arm64.tar.gz");
+    EXPECT_EQ(url1, "https://github.com/t0k0sh1/ry/releases/download/v0.0.1/ry-darwin-arm64.tar.gz");
 
     auto url2 = build_download_url("v0.0.2-dev.20250101", linux_amd64);
-    EXPECT_EQ(url2, "https://github.com/pricklywiggles/ry/releases/download/v0.0.2-dev.20250101/ry-linux-amd64.tar.gz");
+    EXPECT_EQ(url2, "https://github.com/t0k0sh1/ry/releases/download/v0.0.2-dev.20250101/ry-linux-amd64.tar.gz");
 }
 
 TEST(SelfUpdate, ExtractJsonString) {

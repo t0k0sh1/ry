@@ -111,6 +111,30 @@ fn first(xs: List<int>) -> int:
     return xs[0]
 ```
 
+### filter、map、sort
+
+串列支援 `filter`、`map`、`sort` 操作。這些操作會傳回新串列，不會修改原始串列。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+
+# filter: 保留符合條件的元素
+let evens = xs.filter((x: int) -> x > 3)
+print(evens)   # [4, 5]
+
+# map: 轉換每個元素
+let doubled = xs.map((x: int) -> x * 2)
+print(doubled)   # [2, 4, 6, 8, 10]
+
+# sort: 升序排序（預設）
+let sorted = [3, 1, 2].sort()
+print(sorted)   # [1, 2, 3]
+
+# 鏈接
+let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+print(result)   # [20, 30, 40, 50]
+```
+
 ### 限制事項
 
 - 所有元素必須是相同型別，不能混合不同型別。

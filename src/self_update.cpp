@@ -15,7 +15,7 @@
 
 namespace ry::self_update {
 
-static const char *REPO = "pricklywiggles/ry";
+static const char *REPO = "t0k0sh1/ry";
 
 bool is_valid_tag(const std::string &tag) {
     static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
@@ -162,8 +162,19 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
     UpdateTarget target;
 
     if (mode == "stable") {
-        std::string cmd = "curl -sfL -H 'Accept: application/json' "
-                          "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
+        std::string api_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
+        // Check HTTP status first to distinguish 404 from other errors
+        std::string status_cmd = "curl -sfL -o /dev/null -w '%{http_code}' -H 'Accept: application/json' '" + api_url + "'";
+        std::string http_status = shell_exec(status_cmd);
+        http_status.erase(std::remove_if(http_status.begin(), http_status.end(), ::isspace), http_status.end());
+
+        if (http_status == "404") {
+            // No stable release exists yet — treat as already up to date
+            target.tag = std::string("v") + RY_VERSION;
+            return target;
+        }
+
+        std::string cmd = "curl -sfL -H 'Accept: application/json' '" + api_url + "'";
         std::string json = shell_exec(cmd);
         if (json.empty()) {
             std::cerr << "Error: Failed to fetch latest release info.\n";

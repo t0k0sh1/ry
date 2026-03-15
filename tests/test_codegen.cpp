@@ -425,3 +425,41 @@ TEST_F(CodeGenTest, BinaryByteAssignment) {
 TEST_F(CodeGenTest, NegativeHexLiteral) {
     EXPECT_EQ(runSource("print(-0xFF)"), "-255\n");
 }
+
+// ===== 論理右シフト >>> テスト =====
+
+TEST_F(CodeGenTest, LogicalRightShiftPositive) {
+    // 8 >>> 2 = 2
+    EXPECT_EQ(runSource("let x = 8 >>> 2\nprint(x)"), "2\n");
+}
+
+TEST_F(CodeGenTest, LogicalRightShiftNegative) {
+    // -1 >>> 1 = 9223372036854775807 (unsigned shift of all-ones)
+    EXPECT_EQ(runSource("let x = -1 >>> 1\nprint(x)"), "9223372036854775807\n");
+}
+
+// ===== 文字列繰り返し * テスト =====
+
+TEST_F(CodeGenTest, StringRepeat) {
+    EXPECT_EQ(runSource("let x = \"ab\" * 3\nprint(x)"), "ababab\n");
+}
+
+TEST_F(CodeGenTest, StringRepeatCommutative) {
+    EXPECT_EQ(runSource("let x = 3 * \"ab\"\nprint(x)"), "ababab\n");
+}
+
+TEST_F(CodeGenTest, StringRepeatZero) {
+    EXPECT_EQ(runSource("let x = \"x\" * 0\nprint(x)"), "\n");
+}
+
+TEST_F(CodeGenTest, StringRepeatNegative) {
+    EXPECT_EQ(runSource("let x = \"x\" * -1\nprint(x)"), "\n");
+}
+
+TEST_F(CodeGenTest, StringRepeatEmpty) {
+    EXPECT_EQ(runSource("let x = \"\" * 5\nprint(x)"), "\n");
+}
+
+TEST_F(CodeGenTest, StringRepeatOne) {
+    EXPECT_EQ(runSource("let x = \"a\" * 1\nprint(x)"), "a\n");
+}

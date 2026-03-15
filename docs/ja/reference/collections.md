@@ -110,6 +110,49 @@ for x in xs:
 # 30
 ```
 
+### filter
+
+述語を満たす要素だけを含む新しいリストを返します。元のリストは変更されません。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.filter((x: int) -> x > 3)
+print(ys)   # [4, 5]
+```
+
+### map
+
+各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.map((x: int) -> x * 2)
+print(ys)   # [2, 4, 6]
+```
+
+### sort
+
+ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます。元のリストは変更されません。
+
+```python
+let xs = [3, 1, 2]
+print(xs.sort())   # [1, 2, 3]
+
+# 降順ソート
+let desc = xs.sort((a: int, b: int) -> a > b)
+print(desc)   # [3, 2, 1]
+```
+
+### filter, map, sort のチェーン
+
+これらの関数は新しいリストを返すため、UFCS で連鎖できます。
+
+```python
+let xs = [5, 3, 1, 4, 2]
+let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+print(result)   # [20, 30, 40, 50]
+```
+
 ### 制約とエラー
 
 | 制約 | 詳細 |

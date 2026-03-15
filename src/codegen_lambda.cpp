@@ -290,6 +290,20 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             auto it = functions_.find(v->callee);
             if (it != functions_.end() && !it->second.empty())
                 return it->second[0].func->getReturnType();
+            // Known builtin return types
+            const std::string &c = v->callee;
+            if (c == "len" || c == "to_int" || c == "find")
+                return i64Ty_;
+            if (c == "to_float")
+                return f64Ty_;
+            if (c == "contains" || c == "starts_with" || c == "ends_with" || c == "has_key")
+                return i1Ty_;
+            if (c == "to_str" || c == "to_upper" || c == "to_lower" ||
+                c == "trim" || c == "trim_start" || c == "trim_end" ||
+                c == "substring" || c == "char_at" || c == "replace" ||
+                c == "repeat" || c == "reverse" || c == "join" ||
+                c == "filter" || c == "map" || c == "sort")
+                return ptrTy_;
             return i64Ty_; // fallback
         } else {
             return i64Ty_; // fallback
