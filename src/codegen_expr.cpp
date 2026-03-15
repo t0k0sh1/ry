@@ -348,9 +348,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Value *setVal = emitExpr(*e->rhs);
         llvm::Type *elemTy = getSetElementType(setVal);
         if (!elemTy)
-            throw std::runtime_error("'in' operator requires a set on the right side");
+            throw std::runtime_error("'" + e->op + "' operator requires a set on the right side");
         if (elem->getType() != elemTy)
-            throw std::runtime_error("'in' operator: element type mismatch");
+            throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
         llvm::Value *idx = emitSetElementLookup(setVal, elem, elemTy);
         llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
         if (e->op == "not in")
