@@ -301,7 +301,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             if (c == "to_str" || c == "to_upper" || c == "to_lower" ||
                 c == "trim" || c == "trim_start" || c == "trim_end" ||
                 c == "substring" || c == "char_at" || c == "replace" ||
-                c == "repeat" || c == "reverse" || c == "join")
+                c == "repeat" || c == "reverse" || c == "join" ||
+                c == "filter" || c == "map" || c == "sort")
                 return ptrTy_;
             return i64Ty_; // fallback
         } else {

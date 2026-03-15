@@ -1310,8 +1310,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (!elemTy)
             throw std::runtime_error("filter() requires a list as first argument");
 
-        // Get lambda type info
+        // Get lambda type info (handle LoadInst for variable-passed functions)
         auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
         if (fnIt == fn_type_info_.end())
             throw std::runtime_error("filter() requires a function as second argument");
         auto &info = fnIt->second;
@@ -1410,6 +1414,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("map() requires a list as first argument");
 
         auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
         if (fnIt == fn_type_info_.end())
             throw std::runtime_error("map() requires a function as second argument");
         auto &info = fnIt->second;
@@ -1492,6 +1500,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (hasComparator) {
             compVal = emitExpr(*e->args[1]);
             auto fnIt = fn_type_info_.find(compVal);
+            if (fnIt == fn_type_info_.end()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(compVal))
+                    fnIt = fn_type_info_.find(load->getPointerOperand());
+            }
             if (fnIt == fn_type_info_.end())
                 throw std::runtime_error("sort() comparator must be a function");
             compInfo = fnIt->second;
@@ -1533,6 +1545,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         // Insertion sort: outer loop i = 1..len, inner loop j = i downto 1
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "sort_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "sort_j");
 
         llvm::BasicBlock *outerCondBB = llvm::BasicBlock::Create(*ctx_, "sort.outer.cond", fn_);
         llvm::BasicBlock *innerInitBB = llvm::BasicBlock::Create(*ctx_, "sort.inner.init", fn_);
@@ -1551,7 +1564,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
         // Inner init: j = i
         builder_.SetInsertPoint(innerInitBB);
-        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "sort_j");
         llvm::Value *iForJ = builder_.CreateLoad(i64Ty_, iVar, "sort_i_for_j");
         builder_.CreateStore(iForJ, jVar);
         builder_.CreateBr(innerCondBB);
