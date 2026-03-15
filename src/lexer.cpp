@@ -174,7 +174,11 @@ Token Lexer::readToken() {
     if (c == '>') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '>') {
-            ++pos_; return {TokenKind::GreaterGreater, ">>", line_};
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '>') {
+                ++pos_; return {TokenKind::GreaterGreaterGreater, ">>>", line_};
+            }
+            return {TokenKind::GreaterGreater, ">>", line_};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::GreaterEq, ">=", line_};

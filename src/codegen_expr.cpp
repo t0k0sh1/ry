@@ -176,6 +176,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     if (op == "^")  return builder_.CreateXor(lhs, rhs,  "bxor");
     if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl");
     if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr");
+    if (op == ">>>") return builder_.CreateLShr(lhs, rhs, "lshr");
     throw std::runtime_error("unknown bitwise operator: " + op);
 }
 
@@ -214,6 +215,84 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         builder_.CreateCall(strcpyFn, {buf, lhs});
         builder_.CreateCall(strcatFn, {buf, rhs});
         return buf;
+    }
+
+    // String repetition: "ab" * 3 or 3 * "ab"
+    if (op == "*") {
+        llvm::Value *strVal = nullptr;
+        llvm::Value *intVal = nullptr;
+        if (lhs->getType() == ptrTy_ && rhs->getType()->isIntegerTy()) {
+            strVal = lhs; intVal = rhs;
+        } else if (rhs->getType() == ptrTy_ && lhs->getType()->isIntegerTy()) {
+            strVal = rhs; intVal = lhs;
+        }
+        if (strVal) {
+            if (intVal->getType() == i1Ty_)
+                intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
+            else if (intVal->getType() == i8Ty_)
+                intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
+
+            auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+            auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *strLen = builder_.CreateCall(strlenFn, {strVal}, "str_len");
+
+            // If n <= 0, return empty string
+            llvm::Value *nPos = builder_.CreateICmpSGT(intVal, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
+
+            llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
+            llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "str_rep.repeat", fn_);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "str_rep.merge", fn_);
+
+            builder_.CreateCondBr(nPos, repeatBB, emptyBB);
+
+            // Empty case: return ""
+            builder_.SetInsertPoint(emptyBB);
+            llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
+            builder_.CreateBr(mergeBB);
+
+            // Repeat case
+            builder_.SetInsertPoint(repeatBB);
+            llvm::Value *totalLen = builder_.CreateMul(strLen, intVal, "total_len");
+            llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
+            llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rep_buf");
+
+            // Loop: copy strVal into buf n times
+            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
+            llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "str_rep.done", fn_);
+
+            builder_.CreateBr(loopBB);
+            builder_.SetInsertPoint(loopBB);
+
+            llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
+            i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
+
+            llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
+            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
+            builder_.CreateCall(memcpyFn, {dst, strVal, strLen});
+
+            llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            i->addIncoming(iNext, loopBB);
+            llvm::Value *cond = builder_.CreateICmpSLT(iNext, intVal, "loop_cond");
+            builder_.CreateCondBr(cond, loopBB, doneBB);
+
+            builder_.SetInsertPoint(doneBB);
+            // Null-terminate
+            llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {totalLen}, "end_ptr");
+            builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+            builder_.CreateBr(mergeBB);
+
+            // Merge
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
+            result->addIncoming(emptyStr, emptyBB);
+            result->addIncoming(buf, doneBB);
+            return result;
+        }
     }
 
     // // 整数除算: f64入力はi64に変換してからsdiv
@@ -263,17 +342,20 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
-    // Handle 'in' operator: lhs in rhs (rhs is set)
-    if (e->op == "in") {
+    // Handle 'in' / 'not in' operator: lhs in rhs (rhs is set)
+    if (e->op == "in" || e->op == "not in") {
         llvm::Value *elem = emitExpr(*e->lhs);
         llvm::Value *setVal = emitExpr(*e->rhs);
         llvm::Type *elemTy = getSetElementType(setVal);
         if (!elemTy)
-            throw std::runtime_error("'in' operator requires a set on the right side");
+            throw std::runtime_error("'" + e->op + "' operator requires a set on the right side");
         if (elem->getType() != elemTy)
-            throw std::runtime_error("'in' operator: element type mismatch");
+            throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
         llvm::Value *idx = emitSetElementLookup(setVal, elem, elemTy);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+        llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+        if (e->op == "not in")
+            result = builder_.CreateNot(result, "set_not_in");
+        return result;
     }
 
     llvm::Value *lhs = emitExpr(*e->lhs);
@@ -293,7 +375,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         return emitLogicalOp(op, lhs, rhs);
 
     if (op == "&" || op == "|" || op == "^" ||
-        op == "<<" || op == ">>")
+        op == "<<" || op == ">>" || op == ">>>")
         return emitBitwiseOp(op, lhs, rhs);
 
     return emitArithmeticOp(op, lhs, rhs);
