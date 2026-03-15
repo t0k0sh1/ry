@@ -8,7 +8,7 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 
 - **LLVM JIT Compilation** — Fast native execution powered by ORC LLJIT
 - **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
-- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), with operator overloading support
+- **Operators** — Arithmetic, comparison, logical, bitwise, compound assignment, `in` operator (with operator overloading support)
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **Modules** — Function imports via `from ... import ...`
@@ -56,10 +56,6 @@ for x in xs:
 
 print(2 in s)          # true
 print(m["a"])           # 1
-
-# Stream-like operations (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
-print(result)          # [20, 30, 40, 50]
 
 # Enums
 enum Color:

@@ -12,7 +12,7 @@
 |----------|-------------|---------|--------|
 | `+` | Addition | `3 + 2` | `5` |
 | `-` | Subtraction | `3 - 2` | `1` |
-| `*` | Multiplication / string repetition | `3 * 2` | `6` |
+| `*` | Multiplication | `3 * 2` | `6` |
 | `/` | Division (always float) | `7 / 2` | `3.5` |
 | `//` | Integer division (always int) | `7 // 2` | `3` |
 | `%` | Modulo | `7 % 3` | `1` |
@@ -99,8 +99,7 @@ Bitwise operators can only be used with the `int` type.
 | `^` | Bitwise XOR | `5 ^ 3` -> `6` |
 | `~` | Bitwise NOT (unary) | `~5` -> `-6` |
 | `<<` | Left shift | `1 << 3` -> `8` |
-| `>>` | Right shift (arithmetic) | `8 >> 2` -> `2` |
-| `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
+| `>>` | Right shift | `8 >> 2` -> `2` |
 
 ```python
 let a = 0b1010   # 10
@@ -164,25 +163,6 @@ print(7.5 % 2)    # 1.5 (float)
 
 # + concatenates strings if both operands are str
 print("foo" + "bar")   # "foobar"
-
-# * repeats a string if one operand is str and the other is int
-print("ab" * 3)        # "ababab"
-print(3 * "ab")        # "ababab"
-```
-
----
-
-## Membership Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `in` | Membership test | `2 in {1, 2, 3}` -> `true` |
-| `not in` | Negated membership test | `4 not in {1, 2, 3}` -> `true` |
-
-```python
-let s = {1, 2, 3}
-print(2 in s)        # true
-print(4 not in s)    # true
 ```
 
 ---

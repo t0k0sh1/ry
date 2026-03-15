@@ -661,27 +661,3 @@ TEST(LexerTest, BinaryLiteralInvalidThrows) {
     EXPECT_THROW(tokenize("0b"), std::runtime_error);
     EXPECT_THROW(tokenize("0b2"), std::runtime_error);
 }
-
-// ===== >>> トークンテスト =====
-
-TEST(LexerTest, GreaterGreaterGreater) {
-    auto toks = tokenize(">>>");
-    ASSERT_GE(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::GreaterGreaterGreater);
-    EXPECT_EQ(toks[0].value, ">>>");
-}
-
-TEST(LexerTest, GreaterGreaterGreaterDoesNotBreakOthers) {
-    // >> is still >>
-    auto toks1 = tokenize(">>");
-    EXPECT_EQ(toks1[0].kind, TokenKind::GreaterGreater);
-    EXPECT_EQ(toks1[0].value, ">>");
-
-    // >= is still >=
-    auto toks2 = tokenize(">=");
-    EXPECT_EQ(toks2[0].kind, TokenKind::GreaterEq);
-
-    // > is still >
-    auto toks3 = tokenize(">");
-    EXPECT_EQ(toks3[0].kind, TokenKind::Greater);
-}
