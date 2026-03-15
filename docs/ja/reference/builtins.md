@@ -26,9 +26,6 @@
 | `has_key(map, key)` | マップにキーが存在するかを返す |
 | `add(set, value)` | セットに要素を追加（重複は無視） |
 | `remove(set, value)` | セットから要素を削除 |
-| `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
-| `map(list, fn)` | 各要素を変換した新しいリストを返す |
-| `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
 
 ### [文字列操作](builtins-string.md)
 
@@ -196,50 +193,4 @@ for i in range(3):
 # 0
 # 1
 # 2
-```
-
----
-
-## filter
-
-**シグネチャ:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
-
-述語が `true` を返す要素のみを含む新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
-
-```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
-print(ys)   # [4, 5]
-print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
-```
-
----
-
-## map
-
-**シグネチャ:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
-
-各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。UFCS記法も使用可能です。
-
-```python
-let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
-print(ys)   # [2, 4, 6]
-```
-
----
-
-## sort
-
-**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
-
-ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。UFCS記法も使用可能です。
-
-```python
-let xs = [3, 1, 2]
-print(xs.sort())   # [1, 2, 3]
-
-# 降順ソート
-let desc = xs.sort((a: int, b: int) -> a > b)
-print(desc)   # [3, 2, 1]
 ```

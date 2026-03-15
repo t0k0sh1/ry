@@ -110,49 +110,6 @@ for x in xs:
 # 30
 ```
 
-### filter
-
-Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
-
-```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
-print(ys)   # [4, 5]
-```
-
-### map
-
-Returns a new list with each element transformed by the given function. The output element type can differ from the input. The original list is not modified.
-
-```python
-let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
-print(ys)   # [2, 4, 6]
-```
-
-### sort
-
-Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified.
-
-```python
-let xs = [3, 1, 2]
-print(xs.sort())   # [1, 2, 3]
-
-# Descending order with comparator
-let desc = xs.sort((a: int, b: int) -> a > b)
-print(desc)   # [3, 2, 1]
-```
-
-### Chaining filter, map, sort
-
-These functions return new lists, so they can be chained via UFCS.
-
-```python
-let xs = [5, 3, 1, 4, 2]
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
-print(result)   # [20, 30, 40, 50]
-```
-
 ### Constraints and Errors
 
 | Constraint | Details |

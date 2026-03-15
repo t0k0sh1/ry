@@ -418,52 +418,11 @@ StmtNode Parser::parseIfStatement() {
 
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogicalNot, {TokenKind::And}); }
-ExprPtr Parser::parseComparison() {
-    ExprPtr lhs = parseBitwiseOr();
-    for (;;) {
-        TokenKind k = lex_.peek().kind;
-        // Handle "not in" as a two-token operator
-        if (k == TokenKind::Not) {
-            auto saved = lex_.saveState();
-            lex_.next(); // consume 'not'
-            if (lex_.peek().kind == TokenKind::In) {
-                lex_.next(); // consume 'in'
-                ExprPtr rhs = parseBitwiseOr();
-                auto bin = std::make_unique<BinaryExpr>();
-                bin->op = "not in";
-                bin->lhs = std::move(lhs);
-                bin->rhs = std::move(rhs);
-                auto node = std::make_unique<ExprNode>();
-                node->data = std::move(bin);
-                lhs = std::move(node);
-                continue;
-            }
-            lex_.restoreState(saved);
-            break;
-        }
-        if (k == TokenKind::EqEq || k == TokenKind::BangEq ||
-            k == TokenKind::Less || k == TokenKind::LessEq ||
-            k == TokenKind::Greater || k == TokenKind::GreaterEq ||
-            k == TokenKind::In) {
-            std::string op = lex_.next().value;
-            ExprPtr rhs = parseBitwiseOr();
-            auto bin = std::make_unique<BinaryExpr>();
-            bin->op = op;
-            bin->lhs = std::move(lhs);
-            bin->rhs = std::move(rhs);
-            auto node = std::make_unique<ExprNode>();
-            node->data = std::move(bin);
-            lhs = std::move(node);
-            continue;
-        }
-        break;
-    }
-    return lhs;
-}
+ExprPtr Parser::parseComparison() { return parseBinaryLeft(&Parser::parseBitwiseOr, {TokenKind::EqEq, TokenKind::BangEq, TokenKind::Less, TokenKind::LessEq, TokenKind::Greater, TokenKind::GreaterEq, TokenKind::In}); }
 ExprPtr Parser::parseBitwiseOr()  { return parseBinaryLeft(&Parser::parseBitwiseXor, {TokenKind::Pipe}); }
 ExprPtr Parser::parseBitwiseXor() { return parseBinaryLeft(&Parser::parseBitwiseAnd, {TokenKind::Caret}); }
 ExprPtr Parser::parseBitwiseAnd() { return parseBinaryLeft(&Parser::parseShift, {TokenKind::Amp}); }
-ExprPtr Parser::parseShift()      { return parseBinaryLeft(&Parser::parseExpr, {TokenKind::LessLess, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater}); }
+ExprPtr Parser::parseShift()      { return parseBinaryLeft(&Parser::parseExpr, {TokenKind::LessLess, TokenKind::GreaterGreater}); }
 ExprPtr Parser::parseExpr()       { return parseBinaryLeft(&Parser::parseTerm, {TokenKind::Plus, TokenKind::Minus}); }
 ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parsePower, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
 
@@ -689,7 +648,6 @@ StmtNode Parser::parseFnStatement() {
             case TokenKind::Amp: case TokenKind::Pipe:
             case TokenKind::Caret: case TokenKind::Tilde:
             case TokenKind::LessLess: case TokenKind::GreaterGreater:
-            case TokenKind::GreaterGreaterGreater:
             case TokenKind::And: case TokenKind::Or:
             case TokenKind::Not:
                 opName = opTok.value;

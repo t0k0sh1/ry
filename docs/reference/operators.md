@@ -13,11 +13,11 @@ Lower numbers indicate higher precedence (evaluated first).
 | 3 | `**` | Exponentiation | Right |
 | 4 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
 | 5 | `+` `-` | Addition, subtraction | Left |
-| 6 | `<<` `>>` `>>>` | Bit shift | Left |
+| 6 | `<<` `>>` | Bit shift | Left |
 | 7 | `&` | Bitwise AND | Left |
 | 8 | `^` | Bitwise XOR | Left |
 | 9 | `\|` | Bitwise OR | Left |
-| 10 | `==` `!=` `<` `<=` `>` `>=` `in` `not in` | Comparison, membership | Left |
+| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | Comparison, membership | Left |
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
 | 13 | `or` | Logical OR | Left |
@@ -28,7 +28,7 @@ Lower numbers indicate higher precedence (evaluated first).
 |---|---|---|
 | `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
-| `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
+| `*` | Multiplication | `4 * 3` -> `12` |
 | `/` | Division (always float) | `7 / 2` -> `3.5` |
 | `//` | Integer division (truncated) | `7 // 2` -> `3` |
 | `%` | Modulo | `7 % 3` -> `1` |
@@ -59,14 +59,12 @@ All return `bool`.
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
 - The `in` operator is used for membership checks on sets (`x in s`).
-- The `not in` operator is the negation of `in` (`x not in s`).
 
 ```python
 let x = 3 < 5       # true
 let y = "abc" < "abd"  # true (lexicographic)
 let s = {1, 2, 3}
 let z = 2 in s      # true
-let w = 4 not in s  # true
 ```
 
 ## Logical Operators
@@ -94,8 +92,7 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `^` | Bitwise XOR | `0b1100 ^ 0b1010` -> `0b0110` |
 | `~` | Bitwise NOT (unary) | `~0` -> `-1` |
 | `<<` | Left shift | `1 << 4` -> `16` |
-| `>>` | Arithmetic right shift | `16 >> 2` -> `4` |
-| `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
+| `>>` | Right shift | `16 >> 2` -> `4` |
 
 ```python
 let flags = 0b0001 | 0b0010   # 3
@@ -136,10 +133,8 @@ x *= 2    # x = 24
 | `%` | float or int (one is float) | -- | float |
 | `+` | str | str | str |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
-| `*` | str | int | str |
 | `in` | any | Set<T> | bool |
-| `not in` | any | Set<T> | bool |
-| `& \| ^ ~ << >> >>>` | int | int | int |
+| `& \| ^ ~ << >>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
 ## Operator Overloading
@@ -164,7 +159,7 @@ fn operator-(a: MyType) -> MyType:
 |---|---|
 | Arithmetic (binary) | `+` `-` `*` `/` `%` `**` `//` |
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
-| Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
+| Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
 | Logical (binary) | `and` `or` |
 | Unary | `-` `~` `not` |
 

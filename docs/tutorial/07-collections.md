@@ -111,30 +111,6 @@ fn first(xs: List<int>) -> int:
     return xs[0]
 ```
 
-### filter, map, sort
-
-Lists support `filter`, `map`, and `sort` operations. These return new lists without modifying the original.
-
-```python
-let xs = [1, 2, 3, 4, 5]
-
-# filter: keep elements matching a condition
-let evens = xs.filter((x: int) -> x > 3)
-print(evens)   # [4, 5]
-
-# map: transform each element
-let doubled = xs.map((x: int) -> x * 2)
-print(doubled)   # [2, 4, 6, 8, 10]
-
-# sort: sort in ascending order (default)
-let sorted = [3, 1, 2].sort()
-print(sorted)   # [1, 2, 3]
-
-# Chaining
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
-print(result)   # [20, 30, 40, 50]
-```
-
 ### Limitations
 
 - All elements must be of the same type. Mixing different types is not allowed.

@@ -110,49 +110,6 @@ for x in xs:
 # 30
 ```
 
-### filter
-
-傳回僅包含滿足述詞的元素的新串列。原始串列不會被修改。
-
-```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
-print(ys)   # [4, 5]
-```
-
-### map
-
-傳回將每個元素以給定函式轉換後的新串列。輸出元素型別可以與輸入不同。原始串列不會被修改。
-
-```python
-let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
-print(ys)   # [2, 4, 6]
-```
-
-### sort
-
-傳回排序後的新串列。預設為升序。可提供自訂比較函式。原始串列不會被修改。
-
-```python
-let xs = [3, 1, 2]
-print(xs.sort())   # [1, 2, 3]
-
-# 降序排序
-let desc = xs.sort((a: int, b: int) -> a > b)
-print(desc)   # [3, 2, 1]
-```
-
-### filter、map、sort 的鏈接
-
-這些函式傳回新串列，因此可透過 UFCS 進行鏈接。
-
-```python
-let xs = [5, 3, 1, 4, 2]
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
-print(result)   # [20, 30, 40, 50]
-```
-
 ### 限制與錯誤
 
 | 限制 | 詳細 |

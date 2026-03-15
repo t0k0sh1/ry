@@ -864,42 +864,6 @@ TEST(ParserTest, FnUnionReturn) {
     EXPECT_EQ(fn.return_type, "int | str");
 }
 
-// ===== >>> パーサーテスト =====
-
-TEST(ParserTest, LogicalRightShift) {
-    Program prog = parseStr("let x = a >>> b");
-    ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
-    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
-    EXPECT_EQ(bin.op, ">>>");
-    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "a");
-    EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "b");
-}
-
-// ===== not in パーサーテスト =====
-
-TEST(ParserTest, NotInOperator) {
-    Program prog = parseStr("let r = x not in s");
-    ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
-    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
-    EXPECT_EQ(bin.op, "not in");
-    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "x");
-    EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "s");
-}
-
-TEST(ParserTest, NotStillWorksAfterNotIn) {
-    // "not x" should still parse as UnaryExpr
-    Program prog = parseStr("let r = not x");
-    ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<UnaryExpr>>(s.value->data));
-    const auto &unary = *std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
-    EXPECT_EQ(unary.op, "not");
-}
-
 TEST(ParserTest, UnionThreeTypes) {
     Program prog = parseStr("let x: int | float | str = 42");
     const auto &s = std::get<LetStmt>(prog[0]);

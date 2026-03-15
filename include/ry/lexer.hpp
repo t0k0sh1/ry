@@ -28,7 +28,6 @@ enum class TokenKind {
     Tilde,          // ~
     LessLess,       // <<
     GreaterGreater, // >>
-    GreaterGreaterGreater, // >>>
     Colon,          // :
     Let,            // let
     Var,            // var

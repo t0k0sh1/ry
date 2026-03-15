@@ -671,39 +671,3 @@ TEST_F(CodeGenTest, UnionThreeTypes) {
         "print(x)\n";
     EXPECT_EQ(runSource(src), "3.14\n");
 }
-
-// ===== not in テスト =====
-
-TEST_F(CodeGenTest, NotInSetTrue) {
-    std::string src =
-        "let s = {1, 2, 3}\n"
-        "print(4 not in s)";
-    EXPECT_EQ(runSource(src), "true\n");
-}
-
-TEST_F(CodeGenTest, NotInSetFalse) {
-    std::string src =
-        "let s = {1, 2, 3}\n"
-        "print(2 not in s)";
-    EXPECT_EQ(runSource(src), "false\n");
-}
-
-TEST_F(CodeGenTest, NotInSetString) {
-    std::string src =
-        "let s = {\"a\", \"b\"}\n"
-        "print(\"c\" not in s)";
-    EXPECT_EQ(runSource(src), "true\n");
-}
-
-TEST_F(CodeGenTest, NotInWithInRegression) {
-    // in still works after not in was added
-    std::string src =
-        "let s = {1, 2, 3}\n"
-        "print(2 in s)";
-    EXPECT_EQ(runSource(src), "true\n");
-}
-
-TEST_F(CodeGenTest, NotExprRegression) {
-    // not x still works
-    EXPECT_EQ(runSource("let x = not true\nprint(x)"), "false\n");
-}
