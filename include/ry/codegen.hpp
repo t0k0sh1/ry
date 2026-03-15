@@ -193,6 +193,10 @@ private:
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
 
+    // Lambda call helper: invoke a lambda/closure value with given args
+    llvm::Value *emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
+                                std::vector<llvm::Value*> args, const std::string &name);
+
     // Lambda return type inference
     llvm::Type *inferExprType(const ExprNode &expr,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);

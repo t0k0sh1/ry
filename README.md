@@ -57,6 +57,10 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
+# Stream-like operations (filter, map, sort)
+let result = [5, 3, 1, 4, 2].filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+print(result)          # [20, 30, 40, 50]
+
 # Enums
 enum Color:
     Red

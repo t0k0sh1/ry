@@ -26,6 +26,9 @@
 | `has_key(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
+| `filter(list, pred)` | Returns a new list with elements matching the predicate |
+| `map(list, fn)` | Returns a new list with each element transformed |
+| `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
 
 ### [String Operations](builtins-string.md)
 
@@ -193,4 +196,50 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## filter
+
+**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+
+Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.filter((x: int) -> x > 3)
+print(ys)   # [4, 5]
+print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
+```
+
+---
+
+## map
+
+**Signature:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+
+Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.map((x: int) -> x * 2)
+print(ys)   # [2, 4, 6]
+```
+
+---
+
+## sort
+
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+
+Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [3, 1, 2]
+print(xs.sort())   # [1, 2, 3]
+
+# Descending order
+let desc = xs.sort((a: int, b: int) -> a > b)
+print(desc)   # [3, 2, 1]
 ```
