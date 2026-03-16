@@ -87,6 +87,15 @@ enum class TokenKind {
     Result,         // result
     // --- directive ---
     At,             // @
+    // --- f-string ---
+    FStringStart,   // f"...{
+    FStringMid,     // }...{
+    FStringEnd,     // }..." or f"..."
+    // --- type cast ---
+    As,             // as
+    // --- Result type ---
+    Ok,             // Ok
+    Err,            // Err
 };
 
 struct Token {
@@ -112,6 +121,7 @@ public:
         std::vector<int> indent_stack;
         std::queue<Token> pending;
         Token current;
+        int fstring_brace_depth;
     };
     State saveState() const;
     void restoreState(State s);
@@ -125,6 +135,8 @@ private:
     bool at_line_start_ = true;
     std::vector<int> indent_stack_ = {0};
     std::queue<Token> pending_;
+    int fstring_brace_depth_ = 0;
 
     Token readToken();
+    Token readFStringSegment(bool isStart);
 };

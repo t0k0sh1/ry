@@ -183,4 +183,62 @@ let v = unwrap(x)   # 42
 
 ---
 
+## F-String（文字列補間）
+
+`f"..."` を使って、文字列内に式を直接埋め込むことができます。式は `{}` 内に記述します。
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+リテラルの波括弧を出力するには `{{` と `}}` を使います。
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## 型キャスト（`as`）
+
+`as` を使って型を明示的に変換できます。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3（切り捨て）
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## Result 型
+
+`Result<T, E>` は失敗する可能性のある関数に使用します。成功時は `Ok(value)`、失敗時は `Err(error)` を返します。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+`match` を使って結果を処理します。
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)

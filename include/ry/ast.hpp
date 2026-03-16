@@ -44,6 +44,8 @@ struct EnumAccessExpr {
 
 struct OldExpr;
 struct ResultExpr {};
+struct CastExpr;
+struct InterpolatedStringExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -59,7 +61,9 @@ struct ExprNode {
                  EnumAccessExpr,
                  std::unique_ptr<LambdaExpr>,
                  std::unique_ptr<OldExpr>,
-                 ResultExpr> data;
+                 ResultExpr,
+                 std::unique_ptr<CastExpr>,
+                 std::unique_ptr<InterpolatedStringExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -192,6 +196,16 @@ struct ForStmt {
 
 struct OldExpr { ExprPtr expr; };
 
+struct CastExpr {
+    ExprPtr value;
+    std::string target_type;
+};
+
+struct InterpolatedStringExpr {
+    std::vector<std::string> parts;   // literal text segments (parts.size() == exprs.size() + 1)
+    std::vector<ExprPtr> exprs;       // interpolated expressions
+};
+
 struct FnStmt {
     std::string name;
     std::vector<FnParam> params;
@@ -228,10 +242,13 @@ struct VariablePattern { std::string name; };
 struct EnumPattern { std::string enum_name; std::string variant_name; };
 struct SomePattern { std::string binding; };
 struct NonePattern {};
+struct OkPattern { std::string binding; };
+struct ErrPattern { std::string binding; };
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
-    EnumPattern, SomePattern, NonePattern
+    EnumPattern, SomePattern, NonePattern,
+    OkPattern, ErrPattern
 >;
 
 struct MatchArm {

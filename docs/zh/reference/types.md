@@ -20,6 +20,7 @@
 | `fn(T1, T2) -> R` | ptr（函式指標） | `(x: int) -> x * 2` | 函式型別 |
 | 使用者定義型別 | LLVM StructType (named) | `type Point: ...` | 以 `type` 關鍵字定義的結構體 |
 | `enum` | i64 | `Color::Red` | 以 `enum` 關鍵字定義的列舉型別 |
+| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 用於錯誤處理的結果型別 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
 
 ## 型別標註語法
@@ -57,8 +58,90 @@ let u: int | str = 42
 | `Map<K, V>` | 泛型雜湊映射型別 |
 | `Set<T>` | 泛型集合型別 |
 | `fn(T1, ...) -> R` | 函式型別 |
+| `Result<T, E>` | 結果型別（T = Ok 型別、E = Err 型別） |
 | `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
 | 使用者定義型別名稱 | 以 `type` 或 `enum` 關鍵字宣告的型別 |
+
+## F-String（字串插值）
+
+使用 `f"..."` 語法進行字串插值。`{}` 內的表達式會被求值並轉換為字串。
+
+```python
+let name = "world"
+print(f"Hello {name}")     # Hello world
+
+let a = 1
+let b = 2
+print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
+```
+
+### 插值中支援的型別
+
+`{}` 內可使用求值結果為 `int`、`float`、`bool` 或 `str` 的任意表達式。
+
+### 跳脫序列
+
+| 序列 | 輸出 |
+|---|---|
+| `{{` | `{`（字面大括號） |
+| `}}` | `}`（字面大括號） |
+| `\n` `\t` `\\` `\"` | 與普通字串相同 |
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+## 型別轉換（`as`）
+
+使用 `as` 關鍵字進行明確的型別轉換。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3
+let z = 1 as bool        # true
+let s = 42 as str         # "42"
+let b = 255 as byte       # byte 值 255
+```
+
+### 支援的轉換
+
+| 來源 | 目標 | 行為 |
+|---|---|---|
+| `int` | `float` | `SIToFP` |
+| `float` | `int` | 截斷（`FPToSI`） |
+| `int` | `bool` | `0` → `false`、非零 → `true` |
+| `bool` | `int` | `false` → `0`、`true` → `1` |
+| `int` / `float` / `bool` | `str` | 字串表示 |
+| `int` | `byte` | 截斷（低 8 位元） |
+| `byte` | `int` | 零擴展 |
+
+不支援的轉換（例如 `str as int`）會產生編譯錯誤。字串轉數值請使用 `to_int()` / `to_float()`。
+
+## Result 型別
+
+用於可恢復錯誤處理的型別。`Result<T, E>` 的值為 `Ok(value)`（成功）或 `Err(error)`（失敗）。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+
+let r = divide(10, 2)
+match r:
+    case Ok(v):
+        print(v)      # 5
+    case Err(e):
+        print(e)
+```
+
+### 內部表示
+
+`Result<T, E>` 以 `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` 表示。Tag 0 = Ok、Tag 1 = Err。
+
+### 模式匹配
+
+使用 `match` 搭配 `Ok(binding)` 和 `Err(binding)` 模式。為確保窮舉性，兩種模式都是必需的。
 
 ## union 型別
 

@@ -723,3 +723,69 @@ TEST(LexerTest, KeywordResult) {
     ASSERT_EQ(toks.size(), 2u);
     EXPECT_EQ(toks[0].kind, TokenKind::Result);
 }
+
+// ===== f-string tokens =====
+
+TEST(LexerTest, FStringNoInterpolation) {
+    auto toks = tokenize("f\"hello\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[0].value, "hello");
+}
+
+TEST(LexerTest, FStringSingleInterpolation) {
+    auto toks = tokenize("f\"hello {name}\"");
+    ASSERT_GE(toks.size(), 4u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+    EXPECT_EQ(toks[0].value, "hello ");
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "name");
+    EXPECT_EQ(toks[2].kind, TokenKind::FStringEnd);
+}
+
+TEST(LexerTest, FStringMultipleInterpolations) {
+    auto toks = tokenize("f\"{a} + {b}\"");
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+    EXPECT_EQ(toks[0].value, "");
+    // a
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "a");
+    // " + "
+    EXPECT_EQ(toks[2].kind, TokenKind::FStringMid);
+    EXPECT_EQ(toks[2].value, " + ");
+    // b
+    EXPECT_EQ(toks[3].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[3].value, "b");
+    EXPECT_EQ(toks[4].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[4].value, "");
+}
+
+TEST(LexerTest, FStringEscapedBraces) {
+    auto toks = tokenize("f\"{{braces}}\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[0].value, "{braces}");
+}
+
+// ===== as / Ok / Err keywords =====
+
+TEST(LexerTest, KeywordAs) {
+    auto toks = tokenize("as");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::As);
+    EXPECT_EQ(toks[0].value, "as");
+}
+
+TEST(LexerTest, KeywordOk) {
+    auto toks = tokenize("Ok");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ok);
+    EXPECT_EQ(toks[0].value, "Ok");
+}
+
+TEST(LexerTest, KeywordErr) {
+    auto toks = tokenize("Err");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Err);
+    EXPECT_EQ(toks[0].value, "Err");
+}

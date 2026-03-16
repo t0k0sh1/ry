@@ -183,4 +183,62 @@ let v = unwrap(x)   # 42
 
 ---
 
+## F-String (String Interpolation)
+
+Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+Use `{{` and `}}` to include literal braces.
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## Type Casting (`as`)
+
+Convert between types explicitly with `as`.
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3 (truncated)
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## Result Type
+
+`Result<T, E>` is used for functions that may fail. Return `Ok(value)` for success and `Err(error)` for failure.
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+Use `match` to handle the result.
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
