@@ -807,20 +807,38 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
         if (!builder_.GetInsertBlock()->getTerminator()) {
+            llvm::Value *defaultRet = nullptr;
+            if (retTy->isVoidTy()) {
+                // no default value needed
+            } else if (retTy == i64Ty_) {
+                defaultRet = llvm::ConstantInt::get(i64Ty_, 0);
+            } else if (retTy == i8Ty_) {
+                defaultRet = llvm::ConstantInt::get(i8Ty_, 0);
+            } else if (retTy == f64Ty_) {
+                defaultRet = llvm::ConstantFP::get(f64Ty_, 0.0);
+            } else if (retTy == i1Ty_) {
+                defaultRet = llvm::ConstantInt::get(i1Ty_, 0);
+            } else if (retTy == ptrTy_) {
+                defaultRet = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+            } else if (llvm::isa<llvm::StructType>(retTy)) {
+                defaultRet = llvm::UndefValue::get(retTy);
+            }
+
+            // Emit ensure checks on implicit return path
+            if (defaultRet && current_postconditions_ && !current_postconditions_->empty()) {
+                if (result_alloca_)
+                    builder_.CreateStore(defaultRet, result_alloca_);
+                in_ensure_context_ = true;
+                std::string fnName = fn_->getName().str();
+                for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
+                    emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
+                in_ensure_context_ = false;
+            }
+
             if (retTy->isVoidTy())
                 builder_.CreateRetVoid();
-            else if (retTy == i64Ty_)
-                builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
-            else if (retTy == i8Ty_)
-                builder_.CreateRet(llvm::ConstantInt::get(i8Ty_, 0));
-            else if (retTy == f64Ty_)
-                builder_.CreateRet(llvm::ConstantFP::get(f64Ty_, 0.0));
-            else if (retTy == i1Ty_)
-                builder_.CreateRet(llvm::ConstantInt::get(i1Ty_, 0));
-            else if (retTy == ptrTy_)
-                builder_.CreateRet(llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)));
-            else if (llvm::isa<llvm::StructType>(retTy))
-                builder_.CreateRet(llvm::UndefValue::get(retTy));
+            else if (defaultRet)
+                builder_.CreateRet(defaultRet);
         }
 
         // Reset contract context
@@ -844,7 +862,9 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
     condVal = toBool(condVal);
 
     std::string errName = ".contract_err_" + std::to_string(contract_err_counter_++);
-    std::string msg = "Contract violation: " + kind + " failed in " + fn_name + "()\n";
+    std::string suffix = (kind == "invariant") ? "" : "()";
+    std::string preposition = (kind == "invariant") ? " for " : " in ";
+    std::string msg = "Contract violation: " + kind + " failed" + preposition + fn_name + suffix + "\n";
 
     llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, kind + ".fail", fn_);
     llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, kind + ".ok", fn_);
