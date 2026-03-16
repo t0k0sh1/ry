@@ -25,12 +25,16 @@ llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     llvm::AllocaInst *alloca = findVar(e.name);
     if (alloca) {
+        if (deprecated_variables_.count(e.name))
+            emitDeprecationWarning(e.name);
         llvm::Type *ty = alloca->getAllocatedType();
         return builder_.CreateLoad(ty, alloca, e.name);
     }
     // Try named function reference
     auto fit = functions_.find(e.name);
     if (fit != functions_.end() && fit->second.size() == 1) {
+        if (deprecated_functions_.count(e.name))
+            emitDeprecationWarning(e.name);
         llvm::Function *func = fit->second[0].func;
         FnTypeInfo info;
         info.paramTypes = fit->second[0].paramTypes;
@@ -391,6 +395,13 @@ void CodeGen::emitStmt(TypeStmt &s) {
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
     struct_types_[s.name] = {structTy, s.fields, std::move(s.invariants)};
+
+    if (hasDirective(s.directives, "deprecated"))
+        deprecated_types_.insert(s.name);
+    for (auto &f : s.fields) {
+        if (hasDirective(f.directives, "deprecated"))
+            deprecated_fields_.insert(s.name + "." + f.name);
+    }
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
@@ -442,8 +453,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
-        if (info.fields[i].name == e->field)
+        if (info.fields[i].name == e->field) {
+            std::string qualifiedField = typeName + "." + e->field;
+            if (deprecated_fields_.count(qualifiedField))
+                emitDeprecationWarning(qualifiedField);
             return builder_.CreateExtractValue(obj, i, e->field);
+        }
     }
 
     throw std::runtime_error("type '" + typeName + "' has no field '" + e->field + "'");

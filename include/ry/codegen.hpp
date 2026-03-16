@@ -16,6 +16,7 @@ class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false);
     llvm::orc::ThreadSafeModule compile(Program &prog);
+    const std::vector<std::string>& getWarnings() const { return warnings_; }
 
 private:
     std::unique_ptr<llvm::LLVMContext> ctx_;
@@ -85,6 +86,16 @@ private:
     bool in_ensure_context_ = false;
     int contract_err_counter_ = 0;
     std::unordered_map<OldExpr*, llvm::AllocaInst*> old_value_map_;
+
+    // Directive support
+    std::unordered_set<std::string> deprecated_functions_;
+    std::unordered_set<std::string> deprecated_types_;
+    std::unordered_set<std::string> deprecated_variables_;
+    std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
+    std::vector<std::string> warnings_;
+
+    bool hasDirective(const std::vector<Directive> &directives, const std::string &name);
+    void emitDeprecationWarning(const std::string &name);
 
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;

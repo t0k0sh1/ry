@@ -221,6 +221,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
 }
 
 llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args) {
+    if (deprecated_functions_.count(callee))
+        emitDeprecationWarning(callee);
     std::vector<llvm::Value*> argVals;
     llvm::Function *fn = resolveOverload(callee, args, argVals);
     if (fn->getReturnType()->isVoidTy())

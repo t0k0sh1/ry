@@ -1636,8 +1636,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     }
 
     auto sit = struct_types_.find(e->callee);
-    if (sit != struct_types_.end())
+    if (sit != struct_types_.end()) {
+        if (deprecated_types_.count(e->callee))
+            emitDeprecationWarning(e->callee);
         return emitStructConstructor(sit->second, e->callee, e->args);
+    }
 
     // Try indirect call via variable (function pointer / lambda)
     if (llvm::AllocaInst *varPtr = findVar(e->callee)) {

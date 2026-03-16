@@ -3,6 +3,18 @@
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+// ===== Directive helpers =====
+
+bool CodeGen::hasDirective(const std::vector<Directive> &directives, const std::string &name) {
+    for (auto &d : directives)
+        if (d.name == name) return true;
+    return false;
+}
+
+void CodeGen::emitDeprecationWarning(const std::string &name) {
+    warnings_.push_back("warning: '" + name + "' is deprecated");
+}
+
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
@@ -213,8 +225,16 @@ void CodeGen::emitVarDecl(const std::string &name,
         immutable_scope_stack_.back().insert(name);
 }
 
-void CodeGen::emitStmt(LetStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, true); }
-void CodeGen::emitStmt(VarStmt &s)   { emitVarDecl(s.name, s.type_annotation, *s.value, false); }
+void CodeGen::emitStmt(LetStmt &s) {
+    emitVarDecl(s.name, s.type_annotation, *s.value, true);
+    if (hasDirective(s.directives, "deprecated"))
+        deprecated_variables_.insert(s.name);
+}
+void CodeGen::emitStmt(VarStmt &s) {
+    emitVarDecl(s.name, s.type_annotation, *s.value, false);
+    if (hasDirective(s.directives, "deprecated"))
+        deprecated_variables_.insert(s.name);
+}
 
 void CodeGen::emitStmt(AssignStmt &s) {
     llvm::AllocaInst *ptr = findVar(s.name);
@@ -728,6 +748,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type);
     overloads.push_back({func, paramTypes, paramTypeNames});
+
+    if (hasDirective(s->directives, "deprecated"))
+        deprecated_functions_.insert(s->name);
 
     {
         FnScope guard(*this);

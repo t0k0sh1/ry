@@ -18,6 +18,7 @@ private:
     [[noreturn]] void parseError(int line, const std::string &msg);
     [[noreturn]] void parseError(const std::string &msg);
 
+    std::vector<Directive> parseDirectives();
     void skipNewlines();
     StmtNode parseImportStatement();
     StmtNode parseStatement();

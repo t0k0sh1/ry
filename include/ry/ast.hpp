@@ -7,6 +7,19 @@
 #include <variant>
 #include <vector>
 
+// ===== Directive =====
+
+struct DirectiveParam {
+    std::string key;
+    std::string value;
+};
+
+struct Directive {
+    std::string name;
+    std::vector<DirectiveParam> params;
+    int line;
+};
+
 struct NumberExpr   { int64_t value; };
 struct FloatExpr    { double value; };
 struct BoolExpr     { bool value; };
@@ -92,8 +105,8 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // immutable
-struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // mutable
+struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; };  // immutable
+struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; };  // mutable
 struct AssignStmt { std::string name; ExprPtr value; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
 
@@ -112,9 +125,9 @@ struct IndexAssignStmt {
     ExprPtr value;
 };
 
-struct FieldDef { std::string name; std::string type; };
+struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
 
-struct TypeStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; };
+struct TypeStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; };
 
 struct BreakStmt {};
 struct ContinueStmt {};
@@ -187,6 +200,7 @@ struct FnStmt {
     bool is_operator = false;
     std::vector<ExprPtr> preconditions;
     std::vector<ExprPtr> postconditions;
+    std::vector<Directive> directives;
 };
 
 struct LambdaExpr {
