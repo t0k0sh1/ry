@@ -85,6 +85,8 @@ enum class TokenKind {
     Invariant,      // invariant
     Old,            // old
     Result,         // result
+    // --- directive ---
+    At,             // @
 };
 
 struct Token {

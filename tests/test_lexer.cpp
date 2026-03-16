@@ -177,8 +177,14 @@ TEST(LexerTest, WhitespaceOnly) {
 }
 
 TEST(LexerTest, UnknownCharIsError) {
-    auto toks = tokenize("@");
+    auto toks = tokenize("$");
     EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "$");
+}
+
+TEST(LexerTest, AtToken) {
+    auto toks = tokenize("@");
+    EXPECT_EQ(toks[0].kind, TokenKind::At);
     EXPECT_EQ(toks[0].value, "@");
 }
 

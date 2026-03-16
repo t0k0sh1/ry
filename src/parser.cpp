@@ -86,6 +86,67 @@ void Parser::skipNewlines() {
     while (lex_.peek().kind == TokenKind::Newline) lex_.next();
 }
 
+// ===== Directive parsing =====
+
+static const std::unordered_set<std::string> known_directives = {"deprecated"};
+
+std::vector<Directive> Parser::parseDirectives() {
+    std::vector<Directive> directives;
+    while (lex_.peek().kind == TokenKind::At) {
+        Token atTok = lex_.next(); // consume '@'
+        Token nameTok = lex_.peek();
+        if (nameTok.kind != TokenKind::Ident)
+            parseError(nameTok.line, "expected directive name after '@'");
+        lex_.next(); // consume name
+
+        if (known_directives.find(nameTok.value) == known_directives.end())
+            parseError(atTok.line, "unknown directive '@" + nameTok.value + "'");
+
+        Directive d;
+        d.name = nameTok.value;
+        d.line = atTok.line;
+
+        // Optional parameters: @name(key=value, ...)
+        if (lex_.peek().kind == TokenKind::LParen) {
+            lex_.next(); // consume '('
+            while (lex_.peek().kind != TokenKind::RParen) {
+                Token keyTok = lex_.peek();
+                if (keyTok.kind != TokenKind::Ident)
+                    parseError(keyTok.line, "expected parameter name in directive");
+                lex_.next(); // consume key
+
+                if (lex_.peek().kind != TokenKind::Equals)
+                    parseError("expected '=' after directive parameter name");
+                lex_.next(); // consume '='
+
+                Token valTok = lex_.peek();
+                if (valTok.kind != TokenKind::Ident &&
+                    valTok.kind != TokenKind::Number &&
+                    valTok.kind != TokenKind::Float &&
+                    valTok.kind != TokenKind::String &&
+                    valTok.kind != TokenKind::True &&
+                    valTok.kind != TokenKind::False)
+                    parseError(valTok.line, "expected value after '=' in directive parameter");
+                lex_.next(); // consume value
+
+                d.params.push_back({keyTok.value, valTok.value});
+
+                if (lex_.peek().kind == TokenKind::Comma)
+                    lex_.next(); // consume ','
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' after directive parameters");
+            lex_.next(); // consume ')'
+        }
+
+        directives.push_back(std::move(d));
+
+        // Consume newlines between directives
+        skipNewlines();
+    }
+    return directives;
+}
+
 StmtNode Parser::parseImportStatement() {
     Token fromTok = lex_.next(); // consume 'from'
 
@@ -124,10 +185,41 @@ StmtNode Parser::parseImportStatement() {
 }
 
 StmtNode Parser::parseStatement() {
+    // Parse directives before the statement
+    auto directives = parseDirectives();
+
     Token first = lex_.peek();
 
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
+
+    // Directive-accepting statements: fn, type, let/var
+    if (first.kind == TokenKind::Type) {
+        auto stmt = parseTypeStatement();
+        auto &ts = std::get<TypeStmt>(stmt);
+        ts.directives = std::move(directives);
+        return stmt;
+    }
+
+    if (first.kind == TokenKind::Fn) {
+        auto stmt = parseFnStatement();
+        auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
+        fs->directives = std::move(directives);
+        return stmt;
+    }
+
+    if (first.kind == TokenKind::Let || first.kind == TokenKind::Var) {
+        auto stmt = parseLetOrVar();
+        if (auto *ls = std::get_if<LetStmt>(&stmt))
+            ls->directives = std::move(directives);
+        else if (auto *vs = std::get_if<VarStmt>(&stmt))
+            vs->directives = std::move(directives);
+        return stmt;
+    }
+
+    // All remaining statements do not accept directives
+    if (!directives.empty())
+        parseError(first.line, "directives are not supported on this statement");
 
     if (first.kind == TokenKind::Describe)
         return parseDescribeStatement();
@@ -135,14 +227,8 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Expect)
         return parseExpectStatement();
 
-    if (first.kind == TokenKind::Type)
-        return parseTypeStatement();
-
     if (first.kind == TokenKind::Enum)
         return parseEnumStatement();
-
-    if (first.kind == TokenKind::Fn)
-        return parseFnStatement();
 
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
@@ -168,10 +254,6 @@ StmtNode Parser::parseStatement() {
         lex_.next();
         return ContinueStmt{};
     }
-
-    // A4: let / var declaration
-    if (first.kind == TokenKind::Let || first.kind == TokenKind::Var)
-        return parseLetOrVar();
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
@@ -887,6 +969,8 @@ StmtNode Parser::parseTypeStatement() {
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof &&
            lex_.peek().kind != TokenKind::Invariant) {
+        auto fieldDirectives = parseDirectives();
+
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
             parseError(fieldName.line, "expected field name");
@@ -900,7 +984,7 @@ StmtNode Parser::parseTypeStatement() {
 
         if (seenFields.count(fieldName.value))
             parseError(fieldName.line, "duplicate field name '" + fieldName.value + "'");
-        ts.fields.push_back({fieldName.value, fieldType});
+        ts.fields.push_back({fieldName.value, fieldType, std::move(fieldDirectives)});
         seenFields.insert(fieldName.value);
 
         if (lex_.peek().kind == TokenKind::Newline)

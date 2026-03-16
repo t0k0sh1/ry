@@ -10,6 +10,7 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 - **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
 - **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), with operator overloading support
 - **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (struct invariants), `old()`, `result`
+- **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **Modules** — Function imports via `from ... import ...`
