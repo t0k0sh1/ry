@@ -1273,3 +1273,39 @@ TEST_F(CodeGenTest, SortThenMap) {
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
 }
+
+TEST_F(CodeGenTest, SortAlreadySorted) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
+}
+
+TEST_F(CodeGenTest, SortReverseSorted) {
+    std::string src =
+        "let xs = [5, 4, 3, 2, 1]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
+}
+
+TEST_F(CodeGenTest, SortDuplicates) {
+    std::string src =
+        "let xs = [3, 1, 2, 1, 3]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 1, 2, 3, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortEmpty) {
+    std::string src =
+        "let xs: List<int> = [1]\n"
+        "let ys = xs.filter((x: int) -> x > 10)\n"
+        "print(sort(ys))";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
+TEST_F(CodeGenTest, SortLargerList) {
+    std::string src =
+        "let xs = [15, 3, 9, 1, 14, 7, 20, 5, 18, 2, 12, 8, 16, 4, 11, 6, 19, 10, 17, 13]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]\n");
+}

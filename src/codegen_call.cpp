@@ -1542,95 +1542,264 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sort_data_field");
         builder_.CreateStore(newData, newDataField);
 
-        // Insertion sort: outer loop i = 1..len, inner loop j = i downto 1
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "sort_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
-        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "sort_j");
-
-        llvm::BasicBlock *outerCondBB = llvm::BasicBlock::Create(*ctx_, "sort.outer.cond", fn_);
-        llvm::BasicBlock *innerInitBB = llvm::BasicBlock::Create(*ctx_, "sort.inner.init", fn_);
-        llvm::BasicBlock *innerCondBB = llvm::BasicBlock::Create(*ctx_, "sort.inner.cond", fn_);
-        llvm::BasicBlock *innerBodyBB = llvm::BasicBlock::Create(*ctx_, "sort.inner.body", fn_);
-        llvm::BasicBlock *innerEndBB = llvm::BasicBlock::Create(*ctx_, "sort.inner.end", fn_);
-        llvm::BasicBlock *outerEndBB = llvm::BasicBlock::Create(*ctx_, "sort.outer.end", fn_);
-
-        builder_.CreateBr(outerCondBB);
-
-        // Outer condition: i < len
-        builder_.SetInsertPoint(outerCondBB);
-        llvm::Value *iOuter = builder_.CreateLoad(i64Ty_, iVar, "sort_i_val");
-        llvm::Value *outerCond = builder_.CreateICmpSLT(iOuter, srcLen, "sort_outer_cond");
-        builder_.CreateCondBr(outerCond, innerInitBB, outerEndBB);
-
-        // Inner init: j = i
-        builder_.SetInsertPoint(innerInitBB);
-        llvm::Value *iForJ = builder_.CreateLoad(i64Ty_, iVar, "sort_i_for_j");
-        builder_.CreateStore(iForJ, jVar);
-        builder_.CreateBr(innerCondBB);
-
-        // Inner condition: j > 0 && should_swap(data[j-1], data[j])
-        builder_.SetInsertPoint(innerCondBB);
-        llvm::Value *jVal = builder_.CreateLoad(i64Ty_, jVar, "sort_j_val");
-        llvm::Value *jGtZero = builder_.CreateICmpSGT(jVal, llvm::ConstantInt::get(i64Ty_, 0), "j_gt_zero");
-
-        llvm::BasicBlock *checkSwapBB = llvm::BasicBlock::Create(*ctx_, "sort.check_swap", fn_);
-        builder_.CreateCondBr(jGtZero, checkSwapBB, innerEndBB);
-
-        builder_.SetInsertPoint(checkSwapBB);
-        llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "sort_j_cur");
-        llvm::Value *jm1 = builder_.CreateSub(jCur, llvm::ConstantInt::get(i64Ty_, 1), "j_minus_1");
-        llvm::Value *ptrA = builder_.CreateGEP(elemTy, newData, {jm1}, "sort_ptr_a");
-        llvm::Value *ptrB = builder_.CreateGEP(elemTy, newData, {jCur}, "sort_ptr_b");
-        llvm::Value *valA = builder_.CreateLoad(elemTy, ptrA, "sort_val_a");
-        llvm::Value *valB = builder_.CreateLoad(elemTy, ptrB, "sort_val_b");
-
-        llvm::Value *shouldSwap;
-        if (hasComparator) {
-            // Custom comparator: swap if !comparator(valA, valB)
-            // i.e., comparator returns true if a should come before b
-            llvm::Value *compResult = emitLambdaCall(compVal, compInfo, {valA, valB}, "sort_comp");
-            shouldSwap = builder_.CreateNot(compResult, "sort_should_swap");
-        } else {
-            // Default ascending: swap if valA > valB
-            if (elemTy == i64Ty_) {
-                shouldSwap = builder_.CreateICmpSGT(valA, valB, "sort_gt");
+        // Iterative Quick Sort with Hoare partition and median-of-three pivot
+        // Helper lambda: emit less-than comparison IR (reused in 3 places)
+        auto emitLessThan = [&](llvm::Value *a, llvm::Value *b) -> llvm::Value* {
+            if (hasComparator) {
+                return emitLambdaCall(compVal, compInfo, {a, b}, "sort_comp");
+            } else if (elemTy == i64Ty_) {
+                return builder_.CreateICmpSLT(a, b, "sort_lt");
             } else if (elemTy == f64Ty_) {
-                shouldSwap = builder_.CreateFCmpOGT(valA, valB, "sort_gt");
+                return builder_.CreateFCmpOLT(a, b, "sort_lt");
             } else if (elemTy == ptrTy_) {
-                // String comparison: strcmp > 0
                 auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
                 auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
-                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
-                shouldSwap = builder_.CreateICmpSGT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_gt");
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {a, b}, "sort_strcmp");
+                return builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
             } else {
                 throw std::runtime_error("sort() does not support this element type");
             }
-        }
-        builder_.CreateCondBr(shouldSwap, innerBodyBB, innerEndBB);
+        };
 
-        // Inner body: swap data[j-1] and data[j], decrement j
-        builder_.SetInsertPoint(innerBodyBB);
-        // Re-read j for the swap (same value, but for SSA correctness)
-        llvm::Value *jSwap = builder_.CreateLoad(i64Ty_, jVar, "sort_j_swap");
-        llvm::Value *jm1Swap = builder_.CreateSub(jSwap, llvm::ConstantInt::get(i64Ty_, 1), "jm1_swap");
-        llvm::Value *swapPtrA = builder_.CreateGEP(elemTy, newData, {jm1Swap}, "swap_ptr_a");
-        llvm::Value *swapPtrB = builder_.CreateGEP(elemTy, newData, {jSwap}, "swap_ptr_b");
-        llvm::Value *swapValA = builder_.CreateLoad(elemTy, swapPtrA, "swap_val_a");
-        llvm::Value *swapValB = builder_.CreateLoad(elemTy, swapPtrB, "swap_val_b");
-        builder_.CreateStore(swapValB, swapPtrA);
-        builder_.CreateStore(swapValA, swapPtrB);
-        llvm::Value *jDec = builder_.CreateSub(jSwap, llvm::ConstantInt::get(i64Ty_, 1), "j_dec");
-        builder_.CreateStore(jDec, jVar);
-        builder_.CreateBr(innerCondBB);
+        auto emitSwap = [&](llvm::Value *idxA, llvm::Value *idxB) {
+            llvm::Value *pA = builder_.CreateGEP(elemTy, newData, {idxA}, "swap_ptr_a");
+            llvm::Value *pB = builder_.CreateGEP(elemTy, newData, {idxB}, "swap_ptr_b");
+            llvm::Value *vA = builder_.CreateLoad(elemTy, pA, "swap_val_a");
+            llvm::Value *vB = builder_.CreateLoad(elemTy, pB, "swap_val_b");
+            builder_.CreateStore(vB, pA);
+            builder_.CreateStore(vA, pB);
+        };
 
-        // Inner end: increment i
-        builder_.SetInsertPoint(innerEndBB);
-        llvm::Value *iInc = builder_.CreateLoad(i64Ty_, iVar, "sort_i_inc");
-        llvm::Value *iNext = builder_.CreateAdd(iInc, llvm::ConstantInt::get(i64Ty_, 1), "sort_i_next");
+        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *two = llvm::ConstantInt::get(i64Ty_, 2);
+
+        // BasicBlocks
+        llvm::BasicBlock *qsCheckLenBB = llvm::BasicBlock::Create(*ctx_, "qs.check.len", fn_);
+        llvm::BasicBlock *qsInitBB = llvm::BasicBlock::Create(*ctx_, "qs.init", fn_);
+        llvm::BasicBlock *qsLoopCondBB = llvm::BasicBlock::Create(*ctx_, "qs.loop.cond", fn_);
+        llvm::BasicBlock *qsPopBB = llvm::BasicBlock::Create(*ctx_, "qs.pop", fn_);
+        llvm::BasicBlock *qsCheckTrivialBB = llvm::BasicBlock::Create(*ctx_, "qs.check.trivial", fn_);
+        llvm::BasicBlock *qsPivotBB = llvm::BasicBlock::Create(*ctx_, "qs.pivot", fn_);
+        llvm::BasicBlock *qsPartInitBB = llvm::BasicBlock::Create(*ctx_, "qs.part.init", fn_);
+        llvm::BasicBlock *qsAdvIBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.i", fn_);
+        llvm::BasicBlock *qsAdvJBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.j", fn_);
+        llvm::BasicBlock *qsPartCheckBB = llvm::BasicBlock::Create(*ctx_, "qs.part.check", fn_);
+        llvm::BasicBlock *qsPartSwapBB = llvm::BasicBlock::Create(*ctx_, "qs.part.swap", fn_);
+        llvm::BasicBlock *qsPushBB = llvm::BasicBlock::Create(*ctx_, "qs.push", fn_);
+        llvm::BasicBlock *qsEndBB = llvm::BasicBlock::Create(*ctx_, "qs.end", fn_);
+        llvm::BasicBlock *qsDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.done", fn_);
+
+        builder_.CreateBr(qsCheckLenBB);
+
+        // qs.check.len: if len <= 1, skip sort
+        builder_.SetInsertPoint(qsCheckLenBB);
+        llvm::Value *lenLE1 = builder_.CreateICmpSLE(srcLen, one, "len_le_1");
+        builder_.CreateCondBr(lenLE1, qsDoneBB, qsInitBB);
+
+        // qs.init: allocate explicit stack, push (0, len-1)
+        builder_.SetInsertPoint(qsInitBB);
+        // Stack: array of i64 pairs, max 128 levels deep (push-smaller-first bounds depth to O(log n))
+        llvm::Value *stackSize = llvm::ConstantInt::get(i64Ty_, 128 * 2 * 8);
+        llvm::Value *stack = builder_.CreateCall(mallocFn, {stackSize}, "qs_stack");
+        llvm::AllocaInst *stackTopVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_stack_top");
+        builder_.CreateStore(zero, stackTopVar);
+        // Alloca for partition indices (hoisted out of loop to avoid stack growth)
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_i");
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_j");
+        // Push initial range (0, len-1)
+        llvm::Value *lenM1 = builder_.CreateSub(srcLen, one, "len_m1");
+        // stack[0] = 0 (lo)
+        llvm::Value *stackSlot0 = builder_.CreateGEP(i64Ty_, stack, {zero}, "stack_slot0");
+        builder_.CreateStore(zero, stackSlot0);
+        // stack[1] = len-1 (hi)
+        llvm::Value *stackSlot1 = builder_.CreateGEP(i64Ty_, stack, {one}, "stack_slot1");
+        builder_.CreateStore(lenM1, stackSlot1);
+        builder_.CreateStore(two, stackTopVar); // stackTop = 2
+        builder_.CreateBr(qsLoopCondBB);
+
+        // qs.loop.cond: while stackTop > 0
+        builder_.SetInsertPoint(qsLoopCondBB);
+        llvm::Value *stackTop = builder_.CreateLoad(i64Ty_, stackTopVar, "stack_top");
+        llvm::Value *stackNotEmpty = builder_.CreateICmpSGT(stackTop, zero, "stack_not_empty");
+        builder_.CreateCondBr(stackNotEmpty, qsPopBB, qsEndBB);
+
+        // qs.pop: pop (lo, hi) from stack
+        builder_.SetInsertPoint(qsPopBB);
+        llvm::Value *st1 = builder_.CreateLoad(i64Ty_, stackTopVar, "st1");
+        llvm::Value *hiIdx = builder_.CreateSub(st1, one, "hi_idx");
+        llvm::Value *loIdx = builder_.CreateSub(st1, two, "lo_idx");
+        llvm::Value *loSlot = builder_.CreateGEP(i64Ty_, stack, {loIdx}, "lo_slot");
+        llvm::Value *hiSlot = builder_.CreateGEP(i64Ty_, stack, {hiIdx}, "hi_slot");
+        llvm::Value *lo = builder_.CreateLoad(i64Ty_, loSlot, "lo");
+        llvm::Value *hi = builder_.CreateLoad(i64Ty_, hiSlot, "hi");
+        llvm::Value *newST = builder_.CreateSub(st1, two, "new_st");
+        builder_.CreateStore(newST, stackTopVar);
+        builder_.CreateBr(qsCheckTrivialBB);
+
+        // qs.check.trivial: if lo >= hi, skip
+        builder_.SetInsertPoint(qsCheckTrivialBB);
+        llvm::Value *loGeHi = builder_.CreateICmpSGE(lo, hi, "lo_ge_hi");
+        builder_.CreateCondBr(loGeHi, qsLoopCondBB, qsPivotBB);
+
+        // qs.pivot: median-of-three pivot selection
+        builder_.SetInsertPoint(qsPivotBB);
+        llvm::Value *mid = builder_.CreateAdd(lo, builder_.CreateSDiv(builder_.CreateSub(hi, lo), two), "mid");
+        // Load arr[lo], arr[mid], arr[hi]
+        llvm::Value *ptrLo = builder_.CreateGEP(elemTy, newData, {lo}, "ptr_lo");
+        llvm::Value *ptrMid = builder_.CreateGEP(elemTy, newData, {mid}, "ptr_mid");
+        llvm::Value *ptrHi = builder_.CreateGEP(elemTy, newData, {hi}, "ptr_hi");
+        llvm::Value *valLo = builder_.CreateLoad(elemTy, ptrLo, "val_lo");
+        llvm::Value *valMid = builder_.CreateLoad(elemTy, ptrMid, "val_mid");
+        llvm::Value *valHi = builder_.CreateLoad(elemTy, ptrHi, "val_hi");
+        // Sort the three: if arr[lo] > arr[mid], swap
+        llvm::BasicBlock *qsMot1BB = llvm::BasicBlock::Create(*ctx_, "qs.mot1", fn_);
+        llvm::BasicBlock *qsMot2BB = llvm::BasicBlock::Create(*ctx_, "qs.mot2", fn_);
+        llvm::BasicBlock *qsMot3BB = llvm::BasicBlock::Create(*ctx_, "qs.mot3", fn_);
+        llvm::BasicBlock *qsMotDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.mot.done", fn_);
+        llvm::Value *loGtMid = emitLessThan(valMid, valLo); // mid < lo => lo > mid
+        builder_.CreateCondBr(loGtMid, qsMot1BB, qsMot2BB);
+
+        builder_.SetInsertPoint(qsMot1BB);
+        emitSwap(lo, mid);
+        builder_.CreateBr(qsMot2BB);
+
+        // if arr[lo] > arr[hi], swap
+        builder_.SetInsertPoint(qsMot2BB);
+        llvm::Value *valLo2 = builder_.CreateLoad(elemTy, ptrLo, "val_lo2");
+        llvm::Value *valHi2 = builder_.CreateLoad(elemTy, ptrHi, "val_hi2");
+        llvm::Value *loGtHi = emitLessThan(valHi2, valLo2);
+        builder_.CreateCondBr(loGtHi, qsMot3BB, qsMotDoneBB);
+
+        builder_.SetInsertPoint(qsMot3BB);
+        emitSwap(lo, hi);
+        builder_.CreateBr(qsMotDoneBB);
+
+        // if arr[mid] > arr[hi], swap
+        builder_.SetInsertPoint(qsMotDoneBB);
+        llvm::BasicBlock *qsMot4BB = llvm::BasicBlock::Create(*ctx_, "qs.mot4", fn_);
+        llvm::BasicBlock *qsMot5BB = llvm::BasicBlock::Create(*ctx_, "qs.mot5", fn_);
+        llvm::Value *valMid3 = builder_.CreateLoad(elemTy, ptrMid, "val_mid3");
+        llvm::Value *valHi3 = builder_.CreateLoad(elemTy, ptrHi, "val_hi3");
+        llvm::Value *midGtHi = emitLessThan(valHi3, valMid3);
+        builder_.CreateCondBr(midGtHi, qsMot4BB, qsMot5BB);
+
+        builder_.SetInsertPoint(qsMot4BB);
+        emitSwap(mid, hi);
+        builder_.CreateBr(qsMot5BB);
+
+        // Pivot = arr[mid], swap mid to lo+1 position for Hoare partition
+        builder_.SetInsertPoint(qsMot5BB);
+        // Use arr[mid] as pivot value
+        llvm::Value *pivotVal = builder_.CreateLoad(elemTy, ptrMid, "pivot_val");
+        builder_.CreateBr(qsPartInitBB);
+
+        // qs.part.init: i = lo - 1, j = hi + 1
+        builder_.SetInsertPoint(qsPartInitBB);
+        builder_.CreateStore(builder_.CreateSub(lo, one, "lo_m1"), iVar);
+        builder_.CreateStore(builder_.CreateAdd(hi, one, "hi_p1"), jVar);
+        builder_.CreateBr(qsAdvIBB);
+
+        // qs.adv.i: do { i++ } while arr[i] < pivot
+        builder_.SetInsertPoint(qsAdvIBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "i_next");
         builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(outerCondBB);
+        llvm::Value *ptrI = builder_.CreateGEP(elemTy, newData, {iNext}, "ptr_i");
+        llvm::Value *valI = builder_.CreateLoad(elemTy, ptrI, "val_i");
+        llvm::Value *iLtPivot = emitLessThan(valI, pivotVal);
+        builder_.CreateCondBr(iLtPivot, qsAdvIBB, qsAdvJBB);
 
-        builder_.SetInsertPoint(outerEndBB);
+        // qs.adv.j: do { j-- } while arr[j] > pivot (i.e., pivot < arr[j])
+        builder_.SetInsertPoint(qsAdvJBB);
+        llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "j_cur");
+        llvm::Value *jNext = builder_.CreateSub(jCur, one, "j_next");
+        builder_.CreateStore(jNext, jVar);
+        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, newData, {jNext}, "ptr_j");
+        llvm::Value *valJ = builder_.CreateLoad(elemTy, ptrJ, "val_j");
+        llvm::Value *pivotLtJ = emitLessThan(pivotVal, valJ);
+        builder_.CreateCondBr(pivotLtJ, qsAdvJBB, qsPartCheckBB);
+
+        // qs.part.check: if i >= j, partition done
+        builder_.SetInsertPoint(qsPartCheckBB);
+        llvm::Value *iFinal = builder_.CreateLoad(i64Ty_, iVar, "i_final");
+        llvm::Value *jFinal = builder_.CreateLoad(i64Ty_, jVar, "j_final");
+        llvm::Value *iGeJ = builder_.CreateICmpSGE(iFinal, jFinal, "i_ge_j");
+        builder_.CreateCondBr(iGeJ, qsPushBB, qsPartSwapBB);
+
+        // qs.part.swap: swap arr[i] and arr[j], continue partitioning
+        builder_.SetInsertPoint(qsPartSwapBB);
+        llvm::Value *iSwap = builder_.CreateLoad(i64Ty_, iVar, "i_swap");
+        llvm::Value *jSwap = builder_.CreateLoad(i64Ty_, jVar, "j_swap");
+        emitSwap(iSwap, jSwap);
+        builder_.CreateBr(qsAdvIBB);
+
+        // qs.push: push larger sub-range first (bounds stack depth to O(log n))
+        builder_.SetInsertPoint(qsPushBB);
+        llvm::Value *partJ = builder_.CreateLoad(i64Ty_, jVar, "part_j");
+        llvm::Value *partJp1 = builder_.CreateAdd(partJ, one, "part_j_p1");
+        // Compute sizes: leftSize = partJ - lo, rightSize = hi - partJp1
+        llvm::Value *leftSize = builder_.CreateSub(partJ, lo, "left_size");
+        llvm::Value *rightSize = builder_.CreateSub(hi, partJp1, "right_size");
+        // Push larger sub-range first (processed last), smaller second (processed next)
+        llvm::BasicBlock *qsPushLeftFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.left_first", fn_);
+        llvm::BasicBlock *qsPushRightFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.right_first", fn_);
+        llvm::BasicBlock *qsPushDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.push.done", fn_);
+        llvm::Value *leftGtRight = builder_.CreateICmpSGT(leftSize, rightSize, "left_gt_right");
+        builder_.CreateCondBr(leftGtRight, qsPushLeftFirstBB, qsPushRightFirstBB);
+
+        // Left is larger: push (lo, partJ) first, then (partJp1, hi)
+        builder_.SetInsertPoint(qsPushLeftFirstBB);
+        {
+            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_lf");
+            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_lf");
+            builder_.CreateStore(lo, s0);
+            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_lf");
+            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_lf");
+            builder_.CreateStore(partJ, s1);
+            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_lf");
+            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_lf");
+            builder_.CreateStore(partJp1, s2);
+            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_lf");
+            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_lf");
+            builder_.CreateStore(hi, s3);
+            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_lf");
+            builder_.CreateStore(st4, stackTopVar);
+        }
+        builder_.CreateBr(qsPushDoneBB);
+
+        // Right is larger: push (partJp1, hi) first, then (lo, partJ)
+        builder_.SetInsertPoint(qsPushRightFirstBB);
+        {
+            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_rf");
+            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_rf");
+            builder_.CreateStore(partJp1, s0);
+            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_rf");
+            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_rf");
+            builder_.CreateStore(hi, s1);
+            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_rf");
+            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_rf");
+            builder_.CreateStore(lo, s2);
+            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_rf");
+            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_rf");
+            builder_.CreateStore(partJ, s3);
+            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_rf");
+            builder_.CreateStore(st4, stackTopVar);
+        }
+        builder_.CreateBr(qsPushDoneBB);
+
+        builder_.SetInsertPoint(qsPushDoneBB);
+        builder_.CreateBr(qsLoopCondBB);
+
+        // qs.end: free stack
+        builder_.SetInsertPoint(qsEndBB);
+        llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+        builder_.CreateCall(freeFn, {stack});
+        builder_.CreateBr(qsDoneBB);
+
+        // qs.done: return sorted list
+        builder_.SetInsertPoint(qsDoneBB);
         list_element_types_[newHeader] = elemTy;
         return newHeader;
     }
