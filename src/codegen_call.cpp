@@ -124,11 +124,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         uint64_t tag = (e->callee == "Ok") ? 0 : 1;
         std::string prefix = (e->callee == "Ok") ? "ok" : "err";
 
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t innerSize = dl.getTypeAllocSize(inner->getType());
-        if (innerSize < 8) innerSize = 8;
-        auto *dataTy = llvm::ArrayType::get(i8Ty_, innerSize);
-        auto *resultTy = llvm::StructType::get(*ctx_, {i64Ty_, dataTy});
+        // Try to use the enclosing function's return type for correct Result sizing
+        llvm::StructType *resultTy = nullptr;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isResultType(retTy))
+                resultTy = llvm::cast<llvm::StructType>(retTy);
+        }
+        if (!resultTy) {
+            // Fallback: size from inner value (works when T and E have same size)
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t innerSize = dl.getTypeAllocSize(inner->getType());
+            if (innerSize < 8) innerSize = 8;
+            auto *dataTy = llvm::ArrayType::get(i8Ty_, innerSize);
+            resultTy = llvm::StructType::get(*ctx_, {i64Ty_, dataTy});
+        }
 
         llvm::Value *alloca = builder_.CreateAlloca(resultTy, nullptr, prefix + "_tmp");
         llvm::Value *tagPtr = builder_.CreateStructGEP(resultTy, alloca, 0, prefix + "_tag_ptr");

@@ -241,6 +241,7 @@ private:
     }
     ResultTypeInfo &getOrCreateResultType(const std::string &typeStr);
     bool isResultType(llvm::Type *ty);
+    ResultTypeInfo *findResultTypeInfoByLLVMType(llvm::Type *ty);
     std::string getResultTypeStr(llvm::Value *val);
 
     // Result pattern binding helper

@@ -825,8 +825,18 @@ llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     llvm::Type *ty = val->getType();
 
-    if (ty->isPointerTy())
-        return val; // already a string
+    if (ty->isPointerTy()) {
+        // Reject non-string pointer types (collections, function pointers)
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+            llvm::Value *src = load->getPointerOperand();
+            if (list_element_types_.count(src) || map_key_types_.count(src) ||
+                set_element_types_.count(src))
+                throw std::runtime_error("cannot convert collection to string");
+        }
+        if (fn_type_info_.count(val))
+            throw std::runtime_error("cannot convert function to string");
+        return val; // string pointer
+    }
 
     auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
     auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);

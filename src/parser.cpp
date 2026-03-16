@@ -547,10 +547,10 @@ ExprPtr Parser::parseBitwiseXor() { return parseBinaryLeft(&Parser::parseBitwise
 ExprPtr Parser::parseBitwiseAnd() { return parseBinaryLeft(&Parser::parseShift, {TokenKind::Amp}); }
 ExprPtr Parser::parseShift()      { return parseBinaryLeft(&Parser::parseExpr, {TokenKind::LessLess, TokenKind::GreaterGreater, TokenKind::GreaterGreaterGreater}); }
 ExprPtr Parser::parseExpr()       { return parseBinaryLeft(&Parser::parseTerm, {TokenKind::Plus, TokenKind::Minus}); }
-ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parsePower, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
+ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parseCast, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
 
 ExprPtr Parser::parsePower() {
-    ExprPtr lhs = parseCast();
+    ExprPtr lhs = parsePostfix();
     if (lex_.peek().kind == TokenKind::StarStar) {
         std::string op = lex_.next().value;
         ExprPtr rhs = parsePower();  // 右結合: 再帰呼び出し
@@ -566,7 +566,7 @@ ExprPtr Parser::parsePower() {
 }
 
 ExprPtr Parser::parseCast() {
-    ExprPtr expr = parsePostfix();
+    ExprPtr expr = parsePower();
     while (lex_.peek().kind == TokenKind::As) {
         lex_.next(); // consume 'as'
         Token typeTok = lex_.peek();

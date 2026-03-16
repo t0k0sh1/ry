@@ -10,10 +10,19 @@ void CodeGen::emitResultPatternBinding(const std::string &binding, llvm::Value *
     if (binding.empty()) return;
     const char *label = isOk ? "ok" : "err";
     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "result_val");
+
+    // Try metadata first, then fall back to LLVM type reverse lookup
+    ResultTypeInfo *rInfoPtr = nullptr;
     std::string resultTypeStr = getResultTypeStr(sv);
-    if (resultTypeStr.empty())
+    if (!resultTypeStr.empty()) {
+        rInfoPtr = &getOrCreateResultType(resultTypeStr);
+    } else {
+        rInfoPtr = findResultTypeInfoByLLVMType(subjectTy);
+    }
+    if (!rInfoPtr)
         throw std::runtime_error(std::string("cannot determine Result type for ") + (isOk ? "Ok" : "Err") + " pattern");
-    auto &rInfo = getOrCreateResultType(resultTypeStr);
+
+    auto &rInfo = *rInfoPtr;
     llvm::Value *resultAlloca2 = builder_.CreateAlloca(sv->getType(), nullptr, "result_tmp");
     builder_.CreateStore(sv, resultAlloca2);
     llvm::Value *dataPtr = builder_.CreateStructGEP(rInfo.llvmType, resultAlloca2, 1,
@@ -906,11 +915,13 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
             } else if constexpr (std::is_same_v<T, OkPattern>) {
-                // Result Ok pattern: check tag == 0
+                if (!isResultType(subjectTy))
+                    throw std::runtime_error("match: Ok pattern requires Result type");
                 llvm::Value *tag = builder_.CreateExtractValue(subjectVal, 0, "result_tag");
                 testResult = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 0), "is_ok");
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
-                // Result Err pattern: check tag == 1
+                if (!isResultType(subjectTy))
+                    throw std::runtime_error("match: Err pattern requires Result type");
                 llvm::Value *tag = builder_.CreateExtractValue(subjectVal, 0, "result_tag");
                 testResult = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 1), "is_err");
             }

@@ -224,6 +224,9 @@ Token Lexer::readToken() {
 
     // f-string: f"..."
     if (c == 'f' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
+        if (fstring_brace_depth_ > 0)
+            throw std::runtime_error("line " + std::to_string(line_) +
+                ": nested f-strings are not supported");
         ++pos_; // skip 'f'
         ++pos_; // skip '"'
         return readFStringSegment(true);

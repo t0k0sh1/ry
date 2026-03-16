@@ -513,6 +513,13 @@ bool CodeGen::isResultType(llvm::Type *ty) {
     return false;
 }
 
+CodeGen::ResultTypeInfo *CodeGen::findResultTypeInfoByLLVMType(llvm::Type *ty) {
+    for (auto &pair : result_types_) {
+        if (pair.second.llvmType == ty) return &pair.second;
+    }
+    return nullptr;
+}
+
 std::string CodeGen::getResultTypeStr(llvm::Value *val) {
     auto it = result_value_types_.find(val);
     if (it != result_value_types_.end()) return it->second;
