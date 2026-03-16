@@ -390,7 +390,7 @@ void CodeGen::emitStmt(TypeStmt &s) {
         fieldTypes.push_back(resolveType(f.type));
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
-    struct_types_[s.name] = {structTy, s.fields};
+    struct_types_[s.name] = {structTy, s.fields, std::move(s.invariants)};
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
@@ -411,6 +411,10 @@ llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
                                      "' type mismatch");
         result = builder_.CreateInsertValue(result, val, i);
     }
+
+    // Check invariants after construction
+    if (!info.invariants.empty())
+        emitInvariantCheck(name, info, result);
 
     return result;
 }
@@ -780,5 +784,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
     return builder_.CreateLoad(elemTy, elemPtr, "elem");
+}
+
+// ===== Contract expression variants =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<OldExpr> &e) {
+    if (!in_ensure_context_)
+        throw std::runtime_error("old() can only be used in ensure clause");
+    auto it = old_value_map_.find(e.get());
+    if (it == old_value_map_.end())
+        throw std::runtime_error("old() value not found (internal error)");
+    llvm::AllocaInst *alloca = it->second;
+    return builder_.CreateLoad(alloca->getAllocatedType(), alloca, "old_load");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
+    if (!in_ensure_context_)
+        throw std::runtime_error("result can only be used in ensure clause");
+    if (!result_alloca_)
+        throw std::runtime_error("result used in void function");
+    llvm::Type *ty = result_alloca_->getAllocatedType();
+    return builder_.CreateLoad(ty, result_alloca_, "result_load");
 }
 

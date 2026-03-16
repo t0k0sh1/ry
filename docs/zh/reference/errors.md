@@ -60,6 +60,8 @@ type Bad:
 | 映射不存在的鍵存取 | 參照映射中不存在的鍵 | `let m = {"a": 1}` → `m["b"]` |
 | unwrap(None) | 對 `None` 值呼叫 `unwrap` | `unwrap(None)` |
 
+| 契約違反 | `require`、`ensure` 或 `invariant` 條件評估為 false | 參閱 [契約式設計](contracts.md) |
+
 所有執行時錯誤都會以 `exit(1)` 結束程序。
 
 ### 執行時錯誤範例

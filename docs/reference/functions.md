@@ -13,6 +13,7 @@ fn function_name(param_name: type, ...) -> return_type:
 - Parameter types are required.
 - Return type is optional (defaults to `Unit` when omitted).
 - The body is an indented block.
+- Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
 ```python
 fn add(a: int, b: int) -> int:

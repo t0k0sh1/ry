@@ -29,6 +29,9 @@ struct EnumAccessExpr {
     std::string variant_name;
 };
 
+struct OldExpr;
+struct ResultExpr {};
+
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
@@ -41,7 +44,9 @@ struct ExprNode {
                  std::unique_ptr<MapExpr>,
                  std::unique_ptr<SetExpr>,
                  EnumAccessExpr,
-                 std::unique_ptr<LambdaExpr>> data;
+                 std::unique_ptr<LambdaExpr>,
+                 std::unique_ptr<OldExpr>,
+                 ResultExpr> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -109,7 +114,7 @@ struct IndexAssignStmt {
 
 struct FieldDef { std::string name; std::string type; };
 
-struct TypeStmt { std::string name; std::vector<FieldDef> fields; };
+struct TypeStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; };
 
 struct BreakStmt {};
 struct ContinueStmt {};
@@ -172,12 +177,16 @@ struct ForStmt {
     std::vector<StmtNode> body;
 };
 
+struct OldExpr { ExprPtr expr; };
+
 struct FnStmt {
     std::string name;
     std::vector<FnParam> params;
     std::string return_type;
     std::vector<StmtNode> body;
     bool is_operator = false;
+    std::vector<ExprPtr> preconditions;
+    std::vector<ExprPtr> postconditions;
 };
 
 struct LambdaExpr {

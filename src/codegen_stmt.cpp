@@ -429,6 +429,10 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
     llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
     builder_.CreateStore(updated, ptr);
+
+    // Check invariants after field assignment
+    if (!info.invariants.empty())
+        emitInvariantCheck(typeName, info, updated);
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {
@@ -670,6 +674,20 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 throw std::runtime_error("return type mismatch");
             }
         }
+
+        // Emit ensure checks (postconditions) before return
+        if (current_postconditions_ && !current_postconditions_->empty()) {
+            if (result_alloca_)
+                builder_.CreateStore(val, result_alloca_);
+            in_ensure_context_ = true;
+            std::string fnName = fn_->getName().str();
+            for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
+                emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
+            in_ensure_context_ = false;
+            if (result_alloca_)
+                val = builder_.CreateLoad(retTy, result_alloca_, "ensure_result");
+        }
+
         builder_.CreateRet(val);
     }
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
@@ -759,6 +777,32 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             ++idx;
         }
 
+        // Save old values for postconditions (before require checks)
+        old_value_map_.clear();
+        if (!s->postconditions.empty()) {
+            std::vector<OldExpr*> oldExprs;
+            for (auto &post : s->postconditions)
+                collectOldExprs(*post, oldExprs);
+            for (auto *oe : oldExprs) {
+                llvm::Value *val = emitExpr(*oe->expr);
+                llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, "old_val");
+                builder_.CreateStore(val, alloca);
+                old_value_map_[oe] = alloca;
+            }
+        }
+
+        // Emit require checks (preconditions)
+        for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
+            emitContractCheck("require", s->name, s->preconditions[i]);
+
+        // Set up postcondition context
+        current_postconditions_ = s->postconditions.empty() ? nullptr : &s->postconditions;
+        if (!s->postconditions.empty() && !retTy->isVoidTy()) {
+            result_alloca_ = builder_.CreateAlloca(retTy, nullptr, "contract_result");
+        } else {
+            result_alloca_ = nullptr;
+        }
+
         for (auto &stmt : s->body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
@@ -779,10 +823,89 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 builder_.CreateRet(llvm::UndefValue::get(retTy));
         }
 
+        // Reset contract context
+        current_postconditions_ = nullptr;
+        result_alloca_ = nullptr;
+        old_value_map_.clear();
+
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
             throw std::runtime_error("IR verify error in function '" + s->name + "': " + err);
     }
     // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point
+}
+
+// ===== Contract helpers =====
+
+void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_name,
+                                 const ExprPtr &cond) {
+    llvm::Value *condVal = emitExpr(*cond);
+    condVal = toBool(condVal);
+
+    std::string errName = ".contract_err_" + std::to_string(contract_err_counter_++);
+    std::string msg = "Contract violation: " + kind + " failed in " + fn_name + "()\n";
+
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, kind + ".fail", fn_);
+    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, kind + ".ok", fn_);
+
+    builder_.CreateCondBr(condVal, nextBB, failBB);
+
+    builder_.SetInsertPoint(failBB);
+    emitRuntimeError(msg, errName);
+
+    builder_.SetInsertPoint(nextBB);
+}
+
+void CodeGen::collectOldExprs(const ExprNode &node, std::vector<OldExpr*> &out) {
+    std::visit([this, &out](const auto &e) {
+        using T = std::decay_t<decltype(e)>;
+        if constexpr (std::is_same_v<T, std::unique_ptr<OldExpr>>) {
+            out.push_back(e.get());
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
+            collectOldExprs(*e->lhs, out);
+            collectOldExprs(*e->rhs, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
+            collectOldExprs(*e->operand, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+            for (auto &arg : e->args)
+                collectOldExprs(*arg, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
+            collectOldExprs(*e->object, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
+            collectOldExprs(*e->object, out);
+            collectOldExprs(*e->index, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
+            for (auto &elem : e->elements)
+                collectOldExprs(*elem, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
+            for (auto &elem : e->elements)
+                collectOldExprs(*elem, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
+            for (auto &k : e->keys)
+                collectOldExprs(*k, out);
+            for (auto &v : e->values)
+                collectOldExprs(*v, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
+            for (auto &elem : e->elements)
+                collectOldExprs(*elem, out);
+        }
+    }, node.data);
+}
+
+void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
+                                  llvm::Value *structVal) {
+    if (info.invariants.empty()) return;
+
+    pushScope();
+    for (unsigned f = 0; f < info.fields.size(); ++f) {
+        llvm::Type *fieldTy = info.llvmType->getElementType(f);
+        llvm::AllocaInst *fieldAlloca = builder_.CreateAlloca(fieldTy, nullptr, info.fields[f].name);
+        llvm::Value *fieldVal = builder_.CreateExtractValue(structVal, f, info.fields[f].name + "_val");
+        builder_.CreateStore(fieldVal, fieldAlloca);
+        scope_stack_.back()[info.fields[f].name] = fieldAlloca;
+    }
+    for (int i = 0; i < static_cast<int>(info.invariants.size()); ++i)
+        emitContractCheck("invariant", typeName, info.invariants[i]);
+    popScope();
 }

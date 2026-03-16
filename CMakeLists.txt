@@ -85,6 +85,7 @@ add_executable(ry_tests
     tests/test_codegen_stmt.cpp
     tests/test_codegen_collection.cpp
     tests/test_codegen_advanced.cpp
+    tests/test_codegen_contract.cpp
     tests/test_project_config.cpp
     tests/test_self_update.cpp
 )

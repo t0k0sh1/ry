@@ -43,4 +43,5 @@ For detailed language specifications, see the reference pages below.
 | [Module System](reference/modules.md) | from/import syntax and search rules |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and ry.toml specification |
+| [Design by Contract](reference/contracts.md) | require, ensure, invariant, old, result |
 | [Error List](reference/errors.md) | Compile errors and runtime errors |

@@ -4,7 +4,7 @@
 
 ## Overview
 
-Structs are value types allocated on the stack. They are defined with the `type` keyword.
+Structs are value types allocated on the stack. They are defined with the `type` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
 
 ---
 

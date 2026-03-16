@@ -40,6 +40,7 @@ private:
     struct StructInfo {
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
+        std::vector<ExprPtr> invariants;
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
@@ -77,6 +78,13 @@ private:
     int lambda_counter_ = 0;
     bool test_mode_ = false;
     int test_fn_counter_ = 0;
+
+    // Contract (Design by Contract) support
+    std::vector<ExprPtr> *current_postconditions_ = nullptr;
+    llvm::AllocaInst *result_alloca_ = nullptr;
+    bool in_ensure_context_ = false;
+    int contract_err_counter_ = 0;
+    std::unordered_map<OldExpr*, llvm::AllocaInst*> old_value_map_;
 
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
@@ -150,6 +158,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<SetExpr> &e);
     llvm::Value *emitExprVariant(const EnumAccessExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<OldExpr> &e);
+    llvm::Value *emitExprVariant(const ResultExpr &e);
 
     // Operator overload helpers
     llvm::Value *tryOperatorCall(const std::string &opFnName,
@@ -177,6 +187,11 @@ private:
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);
+    void emitContractCheck(const std::string &kind, const std::string &fn_name,
+                           const ExprPtr &cond);
+    void collectOldExprs(const ExprNode &node, std::vector<OldExpr*> &out);
+    void emitInvariantCheck(const std::string &typeName, const StructInfo &info,
+                            llvm::Value *structVal);
     void emitPrintValue(llvm::Value *val, llvm::Type *ty,
                         llvm::FunctionCallee printfFn, const std::string &suffix);
     llvm::Type *getListElementType(llvm::Value *listAlloca);

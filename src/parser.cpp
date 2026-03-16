@@ -536,6 +536,27 @@ ExprPtr Parser::parsePrimary() {
         node->data = StringExpr{t.value};
         return node;
     }
+    if (t.kind == TokenKind::Result) {
+        lex_.next(); // consume 'result'
+        auto node = std::make_unique<ExprNode>();
+        node->data = ResultExpr{};
+        return node;
+    }
+    if (t.kind == TokenKind::Old) {
+        lex_.next(); // consume 'old'
+        if (lex_.peek().kind != TokenKind::LParen)
+            parseError("expected '(' after 'old'");
+        lex_.next(); // consume '('
+        ExprPtr expr = parseLogicalOr();
+        if (lex_.peek().kind != TokenKind::RParen)
+            parseError("expected ')' after old expression");
+        lex_.next(); // consume ')'
+        auto oldExpr = std::make_unique<OldExpr>();
+        oldExpr->expr = std::move(expr);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(oldExpr);
+        return node;
+    }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
         if (lex_.peek().kind == TokenKind::ColonColon) {
@@ -761,7 +782,43 @@ StmtNode Parser::parseFnStatement() {
         parseError("expected ':' after return type");
     lex_.next(); // consume ':'
 
-    fnStmt->body = parseBlock();
+    // Parse function body, possibly with require/ensure clauses
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next(); // consume Indent
+
+    // Parse optional require clause
+    if (lex_.peek().kind == TokenKind::Require) {
+        lex_.next(); // consume 'require'
+        parseContractClause("require", fnStmt->preconditions);
+    }
+
+    // Parse optional ensure clause
+    if (lex_.peek().kind == TokenKind::Ensure) {
+        lex_.next(); // consume 'ensure'
+        parseContractClause("ensure", fnStmt->postconditions);
+    }
+
+    // Parse body statements
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        fnStmt->body.push_back(parseStatement());
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (fnStmt->body.empty())
+        parseError("empty function body is not allowed");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
     return fnStmt;
 }
 
@@ -775,6 +832,31 @@ StmtNode Parser::parseReturnStatement() {
         s.value = parseLogicalOr();
     }
     return s;
+}
+
+void Parser::parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out) {
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after '" + clauseName + "'");
+    lex_.next(); // consume ':'
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after '" + clauseName + ":'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block after '" + clauseName + ":'");
+    lex_.next(); // consume Indent
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        out.push_back(parseLogicalOr());
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+    if (lex_.peek().kind == TokenKind::Newline)
+        lex_.next();
+    skipNewlines();
 }
 
 StmtNode Parser::parseTypeStatement() {
@@ -803,7 +885,8 @@ StmtNode Parser::parseTypeStatement() {
     std::unordered_set<std::string> seenFields;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
-           lex_.peek().kind != TokenKind::Eof) {
+           lex_.peek().kind != TokenKind::Eof &&
+           lex_.peek().kind != TokenKind::Invariant) {
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
             parseError(fieldName.line, "expected field name");
@@ -827,6 +910,12 @@ StmtNode Parser::parseTypeStatement() {
 
     if (ts.fields.empty())
         parseError("type definition must have at least one field");
+
+    // Parse optional invariant clause
+    if (lex_.peek().kind == TokenKind::Invariant) {
+        lex_.next(); // consume 'invariant'
+        parseContractClause("invariant", ts.invariants);
+    }
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent

@@ -685,3 +685,35 @@ TEST(LexerTest, GreaterGreaterGreaterDoesNotBreakOthers) {
     auto toks3 = tokenize(">");
     EXPECT_EQ(toks3[0].kind, TokenKind::Greater);
 }
+
+// ===== Contract keywords =====
+
+TEST(LexerTest, KeywordRequire) {
+    auto toks = tokenize("require");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Require);
+}
+
+TEST(LexerTest, KeywordEnsure) {
+    auto toks = tokenize("ensure");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ensure);
+}
+
+TEST(LexerTest, KeywordInvariant) {
+    auto toks = tokenize("invariant");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Invariant);
+}
+
+TEST(LexerTest, KeywordOld) {
+    auto toks = tokenize("old");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Old);
+}
+
+TEST(LexerTest, KeywordResult) {
+    auto toks = tokenize("result");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Result);
+}
