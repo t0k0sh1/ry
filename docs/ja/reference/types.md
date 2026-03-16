@@ -20,6 +20,7 @@
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) -> x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
 | `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
+| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | エラーハンドリング用の Result 型 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
 
 ## 型アノテーション構文
@@ -57,8 +58,90 @@ let u: int | str = 42
 | `Map<K, V>` | ジェネリックハッシュマップ型 |
 | `Set<T>` | ジェネリック集合型 |
 | `fn(T1, ...) -> R` | 関数型 |
+| `Result<T, E>` | Result 型（T = Ok 型、E = Err 型） |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
 | ユーザー定義型名 | `type` または `enum` キーワードで宣言した型 |
+
+## F-String（文字列補間）
+
+`f"..."` 構文による文字列補間です。`{}` 内の式が評価され、文字列に変換されます。
+
+```python
+let name = "world"
+print(f"Hello {name}")     # Hello world
+
+let a = 1
+let b = 2
+print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
+```
+
+### 補間で使用可能な型
+
+`{}` 内には `int`、`float`、`bool`、`str` に評価される任意の式を使用できます。
+
+### エスケープシーケンス
+
+| シーケンス | 出力 |
+|---|---|
+| `{{` | `{`（リテラルの波括弧） |
+| `}}` | `}`（リテラルの波括弧） |
+| `\n` `\t` `\\` `\"` | 通常の文字列と同じ |
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+## 型キャスト（`as`）
+
+`as` キーワードによる明示的な型変換です。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3
+let z = 1 as bool        # true
+let s = 42 as str         # "42"
+let b = 255 as byte       # byte 値 255
+```
+
+### サポートされるキャスト
+
+| 変換元 | 変換先 | 動作 |
+|---|---|---|
+| `int` | `float` | `SIToFP` |
+| `float` | `int` | 切り捨て（`FPToSI`） |
+| `int` | `bool` | `0` -> `false`、非0 -> `true` |
+| `bool` | `int` | `false` -> `0`、`true` -> `1` |
+| `int` / `float` / `bool` | `str` | 文字列表現 |
+| `int` | `byte` | 切り捨て（下位8ビット） |
+| `byte` | `int` | ゼロ拡張 |
+
+サポートされないキャスト（例: `str as int`）はコンパイルエラーになります。文字列から数値への変換には `to_int()` / `to_float()` を使用してください。
+
+## Result 型
+
+回復可能なエラーハンドリング用の型です。`Result<T, E>` の値は `Ok(value)`（成功）または `Err(error)`（失敗）のいずれかです。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+
+let r = divide(10, 2)
+match r:
+    case Ok(v):
+        print(v)      # 5
+    case Err(e):
+        print(e)
+```
+
+### 内部表現
+
+`Result<T, E>` は `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` として表現されます。Tag 0 = Ok、Tag 1 = Err です。
+
+### パターンマッチング
+
+`match` で `Ok(binding)` と `Err(binding)` パターンを使用します。網羅的マッチングのため、両方のパターンが必要です。
 
 ## union 型
 

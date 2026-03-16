@@ -707,3 +707,125 @@ TEST_F(CodeGenTest, NotExprRegression) {
     // not x still works
     EXPECT_EQ(runSource("let x = not true\nprint(x)"), "false\n");
 }
+
+// ===== f-string tests =====
+
+TEST_F(CodeGenTest, FStringBasic) {
+    EXPECT_EQ(runSource("let name = \"world\"\nprint(f\"Hello {name}\")"), "Hello world\n");
+}
+
+TEST_F(CodeGenTest, FStringMultipleExprs) {
+    EXPECT_EQ(runSource("let a = 1\nlet b = 2\nprint(f\"{a} + {b} = {a + b}\")"), "1 + 2 = 3\n");
+}
+
+TEST_F(CodeGenTest, FStringNoInterpolation) {
+    EXPECT_EQ(runSource("print(f\"plain text\")"), "plain text\n");
+}
+
+TEST_F(CodeGenTest, FStringEscapedBraces) {
+    EXPECT_EQ(runSource("print(f\"{{braces}}\")"), "{braces}\n");
+}
+
+TEST_F(CodeGenTest, FStringIntValue) {
+    EXPECT_EQ(runSource("print(f\"value = {42}\")"), "value = 42\n");
+}
+
+TEST_F(CodeGenTest, FStringFloatValue) {
+    EXPECT_EQ(runSource("print(f\"pi = {3.14}\")"), "pi = 3.14\n");
+}
+
+TEST_F(CodeGenTest, FStringBoolValue) {
+    EXPECT_EQ(runSource("print(f\"flag = {true}\")"), "flag = true\n");
+}
+
+// ===== as cast tests =====
+
+TEST_F(CodeGenTest, AsCastIntToFloat) {
+    EXPECT_EQ(runSource("let x = 42 as float\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, AsCastFloatToInt) {
+    EXPECT_EQ(runSource("let x = 3.14 as int\nprint(x)"), "3\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToBool) {
+    EXPECT_EQ(runSource("let x = 1 as bool\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("let x = 0 as bool\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, AsCastBoolToInt) {
+    EXPECT_EQ(runSource("let x = true as int\nprint(x)"), "1\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToStr) {
+    EXPECT_EQ(runSource("let x = 42 as str\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, AsCastFloatToStr) {
+    EXPECT_EQ(runSource("let x = 3.14 as str\nprint(x)"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, AsCastBoolToStr) {
+    EXPECT_EQ(runSource("let x = true as str\nprint(x)"), "true\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToByte) {
+    EXPECT_EQ(runSource("let x = 255 as byte\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, AsCastByteToInt) {
+    EXPECT_EQ(runSource("let b: byte = 200\nlet x = b as int\nprint(x)"), "200\n");
+}
+
+// ===== Result type tests =====
+
+TEST_F(CodeGenTest, ResultOkMatch) {
+    std::string src = R"(
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+
+let r = divide(10, 2)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
+)";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, ResultErrMatch) {
+    std::string src = R"(
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
+)";
+    EXPECT_EQ(runSource(src), "division by zero\n");
+}
+
+TEST_F(CodeGenTest, ResultOkWithFloatValue) {
+    std::string src = R"(
+fn safe_sqrt(x: float) -> Result<float, str>:
+    if x < 0.0:
+        return Err("negative input")
+    return Ok(x ** 0.5)
+
+let r = safe_sqrt(4.0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)
+)";
+    EXPECT_EQ(runSource(src), "2\n");
+}

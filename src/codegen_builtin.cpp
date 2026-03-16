@@ -3,6 +3,27 @@
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+// ===== Result pattern binding helper =====
+
+void CodeGen::emitResultPatternBinding(const std::string &binding, llvm::Value *subjectAlloca,
+                                        llvm::Type *subjectTy, bool isOk) {
+    if (binding.empty()) return;
+    const char *label = isOk ? "ok" : "err";
+    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "result_val");
+    std::string resultTypeStr = getResultTypeStr(sv);
+    if (resultTypeStr.empty())
+        throw std::runtime_error(std::string("cannot determine Result type for ") + (isOk ? "Ok" : "Err") + " pattern");
+    auto &rInfo = getOrCreateResultType(resultTypeStr);
+    llvm::Value *resultAlloca2 = builder_.CreateAlloca(sv->getType(), nullptr, "result_tmp");
+    builder_.CreateStore(sv, resultAlloca2);
+    llvm::Value *dataPtr = builder_.CreateStructGEP(rInfo.llvmType, resultAlloca2, 1,
+                                                     std::string(label) + "_data_ptr");
+    llvm::Type *innerTy = isOk ? rInfo.okType : rInfo.errType;
+    llvm::Value *innerVal = builder_.CreateLoad(innerTy, dataPtr, std::string(label) + "_inner");
+    llvm::AllocaInst *varAlloca = getOrCreateVar(binding, innerTy);
+    builder_.CreateStore(innerVal, varAlloca);
+}
+
 // ===== Collection helpers =====
 
 llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
@@ -774,6 +795,17 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
             throw std::runtime_error("non-exhaustive match: Option requires both Some and None cases (or use '_')");
 
+        // Check Result exhaustiveness
+        bool hasOk = false, hasErr = false;
+        for (auto &arm : s->arms) {
+            if (std::holds_alternative<OkPattern>(arm.pattern) && !arm.guard)
+                hasOk = true;
+            if (std::holds_alternative<ErrPattern>(arm.pattern) && !arm.guard)
+                hasErr = true;
+        }
+        if ((hasOk && !hasErr) || (!hasOk && hasErr))
+            throw std::runtime_error("non-exhaustive match: Result requires both Ok and Err cases (or use '_')");
+
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
         for (auto &arm : s->arms) {
@@ -788,7 +820,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             throw std::runtime_error("non-exhaustive match: bool requires both true and false cases (or use '_')");
 
         // For int/float/string literals without wildcard
-        if (enumName.empty() && !hasSome && !hasNone && !hasTrue && !hasFalse)
+        if (enumName.empty() && !hasSome && !hasNone && !hasOk && !hasErr && !hasTrue && !hasFalse)
             throw std::runtime_error("non-exhaustive match: literal patterns require a wildcard '_' case");
     }
 
@@ -812,6 +844,13 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
         }
         if (!subjectEnumType.empty())
             enum_value_types_[subjectAlloca] = subjectEnumType;
+    }
+
+    // Track Result type for subject
+    {
+        std::string resultTypeStr = getResultTypeStr(subject);
+        if (!resultTypeStr.empty())
+            result_value_types_[subjectAlloca] = resultTypeStr;
     }
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
@@ -866,6 +905,14 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     throw std::runtime_error("match: None pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
+            } else if constexpr (std::is_same_v<T, OkPattern>) {
+                // Result Ok pattern: check tag == 0
+                llvm::Value *tag = builder_.CreateExtractValue(subjectVal, 0, "result_tag");
+                testResult = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 0), "is_ok");
+            } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                // Result Err pattern: check tag == 1
+                llvm::Value *tag = builder_.CreateExtractValue(subjectVal, 0, "result_tag");
+                testResult = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 1), "is_err");
             }
         }, arm.pattern);
 
@@ -892,6 +939,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                     llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                     builder_.CreateStore(inner, varAlloca);
+                } else if constexpr (std::is_same_v<T, OkPattern>) {
+                    emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, true);
+                } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                    emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, false);
                 }
             }, arm.pattern);
 
@@ -923,6 +974,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
+            } else if constexpr (std::is_same_v<T, OkPattern>) {
+                emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, true);
+            } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, false);
             }
         }, arm.pattern);
 

@@ -221,6 +221,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             enum_value_types_[ptr] = *type_annotation;
     }
 
+    // --- Result type tracking ---
+    {
+        auto rvIt = result_value_types_.find(val);
+        if (rvIt != result_value_types_.end())
+            result_value_types_[ptr] = rvIt->second;
+        else if (type_annotation && isResultTypeName(*type_annotation))
+            result_value_types_[ptr] = *type_annotation;
+    }
+
     if (is_immutable)
         immutable_scope_stack_.back().insert(name);
 }
@@ -747,7 +756,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::vector<std::string> paramTypeNames;
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type);
-    overloads.push_back({func, paramTypes, paramTypeNames});
+    overloads.push_back({func, paramTypes, paramTypeNames, s->return_type});
 
     if (hasDirective(s->directives, "deprecated"))
         deprecated_functions_.insert(s->name);
@@ -796,6 +805,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track union type for union parameters
             if (isUnionType(ptype)) {
                 union_value_types_[alloca] = normalizeUnionType(ptype);
+            }
+            // Track Result type for result parameters
+            if (isResultTypeName(ptype)) {
+                result_value_types_[alloca] = ptype;
             }
             ++idx;
         }

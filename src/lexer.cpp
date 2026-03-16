@@ -9,7 +9,7 @@ Token Lexer::next() {
 }
 
 Lexer::State Lexer::saveState() const {
-    return {pos_, line_, at_line_start_, indent_stack_, pending_, current_};
+    return {pos_, line_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_};
 }
 
 void Lexer::restoreState(State s) {
@@ -19,6 +19,7 @@ void Lexer::restoreState(State s) {
     indent_stack_ = std::move(s.indent_stack);
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
+    fstring_brace_depth_ = s.fstring_brace_depth;
 }
 
 Token Lexer::readToken() {
@@ -199,9 +200,34 @@ Token Lexer::readToken() {
     if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
     if (c == '[') { ++pos_; return {TokenKind::LBracket, "[", line_}; }
     if (c == ']') { ++pos_; return {TokenKind::RBracket, "]", line_}; }
-    if (c == '{') { ++pos_; return {TokenKind::LBrace,   "{", line_}; }
-    if (c == '}') { ++pos_; return {TokenKind::RBrace,   "}", line_}; }
+    if (c == '{') {
+        ++pos_;
+        if (fstring_brace_depth_ > 0)
+            ++fstring_brace_depth_;
+        return {TokenKind::LBrace, "{", line_};
+    }
+    if (c == '}') {
+        if (fstring_brace_depth_ > 1) {
+            --fstring_brace_depth_;
+            ++pos_;
+            return {TokenKind::RBrace, "}", line_};
+        }
+        if (fstring_brace_depth_ == 1) {
+            fstring_brace_depth_ = 0;
+            ++pos_; // skip '}'
+            return readFStringSegment(false);
+        }
+        ++pos_;
+        return {TokenKind::RBrace, "}", line_};
+    }
     if (c == '@') { ++pos_; return {TokenKind::At,      "@", line_}; }
+
+    // f-string: f"..."
+    if (c == 'f' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
+        ++pos_; // skip 'f'
+        ++pos_; // skip '"'
+        return readFStringSegment(true);
+    }
 
     if (c == '"') {
         ++pos_;
@@ -306,9 +332,69 @@ Token Lexer::readToken() {
         if (id == "invariant") return {TokenKind::Invariant, "invariant", line_};
         if (id == "old")       return {TokenKind::Old,       "old",       line_};
         if (id == "result")    return {TokenKind::Result,    "result",    line_};
+        if (id == "as")        return {TokenKind::As,        "as",        line_};
+        if (id == "Ok")        return {TokenKind::Ok,        "Ok",        line_};
+        if (id == "Err")       return {TokenKind::Err,       "Err",       line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 
     ++pos_;
     return {TokenKind::Error, std::string(1, c), line_};
+}
+
+Token Lexer::readFStringSegment(bool isStart) {
+    std::string str;
+    while (pos_ < src_.size() && src_[pos_] != '"') {
+        if (src_[pos_] == '\n' || src_[pos_] == '\r')
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unterminated f-string literal");
+        if (src_[pos_] == '{') {
+            if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '{') {
+                str += '{';
+                pos_ += 2;
+                continue;
+            }
+            ++pos_; // skip '{'
+            fstring_brace_depth_ = 1;
+            if (isStart)
+                return {TokenKind::FStringStart, str, line_};
+            else
+                return {TokenKind::FStringMid, str, line_};
+        }
+        if (src_[pos_] == '}') {
+            if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '}') {
+                str += '}';
+                pos_ += 2;
+                continue;
+            }
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unmatched '}' in f-string");
+        }
+        if (src_[pos_] == '\\') {
+            ++pos_;
+            if (pos_ >= src_.size())
+                throw std::runtime_error("line " + std::to_string(line_) +
+                                         ": unterminated escape sequence in f-string");
+            switch (src_[pos_]) {
+                case 'n':  str += '\n'; break;
+                case 't':  str += '\t'; break;
+                case '\\': str += '\\'; break;
+                case '"':  str += '"';  break;
+                case '0':  str += '\0'; break;
+                default:
+                    throw std::runtime_error("line " + std::to_string(line_) +
+                                             ": unknown escape sequence '\\" +
+                                             std::string(1, src_[pos_]) + "' in f-string");
+            }
+            ++pos_;
+        } else {
+            str += src_[pos_];
+            ++pos_;
+        }
+    }
+    if (pos_ >= src_.size())
+        throw std::runtime_error("line " + std::to_string(line_) +
+                                 ": unterminated f-string literal");
+    ++pos_; // skip closing '"'
+    return {TokenKind::FStringEnd, str, line_};
 }

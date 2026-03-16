@@ -183,4 +183,62 @@ let v = unwrap(x)   # 42
 
 ---
 
+## F-String（字串插值）
+
+使用 `f"..."` 可以在字串中直接嵌入表達式。表達式放在 `{}` 內。
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+使用 `{{` 和 `}}` 來包含字面大括號。
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## 型別轉換（`as`）
+
+使用 `as` 在型別之間進行明確轉換。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3（截斷）
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## Result 型別
+
+`Result<T, E>` 用於可能失敗的函式。成功時回傳 `Ok(value)`，失敗時回傳 `Err(error)`。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+使用 `match` 來處理結果。
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
 [← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)

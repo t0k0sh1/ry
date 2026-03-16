@@ -20,6 +20,7 @@
 | `fn(T1, T2) -> R` | ptr (function pointer) | `(x: int) -> x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `type Point: ...` | Struct defined with the `type` keyword |
 | `enum` | i64 | `Color::Red` | Enumeration defined with the `enum` keyword |
+| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | Result type for error handling |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 
 ## Type Annotation Syntax
@@ -57,8 +58,90 @@ let u: int | str = 42
 | `Map<K, V>` | Generic hash map type |
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
+| `Result<T, E>` | Result type (T = Ok type, E = Err type) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `type` or `enum` keyword |
+
+## F-String (String Interpolation)
+
+String interpolation with the `f"..."` syntax. Expressions inside `{}` are evaluated and converted to strings.
+
+```python
+let name = "world"
+print(f"Hello {name}")     # Hello world
+
+let a = 1
+let b = 2
+print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
+```
+
+### Supported Types in Interpolation
+
+Any expression that evaluates to `int`, `float`, `bool`, or `str` can be used inside `{}`.
+
+### Escape Sequences
+
+| Sequence | Output |
+|---|---|
+| `{{` | `{` (literal brace) |
+| `}}` | `}` (literal brace) |
+| `\n` `\t` `\\` `\"` | Same as regular strings |
+
+```python
+print(f"{{braces}}")   # {braces}
+```
+
+## Type Casting (`as`)
+
+Explicit type conversion using the `as` keyword.
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3
+let z = 1 as bool        # true
+let s = 42 as str         # "42"
+let b = 255 as byte       # byte value 255
+```
+
+### Supported Casts
+
+| From | To | Behavior |
+|---|---|---|
+| `int` | `float` | `SIToFP` |
+| `float` | `int` | Truncation (`FPToSI`) |
+| `int` | `bool` | `0` -> `false`, non-zero -> `true` |
+| `bool` | `int` | `false` -> `0`, `true` -> `1` |
+| `int` / `float` / `bool` | `str` | String representation |
+| `int` | `byte` | Truncation (lower 8 bits) |
+| `byte` | `int` | Zero extension |
+
+Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+
+## Result Type
+
+A type for recoverable error handling. A `Result<T, E>` value is either `Ok(value)` (success) or `Err(error)` (failure).
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+
+let r = divide(10, 2)
+match r:
+    case Ok(v):
+        print(v)      # 5
+    case Err(e):
+        print(e)
+```
+
+### Internal Representation
+
+`Result<T, E>` is represented as `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }`. Tag 0 = Ok, Tag 1 = Err.
+
+### Pattern Matching
+
+Use `match` with `Ok(binding)` and `Err(binding)` patterns. Both patterns are required for exhaustive matching.
 
 ## Union Type
 

@@ -822,3 +822,133 @@ llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
     return builder_.CreateLoad(ty, result_alloca_, "result_load");
 }
 
+llvm::Value *CodeGen::valueToString(llvm::Value *val) {
+    llvm::Type *ty = val->getType();
+
+    if (ty->isPointerTy())
+        return val; // already a string
+
+    auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    auto snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
+
+    if (ty == i1Ty_) {
+        llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".vts_true");
+        llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".vts_false");
+        return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
+    }
+    if (ty->isDoubleTy()) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_float_fmt");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
+        return buf;
+    }
+    if (ty == i8Ty_) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
+        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        return buf;
+    }
+    // default: int (i64)
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+    llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
+    builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+    return buf;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
+    llvm::Value *val = emitExpr(*e->value);
+    llvm::Type *srcTy = val->getType();
+    const std::string &target = e->target_type;
+
+    if (target == "float") {
+        if (srcTy->isDoubleTy()) return val;
+        if (srcTy == i1Ty_) val = builder_.CreateZExt(val, i64Ty_, "bool_ext");
+        else if (srcTy == i8Ty_) val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
+        if (val->getType()->isIntegerTy())
+            return builder_.CreateSIToFP(val, f64Ty_, "cast_f");
+        throw std::runtime_error("cannot cast to float");
+    }
+    if (target == "int") {
+        if (srcTy == i64Ty_) return val;
+        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
+        if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        if (srcTy == i8Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        throw std::runtime_error("cannot cast to int");
+    }
+    if (target == "bool") {
+        if (srcTy == i1Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i64Ty_, 0), "cast_b");
+        if (srcTy == i8Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i8Ty_, 0), "cast_b");
+        if (srcTy->isDoubleTy()) return builder_.CreateFCmpONE(val, llvm::ConstantFP::get(f64Ty_, 0.0), "cast_b");
+        throw std::runtime_error("cannot cast to bool");
+    }
+    if (target == "str") {
+        return valueToString(val);
+    }
+    if (target == "byte") {
+        if (srcTy == i8Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i8Ty_, "cast_byte");
+        if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
+        throw std::runtime_error("cannot cast to byte");
+    }
+    throw std::runtime_error("unsupported cast target type: " + target);
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
+    // Convert each expression to string
+    std::vector<llvm::Value*> strParts;
+    for (size_t i = 0; i < e->parts.size(); ++i) {
+        if (!e->parts[i].empty())
+            strParts.push_back(builder_.CreateGlobalString(e->parts[i], ".fstr_lit"));
+        else
+            strParts.push_back(nullptr); // empty literal segment
+        if (i < e->exprs.size()) {
+            llvm::Value *exprVal = emitExpr(*e->exprs[i]);
+            strParts.push_back(valueToString(exprVal));
+        }
+    }
+
+    // Compute total length
+    auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+    auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
+    std::vector<llvm::Value*> lengths;
+    for (auto *sp : strParts) {
+        if (sp) {
+            llvm::Value *len = builder_.CreateCall(strlenFn, {sp}, "fstr_len");
+            lengths.push_back(len);
+            totalLen = builder_.CreateAdd(totalLen, len, "fstr_total");
+        } else {
+            lengths.push_back(llvm::ConstantInt::get(i64Ty_, 0));
+        }
+    }
+
+    // Allocate result buffer
+    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "fstr_bufsize");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "fstr_buf");
+
+    // Copy segments
+    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
+    for (size_t i = 0; i < strParts.size(); ++i) {
+        if (strParts[i]) {
+            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_dst");
+            builder_.CreateCall(memcpyFn, {dst, strParts[i], lengths[i]});
+            offset = builder_.CreateAdd(offset, lengths[i], "fstr_off");
+        }
+    }
+
+    // Null-terminate
+    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_end");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+
+    return buf;
+}
+

@@ -116,6 +116,28 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return result;
     }
 
+    // Ok(x) / Err(x) → Result<T, E> constructor
+    if (e->callee == "Ok" || e->callee == "Err") {
+        if (e->args.size() != 1)
+            throw std::runtime_error(e->callee + "() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e->args[0]);
+        uint64_t tag = (e->callee == "Ok") ? 0 : 1;
+        std::string prefix = (e->callee == "Ok") ? "ok" : "err";
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t innerSize = dl.getTypeAllocSize(inner->getType());
+        if (innerSize < 8) innerSize = 8;
+        auto *dataTy = llvm::ArrayType::get(i8Ty_, innerSize);
+        auto *resultTy = llvm::StructType::get(*ctx_, {i64Ty_, dataTy});
+
+        llvm::Value *alloca = builder_.CreateAlloca(resultTy, nullptr, prefix + "_tmp");
+        llvm::Value *tagPtr = builder_.CreateStructGEP(resultTy, alloca, 0, prefix + "_tag_ptr");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, tag), tagPtr);
+        llvm::Value *dataPtr = builder_.CreateStructGEP(resultTy, alloca, 1, prefix + "_data_ptr");
+        builder_.CreateStore(inner, dataPtr);
+        return builder_.CreateLoad(resultTy, alloca, prefix + "_val");
+    }
+
     // unwrap(opt) → extract value or runtime error
     if (e->callee == "unwrap") {
         if (e->args.size() != 1)
@@ -442,44 +464,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (e->callee == "to_str") {
         if (e->args.size() != 1)
             throw std::runtime_error("to_str() takes exactly 1 argument");
-        llvm::Value *val = emitExpr(*e->args[0]);
-        llvm::Type *ty = val->getType();
-
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
-        auto snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-
-        if (ty == ptrTy_) {
-            // str → str: return as-is
-            return val;
-        } else if (ty == i1Ty_) {
-            // bool → "true" / "false"
-            llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".to_str_true");
-            llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".to_str_false");
-            return builder_.CreateSelect(val, trueStr, falseStr, "to_str_bool");
-        } else if (ty->isDoubleTy()) {
-            // float → snprintf with %g
-            llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "to_str_buf");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".to_str_float_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
-            return buf;
-        } else if (ty == i8Ty_) {
-            // byte → snprintf with %d
-            llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "to_str_buf");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".to_str_byte_fmt");
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
-            return buf;
-        } else {
-            // int → snprintf with %ld
-            llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "to_str_buf");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".to_str_int_fmt");
-            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
-            return buf;
-        }
+        return valueToString(emitExpr(*e->args[0]));
     }
 
     // find(s, sub) → int (-1 if not found)

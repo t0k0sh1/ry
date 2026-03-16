@@ -11,6 +11,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
+| 3.5 | `as` | Type cast | Left |
 | 4 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
 | 5 | `+` `-` | Addition, subtraction | Left |
 | 6 | `<<` `>>` `>>>` | Bit shift | Left |
