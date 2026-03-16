@@ -906,3 +906,123 @@ TEST(ParserTest, UnionThreeTypes) {
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int | float | str");
 }
+
+// ===== Contract (Design by Contract) tests =====
+
+TEST(ParserTest, FnWithRequire) {
+    std::string src =
+        "fn deposit(amount: int) -> int:\n"
+        "    require:\n"
+        "        amount > 0\n"
+        "    return amount";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "deposit");
+    EXPECT_EQ(fn->preconditions.size(), 1u);
+    EXPECT_EQ(fn->postconditions.size(), 0u);
+    EXPECT_EQ(fn->body.size(), 1u);
+}
+
+TEST(ParserTest, FnWithEnsure) {
+    std::string src =
+        "fn abs(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    if x < 0:\n"
+        "        return -x\n"
+        "    return x";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 0u);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+}
+
+TEST(ParserTest, FnWithRequireAndEnsure) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    require:\n"
+        "        a >= 0\n"
+        "        b >= 0\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    return a + b";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 2u);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    EXPECT_EQ(fn->body.size(), 1u);
+}
+
+TEST(ParserTest, FnWithoutContract) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 0u);
+    EXPECT_EQ(fn->postconditions.size(), 0u);
+}
+
+TEST(ParserTest, TypeWithInvariant) {
+    std::string src =
+        "type Account:\n"
+        "    balance: int\n"
+        "    min_balance: int\n"
+        "    invariant:\n"
+        "        balance >= min_balance";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    auto &ts = std::get<TypeStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Account");
+    EXPECT_EQ(ts.fields.size(), 2u);
+    EXPECT_EQ(ts.invariants.size(), 1u);
+}
+
+TEST(ParserTest, TypeWithoutInvariant) {
+    std::string src =
+        "type Point:\n"
+        "    x: int\n"
+        "    y: int";
+    Program prog = parseStr(src);
+    auto &ts = std::get<TypeStmt>(prog[0]);
+    EXPECT_EQ(ts.invariants.size(), 0u);
+}
+
+TEST(ParserTest, OldExprParse) {
+    std::string src =
+        "fn inc(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result == old(x) + 1\n"
+        "    return x + 1";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    // The postcondition expression should contain an OldExpr
+    auto &postExpr = fn->postconditions[0];
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
+    ASSERT_TRUE(bin != nullptr);
+    // lhs is ResultExpr
+    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+    // rhs is BinaryExpr (old(x) + 1)
+    auto *rhsBin = std::get_if<std::unique_ptr<BinaryExpr>>(&(*bin)->rhs->data);
+    ASSERT_TRUE(rhsBin != nullptr);
+    // rhs.lhs is OldExpr
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<OldExpr>>((*rhsBin)->lhs->data));
+}
+
+TEST(ParserTest, ResultExprParse) {
+    std::string src =
+        "fn double(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    return x * 2";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    // The postcondition should contain result >= 0
+    auto &postExpr = fn->postconditions[0];
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
+    ASSERT_TRUE(bin != nullptr);
+    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+}

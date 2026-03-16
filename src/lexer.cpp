@@ -300,6 +300,11 @@ Token Lexer::readToken() {
         if (id == "describe") return {TokenKind::Describe, "describe", line_};
         if (id == "it")       return {TokenKind::It,       "it",       line_};
         if (id == "expect")   return {TokenKind::Expect,   "expect",   line_};
+        if (id == "require")   return {TokenKind::Require,   "require",   line_};
+        if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_};
+        if (id == "invariant") return {TokenKind::Invariant, "invariant", line_};
+        if (id == "old")       return {TokenKind::Old,       "old",       line_};
+        if (id == "result")    return {TokenKind::Result,    "result",    line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 

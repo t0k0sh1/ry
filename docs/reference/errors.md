@@ -60,6 +60,8 @@ type Bad:
 | Map non-existent key access | Referenced a key that does not exist in the map | `let m = {"a": 1}` -> `m["b"]` |
 | unwrap(None) | Called `unwrap` on a `None` value | `unwrap(None)` |
 
+| Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
+
 All runtime errors terminate the process with `exit(1)`.
 
 ### Runtime Error Examples

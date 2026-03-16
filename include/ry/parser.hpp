@@ -37,6 +37,7 @@ private:
     std::string parseTypeNameSingle();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
+    void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
 
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();

@@ -60,6 +60,8 @@ type Bad:
 | マップ存在しないキーアクセス | マップに存在しないキーを参照した | `let m = {"a": 1}` → `m["b"]` |
 | unwrap(None) | `None` 値に対して `unwrap` を呼び出した | `unwrap(None)` |
 
+| 契約違反 | `require`・`ensure`・`invariant` の条件が false と評価された | [契約による設計](contracts.md) を参照 |
+
 すべてのランタイムエラーはプロセスを `exit(1)` で終了します。
 
 ### ランタイムエラーの例

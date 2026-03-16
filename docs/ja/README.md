@@ -43,4 +43,5 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [モジュールシステム](reference/modules.md) | from/import の文法と探索ルール |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
 | [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
+| [契約による設計](reference/contracts.md) | require・ensure・invariant・old・result |
 | [エラー一覧](reference/errors.md) | コンパイルエラーと実行時エラーの説明 |

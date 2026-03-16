@@ -139,8 +139,8 @@ TEST_F(CodeGenTest, FnBasicAddCall) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let result = add(1, 2)\n"
-        "print(result)";
+        "let res = add(1, 2)\n"
+        "print(res)";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
@@ -611,9 +611,9 @@ TEST_F(CodeGenTest, TupleFnReturn) {
     std::string src =
         "fn swap(a: int, b: int) -> (int, int):\n"
         "    return (b, a)\n"
-        "let result = swap(1, 2)\n"
-        "print(result.0)\n"
-        "print(result.1)";
+        "let res = swap(1, 2)\n"
+        "print(res.0)\n"
+        "print(res.1)";
     EXPECT_EQ(runSource(src), "2\n1\n");
 }
 

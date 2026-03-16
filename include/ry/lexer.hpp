@@ -79,6 +79,12 @@ enum class TokenKind {
     Describe,       // describe
     It,             // it
     Expect,         // expect
+    // --- contract (Design by Contract) ---
+    Require,        // require
+    Ensure,         // ensure
+    Invariant,      // invariant
+    Old,            // old
+    Result,         // result
 };
 
 struct Token {
