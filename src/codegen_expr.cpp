@@ -451,6 +451,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Value *hasVal = builder_.CreateExtractValue(lhs, {0}, "has_val");
         llvm::Value *innerVal = builder_.CreateExtractValue(lhs, {1}, "inner_val");
         llvm::Value *rhs = emitExpr(*e->rhs);
+        if (rhs->getType() != innerVal->getType())
+            throw std::runtime_error("'" "??" "' operator: right-hand side type must match Option's inner type");
         return builder_.CreateSelect(hasVal, innerVal, rhs, "coalesce");
     }
 

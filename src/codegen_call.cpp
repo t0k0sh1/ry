@@ -2663,6 +2663,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Type *elemTy = getListElementType(listPtr);
         if (elemTy) {
             llvm::Value *idx = emitExpr(*e->args[1]);
+            if (idx->getType() != i64Ty_)
+                throw std::runtime_error("insert() index must be int");
             llvm::Value *val = emitExpr(*e->args[2]);
             if (val->getType() != elemTy)
                 throw std::runtime_error("insert() element type mismatch");
@@ -2743,6 +2745,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Type *elemTy = getListElementType(listPtr);
         if (elemTy) {
             llvm::Value *idx = emitExpr(*e->args[1]);
+            if (idx->getType() != i64Ty_)
+                throw std::runtime_error("remove_at() index must be int");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -2848,7 +2852,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Type *valTy = getMapValueType(mapPtr);
         if (keyTy && valTy) {
             llvm::Value *key = emitExpr(*e->args[1]);
+            if (key->getType() != keyTy)
+                throw std::runtime_error("get() key type mismatch");
             llvm::Value *defaultVal = emitExpr(*e->args[2]);
+            if (defaultVal->getType() != valTy)
+                throw std::runtime_error("get() default value type must match map's value type");
             llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get_found");
 
@@ -2884,6 +2892,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Type *valTy = getMapValueType(mapPtr);
         if (keyTy && valTy) {
             llvm::Value *key = emitExpr(*e->args[1]);
+            if (key->getType() != keyTy)
+                throw std::runtime_error("remove() key type mismatch");
             llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "mrem_found");
 
@@ -2967,6 +2977,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("union() requires two sets with the same element type");
             // Create new set with all elements from set1, then add elements from set2
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "u_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "u_len2");
@@ -3067,6 +3080,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("intersection() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "is_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "is_data1");
 
@@ -3129,6 +3145,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("difference() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "df_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "df_data1");
 
@@ -3191,6 +3210,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("symmetric_difference() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "sd_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "sd_len2");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "sd_data1");
@@ -3259,6 +3281,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("is_subset() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "sub_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "sub_data1");
 
@@ -3300,6 +3325,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *set2 = emitExpr(*e->args[1]);
         llvm::Type *elemTy = getSetElementType(set1);
         if (elemTy) {
+            llvm::Type *elemTy2 = getSetElementType(set2);
+            if (!elemTy2 || elemTy2 != elemTy)
+                throw std::runtime_error("is_superset() requires two sets with the same element type");
             // Check all elements of set2 are in set1
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "sup_len2");
             llvm::Value *data2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set2, 2), "sup_data2");

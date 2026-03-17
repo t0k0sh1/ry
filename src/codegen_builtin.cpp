@@ -834,6 +834,9 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
             llvm::Value *ePtr = builder_.CreateGEP(elemTy, dataPtr, {curI}, "elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(elemTy, ePtr, "elem");
+            if (expectedVal->getType() != elemTy)
+                throw std::runtime_error("line " + std::to_string(s.line) +
+                                         ": to_contain: element type mismatch");
             llvm::Value *eq;
             if (elemTy == i64Ty_)
                 eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");

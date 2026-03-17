@@ -399,6 +399,8 @@ StmtNode Parser::parseLetOrVar() {
             Token next = lex_.peek();
             if (next.kind != TokenKind::Ident && next.value != "_")
                 parseError("expected identifier or '_' in tuple destructuring");
+            if (next.value != "_" && !isSnakeCase(next.value))
+                parseError(next.line, "variable name '" + next.value + "' must be snake_case");
             lex_.next(); // consume ident
             names.push_back(next.value);
         }
@@ -1222,6 +1224,8 @@ StmtNode Parser::parseRecordStatement() {
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
             parseError(fieldName.line, "expected field name");
+        if (!isSnakeCase(fieldName.value))
+            parseError(fieldName.line, "field name '" + fieldName.value + "' must be snake_case");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind != TokenKind::Colon)
