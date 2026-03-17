@@ -58,6 +58,7 @@ add_library(ry_lib STATIC
     src/runtime_hash.cpp
     src/project_config.cpp
     src/self_update.cpp
+    src/args_runtime.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

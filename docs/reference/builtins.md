@@ -11,6 +11,8 @@
 | `print(expr)` | Prints a value to standard output |
 | `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
+| `exit(code)` | Terminates the process with the given exit code |
+| `args()` | Returns command-line arguments as `List<str>` |
 
 ### Option
 
@@ -219,6 +221,38 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## exit
+
+**Signature:** `exit(code: int)`
+
+Terminates the process immediately with the given exit code. Code after `exit()` is unreachable.
+
+```python
+exit(0)        # normal termination
+exit(1)        # error termination
+```
+
+---
+
+## args
+
+**Signature:** `args() -> List<str>`
+
+Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
+
+```python
+# Run: ry script.ry hello world
+let a = args()
+print(len(a))    # 2
+print(a[0])      # hello
+print(a[1])      # world
+
+for x in args():
+    print(x)
 ```
 
 ---

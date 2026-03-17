@@ -82,6 +82,83 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // exit(code) as expression — emit exit, then create dead block for subsequent IR
+    if (e->callee == "exit") {
+        emitExit(e->args);
+        llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
+        builder_.SetInsertPoint(deadBB);
+        return llvm::UndefValue::get(i64Ty_);
+    }
+
+    // args() → List<str>
+    if (e->callee == "args") {
+        if (!e->args.empty())
+            throw std::runtime_error("args() takes no arguments");
+
+        // Call __ry_args_count()
+        llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
+        llvm::FunctionCallee countFn = mod_->getOrInsertFunction("__ry_args_count", countTy);
+        llvm::Value *count32 = builder_.CreateCall(countFn, {}, "argc");
+        llvm::Value *count = builder_.CreateSExt(count32, i64Ty_, "argc64");
+
+        // Allocate list header
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *headerPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "args_header");
+
+        // Allocate data array (ptr per element)
+        uint64_t elemSize = dl.getTypeAllocSize(ptrTy_);
+        llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "args_data_size");
+        llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "args_data");
+
+        // Loop: for i in 0..count, get arg pointer
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "args_i");
+        builder_.CreateStore(zero, iVar);
+
+        // __ry_args_get function type
+        llvm::FunctionType *getTy = llvm::FunctionType::get(ptrTy_, {i32Ty_}, false);
+        llvm::FunctionCallee getFn = mod_->getOrInsertFunction("__ry_args_get", getTy);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "args.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "args.body", fn_);
+        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "args.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "ai");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, count, "args_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ai_cur");
+        llvm::Value *iCur32 = builder_.CreateTrunc(iCur, i32Ty_, "ai_cur32");
+        llvm::Value *argStr = builder_.CreateCall(getFn, {iCur32}, "arg_str");
+        llvm::Value *elemPtr = builder_.CreateGEP(ptrTy_, dataPtr, {iCur}, "args_elem_ptr");
+        builder_.CreateStore(argStr, elemPtr);
+        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ai_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+
+        // Store header fields
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "args_len_ptr");
+        builder_.CreateStore(count, lenPtr);
+        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "args_cap_ptr");
+        builder_.CreateStore(count, capPtr);
+        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "args_data_field");
+        builder_.CreateStore(dataPtr, dataPtrField);
+
+        list_element_types_[headerPtr] = ptrTy_;
+        return headerPtr;
+    }
+
     // range(n), range(start, end), or range(start, end, step) → List<int>
     if (e->callee == "range") {
         if (e->args.size() < 1 || e->args.size() > 3)

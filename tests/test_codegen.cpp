@@ -463,3 +463,51 @@ TEST_F(CodeGenTest, StringRepeatEmpty) {
 TEST_F(CodeGenTest, StringRepeatOne) {
     EXPECT_EQ(runSource("let x = \"a\" * 1\nprint(x)"), "a\n");
 }
+
+// ===== exit() テスト =====
+
+TEST_F(CodeGenTest, ExitZero) {
+    EXPECT_EXIT(runSource("exit(0)"), ::testing::ExitedWithCode(0), "");
+}
+
+TEST_F(CodeGenTest, ExitFortyTwo) {
+    EXPECT_EXIT(runSource("exit(42)"), ::testing::ExitedWithCode(42), "");
+}
+
+TEST_F(CodeGenTest, ExitAfterPrint) {
+    EXPECT_EXIT(runSource("print(\"hello\")\nexit(1)"), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ExitInExprContext) {
+    EXPECT_EXIT(runSource("let x = exit(1)"), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ExitFloatArgThrows) {
+    EXPECT_THROW(runSource("exit(1.5)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExitNoArgThrows) {
+    EXPECT_THROW(runSource("exit()"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ExitTooManyArgsThrows) {
+    EXPECT_THROW(runSource("exit(1, 2)"), std::runtime_error);
+}
+
+// ===== args() テスト =====
+
+TEST_F(CodeGenTest, ArgsEmpty) {
+    EXPECT_EQ(runSourceWithArgs("let a = args()\nprint(len(a))", {}), "0\n");
+}
+
+TEST_F(CodeGenTest, ArgsWithValues) {
+    EXPECT_EQ(runSourceWithArgs(
+        "let a = args()\nprint(len(a))\nprint(a[0])\nprint(a[1])",
+        {"hello", "world"}), "2\nhello\nworld\n");
+}
+
+TEST_F(CodeGenTest, ArgsIteration) {
+    EXPECT_EQ(runSourceWithArgs(
+        "for x in args():\n    print(x)",
+        {"foo", "bar"}), "foo\nbar\n");
+}
