@@ -45,7 +45,7 @@ fn foo():
     from math   # エラー: トップレベルのみ
 
 # 同一フィールド名の重複
-type Bad:
+record Bad:
     x: int
     x: float   # エラー: xが重複
 ```

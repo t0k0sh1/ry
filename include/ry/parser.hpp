@@ -27,7 +27,8 @@ private:
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();
     StmtNode parseFnStatement();
-    StmtNode parseTypeStatement();
+    StmtNode parseRecordStatement();
+    StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();
     StmtNode parseReturnStatement();
     StmtNode parseDescribeStatement();
@@ -59,5 +60,7 @@ private:
     ExprPtr parseLogicalAnd();
     ExprPtr parseLogicalOr();
     ExprPtr parseTernary();
+    ExprPtr parseNullCoalesce();
+    ExprPtr parseRange();
     ExprPtr parseLambdaExpr();
 };

@@ -368,7 +368,7 @@ TEST_F(CodeGenTest, MultipleElif) {
 
 TEST_F(CodeGenTest, StructBasicFieldAccess) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(10, 20)\n"
@@ -379,7 +379,7 @@ TEST_F(CodeGenTest, StructBasicFieldAccess) {
 
 TEST_F(CodeGenTest, StructFloatFields) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: float\n"
         "    y: float\n"
         "let v = Vec2(1.5, 2.5)\n"
@@ -390,7 +390,7 @@ TEST_F(CodeGenTest, StructFloatFields) {
 
 TEST_F(CodeGenTest, StructInFnArg) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn get_x(p: Point) -> int:\n"
@@ -402,7 +402,7 @@ TEST_F(CodeGenTest, StructInFnArg) {
 
 TEST_F(CodeGenTest, StructAsReturnValue) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn make_point(a: int, b: int) -> Point:\n"
@@ -415,9 +415,9 @@ TEST_F(CodeGenTest, StructAsReturnValue) {
 
 TEST_F(CodeGenTest, StructNested) {
     std::string src =
-        "type Inner:\n"
+        "record Inner:\n"
         "    val: int\n"
-        "type Outer:\n"
+        "record Outer:\n"
         "    inner: Inner\n"
         "    extra: int\n"
         "let i = Inner(42)\n"
@@ -429,7 +429,7 @@ TEST_F(CodeGenTest, StructNested) {
 
 TEST_F(CodeGenTest, StructConstructorArgCountMismatchThrows) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1)";
@@ -438,7 +438,7 @@ TEST_F(CodeGenTest, StructConstructorArgCountMismatchThrows) {
 
 TEST_F(CodeGenTest, StructConstructorArgTypeMismatchThrows) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1.5, 2)";
@@ -447,7 +447,7 @@ TEST_F(CodeGenTest, StructConstructorArgTypeMismatchThrows) {
 
 TEST_F(CodeGenTest, StructUnknownFieldThrows) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1, 2)\n"
@@ -464,7 +464,7 @@ TEST_F(CodeGenTest, FieldAccessOnNonStructThrows) {
 
 TEST_F(CodeGenTest, PrintStructThrows) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1, 2)\n"
@@ -478,7 +478,7 @@ TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
 
 TEST_F(CodeGenTest, StructFieldArithmetic) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let a = Point(10, 20)\n"
@@ -925,4 +925,85 @@ TEST_F(ImportTest, SearchPathRYPATH) {
         "999\n");
 
     std::filesystem::remove_all(lib_dir);
+}
+
+// ===== record キーワード =====
+
+TEST_F(CodeGenTest, RecordKeyword) {
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "let p = Point(1, 2)\n"
+        "print(p.x)\n"
+        "print(p.y)";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
+// ===== type エイリアス =====
+
+TEST_F(CodeGenTest, TypeAlias) {
+    std::string src =
+        "type MyInt = int\n"
+        "fn add(a: MyInt, b: MyInt) -> MyInt:\n"
+        "    return a + b\n"
+        "print(add(3, 4))";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+// ===== for k, v in map =====
+
+TEST_F(CodeGenTest, ForKVInMap) {
+    std::string src =
+        "var m = {\"a\": 1, \"b\": 2}\n"
+        "var total = 0\n"
+        "for k, v in m:\n"
+        "    total = total + v\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+// ===== .. 演算子 =====
+
+TEST_F(CodeGenTest, RangeExpr) {
+    std::string src =
+        "let xs = 1 .. 5\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, RangeExprIterate) {
+    std::string src =
+        "var total = 0\n"
+        "for x in 1 .. 3:\n"
+        "    total = total + x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+// ===== ?? 演算子 =====
+
+TEST_F(CodeGenTest, NullCoalesceSome) {
+    std::string src =
+        "let x: int? = Some(5)\n"
+        "let y = x ?? 0\n"
+        "print(y)";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, NullCoalesceNone) {
+    std::string src =
+        "let x: int? = none\n"
+        "let y = x ?? 42\n"
+        "print(y)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+// ===== none キーワード =====
+
+TEST_F(CodeGenTest, NoneKeyword) {
+    std::string src =
+        "let x: int? = none\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "None\n");
 }

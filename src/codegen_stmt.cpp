@@ -332,6 +332,67 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     if (iterable->getType() != ptrTy_)
         throw std::runtime_error("for loop requires list or set iterable");
 
+    // Map iteration: for k, v in map
+    if (s->var_name2.has_value()) {
+        llvm::Type *keyTy = getMapKeyType(iterable);
+        llvm::Type *valTy = getMapValueType(iterable);
+        if (!keyTy || !valTy)
+            throw std::runtime_error("for k, v requires a map iterable");
+
+        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
+        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
+        llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 2, "keys_ptr_field");
+        llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
+        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
+        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
+
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.body", fn_);
+        llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "for.step", fn_);
+        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
+
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        loop_stack_.push_back({stepBB, endBB});
+        pushScope();
+
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+        llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
+        llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
+        llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
+        llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
+
+        llvm::AllocaInst *keyVar = getOrCreateVar(s->var_name, keyTy);
+        builder_.CreateStore(key, keyVar);
+        llvm::AllocaInst *valVar = getOrCreateVar(*s->var_name2, valTy);
+        builder_.CreateStore(val, valVar);
+
+        for (auto &stmt : s->body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        popScope();
+        loop_stack_.pop_back();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(stepBB);
+
+        builder_.SetInsertPoint(stepBB);
+        llvm::Value *iNext = builder_.CreateAdd(
+            builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return;
+    }
+
     // Try set first, then list
     llvm::Type *elemTy = getSetElementType(iterable);
     llvm::StructType *headerTy = setHeaderTy_;

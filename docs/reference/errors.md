@@ -45,7 +45,7 @@ fn foo():
     from math   # Error: top level only
 
 # Duplicate field name
-type Bad:
+record Bad:
     x: int
     x: float   # Error: x is duplicated
 ```

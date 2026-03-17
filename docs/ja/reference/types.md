@@ -18,7 +18,7 @@
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int): x * 2` | 関数型 |
-| ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
+| ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | エラーハンドリング用の Result 型 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
@@ -60,7 +60,42 @@ let u: int | str = 42
 | `fn(T1, ...) -> R` | 関数型 |
 | `Result<T, E>` | Result 型（T = Ok 型、E = Err 型） |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
-| ユーザー定義型名 | `type` または `enum` キーワードで宣言した型 |
+| ユーザー定義型名 | `record` または `enum` キーワードで宣言した型 |
+
+## 型エイリアス
+
+`type` キーワードで既存の型に新しい名前を付けます。エイリアスは元の型と完全に互換性があります。
+
+```python
+type Meters = float
+type StringList = List<str>
+
+let d: Meters = 3.14
+let names: StringList = ["Alice", "Bob"]
+```
+
+> **命名規則**: 型エイリアス名は PascalCase（例: `Meters`、`StringList`）を使用する必要があります。コンパイラがこの規則を強制します。
+
+---
+
+## `none` キーワードと Option 型の省略記法
+
+`none` キーワードは Option 型の値が存在しないことを表し、`None` と同等です。
+
+`T?` 構文は `Option<T>` の省略記法です。
+
+```python
+let x: int? = 42       # Option<int> と同等
+let y: int? = none      # None と同等
+
+fn find(xs: List<int>, val: int) -> int?:
+    for x in xs:
+        if x == val:
+            return Some(x)
+    return none
+```
+
+---
 
 ## F-String（文字列補間）
 

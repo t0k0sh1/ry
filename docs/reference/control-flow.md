@@ -104,6 +104,22 @@ for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
 ```
 
+### Map Key-Value Iteration
+
+```python
+for k, v in map_expr:
+    # k is the key, v is the value for each entry
+```
+
+### Range Operator (`..`)
+
+The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.
+
+```python
+for i in 1 .. 5:
+    print(i)     # 1 2 3 4 5
+```
+
 ### Example
 
 ```python
@@ -126,6 +142,16 @@ for i in range(0, 10, 2):
 
 for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
+
+# Map iteration
+let m = {"a": 1, "b": 2}
+for k, v in m:
+    print(k)
+    print(v)
+
+# Range operator
+for i in 1 .. 3:
+    print(i)     # 1 2 3
 ```
 
 ---

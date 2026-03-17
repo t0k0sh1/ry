@@ -22,6 +22,7 @@
 | 11 | `not` | 邏輯 NOT | 右 |
 | 12 | `and` | 邏輯 AND | 左 |
 | 13 | `or` | 邏輯 OR | 左 |
+| 13.5 | `??` | 空值合併 | 左 |
 | 14 | `?:` | 三元條件 | 右 |
 
 ## 算術運算子
@@ -124,6 +125,39 @@ let s = false ? "yes" : "no" # "no"
 
 # 巢狀（右結合）
 let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
+
+## 範圍運算子
+
+`..` 運算子建立包含兩端的整數範圍。
+
+```python
+let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+
+for i in 1 .. 3:
+    print(i)       # 1 2 3
+```
+
+結果是包含從左運算元到右運算元（兩端皆含）的所有整數的 `List<int>`。
+
+---
+
+## 空值合併運算子（`??`）
+
+```python
+let x = option_val ?? default_val
+```
+
+如果 `option_val` 為 `Some(v)`，則回傳 `v`。否則回傳 `default_val`。右運算元必須與 Option 的內部型別相同。
+
+```python
+let a: int? = Some(10)
+let b: int? = none
+
+print(a ?? 0)    # 10
+print(b ?? 0)    # 0
 ```
 
 ---

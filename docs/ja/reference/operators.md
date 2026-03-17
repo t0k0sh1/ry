@@ -22,6 +22,7 @@
 | 11 | `not` | 論理 NOT | 右 |
 | 12 | `and` | 論理 AND | 左 |
 | 13 | `or` | 論理 OR | 左 |
+| 13.5 | `??` | null 合体 | 左 |
 | 14 | `?:` | 三項条件 | 右 |
 
 ## 算術演算子
@@ -124,6 +125,39 @@ let s = false ? "yes" : "no" # "no"
 
 # ネスト（右結合）
 let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
+
+## 範囲演算子
+
+`..` 演算子は両端を含む整数の範囲を生成します。
+
+```python
+let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+
+for i in 1 .. 3:
+    print(i)       # 1 2 3
+```
+
+結果は左オペランドから右オペランドまで（両端含む）のすべての整数を含む `List<int>` です。
+
+---
+
+## null 合体演算子（`??`）
+
+```python
+let x = option_val ?? default_val
+```
+
+`option_val` が `Some(v)` の場合は `v` を返します。それ以外の場合は `default_val` を返します。右辺のオペランドは Option の内部型と同じ型でなければなりません。
+
+```python
+let a: int? = Some(10)
+let b: int? = none
+
+print(a ?? 0)    # 10
+print(b ?? 0)    # 0
 ```
 
 ---

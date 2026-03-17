@@ -230,7 +230,13 @@ Token Lexer::readToken() {
         }
         return {TokenKind::Colon, ":", line_};
     }
-    if (c == '.') { ++pos_; return {TokenKind::Dot,   ".", line_}; }
+    if (c == '.') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '.') {
+            ++pos_; return {TokenKind::DotDot, "..", line_};
+        }
+        return {TokenKind::Dot, ".", line_};
+    }
     if (c == '[') { ++pos_; return {TokenKind::LBracket, "[", line_}; }
     if (c == ']') { ++pos_; return {TokenKind::RBracket, "]", line_}; }
     if (c == '{') {
@@ -254,7 +260,13 @@ Token Lexer::readToken() {
         return {TokenKind::RBrace, "}", line_};
     }
     if (c == '@') { ++pos_; return {TokenKind::At,      "@", line_}; }
-    if (c == '?') { ++pos_; return {TokenKind::Question, "?", line_}; }
+    if (c == '?') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '?') {
+            ++pos_; return {TokenKind::QuestionQuestion, "??", line_};
+        }
+        return {TokenKind::Question, "?", line_};
+    }
 
     // r-string: r"..." (raw string, no escape processing)
     if (c == 'r' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
@@ -375,6 +387,7 @@ Token Lexer::readToken() {
         if (id == "from")   return {TokenKind::From,   "from",   line_};
         if (id == "import") return {TokenKind::Import, "import", line_};
         if (id == "type")     return {TokenKind::Type,     "type",     line_};
+        if (id == "record")   return {TokenKind::Record,   "record",   line_};
         if (id == "operator") return {TokenKind::Operator, "operator", line_};
         if (id == "enum")     return {TokenKind::Enum,     "enum",     line_};
         if (id == "match")    return {TokenKind::Match,    "match",    line_};
@@ -387,6 +400,7 @@ Token Lexer::readToken() {
         if (id == "invariant") return {TokenKind::Invariant, "invariant", line_};
         if (id == "old")       return {TokenKind::Old,       "old",       line_};
         if (id == "result")    return {TokenKind::Result,    "result",    line_};
+        if (id == "none")      return {TokenKind::NoneKw,    "none",      line_};
         if (id == "as")        return {TokenKind::As,        "as",        line_};
         if (id == "Ok")        return {TokenKind::Ok,        "Ok",        line_};
         if (id == "Err")       return {TokenKind::Err,       "Err",       line_};

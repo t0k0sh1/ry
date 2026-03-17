@@ -33,6 +33,17 @@
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
 | `map(list, fn)` | 各要素を変換した新しいリストを返す |
 | `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
+| `insert(list, i, val)` | インデックス i に要素を挿入 |
+| `remove_at(list, i)` | インデックス i の要素を削除して返す |
+| `items(map)` | (キー, 値) タプルのリストを返す |
+| `remove(map, key)` | 指定したキーのエントリを削除 |
+| `get(map, key, default)` | キーの値を返す（存在しない場合はデフォルト値） |
+| `union(set, set)` | 2つのセットの和集合を返す |
+| `intersection(set, set)` | 2つのセットの積集合を返す |
+| `difference(set, set)` | 2つのセットの差集合を返す |
+| `symmetric_difference(set, set)` | 2つのセットの対称差を返す |
+| `is_subset(set, set)` | 最初のセットが2番目の部分集合かを返す |
+| `is_superset(set, set)` | 最初のセットが2番目の上位集合かを返す |
 
 ### [文字列操作](builtins-string.md)
 

@@ -107,7 +107,7 @@ TEST_F(CodeGenTest, RequireAndEnsureCombined) {
 
 TEST_F(CodeGenTest, InvariantSatisfiedOnConstruction) {
     std::string src =
-        "type Account:\n"
+        "record Account:\n"
         "    balance: int\n"
         "    min_balance: int\n"
         "    invariant:\n"
@@ -119,7 +119,7 @@ TEST_F(CodeGenTest, InvariantSatisfiedOnConstruction) {
 
 TEST_F(CodeGenTest, InvariantViolatedOnConstruction) {
     std::string src =
-        "type Account:\n"
+        "record Account:\n"
         "    balance: int\n"
         "    min_balance: int\n"
         "    invariant:\n"
@@ -131,7 +131,7 @@ TEST_F(CodeGenTest, InvariantViolatedOnConstruction) {
 
 TEST_F(CodeGenTest, InvariantSatisfiedAfterFieldAssign) {
     std::string src =
-        "type Account:\n"
+        "record Account:\n"
         "    balance: int\n"
         "    min_balance: int\n"
         "    invariant:\n"
@@ -144,7 +144,7 @@ TEST_F(CodeGenTest, InvariantSatisfiedAfterFieldAssign) {
 
 TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
     std::string src =
-        "type Account:\n"
+        "record Account:\n"
         "    balance: int\n"
         "    min_balance: int\n"
         "    invariant:\n"

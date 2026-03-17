@@ -4,14 +4,16 @@
 
 ## Overview
 
-Structs are value types allocated on the stack. They are defined with the `type` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
+Structs are value types allocated on the stack. They are defined with the `record` keyword. Structs can have `invariant` clauses for Design by Contract. See [Design by Contract](contracts.md).
+
+> **Naming convention**: Struct names must use PascalCase (e.g., `Point`, `Rectangle`). Field names must use snake_case. The compiler enforces these conventions.
 
 ---
 
 ## Definition Syntax
 
 ```python
-type TypeName:
+record TypeName:
     field_name: type
     field_name: type
 ```
@@ -19,11 +21,11 @@ type TypeName:
 ### Example
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Rectangle:
+record Rectangle:
     width: float
     height: float
 ```
@@ -87,11 +89,11 @@ fn make_point(x: int, y: int) -> Point:
 Structs can be used as fields of other structs.
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Circle:
+record Circle:
     center: Point
     radius: float
 
@@ -111,7 +113,7 @@ print(c.center.x)   # 0
 
 ```python
 # Error example: Duplicate field names
-type Bad:
+record Bad:
     x: int
     x: int   # Error
 

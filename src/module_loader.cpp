@@ -94,8 +94,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         for (const auto &sub_stmt : sub_prog) {
             if (std::holds_alternative<std::unique_ptr<FnStmt>>(sub_stmt)) {
                 fn_names.insert(std::get<std::unique_ptr<FnStmt>>(sub_stmt)->name);
-            } else if (std::holds_alternative<TypeStmt>(sub_stmt)) {
-                fn_names.insert(std::get<TypeStmt>(sub_stmt).name);
+            } else if (std::holds_alternative<RecordStmt>(sub_stmt)) {
+                fn_names.insert(std::get<RecordStmt>(sub_stmt).name);
             }
         }
         fn_cache_[abs_path] = fn_names;
@@ -103,7 +103,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
         if (imp.names.empty()) {
             for (auto &sub_stmt : sub_prog) {
                 if (std::holds_alternative<std::unique_ptr<FnStmt>>(sub_stmt) ||
-                    std::holds_alternative<TypeStmt>(sub_stmt)) {
+                    std::holds_alternative<RecordStmt>(sub_stmt)) {
                     result.push_back(std::move(sub_stmt));
                 }
             }
@@ -117,8 +117,8 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                         found.insert(fn->name);
                         result.push_back(std::move(sub_stmt));
                     }
-                } else if (std::holds_alternative<TypeStmt>(sub_stmt)) {
-                    const auto &ts = std::get<TypeStmt>(sub_stmt);
+                } else if (std::holds_alternative<RecordStmt>(sub_stmt)) {
+                    const auto &ts = std::get<RecordStmt>(sub_stmt);
                     if (requested.count(ts.name)) {
                         found.insert(ts.name);
                         result.push_back(std::move(sub_stmt));

@@ -6,12 +6,12 @@
 
 ---
 
-## Defining Structs with type
+## Defining Structs with record
 
-Structs are defined with the `type` keyword. Each field is described in the `name: type` format.
+Structs are defined with the `record` keyword. Each field is described in the `name: type` format.
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 ```
@@ -63,7 +63,7 @@ print(p.x)   # 100
 Structs can be passed as function arguments.
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
@@ -82,11 +82,11 @@ print(distance_x(p1, p2))   # 6
 A struct's field can be another struct.
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Line:
+record Line:
     start: Point
     end: Point
 

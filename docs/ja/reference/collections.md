@@ -312,6 +312,27 @@ let pairs = zip(xs, ys)
 # pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
+### insert
+
+指定したインデックスに要素を挿入します。そのインデックス以降の要素は右にシフトされます。
+
+```python
+var xs = [1, 2, 3]
+insert(xs, 1, 99)
+print(xs)   # [1, 99, 2, 3]
+```
+
+### remove_at
+
+指定したインデックスの要素を削除して返します。そのインデックス以降の要素は左にシフトされます。
+
+```python
+var xs = [1, 2, 3, 4]
+let v = remove_at(xs, 1)
+print(v)    # 2
+print(xs)   # [1, 3, 4]
+```
+
 ### 制約とエラー
 
 | 制約 | 詳細 |
@@ -388,6 +409,36 @@ print(keys(m))   # ["a", "b", "c"]
 ```python
 let m = {"a": 1, "b": 2, "c": 3}
 print(values(m))   # [1, 2, 3]
+```
+
+### items
+
+マップの全エントリの `(キー, 値)` タプルのリストを返します。
+
+```python
+let m = {"a": 1, "b": 2}
+let pairs = items(m)
+# pairs = [("a", 1), ("b", 2)]
+```
+
+### remove（マップ）
+
+指定したキーのエントリをマップから削除します。キーが存在しない場合は何もしません。
+
+```python
+let m = {"a": 1, "b": 2}
+remove(m, "a")
+print(m)   # {b: 2}
+```
+
+### get
+
+指定したキーの値を返します。キーが存在しない場合はデフォルト値を返します。
+
+```python
+let m = {"a": 1, "b": 2}
+print(get(m, "a", 0))   # 1
+print(get(m, "z", 0))   # 0
 ```
 
 ### 制約とエラー
@@ -482,6 +533,68 @@ let s: Set<int> = {}
 ```python
 fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
+```
+
+### union
+
+両方のセットの全要素を含む新しいセットを返します。
+
+```python
+let a = {1, 2, 3}
+let b = {3, 4, 5}
+print(union(a, b))   # {1, 2, 3, 4, 5}
+```
+
+### intersection
+
+両方のセットに存在する要素のみを含む新しいセットを返します。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(intersection(a, b))   # {2, 3}
+```
+
+### difference
+
+最初のセットにはあるが、2番目のセットにはない要素を含む新しいセットを返します。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(difference(a, b))   # {1}
+```
+
+### symmetric_difference
+
+いずれかのセットにあるが、両方にはない要素を含む新しいセットを返します。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(symmetric_difference(a, b))   # {1, 4}
+```
+
+### is_subset
+
+最初のセットの全要素が2番目のセットに含まれている場合に `true` を返します。
+
+```python
+let a = {1, 2}
+let b = {1, 2, 3}
+print(is_subset(a, b))   # true
+print(is_subset(b, a))   # false
+```
+
+### is_superset
+
+最初のセットが2番目のセットの全要素を含んでいる場合に `true` を返します。
+
+```python
+let a = {1, 2, 3}
+let b = {1, 2}
+print(is_superset(a, b))   # true
+print(is_superset(b, a))   # false
 ```
 
 ### 制約とエラー

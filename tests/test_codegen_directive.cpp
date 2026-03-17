@@ -19,7 +19,7 @@ TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
 TEST_F(DirectiveTest, DeprecatedTypeWarning) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "type OldPoint:\n"
+        "record OldPoint:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = OldPoint(1, 2)\n"
@@ -45,7 +45,7 @@ TEST_F(DirectiveTest, DeprecatedVariableWarning) {
 // 4. @deprecated field accessed -> warning
 TEST_F(DirectiveTest, DeprecatedFieldWarning) {
     auto [output, warnings] = runSourceWithWarnings(
-        "type MyType:\n"
+        "record MyType:\n"
         "    @deprecated\n"
         "    old_field: int\n"
         "    new_field: int\n"

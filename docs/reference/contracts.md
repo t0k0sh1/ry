@@ -79,7 +79,7 @@ Invariants are conditions that must always hold for a struct instance. They are 
 - After every field assignment
 
 ```python
-type BankAccount:
+record BankAccount:
     balance: int
     min_balance: int
     invariant:
@@ -98,5 +98,5 @@ a.balance = -1                  # Contract violation: invariant failed
 - `require` and `ensure` blocks are optional and appear before the function body.
 - `require` must come before `ensure` when both are present.
 - `result` and `old()` can only be used inside `ensure` blocks.
-- `invariant` appears at the end of a `type` definition, after all field declarations.
+- `invariant` appears at the end of a `record` definition, after all field declarations.
 - All contract violations terminate with `exit(1)` and print a diagnostic message.

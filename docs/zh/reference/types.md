@@ -18,7 +18,7 @@
 | `Map<K, V>` | ptr（堆積） | `{"a": 1}` | 雜湊映射 |
 | `Set<T>` | ptr（堆積） | `{1, 2, 3}` | 不重複的集合 |
 | `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int): x * 2` | 函式型別 |
-| 使用者定義型別 | LLVM StructType (named) | `type Point: ...` | 以 `type` 關鍵字定義的結構體 |
+| 使用者定義型別 | LLVM StructType (named) | `record Point: ...` | 以 `record` 關鍵字定義的結構體 |
 | `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 用於錯誤處理的結果型別 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
@@ -60,7 +60,42 @@ let u: int | str = 42
 | `fn(T1, ...) -> R` | 函式型別 |
 | `Result<T, E>` | 結果型別（T = Ok 型別、E = Err 型別） |
 | `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
-| 使用者定義型別名稱 | 以 `type` 或 `enum` 關鍵字宣告的型別 |
+| 使用者定義型別名稱 | 以 `record` 或 `enum` 關鍵字宣告的型別 |
+
+## 型別別名
+
+`type` 關鍵字為現有型別建立新的名稱。別名與原始型別完全互換。
+
+```python
+type Meters = float
+type StringList = List<str>
+
+let d: Meters = 3.14
+let names: StringList = ["Alice", "Bob"]
+```
+
+> **命名慣例**：型別別名名稱必須使用 PascalCase（如 `Meters`、`StringList`）。編譯器會強制執行此慣例。
+
+---
+
+## `none` 關鍵字與 Option 型別簡寫
+
+`none` 關鍵字表示 Option 型別的值不存在，等同於 `None`。
+
+`T?` 語法是 `Option<T>` 的簡寫。
+
+```python
+let x: int? = 42       # 等同於 Option<int>
+let y: int? = none      # 等同於 None
+
+fn find(xs: List<int>, val: int) -> int?:
+    for x in xs:
+        if x == val:
+            return Some(x)
+    return none
+```
+
+---
 
 ## F-String（字串插值）
 

@@ -312,6 +312,27 @@ let pairs = zip(xs, ys)
 # pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
+### insert
+
+在指定索引處插入元素。該索引及之後的元素向右移動。
+
+```python
+var xs = [1, 2, 3]
+insert(xs, 1, 99)
+print(xs)   # [1, 99, 2, 3]
+```
+
+### remove_at
+
+移除並回傳指定索引處的元素。該索引之後的元素向左移動。
+
+```python
+var xs = [1, 2, 3, 4]
+let v = remove_at(xs, 1)
+print(v)    # 2
+print(xs)   # [1, 3, 4]
+```
+
 ### 限制與錯誤
 
 | 限制 | 詳細 |
@@ -388,6 +409,36 @@ print(keys(m))   # ["a", "b", "c"]
 ```python
 let m = {"a": 1, "b": 2, "c": 3}
 print(values(m))   # [1, 2, 3]
+```
+
+### items
+
+回傳映射中所有條目的 `(鍵, 值)` 元組串列。
+
+```python
+let m = {"a": 1, "b": 2}
+let pairs = items(m)
+# pairs = [("a", 1), ("b", 2)]
+```
+
+### remove（映射）
+
+從映射中刪除指定鍵的條目。若鍵不存在則不做任何操作。
+
+```python
+let m = {"a": 1, "b": 2}
+remove(m, "a")
+print(m)   # {b: 2}
+```
+
+### get
+
+回傳指定鍵的值，若鍵不存在則回傳預設值。
+
+```python
+let m = {"a": 1, "b": 2}
+print(get(m, "a", 0))   # 1
+print(get(m, "z", 0))   # 0
 ```
 
 ### 限制與錯誤
@@ -482,6 +533,68 @@ let s: Set<int> = {}
 ```python
 fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
+```
+
+### union
+
+回傳包含兩個集合所有元素的新集合。
+
+```python
+let a = {1, 2, 3}
+let b = {3, 4, 5}
+print(union(a, b))   # {1, 2, 3, 4, 5}
+```
+
+### intersection
+
+回傳僅包含兩個集合中都存在的元素的新集合。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(intersection(a, b))   # {2, 3}
+```
+
+### difference
+
+回傳包含在第一個集合中但不在第二個集合中的元素的新集合。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(difference(a, b))   # {1}
+```
+
+### symmetric_difference
+
+回傳包含在任一集合中但不同時在兩個集合中的元素的新集合。
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(symmetric_difference(a, b))   # {1, 4}
+```
+
+### is_subset
+
+如果第一個集合的所有元素都包含在第二個集合中，則回傳 `true`。
+
+```python
+let a = {1, 2}
+let b = {1, 2, 3}
+print(is_subset(a, b))   # true
+print(is_subset(b, a))   # false
+```
+
+### is_superset
+
+如果第一個集合包含第二個集合的所有元素，則回傳 `true`。
+
+```python
+let a = {1, 2, 3}
+let b = {1, 2}
+print(is_superset(a, b))   # true
+print(is_superset(b, a))   # false
 ```
 
 ### 限制與錯誤

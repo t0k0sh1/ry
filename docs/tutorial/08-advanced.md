@@ -123,7 +123,7 @@ You can define operators for custom types using the `fn operator` syntax.
 Takes two parameters.
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 

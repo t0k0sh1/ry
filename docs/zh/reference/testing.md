@@ -36,9 +36,12 @@ describe "說明文字":
 | 匹配器 | 說明 | 支援型別 |
 |---|---|---|
 | `to_eq(expected)` | 相等比較 | int, float, bool, str |
+| `to_not_eq(expected)` | 不相等 | int, float, bool, str |
 | `to_be_true()` | 為 `true` | bool |
 | `to_be_false()` | 為 `false` | bool |
 | `to_be_none()` | 為 `None` | Option |
+| `to_be_some()` | Option 為 `Some` | Option |
+| `to_contain(val)` | 容器包含值 | List, Set, str |
 
 ---
 

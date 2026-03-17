@@ -254,34 +254,47 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
-    // Intercept append/pop for lists (UFCS: xs.append(v) → append(xs, v))
-    if ((s.callee == "append" && s.args.size() == 2) ||
-        (s.callee == "pop" && s.args.size() == 1)) {
-        auto *ve = std::get_if<VariableExpr>(&s.args[0]->data);
-        if (ve) {
-            llvm::AllocaInst *alloca = findVar(ve->name);
-            if (alloca && getListElementType(alloca)) {
-                auto ce = std::make_unique<CallExpr>();
-                ce->callee = s.callee;
-                ce->args = std::move(s.args);
-                emitExprVariant(ce);
-                return;
-            }
-        }
-    }
-    // Intercept add/remove for sets (UFCS: s.add(x) → add(s, x))
-    if ((s.callee == "add" || s.callee == "remove") && s.args.size() == 2) {
-        // Peek at first arg: is it a set variable?
+    // Intercept collection operations and route through CallExpr emitter
+    if (!s.args.empty()) {
+        bool intercept = false;
         if (auto *ve = std::get_if<VariableExpr>(&s.args[0]->data)) {
             llvm::AllocaInst *alloca = findVar(ve->name);
-            if (alloca && getSetElementType(alloca)) {
-                // Route through CallExpr emitter which handles set add/remove
-                auto ce = std::make_unique<CallExpr>();
-                ce->callee = s.callee;
-                ce->args = std::move(s.args);
-                emitExprVariant(ce);
-                return;
+            if (alloca) {
+                bool isList = getListElementType(alloca) != nullptr;
+                bool isSet = !isList && getSetElementType(alloca) != nullptr;
+                bool isMap = !isList && !isSet && getMapKeyType(alloca) != nullptr;
+                size_t nargs = s.args.size();
+
+                if (isList &&
+                    ((s.callee == "append" && nargs == 2) ||
+                     (s.callee == "pop" && nargs == 1) ||
+                     (s.callee == "insert" && nargs == 3) ||
+                     (s.callee == "remove_at" && nargs == 2))) {
+                    intercept = true;
+                } else if (isSet &&
+                    ((s.callee == "add" && nargs == 2) ||
+                     (s.callee == "remove" && nargs == 2) ||
+                     (s.callee == "union" && nargs == 2) ||
+                     (s.callee == "intersection" && nargs == 2) ||
+                     (s.callee == "difference" && nargs == 2) ||
+                     (s.callee == "symmetric_difference" && nargs == 2) ||
+                     (s.callee == "is_subset" && nargs == 2) ||
+                     (s.callee == "is_superset" && nargs == 2))) {
+                    intercept = true;
+                } else if (isMap &&
+                    ((s.callee == "remove" && nargs == 2) ||
+                     (s.callee == "items" && nargs == 1) ||
+                     (s.callee == "get" && nargs == 3))) {
+                    intercept = true;
+                }
             }
+        }
+        if (intercept) {
+            auto ce = std::make_unique<CallExpr>();
+            ce->callee = s.callee;
+            ce->args = std::move(s.args);
+            emitExprVariant(ce);
+            return;
         }
     }
     emitUserFnCall(s.callee, s.args);
@@ -298,12 +311,36 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
 }
 
 llvm::Type *CodeGen::resolveType(const std::string &typeName) {
+    // Built-in primitive types first (cannot be shadowed by aliases)
     if (typeName == "int")   return i64Ty_;
     if (typeName == "byte")  return i8Ty_;
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
+
+    // Optional type suffix: "int?" -> Option<int>
+    if (!typeName.empty() && typeName.back() == '?') {
+        std::string inner = typeName.substr(0, typeName.size() - 1);
+        llvm::Type *innerTy = resolveType(inner);
+        return getOptionType(innerTy);
+    }
+
+    // Check type alias (with cycle detection)
+    auto aliasIt = type_aliases_.find(typeName);
+    if (aliasIt != type_aliases_.end()) {
+        std::unordered_set<std::string> visited;
+        std::string current = typeName;
+        while (true) {
+            if (!visited.insert(current).second)
+                throw std::runtime_error("Circular type alias detected: " + typeName);
+            auto it = type_aliases_.find(current);
+            if (it == type_aliases_.end())
+                break;
+            current = it->second;
+        }
+        return resolveType(current);
+    }
 
     // Union type: "int | str"
     if (typeName.find(" | ") != std::string::npos) {

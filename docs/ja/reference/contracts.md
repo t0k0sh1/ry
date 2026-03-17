@@ -79,7 +79,7 @@ fn deposit(amount: int, balance: int) -> int:
 - フィールド代入後
 
 ```python
-type BankAccount:
+record BankAccount:
     balance: int
     min_balance: int
     invariant:
@@ -98,5 +98,5 @@ a.balance = -1                  # Contract violation: invariant failed
 - `require` と `ensure` ブロックはオプションで、関数本体の前に記述します。
 - 両方を使う場合、`require` は `ensure` の前に記述する必要があります。
 - `result` と `old()` は `ensure` ブロック内でのみ使用できます。
-- `invariant` は `type` 定義の末尾、全フィールド宣言の後に記述します。
+- `invariant` は `record` 定義の末尾、全フィールド宣言の後に記述します。
 - すべての契約違反は `exit(1)` でプログラムを終了し、診断メッセージを出力します。

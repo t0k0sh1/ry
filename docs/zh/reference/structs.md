@@ -4,14 +4,16 @@
 
 ## 概述
 
-結構體是堆疊上的值型別。使用 `type` 關鍵字定義。結構體可以使用 `invariant` 子句定義不變量。參閱 [契約式設計](contracts.md)。
+結構體是堆疊上的值型別。使用 `record` 關鍵字定義。結構體可以使用 `invariant` 子句定義不變量。參閱 [契約式設計](contracts.md)。
+
+> **命名慣例**：結構體名稱必須使用 PascalCase（如 `Point`、`Rectangle`）。欄位名稱必須使用 snake_case。編譯器會強制執行這些慣例。
 
 ---
 
 ## 定義語法
 
 ```python
-type 型別名:
+record 型別名:
     欄位名: 型別
     欄位名: 型別
 ```
@@ -19,11 +21,11 @@ type 型別名:
 ### 範例
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Rectangle:
+record Rectangle:
     width: float
     height: float
 ```
@@ -87,11 +89,11 @@ fn make_point(x: int, y: int) -> Point:
 可以將結構體作為另一個結構體的欄位使用。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Circle:
+record Circle:
     center: Point
     radius: float
 
@@ -111,7 +113,7 @@ print(c.center.x)   # 0
 
 ```python
 # 錯誤範例：相同欄位名重複
-type Bad:
+record Bad:
     x: int
     x: int   # 錯誤
 

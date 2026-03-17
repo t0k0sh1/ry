@@ -86,6 +86,25 @@ for i in range(2, 5):
 # 4
 ```
 
+`..` 範圍運算子建立包含兩端的範圍。`1 .. 3` 產生 `[1, 2, 3]`。
+
+```python
+for i in 1 .. 3:
+    print(i)
+# 1
+# 2
+# 3
+```
+
+使用 `for k, v in map` 可以走訪映射的鍵值對。
+
+```python
+let m = {"x": 10, "y": 20}
+for k, v in m:
+    print(k)
+    print(v)
+```
+
 ---
 
 ## break 與 continue

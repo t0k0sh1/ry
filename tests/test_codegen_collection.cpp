@@ -134,7 +134,7 @@ TEST_F(CodeGenTest, UFCSChainedCall) {
 
 TEST_F(CodeGenTest, UFCSWithStruct) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn get_x(p: Point) -> int:\n"
@@ -442,7 +442,7 @@ TEST_F(CodeGenTest, OverloadRecursive) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -457,7 +457,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator-(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -472,7 +472,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructEq) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator==(a: Point, b: Point) -> bool:\n"
@@ -487,7 +487,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructEq) {
 
 TEST_F(CodeGenTest, OperatorOverloadUnaryMinus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator-(a: Vec2) -> Vec2:\n"
@@ -508,7 +508,7 @@ TEST_F(CodeGenTest, OperatorOverloadBuiltinUnchanged) {
 
 TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -1649,4 +1649,116 @@ TEST_F(CodeGenTest, IsEmptyTrue) {
         "let ys = xs.filter(fn(x: int): x > 10)\n"
         "print(is_empty(ys))";
     EXPECT_EQ(runSource(src), "true\n");
+}
+
+// ===== insert(list, i, val) =====
+
+TEST_F(CodeGenTest, ListInsert) {
+    std::string src =
+        "var xs = [1, 3, 4]\n"
+        "insert(xs, 1, 2)\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "1\n2\n3\n4\n");
+}
+
+// ===== remove_at(list, i) =====
+
+TEST_F(CodeGenTest, ListRemoveAt) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "let removed = remove_at(xs, 1)\n"
+        "print(removed)\n"
+        "print(len(xs))\n"
+        "print(xs[0])\n"
+        "print(xs[1])";
+    EXPECT_EQ(runSource(src), "20\n2\n10\n30\n");
+}
+
+// ===== items(map) =====
+
+TEST_F(CodeGenTest, MapItems) {
+    std::string src =
+        "let m = {\"a\": 1}\n"
+        "let pairs = items(m)\n"
+        "print(len(pairs))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+// ===== get(map, key, default) =====
+
+TEST_F(CodeGenTest, MapGetWithDefault) {
+    std::string src =
+        "let m = {\"a\": 10}\n"
+        "print(get(m, \"a\", 0))\n"
+        "print(get(m, \"b\", 99))";
+    EXPECT_EQ(runSource(src), "10\n99\n");
+}
+
+// ===== remove(map, key) =====
+
+TEST_F(CodeGenTest, MapRemove) {
+    std::string src =
+        "var m = {\"a\": 1, \"b\": 2}\n"
+        "remove(m, \"a\")\n"
+        "print(len(m))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+// ===== Set operations =====
+
+TEST_F(CodeGenTest, SetUnion) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {3, 4, 5}\n"
+        "let c = union(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, SetIntersection) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = intersection(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, SetDifference) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = difference(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, SetSymmetricDifference) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = symmetric_difference(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, SetIsSubset) {
+    std::string src =
+        "let a: Set<int> = {1, 2}\n"
+        "let b: Set<int> = {1, 2, 3}\n"
+        "print(is_subset(a, b))\n"
+        "print(is_subset(b, a))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, SetIsSuperset) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {1, 2}\n"
+        "print(is_superset(a, b))\n"
+        "print(is_superset(b, a))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
 }

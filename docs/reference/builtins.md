@@ -33,6 +33,17 @@
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
+| `insert(list, i, val)` | Inserts an element at index i |
+| `remove_at(list, i)` | Removes and returns the element at index i |
+| `items(map)` | Returns a list of (key, value) tuples |
+| `remove(map, key)` | Removes the entry with the specified key |
+| `get(map, key, default)` | Returns the value for key, or default if not found |
+| `union(set, set)` | Returns the union of two sets |
+| `intersection(set, set)` | Returns the intersection of two sets |
+| `difference(set, set)` | Returns the difference of two sets |
+| `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
+| `is_subset(set, set)` | Returns whether the first set is a subset of the second |
+| `is_superset(set, set)` | Returns whether the first set is a superset of the second |
 
 ### [String Operations](builtins-string.md)
 

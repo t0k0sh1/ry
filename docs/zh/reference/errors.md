@@ -45,7 +45,7 @@ fn foo():
     from math   # 錯誤：僅能在頂層匯入
 
 # 相同欄位名重複
-type Bad:
+record Bad:
     x: int
     x: float   # 錯誤：x 重複
 ```

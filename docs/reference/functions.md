@@ -15,6 +15,8 @@ fn function_name(param_name: type, ...) -> return_type:
 - The body is an indented block.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
+> **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
+
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
@@ -261,7 +263,7 @@ fn operator<op>(a: type) -> return_type:
 Distinguished by the number of parameters.
 
 ```python
-type Vec2:
+record Vec2:
     x: float
     y: float
 

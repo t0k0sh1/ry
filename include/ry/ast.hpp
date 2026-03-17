@@ -47,6 +47,8 @@ struct ResultExpr {};
 struct CastExpr;
 struct InterpolatedStringExpr;
 struct TernaryExpr;
+struct RangeExpr;
+struct NoneExpr {};
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -65,7 +67,9 @@ struct ExprNode {
                  ResultExpr,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
-                 std::unique_ptr<TernaryExpr>> data;
+                 std::unique_ptr<TernaryExpr>,
+                 std::unique_ptr<RangeExpr>,
+                 NoneExpr> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -133,7 +137,9 @@ struct IndexAssignStmt {
 
 struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
 
-struct TypeStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; };
+struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; };
+
+struct TypeAliasStmt { std::string name; std::string target_type; };
 
 struct BreakStmt {};
 struct ContinueStmt {};
@@ -177,10 +183,10 @@ struct ExpectStmt {
 };
 
 using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
-                              ReturnStmt, ImportStmt, TypeStmt,
+                              ReturnStmt, ImportStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt,
-                              TupleDestructStmt,
+                              TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
@@ -206,6 +212,7 @@ struct WhileStmt {
 
 struct ForStmt {
     std::string var_name;
+    std::optional<std::string> var_name2;
     ExprPtr iterable;
     std::vector<StmtNode> body;
 };
@@ -226,6 +233,11 @@ struct TernaryExpr {
 struct InterpolatedStringExpr {
     std::vector<std::string> parts;   // literal text segments (parts.size() == exprs.size() + 1)
     std::vector<ExprPtr> exprs;       // interpolated expressions
+};
+
+struct RangeExpr {
+    ExprPtr start;
+    ExprPtr end;
 };
 
 struct FnStmt {

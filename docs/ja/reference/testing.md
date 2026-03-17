@@ -36,9 +36,12 @@ describe "説明文":
 | マッチャー | 説明 | 対応型 |
 |---|---|---|
 | `to_eq(expected)` | 等値比較 | int, float, bool, str |
+| `to_not_eq(expected)` | 等しくないこと | int, float, bool, str |
 | `to_be_true()` | `true` であること | bool |
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
+| `to_be_some()` | Option が `Some` であること | Option |
+| `to_contain(val)` | コンテナが値を含むこと | List, Set, str |
 
 ---
 

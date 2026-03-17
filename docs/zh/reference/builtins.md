@@ -33,6 +33,17 @@
 | `filter(list, pred)` | 傳回僅包含滿足述詞的元素的新串列 |
 | `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
 | `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
+| `insert(list, i, val)` | 在索引 i 處插入元素 |
+| `remove_at(list, i)` | 移除並回傳索引 i 處的元素 |
+| `items(map)` | 回傳 (鍵, 值) 元組的串列 |
+| `remove(map, key)` | 刪除指定鍵的條目 |
+| `get(map, key, default)` | 回傳鍵的值，若不存在則回傳預設值 |
+| `union(set, set)` | 回傳兩個集合的聯集 |
+| `intersection(set, set)` | 回傳兩個集合的交集 |
+| `difference(set, set)` | 回傳兩個集合的差集 |
+| `symmetric_difference(set, set)` | 回傳兩個集合的對稱差 |
+| `is_subset(set, set)` | 回傳第一個集合是否為第二個的子集 |
+| `is_superset(set, set)` | 回傳第一個集合是否為第二個的超集 |
 
 ### [字串操作](builtins-string.md)
 
