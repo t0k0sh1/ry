@@ -902,7 +902,8 @@ TEST(LexerTest, RawStringEmpty) {
 
 TEST(LexerTest, RawStringNotPrefix) {
     // 'r' followed by something other than '"' should be an identifier
-    auto toks = tokenize("result");
+    auto toks = tokenize("r_foo");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Result);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "r_foo");
 }
