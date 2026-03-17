@@ -110,6 +110,47 @@ for x in xs:
 # 30
 ```
 
+### append
+
+Adds an element to the end of the list. This is a mutating operation.
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+### pop
+
+Removes and returns the last element. Causes a runtime error on an empty list.
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+### reverse
+
+Returns a new list with elements in reverse order. The original list is not modified. Also works on strings.
+
+```python
+let xs = [1, 2, 3]
+print(reverse(xs))   # [3, 2, 1]
+print(xs)            # [1, 2, 3] (unchanged)
+```
+
+### slice
+
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+```
+
 ### filter
 
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.

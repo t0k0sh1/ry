@@ -3,6 +3,49 @@
 #include <filesystem>
 #include <fstream>
 
+// ===== Ternary operator =====
+
+TEST_F(CodeGenTest, TernaryBasicTrue) {
+    std::string src =
+        "let x = true ? 1 : 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, TernaryBasicFalse) {
+    std::string src =
+        "let x = false ? 1 : 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, TernaryWithComparison) {
+    std::string src =
+        "let x = 3 > 2 ? 10 : 20\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, TernaryString) {
+    std::string src =
+        "let s = true ? \"yes\" : \"no\"\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "yes\n");
+}
+
+TEST_F(CodeGenTest, TernaryNested) {
+    std::string src =
+        "let x = true ? (false ? 1 : 2) : 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, TernaryInCall) {
+    std::string src =
+        "print(true ? \"a\" : \"b\")";
+    EXPECT_EQ(runSource(src), "a\n");
+}
+
 // ===== if/elif/else codegen テスト =====
 
 TEST_F(CodeGenTest, IfTrueExecutes) {

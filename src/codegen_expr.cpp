@@ -1043,3 +1043,34 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
     return buf;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
+    llvm::Value *cond = emitExpr(*e->condition);
+    cond = toBool(cond);
+
+    llvm::BasicBlock *trueBB = llvm::BasicBlock::Create(*ctx_, "ternary.true", fn_);
+    llvm::BasicBlock *falseBB = llvm::BasicBlock::Create(*ctx_, "ternary.false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ternary.merge", fn_);
+
+    builder_.CreateCondBr(cond, trueBB, falseBB);
+
+    builder_.SetInsertPoint(trueBB);
+    llvm::Value *trueVal = emitExpr(*e->true_expr);
+    llvm::BasicBlock *trueEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(falseBB);
+    llvm::Value *falseVal = emitExpr(*e->false_expr);
+    llvm::BasicBlock *falseEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    if (trueVal->getType() != falseVal->getType())
+        throw std::runtime_error("ternary expression: both branches must have the same type");
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
+    phi->addIncoming(trueVal, trueEndBB);
+    phi->addIncoming(falseVal, falseEndBB);
+
+    return phi;
+}
+

@@ -189,14 +189,34 @@ match 式:
 | enum バリアント | `Color::Red` | enum タグの比較 |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
+| OR パターン | `1 \| 2 \| 3` | いずれかにマッチ |
 
 ### guard 節
 
 `case パターン if 条件式:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
 
+### OR パターン
+
+複数のパターンを `|` で結合し、いずれかにマッチさせることができます。変数束縛（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）は OR パターン内では使用できません。
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# enum の OR パターン
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### 網羅性チェック
 
-- enum 型: すべてのバリアントをカバーするか `_` が必要。
+- enum 型: すべてのバリアントをカバーするか `_` が必要。OR パターンの各選択肢は個別にカウントされる。
 - Option 型: `Some` と `None` の両方をカバーするか `_` が必要。
 - bool 型: `true` と `false` の両方をカバーするか `_` が必要。
 - int / float / str リテラル: `_` が必須。

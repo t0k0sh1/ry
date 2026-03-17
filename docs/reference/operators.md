@@ -22,6 +22,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
 | 13 | `or` | Logical OR | Left |
+| 14 | `?:` | Ternary conditional | Right |
 
 ## Arithmetic Operators
 
@@ -108,6 +109,24 @@ let flags = 0b0001 | 0b0010   # 3
 let masked = flags & 0b0011   # 3
 let shifted = 1 << 8          # 256
 ```
+
+## Ternary Conditional Operator
+
+```python
+let x = condition ? true_value : false_value
+```
+
+Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
+
+```python
+let x = 3 > 2 ? 10 : 20     # 10
+let s = false ? "yes" : "no" # "no"
+
+# Nested (right-associative)
+let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
 
 ## Compound Assignment Operators
 

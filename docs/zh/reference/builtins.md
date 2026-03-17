@@ -26,6 +26,10 @@
 | `has_key(map, key)` | 回傳映射中是否存在該鍵 |
 | `add(set, value)` | 向集合新增元素（重複則忽略） |
 | `remove(set, value)` | 從集合刪除元素 |
+| `append(list, value)` | 向串列末尾新增元素（就地修改） |
+| `pop(list)` | 移除並回傳串列的最後一個元素 |
+| `reverse(list)` | 傳回反轉後的新串列（也適用於字串） |
+| `slice(list, start, end)` | 傳回從 start 到 end 的新子串列 |
 | `filter(list, pred)` | 傳回僅包含滿足述詞的元素的新串列 |
 | `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
 | `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
@@ -203,6 +207,66 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## append
+
+**簽名：** `append(list: List<T>, value: T)`
+
+向串列末尾新增元素。此為就地修改操作——串列會被直接修改。也可使用 UFCS 記法。
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## pop
+
+**簽名：** `pop(list: List<T>) -> T`
+
+移除並回傳串列的最後一個元素。也可使用 UFCS 記法。
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+**錯誤條件：** 對空串列呼叫 `pop()` 會產生執行時錯誤（exit(1)）。
+
+---
+
+## reverse（串列）
+
+**簽名：** `reverse(list: List<T>) -> List<T>`
+
+傳回元素順序反轉的新串列。原始串列不會被修改。也適用於字串（請參閱[字串操作](builtins-string.md)）。也可使用 UFCS 記法。
+
+```python
+let xs = [1, 2, 3]
+let ys = reverse(xs)
+print(ys)   # [3, 2, 1]
+print(xs)   # [1, 2, 3]（未修改）
+```
+
+---
+
+## slice
+
+**簽名：** `slice(list: List<T>, start: int, end: int) -> List<T>`
+
+傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `len(list)`）。也可使用 UFCS 記法。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 ```
 
 ---

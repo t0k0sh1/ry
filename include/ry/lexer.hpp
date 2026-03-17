@@ -103,6 +103,7 @@ enum class TokenKind {
     // --- Result type ---
     Ok,             // Ok
     Err,            // Err
+    Question,       // ?
 };
 
 struct Token {

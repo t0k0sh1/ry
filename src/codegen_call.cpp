@@ -409,6 +409,156 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         // Not a set — fall through to user function resolution
     }
 
+    // append(list, val) → mutating append
+    if (e->callee == "append" && e->args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *val = emitExpr(*e->args[1]);
+            if (val->getType() != elemTy)
+                throw std::runtime_error("append() element type mismatch");
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            auto freeFn = mod_->getOrInsertFunction("free", freeTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "app_len_ptr");
+            llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 1, "app_cap_ptr");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "app_data_field");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "app_len");
+            llvm::Value *cap = builder_.CreateLoad(i64Ty_, capPtr, "app_cap");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "app_data");
+
+            // Check if realloc needed
+            llvm::Value *needGrow = builder_.CreateICmpEQ(len, cap, "app_need_grow");
+            llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "app.grow", fn_);
+            llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "app.store", fn_);
+
+            builder_.CreateCondBr(needGrow, growBB, storeBB);
+
+            // Grow: new_cap = cap * 2 (min 4)
+            builder_.SetInsertPoint(growBB);
+            llvm::Value *four = llvm::ConstantInt::get(i64Ty_, 4);
+            llvm::Value *doubled = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "app_doubled");
+            llvm::Value *newCap = builder_.CreateSelect(
+                builder_.CreateICmpSGT(doubled, four, "cap_gt4"), doubled, four, "app_new_cap");
+            llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "app_new_size");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {newSize}, "app_new_data");
+            llvm::Value *oldSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, elemSize), "app_old_size");
+            builder_.CreateCall(memcpyFn, {newData, dataPtr, oldSize});
+            builder_.CreateCall(freeFn, {dataPtr});
+            builder_.CreateStore(newData, dataField);
+            builder_.CreateStore(newCap, capPtr);
+            builder_.CreateBr(storeBB);
+
+            // Store the new element
+            builder_.SetInsertPoint(storeBB);
+            llvm::Value *curData = builder_.CreateLoad(ptrTy_, dataField, "app_cur_data");
+            llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "app_cur_len");
+            llvm::Value *elemPtr = builder_.CreateGEP(elemTy, curData, curLen, "app_elem_ptr");
+            builder_.CreateStore(val, elemPtr);
+            llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "app_new_len");
+            builder_.CreateStore(newLen, lenPtr);
+
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+    }
+
+    // pop(list) → remove and return last element
+    if (e->callee == "pop" && e->args.size() == 1) {
+        llvm::Value *listPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "pop_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "pop_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "pop_data_field");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pop_data");
+
+            // Check empty
+            llvm::Value *isEmpty = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "pop_empty");
+            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "pop.err", fn_);
+            llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "pop.ok", fn_);
+            builder_.CreateCondBr(isEmpty, errBB, okBB);
+
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: pop() on empty list\n", ".pop_empty_err");
+
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *lastIdx = builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1), "pop_last_idx");
+            llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, lastIdx, "pop_elem_ptr");
+            llvm::Value *val = builder_.CreateLoad(elemTy, elemPtr, "pop_val");
+            builder_.CreateStore(lastIdx, lenPtr); // len - 1
+
+            return val;
+        }
+    }
+
+    // slice(list, start, end) → new sub-list
+    if (e->callee == "slice" && e->args.size() == 3) {
+        llvm::Value *listPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *startVal = emitExpr(*e->args[1]);
+            llvm::Value *endVal = emitExpr(*e->args[2]);
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "sl_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "sl_data_field");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, dataField, "sl_src_data");
+
+            // Clamp start and end
+            llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+            llvm::Value *clampedStart = builder_.CreateSelect(
+                builder_.CreateICmpSLT(startVal, zero), zero, startVal, "sl_cstart");
+            clampedStart = builder_.CreateSelect(
+                builder_.CreateICmpSGT(clampedStart, len), len, clampedStart, "sl_cstart2");
+            llvm::Value *clampedEnd = builder_.CreateSelect(
+                builder_.CreateICmpSLT(endVal, zero), zero, endVal, "sl_cend");
+            clampedEnd = builder_.CreateSelect(
+                builder_.CreateICmpSGT(clampedEnd, len), len, clampedEnd, "sl_cend2");
+
+            // Compute count = max(0, end - start)
+            llvm::Value *diff = builder_.CreateSub(clampedEnd, clampedStart, "sl_diff");
+            llvm::Value *count = builder_.CreateSelect(
+                builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
+
+            // Allocate new list
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sl_header");
+            llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
+
+            // Copy elements
+            llvm::Value *srcOffset = builder_.CreateGEP(elemTy, srcData, clampedStart, "sl_src_off");
+            builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
+
+            // Set header fields
+            llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "sl_new_len");
+            builder_.CreateStore(count, newLenPtr);
+            llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sl_new_cap");
+            builder_.CreateStore(count, newCapPtr);
+            llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sl_new_data");
+            builder_.CreateStore(newData, newDataField);
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
+
     // contains(s, sub) → bool
     if (e->callee == "contains") {
         if (e->args.size() != 2)
@@ -1051,13 +1201,69 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return buf;
     }
 
-    // reverse(s) → str
+    // reverse(list) → new reversed list, or reverse(str) → str
     if (e->callee == "reverse") {
         if (e->args.size() != 1)
             throw std::runtime_error("reverse() takes exactly 1 argument");
-        llvm::Value *s = emitExpr(*e->args[0]);
+        llvm::Value *arg = emitExpr(*e->args[0]);
+
+        // List reverse
+        llvm::Type *elemTy = getListElementType(arg);
+        if (elemTy) {
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, arg, 0, "rev_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "rev_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, arg, 2, "rev_data_field");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, dataField, "rev_src_data");
+
+            // Allocate new list
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "rev_header");
+            llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, elemSize), "rev_dsize");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "rev_data");
+
+            // Copy in reverse order
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "rev_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lrev.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lrev.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "lrev.end", fn_);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "rev_idx");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "rev_i_cur");
+            llvm::Value *srcIdx = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "rev_src_idx");
+            llvm::Value *srcPtr = builder_.CreateGEP(elemTy, srcData, srcIdx, "rev_src");
+            llvm::Value *val = builder_.CreateLoad(elemTy, srcPtr, "rev_val");
+            llvm::Value *dstPtr = builder_.CreateGEP(elemTy, newData, iCur, "rev_dst");
+            builder_.CreateStore(val, dstPtr);
+            builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "rev_new_len");
+            builder_.CreateStore(len, newLenPtr);
+            llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "rev_new_cap");
+            builder_.CreateStore(len, newCapPtr);
+            llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
+            builder_.CreateStore(newData, newDataField);
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+
+        // String reverse
+        llvm::Value *s = arg;
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("reverse() requires str argument");
+            throw std::runtime_error("reverse() requires list or str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);

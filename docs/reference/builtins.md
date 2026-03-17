@@ -26,6 +26,10 @@
 | `has_key(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
+| `append(list, value)` | Adds an element to the end of a list (mutating) |
+| `pop(list)` | Removes and returns the last element of a list |
+| `reverse(list)` | Returns a new reversed list (also works on strings) |
+| `slice(list, start, end)` | Returns a new sub-list from start to end |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
@@ -204,6 +208,66 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## append
+
+**Signature:** `append(list: List<T>, value: T)`
+
+Adds an element to the end of a list. This is a mutating operation — the list is modified in place. UFCS notation is also available.
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## pop
+
+**Signature:** `pop(list: List<T>) -> T`
+
+Removes and returns the last element of a list. UFCS notation is also available.
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+**Error condition:** Calling `pop()` on an empty list causes a runtime error (exit(1)).
+
+---
+
+## reverse (list)
+
+**Signature:** `reverse(list: List<T>) -> List<T>`
+
+Returns a new list with elements in reverse order. The original list is not modified. Also works on strings (see [String Operations](builtins-string.md)). UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = reverse(xs)
+print(ys)   # [3, 2, 1]
+print(xs)   # [1, 2, 3] (unchanged)
+```
+
+---
+
+## slice
+
+**Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
+
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 ```
 
 ---

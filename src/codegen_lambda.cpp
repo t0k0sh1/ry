@@ -305,6 +305,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "filter" || c == "map" || c == "sort")
                 return ptrTy_;
             return i64Ty_; // fallback
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {
+            return inferExprType(*v->true_expr, paramTypeMap);
         } else {
             return i64Ty_; // fallback
         }

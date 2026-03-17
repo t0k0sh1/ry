@@ -774,6 +774,15 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 enumName = ep->enum_name;
                 break;
             }
+            if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                for (auto &alt : (*op)->alternatives) {
+                    if (auto *ep = std::get_if<EnumPattern>(&alt)) {
+                        enumName = ep->enum_name;
+                        break;
+                    }
+                }
+                if (!enumName.empty()) break;
+            }
         }
         if (!enumName.empty()) {
             auto it = enum_types_.find(enumName);
@@ -783,6 +792,14 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     if (auto *ep = std::get_if<EnumPattern>(&arm.pattern)) {
                         if (!arm.guard)
                             covered.insert(ep->variant_name);
+                    }
+                    if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                        if (!arm.guard) {
+                            for (auto &alt : (*op)->alternatives) {
+                                if (auto *ep = std::get_if<EnumPattern>(&alt))
+                                    covered.insert(ep->variant_name);
+                            }
+                        }
                     }
                 }
                 for (auto &[vname, _] : it->second.variants) {
@@ -924,6 +941,49 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     throw std::runtime_error("match: Err pattern requires Result type");
                 llvm::Value *tag = builder_.CreateExtractValue(subjectVal, 0, "result_tag");
                 testResult = builder_.CreateICmpEQ(tag, llvm::ConstantInt::get(i64Ty_, 1), "is_err");
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
+                // OR pattern: test each alternative and combine with OR
+                testResult = llvm::ConstantInt::get(i1Ty_, 0);
+                for (auto &alt : pat->alternatives) {
+                    llvm::Value *altResult = nullptr;
+                    std::visit([&](auto &altPat) {
+                        using U = std::decay_t<decltype(altPat)>;
+                        if constexpr (std::is_same_v<U, LiteralPattern>) {
+                            llvm::Value *litVal = emitExpr(*altPat.value);
+                            if (subjectTy == i64Ty_ && litVal->getType() == i64Ty_)
+                                altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.eq");
+                            else if (subjectTy == f64Ty_ && litVal->getType() == f64Ty_)
+                                altResult = builder_.CreateFCmpOEQ(subjectVal, litVal, "or.feq");
+                            else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_)
+                                altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.beq");
+                            else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
+                                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                                llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
+                                altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
+                            } else {
+                                throw std::runtime_error("match: incompatible types in OR literal pattern");
+                            }
+                        } else if constexpr (std::is_same_v<U, EnumPattern>) {
+                            auto enumIt = enum_types_.find(altPat.enum_name);
+                            if (enumIt == enum_types_.end())
+                                throw std::runtime_error("match: unknown enum '" + altPat.enum_name + "'");
+                            auto varIt = enumIt->second.variants.find(altPat.variant_name);
+                            if (varIt == enumIt->second.variants.end())
+                                throw std::runtime_error("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
+                            llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                            altResult = builder_.CreateICmpEQ(subjectVal, tag, "or.enum_eq");
+                        } else if constexpr (std::is_same_v<U, WildcardPattern>) {
+                            altResult = llvm::ConstantInt::get(i1Ty_, 1);
+                        } else if constexpr (std::is_same_v<U, NonePattern>) {
+                            llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
+                            altResult = builder_.CreateNot(hasValue, "is_none");
+                        } else {
+                            throw std::runtime_error("match: unsupported pattern type in OR pattern");
+                        }
+                    }, alt);
+                    testResult = builder_.CreateOr(testResult, altResult, "or.comb");
+                }
             }
         }, arm.pattern);
 

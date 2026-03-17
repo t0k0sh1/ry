@@ -830,6 +830,71 @@ match r:
     EXPECT_EQ(runSource(src), "2\n");
 }
 
+// ===== match OR pattern =====
+
+TEST_F(CodeGenTest, MatchOrPatternInt) {
+    std::string src =
+        "let x = 2\n"
+        "match x:\n"
+        "    case 1 | 2 | 3:\n"
+        "        print(\"small\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "small\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternIntNoMatch) {
+    std::string src =
+        "let x = 5\n"
+        "match x:\n"
+        "    case 1 | 2 | 3:\n"
+        "        print(\"small\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "other\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternEnum) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "match c:\n"
+        "    case Color::Red | Color::Blue:\n"
+        "        print(\"rb\")\n"
+        "    case Color::Green:\n"
+        "        print(\"g\")\n";
+    EXPECT_EQ(runSource(src), "rb\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternExhaustive) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Green\n"
+        "match c:\n"
+        "    case Color::Red | Color::Blue:\n"
+        "        print(\"rb\")\n"
+        "    case Color::Green:\n"
+        "        print(\"g\")\n";
+    EXPECT_EQ(runSource(src), "g\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternVariableError) {
+    std::string src =
+        "let x = 1\n"
+        "match x:\n"
+        "    case a | b:\n"
+        "        print(a)\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== r-string =====
 
 TEST_F(CodeGenTest, RawStringPrint) {

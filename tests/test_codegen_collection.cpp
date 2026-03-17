@@ -1398,6 +1398,78 @@ TEST_F(CodeGenTest, NotInMapKey) {
     EXPECT_EQ(runSource("print(\"b\" not in {\"a\": 1})"), "true\n");
 }
 
+// ===== List append / pop / reverse / slice =====
+
+TEST_F(CodeGenTest, ListAppend) {
+    std::string src =
+        "var xs = [1, 2]\n"
+        "xs.append(3)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListAppendString) {
+    std::string src =
+        "var xs = [\"a\"]\n"
+        "xs.append(\"b\")\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[a, b]\n");
+}
+
+TEST_F(CodeGenTest, ListPop) {
+    std::string src =
+        "var xs = [1, 2, 3]\n"
+        "let v = xs.pop()\n"
+        "print(v)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "3\n[1, 2]\n");
+}
+
+TEST_F(CodeGenTest, ListPopEmpty) {
+    std::string src =
+        "var xs: List<int> = [1]\n"
+        "let ys = xs.filter((x: int) -> x > 10)\n"
+        "ys.pop()";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ListReverse) {
+    std::string src =
+        "print(reverse([1, 2, 3]))";
+    EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
+}
+
+TEST_F(CodeGenTest, ListReverseOriginal) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = reverse(xs)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListReverseStr) {
+    // str reverse still works
+    EXPECT_EQ(runSource("print(reverse(\"hello\"))"), "olleh\n");
+}
+
+TEST_F(CodeGenTest, ListSlice) {
+    std::string src =
+        "print(slice([1, 2, 3, 4, 5], 1, 3))";
+    EXPECT_EQ(runSource(src), "[2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListSliceClamp) {
+    std::string src =
+        "print(slice([1, 2, 3], 0, 100))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListSliceEmpty) {
+    std::string src =
+        "print(slice([1, 2, 3], 2, 2))";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
 // ===== range() ステップ対応 =====
 
 TEST_F(CodeGenTest, RangeStep) {

@@ -110,6 +110,47 @@ for x in xs:
 # 30
 ```
 
+### append
+
+向串列末尾新增元素。此為就地修改操作。
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+### pop
+
+移除並回傳串列的最後一個元素。對空串列呼叫會產生執行時錯誤。
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+### reverse
+
+傳回元素順序反轉的新串列。原始串列不會被修改。也適用於字串。
+
+```python
+let xs = [1, 2, 3]
+print(reverse(xs))   # [3, 2, 1]
+print(xs)            # [1, 2, 3]（未修改）
+```
+
+### slice
+
+傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
+```
+
 ### filter
 
 傳回僅包含滿足述詞的元素的新串列。原始串列不會被修改。
