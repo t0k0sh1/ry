@@ -713,6 +713,59 @@ TEST_F(CodeGenTest, TupleLetAssign) {
     EXPECT_EQ(runSource(src), "1\n2\n");
 }
 
+// ===== Tuple 分解代入テスト =====
+
+TEST_F(CodeGenTest, TupleDestructBasic) {
+    std::string src =
+        "let a, b = (10, 20)\n"
+        "print(a)\n"
+        "print(b)";
+    EXPECT_EQ(runSource(src), "10\n20\n");
+}
+
+TEST_F(CodeGenTest, TupleDestructWildcard) {
+    std::string src =
+        "let a, _ = (10, 20)\n"
+        "print(a)";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, TupleDestructTriple) {
+    std::string src =
+        "let a, b, c = (1, 2, 3)\n"
+        "print(a)\n"
+        "print(b)\n"
+        "print(c)";
+    EXPECT_EQ(runSource(src), "1\n2\n3\n");
+}
+
+TEST_F(CodeGenTest, TupleDestructFromFn) {
+    std::string src =
+        "fn f() -> (int, int):\n"
+        "    return (3, 4)\n"
+        "let a, b = f()\n"
+        "print(a)\n"
+        "print(b)";
+    EXPECT_EQ(runSource(src), "3\n4\n");
+}
+
+TEST_F(CodeGenTest, VarTupleDestruct) {
+    std::string src =
+        "var a, b = (10, 20)\n"
+        "a = 100\n"
+        "print(a)\n"
+        "print(b)";
+    EXPECT_EQ(runSource(src), "100\n20\n");
+}
+
+TEST_F(CodeGenTest, TupleDestructMixedTypes) {
+    std::string src =
+        "let x, y = (42, 3.14)\n"
+        "print(x)\n"
+        "print(y)";
+    EXPECT_EQ(runSource(src), "42\n3.14\n");
+}
+
 // ===== import 統合テスト =====
 
 class ImportTest : public CodeGenTest {

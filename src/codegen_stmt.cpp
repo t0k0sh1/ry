@@ -465,6 +465,16 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {
+    // Generic enum: save as template, don't instantiate yet
+    if (!s.type_params.empty()) {
+        GenericEnumTemplate tmpl;
+        tmpl.name = s.name;
+        tmpl.typeParams = s.type_params;
+        tmpl.variants = s.variants;
+        generic_enum_templates_[s.name] = std::move(tmpl);
+        return;
+    }
+
     if (enum_types_.count(s.name))
         throw std::runtime_error("enum '" + s.name + "' is already defined");
 
@@ -472,13 +482,30 @@ void CodeGen::emitStmt(EnumStmt &s) {
     info.name = s.name;
     info.variantCount = s.variants.size();
 
+    // Check if any variant has associated data
+    bool hasADT = false;
+    for (auto &v : s.variants) {
+        if (!v.field_types.empty()) { hasADT = true; break; }
+    }
+    info.isADT = hasADT;
+
     // Create global string array for variant names (for printing)
     std::vector<llvm::Constant*> nameStrings;
     for (size_t i = 0; i < s.variants.size(); ++i) {
-        info.variants[s.variants[i]] = static_cast<int64_t>(i);
+        info.variants[s.variants[i].name] = static_cast<int64_t>(i);
         llvm::Constant *str = builder_.CreateGlobalString(
-            s.variants[i], ".enum_" + s.name + "_" + s.variants[i]);
+            s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
         nameStrings.push_back(str);
+
+        // Resolve field types for ADT variants
+        if (!s.variants[i].field_types.empty()) {
+            VariantFieldInfo vfi;
+            for (auto &ft : s.variants[i].field_types) {
+                vfi.fieldTypes.push_back(resolveType(ft));
+                vfi.fieldTypeNames.push_back(ft);
+            }
+            info.variantFields[s.variants[i].name] = std::move(vfi);
+        }
     }
 
     // Create global array of name pointers
@@ -489,7 +516,45 @@ void CodeGen::emitStmt(EnumStmt &s) {
         init, ".enum_names_" + s.name);
     info.nameArray = gv;
 
+    // For ADT enums, create a struct type: { i64 tag, [maxPayloadSize x i8] }
+    if (hasADT) {
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        size_t maxPayload = 0;
+        for (auto &[vname, vfi] : info.variantFields) {
+            size_t payloadSize = 0;
+            for (auto *ty : vfi.fieldTypes)
+                payloadSize += dl.getTypeAllocSize(ty);
+            if (payloadSize > maxPayload) maxPayload = payloadSize;
+        }
+        info.maxPayloadSize = maxPayload;
+        llvm::Type *payloadTy = llvm::ArrayType::get(
+            llvm::Type::getInt8Ty(*ctx_), maxPayload > 0 ? maxPayload : 1);
+        info.adtType = llvm::StructType::create(
+            *ctx_, {i64Ty_, payloadTy}, "enum." + s.name);
+    }
+
     enum_types_[s.name] = std::move(info);
+}
+
+void CodeGen::emitStmt(TupleDestructStmt &s) {
+    llvm::Value *tupleVal = emitExpr(*s.value);
+    llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
+    if (!structTy)
+        throw std::runtime_error("tuple destructuring requires a tuple value");
+    if (structTy->getNumElements() != s.names.size())
+        throw std::runtime_error("tuple destructuring: expected " +
+            std::to_string(s.names.size()) + " elements but got " +
+            std::to_string(structTy->getNumElements()));
+
+    for (size_t i = 0; i < s.names.size(); ++i) {
+        if (s.names[i] == "_")
+            continue;
+        llvm::Value *elem = builder_.CreateExtractValue(tupleVal, i);
+        llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
+        builder_.CreateStore(elem, ptr);
+        if (s.is_immutable)
+            immutable_scope_stack_.back().insert(s.names[i]);
+    }
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
@@ -964,4 +1029,78 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
     for (int i = 0; i < static_cast<int>(info.invariants.size()); ++i)
         emitContractCheck("invariant", typeName, info.invariants[i]);
     popScope();
+}
+
+void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
+                                      const std::vector<std::string> &typeArgs) {
+    if (enum_types_.count(fullName))
+        return; // already instantiated
+
+    auto it = generic_enum_templates_.find(baseName);
+    if (it == generic_enum_templates_.end())
+        throw std::runtime_error("unknown generic enum: " + baseName);
+
+    auto &tmpl = it->second;
+    if (typeArgs.size() != tmpl.typeParams.size())
+        throw std::runtime_error("generic enum '" + baseName + "' expects " +
+            std::to_string(tmpl.typeParams.size()) + " type parameters");
+
+    // Build type parameter mapping
+    std::unordered_map<std::string, std::string> typeMap;
+    for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
+        typeMap[tmpl.typeParams[i]] = typeArgs[i];
+
+    // Create a concrete EnumStmt by substituting type parameters
+    EnumInfo info;
+    info.name = fullName;
+    info.variantCount = tmpl.variants.size();
+
+    bool hasADT = false;
+    std::vector<llvm::Constant*> nameStrings;
+    for (size_t i = 0; i < tmpl.variants.size(); ++i) {
+        auto &v = tmpl.variants[i];
+        info.variants[v.name] = static_cast<int64_t>(i);
+        llvm::Constant *str = builder_.CreateGlobalString(
+            v.name, ".enum_" + fullName + "_" + v.name);
+        nameStrings.push_back(str);
+
+        if (!v.field_types.empty()) {
+            hasADT = true;
+            VariantFieldInfo vfi;
+            for (auto &ft : v.field_types) {
+                std::string resolved = ft;
+                auto mit = typeMap.find(ft);
+                if (mit != typeMap.end()) resolved = mit->second;
+                vfi.fieldTypes.push_back(resolveType(resolved));
+                vfi.fieldTypeNames.push_back(resolved);
+            }
+            info.variantFields[v.name] = std::move(vfi);
+        }
+    }
+    info.isADT = hasADT;
+
+    auto *arrTy = llvm::ArrayType::get(ptrTy_, tmpl.variants.size());
+    auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, arrTy, true, llvm::GlobalValue::PrivateLinkage,
+        init, ".enum_names_" + fullName);
+    info.nameArray = gv;
+
+    if (hasADT) {
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        size_t maxPayload = 0;
+        for (auto &[vname, vfi] : info.variantFields) {
+            size_t payloadSize = 0;
+            for (auto *ty : vfi.fieldTypes)
+                payloadSize += dl.getTypeAllocSize(ty);
+            if (payloadSize > maxPayload) maxPayload = payloadSize;
+        }
+        info.maxPayloadSize = maxPayload;
+        llvm::Type *payloadTy = llvm::ArrayType::get(
+            llvm::Type::getInt8Ty(*ctx_), maxPayload > 0 ? maxPayload : 1);
+        info.adtType = llvm::StructType::create(
+            *ctx_, {i64Ty_, payloadTy}, "enum." + fullName);
+    }
+
+    enum_types_[fullName] = std::move(info);
 }

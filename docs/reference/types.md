@@ -17,9 +17,9 @@
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
-| `fn(T1, T2) -> R` | ptr (function pointer) | `(x: int) -> x * 2` | Function type |
+| `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int): x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `type Point: ...` | Struct defined with the `type` keyword |
-| `enum` | i64 | `Color::Red` | Enumeration defined with the `enum` keyword |
+| `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | Result type for error handling |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 
@@ -38,7 +38,7 @@ let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
 let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = (x: int) -> x * 2
+let fn_val: fn(int) -> int = fn(x: int): x * 2
 let u: int | str = 42
 ```
 
@@ -116,6 +116,75 @@ let b = 255 as byte       # byte value 255
 | `byte` | `int` | Zero extension |
 
 Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+
+## Enum with Associated Data (ADT)
+
+Enum variants can carry associated data by specifying types in parentheses after the variant name. Variants without parentheses remain simple tags.
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### Constructor
+
+Use the `EnumName::Variant(value)` syntax to construct a variant with data.
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### Pattern Matching with Binding
+
+Use `case EnumName::Variant(binding):` to extract the associated data.
+
+```python
+match c:
+    case Shape::Circle(r):
+        print(r)            # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+### Internal Representation
+
+An ADT enum is stored as a tagged union: `{ i64 tag, [N x i8] data }` where `N` is sized to fit the largest variant's payload.
+
+---
+
+## Generic Enum
+
+An enum can have type parameters using angle-bracket syntax `<T>`. This allows the same enum shape to hold different payload types.
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### Usage
+
+Instantiate by providing a concrete type argument. The type argument is required when the compiler cannot infer it.
+
+```python
+let a = MyOption<int>::MySome(42)
+let b = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
 
 ## Result Type
 

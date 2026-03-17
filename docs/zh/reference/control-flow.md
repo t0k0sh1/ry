@@ -186,7 +186,8 @@ match 運算式:
 | 萬用字元 | `_` | 匹配任何值 |
 | 字面值 | `0`, `"hello"`, `true` | 值的相等比較 |
 | 變數綁定 | `n` | 匹配任何值並綁定到變數 |
-| enum 變體 | `Color::Red` | enum 標籤的比較 |
+| enum 變體 | `Color::Red` | enum 標籤的比較（簡單 enum） |
+| ADT enum 變體 | `Shape::Circle(r)` | 匹配帶有關聯資料的 enum 變體並綁定 |
 | `Some(x)` | `Some(v)` | 當 Option 有值時，綁定其內容 |
 | `None` | `None` | 當 Option 無值時 |
 | OR 模式 | `1 \| 2 \| 3` | 任一替代方案匹配時即匹配 |
@@ -265,6 +266,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT enum 匹配
+
+當 enum 變體攜帶關聯資料時，使用綁定模式來取出值。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+多欄位變體會按宣告順序將各欄位綁定到不同的名稱。
 
 ### 作用域規則
 

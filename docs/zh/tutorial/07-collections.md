@@ -119,11 +119,11 @@ fn first(xs: List<int>) -> int:
 let xs = [1, 2, 3, 4, 5]
 
 # filter: 保留符合條件的元素
-let evens = xs.filter((x: int) -> x > 3)
+let evens = xs.filter(fn(x: int): x > 3)
 print(evens)   # [4, 5]
 
 # map: 轉換每個元素
-let doubled = xs.map((x: int) -> x * 2)
+let doubled = xs.map(fn(x: int): x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: 升序排序（預設）
@@ -131,8 +131,73 @@ let sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # 鏈接
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
+```
+
+### reduce、fold
+
+`reduce` 從第一個元素開始將串列歸約為單一值。`fold` 則可提供明確的初始值。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+
+# reduce: 從第一個元素開始
+let total = reduce(xs, fn(a: int, b: int): a + b)
+print(total)   # 15
+
+# fold: 提供明確的初始值
+let total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+print(total2)   # 15
+```
+
+### any、all
+
+`any` 如果至少有一個元素滿足述詞則傳回 `true`。`all` 如果所有元素都滿足則傳回 `true`。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+
+print(any(xs, fn(x: int): x > 4))   # true
+print(any(xs, fn(x: int): x > 9))   # false
+
+print(all(xs, fn(x: int): x > 0))   # true
+print(all(xs, fn(x: int): x > 3))   # false
+```
+
+### sum、min、max
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(sum(xs))   # 14
+print(min(xs))   # 1
+print(max(xs))   # 5
+```
+
+### first、last、is_empty
+
+```python
+let xs = [10, 20, 30]
+print(first(xs))      # 10
+print(last(xs))       # 30
+print(is_empty(xs))   # false
+```
+
+### enumerate、zip
+
+`enumerate` 為每個元素附上索引。`zip` 將兩個串列逐元素合併。
+
+```python
+let xs = [10, 20, 30]
+let indexed = enumerate(xs)
+# [(0, 10), (1, 20), (2, 30)]
+for p in indexed:
+    print(p.0)
+    print(p.1)
+
+let ys = ["a", "b", "c"]
+let zipped = zip(xs, ys)
+# [(10, "a"), (20, "b"), (30, "c")]
 ```
 
 ### 限制事項
@@ -193,6 +258,16 @@ print(m)   # {a: 99, b: 2, c: 3}
 
 ```python
 print(m.has_key("a"))   # true
+```
+
+### keys、values
+
+`keys` 傳回所有鍵的串列。`values` 傳回所有值的串列。
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(keys(m))     # ["a", "b", "c"]
+print(values(m))   # [1, 2, 3]
 ```
 
 ### 函式參數

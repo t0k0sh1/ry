@@ -138,9 +138,22 @@ struct TypeStmt { std::string name; std::vector<FieldDef> fields; std::vector<Ex
 struct BreakStmt {};
 struct ContinueStmt {};
 
+struct EnumVariant {
+    std::string name;
+    std::vector<std::string> field_types;  // empty = no associated data
+};
+
 struct EnumStmt {
     std::string name;
-    std::vector<std::string> variants;
+    std::vector<std::string> type_params;  // for generics
+    std::vector<EnumVariant> variants;
+};
+
+struct TupleDestructStmt {
+    std::vector<std::string> names;  // "_" is wildcard
+    ExprPtr value;
+    bool is_immutable;
+    std::vector<Directive> directives;
 };
 
 struct FieldAssignStmt {
@@ -167,6 +180,7 @@ using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, TypeStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt,
+                              TupleDestructStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
@@ -252,13 +266,18 @@ struct SomePattern { std::string binding; };
 struct NonePattern {};
 struct OkPattern { std::string binding; };
 struct ErrPattern { std::string binding; };
+struct EnumConstructorPattern {
+    std::string enum_name;
+    std::string variant_name;
+    std::vector<std::string> bindings;
+};
 
 struct OrPattern;
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
-    OkPattern, ErrPattern,
+    OkPattern, ErrPattern, EnumConstructorPattern,
     std::unique_ptr<OrPattern>
 >;
 

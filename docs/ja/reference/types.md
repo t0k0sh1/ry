@@ -17,9 +17,9 @@
 | `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
-| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) -> x * 2` | 関数型 |
+| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int): x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `type Point: ...` | `type` キーワードで定義する構造体 |
-| `enum` | i64 | `Color::Red` | `enum` キーワードで定義する列挙型 |
+| `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | エラーハンドリング用の Result 型 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
 
@@ -38,7 +38,7 @@ let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
 let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = (x: int) -> x * 2
+let fn_val: fn(int) -> int = fn(x: int): x * 2
 let u: int | str = 42
 ```
 
@@ -116,6 +116,75 @@ let b = 255 as byte       # byte 値 255
 | `byte` | `int` | ゼロ拡張 |
 
 サポートされないキャスト（例: `str as int`）はコンパイルエラーになります。文字列から数値への変換には `to_int()` / `to_float()` を使用してください。
+
+## 関連データを持つ enum（ADT）
+
+バリアント名の後ろに括弧で型を指定することで、enum バリアントに関連データを持たせることができます。括弧なしのバリアントは従来通りの単純なタグとして機能します。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### コンストラクタ
+
+`EnumName::Variant(value)` の構文でデータ付きバリアントを構築します。
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### バインディング付きパターンマッチング
+
+`case EnumName::Variant(binding):` の形式で関連データを取り出せます。
+
+```python
+match c:
+    case Shape::Circle(r):
+        print(r)            # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+### 内部表現
+
+ADT enum はタグ付きユニオンとして格納されます: `{ i64 tag, [N x i8] data }`。`N` は最大バリアントのペイロードに合わせたサイズです。
+
+---
+
+## ジェネリック enum
+
+enum は `<T>` の形式で型パラメータを持てます。これにより、同じ enum 構造で異なる型のペイロードを保持できます。
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### 使用法
+
+コンパイラが型を推論できない場合は、具体的な型引数を指定してインスタンス化します。
+
+```python
+let a = MyOption<int>::MySome(42)
+let b = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
 
 ## Result 型
 

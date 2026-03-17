@@ -274,7 +274,104 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         }
         if (evIt != enum_value_types_.end()) {
             auto &einfo = enum_types_[evIt->second];
-            // Use the name array to print the variant name
+            if (einfo.isADT) {
+                // ADT enum: extract tag, print variant name + payload
+                llvm::Value *tag = builder_.CreateExtractValue(val, 0, "adt.tag");
+                llvm::Value *namePtr = builder_.CreateGEP(
+                    llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                    einfo.nameArray,
+                    {llvm::ConstantInt::get(i64Ty_, 0), tag},
+                    "enum_name_ptr");
+                llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+
+                // Check if this variant has associated data
+                // We need to branch for each variant to print payload
+                // Simple approach: store to alloca, iterate variants
+                llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "adt.print.tmp");
+                builder_.CreateStore(val, adtAlloca);
+                llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "adt.print.payload");
+
+                // Check if any variant has fields — create conditional printing
+                bool anyFields = false;
+                for (auto &[vn, vf] : einfo.variantFields)
+                    if (!vf.fieldTypes.empty()) { anyFields = true; break; }
+
+                if (anyFields) {
+                    // Create blocks for each variant
+                    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "adt.print.end", fn_);
+                    llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "adt.print.default", fn_);
+
+                    // Print variant name for data-less variants or with parentheses for data variants
+                    auto *switchInst = builder_.CreateSwitch(tag, defaultBB, einfo.variantCount);
+
+                    for (auto &[vname, vtag] : einfo.variants) {
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "adt.print." + vname, fn_);
+                        switchInst->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vtag)), caseBB);
+                        builder_.SetInsertPoint(caseBB);
+
+                        auto fit = einfo.variantFields.find(vname);
+                        if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
+                            // Print "VariantName("
+                            llvm::Constant *openFmt = builder_.CreateGlobalString("%s(", ".fmt_adt_open");
+                            builder_.CreateCall(printfFn, {openFmt, nameStr});
+
+                            const llvm::DataLayout &dl = mod_->getDataLayout();
+                            size_t offset = 0;
+                            for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
+                                llvm::Type *fieldTy = fit->second.fieldTypes[fi];
+                                llvm::Value *fieldPtr = builder_.CreateGEP(
+                                    llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                                    {llvm::ConstantInt::get(i64Ty_, offset)},
+                                    "adt.print.field." + std::to_string(fi));
+                                llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "field_val");
+
+                                if (fi > 0) {
+                                    llvm::Constant *commaFmt = builder_.CreateGlobalString(", ", ".fmt_comma");
+                                    builder_.CreateCall(printfFn, {commaFmt});
+                                }
+
+                                if (fieldTy == i64Ty_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%lld", ".fmt_adt_int");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == f64Ty_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_adt_float");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == ptrTy_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_str");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == i1Ty_) {
+                                    llvm::Value *ext = builder_.CreateZExt(fieldVal, i64Ty_);
+                                    llvm::Value *trueStr = builder_.CreateGlobalString("true", ".true");
+                                    llvm::Value *falseStr = builder_.CreateGlobalString("false", ".false");
+                                    llvm::Value *str = builder_.CreateSelect(
+                                        builder_.CreateICmpNE(ext, llvm::ConstantInt::get(i64Ty_, 0)),
+                                        trueStr, falseStr);
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_bool");
+                                    builder_.CreateCall(printfFn, {fmt, str});
+                                }
+                                offset += dl.getTypeAllocSize(fieldTy);
+                            }
+
+                            llvm::Constant *closeFmt = builder_.CreateGlobalString(")\n", ".fmt_adt_close");
+                            builder_.CreateCall(printfFn, {closeFmt});
+                        } else {
+                            // No data — just print variant name
+                            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum_nodata");
+                            builder_.CreateCall(printfFn, {fmt, nameStr});
+                        }
+                        builder_.CreateBr(endBB);
+                    }
+
+                    builder_.SetInsertPoint(defaultBB);
+                    builder_.CreateBr(endBB);
+                    builder_.SetInsertPoint(endBB);
+                } else {
+                    llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+                    builder_.CreateCall(printfFn, {fmt, nameStr});
+                }
+                return;
+            }
+            // Non-ADT enum: use tag directly as index
             llvm::Value *namePtr = builder_.CreateGEP(
                 llvm::ArrayType::get(ptrTy_, einfo.variantCount),
                 einfo.nameArray,
@@ -785,10 +882,18 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 enumName = ep->enum_name;
                 break;
             }
+            if (auto *ecp = std::get_if<EnumConstructorPattern>(&arm.pattern)) {
+                enumName = ecp->enum_name;
+                break;
+            }
             if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
                 for (auto &alt : (*op)->alternatives) {
                     if (auto *ep = std::get_if<EnumPattern>(&alt)) {
                         enumName = ep->enum_name;
+                        break;
+                    }
+                    if (auto *ecp = std::get_if<EnumConstructorPattern>(&alt)) {
+                        enumName = ecp->enum_name;
                         break;
                     }
                 }
@@ -796,6 +901,23 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if (!enumName.empty()) {
+            // Resolve enumName for generic enums using subject type
+            if (!enum_types_.count(enumName)) {
+                std::string subEnumType;
+                auto evIt2 = enum_value_types_.find(subject);
+                if (evIt2 != enum_value_types_.end()) {
+                    subEnumType = evIt2->second;
+                } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(subject)) {
+                    auto evIt3 = enum_value_types_.find(load->getPointerOperand());
+                    if (evIt3 != enum_value_types_.end())
+                        subEnumType = evIt3->second;
+                }
+                if (!subEnumType.empty()) {
+                    auto ltPos = subEnumType.find('<');
+                    if (ltPos != std::string::npos && subEnumType.substr(0, ltPos) == enumName)
+                        enumName = subEnumType;
+                }
+            }
             auto it = enum_types_.find(enumName);
             if (it != enum_types_.end()) {
                 std::unordered_set<std::string> covered;
@@ -804,11 +926,17 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         if (!arm.guard)
                             covered.insert(ep->variant_name);
                     }
+                    if (auto *ecp = std::get_if<EnumConstructorPattern>(&arm.pattern)) {
+                        if (!arm.guard)
+                            covered.insert(ecp->variant_name);
+                    }
                     if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
                         if (!arm.guard) {
                             for (auto &alt : (*op)->alternatives) {
                                 if (auto *ep = std::get_if<EnumPattern>(&alt))
                                     covered.insert(ep->variant_name);
+                                if (auto *ecp = std::get_if<EnumConstructorPattern>(&alt))
+                                    covered.insert(ecp->variant_name);
                             }
                         }
                     }
@@ -947,14 +1075,45 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             } else if constexpr (std::is_same_v<T, VariablePattern>) {
                 testResult = llvm::ConstantInt::get(i1Ty_, 1);
             } else if constexpr (std::is_same_v<T, EnumPattern>) {
-                auto enumIt = enum_types_.find(pat.enum_name);
+                std::string resolvedEnum = pat.enum_name;
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
+                    // Fallback: try subject's enum type (for generic enums)
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
+                        resolvedEnum = subjectEnumType;
+                        enumIt = enum_types_.find(resolvedEnum);
+                    }
+                }
                 if (enumIt == enum_types_.end())
                     throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
                     throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
-                llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
-                testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
+                if (enumIt->second.isADT) {
+                    llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
+                    testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
+                } else {
+                    llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                    testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
+                }
+            } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
+                std::string resolvedEnum = pat.enum_name;
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
+                        resolvedEnum = subjectEnumType;
+                        enumIt = enum_types_.find(resolvedEnum);
+                    }
+                }
+                if (enumIt == enum_types_.end())
+                    throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                auto varIt = enumIt->second.variants.find(pat.variant_name);
+                if (varIt == enumIt->second.variants.end())
+                    throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
+                testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
             } else if constexpr (std::is_same_v<T, SomePattern>) {
                 if (!isOptionType(subjectTy))
                     throw std::runtime_error("match: Some pattern requires Option type");
@@ -1085,6 +1244,38 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, true);
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
                 emitResultPatternBinding(pat.binding, subjectAlloca, subjectTy, false);
+            } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
+                std::string resolvedEnum = pat.enum_name;
+                if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name)
+                        resolvedEnum = subjectEnumType;
+                }
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt != enum_types_.end()) {
+                    auto fit = enumIt->second.variantFields.find(pat.variant_name);
+                    if (fit != enumIt->second.variantFields.end()) {
+                        llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "adt.val");
+                        // Get payload pointer via alloca
+                        llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "adt.tmp");
+                        builder_.CreateStore(sv, tmpAlloca);
+                        llvm::Value *payloadPtr = builder_.CreateStructGEP(
+                            enumIt->second.adtType, tmpAlloca, 1, "adt.payload");
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        size_t offset = 0;
+                        for (size_t bi = 0; bi < pat.bindings.size() && bi < fit->second.fieldTypes.size(); ++bi) {
+                            llvm::Type *fieldTy = fit->second.fieldTypes[bi];
+                            llvm::Value *fieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "adt.bind." + std::to_string(bi));
+                            llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, pat.bindings[bi]);
+                            llvm::AllocaInst *bindAlloca = getOrCreateVar(pat.bindings[bi], fieldTy);
+                            builder_.CreateStore(fieldVal, bindAlloca);
+                            offset += dl.getTypeAllocSize(fieldTy);
+                        }
+                    }
+                }
             }
         }, arm.pattern);
 

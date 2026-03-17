@@ -78,6 +78,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s.object); scanExpr(*s.index); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
                 scanExpr(*s.object); scanExpr(*s.value);
+            } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
+                scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 for (auto &br : s->branches) {
                     scanExpr(*br.condition);
@@ -292,17 +294,20 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return it->second[0].func->getReturnType();
             // Known builtin return types
             const std::string &c = v->callee;
-            if (c == "len" || c == "to_int" || c == "find")
+            if (c == "len" || c == "to_int" || c == "find" || c == "sum" ||
+                c == "min" || c == "max" || c == "first" || c == "last")
                 return i64Ty_;
             if (c == "to_float")
                 return f64Ty_;
-            if (c == "contains" || c == "starts_with" || c == "ends_with" || c == "has_key")
+            if (c == "contains" || c == "starts_with" || c == "ends_with" ||
+                c == "has_key" || c == "any" || c == "all" || c == "is_empty")
                 return i1Ty_;
             if (c == "to_str" || c == "to_upper" || c == "to_lower" ||
                 c == "trim" || c == "trim_start" || c == "trim_end" ||
                 c == "substring" || c == "char_at" || c == "replace" ||
                 c == "repeat" || c == "reverse" || c == "join" ||
-                c == "filter" || c == "map" || c == "sort")
+                c == "filter" || c == "map" || c == "sort" ||
+                c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
             return i64Ty_; // fallback
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {

@@ -8,31 +8,31 @@
 
 ## ラムダ関数
 
-ラムダ関数は、関数を式として記述する構文です。`(引数) -> 式` の形で書きます。戻り値型は自動推論されます。
+ラムダ関数は、関数を式として記述する構文です。`fn(引数): 式` の形で書きます。戻り値型は自動推論されます。
 
 ### 単一式ラムダ
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### 引数なしラムダ
 
 ```python
-let answer = () -> 42
+let answer = fn(): 42
 print(answer())  # 42
 ```
 
 ### 複数行ラムダ
 
-`->` の後に改行してインデントすることで、複数の文を書けます。
+`:` の後に改行してインデントすることで、複数の文を書けます。
 
 ```python
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -49,7 +49,7 @@ print(abs(3))   # 3
 
 ```python
 let offset = 10
-let add_offset = (x: int) -> x + offset
+let add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int) -> n + 1, 10))    # 11
+print(apply(fn(n: int): n + 1, 10))    # 11
 ```
 
 ---
@@ -213,6 +213,70 @@ let x = 42 as float     # 42.0
 let y = 3.14 as int      # 3（切り捨て）
 let s = 42 as str         # "42"
 let b = true as int       # 1
+```
+
+---
+
+## 関連データを持つ enum（ADT）
+
+enum バリアントに関連する値を持たせることができます。これにより、1 つの enum でさまざまな形のデータファミリーを表現できます。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### ADT バリアントの構築
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### ADT バリアントのマッチング
+
+`case` にバインディングパターンを使って関連データを取り出します。
+
+```python
+fn describe(s: Shape) -> str:
+    match s:
+        case Shape::Circle(r):
+            return f"circle with radius {r}"
+        case Shape::Rectangle(w, h):
+            return f"rectangle {w}x{h}"
+        case Shape::Point:
+            return "point"
+
+print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
+print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
+```
+
+---
+
+## ジェネリック enum
+
+enum は型パラメータを取ることができ、異なるペイロード型で再利用可能になります。
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### 使用法
+
+```python
+let a = MyOption<int>::MySome(42)
+let b: MyOption<int> = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
 ```
 
 ---

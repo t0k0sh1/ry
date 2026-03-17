@@ -17,9 +17,9 @@
 | `List<T>` | ptr（堆積） | `[1, 2, 3]` | 動態陣列 |
 | `Map<K, V>` | ptr（堆積） | `{"a": 1}` | 雜湊映射 |
 | `Set<T>` | ptr（堆積） | `{1, 2, 3}` | 不重複的集合 |
-| `fn(T1, T2) -> R` | ptr（函式指標） | `(x: int) -> x * 2` | 函式型別 |
+| `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int): x * 2` | 函式型別 |
 | 使用者定義型別 | LLVM StructType (named) | `type Point: ...` | 以 `type` 關鍵字定義的結構體 |
-| `enum` | i64 | `Color::Red` | 以 `enum` 關鍵字定義的列舉型別 |
+| `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 用於錯誤處理的結果型別 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
 
@@ -38,7 +38,7 @@ let t: (int, float) = (1, 3.14)
 let xs: List<int> = [1, 2, 3]
 let m: Map<str, int> = {"a": 1}
 let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = (x: int) -> x * 2
+let fn_val: fn(int) -> int = fn(x: int): x * 2
 let u: int | str = 42
 ```
 
@@ -116,6 +116,75 @@ let b = 255 as byte       # byte 值 255
 | `byte` | `int` | 零擴展 |
 
 不支援的轉換（例如 `str as int`）會產生編譯錯誤。字串轉數值請使用 `to_int()` / `to_float()`。
+
+## 帶關聯資料的 enum（ADT）
+
+在變體名稱後面加上括號並指定型別，enum 變體就可以攜帶關聯資料。不帶括號的變體仍然是單純的標籤。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### 建構子
+
+使用 `EnumName::Variant(value)` 語法建立帶有資料的變體。
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### 帶綁定的模式匹配
+
+使用 `case EnumName::Variant(binding):` 形式取出關聯資料。
+
+```python
+match c:
+    case Shape::Circle(r):
+        print(r)            # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+### 內部表示
+
+ADT enum 以標籤聯合的形式儲存：`{ i64 tag, [N x i8] data }`，`N` 的大小足以容納最大變體的酬載。
+
+---
+
+## 泛型 enum
+
+enum 可以使用角括號語法 `<T>` 帶有型別參數，使相同的 enum 結構可以持有不同型別的酬載。
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### 使用方式
+
+當編譯器無法推論型別時，需提供具體的型別引數來實例化。
+
+```python
+let a = MyOption<int>::MySome(42)
+let b = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
 
 ## Result 型別
 

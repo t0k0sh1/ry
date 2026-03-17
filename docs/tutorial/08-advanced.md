@@ -8,31 +8,31 @@
 
 ## Lambda Functions
 
-Lambda functions are a syntax for writing functions as expressions. They use the form `(parameters) -> expression`. The return type is automatically inferred.
+Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters): expression`. The return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-let answer = () -> 42
+let answer = fn(): 42
 print(answer())  # 42
 ```
 
 ### Multi-Line Lambda
 
-You can write multiple statements by adding a newline after `->` and indenting.
+You can write multiple statements by adding a newline after `:` and indenting.
 
 ```python
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -49,7 +49,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 let offset = 10
-let add_offset = (x: int) -> x + offset
+let add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int) -> n + 1, 10))    # 11
+print(apply(fn(n: int): n + 1, 10))    # 11
 ```
 
 ---
@@ -213,6 +213,70 @@ let x = 42 as float     # 42.0
 let y = 3.14 as int      # 3 (truncated)
 let s = 42 as str         # "42"
 let b = true as int       # 1
+```
+
+---
+
+## Enum with Associated Data (ADT)
+
+Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data.
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### Constructing ADT Variants
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### Matching ADT Variants
+
+Use `case` with a binding pattern to extract the associated data.
+
+```python
+fn describe(s: Shape) -> str:
+    match s:
+        case Shape::Circle(r):
+            return f"circle with radius {r}"
+        case Shape::Rectangle(w, h):
+            return f"rectangle {w}x{h}"
+        case Shape::Point:
+            return "point"
+
+print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
+print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
+```
+
+---
+
+## Generic Enum
+
+Enums can take type parameters, making them reusable across different payload types.
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### Usage
+
+```python
+let a = MyOption<int>::MySome(42)
+let b: MyOption<int> = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
 ```
 
 ---

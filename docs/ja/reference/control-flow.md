@@ -186,7 +186,8 @@ match 式:
 | ワイルドカード | `_` | 何にでもマッチ |
 | リテラル | `0`, `"hello"`, `true` | 値の等値比較 |
 | 変数束縛 | `n` | 何にでもマッチし、変数に束縛 |
-| enum バリアント | `Color::Red` | enum タグの比較 |
+| enum バリアント | `Color::Red` | enum タグの比較（単純な enum） |
+| ADT enum バリアント | `Shape::Circle(r)` | 関連データを持つ enum バリアントにマッチし、束縛する |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
 | OR パターン | `1 \| 2 \| 3` | いずれかにマッチ |
@@ -265,6 +266,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT enum マッチ
+
+enum バリアントが関連データを持つ場合、バインディングパターンを使って値を取り出します。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+複数フィールドを持つバリアントは、宣言順に各フィールドを別々の名前に束縛します。
 
 ### スコープルール
 

@@ -364,6 +364,29 @@ StmtNode Parser::parseLetOrVar() {
         parseError(id.line, "expected identifier after '" + first.value + "'");
     lex_.next(); // consume ident
 
+    // Tuple destructuring: let a, b = (10, 20)
+    if (lex_.peek().kind == TokenKind::Comma) {
+        std::vector<std::string> names;
+        names.push_back(id.value);
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            Token next = lex_.peek();
+            if (next.kind != TokenKind::Ident && next.value != "_")
+                parseError("expected identifier or '_' in tuple destructuring");
+            lex_.next(); // consume ident
+            names.push_back(next.value);
+        }
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError("expected '=' in tuple destructuring");
+        lex_.next(); // consume '='
+        ExprPtr value = parseTernary();
+        TupleDestructStmt s;
+        s.names = std::move(names);
+        s.value = std::move(value);
+        s.is_immutable = !isVar;
+        return s;
+    }
+
     std::optional<std::string> typeAnnotation;
     if (lex_.peek().kind == TokenKind::Colon) {
         lex_.next(); // consume ':'
@@ -719,14 +742,82 @@ ExprPtr Parser::parsePrimary() {
         node->data = std::move(call);
         return node;
     }
+    if (t.kind == TokenKind::Fn) {
+        // Lambda expression: fn(params) [-> retType]: body
+        lex_.next(); // consume 'fn'
+        return parseLambdaExpr();
+    }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
+        // Generic enum constructor: MyOption<int>::MySome(42)
+        if (lex_.peek().kind == TokenKind::Less) {
+            // Try to parse as generic type: Ident<Type>::Variant(...)
+            auto savedState = lex_.saveState();
+            try {
+                lex_.next(); // consume '<'
+                std::string typeArgs = "<";
+                int depth = 1;
+                while (depth > 0 && lex_.peek().kind != TokenKind::Eof) {
+                    Token tk = lex_.peek();
+                    if (tk.kind == TokenKind::Less) depth++;
+                    else if (tk.kind == TokenKind::Greater) {
+                        depth--;
+                        if (depth == 0) {
+                            lex_.next(); // consume final '>'
+                            typeArgs += ">";
+                            break;
+                        }
+                    }
+                    typeArgs += tk.value;
+                    lex_.next();
+                    if (depth > 0 && lex_.peek().kind == TokenKind::Comma) {
+                        typeArgs += ",";
+                        lex_.next();
+                    }
+                }
+                // Expect ::
+                if (lex_.peek().kind == TokenKind::ColonColon) {
+                    lex_.next(); // consume '::'
+                    Token variant = lex_.peek();
+                    if (variant.kind != TokenKind::Ident)
+                        parseError(variant.line, "expected variant name after '::'");
+                    lex_.next();
+                    std::string fullEnumName = t.value + typeArgs;
+                    if (lex_.peek().kind == TokenKind::LParen) {
+                        lex_.next(); // consume '('
+                        auto call = std::make_unique<CallExpr>();
+                        call->callee = fullEnumName + "::" + variant.value;
+                        call->args = parseArgList();
+                        auto node = std::make_unique<ExprNode>();
+                        node->data = std::move(call);
+                        return node;
+                    }
+                    auto node = std::make_unique<ExprNode>();
+                    node->data = EnumAccessExpr{fullEnumName, variant.value};
+                    return node;
+                }
+                // Not a generic enum access, restore
+                lex_.restoreState(savedState);
+            } catch (...) {
+                lex_.restoreState(savedState);
+            }
+        }
         if (lex_.peek().kind == TokenKind::ColonColon) {
             lex_.next(); // consume '::'
             Token variant = lex_.peek();
             if (variant.kind != TokenKind::Ident)
                 parseError(variant.line, "expected variant name after '::'");
             lex_.next(); // consume variant name
+            // ADT constructor: Enum::Variant(args...)
+            if (lex_.peek().kind == TokenKind::LParen) {
+                lex_.next(); // consume '('
+                auto call = std::make_unique<CallExpr>();
+                call->callee = t.value + "::" + variant.value;
+                call->args = parseArgList();
+                auto node = std::make_unique<ExprNode>();
+                node->data = std::move(call);
+                return node;
+            }
             auto node = std::make_unique<ExprNode>();
             node->data = EnumAccessExpr{t.value, variant.value};
             return node;
@@ -814,15 +905,7 @@ ExprPtr Parser::parsePrimary() {
         return node;
     }
     if (t.kind == TokenKind::LParen) {
-        // Try lambda: save state and attempt lambda parse
-        auto saved = lex_.saveState();
-        try {
-            return parseLambdaExpr();
-        } catch (...) {
-            lex_.restoreState(std::move(saved));
-        }
-
-        // Not a lambda — parse as grouping or tuple
+        // Grouping or tuple (lambda now uses fn keyword)
         lex_.next();
         ExprPtr first = parseTernary();
         if (lex_.peek().kind == TokenKind::Comma) {
@@ -1095,6 +1178,25 @@ StmtNode Parser::parseEnumStatement() {
         parseError(nameTok.line, "expected enum name after 'enum'");
     lex_.next(); // consume name
 
+    // Optional type parameters: enum Name<T, U>:
+    std::vector<std::string> typeParams;
+    if (lex_.peek().kind == TokenKind::Less) {
+        lex_.next(); // consume '<'
+        for (;;) {
+            Token tp = lex_.peek();
+            if (tp.kind != TokenKind::Ident)
+                parseError(tp.line, "expected type parameter name");
+            lex_.next();
+            typeParams.push_back(tp.value);
+            if (lex_.peek().kind != TokenKind::Comma)
+                break;
+            lex_.next(); // consume ','
+        }
+        if (lex_.peek().kind != TokenKind::Greater)
+            parseError("expected '>' after type parameters");
+        lex_.next(); // consume '>'
+    }
+
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after enum name");
     lex_.next(); // consume ':'
@@ -1110,6 +1212,7 @@ StmtNode Parser::parseEnumStatement() {
 
     EnumStmt es;
     es.name = nameTok.value;
+    es.type_params = std::move(typeParams);
     std::unordered_set<std::string> seenVariants;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
@@ -1121,7 +1224,27 @@ StmtNode Parser::parseEnumStatement() {
 
         if (seenVariants.count(variantName.value))
             parseError(variantName.line, "duplicate variant name '" + variantName.value + "'");
-        es.variants.push_back(variantName.value);
+
+        EnumVariant variant;
+        variant.name = variantName.value;
+
+        // Associated data: Variant(type1, type2, ...)
+        if (lex_.peek().kind == TokenKind::LParen) {
+            lex_.next(); // consume '('
+            if (lex_.peek().kind != TokenKind::RParen) {
+                for (;;) {
+                    variant.field_types.push_back(parseTypeName());
+                    if (lex_.peek().kind != TokenKind::Comma)
+                        break;
+                    lex_.next(); // consume ','
+                }
+            }
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' in enum variant definition");
+            lex_.next(); // consume ')'
+        }
+
+        es.variants.push_back(std::move(variant));
         seenVariants.insert(variantName.value);
 
         if (lex_.peek().kind == TokenKind::Newline)
@@ -1240,9 +1363,10 @@ std::string Parser::parseTypeNameSingle() {
 }
 
 ExprPtr Parser::parseLambdaExpr() {
-    // (params): return_type => expr_or_block
+    // fn(params) [-> retType]: body
+    // 'fn' is consumed by caller, now at '('
     if (lex_.peek().kind != TokenKind::LParen)
-        throw std::runtime_error("not a lambda");
+        parseError("expected '(' after 'fn' in lambda");
     lex_.next(); // consume '('
 
     auto lambda = std::make_unique<LambdaExpr>();
@@ -1252,11 +1376,11 @@ ExprPtr Parser::parseLambdaExpr() {
         for (;;) {
             Token paramName = lex_.peek();
             if (paramName.kind != TokenKind::Ident)
-                throw std::runtime_error("not a lambda");
+                parseError(paramName.line, "expected parameter name in lambda");
             lex_.next(); // consume param name
 
             if (lex_.peek().kind != TokenKind::Colon)
-                throw std::runtime_error("not a lambda");
+                parseError("expected ':' after parameter name in lambda");
             lex_.next(); // consume ':'
 
             std::string paramType = parseTypeName();
@@ -1269,27 +1393,29 @@ ExprPtr Parser::parseLambdaExpr() {
     }
 
     if (lex_.peek().kind != TokenKind::RParen)
-        throw std::runtime_error("not a lambda");
+        parseError("expected ')' in lambda");
     lex_.next(); // consume ')'
 
-    // -> で直接ボディへ（戻り値型は推論）
-    if (lex_.peek().kind != TokenKind::Arrow)
-        throw std::runtime_error("not a lambda");
-    lex_.next(); // consume '->'
-    lambda->return_type = "";  // 推論に委ねる
+    // Optional return type: -> type
+    if (lex_.peek().kind == TokenKind::Arrow) {
+        lex_.next(); // consume '->'
+        lambda->return_type = parseTypeName();
+    } else {
+        lambda->return_type = "";  // infer
+    }
 
-    // Check for multi-line lambda (newline + indent)
+    // Expect ':'
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after lambda parameters");
+    lex_.next(); // consume ':'
+
+    // Body: multi-line (newline + indent) or single expression
     if (lex_.peek().kind == TokenKind::Newline) {
-        // Peek ahead to see if indent follows
-        auto saved2 = lex_.saveState();
+        auto saved = lex_.saveState();
         lex_.next(); // consume newline
         skipNewlines();
         if (lex_.peek().kind == TokenKind::Indent) {
-            lex_.restoreState(std::move(saved2));
-            // parseBlock expects newline then indent
-            // We need to provide the colon context; use parseBlock directly
-            // Actually parseBlock expects newline, then skips newlines, then indent
-            // We're at Newline now, so we can call parseBlock-like logic
+            lex_.restoreState(std::move(saved));
             lex_.next(); // consume newline
             skipNewlines();
             lex_.next(); // consume Indent
@@ -1306,7 +1432,7 @@ ExprPtr Parser::parseLambdaExpr() {
             if (lex_.peek().kind == TokenKind::Dedent)
                 lex_.next(); // consume Dedent
         } else {
-            lex_.restoreState(std::move(saved2));
+            lex_.restoreState(std::move(saved));
             lambda->expr_body = parseTernary();
         }
     } else {
@@ -1580,7 +1706,7 @@ Pattern Parser::parsePattern() {
         parseError(num.line, "expected number after '-' in pattern");
     }
 
-    // Identifier: could be Enum::Variant or variable binding
+    // Identifier: could be Enum::Variant, Enum::Variant(bindings), or variable binding
     if (t.kind == TokenKind::Ident) {
         lex_.next(); // consume ident
         if (lex_.peek().kind == TokenKind::ColonColon) {
@@ -1589,6 +1715,27 @@ Pattern Parser::parsePattern() {
             if (variant.kind != TokenKind::Ident)
                 parseError(variant.line, "expected variant name after '::'");
             lex_.next(); // consume variant name
+            // Check for constructor pattern: Enum::Variant(a, b, ...)
+            if (lex_.peek().kind == TokenKind::LParen) {
+                lex_.next(); // consume '('
+                std::vector<std::string> bindings;
+                if (lex_.peek().kind != TokenKind::RParen) {
+                    for (;;) {
+                        Token binding = lex_.peek();
+                        if (binding.kind != TokenKind::Ident)
+                            parseError(binding.line, "expected binding name in constructor pattern");
+                        lex_.next();
+                        bindings.push_back(binding.value);
+                        if (lex_.peek().kind != TokenKind::Comma)
+                            break;
+                        lex_.next(); // consume ','
+                    }
+                }
+                if (lex_.peek().kind != TokenKind::RParen)
+                    parseError("expected ')' in constructor pattern");
+                lex_.next(); // consume ')'
+                return EnumConstructorPattern{t.value, variant.value, std::move(bindings)};
+            }
             return EnumPattern{t.value, variant.value};
         }
         return VariablePattern{t.value};

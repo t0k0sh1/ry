@@ -186,7 +186,8 @@ match expression:
 | Wildcard | `_` | Matches anything |
 | Literal | `0`, `"hello"`, `true` | Equality comparison |
 | Variable binding | `n` | Matches anything and binds to a variable |
-| enum variant | `Color::Red` | Compares enum tag |
+| enum variant | `Color::Red` | Compares enum tag (simple enum) |
+| ADT enum variant | `Shape::Circle(r)` | Matches an enum variant with associated data and binds it |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
@@ -265,6 +266,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT Enum Match
+
+When an enum variant carries associated data, use a binding pattern to extract the value(s).
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+Multi-field variants bind each field to a separate name in declaration order.
 
 ### Scope Rules
 
