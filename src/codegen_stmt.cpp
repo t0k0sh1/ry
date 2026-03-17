@@ -5,12 +5,6 @@
 
 // ===== Directive helpers =====
 
-bool CodeGen::hasDirective(const std::vector<Directive> &directives, const std::string &name) {
-    for (auto &d : directives)
-        if (d.name == name) return true;
-    return false;
-}
-
 void CodeGen::emitDeprecationWarning(const std::string &name) {
     warnings_.push_back("warning: '" + name + "' is deprecated");
 }
@@ -858,6 +852,12 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 // ===== B5: FnStmt using FnScope RAII =====
 
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
+    if (hasDirective(s->directives, "native")) {
+        if (hasDirective(s->directives, "deprecated"))
+            deprecated_functions_.insert(s->name);
+        return;
+    }
+
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type));

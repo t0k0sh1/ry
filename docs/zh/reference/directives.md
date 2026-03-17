@@ -71,6 +71,45 @@ print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 無警告
 ```
 
+### `@native`
+
+宣告由執行環境（內建）提供實作的函式。該函式不能有函式本體。
+
+**基本語法:**
+
+```
+@native
+fn contains(s: str, sub: str) -> bool
+
+print(contains("hello world", "world"))  # true
+```
+
+**運算子多載:**
+
+```
+@native
+fn operator+(a: str, b: str) -> str
+
+print("hello" + " world")  # hello world
+```
+
+**與 UFCS 搭配使用:**
+
+```
+@native
+fn to_upper(s: str) -> str
+
+print("hello".to_upper())  # HELLO
+```
+
+**限制事項:**
+- `@native` 函式不能有本體（簽名後不能加 `:`）。
+- 加上本體會導致解析錯誤: `@native function must not have a body`。
+- 宣告的函式必須對應到現有的內建函式，否則在編譯時會發生錯誤。
+
+**未來擴充方向:**
+- `@native("libfoo.so")` — 綁定外部共享函式庫的 FFI。
+
 ### 參數（未來擴充）
 
 指令支援可選的參數語法，為未來擴充做準備:

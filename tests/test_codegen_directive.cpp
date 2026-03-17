@@ -136,3 +136,55 @@ TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
         runSource("@deprecated\nif true\n    print(1)\n");
     }, std::runtime_error);
 }
+
+// ===== @native fn tests =====
+
+// 12. @native fn declaration - builtin function still works
+TEST_F(DirectiveTest, NativeFnDeclaration) {
+    std::string output = runSource(
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "print(contains(\"hello world\", \"world\"))\n"
+    );
+    EXPECT_EQ(output, "true\n");
+}
+
+// 13. @native fn operator declaration - builtin operator still works
+TEST_F(DirectiveTest, NativeFnOperatorDeclaration) {
+    std::string output = runSource(
+        "@native\n"
+        "fn operator+(a: str, b: str) -> str\n"
+        "print(\"hello\" + \" world\")\n"
+    );
+    EXPECT_EQ(output, "hello world\n");
+}
+
+// 14. @native fn with body causes error
+TEST_F(DirectiveTest, NativeFnWithBodyError) {
+    EXPECT_THROW({
+        runSource("@native\nfn bad() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
+
+// 15. @native fn with UFCS-style builtin
+TEST_F(DirectiveTest, NativeFnUfcsBuiltin) {
+    std::string output = runSource(
+        "@native\n"
+        "fn to_upper(s: str) -> str\n"
+        "print(to_upper(\"hello\"))\n"
+    );
+    EXPECT_EQ(output, "HELLO\n");
+}
+
+// 16. Multiple @native fn declarations coexist
+TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
+    std::string output = runSource(
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "@native\n"
+        "fn to_upper(s: str) -> str\n"
+        "print(contains(\"hello\", \"ell\"))\n"
+        "print(to_upper(\"world\"))\n"
+    );
+    EXPECT_EQ(output, "true\nWORLD\n");
+}

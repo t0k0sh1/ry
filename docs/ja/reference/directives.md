@@ -71,6 +71,45 @@ print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 警告なし
 ```
 
+### `@native`
+
+ランタイム（組み込み）によって実装が提供される関数を宣言します。関数本体を持つことはできません。
+
+**基本構文:**
+
+```
+@native
+fn contains(s: str, sub: str) -> bool
+
+print(contains("hello world", "world"))  # true
+```
+
+**演算子オーバーロード:**
+
+```
+@native
+fn operator+(a: str, b: str) -> str
+
+print("hello" + " world")  # hello world
+```
+
+**UFCS との組み合わせ:**
+
+```
+@native
+fn to_upper(s: str) -> str
+
+print("hello".to_upper())  # HELLO
+```
+
+**制約事項:**
+- `@native` 関数は本体を持てません（シグネチャの後に `:` を付けるとエラー）。
+- 本体を付けるとパースエラー: `@native function must not have a body`。
+- 宣言した関数は既存の組み込み関数に対応している必要があります。対応していない場合はコンパイル時にエラーになります。
+
+**将来の拡張方向:**
+- `@native("libfoo.so")` — 外部共有ライブラリへの FFI バインディング。
+
 ### パラメータ（将来拡張）
 
 ディレクティブは将来の拡張に備え、パラメータ構文をサポートしています:

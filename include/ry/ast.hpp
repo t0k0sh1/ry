@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -19,6 +20,12 @@ struct Directive {
     std::vector<DirectiveParam> params;
     int line;
 };
+
+inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
+    for (const auto &d : directives)
+        if (d.name == name) return true;
+    return false;
+}
 
 struct NumberExpr   { int64_t value; };
 struct FloatExpr    { double value; };

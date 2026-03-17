@@ -1140,3 +1140,34 @@ TEST(ParserTest, ExpectToContain) {
     Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_contain(1)");
     ASSERT_EQ(prog.size(), 1u);
 }
+
+// ===== @native fn tests =====
+
+TEST(ParserTest, NativeFnDeclaration) {
+    Program prog = parseStr("@native\nfn contains(s: str, sub: str) -> bool\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fs->name, "contains");
+    EXPECT_EQ(fs->params.size(), 2u);
+    EXPECT_EQ(fs->return_type, "bool");
+    EXPECT_TRUE(fs->body.empty());
+    ASSERT_EQ(fs->directives.size(), 1u);
+    EXPECT_EQ(fs->directives[0].name, "native");
+}
+
+TEST(ParserTest, NativeFnOperatorDeclaration) {
+    Program prog = parseStr("@native\nfn operator+(a: int, b: int) -> int\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fs->name, "operator+");
+    EXPECT_TRUE(fs->is_operator);
+    EXPECT_TRUE(fs->body.empty());
+    ASSERT_EQ(fs->directives.size(), 1u);
+    EXPECT_EQ(fs->directives[0].name, "native");
+}
+
+TEST(ParserTest, NativeFnWithColonError) {
+    EXPECT_THROW({
+        parseStr("@native\nfn bad() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
