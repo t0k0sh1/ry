@@ -1,7 +1,23 @@
 #include "ry/parser.hpp"
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
+
+// ===== Naming convention helpers =====
+
+static bool isSnakeCase(const std::string &name) {
+    if (name.empty()) return false;
+    if (name == "_") return true;
+    static const std::regex pattern("[a-z_][a-z0-9_]*");
+    return std::regex_match(name, pattern);
+}
+
+static bool isPascalCase(const std::string &name) {
+    if (name.empty()) return false;
+    static const std::regex pattern("[A-Z][a-zA-Z0-9]*");
+    return std::regex_match(name, pattern);
+}
 
 // ===== Helper: parse integer literals (decimal, hex, binary) =====
 
@@ -193,12 +209,18 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
-    // Directive-accepting statements: fn, type, let/var
-    if (first.kind == TokenKind::Type) {
-        auto stmt = parseTypeStatement();
-        auto &ts = std::get<TypeStmt>(stmt);
+    // Directive-accepting statements: fn, record, let/var
+    if (first.kind == TokenKind::Record) {
+        auto stmt = parseRecordStatement();
+        auto &ts = std::get<RecordStmt>(stmt);
         ts.directives = std::move(directives);
         return stmt;
+    }
+
+    if (first.kind == TokenKind::Type) {
+        if (!directives.empty())
+            parseError(first.line, "directives are not supported on type alias");
+        return parseTypeAliasStatement();
     }
 
     if (first.kind == TokenKind::Fn) {
@@ -364,6 +386,8 @@ StmtNode Parser::parseLetOrVar() {
     Token id = lex_.peek();
     if (id.kind != TokenKind::Ident)
         parseError(id.line, "expected identifier after '" + first.value + "'");
+    if (!isSnakeCase(id.value))
+        parseError(id.line, "variable name '" + id.value + "' must be snake_case");
     lex_.next(); // consume ident
 
     // Tuple destructuring: let a, b = (10, 20)
@@ -375,6 +399,8 @@ StmtNode Parser::parseLetOrVar() {
             Token next = lex_.peek();
             if (next.kind != TokenKind::Ident && next.value != "_")
                 parseError("expected identifier or '_' in tuple destructuring");
+            if (next.value != "_" && !isSnakeCase(next.value))
+                parseError(next.line, "variable name '" + next.value + "' must be snake_case");
             lex_.next(); // consume ident
             names.push_back(next.value);
         }
@@ -464,7 +490,21 @@ StmtNode Parser::parseForStatement() {
     Token varTok = lex_.peek();
     if (varTok.kind != TokenKind::Ident)
         parseError(varTok.line, "expected variable name after 'for'");
+    if (!isSnakeCase(varTok.value))
+        parseError(varTok.line, "loop variable name '" + varTok.value + "' must be snake_case");
     lex_.next(); // consume var name
+
+    std::optional<std::string> var2;
+    if (lex_.peek().kind == TokenKind::Comma) {
+        lex_.next(); // consume ','
+        Token var2Tok = lex_.peek();
+        if (var2Tok.kind != TokenKind::Ident)
+            parseError(var2Tok.line, "expected second variable name after ',' in for loop");
+        if (!isSnakeCase(var2Tok.value))
+            parseError(var2Tok.line, "loop variable name '" + var2Tok.value + "' must be snake_case");
+        lex_.next(); // consume var2
+        var2 = var2Tok.value;
+    }
 
     if (lex_.peek().kind != TokenKind::In)
         parseError("expected 'in' after variable name in for loop");
@@ -478,6 +518,7 @@ StmtNode Parser::parseForStatement() {
 
     auto forStmt = std::make_unique<ForStmt>();
     forStmt->var_name = varTok.value;
+    forStmt->var_name2 = var2;
     forStmt->iterable = std::move(iterable);
     forStmt->body = parseBlock();
     return forStmt;
@@ -530,7 +571,7 @@ StmtNode Parser::parseIfStatement() {
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
 ExprPtr Parser::parseTernary() {
-    ExprPtr expr = parseLogicalOr();
+    ExprPtr expr = parseNullCoalesce();
     if (lex_.peek().kind == TokenKind::Question) {
         lex_.next(); // consume '?'
         ExprPtr trueExpr = parseTernary(); // right-associative
@@ -548,9 +589,40 @@ ExprPtr Parser::parseTernary() {
     }
     return expr;
 }
+
+ExprPtr Parser::parseNullCoalesce() {
+    ExprPtr lhs = parseLogicalOr();
+    while (lex_.peek().kind == TokenKind::QuestionQuestion) {
+        lex_.next(); // consume '??'
+        ExprPtr rhs = parseLogicalOr();
+        auto bin = std::make_unique<BinaryExpr>();
+        bin->op = "??";
+        bin->lhs = std::move(lhs);
+        bin->rhs = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(bin);
+        lhs = std::move(node);
+    }
+    return lhs;
+}
 ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogicalNot, {TokenKind::And}); }
-ExprPtr Parser::parseComparison() {
+ExprPtr Parser::parseRange() {
     ExprPtr lhs = parseBitwiseOr();
+    if (lex_.peek().kind == TokenKind::DotDot) {
+        lex_.next(); // consume '..'
+        ExprPtr rhs = parseBitwiseOr();
+        auto range = std::make_unique<RangeExpr>();
+        range->start = std::move(lhs);
+        range->end = std::move(rhs);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(range);
+        return node;
+    }
+    return lhs;
+}
+
+ExprPtr Parser::parseComparison() {
+    ExprPtr lhs = parseRange();
     for (;;) {
         TokenKind k = lex_.peek().kind;
         // Handle "not in" as a two-token operator
@@ -729,6 +801,13 @@ ExprPtr Parser::parsePrimary() {
         oldExpr->expr = std::move(expr);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(oldExpr);
+        return node;
+    }
+    // none keyword → NoneExpr
+    if (t.kind == TokenKind::NoneKw) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = NoneExpr{};
         return node;
     }
     // Ok(expr) / Err(expr) → CallExpr
@@ -971,6 +1050,8 @@ StmtNode Parser::parseFnStatement() {
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
             parseError(nameTok.line, "expected function name after 'fn'");
+        if (!isSnakeCase(nameTok.value))
+            parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
     }
@@ -985,6 +1066,8 @@ StmtNode Parser::parseFnStatement() {
             Token paramName = lex_.peek();
             if (paramName.kind != TokenKind::Ident)
                 parseError(paramName.line, "expected parameter name");
+            if (!isSnakeCase(paramName.value))
+                parseError(paramName.line, "parameter name '" + paramName.value + "' must be snake_case");
             lex_.next(); // consume param name
 
             if (lex_.peek().kind != TokenKind::Colon)
@@ -1106,16 +1189,18 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
     skipNewlines();
 }
 
-StmtNode Parser::parseTypeStatement() {
-    lex_.next(); // consume 'type'
+StmtNode Parser::parseRecordStatement() {
+    lex_.next(); // consume 'record'
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
-        parseError(nameTok.line, "expected type name after 'type'");
+        parseError(nameTok.line, "expected record name after 'record'");
+    if (!isPascalCase(nameTok.value))
+        parseError(nameTok.line, "record name '" + nameTok.value + "' must be PascalCase");
     lex_.next(); // consume name
 
     if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after type name");
+        parseError("expected ':' after record name");
     lex_.next(); // consume ':'
 
     if (lex_.peek().kind != TokenKind::Newline)
@@ -1127,7 +1212,7 @@ StmtNode Parser::parseTypeStatement() {
         parseError("expected indented block");
     lex_.next(); // consume Indent
 
-    TypeStmt ts;
+    RecordStmt ts;
     ts.name = nameTok.value;
     std::unordered_set<std::string> seenFields;
 
@@ -1139,6 +1224,8 @@ StmtNode Parser::parseTypeStatement() {
         Token fieldName = lex_.peek();
         if (fieldName.kind != TokenKind::Ident)
             parseError(fieldName.line, "expected field name");
+        if (!isSnakeCase(fieldName.value))
+            parseError(fieldName.line, "field name '" + fieldName.value + "' must be snake_case");
         lex_.next(); // consume field name
 
         if (lex_.peek().kind != TokenKind::Colon)
@@ -1158,7 +1245,7 @@ StmtNode Parser::parseTypeStatement() {
     }
 
     if (ts.fields.empty())
-        parseError("type definition must have at least one field");
+        parseError("record definition must have at least one field");
 
     // Parse optional invariant clause
     if (lex_.peek().kind == TokenKind::Invariant) {
@@ -1172,6 +1259,29 @@ StmtNode Parser::parseTypeStatement() {
     return ts;
 }
 
+StmtNode Parser::parseTypeAliasStatement() {
+    lex_.next(); // consume 'type'
+
+    Token nameTok = lex_.peek();
+    if (nameTok.kind != TokenKind::Ident)
+        parseError(nameTok.line, "expected type name after 'type'");
+    lex_.next(); // consume name
+
+    if (!isPascalCase(nameTok.value))
+        parseError(nameTok.line, "type alias name '" + nameTok.value + "' must be PascalCase");
+
+    if (lex_.peek().kind != TokenKind::Equals)
+        parseError("expected '=' in type alias declaration");
+    lex_.next(); // consume '='
+
+    std::string targetType = parseTypeName();
+
+    TypeAliasStmt s;
+    s.name = nameTok.value;
+    s.target_type = targetType;
+    return s;
+}
+
 StmtNode Parser::parseEnumStatement() {
     lex_.next(); // consume 'enum'
 
@@ -1179,6 +1289,9 @@ StmtNode Parser::parseEnumStatement() {
     if (nameTok.kind != TokenKind::Ident)
         parseError(nameTok.line, "expected enum name after 'enum'");
     lex_.next(); // consume name
+
+    if (!isPascalCase(nameTok.value))
+        parseError(nameTok.line, "enum name '" + nameTok.value + "' must be PascalCase");
 
     // Optional type parameters: enum Name<T, U>:
     std::vector<std::string> typeParams;
@@ -1223,6 +1336,9 @@ StmtNode Parser::parseEnumStatement() {
         if (variantName.kind != TokenKind::Ident)
             parseError(variantName.line, "expected variant name");
         lex_.next(); // consume variant name
+
+        if (!isPascalCase(variantName.value))
+            parseError(variantName.line, "enum variant '" + variantName.value + "' must be PascalCase");
 
         if (seenVariants.count(variantName.value))
             parseError(variantName.line, "duplicate variant name '" + variantName.value + "'");
@@ -1359,6 +1475,12 @@ std::string Parser::parseTypeNameSingle() {
             lex_.next(); // consume '>'
             name += "<" + inner + ">";
         }
+    }
+
+    // Optional type suffix: int? => wraps in Option<T>
+    if (lex_.peek().kind == TokenKind::Question) {
+        lex_.next(); // consume '?'
+        name = name + "?";
     }
 
     return name;
@@ -1585,9 +1707,9 @@ StmtNode Parser::parseExpectStatement() {
         parseError("expected '(' after matcher name");
     lex_.next(); // consume '('
 
-    if (matcher == "to_eq") {
+    if (matcher == "to_eq" || matcher == "to_not_eq" || matcher == "to_contain") {
         es.expected = parseTernary();
-    } else if (matcher == "to_be_true" || matcher == "to_be_false" || matcher == "to_be_none") {
+    } else if (matcher == "to_be_true" || matcher == "to_be_false" || matcher == "to_be_none" || matcher == "to_be_some") {
         // no argument
     } else {
         parseError(matcherTok.line, "unknown matcher '" + matcher + "'");

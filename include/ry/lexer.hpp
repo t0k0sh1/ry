@@ -50,6 +50,7 @@ enum class TokenKind {
     Dot,            // .
     // --- type ---
     Type,           // type
+    Record,         // record
     Operator,       // operator
     // --- list ---
     LBracket,       // [
@@ -57,6 +58,11 @@ enum class TokenKind {
     // --- map ---
     LBrace,         // {
     RBrace,         // }
+    // --- range ---
+    DotDot,         // ..
+    // --- null coalescing ---
+    QuestionQuestion, // ??
+    NoneKw,         // none
     // --- for loop ---
     For,            // for
     In,             // in

@@ -86,6 +86,25 @@ for i in range(2, 5):
 # 4
 ```
 
+`..` 範囲演算子は両端を含む範囲を生成します。`1 .. 3` は `[1, 2, 3]` を生成します。
+
+```python
+for i in 1 .. 3:
+    print(i)
+# 1
+# 2
+# 3
+```
+
+`for k, v in map` でマップのキーと値を走査できます。
+
+```python
+let m = {"x": 10, "y": 20}
+for k, v in m:
+    print(k)
+    print(v)
+```
+
 ---
 
 ## break と continue

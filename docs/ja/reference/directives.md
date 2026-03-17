@@ -18,9 +18,9 @@
 ディレクティブは以下の宣言に適用できます:
 
 - `fn` - 関数定義
-- `type` - 型定義
+- `record` - 構造体定義
 - `let` / `var` - 変数宣言
-- `type` 定義内のフィールド
+- `record` 定義内のフィールド
 
 ## 組み込みディレクティブ
 
@@ -42,7 +42,7 @@ print(old_function())   # warning: 'old_function' is deprecated
 
 ```
 @deprecated
-type OldPoint:
+record OldPoint:
     x: int
     y: int
 
@@ -61,7 +61,7 @@ print(old_value)         # warning: 'old_value' is deprecated
 **フィールドに対して:**
 
 ```
-type Config:
+record Config:
     @deprecated
     old_setting: int
     new_setting: int

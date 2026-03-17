@@ -313,6 +313,27 @@ let pairs = zip(xs, ys)
 # pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
+### insert
+
+Inserts an element at the specified index. Elements at and after the index are shifted right.
+
+```python
+var xs = [1, 2, 3]
+insert(xs, 1, 99)
+print(xs)   # [1, 99, 2, 3]
+```
+
+### remove_at
+
+Removes and returns the element at the specified index. Elements after the index are shifted left.
+
+```python
+var xs = [1, 2, 3, 4]
+let v = remove_at(xs, 1)
+print(v)    # 2
+print(xs)   # [1, 3, 4]
+```
+
 ### Constraints and Errors
 
 | Constraint | Details |
@@ -389,6 +410,36 @@ Returns a list of all values in the map.
 ```python
 let m = {"a": 1, "b": 2, "c": 3}
 print(values(m))   # [1, 2, 3]
+```
+
+### items
+
+Returns a list of `(key, value)` tuples for all entries in the map.
+
+```python
+let m = {"a": 1, "b": 2}
+let pairs = items(m)
+# pairs = [("a", 1), ("b", 2)]
+```
+
+### remove (Map)
+
+Removes the entry with the specified key from the map. Does nothing if the key does not exist.
+
+```python
+let m = {"a": 1, "b": 2}
+remove(m, "a")
+print(m)   # {b: 2}
+```
+
+### get
+
+Returns the value for the specified key, or a default value if the key does not exist.
+
+```python
+let m = {"a": 1, "b": 2}
+print(get(m, "a", 0))   # 1
+print(get(m, "z", 0))   # 0
 ```
 
 ### Constraints and Errors
@@ -483,6 +534,68 @@ let s: Set<int> = {}
 ```python
 fn has_value(s: Set<int>, v: int) -> bool:
     return v in s
+```
+
+### union
+
+Returns a new set containing all elements from both sets.
+
+```python
+let a = {1, 2, 3}
+let b = {3, 4, 5}
+print(union(a, b))   # {1, 2, 3, 4, 5}
+```
+
+### intersection
+
+Returns a new set containing only elements present in both sets.
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(intersection(a, b))   # {2, 3}
+```
+
+### difference
+
+Returns a new set containing elements in the first set but not in the second.
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(difference(a, b))   # {1}
+```
+
+### symmetric_difference
+
+Returns a new set containing elements that are in either set but not in both.
+
+```python
+let a = {1, 2, 3}
+let b = {2, 3, 4}
+print(symmetric_difference(a, b))   # {1, 4}
+```
+
+### is_subset
+
+Returns `true` if all elements of the first set are contained in the second set.
+
+```python
+let a = {1, 2}
+let b = {1, 2, 3}
+print(is_subset(a, b))   # true
+print(is_subset(b, a))   # false
+```
+
+### is_superset
+
+Returns `true` if the first set contains all elements of the second set.
+
+```python
+let a = {1, 2, 3}
+let b = {1, 2}
+print(is_superset(a, b))   # true
+print(is_superset(b, a))   # false
 ```
 
 ### Constraints and Errors

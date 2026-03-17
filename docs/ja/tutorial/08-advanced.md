@@ -123,7 +123,7 @@ print(x.add(2).double())   # double(add(x, 2)) → 6
 パラメータを2個取ります。
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 

@@ -58,7 +58,7 @@ TEST_F(CodeGenTest, ContinueInWhile) {
 
 TEST_F(CodeGenTest, StructFieldAssign) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "var p = Point(1, 2)\n"
@@ -70,7 +70,7 @@ TEST_F(CodeGenTest, StructFieldAssign) {
 
 TEST_F(CodeGenTest, StructFieldAssignMultiple) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "var p = Point(0, 0)\n"
@@ -83,7 +83,7 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
 
 TEST_F(CodeGenTest, StructFieldAssignLetError) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1, 2)\n"
@@ -1025,4 +1025,45 @@ TEST_F(CodeGenTest, RawStringPrint) {
 
 TEST_F(CodeGenTest, RawStringConcat) {
     EXPECT_EQ(runSource(R"(print(r"\t" + "hello"))"), "\\thello\n");
+}
+
+// ===== test matcher: to_not_eq =====
+
+TEST_F(CodeGenTest, ExpectToNotEq) {
+    std::string src =
+        "describe \"matchers\":\n"
+        "    it \"not equal\":\n"
+        "        expect(1).to_not_eq(2)";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== test matcher: to_be_some =====
+
+TEST_F(CodeGenTest, ExpectToBeSome) {
+    std::string src =
+        "describe \"matchers\":\n"
+        "    it \"some\":\n"
+        "        let x = Some(5)\n"
+        "        expect(x).to_be_some()";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== test matcher: to_contain =====
+
+TEST_F(CodeGenTest, ExpectToContainList) {
+    std::string src =
+        "describe \"matchers\":\n"
+        "    it \"contains\":\n"
+        "        let xs = [1, 2, 3]\n"
+        "        expect(xs).to_contain(2)";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToContainString) {
+    std::string src =
+        "describe \"matchers\":\n"
+        "    it \"contains str\":\n"
+        "        let s = \"hello world\"\n"
+        "        expect(s).to_contain(\"world\")";
+    EXPECT_NO_THROW(runTestSource(src));
 }

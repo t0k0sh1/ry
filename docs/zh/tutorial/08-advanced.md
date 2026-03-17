@@ -123,7 +123,7 @@ print(x.add(2).double())   # double(add(x, 2)) → 6
 接受 2 個參數。
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 

@@ -18,9 +18,9 @@ Directives are placed before the target declaration. Multiple directives can be 
 Directives can be applied to the following declarations:
 
 - `fn` - Function definitions
-- `type` - Type definitions
+- `record` - Struct definitions
 - `let` / `var` - Variable declarations
-- Fields within a `type` definition
+- Fields within a `record` definition
 
 ## Built-in Directives
 
@@ -42,7 +42,7 @@ print(old_function())   # warning: 'old_function' is deprecated
 
 ```
 @deprecated
-type OldPoint:
+record OldPoint:
     x: int
     y: int
 
@@ -61,7 +61,7 @@ print(old_value)         # warning: 'old_value' is deprecated
 **On fields:**
 
 ```
-type Config:
+record Config:
     @deprecated
     old_setting: int
     new_setting: int

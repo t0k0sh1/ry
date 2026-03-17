@@ -18,7 +18,7 @@
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
 | `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int): x * 2` | Function type |
-| User-defined type | LLVM StructType (named) | `type Point: ...` | Struct defined with the `type` keyword |
+| User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | Result type for error handling |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
@@ -60,7 +60,42 @@ let u: int | str = 42
 | `fn(T1, ...) -> R` | Function type |
 | `Result<T, E>` | Result type (T = Ok type, E = Err type) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
-| User-defined type name | Type declared with the `type` or `enum` keyword |
+| User-defined type name | Type declared with the `record` or `enum` keyword |
+
+## Type Aliases
+
+The `type` keyword creates a new name for an existing type. The alias is fully interchangeable with the original type.
+
+```python
+type Meters = float
+type StringList = List<str>
+
+let d: Meters = 3.14
+let names: StringList = ["Alice", "Bob"]
+```
+
+> **Naming convention**: Type alias names must use PascalCase (e.g., `Meters`, `StringList`). The compiler enforces this convention.
+
+---
+
+## `none` Keyword and Option Type Shorthand
+
+The `none` keyword represents the absence of a value for Option types, equivalent to `None`.
+
+The `T?` syntax is a shorthand for `Option<T>`.
+
+```python
+let x: int? = 42       # equivalent to Option<int>
+let y: int? = none      # equivalent to None
+
+fn find(xs: List<int>, val: int) -> int?:
+    for x in xs:
+        if x == val:
+            return Some(x)
+    return none
+```
+
+---
 
 ## F-String (String Interpolation)
 

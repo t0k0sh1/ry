@@ -15,6 +15,8 @@ fn 関数名(引数名: 型, ...) -> 戻り値型:
 - 本体はインデントされたブロック。
 - 関数には `require`（事前条件）と `ensure`（事後条件）を定義できます。[契約による設計](contracts.md) を参照。
 
+> **命名規則**: 関数名と引数名は snake_case（例: `add`、`get_value`、`map_list`）を使用する必要があります。コンパイラがこの規則を強制します。
+
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
@@ -261,7 +263,7 @@ fn operator<op>(a: 型) -> 戻り値型:
 引数の個数で区別する。
 
 ```python
-type Vec2:
+record Vec2:
     x: float
     y: float
 

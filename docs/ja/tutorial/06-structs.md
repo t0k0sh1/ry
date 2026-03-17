@@ -6,12 +6,12 @@
 
 ---
 
-## type による構造体定義
+## record による構造体定義
 
-`type` キーワードで構造体を定義します。各フィールドは `name: type` の形式で記述します。
+`record` キーワードで構造体を定義します。各フィールドは `name: type` の形式で記述します。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 ```
@@ -63,7 +63,7 @@ print(p.x)   # 100
 構造体を関数の引数として渡せます。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
@@ -82,11 +82,11 @@ print(distance_x(p1, p2))   # 6
 構造体のフィールドに別の構造体を使えます。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Line:
+record Line:
     start: Point
     end: Point
 

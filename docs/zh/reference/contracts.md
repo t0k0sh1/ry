@@ -79,7 +79,7 @@ fn deposit(amount: int, balance: int) -> int:
 - 每次欄位賦值後
 
 ```python
-type BankAccount:
+record BankAccount:
     balance: int
     min_balance: int
     invariant:
@@ -98,5 +98,5 @@ a.balance = -1                  # Contract violation: invariant failed
 - `require` 和 `ensure` 區塊為選用，寫在函式本體之前。
 - 同時使用時，`require` 必須在 `ensure` 之前。
 - `result` 和 `old()` 只能在 `ensure` 區塊中使用。
-- `invariant` 寫在 `type` 定義的末尾，所有欄位宣告之後。
+- `invariant` 寫在 `record` 定義的末尾，所有欄位宣告之後。
 - 所有契約違反以 `exit(1)` 終止程式並輸出診斷訊息。

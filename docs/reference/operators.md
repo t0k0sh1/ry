@@ -22,6 +22,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
 | 13 | `or` | Logical OR | Left |
+| 13.5 | `??` | Null coalescing | Left |
 | 14 | `?:` | Ternary conditional | Right |
 
 ## Arithmetic Operators
@@ -124,6 +125,39 @@ let s = false ? "yes" : "no" # "no"
 
 # Nested (right-associative)
 let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
+
+## Range Operator
+
+The `..` operator creates an inclusive integer range.
+
+```python
+let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+
+for i in 1 .. 3:
+    print(i)       # 1 2 3
+```
+
+The result is a `List<int>` containing all integers from the left operand to the right operand (inclusive).
+
+---
+
+## Null Coalescing Operator (`??`)
+
+```python
+let x = option_val ?? default_val
+```
+
+If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
+
+```python
+let a: int? = Some(10)
+let b: int? = none
+
+print(a ?? 0)    # 10
+print(b ?? 0)    # 0
 ```
 
 ---

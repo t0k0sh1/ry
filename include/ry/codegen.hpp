@@ -45,6 +45,7 @@ private:
         std::vector<ExprPtr> invariants;
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
+    std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
@@ -159,7 +160,8 @@ private:
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
-    void emitStmt(TypeStmt &s);
+    void emitStmt(RecordStmt &s);
+    void emitStmt(TypeAliasStmt &s);
     void emitStmt(IndexAssignStmt &s);
     void emitStmt(BreakStmt &s);
     void emitStmt(ContinueStmt &s);
@@ -201,6 +203,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
+    llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *valueToString(llvm::Value *val);
 
     // Operator overload helpers

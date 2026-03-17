@@ -443,6 +443,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         throw std::runtime_error("'" + e->op + "' operator requires a set, list, or map on the right side");
     }
 
+    // Null coalescing operator: lhs ?? rhs
+    if (e->op == "??") {
+        llvm::Value *lhs = emitExpr(*e->lhs);
+        if (!isOptionType(lhs->getType()))
+            throw std::runtime_error("'" "??" "' operator requires Option type on the left side");
+        llvm::Value *hasVal = builder_.CreateExtractValue(lhs, {0}, "has_val");
+        llvm::Value *innerVal = builder_.CreateExtractValue(lhs, {1}, "inner_val");
+        llvm::Value *rhs = emitExpr(*e->rhs);
+        if (rhs->getType() != innerVal->getType())
+            throw std::runtime_error("'" "??" "' operator: right-hand side type must match Option's inner type");
+        return builder_.CreateSelect(hasVal, innerVal, rhs, "coalesce");
+    }
+
     llvm::Value *lhs = emitExpr(*e->lhs);
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
@@ -466,7 +479,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     return emitArithmeticOp(op, lhs, rhs);
 }
 
-void CodeGen::emitStmt(TypeStmt &s) {
+void CodeGen::emitStmt(RecordStmt &s) {
     if (struct_types_.count(s.name))
         throw std::runtime_error("redefined type: " + s.name);
 
@@ -1143,5 +1156,86 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
         set_element_types_[phi] = set_element_types_[trueVal];
 
     return phi;
+}
+
+// ===== TypeAliasStmt =====
+
+void CodeGen::emitStmt(TypeAliasStmt &s) {
+    // Type aliases are resolved at compile time via resolveType()
+    // Store the alias mapping for later lookup
+    type_aliases_[s.name] = s.target_type;
+}
+
+// ===== RangeExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
+    llvm::Value *startVal = emitExpr(*e->start);
+    llvm::Value *endVal = emitExpr(*e->end);
+
+    if (startVal->getType() != i64Ty_ || endVal->getType() != i64Ty_)
+        throw std::runtime_error("range (..) operator requires int operands");
+
+    // Calculate length: end - start + 1 (inclusive range)
+    llvm::Value *diff = builder_.CreateSub(endVal, startVal, "range_diff");
+    llvm::Value *length = builder_.CreateAdd(diff, llvm::ConstantInt::get(i64Ty_, 1), "range_len");
+
+    // Clamp negative length to 0
+    llvm::Value *isNeg = builder_.CreateICmpSLT(length, llvm::ConstantInt::get(i64Ty_, 0), "len_neg");
+    length = builder_.CreateSelect(isNeg, llvm::ConstantInt::get(i64Ty_, 0), length, "range_len_clamped");
+
+    // Allocate list: header + data
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+    uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+
+    llvm::Value *headerPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_hdr");
+    llvm::Value *dataSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "data_size");
+    llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
+
+    // Store header: len, cap, data
+    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(dataPtr, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+
+    // Fill data with start..end
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "range.body", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "range.end", fn_);
+
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "range_cond");
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
+    llvm::Value *val = builder_.CreateAdd(startVal, curI, "range_val");
+    llvm::Value *elemPtr = builder_.CreateGEP(i64Ty_, dataPtr, {curI}, "range_elem_ptr");
+    builder_.CreateStore(val, elemPtr);
+    llvm::Value *nextI = builder_.CreateAdd(curI, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+    builder_.CreateStore(nextI, iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
+    list_element_types_[headerPtr] = i64Ty_;
+    return headerPtr;
+}
+
+// ===== NoneExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
+    // Build a None value for the expected Option type
+    // The type will be inferred from context (assignment, comparison, etc.)
+    // Default to Option<int> if no context is available
+    llvm::StructType *optTy = getOptionType(i64Ty_);
+    return buildNoneValue(optTy);
 }
 

@@ -104,6 +104,22 @@ for i in range(start, end, step):
     # i = start, start+step, start+2*step, ...
 ```
 
+### マップのキー・値走査
+
+```python
+for k, v in map_expr:
+    # k はキー、v は各エントリの値
+```
+
+### 範囲演算子（`..`）
+
+`..` 演算子は両端を含む整数の範囲を生成します。`1 .. 5` は `[1, 2, 3, 4, 5]` を生成します。
+
+```python
+for i in 1 .. 5:
+    print(i)     # 1 2 3 4 5
+```
+
 ### 例
 
 ```python
@@ -126,6 +142,16 @@ for i in range(0, 10, 2):
 
 for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
+
+# マップの走査
+let m = {"a": 1, "b": 2}
+for k, v in m:
+    print(k)
+    print(v)
+
+# 範囲演算子
+for i in 1 .. 3:
+    print(i)     # 1 2 3
 ```
 
 ---

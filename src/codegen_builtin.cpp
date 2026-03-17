@@ -739,30 +739,33 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
     llvm::Value *cmpResult = nullptr;
 
-    if (s.matcher == "to_eq") {
+    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         llvm::Type *expectedTy = expectedVal->getType();
 
+        llvm::Value *eqResult = nullptr;
         if (actualTy == i64Ty_ && expectedTy == i64Ty_) {
-            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
-            cmpResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
-            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == ptrTy_ && expectedTy == ptrTy_) {
-            // String comparison via strcmp
             llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
             llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
             llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
-            cmpResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
+            eqResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
         } else if ((actualTy == i64Ty_ && expectedTy == f64Ty_) ||
                    (actualTy == f64Ty_ && expectedTy == i64Ty_)) {
             auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
-            cmpResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
+            eqResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
         } else {
             throw std::runtime_error("line " + std::to_string(s.line) +
-                                     ": to_eq: unsupported types for comparison");
+                                     ": " + s.matcher + ": unsupported types for comparison");
         }
+        cmpResult = (s.matcher == "to_not_eq")
+            ? builder_.CreateNot(eqResult, "not_eq")
+            : eqResult;
     } else if (s.matcher == "to_be_true") {
         if (actualTy != i1Ty_)
             throw std::runtime_error("line " + std::to_string(s.line) +
@@ -779,6 +782,90 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                                      ": to_be_none: expected Option type");
         llvm::Value *hasVal = builder_.CreateExtractValue(actualVal, {0}, "has_val");
         cmpResult = builder_.CreateNot(hasVal, "is_none");
+    } else if (s.matcher == "to_be_some") {
+        if (!isOptionType(actualTy))
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_be_some: expected Option type");
+        cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_some");
+    } else if (s.matcher == "to_contain") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+
+        if (actualTy == ptrTy_ && expectedVal->getType() == ptrTy_) {
+            // String contains: use strstr
+            llvm::FunctionType *strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+            llvm::FunctionCallee strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+            llvm::Value *result = builder_.CreateCall(strstrFn, {actualVal, expectedVal}, "strstr");
+            cmpResult = builder_.CreateICmpNE(result, llvm::ConstantPointerNull::get(
+                llvm::PointerType::getUnqual(*ctx_)), "contains");
+        } else if (actualTy == ptrTy_) {
+            // List/Set contains: use "in" operator logic
+            llvm::Type *elemTy = getListElementType(actualVal);
+            llvm::StructType *headerTy = listHeaderTy_;
+            if (!elemTy) {
+                elemTy = getSetElementType(actualVal);
+                headerTy = setHeaderTy_;
+            }
+            if (!elemTy)
+                throw std::runtime_error("line " + std::to_string(s.line) +
+                                         ": to_contain: expected list, set, or string");
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, actualVal, 0, "len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "len");
+            llvm::Value *dataField = builder_.CreateStructGEP(headerTy, actualVal, 2, "data_field");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "data_ptr");
+
+            llvm::AllocaInst *foundVar = builder_.CreateAlloca(i1Ty_, nullptr, "found");
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), foundVar);
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+            llvm::Function *currentFnContain = builder_.GetInsertBlock()->getParent();
+            llvm::BasicBlock *cBB = llvm::BasicBlock::Create(*ctx_, "contain.cond", currentFnContain);
+            llvm::BasicBlock *bBB = llvm::BasicBlock::Create(*ctx_, "contain.body", currentFnContain);
+            llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, "contain.next", currentFnContain);
+            llvm::BasicBlock *eBB = llvm::BasicBlock::Create(*ctx_, "contain.end", currentFnContain);
+
+            builder_.CreateBr(cBB);
+            builder_.SetInsertPoint(cBB);
+            llvm::Value *ci = builder_.CreateLoad(i64Ty_, iVar, "ci");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(ci, len, "clt"), bBB, eBB);
+
+            builder_.SetInsertPoint(bBB);
+            llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
+            llvm::Value *ePtr = builder_.CreateGEP(elemTy, dataPtr, {curI}, "elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(elemTy, ePtr, "elem");
+            if (expectedVal->getType() != elemTy)
+                throw std::runtime_error("line " + std::to_string(s.line) +
+                                         ": to_contain: element type mismatch");
+            llvm::Value *eq;
+            if (elemTy == i64Ty_)
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+            else if (elemTy == ptrTy_) {
+                llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *cmp = builder_.CreateCall(strcmpFn, {elem, expectedVal}, "strcmp");
+                eq = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "eq");
+            } else
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "contain.found", currentFnContain);
+            builder_.CreateCondBr(eq, foundBB, nBB);
+            builder_.SetInsertPoint(foundBB);
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
+            builder_.CreateBr(eBB);
+
+            builder_.SetInsertPoint(nBB);
+            llvm::Value *nextI = builder_.CreateAdd(
+                builder_.CreateLoad(i64Ty_, iVar, "ni"), llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+            builder_.CreateStore(nextI, iVar);
+            builder_.CreateBr(cBB);
+
+            builder_.SetInsertPoint(eBB);
+            cmpResult = builder_.CreateLoad(i1Ty_, foundVar, "contain_result");
+        } else {
+            throw std::runtime_error("line " + std::to_string(s.line) +
+                                     ": to_contain: expected list, set, or string");
+        }
     }
 
     // Branch: if cmpResult is false, call __ry_test_expect_fail
@@ -828,13 +915,18 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     llvm::Value *actualStr = formatValue(actualVal, actualTy, "actual_buf");
 
     llvm::Value *expectedStr;
-    if (s.matcher == "to_eq") {
+    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         expectedStr = formatValue(expectedVal, expectedVal->getType(), "expected_buf");
     } else if (s.matcher == "to_be_true") {
         expectedStr = builder_.CreateGlobalString("true", ".exp_true");
     } else if (s.matcher == "to_be_false") {
         expectedStr = builder_.CreateGlobalString("false", ".exp_false");
+    } else if (s.matcher == "to_be_some") {
+        expectedStr = builder_.CreateGlobalString("Some(...)", ".exp_some");
+    } else if (s.matcher == "to_contain") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        expectedStr = formatValue(expectedVal, expectedVal->getType(), "expected_buf");
     } else {
         expectedStr = builder_.CreateGlobalString("None", ".exp_none");
     }

@@ -18,9 +18,9 @@
 指令可以套用到以下宣告:
 
 - `fn` - 函式定義
-- `type` - 型別定義
+- `record` - 結構體定義
 - `let` / `var` - 變數宣告
-- `type` 定義內的欄位
+- `record` 定義內的欄位
 
 ## 內建指令
 
@@ -42,7 +42,7 @@ print(old_function())   # warning: 'old_function' is deprecated
 
 ```
 @deprecated
-type OldPoint:
+record OldPoint:
     x: int
     y: int
 
@@ -61,7 +61,7 @@ print(old_value)         # warning: 'old_value' is deprecated
 **套用於欄位:**
 
 ```
-type Config:
+record Config:
     @deprecated
     old_setting: int
     new_setting: int

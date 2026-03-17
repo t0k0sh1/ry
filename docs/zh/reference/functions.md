@@ -15,6 +15,8 @@ fn 函式名(引數名: 型別, ...) -> 回傳型別:
 - 主體為縮排的區塊。
 - 函式可以定義 `require`（前置條件）和 `ensure`（後置條件）。參閱 [契約式設計](contracts.md)。
 
+> **命名慣例**：函式名稱和引數名稱必須使用 snake_case（如 `add`、`get_value`、`map_list`）。編譯器會強制執行此慣例。
+
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
@@ -261,7 +263,7 @@ fn operator<op>(a: 型別) -> 回傳型別:
 依引數個數區分。
 
 ```python
-type Vec2:
+record Vec2:
     x: float
     y: float
 

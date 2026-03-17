@@ -245,10 +245,10 @@ TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
 // ===== type パーサーテスト =====
 
 TEST(ParserTest, TypeDefinition) {
-    Program prog = parseStr("type Point:\n    x: int\n    y: int");
+    Program prog = parseStr("record Point:\n    x: int\n    y: int");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<TypeStmt>(prog[0]));
-    const auto &ts = std::get<TypeStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    const auto &ts = std::get<RecordStmt>(prog[0]);
     EXPECT_EQ(ts.name, "Point");
     ASSERT_EQ(ts.fields.size(), 2u);
     EXPECT_EQ(ts.fields[0].name, "x");
@@ -529,7 +529,7 @@ TEST(ParserTest, ImportInBlockThrows) {
 }
 
 TEST(ParserTest, DuplicateFieldNameThrows) {
-    EXPECT_THROW(parseStr("type Point:\n    x: int\n    x: int"), std::runtime_error);
+    EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }
 
 // ===== タプル パーサーテスト =====
@@ -966,14 +966,14 @@ TEST(ParserTest, FnWithoutContract) {
 
 TEST(ParserTest, TypeWithInvariant) {
     std::string src =
-        "type Account:\n"
+        "record Account:\n"
         "    balance: int\n"
         "    min_balance: int\n"
         "    invariant:\n"
         "        balance >= min_balance";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
-    auto &ts = std::get<TypeStmt>(prog[0]);
+    auto &ts = std::get<RecordStmt>(prog[0]);
     EXPECT_EQ(ts.name, "Account");
     EXPECT_EQ(ts.fields.size(), 2u);
     EXPECT_EQ(ts.invariants.size(), 1u);
@@ -981,11 +981,11 @@ TEST(ParserTest, TypeWithInvariant) {
 
 TEST(ParserTest, TypeWithoutInvariant) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int";
     Program prog = parseStr(src);
-    auto &ts = std::get<TypeStmt>(prog[0]);
+    auto &ts = std::get<RecordStmt>(prog[0]);
     EXPECT_EQ(ts.invariants.size(), 0u);
 }
 
@@ -1025,4 +1025,118 @@ TEST(ParserTest, ResultExprParse) {
     auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
     ASSERT_TRUE(bin != nullptr);
     ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+}
+
+// ===== record キーワード =====
+
+TEST(ParserTest, RecordKeyword) {
+    Program prog = parseStr("record Point:\n    x: int\n    y: int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Point");
+    EXPECT_EQ(ts.fields.size(), 2u);
+}
+
+// ===== type エイリアス =====
+
+TEST(ParserTest, TypeAlias) {
+    Program prog = parseStr("type MyInt = int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TypeAliasStmt>(prog[0]));
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "MyInt");
+    EXPECT_EQ(ta.target_type, "int");
+}
+
+// ===== for k, v in map =====
+
+TEST(ParserTest, ForKVParsing) {
+    Program prog = parseStr("for k, v in m:\n    print(k)");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
+    EXPECT_EQ(fs->var_name, "k");
+    ASSERT_TRUE(fs->var_name2.has_value());
+    EXPECT_EQ(*fs->var_name2, "v");
+}
+
+// ===== .. 演算子 =====
+
+TEST(ParserTest, RangeExpr) {
+    Program prog = parseStr("let xs = 1 .. 5");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    auto *range = std::get_if<std::unique_ptr<RangeExpr>>(&let.value->data);
+    ASSERT_TRUE(range != nullptr);
+}
+
+// ===== ?? 演算子 =====
+
+TEST(ParserTest, NullCoalesceExpr) {
+    Program prog = parseStr("let x = a ?? 0");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&let.value->data);
+    ASSERT_TRUE(bin != nullptr);
+    EXPECT_EQ((*bin)->op, "??");
+}
+
+// ===== none キーワード =====
+
+TEST(ParserTest, NoneExpr) {
+    Program prog = parseStr("let x = none");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<NoneExpr>(let.value->data));
+}
+
+// ===== 命名規約チェック =====
+
+TEST(ParserTest, SnakeCaseVariableRequired) {
+    EXPECT_THROW(parseStr("let myVar = 1"), std::runtime_error);
+}
+
+TEST(ParserTest, SnakeCaseFunctionRequired) {
+    EXPECT_THROW(parseStr("fn myFunc() -> int:\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseRecordRequired) {
+    EXPECT_THROW(parseStr("record my_point:\n    x: int"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseEnumRequired) {
+    EXPECT_THROW(parseStr("enum my_color:\n    Red\n    Green"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseEnumVariantRequired) {
+    EXPECT_THROW(parseStr("enum Color:\n    red\n    Green"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseTypeAliasRequired) {
+    EXPECT_THROW(parseStr("type my_int = int"), std::runtime_error);
+}
+
+TEST(ParserTest, SnakeCaseForLoopVariable) {
+    EXPECT_THROW(parseStr("for myVar in xs:\n    print(myVar)"), std::runtime_error);
+}
+
+TEST(ParserTest, SnakeCaseParamRequired) {
+    EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
+}
+
+// ===== expect マッチャー =====
+
+TEST(ParserTest, ExpectToNotEq) {
+    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_not_eq(2)");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, ExpectToBeSome) {
+    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_be_some()");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, ExpectToContain) {
+    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_contain(1)");
+    ASSERT_EQ(prog.size(), 1u);
 }
