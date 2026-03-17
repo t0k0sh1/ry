@@ -4,6 +4,84 @@
 // ===== CallExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
+    // ADT constructor: Enum::Variant(args...)
+    {
+        auto colonPos = e->callee.find("::");
+        if (colonPos != std::string::npos) {
+            std::string enumName = e->callee.substr(0, colonPos);
+            std::string variantName = e->callee.substr(colonPos + 2);
+            // Try to instantiate generic enum if not found
+            if (!enum_types_.count(enumName)) {
+                // Check if enumName is like "MyOption<int>"
+                auto ltPos = enumName.find('<');
+                if (ltPos != std::string::npos && enumName.back() == '>') {
+                    std::string baseName = enumName.substr(0, ltPos);
+                    std::string argsStr = enumName.substr(ltPos + 1, enumName.size() - ltPos - 2);
+                    // Parse type args (simple comma split)
+                    std::vector<std::string> typeArgs;
+                    std::string curr;
+                    int depth = 0;
+                    for (char c : argsStr) {
+                        if (c == '<') depth++;
+                        else if (c == '>') depth--;
+                        else if (c == ',' && depth == 0) {
+                            typeArgs.push_back(curr);
+                            curr.clear();
+                            continue;
+                        }
+                        curr += c;
+                    }
+                    if (!curr.empty()) typeArgs.push_back(curr);
+                    instantiateGenericEnum(enumName, baseName, typeArgs);
+                }
+            }
+            auto eit = enum_types_.find(enumName);
+            if (eit != enum_types_.end() && eit->second.isADT) {
+                auto &info = eit->second;
+                auto vit = info.variants.find(variantName);
+                if (vit == info.variants.end())
+                    throw std::runtime_error("unknown variant '" + variantName + "' in enum '" + enumName + "'");
+                int64_t tag = vit->second;
+
+                auto fit = info.variantFields.find(variantName);
+                if (fit == info.variantFields.end())
+                    throw std::runtime_error("variant '" + variantName + "' has no associated data");
+                auto &fieldInfo = fit->second;
+                if (e->args.size() != fieldInfo.fieldTypes.size())
+                    throw std::runtime_error("variant '" + variantName + "' expects " +
+                        std::to_string(fieldInfo.fieldTypes.size()) + " arguments");
+
+                // Alloca the ADT struct
+                llvm::Value *adtVal = llvm::UndefValue::get(info.adtType);
+                // Set tag
+                adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, tag), 0, "adt.tag");
+
+                // Store fields into payload
+                const llvm::DataLayout &dl = mod_->getDataLayout();
+                // We need to alloca + memcpy approach for the payload bytes
+                llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(info.adtType, nullptr, "adt.tmp");
+                builder_.CreateStore(adtVal, tmpAlloca);
+                llvm::Value *payloadPtr = builder_.CreateStructGEP(info.adtType, tmpAlloca, 1, "adt.payload");
+
+                size_t offset = 0;
+                for (size_t i = 0; i < e->args.size(); ++i) {
+                    llvm::Value *argVal = emitExpr(*e->args[i]);
+                    uint64_t align = dl.getABITypeAlign(fieldInfo.fieldTypes[i]).value();
+                    offset = (offset + align - 1) / align * align;
+                    llvm::Value *fieldPtr = builder_.CreateGEP(
+                        llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                        {llvm::ConstantInt::get(i64Ty_, offset)}, "adt.field." + std::to_string(i));
+                    builder_.CreateStore(argVal, fieldPtr);
+                    offset += dl.getTypeAllocSize(fieldInfo.fieldTypes[i]);
+                }
+
+                llvm::Value *result = builder_.CreateLoad(info.adtType, tmpAlloca, "adt.val");
+                enum_value_types_[result] = enumName;
+                return result;
+            }
+        }
+    }
+
     // range(n), range(start, end), or range(start, end, step) → List<int>
     if (e->callee == "range") {
         if (e->args.size() < 1 || e->args.size() > 3)
@@ -2039,6 +2117,543 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         // qs.done: return sorted list
         builder_.SetInsertPoint(qsDoneBB);
         list_element_types_[newHeader] = elemTy;
+        return newHeader;
+    }
+
+    // ===== reduce(list, fn(a, b) -> a op b) =====
+    if (e->callee == "reduce") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("reduce() takes exactly 2 arguments");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e->args[1]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("reduce() requires a list");
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end())
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        if (fnIt == fn_type_info_.end())
+            throw std::runtime_error("reduce() requires a function");
+        auto &info = fnIt->second;
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "reduce_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "reduce_data");
+
+        // Check empty list
+        llvm::Value *isEmptyR = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
+        llvm::BasicBlock *errBBR = llvm::BasicBlock::Create(*ctx_, "reduce.err", fn_);
+        llvm::BasicBlock *okBBR = llvm::BasicBlock::Create(*ctx_, "reduce.ok", fn_);
+        builder_.CreateCondBr(isEmptyR, errBBR, okBBR);
+        builder_.SetInsertPoint(errBBR);
+        emitRuntimeError("runtime error: reduce() on empty list\n", ".reduce_empty_err");
+        builder_.SetInsertPoint(okBBR);
+
+        // acc = list[0]
+        llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "reduce_first");
+        llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "reduce_acc");
+        builder_.CreateStore(first, accVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "reduce_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "reduce.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "reduce.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "reduce.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ri");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "reduce_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "reduce_elem");
+        llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "reduce_acc_val");
+        llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "reduce_call");
+        builder_.CreateStore(result, accVar);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(info.returnType, accVar, "reduce_result");
+    }
+
+    // ===== fold(list, init, fn(a, b) -> a op b) =====
+    if (e->callee == "fold") {
+        if (e->args.size() != 3)
+            throw std::runtime_error("fold() takes exactly 3 arguments");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Value *initVal = emitExpr(*e->args[1]);
+        llvm::Value *lambdaVal = emitExpr(*e->args[2]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("fold() requires a list");
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end())
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        if (fnIt == fn_type_info_.end())
+            throw std::runtime_error("fold() requires a function");
+        auto &info = fnIt->second;
+        if (info.paramTypes.size() != 2)
+            throw std::runtime_error("fold() function must take 2 parameters (accumulator, element)");
+        if (info.returnType != initVal->getType())
+            throw std::runtime_error("fold() initial value type must match function return type");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "fold_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "fold_data");
+
+        llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "fold_acc");
+        builder_.CreateStore(initVal, accVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "fold_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "fold.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "fold.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "fold.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "fi");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "fold_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "fold_elem");
+        llvm::Value *acc = builder_.CreateLoad(info.returnType, accVar, "fold_acc_val");
+        llvm::Value *result = emitLambdaCall(lambdaVal, info, {acc, elem}, "fold_call");
+        builder_.CreateStore(result, accVar);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(info.returnType, accVar, "fold_result");
+    }
+
+    // ===== any(list, pred) =====
+    if (e->callee == "any") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("any() takes exactly 2 arguments");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e->args[1]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("any() requires a list");
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end())
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        if (fnIt == fn_type_info_.end())
+            throw std::runtime_error("any() requires a function");
+        auto &info = fnIt->second;
+        if (info.paramTypes.size() != 1)
+            throw std::runtime_error("any() predicate must take 1 parameter");
+        if (info.returnType != i1Ty_)
+            throw std::runtime_error("any() predicate must return bool");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "any_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "any_data");
+
+        llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, "any_result");
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "any_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "any.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "any.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "any.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ai");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "any_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "any_elem");
+        llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "any_pred");
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "any.found", fn_);
+        builder_.CreateCondBr(pred, foundBB, condBB);
+        builder_.SetInsertPoint(foundBB);
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), resultVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i1Ty_, resultVar, "any_final");
+    }
+
+    // ===== all(list, pred) =====
+    if (e->callee == "all") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("all() takes exactly 2 arguments");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e->args[1]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("all() requires a list");
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end())
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        if (fnIt == fn_type_info_.end())
+            throw std::runtime_error("all() requires a function");
+        auto &info = fnIt->second;
+        if (info.paramTypes.size() != 1)
+            throw std::runtime_error("all() predicate must take 1 parameter");
+        if (info.returnType != i1Ty_)
+            throw std::runtime_error("all() predicate must return bool");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "all_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "all_data");
+
+        llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, "all_result");
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), resultVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "all_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "all.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "all.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "all.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ali");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "all_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "all_elem");
+        llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "all_pred");
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "all.fail", fn_);
+        builder_.CreateCondBr(pred, condBB, failBB);
+        builder_.SetInsertPoint(failBB);
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
+        builder_.CreateBr(endBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(i1Ty_, resultVar, "all_final");
+    }
+
+    // ===== sum(list) =====
+    if (e->callee == "sum") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("sum() takes exactly 1 argument");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("sum() requires a list");
+        if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
+            throw std::runtime_error("sum() requires a numeric list (int, float, or byte)");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "sum_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "sum_data");
+
+        llvm::AllocaInst *accVar = builder_.CreateAlloca(elemTy, nullptr, "sum_acc");
+        if (elemTy == f64Ty_)
+            builder_.CreateStore(llvm::ConstantFP::get(f64Ty_, 0.0), accVar);
+        else
+            builder_.CreateStore(llvm::ConstantInt::get(elemTy, 0), accVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "sum_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "sum.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "sum.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "sum.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "si");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "sum_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "sum_elem");
+        llvm::Value *acc = builder_.CreateLoad(elemTy, accVar, "sum_acc_val");
+        llvm::Value *newAcc;
+        if (elemTy == f64Ty_)
+            newAcc = builder_.CreateFAdd(acc, elem, "sum_add");
+        else
+            newAcc = builder_.CreateAdd(acc, elem, "sum_add");
+        builder_.CreateStore(newAcc, accVar);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(elemTy, accVar, "sum_result");
+    }
+
+    // ===== min(list) / max(list) =====
+    if (e->callee == "min" || e->callee == "max") {
+        if (e->args.size() != 1)
+            throw std::runtime_error(e->callee + "() takes exactly 1 argument");
+        bool isMax = (e->callee == "max");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error(e->callee + "() requires a list");
+        if (elemTy != i64Ty_ && elemTy != f64Ty_)
+            throw std::runtime_error(e->callee + "() requires a numeric list (int or float)");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "mm_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "mm_data");
+
+        // Check empty list
+        llvm::Value *isEmptyMM = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "mm_empty");
+        llvm::BasicBlock *errBBMM = llvm::BasicBlock::Create(*ctx_, "mm.err", fn_);
+        llvm::BasicBlock *okBBMM = llvm::BasicBlock::Create(*ctx_, "mm.ok", fn_);
+        builder_.CreateCondBr(isEmptyMM, errBBMM, okBBMM);
+        builder_.SetInsertPoint(errBBMM);
+        emitRuntimeError("runtime error: " + e->callee + "() on empty list\n", ".mm_empty_err");
+        builder_.SetInsertPoint(okBBMM);
+
+        llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "mm_first");
+        llvm::AllocaInst *bestVar = builder_.CreateAlloca(elemTy, nullptr, "mm_best");
+        builder_.CreateStore(first, bestVar);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mm_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 1), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "mm.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "mm.body", fn_);
+        llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mm.update", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "mm.next", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mm.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mi");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "mm_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "mm_elem");
+        llvm::Value *best = builder_.CreateLoad(elemTy, bestVar, "mm_best_val");
+        llvm::Value *cmp;
+        if (elemTy == f64Ty_)
+            cmp = isMax ? builder_.CreateFCmpOGT(elem, best, "mm_cmp")
+                        : builder_.CreateFCmpOLT(elem, best, "mm_cmp");
+        else
+            cmp = isMax ? builder_.CreateICmpSGT(elem, best, "mm_cmp")
+                        : builder_.CreateICmpSLT(elem, best, "mm_cmp");
+        builder_.CreateCondBr(cmp, updateBB, nextBB);
+        builder_.SetInsertPoint(updateBB);
+        builder_.CreateStore(elem, bestVar);
+        builder_.CreateBr(nextBB);
+        builder_.SetInsertPoint(nextBB);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+        return builder_.CreateLoad(elemTy, bestVar, "mm_result");
+    }
+
+    // ===== keys(map) =====
+    if (e->callee == "keys") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("keys() takes exactly 1 argument");
+        llvm::Value *mapVal = emitExpr(*e->args[0]);
+        llvm::Type *keyTy = getMapKeyType(mapVal);
+        if (!keyTy) throw std::runtime_error("keys() requires a map");
+
+        llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "keys_len");
+        llvm::Value *keysData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2), "keys_data");
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "keys_header");
+        uint64_t elemSize = dl.getTypeAllocSize(keyTy);
+        llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
+
+        // memcpy keys
+        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
+
+        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        list_element_types_[newHeader] = keyTy;
+        return newHeader;
+    }
+
+    // ===== values(map) =====
+    if (e->callee == "values") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("values() takes exactly 1 argument");
+        llvm::Value *mapVal = emitExpr(*e->args[0]);
+        llvm::Type *valTy = getMapValueType(mapVal);
+        if (!valTy) throw std::runtime_error("values() requires a map");
+
+        llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "vals_len");
+        llvm::Value *valsData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3), "vals_data");
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "vals_header");
+        uint64_t elemSize = dl.getTypeAllocSize(valTy);
+        llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
+
+        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
+
+        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        list_element_types_[newHeader] = valTy;
+        return newHeader;
+    }
+
+    // ===== first(list) =====
+    if (e->callee == "first") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("first() takes exactly 1 argument");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("first() requires a list");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
+
+        // Check empty list
+        llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
+        llvm::BasicBlock *errBBF = llvm::BasicBlock::Create(*ctx_, "first.err", fn_);
+        llvm::BasicBlock *okBBF = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
+        builder_.CreateCondBr(isEmptyF, errBBF, okBBF);
+        builder_.SetInsertPoint(errBBF);
+        emitRuntimeError("runtime error: first() on empty list\n", ".first_empty_err");
+        builder_.SetInsertPoint(okBBF);
+
+        return builder_.CreateLoad(elemTy, srcData, "first_val");
+    }
+
+    // ===== last(list) =====
+    if (e->callee == "last") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("last() takes exactly 1 argument");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("last() requires a list");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
+
+        // Check empty list
+        llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
+        llvm::BasicBlock *errBBL = llvm::BasicBlock::Create(*ctx_, "last.err", fn_);
+        llvm::BasicBlock *okBBL = llvm::BasicBlock::Create(*ctx_, "last.ok", fn_);
+        builder_.CreateCondBr(isEmptyL, errBBL, okBBL);
+        builder_.SetInsertPoint(errBBL);
+        emitRuntimeError("runtime error: last() on empty list\n", ".last_empty_err");
+        builder_.SetInsertPoint(okBBL);
+
+        llvm::Value *lastIdx = builder_.CreateSub(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
+        return builder_.CreateLoad(elemTy, elemPtr, "last_val");
+    }
+
+    // ===== is_empty(list/map/set) =====
+    if (e->callee == "is_empty") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("is_empty() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e->args[0]);
+        // All collection headers have length at index 0
+        llvm::Type *headerTy = nullptr;
+        if (getListElementType(val)) headerTy = listHeaderTy_;
+        else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
+        else if (getSetElementType(val)) headerTy = setHeaderTy_;
+        if (!headerTy)
+            throw std::runtime_error("is_empty() requires a collection (list, map, or set)");
+        llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
+        return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
+    }
+
+    // ===== enumerate(list) =====
+    if (e->callee == "enumerate") {
+        if (e->args.size() != 1)
+            throw std::runtime_error("enumerate() takes exactly 1 argument");
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy) throw std::runtime_error("enumerate() requires a list");
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "enum_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "enum_data");
+
+        // Create List of (int, T) tuples
+        llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "enum_header");
+        uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
+        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "enum_ds");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "enum_nd");
+
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "enum_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "enum.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "enum.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "enum.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "ei");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, srcLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {i}, "enum_ep");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "enum_elem");
+        llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
+        tupleVal = builder_.CreateInsertValue(tupleVal, i, 0);
+        tupleVal = builder_.CreateInsertValue(tupleVal, elem, 1);
+        llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "enum_dp");
+        builder_.CreateStore(tupleVal, dstPtr);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+
+        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        list_element_types_[newHeader] = tupleTy;
+        return newHeader;
+    }
+
+    // ===== zip(list1, list2) =====
+    if (e->callee == "zip") {
+        if (e->args.size() != 2)
+            throw std::runtime_error("zip() takes exactly 2 arguments");
+        llvm::Value *list1 = emitExpr(*e->args[0]);
+        llvm::Value *list2 = emitExpr(*e->args[1]);
+        llvm::Type *elemTy1 = getListElementType(list1);
+        llvm::Type *elemTy2 = getListElementType(list2);
+        if (!elemTy1 || !elemTy2) throw std::runtime_error("zip() requires two lists");
+
+        llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list1, 0), "zip_len1");
+        llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list2, 0), "zip_len2");
+        llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, list1, 2), "zip_data1");
+        llvm::Value *data2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, list2, 2), "zip_data2");
+
+        // min length
+        llvm::Value *minLen = builder_.CreateSelect(builder_.CreateICmpSLT(len1, len2), len1, len2, "zip_minlen");
+
+        llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "zip_header");
+        uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
+        llvm::Value *dataSize = builder_.CreateMul(minLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "zip_ds");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "zip_nd");
+
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "zip_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "zip.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "zip.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "zip.end", fn_);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "zi");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, minLen), bodyBB, endBB);
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *ep1 = builder_.CreateGEP(elemTy1, data1, {i}, "zip_ep1");
+        llvm::Value *ep2 = builder_.CreateGEP(elemTy2, data2, {i}, "zip_ep2");
+        llvm::Value *e1 = builder_.CreateLoad(elemTy1, ep1, "zip_e1");
+        llvm::Value *e2 = builder_.CreateLoad(elemTy2, ep2, "zip_e2");
+        llvm::Value *tupleVal = llvm::UndefValue::get(tupleTy);
+        tupleVal = builder_.CreateInsertValue(tupleVal, e1, 0);
+        tupleVal = builder_.CreateInsertValue(tupleVal, e2, 1);
+        llvm::Value *dstPtr = builder_.CreateGEP(tupleTy, newData, {i}, "zip_dp");
+        builder_.CreateStore(tupleVal, dstPtr);
+        builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(endBB);
+
+        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        list_element_types_[newHeader] = tupleTy;
         return newHeader;
     }
 

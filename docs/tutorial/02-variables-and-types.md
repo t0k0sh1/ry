@@ -131,4 +131,41 @@ let x = 1
 
 ---
 
+## Tuple Destructuring
+
+You can unpack a tuple into multiple variables in a single declaration using `let` or `var`.
+
+```python
+let a, b = (10, 20)
+print(a)   # 10
+print(b)   # 20
+```
+
+### Wildcard
+
+Use `_` to ignore a position.
+
+```python
+let x, _ = (1, 2)   # only x is bound; 2 is discarded
+print(x)             # 1
+```
+
+### Mutable Destructuring
+
+Use `var` to declare mutable variables.
+
+```python
+var a, b = (10, 20)
+a = 99
+print(a)   # 99
+```
+
+### Rules
+
+- The number of variables on the left must match the number of elements in the tuple.
+- Each variable follows the same `let`/`var` rules as a regular declaration.
+- Nested tuple destructuring is not supported.
+
+---
+
 <- [01 - Getting Started](01-getting-started.md) / Next -> [03 - Operators](03-operators.md)

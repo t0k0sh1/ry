@@ -60,14 +60,31 @@ private:
     std::unordered_map<llvm::Value*, std::string> union_value_types_;
     std::string current_fn_return_type_;
 
+    struct VariantFieldInfo {
+        std::vector<llvm::Type*> fieldTypes;
+        std::vector<std::string> fieldTypeNames;
+    };
     struct EnumInfo {
         std::string name;
         std::unordered_map<std::string, int64_t> variants;
         llvm::GlobalVariable *nameArray;
         size_t variantCount;
+        bool isADT = false;
+        llvm::StructType *adtType = nullptr;   // { i64 tag, [N x i8] payload }
+        size_t maxPayloadSize = 0;
+        std::unordered_map<std::string, VariantFieldInfo> variantFields;
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
     std::unordered_map<llvm::Value*, std::string> enum_value_types_;
+
+    struct GenericEnumTemplate {
+        std::string name;
+        std::vector<std::string> typeParams;
+        std::vector<EnumVariant> variants;
+    };
+    std::unordered_map<std::string, GenericEnumTemplate> generic_enum_templates_;
+    void instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
+                                const std::vector<std::string> &typeArgs);
 
     struct ResultTypeInfo {
         llvm::StructType *llvmType;
@@ -149,6 +166,7 @@ private:
     void emitStmt(FieldAssignStmt &s);
     void emitStmt(EnumStmt &s);
     void emitStmt(ExpectStmt &s);
+    void emitStmt(TupleDestructStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);

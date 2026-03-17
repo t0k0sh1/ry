@@ -1055,7 +1055,7 @@ TEST_F(CodeGenTest, SplitJoinRoundTrip) {
 TEST_F(CodeGenTest, FilterIntBasic) {
     std::string src =
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = filter(xs, (x: int) -> x > 3)\n"
+        "let ys = filter(xs, fn(x: int): x > 3)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
@@ -1063,7 +1063,7 @@ TEST_F(CodeGenTest, FilterIntBasic) {
 TEST_F(CodeGenTest, FilterIntEmpty) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = filter(xs, (x: int) -> x > 10)\n"
+        "let ys = filter(xs, fn(x: int): x > 10)\n"
         "print(len(ys))";
     EXPECT_EQ(runSource(src), "0\n");
 }
@@ -1071,7 +1071,7 @@ TEST_F(CodeGenTest, FilterIntEmpty) {
 TEST_F(CodeGenTest, FilterAllMatch) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = filter(xs, (x: int) -> x > 0)\n"
+        "let ys = filter(xs, fn(x: int): x > 0)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
@@ -1079,7 +1079,7 @@ TEST_F(CodeGenTest, FilterAllMatch) {
 TEST_F(CodeGenTest, FilterFloat) {
     std::string src =
         "let xs = [1.5, 2.5, 0.5]\n"
-        "let ys = filter(xs, (x: float) -> x > 1.0)\n"
+        "let ys = filter(xs, fn(x: float): x > 1.0)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
 }
@@ -1087,7 +1087,7 @@ TEST_F(CodeGenTest, FilterFloat) {
 TEST_F(CodeGenTest, FilterString) {
     std::string src =
         "let xs = [\"hello\", \"hi\", \"hey\"]\n"
-        "let ys = filter(xs, (s: str) -> s.starts_with(\"he\"))\n"
+        "let ys = filter(xs, fn(s: str): s.starts_with(\"he\"))\n"
         "print(len(ys))";
     EXPECT_EQ(runSource(src), "2\n");
 }
@@ -1096,7 +1096,7 @@ TEST_F(CodeGenTest, FilterWithClosure) {
     std::string src =
         "let threshold = 3\n"
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = filter(xs, (x: int) -> x > threshold)\n"
+        "let ys = filter(xs, fn(x: int): x > threshold)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
@@ -1104,7 +1104,7 @@ TEST_F(CodeGenTest, FilterWithClosure) {
 TEST_F(CodeGenTest, FilterUFCS) {
     std::string src =
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter((x: int) -> x > 3)\n"
+        "let ys = xs.filter(fn(x: int): x > 3)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
@@ -1114,7 +1114,7 @@ TEST_F(CodeGenTest, FilterUFCS) {
 TEST_F(CodeGenTest, MapIntToInt) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, (x: int) -> x * 2)\n"
+        "let ys = map(xs, fn(x: int): x * 2)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
 }
@@ -1122,7 +1122,7 @@ TEST_F(CodeGenTest, MapIntToInt) {
 TEST_F(CodeGenTest, MapIntToFloat) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, (x: int) -> x * 1.5)\n"
+        "let ys = map(xs, fn(x: int): x * 1.5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 3, 4.5]\n");
 }
@@ -1130,7 +1130,7 @@ TEST_F(CodeGenTest, MapIntToFloat) {
 TEST_F(CodeGenTest, MapStrToInt) {
     std::string src =
         "let xs = [\"hello\", \"hi\"]\n"
-        "let ys = map(xs, (s: str) -> len(s))\n"
+        "let ys = map(xs, fn(s: str): len(s))\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[5, 2]\n");
 }
@@ -1138,7 +1138,7 @@ TEST_F(CodeGenTest, MapStrToInt) {
 TEST_F(CodeGenTest, MapFloat) {
     std::string src =
         "let xs = [1.0, 2.0]\n"
-        "let ys = map(xs, (x: float) -> x + 0.5)\n"
+        "let ys = map(xs, fn(x: float): x + 0.5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
 }
@@ -1147,7 +1147,7 @@ TEST_F(CodeGenTest, MapWithClosure) {
     std::string src =
         "let factor = 10\n"
         "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, (x: int) -> x * factor)\n"
+        "let ys = map(xs, fn(x: int): x * factor)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
 }
@@ -1155,7 +1155,7 @@ TEST_F(CodeGenTest, MapWithClosure) {
 TEST_F(CodeGenTest, MapPreservesOriginal) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, (x: int) -> x * 2)\n"
+        "let ys = map(xs, fn(x: int): x * 2)\n"
         "print(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n[2, 4, 6]\n");
@@ -1166,7 +1166,7 @@ TEST_F(CodeGenTest, MapPreservesOriginal) {
 TEST_F(CodeGenTest, FilterThenMap) {
     std::string src =
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter((x: int) -> x > 2).map((x: int) -> x * 10)\n"
+        "let ys = xs.filter(fn(x: int): x > 2).map(fn(x: int): x * 10)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[30, 40, 50]\n");
 }
@@ -1174,7 +1174,7 @@ TEST_F(CodeGenTest, FilterThenMap) {
 TEST_F(CodeGenTest, MapThenFilter) {
     std::string src =
         "let xs = [1, 2, 3]\n"
-        "let ys = xs.map((x: int) -> x * 2).filter((x: int) -> x > 4)\n"
+        "let ys = xs.map(fn(x: int): x * 2).filter(fn(x: int): x > 4)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[6]\n");
 }
@@ -1182,7 +1182,7 @@ TEST_F(CodeGenTest, MapThenFilter) {
 TEST_F(CodeGenTest, FilterThenFilter) {
     std::string src =
         "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter((x: int) -> x > 1).filter((x: int) -> x < 5)\n"
+        "let ys = xs.filter(fn(x: int): x > 1).filter(fn(x: int): x < 5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 3, 4]\n");
 }
@@ -1226,7 +1226,7 @@ TEST_F(CodeGenTest, SortSingleElement) {
 TEST_F(CodeGenTest, SortWithComparator) {
     std::string src =
         "let xs = [3, 1, 2]\n"
-        "let ys = sort(xs, (a: int, b: int) -> a > b)\n"
+        "let ys = sort(xs, fn(a: int, b: int): a > b)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
 }
@@ -1253,7 +1253,7 @@ TEST_F(CodeGenTest, SortUFCS) {
 TEST_F(CodeGenTest, FilterMapSort) {
     std::string src =
         "let xs = [5, 3, 1, 4, 2]\n"
-        "let ys = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()\n"
+        "let ys = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[20, 30, 40, 50]\n");
 }
@@ -1261,7 +1261,7 @@ TEST_F(CodeGenTest, FilterMapSort) {
 TEST_F(CodeGenTest, SortThenFilter) {
     std::string src =
         "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort().filter((x: int) -> x > 1)\n"
+        "let ys = xs.sort().filter(fn(x: int): x > 1)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 3]\n");
 }
@@ -1269,7 +1269,7 @@ TEST_F(CodeGenTest, SortThenFilter) {
 TEST_F(CodeGenTest, SortThenMap) {
     std::string src =
         "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort().map((x: int) -> x * 2)\n"
+        "let ys = xs.sort().map(fn(x: int): x * 2)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
 }
@@ -1298,7 +1298,7 @@ TEST_F(CodeGenTest, SortDuplicates) {
 TEST_F(CodeGenTest, SortEmpty) {
     std::string src =
         "let xs: List<int> = [1]\n"
-        "let ys = xs.filter((x: int) -> x > 10)\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
         "print(sort(ys))";
     EXPECT_EQ(runSource(src), "[]\n");
 }
@@ -1428,7 +1428,7 @@ TEST_F(CodeGenTest, ListPop) {
 TEST_F(CodeGenTest, ListPopEmpty) {
     std::string src =
         "var xs: List<int> = [1]\n"
-        "let ys = xs.filter((x: int) -> x > 10)\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
         "ys.pop()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -1505,4 +1505,148 @@ TEST_F(CodeGenTest, RangeStepList) {
         "let xs = range(0, 10, 3)\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "4\n");
+}
+
+// ===== reduce / fold =====
+
+TEST_F(CodeGenTest, ReduceBasic) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "let sum = reduce(xs, fn(a: int, b: int): a + b)\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, ReduceUFCS) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "print(xs.reduce(fn(a: int, b: int): a + b))";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, FoldBasic) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let sum = fold(xs, 10, fn(a: int, b: int): a + b)\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "16\n");
+}
+
+TEST_F(CodeGenTest, FoldUFCS) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs.fold(0, fn(a: int, b: int): a + b))";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+// ===== keys / values / items =====
+
+TEST_F(CodeGenTest, MapKeys) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "let ks = keys(m)\n"
+        "print(len(ks))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, MapValues) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "let vs = values(m)\n"
+        "print(len(vs))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+// ===== any / all =====
+
+TEST_F(CodeGenTest, AnyTrue) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "print(any(xs, fn(x: int): x > 3))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, AnyFalse) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(any(xs, fn(x: int): x > 10))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, AllTrue) {
+    std::string src =
+        "let xs = [2, 4, 6]\n"
+        "print(all(xs, fn(x: int): x > 0))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, AllFalse) {
+    std::string src =
+        "let xs = [2, 4, 6]\n"
+        "print(all(xs, fn(x: int): x > 3))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+// ===== sum / min / max =====
+
+TEST_F(CodeGenTest, SumInt) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "print(sum(xs))";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, MinInt) {
+    std::string src =
+        "let xs = [3, 1, 4, 1, 5]\n"
+        "print(min(xs))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, MaxInt) {
+    std::string src =
+        "let xs = [3, 1, 4, 1, 5]\n"
+        "print(max(xs))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+// ===== enumerate / zip =====
+
+TEST_F(CodeGenTest, EnumerateBasic) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "let es = enumerate(xs)\n"
+        "print(len(es))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ZipBasic) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = [\"a\", \"b\", \"c\"]\n"
+        "let zs = zip(xs, ys)\n"
+        "print(len(zs))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+// ===== first / last / is_empty =====
+
+TEST_F(CodeGenTest, FirstBasic) {
+    EXPECT_EQ(runSource("print(first([10, 20, 30]))"), "10\n");
+}
+
+TEST_F(CodeGenTest, LastBasic) {
+    EXPECT_EQ(runSource("print(last([10, 20, 30]))"), "30\n");
+}
+
+TEST_F(CodeGenTest, IsEmptyFalse) {
+    EXPECT_EQ(runSource("print(is_empty([1, 2]))"), "false\n");
+}
+
+TEST_F(CodeGenTest, IsEmptyTrue) {
+    std::string src =
+        "let xs: List<int> = [1]\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "print(is_empty(ys))";
+    EXPECT_EQ(runSource(src), "true\n");
 }

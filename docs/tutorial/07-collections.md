@@ -119,11 +119,11 @@ Lists support `filter`, `map`, and `sort` operations. These return new lists wit
 let xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-let evens = xs.filter((x: int) -> x > 3)
+let evens = xs.filter(fn(x: int): x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-let doubled = xs.map((x: int) -> x * 2)
+let doubled = xs.map(fn(x: int): x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
@@ -131,8 +131,73 @@ let sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # Chaining
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
+```
+
+### reduce, fold
+
+`reduce` accumulates a list into a single value starting from the first element. `fold` does the same but with an explicit initial value.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+
+# reduce: start from first element
+let total = reduce(xs, fn(a: int, b: int): a + b)
+print(total)   # 15
+
+# fold: provide an explicit initial value
+let total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+print(total2)   # 15
+```
+
+### any, all
+
+`any` returns `true` if at least one element satisfies the predicate. `all` returns `true` if every element does.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+
+print(any(xs, fn(x: int): x > 4))   # true
+print(any(xs, fn(x: int): x > 9))   # false
+
+print(all(xs, fn(x: int): x > 0))   # true
+print(all(xs, fn(x: int): x > 3))   # false
+```
+
+### sum, min, max
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(sum(xs))   # 14
+print(min(xs))   # 1
+print(max(xs))   # 5
+```
+
+### first, last, is_empty
+
+```python
+let xs = [10, 20, 30]
+print(first(xs))      # 10
+print(last(xs))       # 30
+print(is_empty(xs))   # false
+```
+
+### enumerate, zip
+
+`enumerate` pairs each element with its index. `zip` combines two lists element-by-element.
+
+```python
+let xs = [10, 20, 30]
+let indexed = enumerate(xs)
+# [(0, 10), (1, 20), (2, 30)]
+for p in indexed:
+    print(p.0)
+    print(p.1)
+
+let ys = ["a", "b", "c"]
+let zipped = zip(xs, ys)
+# [(10, "a"), (20, "b"), (30, "c")]
 ```
 
 ### Limitations
@@ -193,6 +258,16 @@ Checks whether a key exists.
 
 ```python
 print(m.has_key("a"))   # true
+```
+
+### keys, values
+
+`keys` returns a list of all keys. `values` returns a list of all values.
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(keys(m))     # ["a", "b", "c"]
+print(values(m))   # [1, 2, 3]
 ```
 
 ### Function Parameters

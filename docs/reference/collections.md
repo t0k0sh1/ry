@@ -157,7 +157,7 @@ Returns a new list containing only elements that satisfy the predicate. The orig
 
 ```python
 let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+let ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -167,7 +167,7 @@ Returns a new list with each element transformed by the given function. The outp
 
 ```python
 let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+let ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -180,7 +180,7 @@ let xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order with comparator
-let desc = xs.sort((a: int, b: int) -> a > b)
+let desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -190,8 +190,127 @@ These functions return new lists, so they can be chained via UFCS.
 
 ```python
 let xs = [5, 3, 1, 4, 2]
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
+```
+
+### reduce
+
+Reduces a list to a single value using an accumulator function, starting with the first element.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = reduce(xs, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### fold
+
+Folds a list to a single value using an accumulator function and an explicit initial value.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = fold(xs, 0, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### any
+
+Returns `true` if at least one element satisfies the predicate.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(any(xs, fn(x: int): x > 4))   # true
+print(any(xs, fn(x: int): x > 9))   # false
+```
+
+### all
+
+Returns `true` if every element satisfies the predicate.
+
+```python
+let xs = [2, 4, 6]
+print(all(xs, fn(x: int): x > 0))   # true
+print(all(xs, fn(x: int): x > 3))   # false
+```
+
+### sum
+
+Returns the sum of all elements.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(sum(xs))   # 15
+```
+
+### min
+
+Returns the minimum element.
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(min(xs))   # 1
+```
+
+### max
+
+Returns the maximum element.
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(max(xs))   # 5
+```
+
+### first
+
+Returns the first element. Causes a runtime error on an empty list.
+
+```python
+let xs = [10, 20, 30]
+print(first(xs))   # 10
+```
+
+### last
+
+Returns the last element. Causes a runtime error on an empty list.
+
+```python
+let xs = [10, 20, 30]
+print(last(xs))   # 30
+```
+
+### is_empty
+
+Returns `true` if the list has no elements.
+
+```python
+let xs = [1, 2, 3]
+print(is_empty(xs))   # false
+print(is_empty([]))   # true (requires type annotation in practice)
+```
+
+### enumerate
+
+Returns a list of `(index, element)` tuples.
+
+```python
+let xs = [10, 20, 30]
+let pairs = enumerate(xs)
+# pairs = [(0, 10), (1, 20), (2, 30)]
+for p in pairs:
+    print(p.0)
+    print(p.1)
+```
+
+### zip
+
+Combines two lists into a list of `(elem1, elem2)` tuples. The result length equals the shorter list.
+
+```python
+let xs = [1, 2, 3]
+let ys = ["a", "b", "c"]
+let pairs = zip(xs, ys)
+# pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
 ### Constraints and Errors
@@ -252,6 +371,24 @@ print(m)   # {a: 1, b: 2}
 let m = {"a": 1, "b": 2}
 print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
+```
+
+### keys
+
+Returns a list of all keys in the map.
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(keys(m))   # ["a", "b", "c"]
+```
+
+### values
+
+Returns a list of all values in the map.
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(values(m))   # [1, 2, 3]
 ```
 
 ### Constraints and Errors

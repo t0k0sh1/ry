@@ -157,7 +157,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 
 ```python
 let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+let ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -167,7 +167,7 @@ print(ys)   # [4, 5]
 
 ```python
 let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+let ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -180,7 +180,7 @@ let xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-let desc = xs.sort((a: int, b: int) -> a > b)
+let desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -190,8 +190,126 @@ print(desc)   # [3, 2, 1]
 
 ```python
 let xs = [5, 3, 1, 4, 2]
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
+```
+
+### reduce
+
+アキュムレータ関数を使ってリストを単一の値に畳み込みます。最初の要素を初期値として使用します。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = reduce(xs, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### fold
+
+明示的な初期値とアキュムレータ関数を使ってリストを単一の値に畳み込みます。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = fold(xs, 0, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### any
+
+述語を満たす要素が1つ以上あれば `true` を返します。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(any(xs, fn(x: int): x > 4))   # true
+print(any(xs, fn(x: int): x > 9))   # false
+```
+
+### all
+
+すべての要素が述語を満たす場合に `true` を返します。
+
+```python
+let xs = [2, 4, 6]
+print(all(xs, fn(x: int): x > 0))   # true
+print(all(xs, fn(x: int): x > 3))   # false
+```
+
+### sum
+
+全要素の合計を返します。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(sum(xs))   # 15
+```
+
+### min
+
+最小の要素を返します。
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(min(xs))   # 1
+```
+
+### max
+
+最大の要素を返します。
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(max(xs))   # 5
+```
+
+### first
+
+最初の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
+
+```python
+let xs = [10, 20, 30]
+print(first(xs))   # 10
+```
+
+### last
+
+最後の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
+
+```python
+let xs = [10, 20, 30]
+print(last(xs))   # 30
+```
+
+### is_empty
+
+リストが空であれば `true` を返します。
+
+```python
+let xs = [1, 2, 3]
+print(is_empty(xs))   # false
+```
+
+### enumerate
+
+`(インデックス, 要素)` のタプルのリストを返します。
+
+```python
+let xs = [10, 20, 30]
+let pairs = enumerate(xs)
+# pairs = [(0, 10), (1, 20), (2, 30)]
+for p in pairs:
+    print(p.0)
+    print(p.1)
+```
+
+### zip
+
+2つのリストを `(要素1, 要素2)` のタプルのリストに結合します。結果の長さは短い方のリストと同じになります。
+
+```python
+let xs = [1, 2, 3]
+let ys = ["a", "b", "c"]
+let pairs = zip(xs, ys)
+# pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
 ### 制約とエラー
@@ -252,6 +370,24 @@ print(m)   # {a: 1, b: 2}
 let m = {"a": 1, "b": 2}
 print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
+```
+
+### keys
+
+マップの全キーのリストを返します。
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(keys(m))   # ["a", "b", "c"]
+```
+
+### values
+
+マップの全値のリストを返します。
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(values(m))   # [1, 2, 3]
 ```
 
 ### 制約とエラー

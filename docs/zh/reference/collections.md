@@ -157,7 +157,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 
 ```python
 let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+let ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -167,7 +167,7 @@ print(ys)   # [4, 5]
 
 ```python
 let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+let ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -180,7 +180,7 @@ let xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-let desc = xs.sort((a: int, b: int) -> a > b)
+let desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -190,8 +190,126 @@ print(desc)   # [3, 2, 1]
 
 ```python
 let xs = [5, 3, 1, 4, 2]
-let result = xs.filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
+```
+
+### reduce
+
+使用累加函式將串列歸約為單一值，以第一個元素作為初始值。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = reduce(xs, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### fold
+
+使用明確的初始值和累加函式將串列折疊為單一值。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let total = fold(xs, 0, fn(a: int, b: int): a + b)
+print(total)   # 15
+```
+
+### any
+
+如果至少有一個元素滿足述詞，則傳回 `true`。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(any(xs, fn(x: int): x > 4))   # true
+print(any(xs, fn(x: int): x > 9))   # false
+```
+
+### all
+
+如果所有元素都滿足述詞，則傳回 `true`。
+
+```python
+let xs = [2, 4, 6]
+print(all(xs, fn(x: int): x > 0))   # true
+print(all(xs, fn(x: int): x > 3))   # false
+```
+
+### sum
+
+傳回所有元素的總和。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(sum(xs))   # 15
+```
+
+### min
+
+傳回最小的元素。
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(min(xs))   # 1
+```
+
+### max
+
+傳回最大的元素。
+
+```python
+let xs = [3, 1, 4, 1, 5]
+print(max(xs))   # 5
+```
+
+### first
+
+傳回第一個元素。對空串列呼叫會產生執行時錯誤。
+
+```python
+let xs = [10, 20, 30]
+print(first(xs))   # 10
+```
+
+### last
+
+傳回最後一個元素。對空串列呼叫會產生執行時錯誤。
+
+```python
+let xs = [10, 20, 30]
+print(last(xs))   # 30
+```
+
+### is_empty
+
+如果串列沒有元素則傳回 `true`。
+
+```python
+let xs = [1, 2, 3]
+print(is_empty(xs))   # false
+```
+
+### enumerate
+
+傳回 `(索引, 元素)` 元組的串列。
+
+```python
+let xs = [10, 20, 30]
+let pairs = enumerate(xs)
+# pairs = [(0, 10), (1, 20), (2, 30)]
+for p in pairs:
+    print(p.0)
+    print(p.1)
+```
+
+### zip
+
+將兩個串列合併為 `(元素1, 元素2)` 元組的串列。結果長度等於較短的串列。
+
+```python
+let xs = [1, 2, 3]
+let ys = ["a", "b", "c"]
+let pairs = zip(xs, ys)
+# pairs = [(1, "a"), (2, "b"), (3, "c")]
 ```
 
 ### 限制與錯誤
@@ -252,6 +370,24 @@ print(m)   # {a: 1, b: 2}
 let m = {"a": 1, "b": 2}
 print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
+```
+
+### keys
+
+傳回映射中所有鍵的串列。
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(keys(m))   # ["a", "b", "c"]
+```
+
+### values
+
+傳回映射中所有值的串列。
+
+```python
+let m = {"a": 1, "b": 2, "c": 3}
+print(values(m))   # [1, 2, 3]
 ```
 
 ### 限制與錯誤

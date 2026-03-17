@@ -811,9 +811,9 @@ TEST(ParserTest, EnumDefinition) {
     const auto &es = std::get<EnumStmt>(prog[0]);
     EXPECT_EQ(es.name, "Color");
     ASSERT_EQ(es.variants.size(), 3u);
-    EXPECT_EQ(es.variants[0], "Red");
-    EXPECT_EQ(es.variants[1], "Green");
-    EXPECT_EQ(es.variants[2], "Blue");
+    EXPECT_EQ(es.variants[0].name, "Red");
+    EXPECT_EQ(es.variants[1].name, "Green");
+    EXPECT_EQ(es.variants[2].name, "Blue");
 }
 
 TEST(ParserTest, EnumAccess) {

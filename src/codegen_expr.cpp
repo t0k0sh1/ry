@@ -799,12 +799,50 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
+    // Try to instantiate generic enum if not found
+    if (!enum_types_.count(e.enum_name)) {
+        auto ltPos = e.enum_name.find('<');
+        if (ltPos != std::string::npos && e.enum_name.back() == '>') {
+            std::string baseName = e.enum_name.substr(0, ltPos);
+            std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
+            std::vector<std::string> typeArgs;
+            std::string curr;
+            int depth = 0;
+            for (char c : argsStr) {
+                if (c == '<') depth++;
+                else if (c == '>') depth--;
+                else if (c == ',' && depth == 0) {
+                    typeArgs.push_back(curr);
+                    curr.clear();
+                    continue;
+                }
+                curr += c;
+            }
+            if (!curr.empty()) typeArgs.push_back(curr);
+            instantiateGenericEnum(e.enum_name, baseName, typeArgs);
+        }
+    }
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
         throw std::runtime_error("undefined enum: " + e.enum_name);
     auto vit = it->second.variants.find(e.variant_name);
     if (vit == it->second.variants.end())
         throw std::runtime_error("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
+
+    if (it->second.isADT) {
+        // Reject access to payload-carrying variants without arguments
+        auto fit = it->second.variantFields.find(e.variant_name);
+        if (fit != it->second.variantFields.end() && !fit->second.fieldTypes.empty())
+            throw std::runtime_error("variant '" + e.enum_name + "::" + e.variant_name +
+                "' requires " + std::to_string(fit->second.fieldTypes.size()) +
+                " argument(s); use '" + e.enum_name + "::" + e.variant_name + "(...)' instead");
+        // ADT enum: create struct { tag, zero-payload } for data-less variants
+        llvm::Value *adtVal = llvm::UndefValue::get(it->second.adtType);
+        adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, vit->second), 0, "adt.tag");
+        enum_value_types_[adtVal] = e.enum_name;
+        return adtVal;
+    }
+
     llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
     enum_value_types_[val] = e.enum_name;
     return val;

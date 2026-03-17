@@ -101,25 +101,28 @@ Anonymous functions can be defined inline.
 
 ```python
 # Single expression (the expression value is returned; return type is inferred)
-(param_name: type, ...) -> expression
+fn(param_name: type, ...): expression
 
 # Multi-line block
-(param_name: type, ...) ->
+fn(param_name: type, ...):
     # multiple statements
     return value
+
+# With explicit return type (optional)
+fn(param_name: type, ...) -> return_type: expression
 ```
 
 ### Example
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 let result = double(5)   # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 let sum = add(3, 4)      # 7
 
 # Multi-line lambda
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -133,7 +136,7 @@ Lambda functions **capture by value** the variables from the outer scope at the 
 
 ```python
 let base = 10
-let add_base = (x: int) -> x + base   # Captures base by value
+let add_base = fn(x: int): x + base   # Captures base by value
 
 base = 99          # Does not affect the captured value
 let r = add_base(5)   # 15 (uses base = 10 from capture time)
@@ -162,8 +165,8 @@ fn(param_type1, param_type2, ...) -> return_type
 ### Example
 
 ```python
-let f: fn(int) -> int = (x: int) -> x * 2
-let g: fn(int, int) -> int = (a: int, b: int) -> a + b
+let f: fn(int) -> int = fn(x: int): x * 2
+let g: fn(int, int) -> int = fn(a: int, b: int): a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
@@ -184,7 +187,7 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-let doubled = map_list([1, 2, 3], (x: int) -> x * 2)
+let doubled = map_list([1, 2, 3], fn(x: int): x * 2)
 # [2, 4, 6]
 ```
 
