@@ -59,8 +59,9 @@ let s = "foo" + "bar"  # "foobar"
 
 - 可用於數值型別（int / float）和 bool。
 - `str` 之間以字典序（位元組順序）比較。
-- `in` 運算子用於集合的歸屬檢查（`x in s`）。
+- `in` 運算子用於集合、串列、映射的歸屬檢查（`x in s`）。
 - `not in` 運算子為 `in` 的否定（`x not in s`）。
+- 對於映射，`in` 檢查鍵是否存在。
 
 ```python
 let x = 3 < 5       # true
@@ -68,6 +69,10 @@ let y = "abc" < "abd"  # true（字典序）
 let s = {1, 2, 3}
 let z = 2 in s      # true
 let w = 4 not in s  # true
+let xs = [1, 2, 3]
+let a = 2 in xs     # true（串列線性搜尋）
+let m = {"a": 1}
+let b = "a" in m    # true（映射鍵搜尋）
 ```
 
 ## 邏輯運算子
@@ -115,6 +120,13 @@ let shifted = 1 << 8          # 256
 | `x *= y` | `x = x * y` |
 | `x /= y` | `x = x / y` |
 | `x %= y` | `x = x % y` |
+| `x //= y` | `x = x // y` |
+| `x **= y` | `x = x ** y` |
+| `x &= y` | `x = x & y` |
+| `x \|= y` | `x = x \| y` |
+| `x ^= y` | `x = x ^ y` |
+| `x <<= y` | `x = x << y` |
+| `x >>= y` | `x = x >> y` |
 
 ```python
 let x = 10
@@ -138,8 +150,8 @@ x *= 2    # x = 24
 | `+` | str | str | str |
 | `== != < <= > >=` | 數值 / bool / str | 同型別 | bool |
 | `*` | str | int | str |
-| `in` | 任意 | Set<T> | bool |
-| `not in` | 任意 | Set<T> | bool |
+| `in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
+| `not in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 

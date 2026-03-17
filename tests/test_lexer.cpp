@@ -769,6 +769,86 @@ TEST(LexerTest, FStringEscapedBraces) {
 
 // ===== as / Ok / Err keywords =====
 
+// ===== Compound assignment tokens =====
+
+TEST(LexerTest, SlashSlashEqToken) {
+    auto toks = tokenize("//=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::SlashSlashEq);
+    EXPECT_EQ(toks[0].value, "//=");
+}
+
+TEST(LexerTest, StarStarEqToken) {
+    auto toks = tokenize("**=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::StarStarEq);
+    EXPECT_EQ(toks[0].value, "**=");
+}
+
+TEST(LexerTest, AmpEqToken) {
+    auto toks = tokenize("&=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::AmpEq);
+    EXPECT_EQ(toks[0].value, "&=");
+}
+
+TEST(LexerTest, PipeEqToken) {
+    auto toks = tokenize("|=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::PipeEq);
+    EXPECT_EQ(toks[0].value, "|=");
+}
+
+TEST(LexerTest, CaretEqToken) {
+    auto toks = tokenize("^=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::CaretEq);
+    EXPECT_EQ(toks[0].value, "^=");
+}
+
+TEST(LexerTest, LessLessEqToken) {
+    auto toks = tokenize("<<=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::LessLessEq);
+    EXPECT_EQ(toks[0].value, "<<=");
+}
+
+TEST(LexerTest, GreaterGreaterEqToken) {
+    auto toks = tokenize(">>=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::GreaterGreaterEq);
+    EXPECT_EQ(toks[0].value, ">>=");
+}
+
+TEST(LexerTest, CompoundAssignDoesNotBreakExisting) {
+    // // is still //
+    auto toks1 = tokenize("//");
+    EXPECT_EQ(toks1[0].kind, TokenKind::SlashSlash);
+    // ** is still **
+    auto toks2 = tokenize("**");
+    EXPECT_EQ(toks2[0].kind, TokenKind::StarStar);
+    // & is still &
+    auto toks3 = tokenize("&");
+    EXPECT_EQ(toks3[0].kind, TokenKind::Amp);
+    // | is still |
+    auto toks4 = tokenize("|");
+    EXPECT_EQ(toks4[0].kind, TokenKind::Pipe);
+    // ^ is still ^
+    auto toks5 = tokenize("^");
+    EXPECT_EQ(toks5[0].kind, TokenKind::Caret);
+    // << is still <<
+    auto toks6 = tokenize("<<");
+    EXPECT_EQ(toks6[0].kind, TokenKind::LessLess);
+    // >> is still >>
+    auto toks7 = tokenize(">>");
+    EXPECT_EQ(toks7[0].kind, TokenKind::GreaterGreater);
+    // >>> is still >>>
+    auto toks8 = tokenize(">>>");
+    EXPECT_EQ(toks8[0].kind, TokenKind::GreaterGreaterGreater);
+}
+
+// ===== as / Ok / Err keywords =====
+
 TEST(LexerTest, KeywordAs) {
     auto toks = tokenize("as");
     ASSERT_EQ(toks.size(), 2u);

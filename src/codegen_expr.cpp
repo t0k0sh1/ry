@@ -346,20 +346,101 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
-    // Handle 'in' / 'not in' operator: lhs in rhs (rhs is set)
+    // Handle 'in' / 'not in' operator: lhs in rhs (set, list, or map)
     if (e->op == "in" || e->op == "not in") {
         llvm::Value *elem = emitExpr(*e->lhs);
-        llvm::Value *setVal = emitExpr(*e->rhs);
-        llvm::Type *elemTy = getSetElementType(setVal);
-        if (!elemTy)
-            throw std::runtime_error("'" + e->op + "' operator requires a set on the right side");
-        if (elem->getType() != elemTy)
-            throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
-        llvm::Value *idx = emitSetElementLookup(setVal, elem, elemTy);
-        llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
-        if (e->op == "not in")
-            result = builder_.CreateNot(result, "set_not_in");
-        return result;
+        llvm::Value *container = emitExpr(*e->rhs);
+
+        // Try set
+        llvm::Type *setElemTy = getSetElementType(container);
+        if (setElemTy) {
+            if (elem->getType() != setElemTy)
+                throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
+            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
+            llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "set_not_in");
+            return result;
+        }
+
+        // Try map (key lookup)
+        llvm::Type *mapKeyTy = getMapKeyType(container);
+        if (mapKeyTy) {
+            if (elem->getType() != mapKeyTy)
+                throw std::runtime_error("'" + e->op + "' operator: key type mismatch");
+            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
+            llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "map_not_in");
+            return result;
+        }
+
+        // Try list (linear search)
+        llvm::Type *listElemTy = getListElementType(container);
+        if (listElemTy) {
+            if (elem->getType() != listElemTy)
+                throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
+
+            // Linear search loop
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, container, 0, "in_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "in_length");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, container, 2, "in_data_ptr");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "in_data");
+
+            llvm::AllocaInst *foundVar = builder_.CreateAlloca(i1Ty_, nullptr, "in_found");
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), foundVar);
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "in_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "in.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "in.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "in.end", fn_);
+
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "in_iv");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "in_cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "in_ic");
+            llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, dataPtr, {iCur}, "in_elem_ptr");
+            llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "in_elem");
+
+            llvm::Value *match;
+            if (listElemTy == ptrTy_) {
+                // String comparison
+                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");
+                match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "in_match");
+            } else if (listElemTy->isDoubleTy()) {
+                match = builder_.CreateFCmpOEQ(elem, listElem, "in_match");
+            } else {
+                match = builder_.CreateICmpEQ(elem, listElem, "in_match");
+            }
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "in.found", fn_);
+            llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "in.next", fn_);
+            builder_.CreateCondBr(match, foundBB, nextBB);
+
+            builder_.SetInsertPoint(foundBB);
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(nextBB);
+            llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "in_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            llvm::Value *result = builder_.CreateLoad(i1Ty_, foundVar, "in_result");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "list_not_in");
+            return result;
+        }
+
+        throw std::runtime_error("'" + e->op + "' operator requires a set, list, or map on the right side");
     }
 
     llvm::Value *lhs = emitExpr(*e->lhs);

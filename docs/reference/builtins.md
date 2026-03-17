@@ -10,7 +10,7 @@
 |------|------|
 | `print(expr)` | Prints a value to standard output |
 | `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
-| `range(n)` / `range(start, end)` | Generates a list of integers |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 
 ### Option
 
@@ -178,7 +178,7 @@ print(2 in s)     # false
 
 ## range
 
-**Signature:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**Signature:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 Generates a list of integers.
 
@@ -186,10 +186,18 @@ Generates a list of integers.
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
+| `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (up to but not including `end`) |
+
+- When `step > 0`, generates values from `start` ascending toward `end`.
+- When `step < 0`, generates values from `start` descending toward `end`.
+- When `step == 0`, a runtime error occurs.
+- If the range is empty (e.g., `range(0, 10, -1)`), returns an empty list.
 
 ```python
-print(range(3))       # [0, 1, 2]
-print(range(2, 5))    # [2, 3, 4]
+print(range(3))           # [0, 1, 2]
+print(range(2, 5))        # [2, 3, 4]
+print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
+print(range(10, 0, -3))   # [10, 7, 4, 1]
 
 for i in range(3):
     print(i)

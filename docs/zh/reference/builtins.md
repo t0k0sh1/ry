@@ -10,7 +10,7 @@
 |------|------|
 | `print(expr)` | 將值輸出到標準輸出 |
 | `len(x)` | 回傳串列、映射、集合的元素數量，或字串的長度 |
-| `range(n)` / `range(start, end)` | 生成整數串列 |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
 
 ### Option
 
@@ -178,7 +178,7 @@ print(2 in s)     # false
 
 ## range
 
-**簽名：** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**簽名：** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 生成整數串列。
 
@@ -186,10 +186,17 @@ print(2 in s)     # false
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
+| `range(start, end, step)` | `[start, start+step, start+2*step, ...]`（不包含 `end`） |
+
+- `step > 0` 時，從 `start` 向 `end` 遞增生成。
+- `step < 0` 時，從 `start` 向 `end` 遞減生成。
+- `step == 0` 時，會產生執行時錯誤。
 
 ```python
-print(range(3))       # [0, 1, 2]
-print(range(2, 5))    # [2, 3, 4]
+print(range(3))           # [0, 1, 2]
+print(range(2, 5))        # [2, 3, 4]
+print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
+print(range(10, 0, -3))   # [10, 7, 4, 1]
 
 for i in range(3):
     print(i)

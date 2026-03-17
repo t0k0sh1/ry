@@ -1309,3 +1309,128 @@ TEST_F(CodeGenTest, SortLargerList) {
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]\n");
 }
+
+// ===== 複合代入演算子 (追加分) =====
+
+TEST_F(CodeGenTest, CompoundAssignFloorDiv) {
+    std::string src =
+        "var x = 7\n"
+        "x //= 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignPower) {
+    std::string src =
+        "var x = 2.0\n"
+        "x **= 3.0\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitAnd) {
+    std::string src =
+        "var x = 12\n"
+        "x &= 10\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitOr) {
+    std::string src =
+        "var x = 12\n"
+        "x |= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitXor) {
+    std::string src =
+        "var x = 12\n"
+        "x ^= 10\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignLeftShift) {
+    std::string src =
+        "var x = 1\n"
+        "x <<= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignRightShift) {
+    std::string src =
+        "var x = 16\n"
+        "x >>= 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "4\n");
+}
+
+// ===== in / not in: List・Map対応 =====
+
+TEST_F(CodeGenTest, InListInt) {
+    EXPECT_EQ(runSource("print(2 in [1, 2, 3])"), "true\n");
+}
+
+TEST_F(CodeGenTest, InListIntFalse) {
+    EXPECT_EQ(runSource("print(4 in [1, 2, 3])"), "false\n");
+}
+
+TEST_F(CodeGenTest, InListStr) {
+    EXPECT_EQ(runSource("print(\"a\" in [\"a\", \"b\"])"), "true\n");
+}
+
+TEST_F(CodeGenTest, NotInList) {
+    EXPECT_EQ(runSource("print(4 not in [1, 2, 3])"), "true\n");
+}
+
+TEST_F(CodeGenTest, InMapKey) {
+    EXPECT_EQ(runSource("print(\"a\" in {\"a\": 1})"), "true\n");
+}
+
+TEST_F(CodeGenTest, InMapKeyFalse) {
+    EXPECT_EQ(runSource("print(\"c\" in {\"a\": 1})"), "false\n");
+}
+
+TEST_F(CodeGenTest, NotInMapKey) {
+    EXPECT_EQ(runSource("print(\"b\" not in {\"a\": 1})"), "true\n");
+}
+
+// ===== range() ステップ対応 =====
+
+TEST_F(CodeGenTest, RangeStep) {
+    std::string src =
+        "for i in range(0, 10, 2):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "0\n2\n4\n6\n8\n");
+}
+
+TEST_F(CodeGenTest, RangeStepNegative) {
+    std::string src =
+        "for i in range(10, 0, -1):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n");
+}
+
+TEST_F(CodeGenTest, RangeStepNegative3) {
+    std::string src =
+        "for i in range(10, 0, -3):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "10\n7\n4\n1\n");
+}
+
+TEST_F(CodeGenTest, RangeStepEmpty) {
+    std::string src =
+        "for i in range(0, 10, -1):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "");
+}
+
+TEST_F(CodeGenTest, RangeStepList) {
+    std::string src =
+        "let xs = range(0, 10, 3)\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "4\n");
+}

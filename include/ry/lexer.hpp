@@ -69,6 +69,13 @@ enum class TokenKind {
     StarEq,         // *=
     SlashEq,        // /=
     PercentEq,      // %=
+    SlashSlashEq,   // //=
+    StarStarEq,     // **=
+    AmpEq,          // &=
+    PipeEq,         // |=
+    CaretEq,        // ^=
+    LessLessEq,     // <<=
+    GreaterGreaterEq, // >>=
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::

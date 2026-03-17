@@ -322,10 +322,14 @@ StmtNode Parser::parseStatement() {
         return s;
     } else if (next.kind == TokenKind::PlusEq  || next.kind == TokenKind::MinusEq ||
                next.kind == TokenKind::StarEq  || next.kind == TokenKind::SlashEq ||
-               next.kind == TokenKind::PercentEq) {
+               next.kind == TokenKind::PercentEq ||
+               next.kind == TokenKind::SlashSlashEq || next.kind == TokenKind::StarStarEq ||
+               next.kind == TokenKind::AmpEq  || next.kind == TokenKind::PipeEq ||
+               next.kind == TokenKind::CaretEq ||
+               next.kind == TokenKind::LessLessEq || next.kind == TokenKind::GreaterGreaterEq) {
         // Compound assignment: desugar x += e → x = x + e
-        Token opTok = lex_.next(); // consume +=, -=, etc.
-        std::string op(1, opTok.value[0]); // extract "+" from "+="
+        Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
+        std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
         ExprPtr rhs = parseLogicalOr();
         auto varRef = std::make_unique<ExprNode>();
         varRef->data = VariableExpr{first.value};
@@ -346,7 +350,7 @@ StmtNode Parser::parseStatement() {
         s.args = parseArgList();
         return s;
     }
-    parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '.', '[', or '(' after identifier");
+    parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '.', '[', or '(' after identifier");
 }
 
 // ===== A4: parseLetOrVar =====

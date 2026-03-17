@@ -59,8 +59,9 @@ let s = "foo" + "bar"  # "foobar"
 
 - 数値型（int / float）とbool に対して使用可能。
 - `str` 同士は辞書順（バイト順）で比較。
-- `in` 演算子はセットに対する所属チェックに使用（`x in s`）。
+- `in` 演算子はセット、リスト、マップに対する所属チェックに使用（`x in s`）。
 - `not in` 演算子は `in` の否定（`x not in s`）。
+- マップの場合、`in` はキーの存在を確認します。
 
 ```python
 let x = 3 < 5       # true
@@ -68,6 +69,10 @@ let y = "abc" < "abd"  # true（辞書順）
 let s = {1, 2, 3}
 let z = 2 in s      # true
 let w = 4 not in s  # true
+let xs = [1, 2, 3]
+let a = 2 in xs     # true（リスト線形探索）
+let m = {"a": 1}
+let b = "a" in m    # true（マップキー検索）
 ```
 
 ## 論理演算子
@@ -115,9 +120,16 @@ let shifted = 1 << 8          # 256
 | `x *= y` | `x = x * y` |
 | `x /= y` | `x = x / y` |
 | `x %= y` | `x = x % y` |
+| `x //= y` | `x = x // y` |
+| `x **= y` | `x = x ** y` |
+| `x &= y` | `x = x & y` |
+| `x \|= y` | `x = x \| y` |
+| `x ^= y` | `x = x ^ y` |
+| `x <<= y` | `x = x << y` |
+| `x >>= y` | `x = x >> y` |
 
 ```python
-let x = 10
+var x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
@@ -138,8 +150,8 @@ x *= 2    # x = 24
 | `+` | str | str | str |
 | `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
 | `*` | str | int | str |
-| `in` | 任意 | Set<T> | bool |
-| `not in` | 任意 | Set<T> | bool |
+| `in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
+| `not in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
