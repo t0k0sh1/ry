@@ -9,10 +9,12 @@
 using namespace llvm;
 using namespace llvm::orc;
 
+#include "ry/args_runtime.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 class CodeGenTest : public ::testing::Test {
 public:
@@ -77,6 +79,23 @@ protected:
         CodeGen cg(true);  // test_mode = true
         auto tsm = cg.compile(prog);
         return runModule(std::move(tsm));
+    }
+
+    static std::string runSourceWithArgs(const std::string &src, const std::vector<std::string> &args) {
+        std::vector<char*> argv_ptrs;
+        std::vector<std::string> owned_args(args);
+        for (auto &a : owned_args)
+            argv_ptrs.push_back(const_cast<char*>(a.c_str()));
+        __ry_args_init(static_cast<int>(argv_ptrs.size()),
+                       argv_ptrs.empty() ? nullptr : argv_ptrs.data());
+        try {
+            auto result = runSource(src);
+            __ry_args_init(0, nullptr);
+            return result;
+        } catch (...) {
+            __ry_args_init(0, nullptr);
+            throw;
+        }
     }
 
     static std::pair<std::string, std::vector<std::string>> runSourceWithWarnings(const std::string &src) {

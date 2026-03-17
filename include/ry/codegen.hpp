@@ -253,6 +253,7 @@ private:
                                          unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
+    void emitExit(const std::vector<ExprPtr> &args);
 
     // Lambda call helper: invoke a lambda/closure value with given args
     llvm::Value *emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,

@@ -11,6 +11,8 @@
 | `print(expr)` | 將值輸出到標準輸出 |
 | `len(x)` | 回傳串列、映射、集合的元素數量，或字串的長度 |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
+| `exit(code)` | 以指定的結束碼終止程序 |
+| `args()` | 以 `List<str>` 回傳命令列引數 |
 
 ### Option
 
@@ -218,6 +220,38 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## exit
+
+**簽名：** `exit(code: int)`
+
+以指定的結束碼立即終止程序。`exit()` 之後的程式碼將不會被執行。
+
+```python
+exit(0)        # 正常終止
+exit(1)        # 錯誤終止
+```
+
+---
+
+## args
+
+**簽名：** `args() -> List<str>`
+
+以字串串列的形式回傳傳遞給腳本的命令列引數。不包含直譯器名稱或腳本檔案名稱——僅包含腳本路徑之後的引數。
+
+```python
+# 執行: ry script.ry hello world
+let a = args()
+print(len(a))    # 2
+print(a[0])      # hello
+print(a[1])      # world
+
+for x in args():
+    print(x)
 ```
 
 ---

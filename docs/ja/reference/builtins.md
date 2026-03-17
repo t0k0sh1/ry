@@ -11,6 +11,8 @@
 | `print(expr)` | 値を標準出力に表示 |
 | `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
+| `exit(code)` | 指定した終了コードでプロセスを終了 |
+| `args()` | コマンドライン引数を `List<str>` として返す |
 
 ### Option
 
@@ -218,6 +220,38 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## exit
+
+**シグネチャ:** `exit(code: int)`
+
+指定した終了コードでプロセスを即座に終了します。`exit()` 以降のコードは到達不能になります。
+
+```python
+exit(0)        # 正常終了
+exit(1)        # エラー終了
+```
+
+---
+
+## args
+
+**シグネチャ:** `args() -> List<str>`
+
+スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません — スクリプトパスの後の引数のみです。
+
+```python
+# 実行: ry script.ry hello world
+let a = args()
+print(len(a))    # 2
+print(a[0])      # hello
+print(a[1])      # world
+
+for x in args():
+    print(x)
 ```
 
 ---

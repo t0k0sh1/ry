@@ -6,6 +6,7 @@
 #include "ry/test_runtime.hpp"
 #include "ry/project_config.hpp"
 #include "ry/self_update.hpp"
+#include "ry/args_runtime.hpp"
 #include <cstring>
 #include <filesystem>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -37,13 +38,15 @@ int main(int argc, char *argv[]) {
     bool test_mode = false;
     const char *filename = nullptr;
 
-    if (argc == 2) {
+    if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
         filename = argv[1];
-    } else if (argc == 3 && std::strcmp(argv[1], "test") == 0) {
+        __ry_args_init(argc - 2, argv + 2);
+    } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
         test_mode = true;
         filename = argv[2];
+        __ry_args_init(0, nullptr);
     } else {
-        errs() << "Usage: ry <file.ry>\n";
+        errs() << "Usage: ry <file.ry> [args...]\n";
         errs() << "       ry test <file.ry>\n";
         errs() << "       ry init\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
