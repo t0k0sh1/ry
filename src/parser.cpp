@@ -104,7 +104,7 @@ void Parser::skipNewlines() {
 
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated"};
+static const std::unordered_set<std::string> known_directives = {"deprecated", "native"};
 
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;
@@ -224,7 +224,7 @@ StmtNode Parser::parseStatement() {
     }
 
     if (first.kind == TokenKind::Fn) {
-        auto stmt = parseFnStatement();
+        auto stmt = parseFnStatement(directives);
         auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
         fs->directives = std::move(directives);
         return stmt;
@@ -1013,7 +1013,7 @@ ExprPtr Parser::parsePrimary() {
     parseError(t.line, "unexpected token '" + t.value + "'");
 }
 
-StmtNode Parser::parseFnStatement() {
+StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives) {
     lex_.next(); // consume 'fn'
 
     auto fnStmt = std::make_unique<FnStmt>();
@@ -1106,6 +1106,13 @@ StmtNode Parser::parseFnStatement() {
         } else if (nParams != 1 && nParams != 2) {
             parseError("operator function requires 1 or 2 parameters");
         }
+    }
+
+    // @native fn: body-less declaration
+    if (hasDirective(directives, "native")) {
+        if (lex_.peek().kind == TokenKind::Colon)
+            parseError("@native function must not have a body");
+        return StmtNode(std::move(fnStmt));
     }
 
     if (lex_.peek().kind != TokenKind::Colon)

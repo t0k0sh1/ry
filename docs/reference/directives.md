@@ -71,6 +71,45 @@ print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # no warning
 ```
 
+### `@native`
+
+Declares a function whose implementation is provided by the runtime (built-in). The function must not have a body.
+
+**Basic syntax:**
+
+```
+@native
+fn contains(s: str, sub: str) -> bool
+
+print(contains("hello world", "world"))  # true
+```
+
+**Operator overloads:**
+
+```
+@native
+fn operator+(a: str, b: str) -> str
+
+print("hello" + " world")  # hello world
+```
+
+**UFCS-compatible:**
+
+```
+@native
+fn to_upper(s: str) -> str
+
+print("hello".to_upper())  # HELLO
+```
+
+**Constraints:**
+- `@native` functions must not have a body (no `:` after the signature).
+- Providing a body causes a parse error: `@native function must not have a body`.
+- The declared function must correspond to an existing built-in; otherwise the call will fail at compile time.
+
+**Future extensions:**
+- `@native("libfoo.so")` — FFI binding to external shared libraries.
+
 ### Parameters (future extension)
 
 Directives support an optional parameter syntax for future extensions:

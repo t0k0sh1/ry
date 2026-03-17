@@ -26,7 +26,7 @@ private:
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();
-    StmtNode parseFnStatement();
+    StmtNode parseFnStatement(const std::vector<Directive> &directives);
     StmtNode parseRecordStatement();
     StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();

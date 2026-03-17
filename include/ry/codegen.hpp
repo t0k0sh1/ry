@@ -121,7 +121,6 @@ private:
     std::unordered_set<std::string> deprecated_fields_;  // "TypeName.fieldName"
     std::vector<std::string> warnings_;
 
-    bool hasDirective(const std::vector<Directive> &directives, const std::string &name);
     void emitDeprecationWarning(const std::string &name);
 
     // Loop context stack for break/continue (condBB, endBB)
