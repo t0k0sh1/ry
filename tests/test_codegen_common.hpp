@@ -4,17 +4,17 @@
 #include "ry/codegen.hpp"
 #include "ry/jit.hpp"
 #include "ry/parser.hpp"
+#include "ry/args_runtime.hpp"
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/Support/TargetSelect.h>
-using namespace llvm;
-using namespace llvm::orc;
-
-#include "ry/args_runtime.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+using namespace llvm;
+using namespace llvm::orc;
 
 class CodeGenTest : public ::testing::Test {
 public:
@@ -82,10 +82,10 @@ protected:
     }
 
     static std::string runSourceWithArgs(const std::string &src, const std::vector<std::string> &args) {
-        std::vector<char*> argv_ptrs;
+        std::vector<const char*> argv_ptrs;
         std::vector<std::string> owned_args(args);
-        for (auto &a : owned_args)
-            argv_ptrs.push_back(const_cast<char*>(a.c_str()));
+        for (const auto &a : owned_args)
+            argv_ptrs.push_back(a.c_str());
         __ry_args_init(static_cast<int>(argv_ptrs.size()),
                        argv_ptrs.empty() ? nullptr : argv_ptrs.data());
         try {

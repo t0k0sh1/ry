@@ -1460,6 +1460,8 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
         throw std::runtime_error("exit() takes exactly 1 argument");
     llvm::Value *code = emitExpr(*args[0]);
+    if (!code->getType()->isIntegerTy())
+        throw std::runtime_error("exit() argument must be an integer");
     if (code->getType() != i32Ty_)
         code = builder_.CreateIntCast(code, i32Ty_, true, "exit_code");
     llvm::FunctionType *exitTy = llvm::FunctionType::get(

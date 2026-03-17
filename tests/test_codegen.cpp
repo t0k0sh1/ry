@@ -478,6 +478,14 @@ TEST_F(CodeGenTest, ExitAfterPrint) {
     EXPECT_EXIT(runSource("print(\"hello\")\nexit(1)"), ::testing::ExitedWithCode(1), "");
 }
 
+TEST_F(CodeGenTest, ExitInExprContext) {
+    EXPECT_EXIT(runSource("let x = exit(1)"), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ExitFloatArgThrows) {
+    EXPECT_THROW(runSource("exit(1.5)"), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, ExitNoArgThrows) {
     EXPECT_THROW(runSource("exit()"), std::runtime_error);
 }

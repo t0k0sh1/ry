@@ -1,9 +1,9 @@
 #include "ry/args_runtime.hpp"
 
 static int g_argc = 0;
-static char** g_argv = nullptr;
+static const char* const* g_argv = nullptr;
 
-extern "C" void __ry_args_init(int argc, char** argv) {
+extern "C" void __ry_args_init(int argc, const char* const* argv) {
     g_argc = argc;
     g_argv = argv;
 }

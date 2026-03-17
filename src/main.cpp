@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
 
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
         filename = argv[1];
-        __ry_args_init(argc - 2, argv + 2);
+        __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
         test_mode = true;
         filename = argv[2];

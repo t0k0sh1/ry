@@ -82,10 +82,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
-    // exit(code) as expression (returns nullptr, unreachable after)
+    // exit(code) as expression — emit exit, then create dead block for subsequent IR
     if (e->callee == "exit") {
         emitExit(e->args);
-        return nullptr;
+        llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "exit.dead", fn_);
+        builder_.SetInsertPoint(deadBB);
+        return llvm::UndefValue::get(i64Ty_);
     }
 
     // args() → List<str>
@@ -112,7 +114,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "args_data_size");
         llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "args_data");
 
-        // Loop: for i in 0..count, get arg and strdup
+        // Loop: for i in 0..count, get arg pointer
         llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "args_i");
