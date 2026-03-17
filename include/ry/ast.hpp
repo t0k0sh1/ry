@@ -22,7 +22,7 @@ struct Directive {
 };
 
 inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
-    for (auto &d : directives)
+    for (const auto &d : directives)
         if (d.name == name) return true;
     return false;
 }

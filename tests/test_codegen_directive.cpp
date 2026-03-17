@@ -167,7 +167,7 @@ TEST_F(DirectiveTest, NativeFnWithBodyError) {
 }
 
 // 15. @native fn with UFCS-style builtin
-TEST_F(DirectiveTest, NativeFnUnitReturn) {
+TEST_F(DirectiveTest, NativeFnUfcsBuiltin) {
     std::string output = runSource(
         "@native\n"
         "fn to_upper(s: str) -> str\n"
