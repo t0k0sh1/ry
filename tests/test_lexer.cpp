@@ -869,3 +869,41 @@ TEST(LexerTest, KeywordErr) {
     EXPECT_EQ(toks[0].kind, TokenKind::Err);
     EXPECT_EQ(toks[0].value, "Err");
 }
+
+// ===== r-string =====
+
+TEST(LexerTest, RawStringEscapeN) {
+    auto toks = tokenize(R"(r"\n")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\n");
+}
+
+TEST(LexerTest, RawStringEscapeT) {
+    auto toks = tokenize(R"(r"\t")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\t");
+}
+
+TEST(LexerTest, RawStringPlain) {
+    auto toks = tokenize(R"(r"hello")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "hello");
+}
+
+TEST(LexerTest, RawStringEmpty) {
+    auto toks = tokenize(R"(r"")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "");
+}
+
+TEST(LexerTest, RawStringNotPrefix) {
+    // 'r' followed by something other than '"' should be an identifier
+    auto toks = tokenize("r_foo");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "r_foo");
+}

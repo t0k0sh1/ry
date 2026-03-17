@@ -255,6 +255,24 @@ Token Lexer::readToken() {
     }
     if (c == '@') { ++pos_; return {TokenKind::At,      "@", line_}; }
 
+    // r-string: r"..." (raw string, no escape processing)
+    if (c == 'r' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
+        pos_ += 2; // skip 'r' and '"'
+        std::string str;
+        while (pos_ < src_.size() && src_[pos_] != '"') {
+            if (src_[pos_] == '\n' || src_[pos_] == '\r')
+                throw std::runtime_error("line " + std::to_string(line_) +
+                                         ": unterminated raw string literal");
+            str += src_[pos_];
+            ++pos_;
+        }
+        if (pos_ >= src_.size())
+            throw std::runtime_error("line " + std::to_string(line_) +
+                                     ": unterminated raw string literal");
+        ++pos_; // skip closing '"'
+        return {TokenKind::String, str, line_};
+    }
+
     // f-string: f"..."
     if (c == 'f' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
         if (fstring_brace_depth_ > 0)

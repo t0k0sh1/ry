@@ -829,3 +829,13 @@ match r:
 )";
     EXPECT_EQ(runSource(src), "2\n");
 }
+
+// ===== r-string =====
+
+TEST_F(CodeGenTest, RawStringPrint) {
+    EXPECT_EQ(runSource(R"(print(r"\n"))"), "\\n\n");
+}
+
+TEST_F(CodeGenTest, RawStringConcat) {
+    EXPECT_EQ(runSource(R"(print(r"\t" + "hello"))"), "\\thello\n");
+}
