@@ -254,6 +254,21 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
+    // Intercept append/pop for lists (UFCS: xs.append(v) → append(xs, v))
+    if ((s.callee == "append" && s.args.size() == 2) ||
+        (s.callee == "pop" && s.args.size() == 1)) {
+        auto *ve = std::get_if<VariableExpr>(&s.args[0]->data);
+        if (ve) {
+            llvm::AllocaInst *alloca = findVar(ve->name);
+            if (alloca && getListElementType(alloca)) {
+                auto ce = std::make_unique<CallExpr>();
+                ce->callee = s.callee;
+                ce->args = std::move(s.args);
+                emitExprVariant(ce);
+                return;
+            }
+        }
+    }
     // Intercept add/remove for sets (UFCS: s.add(x) → add(s, x))
     if ((s.callee == "add" || s.callee == "remove") && s.args.size() == 2) {
         // Peek at first arg: is it a set variable?

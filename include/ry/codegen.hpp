@@ -182,6 +182,7 @@ private:
     llvm::Value *emitExprVariant(const ResultExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
 
     // Operator overload helpers

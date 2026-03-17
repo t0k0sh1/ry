@@ -52,10 +52,10 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
 std::vector<ExprPtr> Parser::parseArgList() {
     std::vector<ExprPtr> args;
     if (lex_.peek().kind != TokenKind::RParen) {
-        args.push_back(parseLogicalOr());
+        args.push_back(parseTernary());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
-            args.push_back(parseLogicalOr());
+            args.push_back(parseTernary());
         }
     }
     if (lex_.peek().kind != TokenKind::RParen)
@@ -266,14 +266,14 @@ StmtNode Parser::parseStatement() {
     } else if (next.kind == TokenKind::LBracket) {
         // index assignment: ident[expr] = value
         lex_.next(); // consume '['
-        ExprPtr index = parseLogicalOr();
+        ExprPtr index = parseTernary();
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
         lex_.next(); // consume ']'
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after index expression");
         lex_.next(); // consume '='
-        ExprPtr val = parseLogicalOr();
+        ExprPtr val = parseTernary();
         IndexAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -306,7 +306,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after field name");
         lex_.next(); // consume '='
-        ExprPtr val = parseLogicalOr();
+        ExprPtr val = parseTernary();
         FieldAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -318,7 +318,7 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
-        s.value = parseLogicalOr();
+        s.value = parseTernary();
         return s;
     } else if (next.kind == TokenKind::PlusEq  || next.kind == TokenKind::MinusEq ||
                next.kind == TokenKind::StarEq  || next.kind == TokenKind::SlashEq ||
@@ -330,7 +330,7 @@ StmtNode Parser::parseStatement() {
         // Compound assignment: desugar x += e → x = x + e
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
-        ExprPtr rhs = parseLogicalOr();
+        ExprPtr rhs = parseTernary();
         auto varRef = std::make_unique<ExprNode>();
         varRef->data = VariableExpr{first.value};
         auto bin = std::make_unique<BinaryExpr>();
@@ -374,7 +374,7 @@ StmtNode Parser::parseLetOrVar() {
         parseError("expected '=' in " + first.value + " declaration");
     lex_.next(); // consume '='
 
-    ExprPtr value = parseLogicalOr();
+    ExprPtr value = parseTernary();
 
     if (isVar) {
         VarStmt s;
@@ -421,7 +421,7 @@ std::vector<StmtNode> Parser::parseBlock() {
 
 StmtNode Parser::parseWhileStatement() {
     lex_.next(); // consume 'while'
-    ExprPtr cond = parseLogicalOr();
+    ExprPtr cond = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after while condition");
@@ -445,7 +445,7 @@ StmtNode Parser::parseForStatement() {
         parseError("expected 'in' after variable name in for loop");
     lex_.next(); // consume 'in'
 
-    ExprPtr iterable = parseLogicalOr();
+    ExprPtr iterable = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after for loop iterable");
@@ -462,7 +462,7 @@ StmtNode Parser::parseIfStatement() {
     auto ifStmt = std::make_unique<IfStmt>();
 
     lex_.next(); // consume 'if'
-    ExprPtr cond = parseLogicalOr();
+    ExprPtr cond = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after if condition");
@@ -475,7 +475,7 @@ StmtNode Parser::parseIfStatement() {
 
     while (lex_.peek().kind == TokenKind::Elif) {
         lex_.next(); // consume 'elif'
-        ExprPtr elifCond = parseLogicalOr();
+        ExprPtr elifCond = parseTernary();
 
         if (lex_.peek().kind != TokenKind::Colon)
             parseError("expected ':' after elif condition");
@@ -503,6 +503,26 @@ StmtNode Parser::parseIfStatement() {
 // ===== A2: Binary expression parsers using parseBinaryLeft =====
 
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
+
+ExprPtr Parser::parseTernary() {
+    ExprPtr expr = parseLogicalOr();
+    if (lex_.peek().kind == TokenKind::Question) {
+        lex_.next(); // consume '?'
+        ExprPtr trueExpr = parseTernary(); // right-associative
+        if (lex_.peek().kind != TokenKind::Colon)
+            parseError("expected ':' in ternary expression");
+        lex_.next(); // consume ':'
+        ExprPtr falseExpr = parseTernary(); // right-associative
+        auto ternary = std::make_unique<TernaryExpr>();
+        ternary->condition = std::move(expr);
+        ternary->true_expr = std::move(trueExpr);
+        ternary->false_expr = std::move(falseExpr);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(ternary);
+        return node;
+    }
+    return expr;
+}
 ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogicalNot, {TokenKind::And}); }
 ExprPtr Parser::parseComparison() {
     ExprPtr lhs = parseBitwiseOr();
@@ -651,11 +671,11 @@ ExprPtr Parser::parsePrimary() {
         lex_.next(); // consume FStringStart
         auto interp = std::make_unique<InterpolatedStringExpr>();
         interp->parts.push_back(t.value);
-        interp->exprs.push_back(parseLogicalOr());
+        interp->exprs.push_back(parseTernary());
         while (lex_.peek().kind == TokenKind::FStringMid) {
             Token mid = lex_.next();
             interp->parts.push_back(mid.value);
-            interp->exprs.push_back(parseLogicalOr());
+            interp->exprs.push_back(parseTernary());
         }
         if (lex_.peek().kind != TokenKind::FStringEnd)
             parseError("expected end of f-string");
@@ -676,7 +696,7 @@ ExprPtr Parser::parsePrimary() {
         if (lex_.peek().kind != TokenKind::LParen)
             parseError("expected '(' after 'old'");
         lex_.next(); // consume '('
-        ExprPtr expr = parseLogicalOr();
+        ExprPtr expr = parseTernary();
         if (lex_.peek().kind != TokenKind::RParen)
             parseError("expected ')' after old expression");
         lex_.next(); // consume ')'
@@ -736,21 +756,21 @@ ExprPtr Parser::parsePrimary() {
             return node;
         }
         // Parse first expression
-        ExprPtr first = parseLogicalOr();
+        ExprPtr first = parseTernary();
         if (lex_.peek().kind == TokenKind::Colon) {
             // Map literal: first expression was the key
             lex_.next(); // consume ':'
             auto map = std::make_unique<MapExpr>();
-            ExprPtr val = parseLogicalOr();
+            ExprPtr val = parseTernary();
             map->keys.push_back(std::move(first));
             map->values.push_back(std::move(val));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                ExprPtr k = parseLogicalOr();
+                ExprPtr k = parseTernary();
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after map key");
                 lex_.next(); // consume ':'
-                ExprPtr v = parseLogicalOr();
+                ExprPtr v = parseTernary();
                 map->keys.push_back(std::move(k));
                 map->values.push_back(std::move(v));
             }
@@ -766,7 +786,7 @@ ExprPtr Parser::parsePrimary() {
             set->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                set->elements.push_back(parseLogicalOr());
+                set->elements.push_back(parseTernary());
             }
             if (lex_.peek().kind != TokenKind::RBrace)
                 parseError("expected '}'");
@@ -780,10 +800,10 @@ ExprPtr Parser::parsePrimary() {
         lex_.next(); // consume '['
         auto list = std::make_unique<ListExpr>();
         if (lex_.peek().kind != TokenKind::RBracket) {
-            list->elements.push_back(parseLogicalOr());
+            list->elements.push_back(parseTernary());
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                list->elements.push_back(parseLogicalOr());
+                list->elements.push_back(parseTernary());
             }
         }
         if (lex_.peek().kind != TokenKind::RBracket)
@@ -804,14 +824,14 @@ ExprPtr Parser::parsePrimary() {
 
         // Not a lambda — parse as grouping or tuple
         lex_.next();
-        ExprPtr first = parseLogicalOr();
+        ExprPtr first = parseTernary();
         if (lex_.peek().kind == TokenKind::Comma) {
             // Tuple literal: (expr, expr, ...)
             auto tuple = std::make_unique<TupleExpr>();
             tuple->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                tuple->elements.push_back(parseLogicalOr());
+                tuple->elements.push_back(parseTernary());
             }
             if (lex_.peek().kind != TokenKind::RParen)
                 parseError("expected ')'");
@@ -971,7 +991,7 @@ StmtNode Parser::parseReturnStatement() {
     if (next == TokenKind::Newline || next == TokenKind::Dedent || next == TokenKind::Eof) {
         s.value = nullptr;
     } else {
-        s.value = parseLogicalOr();
+        s.value = parseTernary();
     }
     return s;
 }
@@ -989,7 +1009,7 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
     lex_.next(); // consume Indent
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
-        out.push_back(parseLogicalOr());
+        out.push_back(parseTernary());
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
         skipNewlines();
@@ -1287,11 +1307,11 @@ ExprPtr Parser::parseLambdaExpr() {
                 lex_.next(); // consume Dedent
         } else {
             lex_.restoreState(std::move(saved2));
-            lambda->expr_body = parseLogicalOr();
+            lambda->expr_body = parseTernary();
         }
     } else {
         // Single expression lambda
-        lambda->expr_body = parseLogicalOr();
+        lambda->expr_body = parseTernary();
     }
 
     auto node = std::make_unique<ExprNode>();
@@ -1304,7 +1324,7 @@ ExprPtr Parser::parsePostfix() {
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket) {
         if (lex_.peek().kind == TokenKind::LBracket) {
             lex_.next(); // consume '['
-            ExprPtr index = parseLogicalOr();
+            ExprPtr index = parseTernary();
             if (lex_.peek().kind != TokenKind::RBracket)
                 parseError("expected ']'");
             lex_.next(); // consume ']'
@@ -1411,7 +1431,7 @@ StmtNode Parser::parseExpectStatement() {
         parseError("expected '(' after 'expect'");
     lex_.next(); // consume '('
 
-    ExprPtr actual = parseLogicalOr();
+    ExprPtr actual = parseTernary();
 
     if (lex_.peek().kind != TokenKind::RParen)
         parseError("expected ')'");
@@ -1438,7 +1458,7 @@ StmtNode Parser::parseExpectStatement() {
     lex_.next(); // consume '('
 
     if (matcher == "to_eq") {
-        es.expected = parseLogicalOr();
+        es.expected = parseTernary();
     } else if (matcher == "to_be_true" || matcher == "to_be_false" || matcher == "to_be_none") {
         // no argument
     } else {
@@ -1579,7 +1599,7 @@ Pattern Parser::parsePattern() {
 
 StmtNode Parser::parseMatchStatement() {
     lex_.next(); // consume 'match'
-    ExprPtr subject = parseLogicalOr();
+    ExprPtr subject = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after match subject");
@@ -1606,10 +1626,33 @@ StmtNode Parser::parseMatchStatement() {
         MatchArm arm;
         arm.pattern = parsePattern();
 
+        // Check for OR pattern: case A | B | C:
+        if (lex_.peek().kind == TokenKind::Pipe) {
+            auto orPat = std::make_unique<OrPattern>();
+            // Check that first pattern has no variable binding
+            if (std::holds_alternative<VariablePattern>(arm.pattern) ||
+                std::holds_alternative<SomePattern>(arm.pattern) ||
+                std::holds_alternative<OkPattern>(arm.pattern) ||
+                std::holds_alternative<ErrPattern>(arm.pattern))
+                parseError("OR pattern cannot contain variable bindings");
+            orPat->alternatives.push_back(std::move(arm.pattern));
+            while (lex_.peek().kind == TokenKind::Pipe) {
+                lex_.next(); // consume '|'
+                Pattern alt = parsePattern();
+                if (std::holds_alternative<VariablePattern>(alt) ||
+                    std::holds_alternative<SomePattern>(alt) ||
+                    std::holds_alternative<OkPattern>(alt) ||
+                    std::holds_alternative<ErrPattern>(alt))
+                    parseError("OR pattern cannot contain variable bindings");
+                orPat->alternatives.push_back(std::move(alt));
+            }
+            arm.pattern = std::move(orPat);
+        }
+
         // Optional guard: if <expr>
         if (lex_.peek().kind == TokenKind::If) {
             lex_.next(); // consume 'if'
-            arm.guard = parseLogicalOr();
+            arm.guard = parseTernary();
         }
 
         if (lex_.peek().kind != TokenKind::Colon)

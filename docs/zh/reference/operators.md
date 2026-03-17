@@ -22,6 +22,7 @@
 | 11 | `not` | 邏輯 NOT | 右 |
 | 12 | `and` | 邏輯 AND | 左 |
 | 13 | `or` | 邏輯 OR | 左 |
+| 14 | `?:` | 三元條件 | 右 |
 
 ## 算術運算子
 
@@ -109,6 +110,24 @@ let masked = flags & 0b0011   # 3
 let shifted = 1 << 8          # 256
 ```
 
+## 三元條件運算子
+
+```python
+let x = condition ? true_value : false_value
+```
+
+對 `condition` 進行求值。若為真，回傳 `true_value`；否則回傳 `false_value`。兩個分支必須具有相同的型別。右結合，因此巢狀三元運算子從右向左結合。
+
+```python
+let x = 3 > 2 ? 10 : 20     # 10
+let s = false ? "yes" : "no" # "no"
+
+# 巢狀（右結合）
+let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
+
 ## 複合賦值運算子
 
 更新變數的簡寫形式。`x op= y` 等價於 `x = x op y`。
@@ -129,10 +148,12 @@ let shifted = 1 << 8          # 256
 | `x >>= y` | `x = x >> y` |
 
 ```python
-let x = 10
+var x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
+x //= 3  # x = 8
+x &= 6   # x = 0
 ```
 
 ## 運算的型別規則

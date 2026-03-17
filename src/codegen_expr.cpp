@@ -1043,3 +1043,67 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
     return buf;
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
+    llvm::Value *cond = emitExpr(*e->condition);
+    cond = toBool(cond);
+
+    llvm::BasicBlock *trueBB = llvm::BasicBlock::Create(*ctx_, "ternary.true", fn_);
+    llvm::BasicBlock *falseBB = llvm::BasicBlock::Create(*ctx_, "ternary.false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ternary.merge", fn_);
+
+    builder_.CreateCondBr(cond, trueBB, falseBB);
+
+    builder_.SetInsertPoint(trueBB);
+    llvm::Value *trueVal = emitExpr(*e->true_expr);
+    llvm::BasicBlock *trueEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(falseBB);
+    llvm::Value *falseVal = emitExpr(*e->false_expr);
+    llvm::BasicBlock *falseEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    if (trueVal->getType() != falseVal->getType())
+        throw std::runtime_error("ternary expression: both branches must have the same type");
+
+    // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
+    if (trueVal->getType() == ptrTy_) {
+        enum class SemanticKind { Str, List, Map, Set, Other };
+        auto classify = [&](llvm::Value *v) -> SemanticKind {
+            if (list_element_types_.count(v)) return SemanticKind::List;
+            if (map_key_types_.count(v)) return SemanticKind::Map;
+            if (set_element_types_.count(v)) return SemanticKind::Set;
+            return SemanticKind::Str;
+        };
+        SemanticKind trueKind = classify(trueVal);
+        SemanticKind falseKind = classify(falseVal);
+        if (trueKind != falseKind)
+            throw std::runtime_error("ternary expression: both branches must have the same type");
+
+        // For List, check element types match
+        if (trueKind == SemanticKind::List) {
+            llvm::Type *trueElem = list_element_types_[trueVal];
+            llvm::Type *falseElem = list_element_types_[falseVal];
+            if (trueElem != falseElem)
+                throw std::runtime_error("ternary expression: both branches must have the same type");
+        }
+    }
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
+    phi->addIncoming(trueVal, trueEndBB);
+    phi->addIncoming(falseVal, falseEndBB);
+
+    // Propagate semantic type metadata to the PHI result
+    if (list_element_types_.count(trueVal))
+        list_element_types_[phi] = list_element_types_[trueVal];
+    if (map_key_types_.count(trueVal)) {
+        map_key_types_[phi] = map_key_types_[trueVal];
+        map_value_types_[phi] = map_value_types_[trueVal];
+    }
+    if (set_element_types_.count(trueVal))
+        set_element_types_[phi] = set_element_types_[trueVal];
+
+    return phi;
+}
+

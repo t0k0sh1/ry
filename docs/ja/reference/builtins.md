@@ -26,6 +26,10 @@
 | `has_key(map, key)` | マップにキーが存在するかを返す |
 | `add(set, value)` | セットに要素を追加（重複は無視） |
 | `remove(set, value)` | セットから要素を削除 |
+| `append(list, value)` | リストの末尾に要素を追加（ミューテーション操作） |
+| `pop(list)` | リストの末尾の要素を削除して返す |
+| `reverse(list)` | 逆順の新しいリストを返す（文字列にも対応） |
+| `slice(list, start, end)` | start から end までの新しい部分リストを返す |
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
 | `map(list, fn)` | 各要素を変換した新しいリストを返す |
 | `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
@@ -203,6 +207,66 @@ for i in range(3):
 # 0
 # 1
 # 2
+```
+
+---
+
+## append
+
+**シグネチャ:** `append(list: List<T>, value: T)`
+
+リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。UFCS記法も使用可能です。
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## pop
+
+**シグネチャ:** `pop(list: List<T>) -> T`
+
+リストの末尾の要素を削除して返します。UFCS記法も使用可能です。
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+**エラー条件:** 空のリストに対して `pop()` を呼び出すとランタイムエラー（exit(1)）。
+
+---
+
+## reverse (list)
+
+**シグネチャ:** `reverse(list: List<T>) -> List<T>`
+
+要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます（[文字列操作関数リファレンス](builtins-string.md)を参照）。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3]
+let ys = reverse(xs)
+print(ys)   # [3, 2, 1]
+print(xs)   # [1, 2, 3]（変更なし）
+```
+
+---
+
+## slice
+
+**シグネチャ:** `slice(list: List<T>, start: int, end: int) -> List<T>`
+
+`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `len(list)` まで）にクランプされます。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 ```
 
 ---

@@ -22,6 +22,7 @@
 | 11 | `not` | 論理 NOT | 右 |
 | 12 | `and` | 論理 AND | 左 |
 | 13 | `or` | 論理 OR | 左 |
+| 14 | `?:` | 三項条件 | 右 |
 
 ## 算術演算子
 
@@ -108,6 +109,24 @@ let flags = 0b0001 | 0b0010   # 3
 let masked = flags & 0b0011   # 3
 let shifted = 1 << 8          # 256
 ```
+
+## 三項条件演算子
+
+```python
+let x = condition ? true_value : false_value
+```
+
+`condition` を評価し、真であれば `true_value` を、偽であれば `false_value` を返します。両方の分岐は同じ型でなければなりません。右結合なので、ネストされた三項演算子は右から左に結合されます。
+
+```python
+let x = 3 > 2 ? 10 : 20     # 10
+let s = false ? "yes" : "no" # "no"
+
+# ネスト（右結合）
+let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
 
 ## 複合代入演算子
 

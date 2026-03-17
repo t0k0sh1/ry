@@ -254,6 +254,7 @@ Token Lexer::readToken() {
         return {TokenKind::RBrace, "}", line_};
     }
     if (c == '@') { ++pos_; return {TokenKind::At,      "@", line_}; }
+    if (c == '?') { ++pos_; return {TokenKind::Question, "?", line_}; }
 
     // r-string: r"..." (raw string, no escape processing)
     if (c == 'r' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {

@@ -189,14 +189,34 @@ match expression:
 | enum variant | `Color::Red` | Compares enum tag |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
+| OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
 ### Guard Clause
 
 A guard condition can be specified in the form `case pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
 
+### OR Pattern
+
+Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# Enum OR pattern
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### Exhaustiveness Checking
 
-- enum types: Must cover all variants or include `_`.
+- enum types: Must cover all variants or include `_`. OR patterns count each alternative individually.
 - Option types: Must cover both `Some` and `None` or include `_`.
 - bool type: Must cover both `true` and `false` or include `_`.
 - int / float / str literals: `_` is required.

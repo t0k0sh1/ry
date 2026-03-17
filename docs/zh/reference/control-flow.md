@@ -189,14 +189,34 @@ match 運算式:
 | enum 變體 | `Color::Red` | enum 標籤的比較 |
 | `Some(x)` | `Some(v)` | 當 Option 有值時，綁定其內容 |
 | `None` | `None` | 當 Option 無值時 |
+| OR 模式 | `1 \| 2 \| 3` | 任一替代方案匹配時即匹配 |
 
 ### guard 子句
 
 可以使用 `case 模式 if 條件式:` 的形式指定守衛條件。只有當模式匹配且守衛條件為真時，該分支才會被執行。
 
+### OR 模式
+
+可以使用 `|` 組合多個模式，任一模式匹配時即匹配。OR 模式中不允許使用變數綁定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# enum OR 模式
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### 窮舉性檢查
 
-- enum 型別：必須覆蓋所有變體或包含 `_`。
+- enum 型別：必須覆蓋所有變體或包含 `_`。OR 模式中的各替代方案會分別計算。
 - Option 型別：必須覆蓋 `Some` 和 `None` 或包含 `_`。
 - bool 型別：必須覆蓋 `true` 和 `false` 或包含 `_`。
 - int / float / str 字面值：`_` 為必要。

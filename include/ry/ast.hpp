@@ -46,6 +46,7 @@ struct OldExpr;
 struct ResultExpr {};
 struct CastExpr;
 struct InterpolatedStringExpr;
+struct TernaryExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -63,7 +64,8 @@ struct ExprNode {
                  std::unique_ptr<OldExpr>,
                  ResultExpr,
                  std::unique_ptr<CastExpr>,
-                 std::unique_ptr<InterpolatedStringExpr>> data;
+                 std::unique_ptr<InterpolatedStringExpr>,
+                 std::unique_ptr<TernaryExpr>> data;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -201,6 +203,12 @@ struct CastExpr {
     std::string target_type;
 };
 
+struct TernaryExpr {
+    ExprPtr condition;
+    ExprPtr true_expr;
+    ExprPtr false_expr;
+};
+
 struct InterpolatedStringExpr {
     std::vector<std::string> parts;   // literal text segments (parts.size() == exprs.size() + 1)
     std::vector<ExprPtr> exprs;       // interpolated expressions
@@ -245,11 +253,16 @@ struct NonePattern {};
 struct OkPattern { std::string binding; };
 struct ErrPattern { std::string binding; };
 
+struct OrPattern;
+
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
-    OkPattern, ErrPattern
+    OkPattern, ErrPattern,
+    std::unique_ptr<OrPattern>
 >;
+
+struct OrPattern { std::vector<Pattern> alternatives; };
 
 struct MatchArm {
     Pattern pattern;
