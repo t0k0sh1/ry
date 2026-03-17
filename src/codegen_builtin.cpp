@@ -756,11 +756,22 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     // --- Exhaustiveness check ---
     bool hasWildcardOrVar = false;
     bool hasGuardedArm = false;
+    auto checkWildcardOrVar = [](const Pattern &p) {
+        return std::holds_alternative<WildcardPattern>(p) ||
+               std::holds_alternative<VariablePattern>(p);
+    };
     for (auto &arm : s->arms) {
-        if (std::holds_alternative<WildcardPattern>(arm.pattern) ||
-            std::holds_alternative<VariablePattern>(arm.pattern)) {
-            if (!arm.guard)
+        if (!arm.guard) {
+            if (checkWildcardOrVar(arm.pattern)) {
                 hasWildcardOrVar = true;
+            } else if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                for (auto &alt : (*op)->alternatives) {
+                    if (checkWildcardOrVar(alt)) {
+                        hasWildcardOrVar = true;
+                        break;
+                    }
+                }
+            }
         }
         if (arm.guard)
             hasGuardedArm = true;
@@ -812,33 +823,56 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
 
         // Check Option exhaustiveness
         bool hasSome = false, hasNone = false;
+        auto checkOptionPattern = [&](const Pattern &p) {
+            if (std::holds_alternative<SomePattern>(p)) hasSome = true;
+            if (std::holds_alternative<NonePattern>(p)) hasNone = true;
+        };
         for (auto &arm : s->arms) {
-            if (std::holds_alternative<SomePattern>(arm.pattern) && !arm.guard)
-                hasSome = true;
-            if (std::holds_alternative<NonePattern>(arm.pattern) && !arm.guard)
-                hasNone = true;
+            if (!arm.guard) {
+                checkOptionPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkOptionPattern(alt);
+                }
+            }
         }
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
             throw std::runtime_error("non-exhaustive match: Option requires both Some and None cases (or use '_')");
 
         // Check Result exhaustiveness
         bool hasOk = false, hasErr = false;
+        auto checkResultPattern = [&](const Pattern &p) {
+            if (std::holds_alternative<OkPattern>(p)) hasOk = true;
+            if (std::holds_alternative<ErrPattern>(p)) hasErr = true;
+        };
         for (auto &arm : s->arms) {
-            if (std::holds_alternative<OkPattern>(arm.pattern) && !arm.guard)
-                hasOk = true;
-            if (std::holds_alternative<ErrPattern>(arm.pattern) && !arm.guard)
-                hasErr = true;
+            if (!arm.guard) {
+                checkResultPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkResultPattern(alt);
+                }
+            }
         }
         if ((hasOk && !hasErr) || (!hasOk && hasErr))
             throw std::runtime_error("non-exhaustive match: Result requires both Ok and Err cases (or use '_')");
 
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
-        for (auto &arm : s->arms) {
-            if (auto *lp = std::get_if<LiteralPattern>(&arm.pattern)) {
+        auto checkBoolPattern = [&](const Pattern &p) {
+            if (auto *lp = std::get_if<LiteralPattern>(&p)) {
                 if (auto *be = std::get_if<BoolExpr>(&lp->value->data)) {
-                    if (be->value && !arm.guard) hasTrue = true;
-                    if (!be->value && !arm.guard) hasFalse = true;
+                    if (be->value) hasTrue = true;
+                    if (!be->value) hasFalse = true;
+                }
+            }
+        };
+        for (auto &arm : s->arms) {
+            if (!arm.guard) {
+                checkBoolPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkBoolPattern(alt);
                 }
             }
         }
@@ -976,6 +1010,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         } else if constexpr (std::is_same_v<U, WildcardPattern>) {
                             altResult = llvm::ConstantInt::get(i1Ty_, 1);
                         } else if constexpr (std::is_same_v<U, NonePattern>) {
+                            if (!isOptionType(subjectTy))
+                                throw std::runtime_error("match: None pattern requires Option type");
                             llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                             altResult = builder_.CreateNot(hasValue, "is_none");
                         } else {

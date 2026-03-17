@@ -1066,10 +1066,43 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
     if (trueVal->getType() != falseVal->getType())
         throw std::runtime_error("ternary expression: both branches must have the same type");
 
+    // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
+    if (trueVal->getType() == ptrTy_) {
+        enum class SemanticKind { Str, List, Map, Set, Other };
+        auto classify = [&](llvm::Value *v) -> SemanticKind {
+            if (list_element_types_.count(v)) return SemanticKind::List;
+            if (map_key_types_.count(v)) return SemanticKind::Map;
+            if (set_element_types_.count(v)) return SemanticKind::Set;
+            return SemanticKind::Str;
+        };
+        SemanticKind trueKind = classify(trueVal);
+        SemanticKind falseKind = classify(falseVal);
+        if (trueKind != falseKind)
+            throw std::runtime_error("ternary expression: both branches must have the same type");
+
+        // For List, check element types match
+        if (trueKind == SemanticKind::List) {
+            llvm::Type *trueElem = list_element_types_[trueVal];
+            llvm::Type *falseElem = list_element_types_[falseVal];
+            if (trueElem != falseElem)
+                throw std::runtime_error("ternary expression: both branches must have the same type");
+        }
+    }
+
     builder_.SetInsertPoint(mergeBB);
     llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
     phi->addIncoming(trueVal, trueEndBB);
     phi->addIncoming(falseVal, falseEndBB);
+
+    // Propagate semantic type metadata to the PHI result
+    if (list_element_types_.count(trueVal))
+        list_element_types_[phi] = list_element_types_[trueVal];
+    if (map_key_types_.count(trueVal)) {
+        map_key_types_[phi] = map_key_types_[trueVal];
+        map_value_types_[phi] = map_value_types_[trueVal];
+    }
+    if (set_element_types_.count(trueVal))
+        set_element_types_[phi] = set_element_types_[trueVal];
 
     return phi;
 }

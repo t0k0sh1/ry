@@ -46,6 +46,27 @@ TEST_F(CodeGenTest, TernaryInCall) {
     EXPECT_EQ(runSource(src), "a\n");
 }
 
+TEST_F(CodeGenTest, TernaryTypeMismatchStrList) {
+    std::string src =
+        "let x = true ? \"hello\" : [1, 2, 3]\n"
+        "print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TernaryTypeMismatchListMap) {
+    std::string src =
+        "let x = true ? [1, 2] : {\"a\": 1}\n"
+        "print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TernaryListSameType) {
+    std::string src =
+        "let x = true ? [1, 2] : [3, 4]\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "[1, 2]\n");
+}
+
 // ===== if/elif/else codegen テスト =====
 
 TEST_F(CodeGenTest, IfTrueExecutes) {
