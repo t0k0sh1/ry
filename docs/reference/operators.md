@@ -59,8 +59,9 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
-- The `in` operator is used for membership checks on sets (`x in s`).
+- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).
+- For maps, `in` checks whether the key exists.
 
 ```python
 let x = 3 < 5       # true
@@ -68,6 +69,10 @@ let y = "abc" < "abd"  # true (lexicographic)
 let s = {1, 2, 3}
 let z = 2 in s      # true
 let w = 4 not in s  # true
+let xs = [1, 2, 3]
+let a = 2 in xs     # true (list linear search)
+let m = {"a": 1}
+let b = "a" in m    # true (map key lookup)
 ```
 
 ## Logical Operators
@@ -115,12 +120,21 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x *= y` | `x = x * y` |
 | `x /= y` | `x = x / y` |
 | `x %= y` | `x = x % y` |
+| `x //= y` | `x = x // y` |
+| `x **= y` | `x = x ** y` |
+| `x &= y` | `x = x & y` |
+| `x \|= y` | `x = x \| y` |
+| `x ^= y` | `x = x ^ y` |
+| `x <<= y` | `x = x << y` |
+| `x >>= y` | `x = x >> y` |
 
 ```python
-let x = 10
+var x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
+x //= 3  # x = 8
+x &= 6   # x = 0
 ```
 
 ## Type Rules for Operations
@@ -138,8 +152,8 @@ x *= 2    # x = 24
 | `+` | str | str | str |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
 | `*` | str | int | str |
-| `in` | any | Set<T> | bool |
-| `not in` | any | Set<T> | bool |
+| `in` | any | Set<T> / List<T> / Map<K, V> | bool |
+| `not in` | any | Set<T> / List<T> / Map<K, V> | bool |
 | `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 

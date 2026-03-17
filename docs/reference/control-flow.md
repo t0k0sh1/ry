@@ -98,6 +98,10 @@ for i in range(n):
 # range (with start and end)
 for i in range(start, end):
     # i = start, start+1, ..., end-1
+
+# range (with step)
+for i in range(start, end, step):
+    # i = start, start+step, start+2*step, ...
 ```
 
 ### Example
@@ -116,6 +120,12 @@ for i in range(5):
 
 for i in range(2, 6):
     print(i)     # 2 3 4 5
+
+for i in range(0, 10, 2):
+    print(i)     # 0 2 4 6 8
+
+for i in range(10, 0, -3):
+    print(i)     # 10 7 4 1
 ```
 
 ---

@@ -128,7 +128,11 @@ Token Lexer::readToken() {
     if (c == '*') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '*') {
-            ++pos_; return {TokenKind::StarStar, "**", line_};
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::StarStarEq, "**=", line_};
+            }
+            return {TokenKind::StarStar, "**", line_};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::StarEq, "*=", line_};
@@ -138,7 +142,11 @@ Token Lexer::readToken() {
     if (c == '/') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '/') {
-            ++pos_; return {TokenKind::SlashSlash, "//", line_};
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::SlashSlashEq, "//=", line_};
+            }
+            return {TokenKind::SlashSlash, "//", line_};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::SlashEq, "/=", line_};
@@ -165,7 +173,11 @@ Token Lexer::readToken() {
     if (c == '<') {
         ++pos_;
         if (pos_ < src_.size() && src_[pos_] == '<') {
-            ++pos_; return {TokenKind::LessLess, "<<", line_};
+            ++pos_;
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::LessLessEq, "<<=", line_};
+            }
+            return {TokenKind::LessLess, "<<", line_};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::LessEq, "<=", line_};
@@ -179,6 +191,9 @@ Token Lexer::readToken() {
             if (pos_ < src_.size() && src_[pos_] == '>') {
                 ++pos_; return {TokenKind::GreaterGreaterGreater, ">>>", line_};
             }
+            if (pos_ < src_.size() && src_[pos_] == '=') {
+                ++pos_; return {TokenKind::GreaterGreaterEq, ">>=", line_};
+            }
             return {TokenKind::GreaterGreater, ">>", line_};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
@@ -186,9 +201,27 @@ Token Lexer::readToken() {
         }
         return {TokenKind::Greater, ">", line_};
     }
-    if (c == '&') { ++pos_; return {TokenKind::Amp,   "&", line_}; }
-    if (c == '|') { ++pos_; return {TokenKind::Pipe,  "|", line_}; }
-    if (c == '^') { ++pos_; return {TokenKind::Caret, "^", line_}; }
+    if (c == '&') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::AmpEq, "&=", line_};
+        }
+        return {TokenKind::Amp, "&", line_};
+    }
+    if (c == '|') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::PipeEq, "|=", line_};
+        }
+        return {TokenKind::Pipe, "|", line_};
+    }
+    if (c == '^') {
+        ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '=') {
+            ++pos_; return {TokenKind::CaretEq, "^=", line_};
+        }
+        return {TokenKind::Caret, "^", line_};
+    }
     if (c == '~') { ++pos_; return {TokenKind::Tilde, "~", line_}; }
     if (c == ':') {
         ++pos_;

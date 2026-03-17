@@ -10,7 +10,7 @@
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
 | `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
-| `range(n)` / `range(start, end)` | 整数のリストを生成 |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 
 ### Option
 
@@ -178,7 +178,7 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 整数のリストを生成します。
 
@@ -186,10 +186,17 @@ print(2 in s)     # false
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
+| `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (`end` は含まない) |
+
+- `step > 0` の場合、`start` から昇順に `end` に向かって生成します。
+- `step < 0` の場合、`start` から降順に `end` に向かって生成します。
+- `step == 0` の場合、ランタイムエラーになります。
 
 ```python
-print(range(3))       # [0, 1, 2]
-print(range(2, 5))    # [2, 3, 4]
+print(range(3))           # [0, 1, 2]
+print(range(2, 5))        # [2, 3, 4]
+print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
+print(range(10, 0, -3))   # [10, 7, 4, 1]
 
 for i in range(3):
     print(i)

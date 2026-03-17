@@ -4,25 +4,61 @@
 // ===== CallExpr =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
-    // range(n) or range(start, end) → List<int>
+    // range(n), range(start, end), or range(start, end, step) → List<int>
     if (e->callee == "range") {
-        if (e->args.size() < 1 || e->args.size() > 2)
-            throw std::runtime_error("range() takes 1 or 2 arguments");
+        if (e->args.size() < 1 || e->args.size() > 3)
+            throw std::runtime_error("range() takes 1, 2, or 3 arguments");
 
-        llvm::Value *start, *end;
+        llvm::Value *start, *end, *step;
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
+
         if (e->args.size() == 1) {
-            start = llvm::ConstantInt::get(i64Ty_, 0);
+            start = zero;
             end = emitExpr(*e->args[0]);
+            step = one;
+        } else if (e->args.size() == 2) {
+            start = emitExpr(*e->args[0]);
+            end = emitExpr(*e->args[1]);
+            step = one;
         } else {
             start = emitExpr(*e->args[0]);
             end = emitExpr(*e->args[1]);
+            step = emitExpr(*e->args[2]);
         }
 
-        // count = max(0, end - start)
-        llvm::Value *diff = builder_.CreateSub(end, start, "range_diff");
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *isPos = builder_.CreateICmpSGT(diff, zero, "is_pos");
-        llvm::Value *count = builder_.CreateSelect(isPos, diff, zero, "range_count");
+        // Runtime check: step == 0 → error
+        if (e->args.size() == 3) {
+            llvm::Value *stepZero = builder_.CreateICmpEQ(step, zero, "step_zero");
+            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "range.step_err", fn_);
+            llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "range.step_ok", fn_);
+            builder_.CreateCondBr(stepZero, errBB, okBB);
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: range() step must not be zero\n", ".range_step_err");
+            builder_.SetInsertPoint(okBB);
+        }
+
+        // Compute count based on step sign
+        // step > 0: count = max(0, (end - start + step - 1) / step)
+        // step < 0: count = max(0, (start - end + (-step) - 1) / (-step))
+        llvm::Value *stepPos = builder_.CreateICmpSGT(step, zero, "step_pos");
+
+        // Positive step case
+        llvm::Value *diffPos = builder_.CreateSub(end, start, "diff_pos");
+        llvm::Value *numPos = builder_.CreateAdd(diffPos, builder_.CreateSub(step, one, "step_m1"), "num_pos");
+        llvm::Value *countPos = builder_.CreateSDiv(numPos, step, "count_pos");
+        llvm::Value *countPosClamped = builder_.CreateSelect(
+            builder_.CreateICmpSGT(countPos, zero, "pos_gt0"), countPos, zero, "count_pos_c");
+
+        // Negative step case
+        llvm::Value *negStep = builder_.CreateNeg(step, "neg_step");
+        llvm::Value *diffNeg = builder_.CreateSub(start, end, "diff_neg");
+        llvm::Value *numNeg = builder_.CreateAdd(diffNeg, builder_.CreateSub(negStep, one, "negstep_m1"), "num_neg");
+        llvm::Value *countNeg = builder_.CreateSDiv(numNeg, negStep, "count_neg");
+        llvm::Value *countNegClamped = builder_.CreateSelect(
+            builder_.CreateICmpSGT(countNeg, zero, "neg_gt0"), countNeg, zero, "count_neg_c");
+
+        llvm::Value *count = builder_.CreateSelect(stepPos, countPosClamped, countNegClamped, "range_count");
 
         // Allocate list header
         llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
@@ -37,7 +73,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "range_data_size");
         llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
 
-        // Fill data with start..end using a loop
+        // Fill data with start, start+step, start+2*step, ... using a loop
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
         builder_.CreateStore(zero, iVar);
 
@@ -54,10 +90,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "ri_cur");
-        llvm::Value *val = builder_.CreateAdd(start, iCur, "range_val");
+        llvm::Value *offset = builder_.CreateMul(iCur, step, "range_offset");
+        llvm::Value *val = builder_.CreateAdd(start, offset, "range_val");
         llvm::Value *elemPtr = builder_.CreateGEP(i64Ty_, dataPtr, {iCur}, "range_elem_ptr");
         builder_.CreateStore(val, elemPtr);
-        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "ri_next");
+        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "ri_next");
         builder_.CreateStore(iNext, iVar);
         builder_.CreateBr(condBB);
 
