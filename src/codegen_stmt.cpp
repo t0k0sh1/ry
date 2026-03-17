@@ -522,8 +522,11 @@ void CodeGen::emitStmt(EnumStmt &s) {
         size_t maxPayload = 0;
         for (auto &[vname, vfi] : info.variantFields) {
             size_t payloadSize = 0;
-            for (auto *ty : vfi.fieldTypes)
+            for (auto *ty : vfi.fieldTypes) {
+                uint64_t align = dl.getABITypeAlign(ty).value();
+                payloadSize = (payloadSize + align - 1) / align * align;
                 payloadSize += dl.getTypeAllocSize(ty);
+            }
             if (payloadSize > maxPayload) maxPayload = payloadSize;
         }
         info.maxPayloadSize = maxPayload;
@@ -549,6 +552,9 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
     for (size_t i = 0; i < s.names.size(); ++i) {
         if (s.names[i] == "_")
             continue;
+        // Redeclaration check (consistent with emitVarDecl)
+        if (scope_stack_.back().count(s.names[i]))
+            throw std::runtime_error("variable '" + s.names[i] + "' already declared in this scope");
         llvm::Value *elem = builder_.CreateExtractValue(tupleVal, i);
         llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
         builder_.CreateStore(elem, ptr);
@@ -1091,8 +1097,11 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
         size_t maxPayload = 0;
         for (auto &[vname, vfi] : info.variantFields) {
             size_t payloadSize = 0;
-            for (auto *ty : vfi.fieldTypes)
+            for (auto *ty : vfi.fieldTypes) {
+                uint64_t align = dl.getABITypeAlign(ty).value();
+                payloadSize = (payloadSize + align - 1) / align * align;
                 payloadSize += dl.getTypeAllocSize(ty);
+            }
             if (payloadSize > maxPayload) maxPayload = payloadSize;
         }
         info.maxPayloadSize = maxPayload;

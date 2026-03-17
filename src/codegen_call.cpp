@@ -66,6 +66,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 size_t offset = 0;
                 for (size_t i = 0; i < e->args.size(); ++i) {
                     llvm::Value *argVal = emitExpr(*e->args[i]);
+                    uint64_t align = dl.getABITypeAlign(fieldInfo.fieldTypes[i]).value();
+                    offset = (offset + align - 1) / align * align;
                     llvm::Value *fieldPtr = builder_.CreateGEP(
                         llvm::Type::getInt8Ty(*ctx_), payloadPtr,
                         {llvm::ConstantInt::get(i64Ty_, offset)}, "adt.field." + std::to_string(i));
@@ -2137,6 +2139,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "reduce_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "reduce_data");
 
+        // Check empty list
+        llvm::Value *isEmptyR = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
+        llvm::BasicBlock *errBBR = llvm::BasicBlock::Create(*ctx_, "reduce.err", fn_);
+        llvm::BasicBlock *okBBR = llvm::BasicBlock::Create(*ctx_, "reduce.ok", fn_);
+        builder_.CreateCondBr(isEmptyR, errBBR, okBBR);
+        builder_.SetInsertPoint(errBBR);
+        emitRuntimeError("runtime error: reduce() on empty list\n", ".reduce_empty_err");
+        builder_.SetInsertPoint(okBBR);
+
         // acc = list[0]
         llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "reduce_first");
         llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "reduce_acc");
@@ -2179,6 +2190,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (fnIt == fn_type_info_.end())
             throw std::runtime_error("fold() requires a function");
         auto &info = fnIt->second;
+        if (info.paramTypes.size() != 2)
+            throw std::runtime_error("fold() function must take 2 parameters (accumulator, element)");
+        if (info.returnType != initVal->getType())
+            throw std::runtime_error("fold() initial value type must match function return type");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "fold_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "fold_data");
@@ -2222,6 +2237,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (fnIt == fn_type_info_.end())
             throw std::runtime_error("any() requires a function");
         auto &info = fnIt->second;
+        if (info.paramTypes.size() != 1)
+            throw std::runtime_error("any() predicate must take 1 parameter");
+        if (info.returnType != i1Ty_)
+            throw std::runtime_error("any() predicate must return bool");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "any_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "any_data");
@@ -2267,6 +2286,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (fnIt == fn_type_info_.end())
             throw std::runtime_error("all() requires a function");
         auto &info = fnIt->second;
+        if (info.paramTypes.size() != 1)
+            throw std::runtime_error("all() predicate must take 1 parameter");
+        if (info.returnType != i1Ty_)
+            throw std::runtime_error("all() predicate must return bool");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "all_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "all_data");
@@ -2304,6 +2327,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *listVal = emitExpr(*e->args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) throw std::runtime_error("sum() requires a list");
+        if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
+            throw std::runtime_error("sum() requires a numeric list (int, float, or byte)");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "sum_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "sum_data");
@@ -2347,9 +2372,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *listVal = emitExpr(*e->args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) throw std::runtime_error(e->callee + "() requires a list");
+        if (elemTy != i64Ty_ && elemTy != f64Ty_)
+            throw std::runtime_error(e->callee + "() requires a numeric list (int or float)");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "mm_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "mm_data");
+
+        // Check empty list
+        llvm::Value *isEmptyMM = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "mm_empty");
+        llvm::BasicBlock *errBBMM = llvm::BasicBlock::Create(*ctx_, "mm.err", fn_);
+        llvm::BasicBlock *okBBMM = llvm::BasicBlock::Create(*ctx_, "mm.ok", fn_);
+        builder_.CreateCondBr(isEmptyMM, errBBMM, okBBMM);
+        builder_.SetInsertPoint(errBBMM);
+        emitRuntimeError("runtime error: " + e->callee + "() on empty list\n", ".mm_empty_err");
+        builder_.SetInsertPoint(okBBMM);
 
         llvm::Value *first = builder_.CreateLoad(elemTy, srcData, "mm_first");
         llvm::AllocaInst *bestVar = builder_.CreateAlloca(elemTy, nullptr, "mm_best");
@@ -2458,7 +2494,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         llvm::Value *listVal = emitExpr(*e->args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) throw std::runtime_error("first() requires a list");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
+
+        // Check empty list
+        llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
+        llvm::BasicBlock *errBBF = llvm::BasicBlock::Create(*ctx_, "first.err", fn_);
+        llvm::BasicBlock *okBBF = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
+        builder_.CreateCondBr(isEmptyF, errBBF, okBBF);
+        builder_.SetInsertPoint(errBBF);
+        emitRuntimeError("runtime error: first() on empty list\n", ".first_empty_err");
+        builder_.SetInsertPoint(okBBF);
+
         return builder_.CreateLoad(elemTy, srcData, "first_val");
     }
 
@@ -2471,6 +2518,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (!elemTy) throw std::runtime_error("last() requires a list");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
+
+        // Check empty list
+        llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
+        llvm::BasicBlock *errBBL = llvm::BasicBlock::Create(*ctx_, "last.err", fn_);
+        llvm::BasicBlock *okBBL = llvm::BasicBlock::Create(*ctx_, "last.ok", fn_);
+        builder_.CreateCondBr(isEmptyL, errBBL, okBBL);
+        builder_.SetInsertPoint(errBBL);
+        emitRuntimeError("runtime error: last() on empty list\n", ".last_empty_err");
+        builder_.SetInsertPoint(okBBL);
+
         llvm::Value *lastIdx = builder_.CreateSub(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
         return builder_.CreateLoad(elemTy, elemPtr, "last_val");
@@ -2482,9 +2539,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("is_empty() takes exactly 1 argument");
         llvm::Value *val = emitExpr(*e->args[0]);
         // All collection headers have length at index 0
-        llvm::Type *headerTy = listHeaderTy_;
-        if (getMapKeyType(val)) headerTy = mapHeaderTy_;
+        llvm::Type *headerTy = nullptr;
+        if (getListElementType(val)) headerTy = listHeaderTy_;
+        else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
+        if (!headerTy)
+            throw std::runtime_error("is_empty() requires a collection (list, map, or set)");
         llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
         return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
     }

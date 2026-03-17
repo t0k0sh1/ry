@@ -214,6 +214,8 @@ StmtNode Parser::parseStatement() {
             ls->directives = std::move(directives);
         else if (auto *vs = std::get_if<VarStmt>(&stmt))
             vs->directives = std::move(directives);
+        else if (auto *td = std::get_if<TupleDestructStmt>(&stmt))
+            td->directives = std::move(directives);
         return stmt;
     }
 

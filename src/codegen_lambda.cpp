@@ -294,9 +294,18 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return it->second[0].func->getReturnType();
             // Known builtin return types
             const std::string &c = v->callee;
-            if (c == "len" || c == "to_int" || c == "find" || c == "sum" ||
-                c == "min" || c == "max" || c == "first" || c == "last")
+            if (c == "len" || c == "to_int" || c == "find")
                 return i64Ty_;
+            // sum/min/max/first/last return the element type of the list argument
+            if (c == "sum" || c == "min" || c == "max" || c == "first" || c == "last") {
+                if (!v->args.empty()) {
+                    llvm::Type *argTy = inferExprType(*v->args[0], paramTypeMap);
+                    // If the argument is a pointer (list), we can't determine element type
+                    // at inference time, so default to i64; actual codegen handles correctly
+                    (void)argTy;
+                }
+                return i64Ty_; // conservative default; codegen uses actual element type
+            }
             if (c == "to_float")
                 return f64Ty_;
             if (c == "contains" || c == "starts_with" || c == "ends_with" ||

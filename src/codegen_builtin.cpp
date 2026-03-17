@@ -319,6 +319,8 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                             size_t offset = 0;
                             for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
                                 llvm::Type *fieldTy = fit->second.fieldTypes[fi];
+                                uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                                offset = (offset + align - 1) / align * align;
                                 llvm::Value *fieldPtr = builder_.CreateGEP(
                                     llvm::Type::getInt8Ty(*ctx_), payloadPtr,
                                     {llvm::ConstantInt::get(i64Ty_, offset)},
@@ -1109,6 +1111,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 }
                 if (enumIt == enum_types_.end())
                     throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                if (!enumIt->second.isADT)
+                    throw std::runtime_error("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
                     throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
@@ -1265,6 +1269,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         size_t offset = 0;
                         for (size_t bi = 0; bi < pat.bindings.size() && bi < fit->second.fieldTypes.size(); ++bi) {
                             llvm::Type *fieldTy = fit->second.fieldTypes[bi];
+                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                            offset = (offset + align - 1) / align * align;
                             llvm::Value *fieldPtr = builder_.CreateGEP(
                                 llvm::Type::getInt8Ty(*ctx_), payloadPtr,
                                 {llvm::ConstantInt::get(i64Ty_, offset)},
