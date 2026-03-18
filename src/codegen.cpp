@@ -270,7 +270,8 @@ void CodeGen::emitStmt(CallStmt &s) {
                     ((s.callee == "append" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||
                      (s.callee == "insert" && nargs == 3) ||
-                     (s.callee == "remove_at" && nargs == 2))) {
+                     (s.callee == "remove_at" && nargs == 2) ||
+                     (s.callee == "remove" && nargs == 2))) {
                     intercept = true;
                 } else if (isSet &&
                     ((s.callee == "add" && nargs == 2) ||

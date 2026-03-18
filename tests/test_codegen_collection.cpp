@@ -1762,3 +1762,212 @@ TEST_F(CodeGenTest, SetIsSuperset) {
         "print(is_superset(b, a))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
 }
+
+// ===== remove(list, val) テスト =====
+
+TEST_F(CodeGenTest, ListRemoveInt) {
+    std::string src =
+        "var xs = [1, 2, 3, 4]\n"
+        "remove(xs, 3)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 4]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveStr) {
+    std::string src =
+        "var xs = [\"a\", \"b\", \"c\"]\n"
+        "remove(xs, \"b\")\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[a, c]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveFloat) {
+    std::string src =
+        "var xs = [1.0, 2.5, 3.0]\n"
+        "remove(xs, 2.5)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveNotFound) {
+    std::string src =
+        "var xs = [1, 2, 3]\n"
+        "remove(xs, 99)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveFirst) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "remove(xs, 10)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[20, 30]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveLast) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "remove(xs, 30)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[10, 20]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveDuplicate) {
+    std::string src =
+        "var xs = [1, 2, 3, 2, 4]\n"
+        "remove(xs, 2)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 3, 2, 4]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveSingleElement) {
+    std::string src =
+        "var xs = [42]\n"
+        "remove(xs, 42)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
+// ===== distinct(list) テスト =====
+
+TEST_F(CodeGenTest, DistinctInt) {
+    std::string src =
+        "let xs = [1, 2, 3, 2, 1, 4]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+}
+
+TEST_F(CodeGenTest, DistinctStr) {
+    std::string src =
+        "let xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[a, b, c]\n");
+}
+
+TEST_F(CodeGenTest, DistinctFloat) {
+    std::string src =
+        "let xs = [1.0, 2.0, 1.0, 3.0]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, DistinctAlreadyUnique) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, DistinctAllSame) {
+    std::string src =
+        "let xs = [5, 5, 5, 5]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[5]\n");
+}
+
+TEST_F(CodeGenTest, DistinctPreservesOrder) {
+    std::string src =
+        "let xs = [3, 1, 2, 1, 3]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[3, 1, 2]\n");
+}
+
+TEST_F(CodeGenTest, DistinctNonDestructive) {
+    std::string src =
+        "let xs = [1, 2, 1, 3]\n"
+        "let ys = distinct(xs)\n"
+        "print(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 1, 3]\n[1, 2, 3]\n");
+}
+
+// ===== merge(map1, map2) テスト =====
+
+TEST_F(CodeGenTest, MergeNoOverlap) {
+    std::string src =
+        "let m1 = {\"a\": 1, \"b\": 2}\n"
+        "let m2 = {\"c\": 3, \"d\": 4}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[\"a\"])\n"
+        "print(m3[\"b\"])\n"
+        "print(m3[\"c\"])\n"
+        "print(m3[\"d\"])";
+    EXPECT_EQ(runSource(src), "4\n1\n2\n3\n4\n");
+}
+
+TEST_F(CodeGenTest, MergeOverlap) {
+    std::string src =
+        "let m1 = {\"a\": 1, \"b\": 2}\n"
+        "let m2 = {\"b\": 99, \"c\": 3}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[\"a\"])\n"
+        "print(m3[\"b\"])\n"
+        "print(m3[\"c\"])";
+    EXPECT_EQ(runSource(src), "3\n1\n99\n3\n");
+}
+
+TEST_F(CodeGenTest, MergeIntKeys) {
+    std::string src =
+        "let m1 = {1: \"a\", 2: \"b\"}\n"
+        "let m2 = {2: \"x\", 3: \"c\"}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[1])\n"
+        "print(m3[2])\n"
+        "print(m3[3])";
+    EXPECT_EQ(runSource(src), "3\na\nx\nc\n");
+}
+
+TEST_F(CodeGenTest, MergeNonDestructive) {
+    std::string src =
+        "let m1 = {\"a\": 1}\n"
+        "let m2 = {\"b\": 2}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m1))\n"
+        "print(len(m2))\n"
+        "print(len(m3))";
+    EXPECT_EQ(runSource(src), "1\n1\n2\n");
+}
+
+// ===== flatten(list) テスト =====
+
+TEST_F(CodeGenTest, FlattenIntLists) {
+    std::string src =
+        "let xs = [[1, 2], [3, 4]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+}
+
+TEST_F(CodeGenTest, FlattenStrLists) {
+    std::string src =
+        "let xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[a, b, c, d]\n");
+}
+
+TEST_F(CodeGenTest, FlattenWithEmptyInner) {
+    std::string src =
+        "let xs = [[1, 2], [3, 4]]\n"
+        "let ys = flatten(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+}
+
+TEST_F(CodeGenTest, FlattenSingleInner) {
+    std::string src =
+        "let xs = [[10, 20, 30]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
+}
+
+TEST_F(CodeGenTest, FlattenNonDestructive) {
+    std::string src =
+        "let xs = [[1, 2], [3, 4]]\n"
+        "let ys = flatten(xs)\n"
+        "print(len(xs))\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "2\n[1, 2, 3, 4]\n");
+}

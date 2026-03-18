@@ -626,6 +626,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     // Track element type
     list_element_types_[headerPtr] = elemTy;
 
+    // Track nested list element type (for flatten support)
+    if (elemTy == ptrTy_) {
+        // Check if the first element is a list
+        llvm::Type *innerElemTy = getListElementType(vals[0]);
+        if (innerElemTy)
+            nested_list_element_types_[headerPtr] = innerElemTy;
+    }
+
     return headerPtr;
 }
 

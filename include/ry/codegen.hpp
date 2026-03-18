@@ -51,6 +51,7 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
 
     struct UnionTypeInfo {
         llvm::StructType *llvmType;
