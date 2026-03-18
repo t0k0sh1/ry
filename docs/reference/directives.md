@@ -102,6 +102,37 @@ fn to_upper(s: str) -> str
 print("hello".to_upper())  # HELLO
 ```
 
+**Argument count validation:**
+
+When a `@native` declaration includes a type signature, the compiler validates the number of arguments at call sites. Overloaded functions (e.g., `range` with 1, 2, or 3 arguments) are supported — any matching overload passes validation.
+
+```
+@native
+fn range(n: int) -> List<int>
+@native
+fn range(start: int, end: int) -> List<int>
+
+print(len(range(5)))       # OK: matches 1-arg overload
+print(len(range(1, 10)))   # OK: matches 2-arg overload
+print(len(range()))        # Error: expects 1 or 2 argument(s), but got 0
+```
+
+**Standard library declarations (`core/`):**
+
+The `core/` directory contains `@native` declarations for all built-in functions, organized by category:
+
+| File | Contents |
+|---|---|
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
+| `core/convert.ry` | `to_int`, `to_float`, `to_str` |
+| `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
+| `core/map.ry` | `keys`, `values`, `items`, `has_key`, `get`, `merge` |
+| `core/set.ry` | `add`, `remove`, `union`, `intersection`, `difference`, `symmetric_difference`, `is_subset`, `is_superset` |
+| `core/higher_order.ry` | `filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max` |
+
+These files are automatically loaded as a prelude when the `core/` directory is found relative to the `ry` executable. The prelude enables argument count validation for built-in function calls.
+
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).
 - Providing a body causes a parse error: `@native function must not have a body`.

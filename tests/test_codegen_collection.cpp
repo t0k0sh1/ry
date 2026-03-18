@@ -1971,3 +1971,62 @@ TEST_F(CodeGenTest, FlattenNonDestructive) {
         "print(ys)";
     EXPECT_EQ(runSource(src), "2\n[1, 2, 3, 4]\n");
 }
+
+// ===== for tuple destructuring =====
+
+TEST_F(CodeGenTest, ForEnumerateDestructure) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for i, x in enumerate(xs):\n"
+        "    total = total + i + x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "63\n");
+}
+
+TEST_F(CodeGenTest, ForZipDestructure) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for a, b in zip(xs, ys):\n"
+        "    total = total + a + b\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "66\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWildcardFirst) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for _, x in enumerate(xs):\n"
+        "    total = total + x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "60\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWildcardSecond) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for i, _ in enumerate(xs):\n"
+        "    total = total + i\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWithPrint) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "for i, x in enumerate(xs):\n"
+        "    print(f\"{i}: {x}\")";
+    EXPECT_EQ(runSource(src), "0: 10\n1: 20\n2: 30\n");
+}
+
+TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "for a, b in xs:\n"
+        "    print(a)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}

@@ -188,3 +188,60 @@ TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
     );
     EXPECT_EQ(output, "true\nWORLD\n");
 }
+
+// ===== @native fn type signature validation =====
+
+TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
+    std::string output = runSource(
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "print(contains(\"hello\", \"ell\"))\n"
+    );
+    EXPECT_EQ(output, "true\n");
+}
+
+TEST_F(DirectiveTest, NativeFnTypeCheckFailArgCount) {
+    EXPECT_THROW(runSource(
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "print(contains(\"hello\"))\n"
+    ), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, NativeFnOverloadResolution) {
+    std::string output = runSource(
+        "@native\n"
+        "fn range(n: int) -> List<int>\n"
+        "@native\n"
+        "fn range(start: int, end_val: int) -> List<int>\n"
+        "@native\n"
+        "fn range(start: int, end_val: int, step: int) -> List<int>\n"
+        "print(len(range(5)))\n"
+        "print(len(range(1, 4)))\n"
+        "print(len(range(0, 10, 2)))\n"
+    );
+    EXPECT_EQ(output, "5\n3\n5\n");
+}
+
+TEST_F(DirectiveTest, NativeFnWithoutSignatureStillWorks) {
+    // Builtin functions work even without @native declaration
+    std::string output = runSource(
+        "print(contains(\"hello\", \"ell\"))\n"
+    );
+    EXPECT_EQ(output, "true\n");
+}
+
+TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
+    std::string output = runSource(
+        "@native\n"
+        "fn to_upper(s: str) -> str\n"
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "@native\n"
+        "fn starts_with(s: str, prefix: str) -> bool\n"
+        "print(to_upper(\"hello\"))\n"
+        "print(contains(\"hello world\", \"world\"))\n"
+        "print(starts_with(\"hello\", \"hel\"))\n"
+    );
+    EXPECT_EQ(output, "HELLO\ntrue\ntrue\n");
+}

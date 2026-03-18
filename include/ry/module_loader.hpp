@@ -6,6 +6,8 @@
 #include <unordered_set>
 #include <vector>
 
+Program loadAndParse(const std::string &abs_path);
+
 class ModuleLoader {
 public:
     explicit ModuleLoader(const std::vector<std::string> &search_paths = {});

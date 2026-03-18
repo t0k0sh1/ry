@@ -36,7 +36,7 @@ std::string ModuleLoader::resolve(const std::string &module_path,
     throw std::runtime_error("module not found: " + module_path);
 }
 
-static Program loadAndParse(const std::string &abs_path) {
+Program loadAndParse(const std::string &abs_path) {
     std::ifstream file(abs_path);
     if (!file.is_open())
         throw std::runtime_error("cannot open module: " + abs_path);

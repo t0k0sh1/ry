@@ -297,9 +297,10 @@ Returns a list of `(index, element)` tuples.
 let xs = [10, 20, 30]
 let pairs = enumerate(xs)
 # pairs = [(0, 10), (1, 20), (2, 30)]
-for p in pairs:
-    print(p.0)
-    print(p.1)
+
+# Tuple destructuring in for loop
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
 ```
 
 ### zip
@@ -311,6 +312,10 @@ let xs = [1, 2, 3]
 let ys = ["a", "b", "c"]
 let pairs = zip(xs, ys)
 # pairs = [(1, "a"), (2, "b"), (3, "c")]
+
+# Tuple destructuring in for loop
+for a, b in zip(xs, ys):
+    print(f"{a}: {b}")    # 1: a, 2: b, 3: c
 ```
 
 ### insert

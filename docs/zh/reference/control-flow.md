@@ -111,6 +111,23 @@ for k, v in map_expr:
     # k 為鍵，v 為各條目的值
 ```
 
+### 元組解構
+
+走訪 2 元素元組的列表（例如 `enumerate()` 或 `zip()` 的回傳值）時，可以解構為兩個變數。使用 `_` 捨棄值。
+
+```python
+let xs = [10, 20, 30]
+
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
+
+for a, b in zip([1, 2], [10, 20]):
+    print(a + b)          # 11, 22
+
+for _, x in enumerate(xs):
+    print(x)              # 捨棄索引
+```
+
 ### 範圍運算子（`..`）
 
 `..` 運算子建立包含兩端的整數範圍。`1 .. 5` 產生 `[1, 2, 3, 4, 5]`。

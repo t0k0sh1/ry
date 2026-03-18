@@ -386,12 +386,41 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     if (iterable->getType() != ptrTy_)
         throw std::runtime_error("for loop requires list or set iterable");
 
-    // Map iteration: for k, v in map
+    // Two-variable iteration: for k, v in map  OR  for i, x in enumerate(xs)
     if (s->var_name2.has_value()) {
         llvm::Type *keyTy = getMapKeyType(iterable);
         llvm::Type *valTy = getMapValueType(iterable);
-        if (!keyTy || !valTy)
-            throw std::runtime_error("for k, v requires a map iterable");
+        if (!keyTy || !valTy) {
+            // Try List<Tuple> (e.g. enumerate, zip)
+            llvm::Type *elemTy = getListElementType(iterable);
+            auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
+            if (!structTy || structTy->getNumElements() != 2)
+                throw std::runtime_error("for k, v requires a map or list of 2-element tuples");
+
+            llvm::Type *firstTy = structTy->getElementType(0);
+            llvm::Type *secondTy = structTy->getElementType(1);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
+
+            emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
+                llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
+                llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
+                llvm::Value *first = builder_.CreateExtractValue(tuple, 0, "for_first");
+                llvm::Value *second = builder_.CreateExtractValue(tuple, 1, "for_second");
+                if (s->var_name != "_") {
+                    llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, firstTy);
+                    builder_.CreateStore(first, firstVar);
+                }
+                if (*s->var_name2 != "_") {
+                    llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, secondTy);
+                    builder_.CreateStore(second, secondVar);
+                }
+            });
+            return;
+        }
 
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
         llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
@@ -400,50 +429,16 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.body", fn_);
-        llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "for.step", fn_);
-        llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
-
-        builder_.CreateBr(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
-        builder_.CreateCondBr(cond, bodyBB, endBB);
-
-        builder_.SetInsertPoint(bodyBB);
-        loop_stack_.push_back({stepBB, endBB});
-        pushScope();
-
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-        llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
-        llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
-        llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
-        llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
-
-        llvm::AllocaInst *keyVar = getOrCreateVar(s->var_name, keyTy);
-        builder_.CreateStore(key, keyVar);
-        llvm::AllocaInst *valVar = getOrCreateVar(*s->var_name2, valTy);
-        builder_.CreateStore(val, valVar);
-
-        for (auto &stmt : s->body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-        popScope();
-        loop_stack_.pop_back();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(stepBB);
-
-        builder_.SetInsertPoint(stepBB);
-        llvm::Value *iNext = builder_.CreateAdd(
-            builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
-        builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
-
-        builder_.SetInsertPoint(endBB);
+        emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
+            llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
+            llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
+            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
+            llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
+            llvm::AllocaInst *keyVar = getOrCreateVar(s->var_name, keyTy);
+            builder_.CreateStore(key, keyVar);
+            llvm::AllocaInst *valVar = getOrCreateVar(*s->var_name2, valTy);
+            builder_.CreateStore(val, valVar);
+        });
         return;
     }
 
@@ -457,15 +452,22 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     if (!elemTy)
         throw std::runtime_error("cannot determine element type for for loop iterable");
 
-    // Get length
     llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
-
-    // Get data pointer
     llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
 
-    // Create index variable
+    emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
+        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
+        llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
+        builder_.CreateStore(elem, loopVar);
+    });
+}
+
+void CodeGen::emitIndexedForLoop(llvm::Value *length,
+                                  std::vector<StmtNode> &body,
+                                  std::function<void(llvm::Value *iCur)> bindVars) {
     llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
@@ -475,27 +477,19 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
 
     builder_.CreateBr(condBB);
-
-    // cond: i < length
     builder_.SetInsertPoint(condBB);
     llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
     llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
-    // body: load element and execute body
     builder_.SetInsertPoint(bodyBB);
     loop_stack_.push_back({stepBB, endBB});
     pushScope();
 
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
-    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
+    bindVars(iCur);
 
-    // Create loop variable in scope
-    llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
-    builder_.CreateStore(elem, loopVar);
-
-    for (auto &stmt : s->body)
+    for (auto &stmt : body)
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
     popScope();
@@ -503,7 +497,6 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     if (!builder_.GetInsertBlock()->getTerminator())
         builder_.CreateBr(stepBB);
 
-    // step: i++
     builder_.SetInsertPoint(stepBB);
     llvm::Value *iNext = builder_.CreateAdd(
         builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
@@ -915,6 +908,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (hasDirective(s->directives, "native")) {
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
+
+        // Register argument count for native function overload
+        native_fn_arg_counts_[s->name].push_back(s->params.size());
         return;
     }
 

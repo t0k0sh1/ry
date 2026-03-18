@@ -78,6 +78,41 @@ int main(int argc, char *argv[]) {
         ModuleLoader loader;
         prog = loader.resolveImports(prog, referrer_dir);
 
+        // Load prelude (@native declarations from core/*.ry)
+        namespace fs = std::filesystem;
+        {
+            fs::path exe_dir = fs::path(argv[0]).parent_path();
+            std::error_code ec;
+            exe_dir = fs::canonical(exe_dir, ec);
+            fs::path core_dir = exe_dir.parent_path() / "core";  // build/../core
+            if (!fs::exists(core_dir))
+                core_dir = exe_dir / "core";
+            if (fs::exists(core_dir)) {
+                std::vector<std::string> prelude_files = {
+                    "builtins.ry", "str.ry", "convert.ry",
+                    "list.ry", "map.ry", "set.ry", "higher_order.ry"
+                };
+                Program prelude;
+                for (const auto &f : prelude_files) {
+                    std::string fpath = (core_dir / f).string();
+                    if (!fs::exists(fpath))
+                        continue;
+                    try {
+                        Program pmod = loadAndParse(fpath);
+                        prelude.insert(prelude.end(),
+                            std::make_move_iterator(pmod.begin()),
+                            std::make_move_iterator(pmod.end()));
+                    } catch (const std::exception &e) {
+                        errs() << "Warning: failed to load prelude " << f
+                               << ": " << e.what() << "\n";
+                    }
+                }
+                prog.insert(prog.begin(),
+                    std::make_move_iterator(prelude.begin()),
+                    std::make_move_iterator(prelude.end()));
+            }
+        }
+
         // CodeGen -> ThreadSafeModule
         CodeGen cg(test_mode);
         ThreadSafeModule tsm = cg.compile(prog);
