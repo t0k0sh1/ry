@@ -79,7 +79,14 @@ let names: StringList = ["Alice", "Bob"]
 
 > **命名規則**: 型エイリアス名は PascalCase（例: `Meters`、`StringList`）を使用する必要があります。コンパイラがこの規則を強制します。
 
-型エイリアスはリテラル型・範囲型にも使用できます:
+型エイリアスは関数型、リテラル型、範囲型にも使用できます:
+
+```python
+type Callback = fn(int, int) -> int
+
+let add: Callback = fn(a: int, b: int): a + b
+print(add(3, 4))    # 7
+```
 
 ```python
 type Month = 1..12

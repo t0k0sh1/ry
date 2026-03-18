@@ -1181,6 +1181,45 @@ TEST_F(CodeGenTest, TypeAliasIntLiteralType) {
     EXPECT_EQ(runSource(src), "5\n");
 }
 
+// ===== 関数型エイリアス =====
+
+TEST_F(CodeGenTest, TypeAliasFnType) {
+    std::string src =
+        "type Callback = fn(int, int) -> int\n"
+        "let add: Callback = fn(a: int, b: int): a + b\n"
+        "print(add(3, 4))";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, TypeAliasFnTypeParam) {
+    std::string src =
+        "type BinOp = fn(int, int) -> int\n"
+        "fn apply(f: BinOp, a: int, b: int) -> int:\n"
+        "    return f(a, b)\n"
+        "let res = apply(fn(x: int, y: int): x + y, 10, 20)\n"
+        "print(res)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
+
+TEST_F(CodeGenTest, TypeAliasFnTypeLambdaParam) {
+    std::string src =
+        "type Mapper = fn(int) -> int\n"
+        "let apply = fn(f: Mapper, x: int): f(x)\n"
+        "print(apply(fn(n: int): n * 3, 7))";
+    EXPECT_EQ(runSource(src), "21\n");
+}
+
+TEST_F(CodeGenTest, TypeAliasFnTypeNamedFn) {
+    std::string src =
+        "type BinOp = fn(int, int) -> int\n"
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn apply(f: BinOp, a: int, b: int) -> int:\n"
+        "    return f(a, b)\n"
+        "print(apply(add, 5, 6))";
+    EXPECT_EQ(runSource(src), "11\n");
+}
+
 // ===== 関数パラメータの制約 =====
 
 TEST_F(CodeGenTest, FnParamRangeTypeSuccess) {

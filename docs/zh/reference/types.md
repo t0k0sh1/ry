@@ -79,7 +79,14 @@ let names: StringList = ["Alice", "Bob"]
 
 > **命名慣例**：型別別名名稱必須使用 PascalCase（如 `Meters`、`StringList`）。編譯器會強制執行此慣例。
 
-型別別名也可以用於字面量型別和範圍型別：
+型別別名也可以用於函式型別、字面量型別和範圍型別：
+
+```python
+type Callback = fn(int, int) -> int
+
+let add: Callback = fn(a: int, b: int): a + b
+print(add(3, 4))    # 7
+```
 
 ```python
 type Month = 1..12

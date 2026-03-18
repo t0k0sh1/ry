@@ -253,9 +253,10 @@ void CodeGen::emitVarDecl(const std::string &name,
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
-        } else if (type_annotation && type_annotation->size() > 3 &&
-                   type_annotation->substr(0, 3) == "fn(") {
-            fn_type_info_[ptr] = parseFnTypeAnnotation(*type_annotation);
+        } else if (type_annotation) {
+            if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
+                fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
+            }
         }
     }
 
@@ -989,13 +990,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 if (kTy) map_key_types_[alloca] = kTy;
                 if (vTy) map_value_types_[alloca] = vTy;
             }
-            // Track fn type info for function-typed parameters
-            if (ptype.size() > 3 && ptype.substr(0, 3) == "fn(") {
-                fn_type_info_[alloca] = parseFnTypeAnnotation(ptype);
-            }
-            // Track and emit constraint check for literal/range type parameters
+            // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
+                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
+                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+                }
                 auto constraint = parseTypeConstraint(resolvedPtype);
                 if (constraint) {
                     type_constraints_[alloca] = *constraint;
