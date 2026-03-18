@@ -1116,6 +1116,13 @@ TEST(ParserTest, PascalCaseTypeAliasRequired) {
     EXPECT_THROW(parseStr("type my_int = int"), std::runtime_error);
 }
 
+TEST(ParserTest, TypeAliasFnType) {
+    Program prog = parseStr("type Callback = fn(int, int) -> int");
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "Callback");
+    EXPECT_EQ(ta.target_type, "fn(int, int) -> int");
+}
+
 TEST(ParserTest, SnakeCaseForLoopVariable) {
     EXPECT_THROW(parseStr("for myVar in xs:\n    print(myVar)"), std::runtime_error);
 }

@@ -79,7 +79,14 @@ let names: StringList = ["Alice", "Bob"]
 
 > **Naming convention**: Type alias names must use PascalCase (e.g., `Meters`, `StringList`). The compiler enforces this convention.
 
-Type aliases also work with literal types and range types:
+Type aliases also work with function types, literal types, and range types:
+
+```python
+type Callback = fn(int, int) -> int
+
+let add: Callback = fn(a: int, b: int): a + b
+print(add(3, 4))    # 7
+```
 
 ```python
 type Month = 1..12
