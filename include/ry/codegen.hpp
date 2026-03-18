@@ -124,6 +124,26 @@ private:
 
     void emitDeprecationWarning(const std::string &name);
 
+    // Literal/range type constraints
+    struct TypeConstraint {
+        enum Kind { IntLiteral, StrLiteral, IntRange };
+        Kind kind;
+        std::vector<int64_t> int_values;    // for IntLiteral
+        std::vector<std::string> str_values; // for StrLiteral
+        int64_t range_low = 0, range_high = 0; // for IntRange
+    };
+    std::unordered_map<llvm::AllocaInst*, TypeConstraint> type_constraints_;
+    int constraint_err_counter_ = 0;
+
+    bool isIntLiteralType(const std::string &typeName);
+    bool isStrLiteralType(const std::string &typeName);
+    bool isRangeType(const std::string &typeName);
+    bool isLiteralUnionType(const std::string &typeName);
+    std::optional<TypeConstraint> parseTypeConstraint(const std::string &typeName);
+    void emitConstraintCheck(llvm::Value *val, const TypeConstraint &constraint,
+                              const std::string &varName);
+    std::string resolveTypeAlias(const std::string &typeName);
+
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
 
