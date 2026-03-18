@@ -9,10 +9,19 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 ## 実行方法
 
 ```bash
-ry test test_file.ry
+ry test              # プロジェクト内の *.test.ry を自動検出して実行
+ry test test_file.ry # 特定のテストファイルを実行
 ```
 
-テストの終了コードは失敗したテスト数です（0 = 全パス）。
+### 自動検出モード
+
+`ry test` を引数なしで実行すると:
+
+1. `ry.toml` を探してプロジェクトルートを特定
+2. プロジェクトルート以下の `*.test.ry` ファイルを再帰的に検出
+3. 各ファイルを実行し、結果を集計
+
+終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
 
 ---
 
@@ -101,4 +110,3 @@ describe("Booleans"):
 
 - `describe` のネストは未対応
 - `before_each` / `after_each` は未対応
-- テストファイルのglob実行（`ry test tests/`）は未対応

@@ -17,16 +17,14 @@ my-project/
   ry.toml          # Project configuration file
   src/
     main.ry        # Entry point (sample code)
-  test/            # Test code directory
 ```
 
 ### Behavior
 
 1. Exits with an error if `ry.toml` already exists
 2. Creates the `src/` directory (if it doesn't exist)
-3. Creates the `test/` directory (if it doesn't exist)
-4. Generates `ry.toml` (`name` is set to the current directory name)
-5. Generates `src/main.ry` (skipped if it already exists)
+3. Generates `ry.toml` (`name` is set to the current directory name)
+4. Generates `src/main.ry` (skipped if it already exists)
 
 ---
 
@@ -70,7 +68,6 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-test = "test"
 ```
 
 ### `[project]` Section
@@ -86,7 +83,6 @@ test = "test"
 | Key | Description |
 |------|------|
 | `src` | Source code directory |
-| `test` | Test code directory |
 
 ### TOML Subset Specification
 

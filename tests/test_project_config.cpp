@@ -24,7 +24,6 @@ test = "test"
     EXPECT_EQ(config.version, "1.0.0");
     EXPECT_EQ(config.entry, "src/main.ry");
     EXPECT_EQ(config.src_dir, "src");
-    EXPECT_EQ(config.test_dir, "test");
 }
 
 TEST(ProjectConfigParser, LoadWithCommentsAndBlankLines) {
@@ -40,14 +39,12 @@ entry = "src/main.ry"
 [paths]
 # Source directory
 src = "src"
-test = "tests"
 )";
     auto config = ProjectConfigParser::load(toml);
     EXPECT_EQ(config.name, "test-project");
     EXPECT_EQ(config.version, "0.1.0");
     EXPECT_EQ(config.entry, "src/main.ry");
     EXPECT_EQ(config.src_dir, "src");
-    EXPECT_EQ(config.test_dir, "tests");
 }
 
 TEST(ProjectConfigParser, SerializeRoundTrip) {
@@ -56,7 +53,6 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     original.version = "2.0.0";
     original.entry = "src/main.ry";
     original.src_dir = "src";
-    original.test_dir = "test";
 
     std::string toml = ProjectConfigParser::serialize(original);
     auto loaded = ProjectConfigParser::load(toml);
@@ -65,7 +61,6 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     EXPECT_EQ(loaded.version, original.version);
     EXPECT_EQ(loaded.entry, original.entry);
     EXPECT_EQ(loaded.src_dir, original.src_dir);
-    EXPECT_EQ(loaded.test_dir, original.test_dir);
 }
 
 TEST(ProjectConfigParser, LoadInvalidLine) {
@@ -135,7 +130,7 @@ TEST_F(CmdInitTest, CreatesProjectStructure) {
 
     EXPECT_TRUE(fs::exists(tmpdir / "ry.toml"));
     EXPECT_TRUE(fs::is_directory(tmpdir / "src"));
-    EXPECT_TRUE(fs::is_directory(tmpdir / "test"));
+    EXPECT_FALSE(fs::exists(tmpdir / "test"));
     EXPECT_TRUE(fs::exists(tmpdir / "src" / "main.ry"));
 
     // Verify ry.toml content
