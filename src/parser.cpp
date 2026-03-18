@@ -1677,7 +1677,7 @@ ExprPtr Parser::parseTrailingBlockAsLambda() {
     // ':' is already consumed. Parse the block and wrap it in a LambdaExpr.
     auto body = parseBlock();
     auto lambda = std::make_unique<LambdaExpr>();
-    lambda->return_type = "Unit";
+    lambda->return_type = "";
     lambda->body = std::move(body);
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(lambda);

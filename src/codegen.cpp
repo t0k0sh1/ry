@@ -261,11 +261,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
-    if (test_mode_ && s.callee == "describe") {
+    if (s.callee == "describe") {
         emitDescribeCall(s);
         return;
     }
-    if (test_mode_ && s.callee == "it") {
+    if (s.callee == "it") {
         emitItCall(s);
         return;
     }

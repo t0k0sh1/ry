@@ -28,7 +28,7 @@ describe("description"):
 ```
 
 - `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda passed as the last argument
-- Only `it` blocks can be written inside a `describe` block
+- `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
 

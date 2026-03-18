@@ -636,11 +636,11 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 // ===== Test: describe/it (trailing block) =====
 
 static LambdaExpr &extractTrailingLambda(CallStmt &s, const std::string &callee) {
-    if (s.args.size() < 2)
-        throw std::runtime_error(callee + "() requires a description string and a trailing block");
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[1]->data);
+    if (s.args.size() != 2)
+        throw std::runtime_error(callee + "() requires exactly one description string and a trailing block");
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
     if (!lambda)
-        throw std::runtime_error(callee + "() second argument must be a trailing block");
+        throw std::runtime_error(callee + "() last argument must be a trailing block");
     return **lambda;
 }
 
@@ -659,6 +659,8 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
     llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
 
     llvm::Value *descName = emitExpr(*s.args[0]);
+    if (!descName->getType()->isPointerTy())
+        throw std::runtime_error("describe() first argument must be a string");
     builder_.CreateCall(descBeginFn, {descName});
 
     for (auto &stmt : lambda.body)
@@ -682,6 +684,8 @@ void CodeGen::emitItCall(CallStmt &s) {
     llvm::FunctionCallee itEndFn   = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
 
     llvm::Value *itName = emitExpr(*s.args[0]);
+    if (!itName->getType()->isPointerTy())
+        throw std::runtime_error("it() first argument must be a string");
 
     // Create a test function for this it-block
     std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
