@@ -226,20 +226,34 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         emitDeprecationWarning(callee);
     std::vector<llvm::Value*> argVals;
     llvm::Function *fn = resolveOverload(callee, args, argVals);
-    if (fn->getReturnType()->isVoidTy())
-        return builder_.CreateCall(fn, argVals);
-    llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
-    // Propagate result type info from overload entry
+
+    // Find the matching overload entry (single scan for constraints + result type)
+    OverloadEntry *matchedEntry = nullptr;
     auto fit = functions_.find(callee);
     if (fit != functions_.end()) {
         for (auto &entry : fit->second) {
-            if (entry.func == fn && !entry.returnTypeName.empty()) {
-                if (isResultTypeName(entry.returnTypeName)) {
-                    result_value_types_[callResult] = entry.returnTypeName;
-                }
-                break;
-            }
+            if (entry.func == fn) { matchedEntry = &entry; break; }
         }
+    }
+
+    // Check literal/range constraints on arguments at call site
+    if (matchedEntry) {
+        for (size_t i = 0; i < matchedEntry->paramTypeNames.size() && i < argVals.size(); ++i) {
+            std::string resolvedPtype = resolveTypeAlias(matchedEntry->paramTypeNames[i]);
+            auto constraint = parseTypeConstraint(resolvedPtype);
+            if (constraint)
+                emitConstraintCheck(argVals[i], *constraint, matchedEntry->paramTypeNames[i]);
+        }
+    }
+
+    if (fn->getReturnType()->isVoidTy())
+        return builder_.CreateCall(fn, argVals);
+    llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
+
+    // Propagate result type info from overload entry
+    if (matchedEntry && !matchedEntry->returnTypeName.empty()) {
+        if (isResultTypeName(matchedEntry->returnTypeName))
+            result_value_types_[callResult] = matchedEntry->returnTypeName;
     }
     return callResult;
 }
@@ -331,18 +345,25 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // Check type alias (with cycle detection)
     auto aliasIt = type_aliases_.find(typeName);
     if (aliasIt != type_aliases_.end()) {
-        std::unordered_set<std::string> visited;
-        std::string current = typeName;
-        while (true) {
-            if (!visited.insert(current).second)
-                throw std::runtime_error("Circular type alias detected: " + typeName);
-            auto it = type_aliases_.find(current);
-            if (it == type_aliases_.end())
-                break;
-            current = it->second;
-        }
-        return resolveType(current);
+        std::string resolved = resolveTypeAlias(typeName);
+        return resolveType(resolved);
     }
+
+    // Int literal type: "42", "-5"
+    if (isIntLiteralType(typeName))
+        return i64Ty_;
+
+    // Range type: "1..12"
+    if (isRangeType(typeName))
+        return i64Ty_;
+
+    // String literal type: "\"N\""
+    if (isStrLiteralType(typeName))
+        return ptrTy_;
+
+    // Literal union type: "0 | 1 | 2" or "\"N\" | \"S\""
+    if (isLiteralUnionType(typeName))
+        return parseTypeConstraint(typeName)->kind == TypeConstraint::IntLiteral ? i64Ty_ : ptrTy_;
 
     // Union type: "int | str"
     if (typeName.find(" | ") != std::string::npos) {
@@ -615,6 +636,226 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     } else {
         llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
+    }
+}
+
+// ===== Literal/Range type helpers =====
+
+std::string CodeGen::resolveTypeAlias(const std::string &typeName) {
+    std::unordered_set<std::string> visited;
+    std::string current = typeName;
+    while (true) {
+        if (!visited.insert(current).second)
+            throw std::runtime_error("Circular type alias detected: " + typeName);
+        auto it = type_aliases_.find(current);
+        if (it == type_aliases_.end())
+            break;
+        current = it->second;
+    }
+    return current;
+}
+
+bool CodeGen::isIntLiteralType(const std::string &typeName) {
+    if (typeName.empty()) return false;
+    size_t start = (typeName[0] == '-') ? 1 : 0;
+    if (start >= typeName.size()) return false;
+    for (size_t i = start; i < typeName.size(); ++i) {
+        if (!std::isdigit(typeName[i])) return false;
+    }
+    return true;
+}
+
+bool CodeGen::isStrLiteralType(const std::string &typeName) {
+    if (typeName.size() < 2 || typeName.front() != '"' || typeName.back() != '"')
+        return false;
+    // Ensure it's a single quoted string, not a union like "N" | "S"
+    // Check there's exactly one opening and one closing quote
+    size_t quoteCount = 0;
+    for (char c : typeName)
+        if (c == '"') quoteCount++;
+    return quoteCount == 2;
+}
+
+bool CodeGen::isRangeType(const std::string &typeName) {
+    auto pos = typeName.find("..");
+    if (pos == std::string::npos || pos == 0 || pos == typeName.size() - 2)
+        return false;
+    std::string lo = typeName.substr(0, pos);
+    std::string hi = typeName.substr(pos + 2);
+    return isIntLiteralType(lo) && isIntLiteralType(hi);
+}
+
+bool CodeGen::isLiteralUnionType(const std::string &typeName) {
+    if (typeName.find(" | ") == std::string::npos) return false;
+    auto components = parseUnionComponents(typeName);
+    if (components.empty()) return false;
+    bool allInt = true, allStr = true;
+    for (auto &c : components) {
+        if (allInt && !isIntLiteralType(c)) allInt = false;
+        if (allStr && !isStrLiteralType(c)) allStr = false;
+        if (!allInt && !allStr) return false;
+    }
+    return allInt || allStr;
+}
+
+std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::string &typeName) {
+    // Callers are responsible for resolving type aliases before calling this function.
+
+    // Range type: "1..12"
+    if (isRangeType(typeName)) {
+        auto pos = typeName.find("..");
+        TypeConstraint tc;
+        tc.kind = TypeConstraint::IntRange;
+        tc.range_low = std::stoll(typeName.substr(0, pos));
+        tc.range_high = std::stoll(typeName.substr(pos + 2));
+        if (tc.range_low > tc.range_high)
+            throw std::runtime_error("invalid range type: low bound " +
+                std::to_string(tc.range_low) + " > high bound " +
+                std::to_string(tc.range_high));
+        return tc;
+    }
+
+    // Single int literal: "42"
+    if (isIntLiteralType(typeName)) {
+        TypeConstraint tc;
+        tc.kind = TypeConstraint::IntLiteral;
+        tc.int_values.push_back(std::stoll(typeName));
+        return tc;
+    }
+
+    // Single str literal: "\"N\""
+    if (isStrLiteralType(typeName)) {
+        TypeConstraint tc;
+        tc.kind = TypeConstraint::StrLiteral;
+        tc.str_values.push_back(typeName.substr(1, typeName.size() - 2));
+        return tc;
+    }
+
+    // Union of literals
+    if (typeName.find(" | ") != std::string::npos) {
+        auto components = parseUnionComponents(typeName);
+        if (components.empty()) return std::nullopt;
+
+        // Check if all int literals
+        bool allInt = true;
+        for (auto &c : components) {
+            if (!isIntLiteralType(c)) { allInt = false; break; }
+        }
+        if (allInt) {
+            TypeConstraint tc;
+            tc.kind = TypeConstraint::IntLiteral;
+            for (auto &c : components)
+                tc.int_values.push_back(std::stoll(c));
+            return tc;
+        }
+
+        // Check if all str literals
+        bool allStr = true;
+        for (auto &c : components) {
+            if (!isStrLiteralType(c)) { allStr = false; break; }
+        }
+        if (allStr) {
+            TypeConstraint tc;
+            tc.kind = TypeConstraint::StrLiteral;
+            for (auto &c : components)
+                tc.str_values.push_back(c.substr(1, c.size() - 2));
+            return tc;
+        }
+    }
+
+    return std::nullopt;
+}
+
+void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constraint,
+                                   const std::string &varName) {
+    if (constraint.kind == TypeConstraint::IntLiteral) {
+        // Compile-time check if constant
+        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+            int64_t v = ci->getSExtValue();
+            bool found = false;
+            for (int64_t allowed : constraint.int_values) {
+                if (v == allowed) { found = true; break; }
+            }
+            if (!found) {
+                std::string allowed_str;
+                for (size_t i = 0; i < constraint.int_values.size(); ++i) {
+                    if (i > 0) allowed_str += " | ";
+                    allowed_str += std::to_string(constraint.int_values[i]);
+                }
+                throw std::runtime_error(
+                    "value " + std::to_string(v) + " is not in literal type " + allowed_str +
+                    " for variable '" + varName + "'");
+            }
+            return; // Compile-time check passed
+        }
+        // Runtime check: compare against each allowed value, OR results
+        llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
+        for (int64_t allowed : constraint.int_values) {
+            llvm::Value *cmp = builder_.CreateICmpEQ(
+                val, llvm::ConstantInt::get(i64Ty_, allowed), "lit_cmp");
+            anyMatch = builder_.CreateOr(anyMatch, cmp, "lit_or");
+        }
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
+        builder_.CreateCondBr(anyMatch, okBB, failBB);
+        builder_.SetInsertPoint(failBB);
+        emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
+                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
+        builder_.SetInsertPoint(okBB);
+
+    } else if (constraint.kind == TypeConstraint::IntRange) {
+        // Compile-time check if constant
+        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+            int64_t v = ci->getSExtValue();
+            if (v < constraint.range_low || v > constraint.range_high) {
+                throw std::runtime_error(
+                    "value " + std::to_string(v) + " is out of range " +
+                    std::to_string(constraint.range_low) + ".." +
+                    std::to_string(constraint.range_high) +
+                    " for variable '" + varName + "'");
+            }
+            return; // Compile-time check passed
+        }
+        // Runtime check: low <= val <= high
+        llvm::Value *geLow = builder_.CreateICmpSGE(
+            val, llvm::ConstantInt::get(i64Ty_, constraint.range_low), "range_ge");
+        llvm::Value *leHigh = builder_.CreateICmpSLE(
+            val, llvm::ConstantInt::get(i64Ty_, constraint.range_high), "range_le");
+        llvm::Value *inRange = builder_.CreateAnd(geLow, leHigh, "in_range");
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
+        builder_.CreateCondBr(inRange, okBB, failBB);
+        builder_.SetInsertPoint(failBB);
+        emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
+                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
+        builder_.SetInsertPoint(okBB);
+
+    } else if (constraint.kind == TypeConstraint::StrLiteral) {
+        // Compile-time check: if the value is a global string constant, check it
+        if (auto *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+            // Can't easily extract string from ConstantExpr, fall through to runtime
+        }
+        // For string literals, we need runtime strcmp checks
+        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(
+            i32Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+
+        llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
+        for (const auto &allowed : constraint.str_values) {
+            llvm::Constant *allowedStr = builder_.CreateGlobalString(
+                allowed, ".str_lit_" + std::to_string(constraint_err_counter_) + "_" + allowed);
+            llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, allowedStr}, "strcmp_res");
+            llvm::Value *isEq = builder_.CreateICmpEQ(
+                cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
+            anyMatch = builder_.CreateOr(anyMatch, isEq, "str_or");
+        }
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
+        builder_.CreateCondBr(anyMatch, okBB, failBB);
+        builder_.SetInsertPoint(failBB);
+        emitRuntimeError("runtime error: value not in allowed set for '" + varName + "'\n",
+                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
+        builder_.SetInsertPoint(okBB);
     }
 }
 

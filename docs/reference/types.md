@@ -22,6 +22,9 @@
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | Result type for error handling |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
+| Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
+| String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
+| Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
 
 ## Type Annotation Syntax
 
@@ -75,6 +78,78 @@ let names: StringList = ["Alice", "Bob"]
 ```
 
 > **Naming convention**: Type alias names must use PascalCase (e.g., `Meters`, `StringList`). The compiler enforces this convention.
+
+Type aliases also work with literal types and range types:
+
+```python
+type Month = 1..12
+type Direction = "N" | "S" | "E" | "W"
+type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+
+let m: Month = 6
+let d: Direction = "N"
+let n: Digit = 5
+```
+
+---
+
+## Literal Types
+
+A literal type restricts a variable to specific constant values. The compiler checks these constraints at compile time for constant values, and emits runtime checks for dynamic values.
+
+### Int Literal Type
+
+```python
+let x: 42 = 42           # single literal type
+let y: 0 | 1 = 0         # union of int literals
+var z: 0 | 1 = 0
+z = 1                     # OK
+# z = 2                   # compile error (constant) or runtime error (dynamic)
+```
+
+### String Literal Type
+
+```python
+let dir: "N" | "S" | "E" | "W" = "N"
+# let bad: "N" | "S" = "X"    # compile error
+```
+
+### Constraint Checking
+
+- **Compile time**: If the assigned value is a constant (`ConstantInt` or string literal), the constraint is checked at compile time and a compile error is raised on violation.
+- **Runtime**: If the value is dynamic (e.g., from a function call), the constraint is checked at runtime and the program exits with an error on violation.
+
+---
+
+## Range Type
+
+A range type constrains an integer variable to a contiguous range of values (inclusive on both ends).
+
+```python
+let month: 1..12 = 6       # OK
+# let bad: 1..12 = 0       # compile error: out of range
+# let bad: 1..12 = 13      # compile error: out of range
+
+let t: -10..10 = -5        # negative ranges are supported
+```
+
+### With `var` (Runtime Check)
+
+```python
+var x: 1..12 = 6
+x = 12                      # OK
+# x = dynamic_value()       # runtime check: exits if out of range
+```
+
+### In Function Parameters
+
+```python
+fn set_month(m: 1..12) -> int:
+    return m
+
+set_month(6)                # OK
+# set_month(13)             # compile error (constant argument)
+```
 
 ---
 

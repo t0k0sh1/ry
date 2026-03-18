@@ -1007,3 +1007,210 @@ TEST_F(CodeGenTest, NoneKeyword) {
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
 }
+
+// ===== int リテラル型 =====
+
+TEST_F(CodeGenTest, IntLiteralTypeSingle) {
+    std::string src =
+        "let x: 42 = 42\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, IntLiteralTypeUnionSuccess) {
+    std::string src =
+        "let x: 0 | 1 = 0\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, IntLiteralTypeUnionFail) {
+    std::string src = "let x: 0 | 1 = 2";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntLiteralTypeVarReassignSuccess) {
+    std::string src =
+        "var x: 0 | 1 = 0\n"
+        "x = 1\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, IntLiteralTypeVarReassignConstFail) {
+    std::string src =
+        "var x: 0 | 1 = 0\n"
+        "x = 2";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntLiteralTypeVarReassignDynamicFail) {
+    std::string src =
+        "fn get_two() -> int:\n"
+        "    return 2\n"
+        "var x: 0 | 1 = 0\n"
+        "x = get_two()";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+// ===== 範囲型 =====
+
+TEST_F(CodeGenTest, RangeTypeSuccess) {
+    std::string src =
+        "let month: 1..12 = 6\n"
+        "print(month)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+TEST_F(CodeGenTest, RangeTypeTooLow) {
+    std::string src = "let month: 1..12 = 0";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RangeTypeTooHigh) {
+    std::string src = "let month: 1..12 = 13";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RangeTypeBoundaryLow) {
+    std::string src =
+        "let x: 1..12 = 1\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, RangeTypeBoundaryHigh) {
+    std::string src =
+        "let x: 1..12 = 12\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "12\n");
+}
+
+TEST_F(CodeGenTest, RangeTypeNegative) {
+    std::string src =
+        "let t: -10..10 = -5\n"
+        "print(t)";
+    EXPECT_EQ(runSource(src), "-5\n");
+}
+
+TEST_F(CodeGenTest, RangeTypeVarReassignRuntime) {
+    std::string src =
+        "var x: 1..12 = 6\n"
+        "x = 12\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "12\n");
+}
+
+TEST_F(CodeGenTest, RangeTypeVarReassignConstFail) {
+    std::string src =
+        "var x: 1..12 = 6\n"
+        "x = 13";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RangeTypeVarReassignDynamicFail) {
+    std::string src =
+        "fn get_thirteen() -> int:\n"
+        "    return 13\n"
+        "var x: 1..12 = 6\n"
+        "x = get_thirteen()";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+// ===== str リテラル型 =====
+
+TEST_F(CodeGenTest, StrLiteralTypeSuccess) {
+    std::string src =
+        "let dir: \"N\" | \"S\" | \"E\" | \"W\" = \"N\"\n"
+        "print(dir)";
+    EXPECT_EQ(runSource(src), "N\n");
+}
+
+TEST_F(CodeGenTest, StrLiteralTypeFail) {
+    std::string src = "let dir: \"N\" | \"S\" | \"E\" | \"W\" = \"X\"";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StrLiteralTypeVarReassignSuccess) {
+    std::string src =
+        "var dir: \"N\" | \"S\" = \"N\"\n"
+        "dir = \"S\"\n"
+        "print(dir)";
+    EXPECT_EQ(runSource(src), "S\n");
+}
+
+TEST_F(CodeGenTest, StrLiteralTypeVarReassignDynamicFail) {
+    std::string src =
+        "fn get_x() -> str:\n"
+        "    return \"X\"\n"
+        "var dir: \"N\" | \"S\" = \"N\"\n"
+        "dir = get_x()";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+// ===== 型エイリアスとリテラル型/範囲型 =====
+
+TEST_F(CodeGenTest, TypeAliasRangeType) {
+    std::string src =
+        "type Month = 1..12\n"
+        "let m: Month = 6\n"
+        "print(m)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+TEST_F(CodeGenTest, TypeAliasRangeTypeFail) {
+    std::string src =
+        "type Month = 1..12\n"
+        "let m: Month = 13";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TypeAliasStrLiteralType) {
+    std::string src =
+        "type Direction = \"N\" | \"S\" | \"E\" | \"W\"\n"
+        "let d: Direction = \"N\"\n"
+        "print(d)";
+    EXPECT_EQ(runSource(src), "N\n");
+}
+
+TEST_F(CodeGenTest, TypeAliasIntLiteralType) {
+    std::string src =
+        "type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9\n"
+        "let d: Digit = 5\n"
+        "print(d)";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+// ===== 関数パラメータの制約 =====
+
+TEST_F(CodeGenTest, FnParamRangeTypeSuccess) {
+    std::string src =
+        "fn set_month(m: 1..12) -> int:\n"
+        "    return m\n"
+        "print(set_month(6))";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+TEST_F(CodeGenTest, FnParamRangeTypeConstFail) {
+    std::string src =
+        "fn set_month(m: 1..12) -> int:\n"
+        "    return m\n"
+        "set_month(13)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, FnParamIntLiteralSuccess) {
+    std::string src =
+        "fn f(x: 0 | 1) -> int:\n"
+        "    return x\n"
+        "print(f(1))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, FnParamIntLiteralFail) {
+    std::string src =
+        "fn f(x: 0 | 1) -> int:\n"
+        "    return x\n"
+        "f(2)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}

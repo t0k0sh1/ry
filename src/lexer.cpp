@@ -353,7 +353,8 @@ Token Lexer::readToken() {
         }
         while (pos_ < src_.size() && std::isdigit(src_[pos_]))
             ++pos_;
-        if (pos_ < src_.size() && src_[pos_] == '.') {
+        if (pos_ < src_.size() && src_[pos_] == '.' &&
+            !(pos_ + 1 < src_.size() && src_[pos_ + 1] == '.')) {
             ++pos_;
             while (pos_ < src_.size() && std::isdigit(src_[pos_]))
                 ++pos_;

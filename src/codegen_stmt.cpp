@@ -109,29 +109,66 @@ void CodeGen::emitVarDecl(const std::string &name,
         return;
     }
 
+    // Resolve type alias and parse constraint once for the entire function
+    std::string resolvedAnnot;
+    std::optional<TypeConstraint> constraint;
+    if (type_annotation) {
+        resolvedAnnot = resolveTypeAlias(*type_annotation);
+        constraint = parseTypeConstraint(resolvedAnnot);
+
+        // Pre-emit compile-time check for string literal constraints
+        if (constraint && constraint->kind == TypeConstraint::StrLiteral) {
+            if (auto *se = std::get_if<StringExpr>(&value.data)) {
+                bool found = false;
+                for (auto &allowed : constraint->str_values) {
+                    if (se->value == allowed) { found = true; break; }
+                }
+                if (!found) {
+                    std::string allowed_str;
+                    for (size_t i = 0; i < constraint->str_values.size(); ++i) {
+                        if (i > 0) allowed_str += " | ";
+                        allowed_str += "\"" + constraint->str_values[i] + "\"";
+                    }
+                    throw std::runtime_error(
+                        "value \"" + se->value + "\" is not in literal type " + allowed_str +
+                        " for variable '" + name + "'");
+                }
+            }
+        }
+    }
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
     if (type_annotation) {
-        llvm::Type *annotTy = resolveType(*type_annotation);
-        if (annotTy != newTy) {
-            if (annotTy == i8Ty_ && newTy == i64Ty_) {
-                // int literal → byte: static range check for constants
-                if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                    int64_t v = ci->getSExtValue();
-                    if (v < 0 || v > 255)
-                        throw std::runtime_error(
-                            "byte value out of range (0-255): " + std::to_string(v));
-                }
-                val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
-                newTy = i8Ty_;
-            } else if (isUnionType(*type_annotation)) {
-                val = wrapInUnion(val, *type_annotation);
-                newTy = val->getType();
-            } else {
+        if (constraint) {
+            // Literal/range type: resolve to base type and check constraint
+            llvm::Type *annotTy = resolveType(resolvedAnnot);
+            if (annotTy != newTy)
                 throw std::runtime_error(
                     "type error: annotation '" + *type_annotation +
                     "' does not match expression type for variable '" + name + "'");
+            emitConstraintCheck(val, *constraint, name);
+        } else {
+            llvm::Type *annotTy = resolveType(*type_annotation);
+            if (annotTy != newTy) {
+                if (annotTy == i8Ty_ && newTy == i64Ty_) {
+                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                        int64_t v = ci->getSExtValue();
+                        if (v < 0 || v > 255)
+                            throw std::runtime_error(
+                                "byte value out of range (0-255): " + std::to_string(v));
+                    }
+                    val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
+                    newTy = i8Ty_;
+                } else if (isUnionType(*type_annotation)) {
+                    val = wrapInUnion(val, *type_annotation);
+                    newTy = val->getType();
+                } else {
+                    throw std::runtime_error(
+                        "type error: annotation '" + *type_annotation +
+                        "' does not match expression type for variable '" + name + "'");
+                }
             }
         }
     }
@@ -139,8 +176,12 @@ void CodeGen::emitVarDecl(const std::string &name,
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
 
-    // Track union value type
-    if (type_annotation && isUnionType(*type_annotation)) {
+    // Track type constraint for var reassignment checks
+    if (constraint)
+        type_constraints_[ptr] = *constraint;
+
+    // Track union value type (skip literal unions which use base types directly)
+    if (type_annotation && isUnionType(*type_annotation) && !constraint) {
         union_value_types_[ptr] = normalizeUnionType(*type_annotation);
     }
 
@@ -292,6 +333,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
                     "' cannot be reassigned to a different type");
             }
         }
+    }
+
+    // Check type constraint on reassignment
+    auto tcIt = type_constraints_.find(ptr);
+    if (tcIt != type_constraints_.end()) {
+        emitConstraintCheck(val, tcIt->second, s.name);
     }
 
     builder_.CreateStore(val, ptr);
@@ -953,6 +1000,17 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track Result type for result parameters
             if (isResultTypeName(ptype)) {
                 result_value_types_[alloca] = ptype;
+            }
+            // Track and emit constraint check for literal/range type parameters
+            {
+                std::string resolvedPtype = resolveTypeAlias(ptype);
+                auto constraint = parseTypeConstraint(resolvedPtype);
+                if (constraint) {
+                    type_constraints_[alloca] = *constraint;
+                    llvm::Value *argVal = builder_.CreateLoad(
+                        paramTypes[idx], alloca, s->params[idx].name + ".load");
+                    emitConstraintCheck(argVal, *constraint, s->params[idx].name);
+                }
             }
             ++idx;
         }

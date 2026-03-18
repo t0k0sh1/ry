@@ -1437,6 +1437,39 @@ std::string Parser::parseTypeNameSingle() {
         return name;
     }
 
+    // Int literal type (42, -10) or range type (1..12, -10..10)
+    if (lex_.peek().kind == TokenKind::Number || lex_.peek().kind == TokenKind::Minus) {
+        std::string name;
+        if (lex_.peek().kind == TokenKind::Minus) {
+            lex_.next(); // consume '-'
+            if (lex_.peek().kind != TokenKind::Number)
+                parseError("expected number after '-' in type");
+            name = "-" + lex_.peek().value;
+        } else {
+            name = lex_.peek().value;
+        }
+        lex_.next(); // consume number
+        // Range type: N..M
+        if (lex_.peek().kind == TokenKind::DotDot) {
+            lex_.next(); // consume '..'
+            bool negEnd = (lex_.peek().kind == TokenKind::Minus);
+            if (negEnd) lex_.next(); // consume '-'
+            if (lex_.peek().kind != TokenKind::Number)
+                parseError("expected number after '..' in range type");
+            std::string endVal = (negEnd ? "-" : "") + lex_.peek().value;
+            lex_.next(); // consume end number
+            return name + ".." + endVal;
+        }
+        return name;
+    }
+
+    // String literal type: "N"
+    if (lex_.peek().kind == TokenKind::String) {
+        std::string name = "\"" + lex_.peek().value + "\"";
+        lex_.next(); // consume string
+        return name;
+    }
+
     Token t = lex_.peek();
     if (t.kind != TokenKind::Ident)
         parseError(t.line, "expected type name");
