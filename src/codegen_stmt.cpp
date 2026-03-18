@@ -156,6 +156,18 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (elemTy)
             list_element_types_[ptr] = elemTy;
 
+        // --- Nested list tracking (for flatten) ---
+        {
+            auto nit = nested_list_element_types_.find(val);
+            if (nit != nested_list_element_types_.end())
+                nested_list_element_types_[ptr] = nit->second;
+            else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+                auto nit2 = nested_list_element_types_.find(load->getPointerOperand());
+                if (nit2 != nested_list_element_types_.end())
+                    nested_list_element_types_[ptr] = nit2->second;
+            }
+        }
+
         // --- Map tracking ---
         llvm::Type *keyTy = nullptr;
         llvm::Type *valTy = nullptr;

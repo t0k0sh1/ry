@@ -334,6 +334,36 @@ print(v)    # 2
 print(xs)   # [1, 3, 4]
 ```
 
+### remove
+
+Removes the first occurrence of the specified value from the list. Does nothing if the value is not found. This is a mutating operation.
+
+```python
+var xs = [1, 2, 3, 2, 4]
+remove(xs, 2)
+print(xs)   # [1, 3, 2, 4]
+```
+
+### distinct
+
+Returns a new list with duplicate elements removed. The original order is preserved (first occurrence kept). The original list is not modified.
+
+```python
+let xs = [1, 2, 3, 2, 1, 4]
+print(distinct(xs))   # [1, 2, 3, 4]
+print(xs)             # [1, 2, 3, 2, 1, 4] (unchanged)
+```
+
+### flatten
+
+Flattens a nested list (list of lists) by one level. Returns a new list. The original list is not modified.
+
+```python
+let xs = [[1, 2], [3, 4]]
+print(flatten(xs))   # [1, 2, 3, 4]
+print(xs)            # [[1, 2], [3, 4]] (unchanged)
+```
+
 ### Constraints and Errors
 
 | Constraint | Details |
@@ -440,6 +470,19 @@ Returns the value for the specified key, or a default value if the key does not 
 let m = {"a": 1, "b": 2}
 print(get(m, "a", 0))   # 1
 print(get(m, "z", 0))   # 0
+```
+
+### merge
+
+Returns a new map that combines all entries from both maps. When keys overlap, values from the second map take precedence. The original maps are not modified.
+
+```python
+let m1 = {"a": 1, "b": 2}
+let m2 = {"b": 99, "c": 3}
+let m3 = merge(m1, m2)
+print(m3["a"])   # 1
+print(m3["b"])   # 99
+print(m3["c"])   # 3
 ```
 
 ### Constraints and Errors

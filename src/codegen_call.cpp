@@ -456,14 +456,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
     // remove(set, val) → remove element from set
     if (e->callee == "remove" && e->args.size() == 2) {
-        llvm::Value *setPtr = emitExpr(*e->args[0]);
-        llvm::Type *elemTy = getSetElementType(setPtr);
+        llvm::Value *containerPtr = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getSetElementType(containerPtr);
         if (elemTy) {
             llvm::Value *elem = emitExpr(*e->args[1]);
             if (elem->getType() != elemTy)
                 throw std::runtime_error("remove() element type mismatch");
 
-            llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
+            llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
 
             llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);
@@ -471,9 +471,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             builder_.CreateCondBr(found, removeBB, endBB);
 
             builder_.SetInsertPoint(removeBB);
-            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
+            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 0, "set_len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
-            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
+            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 2, "set_elems_ptr");
             llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
 
             // Remove from bucket: set tombstone for this element
@@ -494,9 +494,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hashFnName, hashTy);
                 llvm::Value *hashVal = builder_.CreateCall(hashFn, {elem}, "rm_hash");
 
-                llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 4, "rm_bp");
+                llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 4, "rm_bp");
                 llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "rm_buckets");
-                llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "rm_bc_field");
+                llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 3, "rm_bc_field");
                 llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "rm_bc");
                 llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "rm_bmask");
 
@@ -540,9 +540,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hashFnName, hashTy);
                 llvm::Value *lastHash = builder_.CreateCall(hashFn, {lastVal}, "last_hash");
 
-                llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 4, "swap_bp");
+                llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 4, "swap_bp");
                 llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "swap_buckets");
-                llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "swap_bc_field");
+                llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 3, "swap_bc_field");
                 llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "swap_bc");
                 llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "swap_bmask");
 
@@ -561,7 +561,99 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             builder_.SetInsertPoint(endBB);
             return llvm::ConstantInt::get(i64Ty_, 0);
         }
-        // Not a set — fall through to user function resolution
+        // Not a set — try list remove
+        llvm::Type *listElemTy = getListElementType(containerPtr);
+        if (listElemTy) {
+            llvm::Value *val = emitExpr(*e->args[1]);
+            if (val->getType() != listElemTy)
+                throw std::runtime_error("remove() value type mismatch with list element type");
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 0, "lrem_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "lrem_len");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, containerPtr, 2, "lrem_data_field");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "lrem_data");
+
+            // Linear search for the value
+            llvm::AllocaInst *foundIdx = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_found_idx");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), foundIdx);
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lrem.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lrem.body", fn_);
+            llvm::BasicBlock *endSearchBB = llvm::BasicBlock::Create(*ctx_, "lrem.end_search", fn_);
+
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "lrem_iv");
+            llvm::Value *notYetFound = builder_.CreateICmpSLT(
+                builder_.CreateLoad(i64Ty_, foundIdx, "lrem_fi"), llvm::ConstantInt::get(i64Ty_, 0), "lrem_not_found");
+            llvm::Value *inBounds = builder_.CreateICmpSLT(iVal, length, "lrem_in_bounds");
+            llvm::Value *cont = builder_.CreateAnd(notYetFound, inBounds, "lrem_cont");
+            builder_.CreateCondBr(cont, bodyBB, endSearchBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lrem_ic");
+            llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, dataPtr, {iCur}, "lrem_elem_ptr");
+            llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "lrem_elem");
+
+            llvm::Value *match;
+            if (listElemTy == ptrTy_) {
+                if (getNestedListElementType(containerPtr))
+                    throw std::runtime_error("remove() is not supported for lists of non-string pointer elements");
+                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
+                match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
+            } else if (listElemTy->isDoubleTy()) {
+                match = builder_.CreateFCmpOEQ(val, listElem, "lrem_match");
+            } else {
+                match = builder_.CreateICmpEQ(val, listElem, "lrem_match");
+            }
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "lrem.found", fn_);
+            llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "lrem.next", fn_);
+            builder_.CreateCondBr(match, foundBB, nextBB);
+
+            builder_.SetInsertPoint(foundBB);
+            builder_.CreateStore(iCur, foundIdx);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(nextBB);
+            llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "lrem_inext");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            // After search: if found, memmove to close the gap
+            builder_.SetInsertPoint(endSearchBB);
+            llvm::Value *idx = builder_.CreateLoad(i64Ty_, foundIdx, "lrem_idx");
+            llvm::Value *wasFound = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "lrem_was_found");
+
+            llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "lrem.remove", fn_);
+            llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "lrem.done", fn_);
+            builder_.CreateCondBr(wasFound, removeBB, doneBB);
+
+            builder_.SetInsertPoint(removeBB);
+            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, dataPtr, {idx}, "lrem_dst");
+            llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, dataPtr,
+                {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
+            llvm::Value *moveCount = builder_.CreateSub(
+                builder_.CreateSub(length, idx), llvm::ConstantInt::get(i64Ty_, 1), "lrem_move_count");
+            llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "lrem_move_bytes");
+            builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
+            llvm::Value *newLen = builder_.CreateSub(length, llvm::ConstantInt::get(i64Ty_, 1), "lrem_new_len");
+            builder_.CreateStore(newLen, lenPtr);
+            builder_.CreateBr(doneBB);
+
+            builder_.SetInsertPoint(doneBB);
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+        // Not a set or list — fall through to user function resolution
     }
 
     // append(list, val) → mutating append
@@ -2865,6 +2957,232 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // ===== distinct(list) → new list with duplicates removed =====
+    if (e->callee == "distinct" && e->args.size() == 1) {
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            throw std::runtime_error("distinct() requires a list as argument");
+
+        // Reject non-string pointer elements (e.g. list-of-lists) — strcmp would be UB
+        if (elemTy == ptrTy_ && getNestedListElementType(listVal))
+            throw std::runtime_error("distinct() is not supported for lists of non-string pointer elements");
+
+        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "dist_src_len_ptr");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "dist_src_len");
+        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "dist_src_data_field");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "dist_src_data");
+
+        // Allocate new list (capacity = source length)
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "dist_header");
+        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "dist_data_size");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "dist_data");
+
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "dist_data_field"));
+        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "dist_cap_ptr"));
+
+        // Output length counter
+        llvm::AllocaInst *outLen = builder_.CreateAlloca(i64Ty_, nullptr, "dist_out_len");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), outLen);
+
+        // Outer loop: for each source element
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "dist_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *outerCondBB = llvm::BasicBlock::Create(*ctx_, "dist.ocond", fn_);
+        llvm::BasicBlock *outerBodyBB = llvm::BasicBlock::Create(*ctx_, "dist.obody", fn_);
+        llvm::BasicBlock *outerEndBB = llvm::BasicBlock::Create(*ctx_, "dist.oend", fn_);
+
+        builder_.CreateBr(outerCondBB);
+        builder_.SetInsertPoint(outerCondBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "dist_iv");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(iVal, srcLen), outerBodyBB, outerEndBB);
+
+        builder_.SetInsertPoint(outerBodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "dist_ic");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "dist_src_ep");
+        llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "dist_src_elem");
+
+        // Inner loop: check if srcElem already exists in output
+        llvm::AllocaInst *dupFound = builder_.CreateAlloca(i1Ty_, nullptr, "dist_dup");
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), dupFound);
+        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "dist_j");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), jVar);
+
+        llvm::BasicBlock *innerCondBB = llvm::BasicBlock::Create(*ctx_, "dist.icond", fn_);
+        llvm::BasicBlock *innerBodyBB = llvm::BasicBlock::Create(*ctx_, "dist.ibody", fn_);
+        llvm::BasicBlock *innerEndBB = llvm::BasicBlock::Create(*ctx_, "dist.iend", fn_);
+
+        llvm::Value *curOutLen = builder_.CreateLoad(i64Ty_, outLen, "dist_cur_out");
+        builder_.CreateBr(innerCondBB);
+
+        builder_.SetInsertPoint(innerCondBB);
+        llvm::Value *jVal = builder_.CreateLoad(i64Ty_, jVar, "dist_jv");
+        llvm::Value *notDup = builder_.CreateICmpEQ(builder_.CreateLoad(i1Ty_, dupFound), llvm::ConstantInt::get(i1Ty_, 0), "dist_not_dup");
+        llvm::Value *jInBounds = builder_.CreateICmpSLT(jVal, curOutLen, "dist_j_inb");
+        llvm::Value *innerCont = builder_.CreateAnd(notDup, jInBounds, "dist_icont");
+        builder_.CreateCondBr(innerCont, innerBodyBB, innerEndBB);
+
+        builder_.SetInsertPoint(innerBodyBB);
+        llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "dist_jc");
+        llvm::Value *outElemPtr = builder_.CreateGEP(elemTy, newData, {jCur}, "dist_out_ep");
+        llvm::Value *outElem = builder_.CreateLoad(elemTy, outElemPtr, "dist_out_elem");
+
+        llvm::Value *match;
+        if (elemTy == ptrTy_) {
+            auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+            auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+            llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {srcElem, outElem}, "dist_strcmp");
+            match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "dist_match");
+        } else if (elemTy->isDoubleTy()) {
+            match = builder_.CreateFCmpOEQ(srcElem, outElem, "dist_match");
+        } else {
+            match = builder_.CreateICmpEQ(srcElem, outElem, "dist_match");
+        }
+
+        llvm::BasicBlock *dupBB = llvm::BasicBlock::Create(*ctx_, "dist.dup", fn_);
+        llvm::BasicBlock *innerNextBB = llvm::BasicBlock::Create(*ctx_, "dist.inext", fn_);
+        builder_.CreateCondBr(match, dupBB, innerNextBB);
+
+        builder_.SetInsertPoint(dupBB);
+        builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), dupFound);
+        builder_.CreateBr(innerCondBB);
+
+        builder_.SetInsertPoint(innerNextBB);
+        builder_.CreateStore(builder_.CreateAdd(jCur, llvm::ConstantInt::get(i64Ty_, 1)), jVar);
+        builder_.CreateBr(innerCondBB);
+
+        // After inner loop: if not duplicate, add to output
+        builder_.SetInsertPoint(innerEndBB);
+        llvm::Value *isDup = builder_.CreateLoad(i1Ty_, dupFound, "dist_is_dup");
+
+        llvm::BasicBlock *addBB = llvm::BasicBlock::Create(*ctx_, "dist.add", fn_);
+        llvm::BasicBlock *outerNextBB = llvm::BasicBlock::Create(*ctx_, "dist.onext", fn_);
+        builder_.CreateCondBr(isDup, outerNextBB, addBB);
+
+        builder_.SetInsertPoint(addBB);
+        llvm::Value *outIdx = builder_.CreateLoad(i64Ty_, outLen, "dist_out_idx");
+        llvm::Value *dstPtr = builder_.CreateGEP(elemTy, newData, {outIdx}, "dist_dst");
+        builder_.CreateStore(srcElem, dstPtr);
+        builder_.CreateStore(builder_.CreateAdd(outIdx, llvm::ConstantInt::get(i64Ty_, 1)), outLen);
+        builder_.CreateBr(outerNextBB);
+
+        builder_.SetInsertPoint(outerNextBB);
+        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+        builder_.CreateBr(outerCondBB);
+
+        // End: set final length
+        builder_.SetInsertPoint(outerEndBB);
+        llvm::Value *finalLen = builder_.CreateLoad(i64Ty_, outLen, "dist_final_len");
+        builder_.CreateStore(finalLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "dist_len_ptr"));
+
+        list_element_types_[newHeader] = elemTy;
+        return newHeader;
+    }
+
+    // ===== flatten(list) → flatten nested list one level =====
+    if (e->callee == "flatten" && e->args.size() == 1) {
+        llvm::Value *listVal = emitExpr(*e->args[0]);
+        llvm::Type *outerElemTy = getListElementType(listVal);
+        if (!outerElemTy || outerElemTy != ptrTy_)
+            throw std::runtime_error("flatten() requires a list of lists");
+
+        // Look up the inner element type
+        llvm::Type *innerElemTy = getNestedListElementType(listVal);
+        if (!innerElemTy)
+            throw std::runtime_error("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+        llvm::Value *outerLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "flat_olen_ptr");
+        llvm::Value *outerLen = builder_.CreateLoad(i64Ty_, outerLenPtr, "flat_olen");
+        llvm::Value *outerDataField = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "flat_odata_field");
+        llvm::Value *outerData = builder_.CreateLoad(ptrTy_, outerDataField, "flat_odata");
+
+        // Pass 1: sum all inner lengths
+        llvm::AllocaInst *totalLen = builder_.CreateAlloca(i64Ty_, nullptr, "flat_total");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), totalLen);
+        {
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "flat_s_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "flat.s.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "flat.s.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "flat.s.end", fn_);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "flat_si");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(i, outerLen), bodyBB, endBB);
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *innerPtr = builder_.CreateGEP(ptrTy_, outerData, {i}, "flat_inner_ptr");
+            llvm::Value *innerList = builder_.CreateLoad(ptrTy_, innerPtr, "flat_inner");
+            llvm::Value *innerLenPtr = builder_.CreateStructGEP(listHeaderTy_, innerList, 0, "flat_ilen_ptr");
+            llvm::Value *innerLen = builder_.CreateLoad(i64Ty_, innerLenPtr, "flat_ilen");
+            llvm::Value *curTotal = builder_.CreateLoad(i64Ty_, totalLen, "flat_cur_total");
+            builder_.CreateStore(builder_.CreateAdd(curTotal, innerLen), totalLen);
+            builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(endBB);
+        }
+
+        // Allocate new list
+        llvm::Value *total = builder_.CreateLoad(i64Ty_, totalLen, "flat_total_len");
+        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "flat_hdr");
+        llvm::Value *dataSize = builder_.CreateMul(total, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_ds");
+        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "flat_data");
+
+        // Set header
+        builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+        builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+
+        // Pass 2: copy each inner list's data
+        llvm::AllocaInst *offset = builder_.CreateAlloca(i64Ty_, nullptr, "flat_off");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), offset);
+        {
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "flat_c_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "flat.c.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "flat.c.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "flat.c.end", fn_);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "flat_ci");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(i, outerLen), bodyBB, endBB);
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *innerPtr = builder_.CreateGEP(ptrTy_, outerData, {i}, "flat_c_inner_ptr");
+            llvm::Value *innerList = builder_.CreateLoad(ptrTy_, innerPtr, "flat_c_inner");
+            llvm::Value *innerLenPtr = builder_.CreateStructGEP(listHeaderTy_, innerList, 0, "flat_c_ilen_ptr");
+            llvm::Value *innerLen = builder_.CreateLoad(i64Ty_, innerLenPtr, "flat_c_ilen");
+            llvm::Value *innerDataField = builder_.CreateStructGEP(listHeaderTy_, innerList, 2, "flat_c_idata_field");
+            llvm::Value *innerData = builder_.CreateLoad(ptrTy_, innerDataField, "flat_c_idata");
+
+            llvm::Value *curOff = builder_.CreateLoad(i64Ty_, offset, "flat_cur_off");
+            llvm::Value *dstPtr = builder_.CreateGEP(innerElemTy, newData, {curOff}, "flat_dst");
+            llvm::Value *copyBytes = builder_.CreateMul(innerLen, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_cb");
+            builder_.CreateCall(memcpyFn, {dstPtr, innerData, copyBytes});
+            builder_.CreateStore(builder_.CreateAdd(curOff, innerLen), offset);
+            builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(endBB);
+        }
+
+        list_element_types_[newHeader] = innerElemTy;
+        return newHeader;
+    }
+
     // ===== items(map) → List<(K, V)> =====
     if (e->callee == "items" && e->args.size() == 1) {
         llvm::Value *mapPtr = emitExpr(*e->args[0]);
@@ -2959,6 +3277,140 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             phi->addIncoming(foundVal, foundEndBB);
             phi->addIncoming(defaultVal, notFoundEndBB);
             return phi;
+        }
+    }
+
+    // ===== merge(map1, map2) → new map =====
+    if (e->callee == "merge" && e->args.size() == 2) {
+        llvm::Value *map1 = emitExpr(*e->args[0]);
+        llvm::Value *map2 = emitExpr(*e->args[1]);
+        llvm::Type *keyTy = getMapKeyType(map1);
+        llvm::Type *valTy = getMapValueType(map1);
+        if (!keyTy || !valTy)
+            throw std::runtime_error("merge() requires maps as arguments");
+        {
+            llvm::Type *keyTy2 = getMapKeyType(map2);
+            llvm::Type *valTy2 = getMapValueType(map2);
+            if (!keyTy2 || keyTy2 != keyTy || !valTy2 || valTy2 != valTy)
+                throw std::runtime_error("merge() requires two maps with the same key and value types");
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
+            uint64_t keySize = dl.getTypeAllocSize(keyTy);
+            uint64_t valSize = dl.getTypeAllocSize(valTy);
+
+            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map1, 0), "mg_len1");
+            llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map2, 0), "mg_len2");
+            llvm::Value *keys1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, map1, 2), "mg_keys1");
+            llvm::Value *vals1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, map1, 3), "mg_vals1");
+            llvm::Value *keys2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, map2, 2), "mg_keys2");
+            llvm::Value *vals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, map2, 3), "mg_vals2");
+
+            // Allocate new map with capacity = len1 + len2
+            llvm::Value *maxCap = builder_.CreateAdd(len1, len2, "mg_max_cap");
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "mg_hdr");
+            llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
+            llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
+            llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
+            llvm::Value *newVals = builder_.CreateCall(mallocFn, {newValsSize}, "mg_vals");
+
+            // Copy all of map1
+            llvm::Value *copy1KeySize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ck1");
+            builder_.CreateCall(memcpyFn, {newKeys, keys1, copy1KeySize});
+            llvm::Value *copy1ValSize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, valSize), "mg_cv1");
+            builder_.CreateCall(memcpyFn, {newVals, vals1, copy1ValSize});
+
+            // Set up header
+            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
+            builder_.CreateStore(len1, lenPtr);
+            builder_.CreateStore(maxCap, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 1));
+            builder_.CreateStore(newKeys, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2));
+            builder_.CreateStore(newVals, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3));
+
+            // Init hash buckets
+            emitBucketInit(newHeader, mapHeaderTy_, 4, 5, 16);
+
+            // Re-hash map1 keys into new map's buckets
+            {
+                llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_rh_i");
+                builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+                llvm::BasicBlock *rCondBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.cond", fn_);
+                llvm::BasicBlock *rBodyBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.body", fn_);
+                llvm::BasicBlock *rEndBB = llvm::BasicBlock::Create(*ctx_, "mg.rh.end", fn_);
+                builder_.CreateBr(rCondBB);
+                builder_.SetInsertPoint(rCondBB);
+                llvm::Value *ri = builder_.CreateLoad(i64Ty_, iVar, "mg_ri");
+                builder_.CreateCondBr(builder_.CreateICmpSLT(ri, len1), rBodyBB, rEndBB);
+                builder_.SetInsertPoint(rBodyBB);
+                llvm::Value *kp = builder_.CreateGEP(keyTy, newKeys, {ri}, "mg_rh_kp");
+                llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_rh_kv");
+                emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, 0, 4, 5, kv, keyTy, ri);
+                builder_.CreateStore(builder_.CreateAdd(ri, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+                builder_.CreateBr(rCondBB);
+                builder_.SetInsertPoint(rEndBB);
+            }
+
+            // Add/update entries from map2
+            {
+                llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "mg_i2");
+                builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+                llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "mg.add.cond", fn_);
+                llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "mg.add.body", fn_);
+                llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mg.add.end", fn_);
+                builder_.CreateBr(condBB);
+                builder_.SetInsertPoint(condBB);
+                llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "mg_ci");
+                builder_.CreateCondBr(builder_.CreateICmpSLT(i, len2), bodyBB, endBB);
+
+                builder_.SetInsertPoint(bodyBB);
+                llvm::Value *kp = builder_.CreateGEP(keyTy, keys2, {i}, "mg_kp2");
+                llvm::Value *kv = builder_.CreateLoad(keyTy, kp, "mg_kv2");
+                llvm::Value *vp = builder_.CreateGEP(valTy, vals2, {i}, "mg_vp2");
+                llvm::Value *vv = builder_.CreateLoad(valTy, vp, "mg_vv2");
+
+                // Check if key exists in new map
+                llvm::Value *lookupIdx = emitMapKeyLookup(newHeader, kv, keyTy);
+                llvm::Value *exists = builder_.CreateICmpSGE(lookupIdx, llvm::ConstantInt::get(i64Ty_, 0), "mg_exists");
+
+                llvm::BasicBlock *updateBB = llvm::BasicBlock::Create(*ctx_, "mg.update", fn_);
+                llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "mg.insert", fn_);
+                llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "mg.next", fn_);
+                builder_.CreateCondBr(exists, updateBB, insertBB);
+
+                // Update existing key's value
+                builder_.SetInsertPoint(updateBB);
+                llvm::Value *curVals = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals");
+                llvm::Value *updPtr = builder_.CreateGEP(valTy, curVals, {lookupIdx}, "mg_upd_ptr");
+                builder_.CreateStore(vv, updPtr);
+                builder_.CreateBr(nextBB);
+
+                // Insert new key-value pair
+                builder_.SetInsertPoint(insertBB);
+                llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "mg_cur_len");
+                llvm::Value *curKeys = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2), "mg_cur_keys");
+                llvm::Value *newKeyPtr = builder_.CreateGEP(keyTy, curKeys, {curLen}, "mg_new_kp");
+                builder_.CreateStore(kv, newKeyPtr);
+                llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
+                llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
+                builder_.CreateStore(vv, newValPtr);
+                builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
+                emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, 0, 4, 5, kv, keyTy, curLen);
+                builder_.CreateBr(nextBB);
+
+                builder_.SetInsertPoint(nextBB);
+                builder_.CreateStore(builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+                builder_.CreateBr(condBB);
+                builder_.SetInsertPoint(endBB);
+            }
+
+            map_key_types_[newHeader] = keyTy;
+            map_value_types_[newHeader] = valTy;
+            return newHeader;
         }
     }
 
