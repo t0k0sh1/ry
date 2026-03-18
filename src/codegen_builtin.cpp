@@ -35,107 +35,61 @@ void CodeGen::emitResultPatternBinding(const std::string &binding, llvm::Value *
 
 // ===== Collection helpers =====
 
-llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
-    auto it = list_element_types_.find(listAlloca);
-    if (it != list_element_types_.end())
-        return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listAlloca)) {
-        auto it2 = list_element_types_.find(load->getPointerOperand());
-        if (it2 != list_element_types_.end())
-            return it2->second;
+// Step 2: Unified collection type lookup helper
+llvm::Type *CodeGen::lookupCollectionType(
+    const std::unordered_map<llvm::Value*, llvm::Type*> &map, llvm::Value *val) {
+    auto it = map.find(val);
+    if (it != map.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto it2 = map.find(load->getPointerOperand());
+        if (it2 != map.end()) return it2->second;
     }
     return nullptr;
+}
+
+llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
+    return lookupCollectionType(list_element_types_, listAlloca);
 }
 
 llvm::Type *CodeGen::getMapKeyType(llvm::Value *mapVal) {
-    auto it = map_key_types_.find(mapVal);
-    if (it != map_key_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
-        auto it2 = map_key_types_.find(load->getPointerOperand());
-        if (it2 != map_key_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(map_key_types_, mapVal);
 }
 
 llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
-    auto it = map_value_types_.find(mapVal);
-    if (it != map_value_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
-        auto it2 = map_value_types_.find(load->getPointerOperand());
-        if (it2 != map_value_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(map_value_types_, mapVal);
 }
 
 llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
-    auto it = set_element_types_.find(setVal);
-    if (it != set_element_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(setVal)) {
-        auto it2 = set_element_types_.find(load->getPointerOperand());
-        if (it2 != set_element_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(set_element_types_, setVal);
 }
 
 llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
-    auto it = nested_list_element_types_.find(listVal);
-    if (it != nested_list_element_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listVal)) {
-        auto it2 = nested_list_element_types_.find(load->getPointerOperand());
-        if (it2 != nested_list_element_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(nested_list_element_types_, listVal);
 }
 
-llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    // Hash table lookup via __ry_ht_find_*
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "set_bc_ptr");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "set_bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "set_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 4, "set_buckets_ptr");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "set_buckets");
-
-    llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
-    llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
-    llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
-
-    std::string fnName;
-    llvm::Type *keyArgTy;
-    if (elemTy == ptrTy_) {
-        fnName = "__ry_ht_find_str";
-        keyArgTy = ptrTy_;
-    } else if (elemTy->isDoubleTy()) {
-        fnName = "__ry_ht_find_f64";
-        keyArgTy = f64Ty_;
-    } else {
-        fnName = "__ry_ht_find_i64";
-        keyArgTy = i64Ty_;
-    }
-
-    llvm::FunctionType *findTy = llvm::FunctionType::get(
-        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy}, false);
-    llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
-
-    llvm::Value *keyArg = elem;
-    if (elemTy != keyArgTy && elemTy == i1Ty_)
-        keyArg = builder_.CreateZExt(elem, i64Ty_, "elem_ext");
-
-    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, elemsPtr, length, keyArg}, "set_lookup_idx");
+// Step 1: Hash function resolution helper
+CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
+    if (keyTy == ptrTy_)
+        return {"__ry_hash_str", "__ry_ht_rehash_str", ptrTy_};
+    if (keyTy->isDoubleTy())
+        return {"__ry_hash_f64", "__ry_ht_rehash_f64", f64Ty_};
+    return {"__ry_hash_i64", "__ry_ht_rehash_i64", i64Ty_};
 }
 
-llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
-    // Hash table lookup via __ry_ht_find_*
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 4, "map_bc_ptr");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "map_bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "map_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 5, "map_buckets_ptr");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "map_buckets");
+// Step 3: Unified hash table lookup
+llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
+                                            const HashTableLayout &layout,
+                                            llvm::Value *key, llvm::Type *keyTy) {
+    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketCountIdx, "ht_bc_ptr");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "ht_bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "ht_bmask");
+    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketsPtrIdx, "ht_buckets_ptr");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "ht_buckets");
 
-    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 0, "map_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 2, "map_keys_ptr");
-    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "map_keys");
+    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.lenIdx, "ht_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "ht_len");
+    llvm::Value *keysPtrField = builder_.CreateStructGEP(headerTy, containerPtr, layout.keysPtrIdx, "ht_keys_ptr");
+    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "ht_keys");
 
     std::string fnName;
     llvm::Type *keyArgTy;
@@ -155,10 +109,18 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
     llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
 
     llvm::Value *keyArg = key;
-    if (keyTy != keyArgTy && keyTy == i1Ty_)
-        keyArg = builder_.CreateZExt(key, i64Ty_, "key_ext");
+    if (keyTy != keyArgTy && keyTy->isIntegerTy() && keyArgTy->isIntegerTy())
+        keyArg = builder_.CreateZExt(key, keyArgTy, "key_ext");
 
-    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "lookup_idx");
+    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
+}
+
+llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
+    return emitHashTableLookup(setPtr, setHeaderTy_, {0, 3, 4, 2}, elem, elemTy);
+}
+
+llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
+    return emitHashTableLookup(mapPtr, mapHeaderTy_, {0, 4, 5, 2}, key, keyTy);
 }
 
 // Helper: initialize bucket array fields in a header
@@ -188,27 +150,17 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
 void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                               unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
-    // Get hash function and rehash function names
-    std::string hashFnName, rehashFnName;
-    llvm::Type *hashArgTy;
-    if (keyTy == ptrTy_) {
-        hashFnName = "__ry_hash_str";
-        rehashFnName = "__ry_ht_rehash_str";
-        hashArgTy = ptrTy_;
-    } else if (keyTy->isDoubleTy()) {
-        hashFnName = "__ry_hash_f64";
-        rehashFnName = "__ry_ht_rehash_f64";
-        hashArgTy = f64Ty_;
-    } else {
-        hashFnName = "__ry_hash_i64";
-        rehashFnName = "__ry_ht_rehash_i64";
-        hashArgTy = i64Ty_;
-    }
+    auto hfi = resolveHashFn(keyTy);
+
+    // Coerce key to match hash function argument type (e.g. i1 → i64)
+    llvm::Value *hashKey = key;
+    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
+        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, "hash_key_zext");
 
     // Compute hash
-    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hashArgTy}, false);
-    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hashFnName, hashTy);
-    llvm::Value *hashVal = builder_.CreateCall(hashFn, {key}, "hash_val");
+    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
+    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
+    llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, "hash_val");
 
     // Insert into buckets
     llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
@@ -244,7 +196,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *lenForRehash = builder_.CreateLoad(i64Ty_, lenPtr, "len_for_rehash2");
 
     llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashFnName, rehashTy);
+    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(hfi.rehashFnName, rehashTy);
     llvm::Value *newBuckets = builder_.CreateCall(rehashFn, {keysPtr, lenForRehash, newBc}, "new_buckets");
 
     // Free old buckets

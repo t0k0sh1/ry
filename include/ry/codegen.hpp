@@ -247,6 +247,38 @@ private:
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
+
+    // Hash function resolution helper (Step 1)
+    struct HashFnInfo {
+        std::string hashFnName;
+        std::string rehashFnName;
+        llvm::Type *hashArgTy;
+    };
+    HashFnInfo resolveHashFn(llvm::Type *keyTy);
+
+    // Collection type lookup helper (Step 2)
+    static llvm::Type *lookupCollectionType(
+        const std::unordered_map<llvm::Value*, llvm::Type*> &map, llvm::Value *val);
+
+    // Unified hash table lookup helper (Step 3)
+    struct HashTableLayout {
+        unsigned lenIdx;
+        unsigned bucketCountIdx;
+        unsigned bucketsPtrIdx;
+        unsigned keysPtrIdx;
+    };
+    llvm::Value *emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
+                                      const HashTableLayout &layout,
+                                      llvm::Value *key, llvm::Type *keyTy);
+
+    // Builtin dispatch helpers (Step 4)
+    llvm::Value *emitBuiltinCore(const CallExpr &e);
+    llvm::Value *emitBuiltinCollection(const CallExpr &e);
+    llvm::Value *emitBuiltinString(const CallExpr &e);
+    llvm::Value *emitBuiltinHigherOrder(const CallExpr &e);
+    llvm::Value *emitBuiltinQuery(const CallExpr &e);
+    llvm::Value *emitBuiltinSetOps(const CallExpr &e);
+    llvm::Value *emitBuiltinConversion(const CallExpr &e);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                         int64_t initialBucketCount);
