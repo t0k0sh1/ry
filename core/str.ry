@@ -13,7 +13,7 @@ fn ends_with(s: str, suffix: str) -> bool
 fn find(s: str, sub: str) -> int
 
 @native
-fn substring(s: str, start: int, length: int) -> str
+fn substring(s: str, start: int, end: int) -> str
 
 @native
 fn char_at(s: str, index: int) -> str

@@ -95,13 +95,16 @@ int main(int argc, char *argv[]) {
                 Program prelude;
                 for (const auto &f : prelude_files) {
                     std::string fpath = (core_dir / f).string();
+                    if (!fs::exists(fpath))
+                        continue;
                     try {
                         Program pmod = loadAndParse(fpath);
                         prelude.insert(prelude.end(),
                             std::make_move_iterator(pmod.begin()),
                             std::make_move_iterator(pmod.end()));
-                    } catch (...) {
-                        // File not found or parse error — skip silently
+                    } catch (const std::exception &e) {
+                        errs() << "Warning: failed to load prelude " << f
+                               << ": " << e.what() << "\n";
                     }
                 }
                 prog.insert(prog.begin(),

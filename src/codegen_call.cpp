@@ -3969,10 +3969,15 @@ void CodeGen::validateNativeCallArgs(const std::string &callee,
             return;
     }
 
+    // Deduplicate and sort counts for clear error messages
+    std::vector<size_t> unique_counts(counts.begin(), counts.end());
+    std::sort(unique_counts.begin(), unique_counts.end());
+    unique_counts.erase(std::unique(unique_counts.begin(), unique_counts.end()), unique_counts.end());
+
     std::string expected;
-    for (size_t i = 0; i < counts.size(); ++i) {
+    for (size_t i = 0; i < unique_counts.size(); ++i) {
         if (i > 0) expected += " or ";
-        expected += std::to_string(counts[i]);
+        expected += std::to_string(unique_counts[i]);
     }
     throw std::runtime_error(callee + "() expects " + expected +
         " argument(s), but got " + std::to_string(args.size()));
