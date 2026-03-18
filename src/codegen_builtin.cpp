@@ -77,6 +77,16 @@ llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
     return nullptr;
 }
 
+llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
+    auto it = nested_list_element_types_.find(listVal);
+    if (it != nested_list_element_types_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listVal)) {
+        auto it2 = nested_list_element_types_.find(load->getPointerOperand());
+        if (it2 != nested_list_element_types_.end()) return it2->second;
+    }
+    return nullptr;
+}
+
 llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
     // Hash table lookup via __ry_ht_find_*
     llvm::Value *bucketCountPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "set_bc_ptr");

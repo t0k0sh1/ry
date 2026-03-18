@@ -602,10 +602,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
             llvm::Value *match;
             if (listElemTy == ptrTy_) {
-                // Only string lists support value-based remove; nested lists/maps are not comparable
-                if (nested_list_element_types_.count(containerPtr) ||
-                    (llvm::isa<llvm::LoadInst>(containerPtr) &&
-                     nested_list_element_types_.count(llvm::cast<llvm::LoadInst>(containerPtr)->getPointerOperand())))
+                if (getNestedListElementType(containerPtr))
                     throw std::runtime_error("remove() is not supported for lists of non-string pointer elements");
                 auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
                 auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
@@ -2968,15 +2965,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("distinct() requires a list as argument");
 
         // Reject non-string pointer elements (e.g. list-of-lists) — strcmp would be UB
-        if (elemTy == ptrTy_) {
-            bool isNested = nested_list_element_types_.count(listVal);
-            if (!isNested) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listVal))
-                    isNested = nested_list_element_types_.count(load->getPointerOperand());
-            }
-            if (isNested)
-                throw std::runtime_error("distinct() is not supported for lists of non-string pointer elements");
-        }
+        if (elemTy == ptrTy_ && getNestedListElementType(listVal))
+            throw std::runtime_error("distinct() is not supported for lists of non-string pointer elements");
 
         llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "dist_src_len_ptr");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "dist_src_len");
@@ -3104,15 +3094,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             throw std::runtime_error("flatten() requires a list of lists");
 
         // Look up the inner element type
-        llvm::Type *innerElemTy = nullptr;
-        auto nit = nested_list_element_types_.find(listVal);
-        if (nit != nested_list_element_types_.end()) {
-            innerElemTy = nit->second;
-        } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listVal)) {
-            auto nit2 = nested_list_element_types_.find(load->getPointerOperand());
-            if (nit2 != nested_list_element_types_.end())
-                innerElemTy = nit2->second;
-        }
+        llvm::Type *innerElemTy = getNestedListElementType(listVal);
         if (!innerElemTy)
             throw std::runtime_error("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
 
