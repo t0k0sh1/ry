@@ -111,6 +111,23 @@ for k, v in map_expr:
     # k is the key, v is the value for each entry
 ```
 
+### Tuple Destructuring
+
+When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
+
+```python
+let xs = [10, 20, 30]
+
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
+
+for a, b in zip([1, 2], [10, 20]):
+    print(a + b)          # 11, 22
+
+for _, x in enumerate(xs):
+    print(x)              # index discarded
+```
+
 ### Range Operator (`..`)
 
 The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.

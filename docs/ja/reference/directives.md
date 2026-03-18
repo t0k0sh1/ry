@@ -102,6 +102,26 @@ fn to_upper(s: str) -> str
 print("hello".to_upper())  # HELLO
 ```
 
+**引数数の検証:**
+
+`@native` 宣言に型シグネチャが含まれている場合、コンパイラは呼び出し時に引数の数を検証します。オーバーロードされた関数（例: 1, 2, 3 引数の `range`）もサポートされ、いずれかのオーバーロードにマッチすれば検証を通過します。
+
+**標準ライブラリ宣言 (`core/`):**
+
+`core/` ディレクトリにはすべての組み込み関数の `@native` 宣言がカテゴリ別に格納されています:
+
+| ファイル | 内容 |
+|---|---|
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `split`, `join` |
+| `core/convert.ry` | `to_int`, `to_float`, `to_str` |
+| `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
+| `core/map.ry` | `keys`, `values`, `items`, `has_key`, `get`, `merge` |
+| `core/set.ry` | `add`, `remove`, `union`, `intersection`, `difference`, `symmetric_difference`, `is_subset`, `is_superset` |
+| `core/higher_order.ry` | `filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max` |
+
+これらのファイルは `ry` 実行バイナリの近くに `core/` ディレクトリが存在する場合、プレリュードとして自動的にロードされます。プレリュードにより、組み込み関数呼び出し時の引数数検証が有効になります。
+
 **制約事項:**
 - `@native` 関数は本体を持てません（シグネチャの後に `:` を付けるとエラー）。
 - 本体を付けるとパースエラー: `@native function must not have a body`。

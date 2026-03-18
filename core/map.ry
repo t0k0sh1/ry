@@ -1,0 +1,19 @@
+# Map operations
+
+@native
+fn keys(m: Map<str, int>) -> List<str>
+
+@native
+fn values(m: Map<str, int>) -> List<int>
+
+@native
+fn items(m: Map<str, int>) -> List<int>
+
+@native
+fn has_key(m: Map<str, int>, key: str) -> bool
+
+@native
+fn get(m: Map<str, int>, key: str, default: int) -> int
+
+@native
+fn merge(m1: Map<str, int>, m2: Map<str, int>) -> Map<str, int>

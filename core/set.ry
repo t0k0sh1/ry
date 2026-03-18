@@ -1,0 +1,25 @@
+# Set operations
+
+@native
+fn add(s: Set<int>, val: int) -> Unit
+
+@native
+fn remove(s: Set<int>, val: int) -> Unit
+
+@native
+fn union(s1: Set<int>, s2: Set<int>) -> Set<int>
+
+@native
+fn intersection(s1: Set<int>, s2: Set<int>) -> Set<int>
+
+@native
+fn difference(s1: Set<int>, s2: Set<int>) -> Set<int>
+
+@native
+fn symmetric_difference(s1: Set<int>, s2: Set<int>) -> Set<int>
+
+@native
+fn is_subset(s1: Set<int>, s2: Set<int>) -> bool
+
+@native
+fn is_superset(s1: Set<int>, s2: Set<int>) -> bool

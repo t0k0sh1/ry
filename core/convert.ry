@@ -1,0 +1,10 @@
+# Type conversion functions
+
+@native
+fn to_int(x: str) -> int
+
+@native
+fn to_float(x: str) -> float
+
+@native
+fn to_str(x: int) -> str

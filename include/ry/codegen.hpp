@@ -124,6 +124,10 @@ private:
 
     void emitDeprecationWarning(const std::string &name);
 
+    // @native fn signature registry (argument count per overload)
+    std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
+    void validateNativeCallArgs(const std::string &callee, const std::vector<ExprPtr> &args);
+
     // Literal/range type constraints
     struct TypeConstraint {
         enum Kind { IntLiteral, StrLiteral, IntRange };
@@ -146,6 +150,11 @@ private:
 
     // Loop context stack for break/continue (condBB, endBB)
     std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
+
+    // Indexed for-loop helper: emits loop scaffolding and calls bindVars for each iteration
+    void emitIndexedForLoop(llvm::Value *length,
+                            std::vector<StmtNode> &body,
+                            std::function<void(llvm::Value *iCur)> bindVars);
 
     // RAII scope for function emission (B5)
     class FnScope {

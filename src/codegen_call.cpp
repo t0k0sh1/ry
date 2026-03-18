@@ -3868,6 +3868,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // Validate @native fn type signatures before dispatch
+    validateNativeCallArgs(e->callee, e->args);
+
     // Dispatch to category helpers
     if (auto *v = emitBuiltinString(*e))     return v;
     if (auto *v = emitBuiltinConversion(*e)) return v;
@@ -3952,4 +3955,25 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             return builder_.CreateCall(ft, fnPtr, fullArgs);
         return builder_.CreateCall(ft, fnPtr, fullArgs, name);
     }
+}
+
+void CodeGen::validateNativeCallArgs(const std::string &callee,
+                                      const std::vector<ExprPtr> &args) {
+    auto it = native_fn_arg_counts_.find(callee);
+    if (it == native_fn_arg_counts_.end()) return;
+
+    const auto &counts = it->second;
+
+    for (size_t count : counts) {
+        if (count == args.size())
+            return;
+    }
+
+    std::string expected;
+    for (size_t i = 0; i < counts.size(); ++i) {
+        if (i > 0) expected += " or ";
+        expected += std::to_string(counts[i]);
+    }
+    throw std::runtime_error(callee + "() expects " + expected +
+        " argument(s), but got " + std::to_string(args.size()));
 }

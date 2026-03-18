@@ -1,0 +1,49 @@
+# String operations
+
+@native
+fn contains(s: str, sub: str) -> bool
+
+@native
+fn starts_with(s: str, prefix: str) -> bool
+
+@native
+fn ends_with(s: str, suffix: str) -> bool
+
+@native
+fn find(s: str, sub: str) -> int
+
+@native
+fn substring(s: str, start: int, length: int) -> str
+
+@native
+fn char_at(s: str, index: int) -> str
+
+@native
+fn replace(s: str, target: str, replacement: str) -> str
+
+@native
+fn to_upper(s: str) -> str
+
+@native
+fn to_lower(s: str) -> str
+
+@native
+fn trim(s: str) -> str
+
+@native
+fn trim_start(s: str) -> str
+
+@native
+fn trim_end(s: str) -> str
+
+@native
+fn repeat(s: str, n: int) -> str
+
+@native
+fn reverse(s: str) -> str
+
+@native
+fn split(s: str, delim: str) -> List<str>
+
+@native
+fn join(xs: List<str>, delim: str) -> str

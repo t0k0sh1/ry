@@ -1,0 +1,37 @@
+# Core built-in functions
+
+@native
+fn print(x: str) -> Unit
+
+@native
+fn len(x: str) -> int
+
+@native
+fn len(x: List<int>) -> int
+
+@native
+fn len(x: Map<str, int>) -> int
+
+@native
+fn len(x: Set<int>) -> int
+
+@native
+fn range(n: int) -> List<int>
+
+@native
+fn range(start: int, end: int) -> List<int>
+
+@native
+fn range(start: int, end: int, step: int) -> List<int>
+
+@native
+fn enumerate(xs: List<int>) -> List<int>
+
+@native
+fn zip(xs: List<int>, ys: List<int>) -> List<int>
+
+@native
+fn exit(code: int) -> Unit
+
+@native
+fn args() -> List<str>

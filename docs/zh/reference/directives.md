@@ -102,6 +102,26 @@ fn to_upper(s: str) -> str
 print("hello".to_upper())  # HELLO
 ```
 
+**參數數量驗證:**
+
+當 `@native` 宣告包含型別簽名時，編譯器會在呼叫處驗證參數數量。支援重載函式（例如：1、2、3 個參數的 `range`），只要任一重載匹配即通過驗證。
+
+**標準函式庫宣告 (`core/`):**
+
+`core/` 目錄包含所有內建函式的 `@native` 宣告，按類別組織：
+
+| 檔案 | 內容 |
+|---|---|
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `split`, `join` |
+| `core/convert.ry` | `to_int`, `to_float`, `to_str` |
+| `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
+| `core/map.ry` | `keys`, `values`, `items`, `has_key`, `get`, `merge` |
+| `core/set.ry` | `add`, `remove`, `union`, `intersection`, `difference`, `symmetric_difference`, `is_subset`, `is_superset` |
+| `core/higher_order.ry` | `filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max` |
+
+當 `ry` 執行檔附近存在 `core/` 目錄時，這些檔案會作為前導自動載入。前導機制使得內建函式呼叫時的參數數量驗證生效。
+
 **限制事項:**
 - `@native` 函式不能有本體（簽名後不能加 `:`）。
 - 加上本體會導致解析錯誤: `@native function must not have a body`。
