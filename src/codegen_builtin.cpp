@@ -78,18 +78,17 @@ CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
 
 // Step 3: Unified hash table lookup
 llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
-                                            unsigned bucketCountIdx, unsigned bucketsPtrIdx,
-                                            unsigned lenIdx, unsigned keysPtrIdx,
+                                            const HashTableLayout &layout,
                                             llvm::Value *key, llvm::Type *keyTy) {
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(headerTy, containerPtr, bucketCountIdx, "ht_bc_ptr");
+    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketCountIdx, "ht_bc_ptr");
     llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "ht_bc");
     llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "ht_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, containerPtr, bucketsPtrIdx, "ht_buckets_ptr");
+    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketsPtrIdx, "ht_buckets_ptr");
     llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "ht_buckets");
 
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, containerPtr, lenIdx, "ht_len_ptr");
+    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.lenIdx, "ht_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "ht_len");
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(headerTy, containerPtr, keysPtrIdx, "ht_keys_ptr");
+    llvm::Value *keysPtrField = builder_.CreateStructGEP(headerTy, containerPtr, layout.keysPtrIdx, "ht_keys_ptr");
     llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "ht_keys");
 
     std::string fnName;
@@ -110,18 +109,18 @@ llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::Struc
     llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
 
     llvm::Value *keyArg = key;
-    if (keyTy != keyArgTy && keyTy == i1Ty_)
-        keyArg = builder_.CreateZExt(key, i64Ty_, "key_ext");
+    if (keyTy != keyArgTy && keyTy->isIntegerTy() && keyArgTy->isIntegerTy())
+        keyArg = builder_.CreateZExt(key, keyArgTy, "key_ext");
 
     return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
 }
 
 llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    return emitHashTableLookup(setPtr, setHeaderTy_, 3, 4, 0, 2, elem, elemTy);
+    return emitHashTableLookup(setPtr, setHeaderTy_, {0, 3, 4, 2}, elem, elemTy);
 }
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
-    return emitHashTableLookup(mapPtr, mapHeaderTy_, 4, 5, 0, 2, key, keyTy);
+    return emitHashTableLookup(mapPtr, mapHeaderTy_, {0, 4, 5, 2}, key, keyTy);
 }
 
 // Helper: initialize bucket array fields in a header
@@ -153,10 +152,15 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
     auto hfi = resolveHashFn(keyTy);
 
+    // Coerce key to match hash function argument type (e.g. i1 → i64)
+    llvm::Value *hashKey = key;
+    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
+        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, "hash_key_zext");
+
     // Compute hash
     llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
     llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
-    llvm::Value *hashVal = builder_.CreateCall(hashFn, {key}, "hash_val");
+    llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, "hash_val");
 
     // Insert into buckets
     llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
