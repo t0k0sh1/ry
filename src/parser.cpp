@@ -1448,6 +1448,11 @@ std::string Parser::parseTypeNameSingle() {
         } else {
             name = lex_.peek().value;
         }
+        // Reject non-decimal numeric literals in type positions
+        const auto &numVal = (name[0] == '-') ? name.substr(1) : name;
+        if (numVal.size() > 1 && numVal[0] == '0' && !std::isdigit(numVal[1])) {
+            parseError("only decimal integer literals are allowed in type positions");
+        }
         lex_.next(); // consume number
         // Range type: N..M
         if (lex_.peek().kind == TokenKind::DotDot) {
@@ -1456,7 +1461,12 @@ std::string Parser::parseTypeNameSingle() {
             if (negEnd) lex_.next(); // consume '-'
             if (lex_.peek().kind != TokenKind::Number)
                 parseError("expected number after '..' in range type");
-            std::string endVal = (negEnd ? "-" : "") + lex_.peek().value;
+            // Reject non-decimal numeric literals in range end
+            const auto &endNum = lex_.peek().value;
+            if (endNum.size() > 1 && endNum[0] == '0' && !std::isdigit(endNum[1])) {
+                parseError("only decimal integer literals are allowed in type positions");
+            }
+            std::string endVal = (negEnd ? "-" : "") + endNum;
             lex_.next(); // consume end number
             return name + ".." + endVal;
         }

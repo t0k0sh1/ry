@@ -993,14 +993,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (ptype.size() > 3 && ptype.substr(0, 3) == "fn(") {
                 fn_type_info_[alloca] = parseFnTypeAnnotation(ptype);
             }
-            // Track union type for union parameters
-            if (isUnionType(ptype)) {
-                union_value_types_[alloca] = normalizeUnionType(ptype);
-            }
-            // Track Result type for result parameters
-            if (isResultTypeName(ptype)) {
-                result_value_types_[alloca] = ptype;
-            }
             // Track and emit constraint check for literal/range type parameters
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
@@ -1010,7 +1002,15 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                     llvm::Value *argVal = builder_.CreateLoad(
                         paramTypes[idx], alloca, s->params[idx].name + ".load");
                     emitConstraintCheck(argVal, *constraint, s->params[idx].name);
+                } else {
+                    // Track union type only for non-literal unions
+                    if (isUnionType(ptype))
+                        union_value_types_[alloca] = normalizeUnionType(ptype);
                 }
+            }
+            // Track Result type for result parameters
+            if (isResultTypeName(ptype)) {
+                result_value_types_[alloca] = ptype;
             }
             ++idx;
         }

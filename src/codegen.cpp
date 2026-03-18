@@ -241,8 +241,10 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         for (size_t i = 0; i < matchedEntry->paramTypeNames.size() && i < argVals.size(); ++i) {
             std::string resolvedPtype = resolveTypeAlias(matchedEntry->paramTypeNames[i]);
             auto constraint = parseTypeConstraint(resolvedPtype);
-            if (constraint)
-                emitConstraintCheck(argVals[i], *constraint, matchedEntry->paramTypeNames[i]);
+            if (constraint) {
+                std::string paramName = fn->getArg(i)->getName().str();
+                emitConstraintCheck(argVals[i], *constraint, paramName);
+            }
         }
     }
 
