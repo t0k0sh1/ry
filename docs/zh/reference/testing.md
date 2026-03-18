@@ -21,15 +21,30 @@ ry test test_file.ry
 ### describe / it
 
 ```
-describe "說明文字":
-    it "測試案例名稱":
+describe("說明文字"):
+    it("測試案例名稱"):
         # 測試主體
         expect(實際值).to_eq(預期值)
 ```
 
+- `describe` 和 `it` 使用**尾隨區塊語法**: 函式呼叫後加上 `:` 會將縮排區塊作為 lambda 傳入最後的參數
 - `describe` 區塊內只能撰寫 `it` 區塊
 - 各 `it` 區塊為獨立的測試案例
 - `describe` / `expect` 僅能在 `ry test` 中使用（在一般的 `ry` 執行中會產生編譯錯誤）
+
+### 尾隨區塊語法
+
+任何函式呼叫都可以使用尾隨區塊語法。在 `()` 後加上 `:` 會將縮排區塊作為無參數 lambda 傳入最後的參數位置:
+
+```
+# 以下兩者等價:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / 匹配器
 
@@ -65,18 +80,18 @@ Calculator
 ## 範例
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
 

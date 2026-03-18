@@ -393,8 +393,6 @@ Token Lexer::readToken() {
         if (id == "enum")     return {TokenKind::Enum,     "enum",     line_};
         if (id == "match")    return {TokenKind::Match,    "match",    line_};
         if (id == "case")     return {TokenKind::Case,     "case",     line_};
-        if (id == "describe") return {TokenKind::Describe, "describe", line_};
-        if (id == "it")       return {TokenKind::It,       "it",       line_};
         if (id == "expect")   return {TokenKind::Expect,   "expect",   line_};
         if (id == "require")   return {TokenKind::Require,   "require",   line_};
         if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_};

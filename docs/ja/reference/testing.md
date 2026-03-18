@@ -21,15 +21,30 @@ ry test test_file.ry
 ### describe / it
 
 ```
-describe "説明文":
-    it "テストケース名":
+describe("説明文"):
+    it("テストケース名"):
         # テスト本体
         expect(実際の値).to_eq(期待値)
 ```
 
+- `describe` と `it` は**トレイリングブロック構文**を使用: 関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして最後の引数に渡される
 - `describe` ブロック内には `it` ブロックのみ記述可能
 - 各 `it` ブロックは独立したテストケース
 - `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
+
+### トレイリングブロック構文
+
+任意の関数呼び出しにトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
+
+```
+# 以下は等価:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / マッチャー
 
@@ -65,18 +80,18 @@ Calculator
 ## 例
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
 

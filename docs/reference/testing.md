@@ -21,15 +21,30 @@ The exit code is the number of failed tests (0 = all passed).
 ### describe / it
 
 ```
-describe "description":
-    it "test case name":
+describe("description"):
+    it("test case name"):
         # test body
         expect(actual_value).to_eq(expected_value)
 ```
 
+- `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda passed as the last argument
 - Only `it` blocks can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
+
+### Trailing Block Syntax
+
+Any function call can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
+
+```
+# These are equivalent:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / Matchers
 
@@ -65,18 +80,18 @@ Calculator
 ## Example
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
 
