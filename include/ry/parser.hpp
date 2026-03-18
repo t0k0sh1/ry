@@ -31,8 +31,9 @@ private:
     StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();
     StmtNode parseReturnStatement();
-    StmtNode parseDescribeStatement();
     StmtNode parseExpectStatement();
+    void tryParseTrailingBlock(CallStmt &s);
+    ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
     Pattern parsePattern();
     std::string parseTypeName();

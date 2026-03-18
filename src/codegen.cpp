@@ -261,6 +261,14 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
+    if (s.callee == "describe") {
+        emitDescribeCall(s);
+        return;
+    }
+    if (s.callee == "it") {
+        emitItCall(s);
+        return;
+    }
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
         it->second(s.args);

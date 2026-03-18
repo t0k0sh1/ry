@@ -633,11 +633,22 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     builder_.CreateCall(printfFn, {fmt, val});
 }
 
-// ===== Test: DescribeStmt =====
+// ===== Test: describe/it (trailing block) =====
 
-void CodeGen::emitStmt(std::unique_ptr<DescribeStmt> &s) {
+static LambdaExpr &extractTrailingLambda(CallStmt &s, const std::string &callee) {
+    if (s.args.size() != 2)
+        throw std::runtime_error(callee + "() requires exactly one description string and a trailing block");
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
+    if (!lambda)
+        throw std::runtime_error(callee + "() last argument must be a trailing block");
+    return **lambda;
+}
+
+void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
         throw std::runtime_error("'describe' is only allowed in test mode (use 'ry test')");
+
+    auto &lambda = extractTrailingLambda(s, "describe");
 
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -646,48 +657,65 @@ void CodeGen::emitStmt(std::unique_ptr<DescribeStmt> &s) {
 
     llvm::FunctionCallee descBeginFn = mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy);
     llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
-    llvm::FunctionCallee itBeginFn   = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
-    llvm::FunctionCallee itEndFn     = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
 
-    // describe_begin
-    llvm::Value *descName = builder_.CreateGlobalString(s->description, ".desc_name");
+    llvm::Value *descName = emitExpr(*s.args[0]);
+    if (!descName->getType()->isPointerTy())
+        throw std::runtime_error("describe() first argument must be a string");
     builder_.CreateCall(descBeginFn, {descName});
 
-    for (auto &itCase : s->cases) {
-        // Create a test function for this it-block
-        std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
-        llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
-        llvm::Function *testFunc = llvm::Function::Create(
-            testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
-
-        {
-            FnScope guard(*this);
-            fn_ = testFunc;
-            pushScope();
-
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
-            builder_.SetInsertPoint(entry);
-
-            for (auto &stmt : itCase.body)
-                std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-            if (!builder_.GetInsertBlock()->getTerminator())
-                builder_.CreateRetVoid();
-
-            std::string err;
-            llvm::raw_string_ostream errStream(err);
-            if (llvm::verifyFunction(*testFunc, &errStream))
-                throw std::runtime_error("IR verify error in test '" + itCase.description + "': " + err);
-        }
-
-        // Call it_begin, test function, it_end
-        llvm::Value *itName = builder_.CreateGlobalString(itCase.description, ".it_name");
-        builder_.CreateCall(itBeginFn, {itName});
-        builder_.CreateCall(testFunc);
-        builder_.CreateCall(itEndFn);
-    }
+    for (auto &stmt : lambda.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
     builder_.CreateCall(descEndFn);
+}
+
+void CodeGen::emitItCall(CallStmt &s) {
+    if (!test_mode_)
+        throw std::runtime_error("'it' is only allowed in test mode (use 'ry test')");
+
+    auto &lambda = extractTrailingLambda(s, "it");
+
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionType *voidTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), false);
+
+    llvm::FunctionCallee itBeginFn = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
+    llvm::FunctionCallee itEndFn   = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
+
+    llvm::Value *itName = emitExpr(*s.args[0]);
+    if (!itName->getType()->isPointerTy())
+        throw std::runtime_error("it() first argument must be a string");
+
+    // Create a test function for this it-block
+    std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
+    llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
+    llvm::Function *testFunc = llvm::Function::Create(
+        testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
+
+    {
+        FnScope guard(*this);
+        fn_ = testFunc;
+        pushScope();
+
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
+        builder_.SetInsertPoint(entry);
+
+        for (auto &stmt : lambda.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateRetVoid();
+
+        std::string err;
+        llvm::raw_string_ostream errStream(err);
+        if (llvm::verifyFunction(*testFunc, &errStream))
+            throw std::runtime_error("IR verify error in test: " + err);
+    }
+
+    builder_.CreateCall(itBeginFn, {itName});
+    builder_.CreateCall(testFunc);
+    builder_.CreateCall(itEndFn);
 }
 
 // ===== Test: ExpectStmt =====

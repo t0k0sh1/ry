@@ -245,9 +245,6 @@ StmtNode Parser::parseStatement() {
     if (!directives.empty())
         parseError(first.line, "directives are not supported on this statement");
 
-    if (first.kind == TokenKind::Describe)
-        return parseDescribeStatement();
-
     if (first.kind == TokenKind::Expect)
         return parseExpectStatement();
 
@@ -281,7 +278,7 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'match', 'describe', 'expect', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', 'enum', 'match', 'expect', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -324,6 +321,7 @@ StmtNode Parser::parseStatement() {
             auto rest = parseArgList();
             for (auto &arg : rest)
                 s.args.push_back(std::move(arg));
+            tryParseTrailingBlock(s);
             return s;
         }
 
@@ -372,6 +370,7 @@ StmtNode Parser::parseStatement() {
         CallStmt s;
         s.callee = first.value;
         s.args = parseArgList();
+        tryParseTrailingBlock(s);
         return s;
     }
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '.', '[', or '(' after identifier");
@@ -1667,61 +1666,22 @@ ExprPtr Parser::parsePostfix() {
     return expr;
 }
 
-StmtNode Parser::parseDescribeStatement() {
-    lex_.next(); // consume 'describe'
-
-    Token descTok = lex_.peek();
-    if (descTok.kind != TokenKind::String)
-        parseError(descTok.line, "expected string after 'describe'");
-    lex_.next(); // consume string
-
-    if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after describe description");
-    lex_.next(); // consume ':'
-
-    if (lex_.peek().kind != TokenKind::Newline)
-        parseError("expected newline after ':'");
-    lex_.next(); // consume Newline
-    skipNewlines();
-
-    if (lex_.peek().kind != TokenKind::Indent)
-        parseError("expected indented block");
-    lex_.next(); // consume Indent
-
-    auto desc = std::make_unique<DescribeStmt>();
-    desc->description = descTok.value;
-
-    while (lex_.peek().kind != TokenKind::Dedent &&
-           lex_.peek().kind != TokenKind::Eof) {
-        if (lex_.peek().kind != TokenKind::It)
-            parseError(lex_.peek().line, "expected 'it' inside describe block");
-        lex_.next(); // consume 'it'
-
-        Token itDescTok = lex_.peek();
-        if (itDescTok.kind != TokenKind::String)
-            parseError(itDescTok.line, "expected string after 'it'");
-        lex_.next(); // consume string
-
-        if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after it description");
+void Parser::tryParseTrailingBlock(CallStmt &s) {
+    if (lex_.peek().kind == TokenKind::Colon) {
         lex_.next(); // consume ':'
-
-        ItBlock itBlock;
-        itBlock.description = itDescTok.value;
-        itBlock.body = parseBlock();
-
-        desc->cases.push_back(std::move(itBlock));
-
-        skipNewlines();
+        s.args.push_back(parseTrailingBlockAsLambda());
     }
+}
 
-    if (desc->cases.empty())
-        parseError("describe block must have at least one 'it' case");
-
-    if (lex_.peek().kind == TokenKind::Dedent)
-        lex_.next(); // consume Dedent
-
-    return desc;
+ExprPtr Parser::parseTrailingBlockAsLambda() {
+    // ':' is already consumed. Parse the block and wrap it in a LambdaExpr.
+    auto body = parseBlock();
+    auto lambda = std::make_unique<LambdaExpr>();
+    lambda->return_type = "";
+    lambda->body = std::move(body);
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(lambda);
+    return node;
 }
 
 StmtNode Parser::parseExpectStatement() {

@@ -1031,8 +1031,8 @@ TEST_F(CodeGenTest, RawStringConcat) {
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src =
-        "describe \"matchers\":\n"
-        "    it \"not equal\":\n"
+        "describe(\"matchers\"):\n"
+        "    it(\"not equal\"):\n"
         "        expect(1).to_not_eq(2)";
     EXPECT_NO_THROW(runTestSource(src));
 }
@@ -1041,8 +1041,8 @@ TEST_F(CodeGenTest, ExpectToNotEq) {
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src =
-        "describe \"matchers\":\n"
-        "    it \"some\":\n"
+        "describe(\"matchers\"):\n"
+        "    it(\"some\"):\n"
         "        let x = Some(5)\n"
         "        expect(x).to_be_some()";
     EXPECT_NO_THROW(runTestSource(src));
@@ -1052,8 +1052,8 @@ TEST_F(CodeGenTest, ExpectToBeSome) {
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src =
-        "describe \"matchers\":\n"
-        "    it \"contains\":\n"
+        "describe(\"matchers\"):\n"
+        "    it(\"contains\"):\n"
         "        let xs = [1, 2, 3]\n"
         "        expect(xs).to_contain(2)";
     EXPECT_NO_THROW(runTestSource(src));
@@ -1061,9 +1061,21 @@ TEST_F(CodeGenTest, ExpectToContainList) {
 
 TEST_F(CodeGenTest, ExpectToContainString) {
     std::string src =
-        "describe \"matchers\":\n"
-        "    it \"contains str\":\n"
+        "describe(\"matchers\"):\n"
+        "    it(\"contains str\"):\n"
         "        let s = \"hello world\"\n"
         "        expect(s).to_contain(\"world\")";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== trailing block syntax =====
+
+TEST_F(CodeGenTest, TrailingBlockDescribeIt) {
+    std::string src =
+        "describe(\"Calculator\"):\n"
+        "    it(\"adds\"):\n"
+        "        expect(1 + 2).to_eq(3)\n"
+        "    it(\"subtracts\"):\n"
+        "        expect(5 - 3).to_eq(2)";
     EXPECT_NO_THROW(runTestSource(src));
 }

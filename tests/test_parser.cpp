@@ -1134,18 +1134,71 @@ TEST(ParserTest, SnakeCaseParamRequired) {
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_not_eq(2)");
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_not_eq(2)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_be_some()");
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_be_some()");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe \"test\":\n    it \"t\":\n        expect(1).to_contain(1)");
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_contain(1)");
     ASSERT_EQ(prog.size(), 1u);
+}
+
+// ===== trailing block syntax =====
+
+TEST(ParserTest, TrailingBlockNoArgs) {
+    Program prog = parseStr("foo():\n    bar()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "foo");
+    ASSERT_EQ(s.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[0]->data));
+}
+
+TEST(ParserTest, TrailingBlockWithArgs) {
+    Program prog = parseStr("foo(\"a\", 1):\n    bar()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "foo");
+    ASSERT_EQ(s.args.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.args[0]->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.args[1]->data));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[2]->data));
+}
+
+TEST(ParserTest, TrailingBlockNested) {
+    Program prog = parseStr("describe(\"calc\"):\n    it(\"adds\"):\n        expect(1 + 2).to_eq(3)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "describe");
+    ASSERT_EQ(s.args.size(), 2u);
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[1]->data);
+    ASSERT_NE(lambda, nullptr);
+    ASSERT_EQ((*lambda)->body.size(), 1u);
+    // Inner statement should be a CallStmt (it) with trailing block
+    ASSERT_TRUE(std::holds_alternative<CallStmt>((*lambda)->body[0]));
+    const auto &inner = std::get<CallStmt>((*lambda)->body[0]);
+    EXPECT_EQ(inner.callee, "it");
+    ASSERT_EQ(inner.args.size(), 2u);
+}
+
+TEST(ParserTest, TrailingBlockUFCS) {
+    Program prog = parseStr("x.each():\n    print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "each");
+    // First arg is the UFCS receiver (x), second is the trailing lambda
+    ASSERT_EQ(s.args.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.args[0]->data));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[1]->data));
 }
 
 // ===== @native fn tests =====

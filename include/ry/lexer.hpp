@@ -89,8 +89,6 @@ enum class TokenKind {
     Match,          // match
     Case,           // case
     // --- test ---
-    Describe,       // describe
-    It,             // it
     Expect,         // expect
     // --- contract (Design by Contract) ---
     Require,        // require

@@ -179,7 +179,6 @@ struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
-struct DescribeStmt;
 struct MatchStmt;
 
 struct ExpectStmt {
@@ -198,7 +197,6 @@ using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<DescribeStmt>,
                               std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
@@ -263,16 +261,6 @@ struct LambdaExpr {
     std::string return_type;
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
-};
-
-struct ItBlock {
-    std::string description;
-    std::vector<StmtNode> body;
-};
-
-struct DescribeStmt {
-    std::string description;
-    std::vector<ItBlock> cases;
 };
 
 // ===== Match patterns =====
