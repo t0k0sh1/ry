@@ -254,9 +254,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
         } else if (type_annotation) {
-            std::string resolvedType = resolveTypeAlias(*type_annotation);
-            if (resolvedType.size() > 3 && resolvedType.substr(0, 3) == "fn(") {
-                fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedType);
+            if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
+                fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
         }
     }
