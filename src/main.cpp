@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <unordered_set>
 #include <vector>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/ExecutionEngine/Orc/ExecutorProcessControl.h>
@@ -148,13 +149,27 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         return 1;
     }
     auto *fn = symOrErr->toPtr<int(*)()>();
-    return fn();
+    int result = fn();
+    return result > 0 ? 1 : 0;
 }
 
 // Collect *.test.ry files recursively under root_dir
 static std::vector<std::string> findTestFiles(const std::string &root_dir) {
+    static const std::unordered_set<std::string> skip_dirs = {
+        ".git", "build", "node_modules"
+    };
     std::vector<std::string> files;
-    for (auto &entry : fs::recursive_directory_iterator(root_dir)) {
+    std::error_code ec;
+    auto it = fs::recursive_directory_iterator(
+        root_dir, fs::directory_options::skip_permission_denied, ec);
+    if (ec) return files;
+    for (auto end = fs::recursive_directory_iterator(); it != end; it.increment(ec)) {
+        if (ec) { ec.clear(); continue; }
+        auto &entry = *it;
+        if (entry.is_directory() && skip_dirs.count(entry.path().filename().string())) {
+            it.disable_recursion_pending();
+            continue;
+        }
         if (!entry.is_regular_file()) continue;
         auto path = entry.path().string();
         if (path.size() >= 8 && path.compare(path.size() - 8, 8, ".test.ry") == 0) {

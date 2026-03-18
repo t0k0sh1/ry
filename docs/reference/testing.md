@@ -13,15 +13,15 @@ ry test              # Auto-discover and run all *.test.ry files in the project
 ry test test_file.ry # Run a specific test file
 ```
 
+The exit code is 0 if all tests passed, 1 if any test failed.
+
 ### Auto-Discovery Mode
 
 When `ry test` is run without arguments, it:
 
 1. Searches for `ry.toml` to find the project root
-2. Recursively discovers all `*.test.ry` files under the project root
+2. Recursively discovers all `*.test.ry` files under the project root (`.git`, `build`, `node_modules` are skipped)
 3. Runs each file and aggregates results
-
-The exit code is 0 if all tests passed, 1 if any test failed.
 
 ---
 
