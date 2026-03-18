@@ -1948,12 +1948,12 @@ TEST_F(CodeGenTest, FlattenStrLists) {
     EXPECT_EQ(runSource(src), "[a, b, c, d]\n");
 }
 
-TEST_F(CodeGenTest, FlattenWithEmptyInner) {
+TEST_F(CodeGenTest, FlattenUnevenInner) {
     std::string src =
-        "let xs = [[1, 2], [3, 4]]\n"
+        "let xs = [[1], [2, 3, 4], [5, 6]]\n"
         "let ys = flatten(xs)\n"
         "print(ys)";
-    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6]\n");
 }
 
 TEST_F(CodeGenTest, FlattenSingleInner) {

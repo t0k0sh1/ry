@@ -602,6 +602,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
             llvm::Value *match;
             if (listElemTy == ptrTy_) {
+                // Only string lists support value-based remove; nested lists/maps are not comparable
+                if (nested_list_element_types_.count(containerPtr) ||
+                    (llvm::isa<llvm::LoadInst>(containerPtr) &&
+                     nested_list_element_types_.count(llvm::cast<llvm::LoadInst>(containerPtr)->getPointerOperand())))
+                    throw std::runtime_error("remove() is not supported for lists of non-string pointer elements");
                 auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
                 auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
@@ -2962,6 +2967,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (!elemTy)
             throw std::runtime_error("distinct() requires a list as argument");
 
+        // Reject non-string pointer elements (e.g. list-of-lists) — strcmp would be UB
+        if (elemTy == ptrTy_) {
+            bool isNested = nested_list_element_types_.count(listVal);
+            if (!isNested) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listVal))
+                    isNested = nested_list_element_types_.count(load->getPointerOperand());
+            }
+            if (isNested)
+                throw std::runtime_error("distinct() is not supported for lists of non-string pointer elements");
+        }
+
         llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "dist_src_len_ptr");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "dist_src_len");
         llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "dist_src_data_field");
@@ -3400,8 +3416,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 llvm::Value *curVals2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3), "mg_cur_vals2");
                 llvm::Value *newValPtr = builder_.CreateGEP(valTy, curVals2, {curLen}, "mg_new_vp");
                 builder_.CreateStore(vv, newValPtr);
-                emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, 0, 4, 5, kv, keyTy, curLen);
                 builder_.CreateStore(builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1)), lenPtr);
+                emitBucketInsertAndRehashCheck(newHeader, mapHeaderTy_, 0, 4, 5, kv, keyTy, curLen);
                 builder_.CreateBr(nextBB);
 
                 builder_.SetInsertPoint(nextBB);
