@@ -172,13 +172,16 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
+### Extracting the Value
 
-Use `unwrap` to extract the inner value. Calling `unwrap` on `None` causes a runtime error.
+Use `match` to safely extract the inner value and handle the `None` case.
 
 ```python
-let v = unwrap(x)   # 42
-# unwrap(y) -> runtime error
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
 ```
 
 ---

@@ -331,8 +331,9 @@ fn divide(a: int, b: int) -> (int, Error?):
 
 let val, err = divide(10, 2)
 if err != none:
-    let e = unwrap(err)
-    print(e.message)
+    match err:
+        case Some(e):
+            print(e.message)
 else:
     print(val)          # 5
 ```

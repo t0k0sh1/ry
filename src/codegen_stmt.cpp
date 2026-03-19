@@ -109,6 +109,12 @@ void CodeGen::emitVarDecl(const std::string &name,
         return;
     }
 
+    // Handle none keyword without annotation
+    if (std::holds_alternative<NoneExpr>(value.data)) {
+        if (!type_annotation)
+            throw std::runtime_error("type annotation required for none");
+    }
+
     // Resolve type alias and parse constraint once for the entire function
     std::string resolvedAnnot;
     std::optional<TypeConstraint> constraint;

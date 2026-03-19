@@ -172,15 +172,6 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
-
-使用 `unwrap` 取出內部的值。對 `None` 呼叫 `unwrap` 會產生執行期錯誤。
-
-```python
-let v = unwrap(x)   # 42
-# unwrap(y) → 執行期錯誤
-```
-
 ---
 
 ## F-String（字串插值）

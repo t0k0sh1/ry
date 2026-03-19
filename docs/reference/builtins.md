@@ -19,7 +19,6 @@
 | Function | Description |
 |------|------|
 | `Some(expr)` | Constructs the value-present variant of an Option type |
-| `unwrap(opt)` | Extracts the value from an Option |
 
 ### Collection Operations
 
@@ -115,22 +114,6 @@ Constructs the value-present variant of an Option type.
 let x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
-
----
-
-## unwrap
-
-**Signature:** `unwrap(opt: Option<T>) -> T`
-
-Extracts the inner value from an Option. UFCS notation is also available.
-
-```python
-let x = Some(42)
-print(unwrap(x))    # 42
-print(x.unwrap())   # 42 (UFCS)
-```
-
-**Error condition:** Passing `None` causes a runtime error (exit(1)).
 
 ---
 

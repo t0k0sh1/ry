@@ -60,7 +60,6 @@ record Bad:
 |-----------|------|-----|
 | 串列超出範圍的存取 | 串列的索引超出範圍 | `let xs = [1, 2, 3]` → `xs[5]` |
 | 映射不存在的鍵存取 | 參照映射中不存在的鍵 | `let m = {"a": 1}` → `m["b"]` |
-| unwrap(None) | 對 `None` 值呼叫 `unwrap` | `unwrap(None)` |
 
 | 契約違反 | `require`、`ensure` 或 `invariant` 條件評估為 false | 參閱 [契約式設計](contracts.md) |
 
@@ -76,8 +75,4 @@ print(xs[10])   # 執行時錯誤：exit(1)
 # 映射不存在的鍵存取
 let m = {"a": 1}
 print(m["z"])   # 執行時錯誤：exit(1)
-
-# unwrap(None)
-let x: Option<int> = None
-print(unwrap(x))   # 執行時錯誤：exit(1)
 ```

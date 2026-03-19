@@ -172,15 +172,6 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
-
-`unwrap` で内部の値を取り出します。`None` に対して `unwrap` を呼ぶとランタイムエラーになります。
-
-```python
-let v = unwrap(x)   # 42
-# unwrap(y) → ランタイムエラー
-```
-
 ---
 
 ## F-String（文字列補間）
