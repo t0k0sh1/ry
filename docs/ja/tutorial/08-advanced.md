@@ -172,6 +172,18 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
+### 値の取り出し
+
+`match` を使って内部の値を安全に取り出し、`None` の場合も処理できます。
+
+```python
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
+```
+
 ---
 
 ## F-String（文字列補間）

@@ -172,6 +172,18 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
+### 取出值
+
+使用 `match` 安全地取出內部的值，並處理 `None` 的情況。
+
+```python
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
+```
+
 ---
 
 ## F-String（字串插值）

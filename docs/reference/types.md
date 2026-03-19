@@ -327,12 +327,11 @@ fn divide(a: int, b: int) -> (int, Error?):
     return (a // b, none)
 
 let val, err = divide(10, 2)
-if err != none:
-    match err:
-        case Some(e):
-            print(e.message)
-else:
-    print(val)          # 5
+match err:
+    case Some(e):
+        print(e.message)
+    case None:
+        print(val)          # 5
 ```
 
 ### `!!` Operator (Error Propagation)

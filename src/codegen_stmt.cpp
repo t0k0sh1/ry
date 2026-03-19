@@ -109,10 +109,19 @@ void CodeGen::emitVarDecl(const std::string &name,
         return;
     }
 
-    // Handle none keyword without annotation
+    // Handle none keyword
     if (std::holds_alternative<NoneExpr>(value.data)) {
         if (!type_annotation)
             throw std::runtime_error("type annotation required for none");
+        llvm::Type *annotTy = resolveType(*type_annotation);
+        if (!isOptionType(annotTy))
+            throw std::runtime_error("none can only be assigned to Option type");
+        llvm::Value *val = buildNoneValue(annotTy);
+        llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
+        builder_.CreateStore(val, ptr);
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
+        return;
     }
 
     // Resolve type alias and parse constraint once for the entire function

@@ -586,6 +586,14 @@ TEST_F(CodeGenTest, UnwrapRemoved) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, UnwrapRemovedUFCS) {
+    std::string src =
+        "let x: Option<int> = Some(42)\n"
+        "let v = x.unwrap()\n"
+        "print(v)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, NoneKeywordWithoutAnnotationThrows) {
     std::string src = "let x = none";
     EXPECT_THROW(runSource(src), std::runtime_error);
