@@ -165,6 +165,9 @@ Token Lexer::readToken() {
     if (c == ',') { ++pos_; return {TokenKind::Comma,  ",", line_}; }
     if (c == '!') {
         ++pos_;
+        if (pos_ < src_.size() && src_[pos_] == '!') {
+            ++pos_; return {TokenKind::BangBang, "!!", line_};
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; return {TokenKind::BangEq, "!=", line_};
         }
@@ -401,8 +404,7 @@ Token Lexer::readToken() {
         if (id == "result")    return {TokenKind::Result,    "result",    line_};
         if (id == "none")      return {TokenKind::NoneKw,    "none",      line_};
         if (id == "as")        return {TokenKind::As,        "as",        line_};
-        if (id == "Ok")        return {TokenKind::Ok,        "Ok",        line_};
-        if (id == "Err")       return {TokenKind::Err,       "Err",       line_};
+        if (id == "Error")     return {TokenKind::ErrorKw,   "Error",     line_};
         return {TokenKind::Ident, std::move(id), line_};
     }
 

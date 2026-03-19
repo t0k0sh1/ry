@@ -120,6 +120,20 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+    // Option type comparison with none: check has_value flag only
+    // Only allowed when at least one side is Option and both sides are Option
+    // (none is also an Option value with has_value=false)
+    bool lhsIsOpt = isOptionType(lhs->getType());
+    bool rhsIsOpt = isOptionType(rhs->getType());
+    if (lhsIsOpt && rhsIsOpt && (op == "==" || op == "!=")) {
+        // Only support comparison with none (has_value == false on one side)
+        // Extract has_value flags from both
+        llvm::Value *lhsFlag = builder_.CreateExtractValue(lhs, 0, "lhs_has");
+        llvm::Value *rhsFlag = builder_.CreateExtractValue(rhs, 0, "rhs_has");
+        if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
+        return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
+    }
+
     // String comparison via strcmp
     if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
         auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
@@ -531,6 +545,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
         throw std::runtime_error("field access on non-struct type");
+
+    // Error type field access: .message (idx 0), .code (idx 1)
+    if (structTy == errorTy_) {
+        if (e->field == "message")
+            return builder_.CreateExtractValue(obj, 0, "err.message");
+        if (e->field == "code")
+            return builder_.CreateExtractValue(obj, 1, "err.code");
+        throw std::runtime_error("Error type has no field '" + e->field + "'");
+    }
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
@@ -1255,5 +1278,52 @@ llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
     // Default to Option<int> if no context is available
     llvm::StructType *optTy = getOptionType(i64Ty_);
     return buildNoneValue(optTy);
+}
+
+// ===== ErrorPropagateExpr (!!) =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e) {
+    llvm::Value *tuple = emitExpr(*e->operand);
+    llvm::Type *tupleTy = tuple->getType();
+
+    // Verify operand is a 2-element struct (tuple)
+    auto *structTy = llvm::dyn_cast<llvm::StructType>(tupleTy);
+    if (!structTy || structTy->getNumElements() != 2)
+        throw std::runtime_error("!! operator requires a (T, Error?) tuple");
+
+    // Verify second element is Option<Error>
+    llvm::StructType *errOptTy = getOptionType(errorTy_);
+    if (structTy->getElementType(1) != errOptTy)
+        throw std::runtime_error("!! operator requires second tuple element to be Error?");
+
+    // Verify current function returns (X, Error?)
+    if (!fn_)
+        throw std::runtime_error("!! operator can only be used inside a function");
+    llvm::Type *retTy = fn_->getReturnType();
+    auto *retStructTy = llvm::dyn_cast<llvm::StructType>(retTy);
+    if (!retStructTy || retStructTy->getNumElements() != 2 ||
+        retStructTy->getElementType(1) != errOptTy)
+        throw std::runtime_error("!! operator requires enclosing function to return (T, Error?)");
+
+    // Extract the error option (second element)
+    llvm::Value *errOpt = builder_.CreateExtractValue(tuple, 1, "err_opt");
+    llvm::Value *hasErr = builder_.CreateExtractValue(errOpt, 0, "has_err");
+
+    llvm::BasicBlock *propagateBB = llvm::BasicBlock::Create(*ctx_, "propagate", fn_);
+    llvm::BasicBlock *continueBB = llvm::BasicBlock::Create(*ctx_, "continue", fn_);
+
+    builder_.CreateCondBr(hasErr, propagateBB, continueBB);
+
+    // Propagate: build (zero_T, errOpt) and return
+    builder_.SetInsertPoint(propagateBB);
+    llvm::Value *retVal = llvm::UndefValue::get(retTy);
+    retVal = builder_.CreateInsertValue(retVal,
+        llvm::Constant::getNullValue(retStructTy->getElementType(0)), 0);
+    retVal = builder_.CreateInsertValue(retVal, errOpt, 1);
+    builder_.CreateRet(retVal);
+
+    // Continue: extract the value (first element)
+    builder_.SetInsertPoint(continueBB);
+    return builder_.CreateExtractValue(tuple, 0, "unwrapped");
 }
 

@@ -20,7 +20,7 @@
 | `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int): x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
-| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | Result type for error handling |
+| `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
@@ -61,7 +61,7 @@ let u: int | str = 42
 | `Map<K, V>` | Generic hash map type |
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
-| `Result<T, E>` | Result type (T = Ok type, E = Err type) |
+| `Error` | Built-in error type (`message: str`, `code: int`) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
@@ -303,31 +303,57 @@ match a:
 
 ---
 
-## Result Type
+## Error Type
 
-A type for recoverable error handling. A `Result<T, E>` value is either `Ok(value)` (success) or `Err(error)` (failure).
+A built-in type for error handling. `Error` has two fields: `message` (str) and `code` (int).
 
 ```python
-fn divide(a: int, b: int) -> Result<int, str>:
-    if b == 0:
-        return Err("division by zero")
-    return Ok(a // b)
+let e = Error("something went wrong")       # code defaults to 0
+let e2 = Error("not found", 404)            # explicit code
 
-let r = divide(10, 2)
-match r:
-    case Ok(v):
-        print(v)      # 5
-    case Err(e):
-        print(e)
+print(e.message)   # something went wrong
+print(e2.code)     # 404
+print(e2)          # Error: not found (code: 404)
 ```
+
+### Error Handling Convention
+
+Functions that can fail return a `(T, Error?)` tuple:
+
+```python
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 2)
+if err != none:
+    let e = unwrap(err)
+    print(e.message)
+else:
+    print(val)          # 5
+```
+
+### `!!` Operator (Error Propagation)
+
+The `!!` postfix operator extracts the value from a `(T, Error?)` tuple. If the error is present, it is propagated to the enclosing function.
+
+```python
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("test.txt")!!   # propagates error if any
+    return (data, none)
+```
+
+The enclosing function must also return `(X, Error?)` for `!!` to work.
 
 ### Internal Representation
 
-`Result<T, E>` is represented as `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }`. Tag 0 = Ok, Tag 1 = Err.
-
-### Pattern Matching
-
-Use `match` with `Ok(binding)` and `Err(binding)` patterns. Both patterns are required for exhaustive matching.
+`Error` is represented as `{ ptr message, i64 code }`.
 
 ## Union Type
 

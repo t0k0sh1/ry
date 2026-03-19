@@ -161,6 +161,11 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                     val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
                     newTy = i8Ty_;
+                } else if (isOptionType(annotTy) && isOptionType(newTy) &&
+                           std::holds_alternative<NoneExpr>(value.data)) {
+                    // Allow none coercion to target Option type
+                    val = buildNoneValue(annotTy);
+                    newTy = annotTy;
                 } else if (isUnionType(*type_annotation)) {
                     val = wrapInUnion(val, *type_annotation);
                     newTy = val->getType();
@@ -267,15 +272,6 @@ void CodeGen::emitVarDecl(const std::string &name,
             enum_value_types_[ptr] = evIt->second;
         else if (type_annotation && enum_types_.count(*type_annotation))
             enum_value_types_[ptr] = *type_annotation;
-    }
-
-    // --- Result type tracking ---
-    {
-        auto rvIt = result_value_types_.find(val);
-        if (rvIt != result_value_types_.end())
-            result_value_types_[ptr] = rvIt->second;
-        else if (type_annotation && isResultTypeName(*type_annotation))
-            result_value_types_[ptr] = *type_annotation;
     }
 
     if (is_immutable)
@@ -879,7 +875,32 @@ void CodeGen::emitStmt(ReturnStmt &s) {
             if (isUnionType(current_fn_return_type_)) {
                 val = wrapInUnion(val, current_fn_return_type_);
             } else {
-                throw std::runtime_error("return type mismatch");
+                // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
+                auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
+                auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
+                    throw std::runtime_error("return type mismatch");
+
+                // Find which elements need coercion
+                bool needsCoercion = false;
+                for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                    if (valST->getElementType(i) != retST->getElementType(i)) {
+                        if (!(isOptionType(valST->getElementType(i)) &&
+                              isOptionType(retST->getElementType(i))))
+                            throw std::runtime_error("return type mismatch");
+                        needsCoercion = true;
+                    }
+                }
+                if (needsCoercion) {
+                    llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                    for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                        llvm::Value *elem = builder_.CreateExtractValue(val, i);
+                        if (valST->getElementType(i) != retST->getElementType(i))
+                            elem = buildNoneValue(retST->getElementType(i));
+                        coerced = builder_.CreateInsertValue(coerced, elem, i);
+                    }
+                    val = coerced;
+                }
             }
         }
 
@@ -1003,10 +1024,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                     if (isUnionType(ptype))
                         union_value_types_[alloca] = normalizeUnionType(ptype);
                 }
-            }
-            // Track Result type for result parameters
-            if (isResultTypeName(ptype)) {
-                result_value_types_[alloca] = ptype;
             }
             ++idx;
         }

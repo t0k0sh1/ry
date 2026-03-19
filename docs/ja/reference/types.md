@@ -20,8 +20,11 @@
 | `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int): x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
-| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | エラーハンドリング用の Result 型 |
+| `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 組み込みエラー型 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
+| int リテラル | i64 | `42`, `0 \| 1` | int リテラル型（値の制約） |
+| str リテラル | ptr | `"N" \| "S"` | str リテラル型（値の制約） |
+| 範囲 | i64 | `1..12`, `-10..10` | 範囲型（整数の範囲制約） |
 
 ## 型アノテーション構文
 
@@ -58,7 +61,7 @@ let u: int | str = 42
 | `Map<K, V>` | ジェネリックハッシュマップ型 |
 | `Set<T>` | ジェネリック集合型 |
 | `fn(T1, ...) -> R` | 関数型 |
-| `Result<T, E>` | Result 型（T = Ok 型、E = Err 型） |
+| `Error` | 組み込みエラー型（`message: str`、`code: int`） |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
 | ユーザー定義型名 | `record` または `enum` キーワードで宣言した型 |
 | int リテラル型 | int リテラル値による制約（例: `42`、`0 \| 1`） |
@@ -303,31 +306,57 @@ match a:
 
 ---
 
-## Result 型
+## Error 型
 
-回復可能なエラーハンドリング用の型です。`Result<T, E>` の値は `Ok(value)`（成功）または `Err(error)`（失敗）のいずれかです。
+エラーハンドリング用の組み込み型です。`Error` は `message`（str）と `code`（int）の2つのフィールドを持ちます。
 
 ```python
-fn divide(a: int, b: int) -> Result<int, str>:
-    if b == 0:
-        return Err("division by zero")
-    return Ok(a // b)
+let e = Error("something went wrong")       # code のデフォルトは 0
+let e2 = Error("not found", 404)            # 明示的な code
 
-let r = divide(10, 2)
-match r:
-    case Ok(v):
-        print(v)      # 5
-    case Err(e):
-        print(e)
+print(e.message)   # something went wrong
+print(e2.code)     # 404
+print(e2)          # Error: not found (code: 404)
 ```
+
+### エラーハンドリング規約
+
+失敗する可能性のある関数は `(T, Error?)` タプルを返します:
+
+```python
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 2)
+if err != none:
+    let e = unwrap(err)
+    print(e.message)
+else:
+    print(val)          # 5
+```
+
+### `!!` 演算子（エラー伝播）
+
+`!!` 後置演算子は `(T, Error?)` タプルから値を取り出します。エラーが存在する場合、そのエラーは囲む関数に伝播されます。
+
+```python
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("test.txt")!!   # エラーがあれば伝播
+    return (data, none)
+```
+
+囲む関数も `(X, Error?)` を返す必要があります。
 
 ### 内部表現
 
-`Result<T, E>` は `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` として表現されます。Tag 0 = Ok、Tag 1 = Err です。
-
-### パターンマッチング
-
-`match` で `Ok(binding)` と `Err(binding)` パターンを使用します。網羅的マッチングのため、両方のパターンが必要です。
+`Error` は `{ ptr message, i64 code }` として表現されます。
 
 ## union 型
 

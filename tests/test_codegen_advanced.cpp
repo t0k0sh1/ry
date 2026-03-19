@@ -777,57 +777,110 @@ TEST_F(CodeGenTest, AsCastByteToInt) {
     EXPECT_EQ(runSource("let b: byte = 200\nlet x = b as int\nprint(x)"), "200\n");
 }
 
-// ===== Result type tests =====
+// ===== Error type tests =====
 
-TEST_F(CodeGenTest, ResultOkMatch) {
+TEST_F(CodeGenTest, ErrorConstructor1Arg) {
     std::string src = R"(
-fn divide(a: int, b: int) -> Result<int, str>:
-    if b == 0:
-        return Err("division by zero")
-    return Ok(a // b)
+let e = Error("something went wrong")
+print(e.message)
+print(e.code)
+)";
+    EXPECT_EQ(runSource(src), "something went wrong\n0\n");
+}
 
-let r = divide(10, 2)
-match r:
-    case Ok(v):
-        print(v)
-    case Err(e):
-        print(e)
+TEST_F(CodeGenTest, ErrorConstructor2Args) {
+    std::string src = R"(
+let e = Error("not found", 404)
+print(e.message)
+print(e.code)
+)";
+    EXPECT_EQ(runSource(src), "not found\n404\n");
+}
+
+TEST_F(CodeGenTest, ErrorOptionNone) {
+    std::string src = R"(
+let e: Error? = none
+print(e == none)
+)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ErrorPrint) {
+    std::string src = R"(
+let e = Error("test error", 42)
+print(e)
+)";
+    EXPECT_EQ(runSource(src), "Error: test error (code: 42)\n");
+}
+
+// ===== !! operator tests =====
+
+TEST_F(CodeGenTest, BangBangPropagateSuccess) {
+    std::string src = R"(
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("test.txt")!!
+    return (data, none)
+
+let val, err = process()
+print(val)
+print(err == none)
+)";
+    EXPECT_EQ(runSource(src), "content\ntrue\n");
+}
+
+TEST_F(CodeGenTest, BangBangPropagateError) {
+    std::string src = R"(
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("")!!
+    return (data, none)
+
+let val, err = process()
+print(err != none)
+)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ErrorTupleDestructure) {
+    std::string src = R"(
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 2)
+if err != none:
+    print("error")
+else:
+    print(val)
 )";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
-TEST_F(CodeGenTest, ResultErrMatch) {
+TEST_F(CodeGenTest, ErrorTupleDestructureWithError) {
     std::string src = R"(
-fn divide(a: int, b: int) -> Result<int, str>:
+fn divide(a: int, b: int) -> (int, Error?):
     if b == 0:
-        return Err("division by zero")
-    return Ok(a // b)
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
 
-let r = divide(10, 0)
-match r:
-    case Ok(v):
-        print(v)
-    case Err(e):
-        print(e)
+let val, err = divide(10, 0)
+if err != none:
+    let e = unwrap(err)
+    print(e.message)
+else:
+    print(val)
 )";
     EXPECT_EQ(runSource(src), "division by zero\n");
-}
-
-TEST_F(CodeGenTest, ResultOkWithFloatValue) {
-    std::string src = R"(
-fn safe_sqrt(x: float) -> Result<float, str>:
-    if x < 0.0:
-        return Err("negative input")
-    return Ok(x ** 0.5)
-
-let r = safe_sqrt(4.0)
-match r:
-    case Ok(v):
-        print(v)
-    case Err(e):
-        print(e)
-)";
-    EXPECT_EQ(runSource(src), "2\n");
 }
 
 // ===== match OR pattern =====
