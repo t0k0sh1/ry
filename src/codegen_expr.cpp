@@ -120,16 +120,16 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
-    // Option type comparison with none: compare has_value flags
+    // Option type comparison with none: check has_value flag only
+    // Only allowed when at least one side is Option and both sides are Option
+    // (none is also an Option value with has_value=false)
     bool lhsIsOpt = isOptionType(lhs->getType());
     bool rhsIsOpt = isOptionType(rhs->getType());
-    if ((lhsIsOpt || rhsIsOpt) && (op == "==" || op == "!=")) {
-        llvm::Value *lhsFlag = lhsIsOpt
-            ? builder_.CreateExtractValue(lhs, 0, "lhs_has")
-            : llvm::ConstantInt::get(i1Ty_, 1);
-        llvm::Value *rhsFlag = rhsIsOpt
-            ? builder_.CreateExtractValue(rhs, 0, "rhs_has")
-            : llvm::ConstantInt::get(i1Ty_, 1);
+    if (lhsIsOpt && rhsIsOpt && (op == "==" || op == "!=")) {
+        // Only support comparison with none (has_value == false on one side)
+        // Extract has_value flags from both
+        llvm::Value *lhsFlag = builder_.CreateExtractValue(lhs, 0, "lhs_has");
+        llvm::Value *rhsFlag = builder_.CreateExtractValue(rhs, 0, "rhs_has");
         if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
         return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
     }
@@ -1314,11 +1314,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
 
     builder_.CreateCondBr(hasErr, propagateBB, continueBB);
 
-    // Propagate: build (undef_T, errOpt) and return
+    // Propagate: build (zero_T, errOpt) and return
     builder_.SetInsertPoint(propagateBB);
     llvm::Value *retVal = llvm::UndefValue::get(retTy);
     retVal = builder_.CreateInsertValue(retVal,
-        llvm::UndefValue::get(retStructTy->getElementType(0)), 0);
+        llvm::Constant::getNullValue(retStructTy->getElementType(0)), 0);
     retVal = builder_.CreateInsertValue(retVal, errOpt, 1);
     builder_.CreateRet(retVal);
 

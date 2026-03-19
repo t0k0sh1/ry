@@ -1629,7 +1629,17 @@ ExprPtr Parser::parseLambdaExpr() {
 
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
-    while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket) {
+    while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
+           lex_.peek().kind == TokenKind::BangBang) {
+        if (lex_.peek().kind == TokenKind::BangBang) {
+            lex_.next(); // consume '!!'
+            auto ep = std::make_unique<ErrorPropagateExpr>();
+            ep->operand = std::move(expr);
+            auto node = std::make_unique<ExprNode>();
+            node->data = std::move(ep);
+            expr = std::move(node);
+            continue;
+        }
         if (lex_.peek().kind == TokenKind::LBracket) {
             lex_.next(); // consume '['
             ExprPtr index = parseTernary();
@@ -1671,15 +1681,6 @@ ExprPtr Parser::parsePostfix() {
             node->data = std::move(fa);
             expr = std::move(node);
         }
-    }
-    // !! (error propagation) postfix operator
-    if (lex_.peek().kind == TokenKind::BangBang) {
-        lex_.next(); // consume '!!'
-        auto ep = std::make_unique<ErrorPropagateExpr>();
-        ep->operand = std::move(expr);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(ep);
-        expr = std::move(node);
     }
     return expr;
 }

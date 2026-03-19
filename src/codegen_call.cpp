@@ -1420,9 +1420,13 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.empty() || e.args.size() > 2)
             throw std::runtime_error("Error() takes 1 or 2 arguments");
         llvm::Value *msg = emitExpr(*e.args[0]);
+        if (msg->getType() != ptrTy_)
+            throw std::runtime_error("Error() first argument must be a string");
         llvm::Value *code;
         if (e.args.size() == 2) {
             code = emitExpr(*e.args[1]);
+            if (code->getType() != i64Ty_)
+                throw std::runtime_error("Error() second argument must be an integer");
         } else {
             code = llvm::ConstantInt::get(i64Ty_, 0);
         }
