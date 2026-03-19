@@ -17,6 +17,8 @@ CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
     builtins_["print"] = [this](const std::vector<ExprPtr> &args) { emitPrint(args); };
     builtins_["exit"] = [this](const std::vector<ExprPtr> &args) { emitExit(args); };
 
+    errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
+
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
@@ -252,11 +254,6 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
-    // Propagate result type info from overload entry
-    if (matchedEntry && !matchedEntry->returnTypeName.empty()) {
-        if (isResultTypeName(matchedEntry->returnTypeName))
-            result_value_types_[callResult] = matchedEntry->returnTypeName;
-    }
     return callResult;
 }
 
@@ -343,6 +340,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "str")   return ptrTy_;
+    if (typeName == "Error") return errorTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
 
     // Optional type suffix: "int?" -> Option<int>
@@ -450,12 +448,6 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return getOptionType(innerTy);
     }
 
-    // Result<T, E> parsing
-    if (isResultTypeName(typeName)) {
-        auto &info = getOrCreateResultType(typeName);
-        return info.llvmType;
-    }
-
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
 
@@ -553,68 +545,6 @@ llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
     return val;
 }
 
-CodeGen::ResultTypeInfo &CodeGen::getOrCreateResultType(const std::string &typeStr) {
-    auto it = result_types_.find(typeStr);
-    if (it != result_types_.end()) return it->second;
-
-    // Parse "Result<T, E>" → extract T and E
-    std::string inner = typeStr.substr(7, typeStr.size() - 8); // strip "Result<" and ">"
-    size_t depth = 0;
-    size_t commaPos = std::string::npos;
-    for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '<') ++depth;
-        else if (inner[i] == '>') --depth;
-        else if (inner[i] == ',' && depth == 0) { commaPos = i; break; }
-    }
-    if (commaPos == std::string::npos)
-        throw std::runtime_error("invalid Result type: " + typeStr);
-
-    std::string okStr = inner.substr(0, commaPos);
-    std::string errStr = inner.substr(commaPos + 1);
-    // Trim spaces
-    while (!okStr.empty() && okStr.back() == ' ') okStr.pop_back();
-    while (!errStr.empty() && errStr.front() == ' ') errStr = errStr.substr(1);
-
-    llvm::Type *okTy = resolveType(okStr);
-    llvm::Type *errTy = resolveType(errStr);
-
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t okSize = dl.getTypeAllocSize(okTy);
-    uint64_t errSize = dl.getTypeAllocSize(errTy);
-    uint64_t maxSize = std::max(okSize, errSize);
-    if (maxSize < 8) maxSize = 8;
-
-    auto *dataTy = llvm::ArrayType::get(i8Ty_, maxSize);
-    auto *resultTy = llvm::StructType::get(*ctx_, {i64Ty_, dataTy});
-
-    result_types_[typeStr] = {resultTy, okTy, errTy};
-    return result_types_[typeStr];
-}
-
-bool CodeGen::isResultType(llvm::Type *ty) {
-    for (auto &pair : result_types_) {
-        if (pair.second.llvmType == ty) return true;
-    }
-    return false;
-}
-
-CodeGen::ResultTypeInfo *CodeGen::findResultTypeInfoByLLVMType(llvm::Type *ty) {
-    for (auto &pair : result_types_) {
-        if (pair.second.llvmType == ty) return &pair.second;
-    }
-    return nullptr;
-}
-
-std::string CodeGen::getResultTypeStr(llvm::Value *val) {
-    auto it = result_value_types_.find(val);
-    if (it != result_value_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-        auto it2 = result_value_types_.find(load->getPointerOperand());
-        if (it2 != result_value_types_.end()) return it2->second;
-    }
-    return "";
-}
-
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
     llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
     llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
@@ -643,6 +573,11 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     } else if (ty->isDoubleTy()) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty == errorTy_) {
+        llvm::Value *msg = builder_.CreateExtractValue(val, 0, "err_msg");
+        llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");
+        llvm::Constant *fmt = builder_.CreateGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
+        builder_.CreateCall(printfFn, {fmt, msg, code});
     } else {
         llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});

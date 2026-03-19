@@ -1415,36 +1415,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return result;
     }
 
-    // Ok(x) / Err(x) → Result<T, E> constructor
-    if (e.callee == "Ok" || e.callee == "Err") {
-        if (e.args.size() != 1)
-            throw std::runtime_error(e.callee + "() takes exactly 1 argument");
-        llvm::Value *inner = emitExpr(*e.args[0]);
-        uint64_t tag = (e.callee == "Ok") ? 0 : 1;
-        std::string prefix = (e.callee == "Ok") ? "ok" : "err";
-
-        // Try to use the enclosing function's return type for correct Result sizing
-        llvm::StructType *resultTy = nullptr;
-        if (fn_) {
-            llvm::Type *retTy = fn_->getReturnType();
-            if (isResultType(retTy))
-                resultTy = llvm::cast<llvm::StructType>(retTy);
+    // Error("msg") / Error("msg", code) → Error struct constructor
+    if (e.callee == "Error") {
+        if (e.args.empty() || e.args.size() > 2)
+            throw std::runtime_error("Error() takes 1 or 2 arguments");
+        llvm::Value *msg = emitExpr(*e.args[0]);
+        llvm::Value *code;
+        if (e.args.size() == 2) {
+            code = emitExpr(*e.args[1]);
+        } else {
+            code = llvm::ConstantInt::get(i64Ty_, 0);
         }
-        if (!resultTy) {
-            // Fallback: size from inner value (works when T and E have same size)
-            const llvm::DataLayout &dl = mod_->getDataLayout();
-            uint64_t innerSize = dl.getTypeAllocSize(inner->getType());
-            if (innerSize < 8) innerSize = 8;
-            auto *dataTy = llvm::ArrayType::get(i8Ty_, innerSize);
-            resultTy = llvm::StructType::get(*ctx_, {i64Ty_, dataTy});
-        }
-
-        llvm::Value *alloca = builder_.CreateAlloca(resultTy, nullptr, prefix + "_tmp");
-        llvm::Value *tagPtr = builder_.CreateStructGEP(resultTy, alloca, 0, prefix + "_tag_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, tag), tagPtr);
-        llvm::Value *dataPtr = builder_.CreateStructGEP(resultTy, alloca, 1, prefix + "_data_ptr");
-        builder_.CreateStore(inner, dataPtr);
-        return builder_.CreateLoad(resultTy, alloca, prefix + "_val");
+        llvm::Value *result = llvm::UndefValue::get(errorTy_);
+        result = builder_.CreateInsertValue(result, msg, 0, "err.msg");
+        result = builder_.CreateInsertValue(result, code, 1, "err.code");
+        return result;
     }
 
     // unwrap(opt) → extract value or runtime error

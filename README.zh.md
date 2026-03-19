@@ -7,7 +7,7 @@
 ## 特色
 
 - **LLVM JIT 編譯** — 使用 ORC LLJIT 實現高速原生執行
-- **豐富的型別系統** — `int`、`float`、`bool`、`str`、`Option<T>`、`Result<T, E>`、元組、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函式型別、使用者自訂結構體
+- **豐富的型別系統** — `int`、`float`、`bool`、`str`、`Option<T>`、`Error`、元組、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函式型別、使用者自訂結構體
 - **運算子** — 算術、比較、邏輯、位元（`>>>` 邏輯右移）、複合賦值、`in` / `not in`、字串重複（`"ab" * 3`）、`as` 型別轉換（支援運算子多載）
 - **f-string** — 使用 `f"Hello {name}"` 進行字串內插
 - **契約式設計** — `require`（前置條件）、`ensure`（後置條件）、`invariant`（結構體不變量）、`old()`、`result`

@@ -27,6 +27,7 @@ private:
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
+    llvm::StructType *errorTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     struct OverloadEntry {
@@ -87,14 +88,6 @@ private:
     std::unordered_map<std::string, GenericEnumTemplate> generic_enum_templates_;
     void instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
                                 const std::vector<std::string> &typeArgs);
-
-    struct ResultTypeInfo {
-        llvm::StructType *llvmType;
-        llvm::Type *okType;
-        llvm::Type *errType;
-    };
-    std::unordered_map<std::string, ResultTypeInfo> result_types_;
-    std::unordered_map<llvm::Value*, std::string> result_value_types_;
 
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
@@ -235,6 +228,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
 
     // Operator overload helpers
@@ -321,19 +315,6 @@ private:
     // Lambda call helper: invoke a lambda/closure value with given args
     llvm::Value *emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                 std::vector<llvm::Value*> args, const std::string &name);
-
-    // Result type helpers
-    static bool isResultTypeName(const std::string &name) {
-        return name.size() > 7 && name.substr(0, 7) == "Result<" && name.back() == '>';
-    }
-    ResultTypeInfo &getOrCreateResultType(const std::string &typeStr);
-    bool isResultType(llvm::Type *ty);
-    ResultTypeInfo *findResultTypeInfoByLLVMType(llvm::Type *ty);
-    std::string getResultTypeStr(llvm::Value *val);
-
-    // Result pattern binding helper
-    void emitResultPatternBinding(const std::string &binding, llvm::Value *subjectAlloca,
-                                   llvm::Type *subjectTy, bool isOk);
 
     // Lambda return type inference
     llvm::Type *inferExprType(const ExprNode &expr,

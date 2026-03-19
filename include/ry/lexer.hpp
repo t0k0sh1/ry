@@ -104,9 +104,9 @@ enum class TokenKind {
     FStringEnd,     // }..." or f"..."
     // --- type cast ---
     As,             // as
-    // --- Result type ---
-    Ok,             // Ok
-    Err,            // Err
+    // --- Error type ---
+    ErrorKw,        // Error
+    BangBang,       // !!
     Question,       // ?
 };
 

@@ -8,6 +8,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
+| 0 | `!!` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |

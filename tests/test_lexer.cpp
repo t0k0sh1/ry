@@ -856,18 +856,18 @@ TEST(LexerTest, KeywordAs) {
     EXPECT_EQ(toks[0].value, "as");
 }
 
-TEST(LexerTest, KeywordOk) {
-    auto toks = tokenize("Ok");
+TEST(LexerTest, KeywordError) {
+    auto toks = tokenize("Error");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Ok);
-    EXPECT_EQ(toks[0].value, "Ok");
+    EXPECT_EQ(toks[0].kind, TokenKind::ErrorKw);
+    EXPECT_EQ(toks[0].value, "Error");
 }
 
-TEST(LexerTest, KeywordErr) {
-    auto toks = tokenize("Err");
+TEST(LexerTest, BangBangOperator) {
+    auto toks = tokenize("!!");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Err);
-    EXPECT_EQ(toks[0].value, "Err");
+    EXPECT_EQ(toks[0].kind, TokenKind::BangBang);
+    EXPECT_EQ(toks[0].value, "!!");
 }
 
 // ===== r-string =====

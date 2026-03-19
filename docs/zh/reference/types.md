@@ -20,8 +20,11 @@
 | `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int): x * 2` | 函式型別 |
 | 使用者定義型別 | LLVM StructType (named) | `record Point: ...` | 以 `record` 關鍵字定義的結構體 |
 | `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
-| `Result<T, E>` | `{ i64, [N x i8] }` | `Ok(42)`, `Err("fail")` | 用於錯誤處理的結果型別 |
+| `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 內建錯誤型別 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
+| int 字面量 | i64 | `42`, `0 \| 1` | int 字面量型別（值限制） |
+| str 字面量 | ptr | `"N" \| "S"` | str 字面量型別（值限制） |
+| 範圍 | i64 | `1..12`, `-10..10` | 範圍型別（包含兩端的整數範圍限制） |
 
 ## 型別標註語法
 
@@ -58,7 +61,7 @@ let u: int | str = 42
 | `Map<K, V>` | 泛型雜湊映射型別 |
 | `Set<T>` | 泛型集合型別 |
 | `fn(T1, ...) -> R` | 函式型別 |
-| `Result<T, E>` | 結果型別（T = Ok 型別、E = Err 型別） |
+| `Error` | 內建錯誤型別（`message: str`、`code: int`） |
 | `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
 | 使用者定義型別名稱 | 以 `record` 或 `enum` 關鍵字宣告的型別 |
 | int 字面量型別 | 以 int 字面量值限制（例：`42`、`0 \| 1`） |
@@ -303,31 +306,57 @@ match a:
 
 ---
 
-## Result 型別
+## Error 型別
 
-用於可恢復錯誤處理的型別。`Result<T, E>` 的值為 `Ok(value)`（成功）或 `Err(error)`（失敗）。
+用於錯誤處理的內建型別。`Error` 具有兩個欄位：`message`（str）和 `code`（int）。
 
 ```python
-fn divide(a: int, b: int) -> Result<int, str>:
-    if b == 0:
-        return Err("division by zero")
-    return Ok(a // b)
+let e = Error("something went wrong")       # code 預設為 0
+let e2 = Error("not found", 404)            # 明確指定 code
 
-let r = divide(10, 2)
-match r:
-    case Ok(v):
-        print(v)      # 5
-    case Err(e):
-        print(e)
+print(e.message)   # something went wrong
+print(e2.code)     # 404
+print(e2)          # Error: not found (code: 404)
 ```
+
+### 錯誤處理慣例
+
+可能失敗的函式回傳 `(T, Error?)` 元組：
+
+```python
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 2)
+if err != none:
+    let e = unwrap(err)
+    print(e.message)
+else:
+    print(val)          # 5
+```
+
+### `!!` 運算子（錯誤傳播）
+
+`!!` 後綴運算子從 `(T, Error?)` 元組中取出值。如果錯誤存在，會將其傳播給外層函式。
+
+```python
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("test.txt")!!   # 如果有錯誤則傳播
+    return (data, none)
+```
+
+外層函式也必須回傳 `(X, Error?)` 才能使用 `!!`。
 
 ### 內部表示
 
-`Result<T, E>` 以 `{ i64 tag, [max(sizeof(T), sizeof(E)) x i8] data }` 表示。Tag 0 = Ok、Tag 1 = Err。
-
-### 模式匹配
-
-使用 `match` 搭配 `Ok(binding)` 和 `Err(binding)` 模式。為確保窮舉性，兩種模式都是必需的。
+`Error` 以 `{ ptr message, i64 code }` 表示。
 
 ## union 型別
 

@@ -809,14 +809,14 @@ ExprPtr Parser::parsePrimary() {
         node->data = NoneExpr{};
         return node;
     }
-    // Ok(expr) / Err(expr) → CallExpr
-    if (t.kind == TokenKind::Ok || t.kind == TokenKind::Err) {
-        std::string callee = lex_.next().value;
+    // Error(expr) → CallExpr
+    if (t.kind == TokenKind::ErrorKw) {
+        lex_.next(); // consume 'Error'
         if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after '" + callee + "'");
+            parseError("expected '(' after 'Error'");
         lex_.next(); // consume '('
         auto call = std::make_unique<CallExpr>();
-        call->callee = callee;
+        call->callee = "Error";
         call->args = parseArgList();
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(call);
@@ -1480,6 +1480,15 @@ std::string Parser::parseTypeNameSingle() {
     }
 
     Token t = lex_.peek();
+    if (t.kind == TokenKind::ErrorKw) {
+        lex_.next(); // consume 'Error'
+        std::string name = "Error";
+        if (lex_.peek().kind == TokenKind::Question) {
+            lex_.next(); // consume '?'
+            name += "?";
+        }
+        return name;
+    }
     if (t.kind != TokenKind::Ident)
         parseError(t.line, "expected type name");
     std::string name = t.value;
@@ -1510,7 +1519,7 @@ std::string Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
-        if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
+        if (name == "Map" && lex_.peek().kind == TokenKind::Comma) {
             // Map<K, V> parsing
             lex_.next(); // consume ','
             std::string valueTy = parseTypeName();
@@ -1663,6 +1672,15 @@ ExprPtr Parser::parsePostfix() {
             expr = std::move(node);
         }
     }
+    // !! (error propagation) postfix operator
+    if (lex_.peek().kind == TokenKind::BangBang) {
+        lex_.next(); // consume '!!'
+        auto ep = std::make_unique<ErrorPropagateExpr>();
+        ep->operand = std::move(expr);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(ep);
+        expr = std::move(node);
+    }
     return expr;
 }
 
@@ -1745,38 +1763,6 @@ Pattern Parser::parsePattern() {
     if (t.kind == TokenKind::Ident && t.value == "None") {
         lex_.next();
         return NonePattern{};
-    }
-
-    // Ok(binding) pattern
-    if (t.kind == TokenKind::Ok) {
-        lex_.next();
-        if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after 'Ok'");
-        lex_.next();
-        Token binding = lex_.peek();
-        if (binding.kind != TokenKind::Ident)
-            parseError(binding.line, "expected variable name in Ok pattern");
-        lex_.next();
-        if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' after Ok binding");
-        lex_.next();
-        return OkPattern{binding.value};
-    }
-
-    // Err(binding) pattern
-    if (t.kind == TokenKind::Err) {
-        lex_.next();
-        if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after 'Err'");
-        lex_.next();
-        Token binding = lex_.peek();
-        if (binding.kind != TokenKind::Ident)
-            parseError(binding.line, "expected variable name in Err pattern");
-        lex_.next();
-        if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' after Err binding");
-        lex_.next();
-        return ErrPattern{binding.value};
     }
 
     // Some(binding) pattern
@@ -1912,18 +1898,14 @@ StmtNode Parser::parseMatchStatement() {
             auto orPat = std::make_unique<OrPattern>();
             // Check that first pattern has no variable binding
             if (std::holds_alternative<VariablePattern>(arm.pattern) ||
-                std::holds_alternative<SomePattern>(arm.pattern) ||
-                std::holds_alternative<OkPattern>(arm.pattern) ||
-                std::holds_alternative<ErrPattern>(arm.pattern))
+                std::holds_alternative<SomePattern>(arm.pattern))
                 parseError("OR pattern cannot contain variable bindings");
             orPat->alternatives.push_back(std::move(arm.pattern));
             while (lex_.peek().kind == TokenKind::Pipe) {
                 lex_.next(); // consume '|'
                 Pattern alt = parsePattern();
                 if (std::holds_alternative<VariablePattern>(alt) ||
-                    std::holds_alternative<SomePattern>(alt) ||
-                    std::holds_alternative<OkPattern>(alt) ||
-                    std::holds_alternative<ErrPattern>(alt))
+                    std::holds_alternative<SomePattern>(alt))
                     parseError("OR pattern cannot contain variable bindings");
                 orPat->alternatives.push_back(std::move(alt));
             }
