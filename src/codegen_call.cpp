@@ -1436,28 +1436,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return result;
     }
 
-    // unwrap(opt) → extract value or runtime error
+    // unwrap() has been removed — use match or ?? instead
     if (e.callee == "unwrap") {
-        if (e.args.size() != 1)
-            throw std::runtime_error("unwrap() takes exactly 1 argument");
-        llvm::Value *opt = emitExpr(*e.args[0]);
-        if (!isOptionType(opt->getType()))
-            throw std::runtime_error("unwrap() requires Option type argument");
-
-        llvm::Value *hasValue = builder_.CreateExtractValue(opt, 0, "has_value");
-
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "unwrap.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "unwrap.fail", fn_);
-
-        builder_.CreateCondBr(hasValue, okBB, failBB);
-
-        // fail: print error and exit
-        builder_.SetInsertPoint(failBB);
-        emitRuntimeError("runtime error: unwrap() called on None\n", ".unwrap_err");
-
-        // ok: extract value
-        builder_.SetInsertPoint(okBB);
-        return builder_.CreateExtractValue(opt, 1, "unwrap_val");
+        throw std::runtime_error("unwrap() has been removed. Use match or ?? instead");
     }
 
     // has_key(map, key) → bool

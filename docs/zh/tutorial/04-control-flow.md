@@ -225,7 +225,7 @@ match c:
 
 ### Option 的匹配
 
-使用 `match` 取代 `unwrap()`，可以安全地處理 `None` 的情況。
+使用 `match` 可以安全地處理 `None` 的情況。
 
 ```python
 let x: Option<int> = Some(42)

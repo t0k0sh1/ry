@@ -19,7 +19,6 @@
 | 函式 | 說明 |
 |------|------|
 | `Some(expr)` | 建構 Option 型別的有值變體 |
-| `unwrap(opt)` | 取出 Option 值 |
 
 ### 集合操作
 
@@ -115,22 +114,6 @@ print({1, 2, 3})   # {1, 2, 3}
 let x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
-
----
-
-## unwrap
-
-**簽名：** `unwrap(opt: Option<T>) -> T`
-
-從 Option 值中取出內容。也可使用 UFCS 記法。
-
-```python
-let x = Some(42)
-print(unwrap(x))    # 42
-print(x.unwrap())   # 42 (UFCS)
-```
-
-**錯誤條件：** 傳入 `None` 會產生執行時錯誤（exit(1)）。
 
 ---
 

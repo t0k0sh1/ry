@@ -60,8 +60,6 @@ record Bad:
 |-----------|------|-----|
 | List out-of-range access | List index exceeds bounds | `let xs = [1, 2, 3]` -> `xs[5]` |
 | Map non-existent key access | Referenced a key that does not exist in the map | `let m = {"a": 1}` -> `m["b"]` |
-| unwrap(None) | Called `unwrap` on a `None` value | `unwrap(None)` |
-
 | Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
 
 All runtime errors terminate the process with `exit(1)`.
@@ -76,8 +74,4 @@ print(xs[10])   # Runtime error: exit(1)
 # Map non-existent key access
 let m = {"a": 1}
 print(m["z"])   # Runtime error: exit(1)
-
-# unwrap(None)
-let x: Option<int> = None
-print(unwrap(x))   # Runtime error: exit(1)
 ```

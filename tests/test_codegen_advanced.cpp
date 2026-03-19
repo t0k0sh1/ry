@@ -874,11 +874,11 @@ fn divide(a: int, b: int) -> (int, Error?):
     return (a // b, none)
 
 let val, err = divide(10, 0)
-if err != none:
-    let e = unwrap(err)
-    print(e.message)
-else:
-    print(val)
+match err:
+    case Some(e):
+        print(e.message)
+    case None:
+        print(val)
 )";
     EXPECT_EQ(runSource(src), "division by zero\n");
 }

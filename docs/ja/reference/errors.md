@@ -60,8 +60,6 @@ record Bad:
 |-----------|------|-----|
 | リスト範囲外アクセス | リストのインデックスが範囲を超えている | `let xs = [1, 2, 3]` → `xs[5]` |
 | マップ存在しないキーアクセス | マップに存在しないキーを参照した | `let m = {"a": 1}` → `m["b"]` |
-| unwrap(None) | `None` 値に対して `unwrap` を呼び出した | `unwrap(None)` |
-
 | 契約違反 | `require`・`ensure`・`invariant` の条件が false と評価された | [契約による設計](contracts.md) を参照 |
 
 すべてのランタイムエラーはプロセスを `exit(1)` で終了します。
@@ -77,7 +75,4 @@ print(xs[10])   # ランタイムエラー: exit(1)
 let m = {"a": 1}
 print(m["z"])   # ランタイムエラー: exit(1)
 
-# unwrap(None)
-let x: Option<int> = None
-print(unwrap(x))   # ランタイムエラー: exit(1)
 ```

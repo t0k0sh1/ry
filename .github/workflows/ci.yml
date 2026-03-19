@@ -5,6 +5,9 @@ on:
     branches: [main, 'v[0-9]*']
     tags-ignore: ['**']
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

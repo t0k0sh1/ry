@@ -578,19 +578,37 @@ TEST_F(CodeGenTest, OptionStrSomePrint) {
     EXPECT_EQ(runSource(src), "Some(hello)\n");
 }
 
-TEST_F(CodeGenTest, UnwrapSome) {
+TEST_F(CodeGenTest, UnwrapRemoved) {
     std::string src =
         "let x: Option<int> = Some(42)\n"
         "let v = unwrap(x)\n"
         "print(v)";
-    EXPECT_EQ(runSource(src), "42\n");
+    EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, UnwrapNoneExits) {
+TEST_F(CodeGenTest, UnwrapRemovedUFCS) {
     std::string src =
-        "let x: Option<int> = None\n"
-        "let v = unwrap(x)";
-    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+        "let x: Option<int> = Some(42)\n"
+        "let v = x.unwrap()\n"
+        "print(v)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NoneKeywordWithoutAnnotationThrows) {
+    std::string src = "let x = none";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NoneKeywordWithNonOptionAnnotationThrows) {
+    std::string src = "let x: int = none";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, NoneKeywordWithOptionAnnotation) {
+    std::string src =
+        "let x: Option<int> = none\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "None\n");
 }
 
 TEST_F(CodeGenTest, OptionFnParamAndReturn) {

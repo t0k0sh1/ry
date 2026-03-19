@@ -19,7 +19,6 @@
 | 関数 | 説明 |
 |------|------|
 | `Some(expr)` | Option型の値ありバリアントを構築 |
-| `unwrap(opt)` | Option値を取り出す |
 
 ### コレクション操作
 
@@ -115,22 +114,6 @@ Option型の値ありバリアントを構築します。
 let x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
-
----
-
-## unwrap
-
-**シグネチャ:** `unwrap(opt: Option<T>) -> T`
-
-Option値から中身を取り出します。UFCS記法も使用可能です。
-
-```python
-let x = Some(42)
-print(unwrap(x))    # 42
-print(x.unwrap())   # 42 (UFCS)
-```
-
-**エラー条件:** `None` を渡すとランタイムエラー（exit(1)）。
 
 ---
 

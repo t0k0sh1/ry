@@ -172,13 +172,16 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
+### 値の取り出し
 
-`unwrap` で内部の値を取り出します。`None` に対して `unwrap` を呼ぶとランタイムエラーになります。
+`match` を使って内部の値を安全に取り出し、`None` の場合も処理できます。
 
 ```python
-let v = unwrap(x)   # 42
-# unwrap(y) → ランタイムエラー
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
 ```
 
 ---

@@ -3,10 +3,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <array>
 #include <algorithm>
+#include <vector>
 #include <regex>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -60,17 +61,45 @@ std::string get_executable_path() {
 #endif
 }
 
-std::string shell_exec(const std::string &cmd) {
-    std::array<char, 4096> buffer;
-    std::string result;
-    FILE *pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return "";
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-        result += buffer.data();
+int run_command(const std::vector<std::string> &args, std::string *output) {
+    int pipefd[2] = {-1, -1};
+    if (output) {
+        if (pipe(pipefd) == -1) return -1;
     }
-    int status = pclose(pipe);
-    if (status != 0) return "";
-    return result;
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        if (output) { close(pipefd[0]); close(pipefd[1]); }
+        return -1;
+    }
+
+    if (pid == 0) {
+        if (output) {
+            close(pipefd[0]);
+            dup2(pipefd[1], STDOUT_FILENO);
+            close(pipefd[1]);
+        }
+        std::vector<char *> argv;
+        for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
+        argv.push_back(nullptr);
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+
+    if (output) {
+        close(pipefd[1]);
+        char buf[4096];
+        ssize_t n;
+        while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
+            output->append(buf, n);
+        }
+        close(pipefd[0]);
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return -1;
 }
 
 std::string extract_json_string(const std::string &json, const std::string &key) {
@@ -164,8 +193,9 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
     if (mode == "stable") {
         std::string api_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
         // Check HTTP status first to distinguish 404 from other errors
-        std::string status_cmd = "curl -sfL -o /dev/null -w '%{http_code}' -H 'Accept: application/json' '" + api_url + "'";
-        std::string http_status = shell_exec(status_cmd);
+        std::string http_status;
+        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}",
+                     "-H", "Accept: application/json", api_url}, &http_status);
         http_status.erase(std::remove_if(http_status.begin(), http_status.end(), ::isspace), http_status.end());
 
         if (http_status == "404") {
@@ -174,9 +204,8 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
             return target;
         }
 
-        std::string cmd = "curl -sfL -H 'Accept: application/json' '" + api_url + "'";
-        std::string json = shell_exec(cmd);
-        if (json.empty()) {
+        std::string json;
+        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", api_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch latest release info.\n";
             return target;
         }
@@ -187,10 +216,9 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
         target.download_url = build_download_url(target.tag, platform);
     } else if (mode == "nightly") {
-        std::string cmd = "curl -sfL -H 'Accept: application/json' "
-                          "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
-        std::string json = shell_exec(cmd);
-        if (json.empty()) {
+        std::string releases_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
+        std::string json;
+        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", releases_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch releases.\n";
             return target;
         }
@@ -219,8 +247,8 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
 
         std::string url = build_download_url(tag, platform);
-        std::string cmd = "curl -sfL -o /dev/null -w '%{http_code}' --head '" + url + "'";
-        std::string status = shell_exec(cmd);
+        std::string status;
+        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
         status.erase(std::remove_if(status.begin(), status.end(), ::isspace), status.end());
 
         if (status.empty() || (status != "200" && status != "302")) {
@@ -235,9 +263,7 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
 }
 
 bool download_file(const std::string &url, const std::string &dest_path) {
-    std::string cmd = "curl -sfL -o '" + dest_path + "' '" + url + "'";
-    int status = system(cmd.c_str());
-    return status == 0;
+    return run_command({"curl", "-sfL", "-o", dest_path, url}) == 0;
 }
 
 static bool file_exists(const std::string &path) {
@@ -259,15 +285,14 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
     if (!download_file(download_url, archive_path)) {
         std::cerr << " failed.\n";
         std::cerr << "Error: Download failed. Check your network connection.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
     std::cerr << " done.\n";
 
-    std::string extract_cmd = "tar xzf '" + archive_path + "' -C '" + tmp_dir_str + "'";
-    if (system(extract_cmd.c_str()) != 0) {
+    if (run_command({"tar", "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
 
@@ -275,28 +300,27 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
 
     if (!file_exists(new_binary)) {
         std::cerr << "Error: Expected binary not found in archive.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
 
     if (chmod(new_binary.c_str(), 0755) != 0) {
         std::cerr << "Error: Failed to set permissions on downloaded binary.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
+        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
 
     if (rename(new_binary.c_str(), binary_path.c_str()) != 0) {
         // rename() may fail across filesystems, try cp fallback
-        std::string cp_cmd = "cp '" + new_binary + "' '" + binary_path + "'";
-        if (system(cp_cmd.c_str()) != 0) {
+        if (run_command({"cp", new_binary, binary_path}) != 0) {
             std::cerr << "Error: Failed to replace binary at " << binary_path << "\n";
             std::cerr << "You may need to run with sudo.\n";
-            system(("rm -rf '" + tmp_dir_str + "'").c_str());
+            run_command({"rm", "-rf", tmp_dir_str});
             return false;
         }
     }
 
-    system(("rm -rf '" + tmp_dir_str + "'").c_str());
+    run_command({"rm", "-rf", tmp_dir_str});
     return true;
 }
 

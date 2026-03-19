@@ -20,7 +20,7 @@ namespace detail {
 
 PlatformInfo detect_platform();
 std::string get_executable_path();
-std::string shell_exec(const std::string &cmd);
+int run_command(const std::vector<std::string> &args, std::string *output = nullptr);
 std::string extract_json_string(const std::string &json, const std::string &key);
 std::vector<std::string> extract_all_json_strings(const std::string &json, const std::string &key);
 bool is_prerelease(const std::string &version);
