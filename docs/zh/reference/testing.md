@@ -9,10 +9,19 @@ Ry 內建 RSpec 風格的測試語法。使用 `ry test` 子指令執行測試�
 ## 執行方式
 
 ```bash
-ry test test_file.ry
+ry test              # 自動探索並執行專案內所有 *.test.ry 檔案
+ry test test_file.ry # 執行指定的測試檔案
 ```
 
-測試的結束代碼為失敗的測試數量（0 = 全部通過）。
+結束代碼為 0 表示所有測試通過，1 表示有測試失敗。
+
+### 自動探索模式
+
+不帶引數執行 `ry test` 時：
+
+1. 搜尋 `ry.toml` 以找到專案根目錄
+2. 在專案根目錄下遞迴探索所有 `*.test.ry` 檔案（`.git`、`build`、`node_modules` 會被跳過）
+3. 逐一執行並彙總結果
 
 ---
 
@@ -101,4 +110,3 @@ describe("Booleans"):
 
 - 不支援 `describe` 的巢狀
 - 不支援 `before_each` / `after_each`
-- 不支援以 glob 執行測試檔案（`ry test tests/`）
