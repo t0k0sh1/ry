@@ -98,6 +98,7 @@ add_executable(ry_tests
     tests/test_paths.cpp
     tests/test_regex_runtime.cpp
     tests/test_codegen_regex.cpp
+    tests/test_codegen_mock.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

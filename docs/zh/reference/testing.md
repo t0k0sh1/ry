@@ -106,6 +106,51 @@ describe("Booleans"):
 
 ---
 
+## 模擬（Mock）
+
+### mock(fn_name, replacement)
+
+在當前 `it` 區塊中將函式替換為模擬實作。`it` 區塊結束時模擬會自動清除。
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- 第一個參數為函式名稱（識別符，非字串）
+- 第二個參數為替換用 lambda
+- 替換函式必須與原始函式具有相同的參數型別和回傳型別
+- `it` 區塊結束時模擬會自動還原
+
+### verify(fn_name)
+
+回傳模擬函式被呼叫的次數（`int`）。
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### 模擬的限制事項
+
+- 不支援多載函式的模擬
+- 不支援使用捕獲閉包進行模擬（僅支援純 lambda）
+- 不支援 `@native fn` 的模擬
+
+---
+
 ## 限制事項
 
 - 不支援 `describe` 的巢狀

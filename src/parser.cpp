@@ -5,6 +5,16 @@
 #include <string>
 #include <unordered_set>
 
+// ===== Mock/verify helper: coerce first arg identifier to string =====
+
+static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
+    if (!args.empty()) {
+        if (auto *ve = std::get_if<VariableExpr>(&args[0]->data)) {
+            args[0]->data = StringExpr{ve->name};
+        }
+    }
+}
+
 // ===== Naming convention helpers =====
 
 static bool isSnakeCase(const std::string &name) {
@@ -384,7 +394,11 @@ StmtNode Parser::parseStatement() {
         s.callee = first.value;
         s.args = parseArgList();
         s.loc = locFromToken(first);
-        tryParseTrailingBlock(s);
+        if (s.callee == "mock")
+            coerceFirstArgToString(s.args);
+        if (s.callee != "mock") {
+            tryParseTrailingBlock(s);
+        }
         return s;
     }
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '.', '[', or '(' after identifier");
@@ -952,6 +966,8 @@ ExprPtr Parser::parsePrimary() {
             auto call = std::make_unique<CallExpr>();
             call->callee = t.value;
             call->args = parseArgList();
+            if (call->callee == "verify")
+                coerceFirstArgToString(call->args);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
             node->loc = locFromToken(t);

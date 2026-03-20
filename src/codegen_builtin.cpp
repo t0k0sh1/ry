@@ -696,6 +696,69 @@ void CodeGen::emitItCall(CallStmt &s) {
     builder_.CreateCall(itEndFn);
 }
 
+// ===== Test: mock(fn_name, replacement) =====
+
+void CodeGen::emitMockCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'mock' is only allowed in test mode (use 'ry test')");
+
+    if (s.args.size() != 2)
+        codegenError("mock() requires exactly 2 arguments: function name and replacement");
+
+    // First arg is the function name (converted to StringExpr by parser)
+    auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
+    if (!strExpr)
+        codegenError("mock() first argument must be a function name");
+    const std::string &fnName = strExpr->value;
+
+    // Check function exists
+    auto fit = functions_.find(fnName);
+    if (fit == functions_.end())
+        codegenError("mock(): unknown function '" + fnName + "'");
+
+    // Check no overloads (v1 limitation)
+    if (fit->second.size() > 1)
+        codegenError("mock(): overloaded functions are not supported");
+
+    auto &entry = fit->second[0];
+    llvm::Function *origFn = entry.func;
+
+    // Emit the replacement lambda
+    llvm::Value *replacement = emitExpr(*s.args[1]);
+
+    // Verify it's a function pointer (not a closure)
+    auto fnInfoIt = fn_type_info_.find(replacement);
+    if (fnInfoIt != fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty())
+        codegenError("mock(): capture-based closures are not supported, use a plain lambda");
+
+    // Verify type compatibility
+    llvm::Type *origRetTy = origFn->getReturnType();
+    if (fnInfoIt != fn_type_info_.end()) {
+        if (fnInfoIt->second.returnType != origRetTy)
+            codegenError("mock(): replacement return type does not match '" + fnName + "'");
+        if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
+            codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
+        for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
+            if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
+                codegenError("mock(): replacement parameter type " + std::to_string(i) +
+                             " does not match '" + fnName + "'");
+        }
+    }
+
+    // Track that this function is mocked (for selective dispatch in emitUserFnCall)
+    mocked_functions_.insert(fnName);
+
+    // Call __ry_mock_set(name, fn_ptr)
+    llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+
+    // Cache global string per function name
+    auto &nameStr = mock_name_strings_[fnName];
+    if (!nameStr) nameStr = builder_.CreateGlobalString(fnName, ".mock." + fnName);
+    builder_.CreateCall(mockSetFn, {nameStr, replacement});
+}
+
 // ===== Test: ExpectStmt =====
 
 void CodeGen::emitStmt(ExpectStmt &s) {

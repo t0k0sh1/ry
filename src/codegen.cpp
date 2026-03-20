@@ -262,6 +262,61 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // In test mode, inject mock dispatch only for functions targeted by mock()
+    if (test_mode_ && mocked_functions_.count(callee)) {
+        llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
+        llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
+
+        auto &nameStr = mock_name_strings_[callee];
+        if (!nameStr) nameStr = builder_.CreateGlobalString(callee, ".mock." + callee);
+        llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
+        llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        llvm::Value *isMocked = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
+
+        llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
+        llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
+
+        builder_.CreateCondBr(isMocked, mockBB, origBB);
+
+        // Mock path
+        builder_.SetInsertPoint(mockBB);
+        builder_.CreateCall(mockIncFn, {nameStr});
+        llvm::FunctionType *fnTy = fn->getFunctionType();
+        if (fn->getReturnType()->isVoidTy()) {
+            builder_.CreateCall(fnTy, mockPtr, argVals);
+            builder_.CreateBr(mergeBB);
+
+            // Original path (void case)
+            builder_.SetInsertPoint(origBB);
+            builder_.CreateCall(fn, argVals);
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            return nullptr;
+        }
+
+        llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
+
+        // Original path
+        builder_.SetInsertPoint(origBB);
+        llvm::Value *origResult = builder_.CreateCall(fn, argVals, "orig_result");
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
+
+        // Merge
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
+        phi->addIncoming(mockResult, mockEndBB);
+        phi->addIncoming(origResult, origEndBB);
+        return phi;
+    }
+
     if (fn->getReturnType()->isVoidTy())
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
@@ -276,6 +331,10 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (s.callee == "it") {
         emitItCall(s);
+        return;
+    }
+    if (s.callee == "mock") {
+        emitMockCall(s);
         return;
     }
     auto it = builtins_.find(s.callee);

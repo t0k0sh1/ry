@@ -106,6 +106,51 @@ describe("Booleans"):
 
 ---
 
+## モック
+
+### mock(fn_name, replacement)
+
+現在の `it` ブロック内で関数をモック実装に差し替えます。`it` ブロック終了時にモックは自動的にクリアされます。
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- 第1引数は関数名（識別子、文字列ではない）
+- 第2引数は差し替え用ラムダ
+- 差し替え関数は元の関数と同じ引数型・戻り値型である必要がある
+- `it` ブロック終了時にモックは自動復元される
+
+### verify(fn_name)
+
+モック済み関数の呼び出し回数を `int` で返します。
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### モックの制限事項
+
+- オーバーロードされた関数のモックは非対応
+- キャプチャ付きクロージャでのモックは非対応（プレーンラムダのみ）
+- `@native fn` のモックは非対応
+
+---
+
 ## 制限事項
 
 - `describe` のネストは未対応
