@@ -1813,9 +1813,19 @@ StmtNode Parser::parseExpectStatement() {
         parseError("expected '(' after matcher name");
     lex_.next(); // consume '('
 
-    if (matcher == "to_eq" || matcher == "to_not_eq" || matcher == "to_contain") {
+    static const std::unordered_set<std::string> matchers_with_arg = {
+        "to_eq", "to_not_eq", "to_contain", "to_not_contain",
+        "to_be_greater_than", "to_be_less_than",
+        "to_be_greater_than_or_eq", "to_be_less_than_or_eq",
+        "to_have_length", "to_start_with", "to_end_with"
+    };
+    static const std::unordered_set<std::string> matchers_no_arg = {
+        "to_be_true", "to_be_false", "to_be_none", "to_be_some", "to_be_empty"
+    };
+
+    if (matchers_with_arg.count(matcher)) {
         es.expected = parseTernary();
-    } else if (matcher == "to_be_true" || matcher == "to_be_false" || matcher == "to_be_none" || matcher == "to_be_some") {
+    } else if (matchers_no_arg.count(matcher)) {
         // no argument
     } else {
         parseError(matcherTok.line, "unknown matcher '" + matcher + "'");

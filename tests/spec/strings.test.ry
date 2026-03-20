@@ -1,14 +1,14 @@
 describe("search and check"):
     it("contains"):
-        expect(contains("hello", "ell")).to_be_true()
+        expect("hello").to_contain("ell")
         expect("hello".contains("xyz")).to_be_false()
 
     it("starts_with"):
-        expect(starts_with("hello", "hel")).to_be_true()
+        expect("hello").to_start_with("hel")
         expect("hello".starts_with("world")).to_be_false()
 
     it("ends_with"):
-        expect(ends_with("hello", "llo")).to_be_true()
+        expect("hello").to_end_with("llo")
         expect("hello".ends_with("world")).to_be_false()
 
     it("find"):
@@ -63,7 +63,7 @@ describe("generation"):
 describe("split and join"):
     it("split"):
         let parts = split("a,b,c", ",")
-        expect(len(parts)).to_eq(3)
+        expect(parts).to_have_length(3)
         expect(parts[0]).to_eq("a")
         expect(parts[1]).to_eq("b")
         expect(parts[2]).to_eq("c")
@@ -75,8 +75,8 @@ describe("split and join"):
 
 describe("UTF-8 support"):
     it("len counts characters"):
-        expect(len("hello")).to_eq(5)
-        expect(len("あいう")).to_eq(3)
+        expect("hello").to_have_length(5)
+        expect("あいう").to_have_length(3)
 
     it("byte_len counts bytes"):
         expect(byte_len("hello")).to_eq(5)

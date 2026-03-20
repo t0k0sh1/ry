@@ -65,7 +65,16 @@ foo("arg", fn():
 | `to_be_false()` | 為 `false` | bool |
 | `to_be_none()` | 為 `None` | Option |
 | `to_be_some()` | Option 為 `Some` | Option |
-| `to_contain(val)` | 容器包含值 | List, Set, str |
+| `to_contain(val)` | 容器包含值 | List, Set, Map, str |
+| `to_not_contain(val)` | 容器不包含值 | List, Set, Map, str |
+| `to_be_greater_than(v)` | `actual > v` | int, float |
+| `to_be_less_than(v)` | `actual < v` | int, float |
+| `to_be_greater_than_or_eq(v)` | `actual >= v` | int, float |
+| `to_be_less_than_or_eq(v)` | `actual <= v` | int, float |
+| `to_have_length(n)` | 長度為 `n` | List, Set, Map, str |
+| `to_be_empty()` | 長度為 0 | List, Set, Map, str |
+| `to_start_with(prefix)` | 字串以 prefix 開頭 | str |
+| `to_end_with(suffix)` | 字串以 suffix 結尾 | str |
 
 ---
 

@@ -42,16 +42,16 @@ describe("comparison"):
         expect(1 != 2).to_be_true()
 
     it("less than"):
-        expect(1 < 2).to_be_true()
+        expect(1).to_be_less_than(2)
 
     it("less than or equal"):
-        expect(2 <= 2).to_be_true()
+        expect(2).to_be_less_than_or_eq(2)
 
     it("greater than"):
-        expect(3 > 2).to_be_true()
+        expect(3).to_be_greater_than(2)
 
     it("greater than or equal"):
-        expect(3 >= 3).to_be_true()
+        expect(3).to_be_greater_than_or_eq(3)
 
     it("string comparison"):
         expect("abc" < "abd").to_be_true()
@@ -180,31 +180,31 @@ describe("compound assignment"):
 describe("membership"):
     it("in Set"):
         let s = {1, 2, 3}
-        expect(2 in s).to_be_true()
+        expect(s).to_contain(2)
 
     it("not in Set"):
         let s = {1, 2, 3}
-        expect(4 not in s).to_be_true()
+        expect(s).to_not_contain(4)
 
     it("in List"):
         let xs = [1, 2, 3]
-        expect(2 in xs).to_be_true()
+        expect(xs).to_contain(2)
 
     it("not in List"):
         let xs = [1, 2, 3]
-        expect(4 not in xs).to_be_true()
+        expect(xs).to_not_contain(4)
 
     it("in Map"):
         let m = {"a": 1}
-        expect("a" in m).to_be_true()
+        expect(m).to_contain("a")
 
     it("not in Map"):
         let m = {"a": 1}
-        expect("b" not in m).to_be_true()
+        expect(m).to_not_contain("b")
 
 describe("range operator"):
     it("creates inclusive range"):
         let xs = 1 .. 5
-        expect(len(xs)).to_eq(5)
+        expect(xs).to_have_length(5)
         expect(xs[0]).to_eq(1)
         expect(xs[4]).to_eq(5)
