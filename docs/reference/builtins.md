@@ -33,6 +33,8 @@
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
 | `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
+| `take(list, n)` | Returns a new list with the first n elements |
+| `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
@@ -300,6 +302,36 @@ Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices ar
 let xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+```
+
+---
+
+## take
+
+**Signature:** `take(list: List<T>, n: int) -> List<T>`
+
+Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
+print(xs.take(0))    # []
+```
+
+---
+
+## tap
+
+**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
 ---

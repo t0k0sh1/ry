@@ -189,6 +189,50 @@ describe("List"):
         expect(xs).to_have_length(3)
         expect(xs[2]).to_eq(3)
 
+    it("take"):
+        let xs = [1, 2, 3, 4, 5]
+        let ys = xs.take(3)
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)
+        expect(ys[2]).to_eq(3)
+
+    it("take exceeds length"):
+        let xs = [1, 2, 3]
+        let ys = xs.take(10)
+        expect(ys).to_have_length(3)
+
+    it("take zero"):
+        let xs = [1, 2, 3]
+        let ys = xs.take(0)
+        expect(ys).to_have_length(0)
+
+    it("take non-mutating"):
+        let xs = [1, 2, 3, 4, 5]
+        let ys = xs.take(2)
+        expect(xs).to_have_length(5)
+        expect(ys).to_have_length(2)
+
+    it("take negative"):
+        let xs = [1, 2, 3]
+        let ys = xs.take(-1)
+        expect(ys).to_have_length(0)
+
+    it("tap returns original list"):
+        let xs = [1, 2, 3]
+        let ys = xs.tap(fn(x: int): x * 2)
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)
+        expect(ys[1]).to_eq(2)
+        expect(ys[2]).to_eq(3)
+
+    it("tap in chain"):
+        let xs = [5, 3, 1, 4, 2]
+        let res = xs.filter(fn(x: int): x > 2).tap(fn(x: int): x + 1).sort()
+        expect(res).to_have_length(3)
+        expect(res[0]).to_eq(3)
+        expect(res[1]).to_eq(4)
+        expect(res[2]).to_eq(5)
+
     it("chain filter-map-sort"):
         let xs = [5, 3, 1, 4, 2]
         let res = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
