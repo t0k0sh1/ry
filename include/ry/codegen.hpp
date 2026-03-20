@@ -268,6 +268,7 @@ private:
     llvm::StructType *getOptionType(llvm::Type *innerTy);
     bool isOptionType(llvm::Type *ty);
     llvm::Value *buildNoneValue(llvm::Type *optionTy);
+    llvm::Value *buildSomeValue(llvm::Value *inner, llvm::Type *optionTy);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);

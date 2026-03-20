@@ -25,6 +25,9 @@ fn flatten(xs: List<int>) -> List<int>
 fn sort(xs: List<int>) -> List<int>
 
 @native
+fn sort(xs: List<int>, comp: fn(int, int) -> bool) -> List<int>
+
+@native
 fn first(xs: List<int>) -> int
 
 @native

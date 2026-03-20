@@ -5,7 +5,9 @@
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
-./build/ry_tests
+./build/ry_tests                          # C++ テスト (GoogleTest)
+./build/ry test                           # Ry セルフテスト (全 *.test.ry)
+./build/ry test tests/spec/<file>.test.ry # 個別ファイル実行
 ```
 
 ## ワークフロー全体像
@@ -84,7 +86,7 @@ cmake --build build
 すべての変更が完了した後、全テストを実行して成功を確認する。
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm && cmake --build build && ./build/ry_tests
+cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm && cmake --build build && ./build/ry_tests && ./build/ry test
 ```
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。

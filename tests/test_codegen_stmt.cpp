@@ -1059,6 +1059,36 @@ TEST_F(CodeGenTest, RangeExprIterate) {
     EXPECT_EQ(runSource(src), "6\n");
 }
 
+// ===== Option auto-wrap =====
+
+TEST_F(CodeGenTest, OptionAutoWrapInt) {
+    std::string src =
+        "let x: int? = 42\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(42)\n");
+}
+
+TEST_F(CodeGenTest, OptionAutoWrapStr) {
+    std::string src =
+        "let x: str? = \"hello\"\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(hello)\n");
+}
+
+TEST_F(CodeGenTest, OptionAutoWrapBool) {
+    std::string src =
+        "let x: bool? = true\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(true)\n");
+}
+
+TEST_F(CodeGenTest, OptionAutoWrapFloat) {
+    std::string src =
+        "let x: float? = 3.14\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "Some(3.14)\n");
+}
+
 // ===== ?? 演算子 =====
 
 TEST_F(CodeGenTest, NullCoalesceSome) {

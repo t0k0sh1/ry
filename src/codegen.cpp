@@ -671,6 +671,13 @@ llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
     return val;
 }
 
+llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
+    llvm::Value *val = llvm::UndefValue::get(optionTy);
+    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
+    val = builder_.CreateInsertValue(val, inner, 1);
+    return val;
+}
+
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
     llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
     llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);

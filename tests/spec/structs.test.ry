@@ -1,0 +1,105 @@
+record Point:
+    x: int
+    y: int
+
+record Circle:
+    center: Point
+    radius: float
+
+describe("record"):
+    it("constructor and field access"):
+        let p = Point(10, 20)
+        expect(p.x).to_eq(10)
+        expect(p.y).to_eq(20)
+
+    it("var field assignment"):
+        var p = Point(10, 20)
+        p.x = 100
+        expect(p.x).to_eq(100)
+
+    it("nested record"):
+        let c = Circle(Point(0, 0), 1.0)
+        expect(c.center.x).to_eq(0)
+        expect(c.center.y).to_eq(0)
+        expect(c.radius).to_eq(1.0)
+
+enum Color:
+    Red
+    Green
+    Blue
+
+describe("simple enum"):
+    it("variant access"):
+        let c = Color::Red
+        expect(c == Color::Red).to_be_true()
+
+    it("comparison"):
+        expect(Color::Red == Color::Red).to_be_true()
+        expect(Color::Red != Color::Green).to_be_true()
+
+    it("match"):
+        var res = ""
+        let c = Color::Blue
+        match c:
+            case Color::Red:
+                res = "red"
+            case Color::Green:
+                res = "green"
+            case Color::Blue:
+                res = "blue"
+        expect(res).to_eq("blue")
+
+enum Shape:
+    CircleS(float)
+    RectS(float, float)
+    PointS
+
+describe("ADT enum"):
+    it("associated data"):
+        let s = Shape::CircleS(3.14)
+        var res = 0.0
+        match s:
+            case Shape::CircleS(r):
+                res = r
+            case Shape::RectS(w, h):
+                res = w * h
+            case Shape::PointS:
+                res = 0.0
+        expect(res).to_eq(3.14)
+
+    it("multi-field pattern match"):
+        let s = Shape::RectS(4.0, 5.0)
+        var res = 0.0
+        match s:
+            case Shape::CircleS(r):
+                res = r
+            case Shape::RectS(w, h):
+                res = w * h
+            case Shape::PointS:
+                res = 0.0
+        expect(res).to_eq(20.0)
+
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+
+describe("generic enum"):
+    it("with type parameter"):
+        let a = MyOption<int>::MySome(42)
+        var res = 0
+        match a:
+            case MyOption::MySome(v):
+                res = v
+            case MyOption::MyNone:
+                res = -1
+        expect(res).to_eq(42)
+
+    it("none variant"):
+        let b = MyOption<int>::MyNone
+        var res = 0
+        match b:
+            case MyOption::MySome(v):
+                res = v
+            case MyOption::MyNone:
+                res = -1
+        expect(res).to_eq(-1)
