@@ -151,6 +151,28 @@ print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 ```
 
+### take
+
+先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5]（クランプされる）
+print(xs.take(0))    # []
+```
+
+### tap
+
+各要素に対して関数を呼び出し（戻り値は無視）、元のリストをそのまま返します。メソッドチェーン中のデバッグや副作用の挿入に有用です。
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# 1, 2, 3 を出力し、ys = [2, 4, 6]
+```
+
 ### filter
 
 述語を満たす要素だけを含む新しいリストを返します。元のリストは変更されません。
@@ -378,6 +400,8 @@ print(xs)            # [[1, 2], [3, 4]]（変更なし）
 | `first`, `last` | O(1) |
 | `insert`, `remove_at` | O(n) |
 | `sort` / `sort!` | O(n log n) |
+| `take` | O(n) |
+| `tap` | O(n) |
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |

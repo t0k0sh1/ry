@@ -2372,6 +2372,64 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     }
 
 
+    // tap(list, fn) → call fn on each element, return original list
+    if (e.callee == "tap") {
+        if (e.args.size() != 2)
+            codegenError("tap() takes exactly 2 arguments");
+
+        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            codegenError("tap() requires a list as first argument");
+
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("tap() requires a function as second argument");
+        auto &info = fnIt->second;
+
+        if (info.paramTypes.size() != 1)
+            codegenError("tap() function must take exactly 1 argument");
+
+        // Read source list
+        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "tap_src_len_ptr");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "tap_src_len");
+        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "tap_src_data_field");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "tap_src_data");
+
+        // Loop: call fn on each element
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "tap_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tap.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tap.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tap.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "tap_iv");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "tap_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "tap_elem_ptr");
+        llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
+        emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
+        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return listVal;
+    }
+
     return nullptr;
 }
 
@@ -2920,6 +2978,55 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sl_new_cap");
             builder_.CreateStore(count, newCapPtr);
             llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sl_new_data");
+            builder_.CreateStore(newData, newDataField);
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
+
+    // take(list, n) → new list with first n elements
+    if (e.callee == "take" && e.args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *nVal = emitExpr(*e.args[1]);
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "tk_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "tk_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "tk_data_field");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, dataField, "tk_src_data");
+
+            // Clamp n: max(0, min(n, len))
+            llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+            llvm::Value *clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSLT(nVal, zero), zero, nVal, "tk_cn");
+            clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSGT(clampedN, len), len, clampedN, "tk_cn2");
+
+            // Allocate new list
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tk_header");
+            llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
+
+            // Copy elements
+            builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
+
+            // Set header fields
+            llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "tk_new_len");
+            builder_.CreateStore(clampedN, newLenPtr);
+            llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "tk_new_cap");
+            builder_.CreateStore(clampedN, newCapPtr);
+            llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "tk_new_data");
             builder_.CreateStore(newData, newDataField);
 
             list_element_types_[newHeader] = elemTy;
