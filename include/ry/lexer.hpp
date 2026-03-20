@@ -114,11 +114,12 @@ struct Token {
     TokenKind kind;
     std::string value;
     int line;
+    int col = 0;
 };
 
 class Lexer {
 public:
-    explicit Lexer(std::string src) : src_(std::move(src)), pos_(0), line_(1) {
+    explicit Lexer(std::string src) : src_(std::move(src)), pos_(0), line_(1), col_(1) {
         current_ = readToken();
     }
 
@@ -129,6 +130,7 @@ public:
     struct State {
         size_t pos;
         int line;
+        int col;
         bool at_line_start;
         std::vector<int> indent_stack;
         std::queue<Token> pending;
@@ -142,6 +144,7 @@ private:
     std::string src_;
     size_t pos_;
     int line_;
+    int col_;
     Token current_;
 
     bool at_line_start_ = true;

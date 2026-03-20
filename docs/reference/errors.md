@@ -2,6 +2,24 @@
 
 # Error Reference
 
+## Error Format
+
+ry displays compile errors in a Rust-inspired rich format that shows the exact location of the error with source context:
+
+```
+error: cannot reassign let variable: x
+  --> main.ry:5:1
+  |
+5 | x = 10
+  | ^ cannot reassign let variable: x
+```
+
+Each error message includes:
+- **Error level and message** (`error: ...`)
+- **File location** (`--> file:line:col`)
+- **Source line** with the relevant code
+- **Caret indicator** (`^`) pointing to the exact column
+
 ## Compile Errors
 
 | Error | Cause | Example |

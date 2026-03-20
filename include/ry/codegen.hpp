@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ry/ast.hpp"
+#include "ry/source_location.hpp"
+#include "ry/source_manager.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -14,7 +16,7 @@
 
 class CodeGen {
 public:
-    explicit CodeGen(bool test_mode = false);
+    explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr);
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
@@ -100,6 +102,8 @@ private:
     int lambda_counter_ = 0;
     bool test_mode_ = false;
     int test_fn_counter_ = 0;
+    const SourceManager *sm_ = nullptr;
+    SourceLocation current_loc_;
 
     // Contract (Design by Contract) support
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
@@ -164,6 +168,9 @@ private:
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
     };
+
+    [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
+    [[noreturn]] void codegenError(const std::string &msg);
 
     void pushScope();
     void popScope();

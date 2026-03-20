@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
@@ -15,12 +16,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                            const std::optional<std::string> &type_annotation,
                            ExprNode &value, bool is_immutable) {
     if (scope_stack_.back().count(name))
-        throw std::runtime_error("redeclared variable: " + name);
+        codegenError("redeclared variable: " + name);
 
     // Handle empty set/map literal with type annotation
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!type_annotation)
-            throw std::runtime_error("empty {} literal requires type annotation");
+            codegenError("empty {} literal requires type annotation");
         if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Set<") {
             std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
@@ -56,7 +57,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Map<") {
             auto [keyTy, valTy] = parseMapTypeAnnotation(*type_annotation);
             if (!keyTy || !valTy)
-                throw std::runtime_error("invalid map type annotation: " + *type_annotation);
+                codegenError("invalid map type annotation: " + *type_annotation);
 
             llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
             llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
@@ -91,16 +92,16 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        throw std::runtime_error("empty {} requires Set<T> or Map<K, V> type annotation");
+        codegenError("empty {} requires Set<T> or Map<K, V> type annotation");
     }
 
     // Handle None literal
     if (auto *ve = std::get_if<VariableExpr>(&value.data); ve && ve->name == "None") {
         if (!type_annotation)
-            throw std::runtime_error("type annotation required for None");
+            codegenError("type annotation required for None");
         llvm::Type *annotTy = resolveType(*type_annotation);
         if (!isOptionType(annotTy))
-            throw std::runtime_error("None can only be assigned to Option type");
+            codegenError("None can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(annotTy);
         llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
         builder_.CreateStore(val, ptr);
@@ -112,10 +113,10 @@ void CodeGen::emitVarDecl(const std::string &name,
     // Handle none keyword
     if (std::holds_alternative<NoneExpr>(value.data)) {
         if (!type_annotation)
-            throw std::runtime_error("type annotation required for none");
+            codegenError("type annotation required for none");
         llvm::Type *annotTy = resolveType(*type_annotation);
         if (!isOptionType(annotTy))
-            throw std::runtime_error("none can only be assigned to Option type");
+            codegenError("none can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(annotTy);
         llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
         builder_.CreateStore(val, ptr);
@@ -144,7 +145,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                         if (i > 0) allowed_str += " | ";
                         allowed_str += "\"" + constraint->str_values[i] + "\"";
                     }
-                    throw std::runtime_error(
+                    codegenError(
                         "value \"" + se->value + "\" is not in literal type " + allowed_str +
                         " for variable '" + name + "'");
                 }
@@ -160,7 +161,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             // Literal/range type: resolve to base type and check constraint
             llvm::Type *annotTy = resolveType(resolvedAnnot);
             if (annotTy != newTy)
-                throw std::runtime_error(
+                codegenError(
                     "type error: annotation '" + *type_annotation +
                     "' does not match expression type for variable '" + name + "'");
             emitConstraintCheck(val, *constraint, name);
@@ -171,7 +172,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
                         int64_t v = ci->getSExtValue();
                         if (v < 0 || v > 255)
-                            throw std::runtime_error(
+                            codegenError(
                                 "byte value out of range (0-255): " + std::to_string(v));
                     }
                     val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
@@ -185,7 +186,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = wrapInUnion(val, *type_annotation);
                     newTy = val->getType();
                 } else {
-                    throw std::runtime_error(
+                    codegenError(
                         "type error: annotation '" + *type_annotation +
                         "' does not match expression type for variable '" + name + "'");
                 }
@@ -294,29 +295,32 @@ void CodeGen::emitVarDecl(const std::string &name,
 }
 
 void CodeGen::emitStmt(LetStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     emitVarDecl(s.name, s.type_annotation, *s.value, true);
     if (hasDirective(s.directives, "deprecated"))
         deprecated_variables_.insert(s.name);
 }
 void CodeGen::emitStmt(VarStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     emitVarDecl(s.name, s.type_annotation, *s.value, false);
     if (hasDirective(s.directives, "deprecated"))
         deprecated_variables_.insert(s.name);
 }
 
 void CodeGen::emitStmt(AssignStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr)
-        throw std::runtime_error("undeclared variable: " + s.name);
+        codegenError("undeclared variable: " + s.name);
 
     if (isImmutable(s.name))
-        throw std::runtime_error("cannot reassign let variable: " + s.name);
+        codegenError("cannot reassign let variable: " + s.name);
 
     // Handle None literal in assignment
     if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
         llvm::Type *varTy = ptr->getAllocatedType();
         if (!isOptionType(varTy))
-            throw std::runtime_error("None can only be assigned to Option type");
+            codegenError("None can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(varTy);
         builder_.CreateStore(val, ptr);
         return;
@@ -331,7 +335,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
                 int64_t v = ci->getSExtValue();
                 if (v < 0 || v > 255)
-                    throw std::runtime_error(
+                    codegenError(
                         "byte value out of range (0-255): " + std::to_string(v));
             }
             val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
@@ -340,7 +344,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             if (uvIt != union_value_types_.end()) {
                 val = wrapInUnion(val, uvIt->second);
             } else {
-                throw std::runtime_error(
+                codegenError(
                     "type error: variable '" + s.name +
                     "' cannot be reassigned to a different type");
             }
@@ -395,7 +399,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
 
     // Check if this is a list or set (ptr type with known element type)
     if (iterable->getType() != ptrTy_)
-        throw std::runtime_error("for loop requires list or set iterable");
+        codegenError("for loop requires list or set iterable");
 
     // Two-variable iteration: for k, v in map  OR  for i, x in enumerate(xs)
     if (s->var_name2.has_value()) {
@@ -406,7 +410,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             llvm::Type *elemTy = getListElementType(iterable);
             auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
             if (!structTy || structTy->getNumElements() != 2)
-                throw std::runtime_error("for k, v requires a map or list of 2-element tuples");
+                codegenError("for k, v requires a map or list of 2-element tuples");
 
             llvm::Type *firstTy = structTy->getElementType(0);
             llvm::Type *secondTy = structTy->getElementType(1);
@@ -461,7 +465,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         headerTy = listHeaderTy_;
     }
     if (!elemTy)
-        throw std::runtime_error("cannot determine element type for for loop iterable");
+        codegenError("cannot determine element type for for loop iterable");
 
     llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
@@ -517,45 +521,48 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
     builder_.SetInsertPoint(endBB);
 }
 
-void CodeGen::emitStmt(BreakStmt &) {
+void CodeGen::emitStmt(BreakStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (loop_stack_.empty())
-        throw std::runtime_error("break outside of loop");
+        codegenError("break outside of loop");
     builder_.CreateBr(loop_stack_.back().second);
     // Create unreachable block for subsequent code
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "break.dead", fn_);
     builder_.SetInsertPoint(deadBB);
 }
 
-void CodeGen::emitStmt(ContinueStmt &) {
+void CodeGen::emitStmt(ContinueStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (loop_stack_.empty())
-        throw std::runtime_error("continue outside of loop");
+        codegenError("continue outside of loop");
     builder_.CreateBr(loop_stack_.back().first);
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "continue.dead", fn_);
     builder_.SetInsertPoint(deadBB);
 }
 
 void CodeGen::emitStmt(FieldAssignStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     // Get the variable name from the object expression
     auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
     if (!varExpr)
-        throw std::runtime_error("field assignment requires variable on left side");
+        codegenError("field assignment requires variable on left side");
 
     llvm::AllocaInst *ptr = findVar(varExpr->name);
     if (!ptr)
-        throw std::runtime_error("undefined variable: " + varExpr->name);
+        codegenError("undefined variable: " + varExpr->name);
 
     if (isImmutable(varExpr->name))
-        throw std::runtime_error("cannot modify field of let variable: " + varExpr->name);
+        codegenError("cannot modify field of let variable: " + varExpr->name);
 
     llvm::Type *varTy = ptr->getAllocatedType();
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
     if (!structTy)
-        throw std::runtime_error("field assignment on non-struct type");
+        codegenError("field assignment on non-struct type");
 
     std::string typeName = structTy->getName().str();
     auto it = struct_types_.find(typeName);
     if (it == struct_types_.end())
-        throw std::runtime_error("unknown struct type: " + typeName);
+        codegenError("unknown struct type: " + typeName);
 
     const auto &info = it->second;
     int fieldIdx = -1;
@@ -566,12 +573,12 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         }
     }
     if (fieldIdx < 0)
-        throw std::runtime_error("type '" + typeName + "' has no field '" + s.field + "'");
+        codegenError("type '" + typeName + "' has no field '" + s.field + "'");
 
     llvm::Value *newVal = emitExpr(*s.value);
     llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
     if (newVal->getType() != expectedTy)
-        throw std::runtime_error("field '" + s.field + "' type mismatch");
+        codegenError("field '" + s.field + "' type mismatch");
 
     // Load current struct value, insert new field value, store back
     llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
@@ -595,7 +602,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
     }
 
     if (enum_types_.count(s.name))
-        throw std::runtime_error("enum '" + s.name + "' is already defined");
+        codegenError("enum '" + s.name + "' is already defined");
 
     EnumInfo info;
     info.name = s.name;
@@ -662,9 +669,9 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
     llvm::Value *tupleVal = emitExpr(*s.value);
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
     if (!structTy)
-        throw std::runtime_error("tuple destructuring requires a tuple value");
+        codegenError("tuple destructuring requires a tuple value");
     if (structTy->getNumElements() != s.names.size())
-        throw std::runtime_error("tuple destructuring: expected " +
+        codegenError("tuple destructuring: expected " +
             std::to_string(s.names.size()) + " elements but got " +
             std::to_string(structTy->getNumElements()));
 
@@ -673,7 +680,7 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
             continue;
         // Redeclaration check (consistent with emitVarDecl)
         if (scope_stack_.back().count(s.names[i]))
-            throw std::runtime_error("variable '" + s.names[i] + "' already declared in this scope");
+            codegenError("variable '" + s.names[i] + "' already declared in this scope");
         llvm::Value *elem = builder_.CreateExtractValue(tupleVal, i);
         llvm::AllocaInst *ptr = getOrCreateVar(s.names[i], elem->getType());
         builder_.CreateStore(elem, ptr);
@@ -718,28 +725,30 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
 
 
 void CodeGen::emitStmt(ImportStmt &s) {
-    throw std::runtime_error("unresolved import: " + s.module_path +
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    codegenError("unresolved import: " + s.module_path +
                              " (ModuleLoader should have resolved this)");
 }
 
 void CodeGen::emitStmt(IndexAssignStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     llvm::Value *objPtr = emitExpr(*s.object);
     llvm::Value *key = emitExpr(*s.index);
     llvm::Value *val = emitExpr(*s.value);
 
     if (objPtr->getType() != ptrTy_)
-        throw std::runtime_error("index assignment requires list or map");
+        codegenError("index assignment requires list or map");
 
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
         // Map index assignment
         llvm::Type *mapValTy = getMapValueType(objPtr);
         if (!mapValTy)
-            throw std::runtime_error("cannot determine map value type");
+            codegenError("cannot determine map value type");
         if (key->getType() != mapKeyTy)
-            throw std::runtime_error("map key type mismatch");
+            codegenError("map key type mismatch");
         if (val->getType() != mapValTy)
-            throw std::runtime_error("map value type mismatch");
+            codegenError("map value type mismatch");
 
         // Lookup key
         llvm::Value *idx = emitMapKeyLookup(objPtr, key, mapKeyTy);
@@ -849,7 +858,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     // List index assignment
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
-        throw std::runtime_error("cannot determine list element type for index assignment");
+        codegenError("cannot determine list element type for index assignment");
 
     if (key->getType() == i1Ty_)
         key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
@@ -876,15 +885,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 }
 
 void CodeGen::emitStmt(ReturnStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (!s.value) {
         if (!fn_->getReturnType()->isVoidTy())
-            throw std::runtime_error("return without value in non-Unit function");
+            codegenError("return without value in non-Unit function");
         builder_.CreateRetVoid();
     } else {
         llvm::Value *val = emitExpr(*s.value);
         llvm::Type *retTy = fn_->getReturnType();
         if (retTy->isVoidTy())
-            throw std::runtime_error("cannot return a value from Unit function '" +
+            codegenError("cannot return a value from Unit function '" +
                                      std::string(fn_->getName()) + "'");
         if (val->getType() != retTy) {
             if (isUnionType(current_fn_return_type_)) {
@@ -894,7 +904,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
                 auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
                 if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                    throw std::runtime_error("return type mismatch");
+                    codegenError("return type mismatch");
 
                 // Find which elements need coercion
                 bool needsCoercion = false;
@@ -902,7 +912,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                     if (valST->getElementType(i) != retST->getElementType(i)) {
                         if (!(isOptionType(valST->getElementType(i)) &&
                               isOptionType(retST->getElementType(i))))
-                            throw std::runtime_error("return type mismatch");
+                            codegenError("return type mismatch");
                         needsCoercion = true;
                     }
                 }
@@ -941,6 +951,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 // ===== B5: FnStmt using FnScope RAII =====
 
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
+    if (s->loc.isValid()) current_loc_ = s->loc;
     if (hasDirective(s->directives, "native")) {
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
@@ -960,10 +971,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
             if (entry.func->getReturnType() == retTy)
-                throw std::runtime_error("function '" + s->name +
+                codegenError("function '" + s->name +
                     "' is already defined with the same signature");
             else
-                throw std::runtime_error("function '" + s->name +
+                codegenError("function '" + s->name +
                     "': overloads with same parameter types but different return types");
         }
     }
@@ -1115,7 +1126,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
-            throw std::runtime_error("IR verify error in function '" + s->name + "': " + err);
+            codegenError("IR verify error in function '" + s->name + "': " + err);
     }
     // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point
 }
@@ -1203,11 +1214,11 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 
     auto it = generic_enum_templates_.find(baseName);
     if (it == generic_enum_templates_.end())
-        throw std::runtime_error("unknown generic enum: " + baseName);
+        codegenError("unknown generic enum: " + baseName);
 
     auto &tmpl = it->second;
     if (typeArgs.size() != tmpl.typeParams.size())
-        throw std::runtime_error("generic enum '" + baseName + "' expects " +
+        codegenError("generic enum '" + baseName + "' expects " +
             std::to_string(tmpl.typeParams.size()) + " type parameters");
 
     // Build type parameter mapping

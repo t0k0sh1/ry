@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <stdexcept>
 
 // ===== Builtin String =====
@@ -7,11 +8,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // contains(s, sub) → bool
     if (e.callee == "contains") {
         if (e.args.size() != 2)
-            throw std::runtime_error("contains() takes exactly 2 arguments");
+            codegenError("contains() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
-            throw std::runtime_error("contains() requires str arguments");
+            codegenError("contains() requires str arguments");
         auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
@@ -22,11 +23,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // starts_with(s, prefix) → bool
     if (e.callee == "starts_with") {
         if (e.args.size() != 2)
-            throw std::runtime_error("starts_with() takes exactly 2 arguments");
+            codegenError("starts_with() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *prefix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
-            throw std::runtime_error("starts_with() requires str arguments");
+            codegenError("starts_with() requires str arguments");
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
         auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
@@ -39,11 +40,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // ends_with(s, suffix) → bool
     if (e.callee == "ends_with") {
         if (e.args.size() != 2)
-            throw std::runtime_error("ends_with() takes exactly 2 arguments");
+            codegenError("ends_with() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *suffix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
-            throw std::runtime_error("ends_with() requires str arguments");
+            codegenError("ends_with() requires str arguments");
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
         auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
@@ -76,11 +77,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // find(s, sub) → int (-1 if not found)
     if (e.callee == "find") {
         if (e.args.size() != 2)
-            throw std::runtime_error("find() takes exactly 2 arguments");
+            codegenError("find() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
-            throw std::runtime_error("find() requires str arguments");
+            codegenError("find() requires str arguments");
         auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "find_ptr");
@@ -97,12 +98,12 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // substring(s, start, end) → str
     if (e.callee == "substring") {
         if (e.args.size() != 3)
-            throw std::runtime_error("substring() takes exactly 3 arguments");
+            codegenError("substring() takes exactly 3 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *start = emitExpr(*e.args[1]);
         llvm::Value *end = emitExpr(*e.args[2]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("substring() requires str as first argument");
+            codegenError("substring() requires str as first argument");
 
         auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
         auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
@@ -122,11 +123,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // char_at(s, i) → str (single character as string)
     if (e.callee == "char_at") {
         if (e.args.size() != 2)
-            throw std::runtime_error("char_at() takes exactly 2 arguments");
+            codegenError("char_at() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("char_at() requires str as first argument");
+            codegenError("char_at() requires str as first argument");
 
         auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
         auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
@@ -143,12 +144,12 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // replace(s, old, new) → str
     if (e.callee == "replace") {
         if (e.args.size() != 3)
-            throw std::runtime_error("replace() takes exactly 3 arguments");
+            codegenError("replace() takes exactly 3 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *oldStr = emitExpr(*e.args[1]);
         llvm::Value *newStr = emitExpr(*e.args[2]);
         if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
-            throw std::runtime_error("replace() requires str arguments");
+            codegenError("replace() requires str arguments");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -242,10 +243,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // to_upper(s) → str
     if (e.callee == "to_upper") {
         if (e.args.size() != 1)
-            throw std::runtime_error("to_upper() takes exactly 1 argument");
+            codegenError("to_upper() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("to_upper() requires str argument");
+            codegenError("to_upper() requires str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -291,10 +292,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // to_lower(s) → str
     if (e.callee == "to_lower") {
         if (e.args.size() != 1)
-            throw std::runtime_error("to_lower() takes exactly 1 argument");
+            codegenError("to_lower() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("to_lower() requires str argument");
+            codegenError("to_lower() requires str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -340,10 +341,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // trim(s) → str
     if (e.callee == "trim") {
         if (e.args.size() != 1)
-            throw std::runtime_error("trim() takes exactly 1 argument");
+            codegenError("trim() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("trim() requires str argument");
+            codegenError("trim() requires str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -436,10 +437,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // trim_start(s) → str
     if (e.callee == "trim_start") {
         if (e.args.size() != 1)
-            throw std::runtime_error("trim_start() takes exactly 1 argument");
+            codegenError("trim_start() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("trim_start() requires str argument");
+            codegenError("trim_start() requires str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -495,10 +496,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // trim_end(s) → str
     if (e.callee == "trim_end") {
         if (e.args.size() != 1)
-            throw std::runtime_error("trim_end() takes exactly 1 argument");
+            codegenError("trim_end() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("trim_end() requires str argument");
+            codegenError("trim_end() requires str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -554,11 +555,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // repeat(s, n) → str
     if (e.callee == "repeat") {
         if (e.args.size() != 2)
-            throw std::runtime_error("repeat() takes exactly 2 arguments");
+            codegenError("repeat() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *n = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("repeat() requires str as first argument");
+            codegenError("repeat() requires str as first argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -601,7 +602,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // reverse(list) → new reversed list, or reverse(str) → str
     if (e.callee == "reverse") {
         if (e.args.size() != 1)
-            throw std::runtime_error("reverse() takes exactly 1 argument");
+            codegenError("reverse() takes exactly 1 argument");
         llvm::Value *arg = emitExpr(*e.args[0]);
 
         // List reverse
@@ -658,7 +659,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         // String reverse
         llvm::Value *s = arg;
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("reverse() requires list or str argument");
+            codegenError("reverse() requires list or str argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -702,11 +703,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // split(s, delim) → List<str>
     if (e.callee == "split") {
         if (e.args.size() != 2)
-            throw std::runtime_error("split() takes exactly 2 arguments");
+            codegenError("split() takes exactly 2 arguments");
         llvm::Value *s = emitExpr(*e.args[0]);
         llvm::Value *delim = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
-            throw std::runtime_error("split() requires str arguments");
+            codegenError("split() requires str arguments");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -811,13 +812,13 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     // join(list, sep) → str
     if (e.callee == "join") {
         if (e.args.size() != 2)
-            throw std::runtime_error("join() takes exactly 2 arguments");
+            codegenError("join() takes exactly 2 arguments");
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Value *sep = emitExpr(*e.args[1]);
         if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
-            throw std::runtime_error("join() requires List<str> and str arguments");
+            codegenError("join() requires List<str> and str arguments");
         if (getListElementType(listPtr) != ptrTy_)
-            throw std::runtime_error("join() requires List<str> as first argument");
+            codegenError("join() requires List<str> as first argument");
 
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
@@ -922,10 +923,10 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // to_int(s) → int
     if (e.callee == "to_int") {
         if (e.args.size() != 1)
-            throw std::runtime_error("to_int() takes exactly 1 argument");
+            codegenError("to_int() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("to_int() requires str argument");
+            codegenError("to_int() requires str argument");
         auto atolTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto atolFn = mod_->getOrInsertFunction("atol", atolTy);
         return builder_.CreateCall(atolFn, {s}, "to_int");
@@ -934,10 +935,10 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // to_float(s) → float
     if (e.callee == "to_float") {
         if (e.args.size() != 1)
-            throw std::runtime_error("to_float() takes exactly 1 argument");
+            codegenError("to_float() takes exactly 1 argument");
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
-            throw std::runtime_error("to_float() requires str argument");
+            codegenError("to_float() requires str argument");
         auto atofTy = llvm::FunctionType::get(f64Ty_, {ptrTy_}, false);
         auto atofFn = mod_->getOrInsertFunction("atof", atofTy);
         return builder_.CreateCall(atofFn, {s}, "to_float");
@@ -946,7 +947,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // to_str(v) → str (int/float/bool/str → str)
     if (e.callee == "to_str") {
         if (e.args.size() != 1)
-            throw std::runtime_error("to_str() takes exactly 1 argument");
+            codegenError("to_str() takes exactly 1 argument");
         return valueToString(emitExpr(*e.args[0]));
     }
 
@@ -959,10 +960,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== keys(map) =====
     if (e.callee == "keys") {
         if (e.args.size() != 1)
-            throw std::runtime_error("keys() takes exactly 1 argument");
+            codegenError("keys() takes exactly 1 argument");
         llvm::Value *mapVal = emitExpr(*e.args[0]);
         llvm::Type *keyTy = getMapKeyType(mapVal);
-        if (!keyTy) throw std::runtime_error("keys() requires a map");
+        if (!keyTy) codegenError("keys() requires a map");
 
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "keys_len");
         llvm::Value *keysData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2), "keys_data");
@@ -990,10 +991,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== values(map) =====
     if (e.callee == "values") {
         if (e.args.size() != 1)
-            throw std::runtime_error("values() takes exactly 1 argument");
+            codegenError("values() takes exactly 1 argument");
         llvm::Value *mapVal = emitExpr(*e.args[0]);
         llvm::Type *valTy = getMapValueType(mapVal);
-        if (!valTy) throw std::runtime_error("values() requires a map");
+        if (!valTy) codegenError("values() requires a map");
 
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "vals_len");
         llvm::Value *valsData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3), "vals_data");
@@ -1021,10 +1022,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== first(list) =====
     if (e.callee == "first") {
         if (e.args.size() != 1)
-            throw std::runtime_error("first() takes exactly 1 argument");
+            codegenError("first() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("first() requires a list");
+        if (!elemTy) codegenError("first() requires a list");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
 
@@ -1042,10 +1043,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== last(list) =====
     if (e.callee == "last") {
         if (e.args.size() != 1)
-            throw std::runtime_error("last() takes exactly 1 argument");
+            codegenError("last() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("last() requires a list");
+        if (!elemTy) codegenError("last() requires a list");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
 
@@ -1065,14 +1066,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== is_empty(list/map/set) =====
     if (e.callee == "is_empty") {
         if (e.args.size() != 1)
-            throw std::runtime_error("is_empty() takes exactly 1 argument");
+            codegenError("is_empty() takes exactly 1 argument");
         llvm::Value *val = emitExpr(*e.args[0]);
         llvm::Type *headerTy = nullptr;
         if (getListElementType(val)) headerTy = listHeaderTy_;
         else if (getMapKeyType(val)) headerTy = mapHeaderTy_;
         else if (getSetElementType(val)) headerTy = setHeaderTy_;
         if (!headerTy)
-            throw std::runtime_error("is_empty() requires a collection (list, map, or set)");
+            codegenError("is_empty() requires a collection (list, map, or set)");
         llvm::Value *len = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(headerTy, val, 0), "ie_len");
         return builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "is_empty");
     }
@@ -1080,10 +1081,10 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== enumerate(list) =====
     if (e.callee == "enumerate") {
         if (e.args.size() != 1)
-            throw std::runtime_error("enumerate() takes exactly 1 argument");
+            codegenError("enumerate() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("enumerate() requires a list");
+        if (!elemTy) codegenError("enumerate() requires a list");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "enum_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "enum_data");
@@ -1129,12 +1130,12 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== zip(list1, list2) =====
     if (e.callee == "zip") {
         if (e.args.size() != 2)
-            throw std::runtime_error("zip() takes exactly 2 arguments");
+            codegenError("zip() takes exactly 2 arguments");
         llvm::Value *list1 = emitExpr(*e.args[0]);
         llvm::Value *list2 = emitExpr(*e.args[1]);
         llvm::Type *elemTy1 = getListElementType(list1);
         llvm::Type *elemTy2 = getListElementType(list2);
-        if (!elemTy1 || !elemTy2) throw std::runtime_error("zip() requires two lists");
+        if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists");
 
         llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list1, 0), "zip_len1");
         llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list2, 0), "zip_len2");
@@ -1200,7 +1201,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // args() → List<str>
     if (e.callee == "args") {
         if (!e.args.empty())
-            throw std::runtime_error("args() takes no arguments");
+            codegenError("args() takes no arguments");
 
         // Call __ry_args_count()
         llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
@@ -1269,7 +1270,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // range(n), range(start, end), or range(start, end, step) → List<int>
     if (e.callee == "range") {
         if (e.args.size() < 1 || e.args.size() > 3)
-            throw std::runtime_error("range() takes 1, 2, or 3 arguments");
+            codegenError("range() takes 1, 2, or 3 arguments");
 
         llvm::Value *start, *end, *step;
         llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
@@ -1377,10 +1378,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // len(xs) → list/map length
     if (e.callee == "len") {
         if (e.args.size() != 1)
-            throw std::runtime_error("len() takes exactly 1 argument");
+            codegenError("len() takes exactly 1 argument");
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
-            throw std::runtime_error("len() requires list, map, or str argument");
+            codegenError("len() requires list, map, or str argument");
         // Check if it's a set
         if (getSetElementType(ptr)) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, ptr, 0, "set_len_ptr");
@@ -1406,7 +1407,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // Some(x) → Option<T> constructor
     if (e.callee == "Some") {
         if (e.args.size() != 1)
-            throw std::runtime_error("Some() takes exactly 1 argument");
+            codegenError("Some() takes exactly 1 argument");
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::StructType *optTy = getOptionType(inner->getType());
         llvm::Value *result = llvm::UndefValue::get(optTy);
@@ -1418,15 +1419,15 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     // Error("msg") / Error("msg", code) → Error struct constructor
     if (e.callee == "Error") {
         if (e.args.empty() || e.args.size() > 2)
-            throw std::runtime_error("Error() takes 1 or 2 arguments");
+            codegenError("Error() takes 1 or 2 arguments");
         llvm::Value *msg = emitExpr(*e.args[0]);
         if (msg->getType() != ptrTy_)
-            throw std::runtime_error("Error() first argument must be a string");
+            codegenError("Error() first argument must be a string");
         llvm::Value *code;
         if (e.args.size() == 2) {
             code = emitExpr(*e.args[1]);
             if (code->getType() != i64Ty_)
-                throw std::runtime_error("Error() second argument must be an integer");
+                codegenError("Error() second argument must be an integer");
         } else {
             code = llvm::ConstantInt::get(i64Ty_, 0);
         }
@@ -1438,22 +1439,22 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // unwrap() has been removed — use match or ?? instead
     if (e.callee == "unwrap") {
-        throw std::runtime_error("unwrap() has been removed. Use match or ?? instead");
+        codegenError("unwrap() has been removed. Use match or ?? instead");
     }
 
     // has_key(map, key) → bool
     if (e.callee == "has_key") {
         if (e.args.size() != 2)
-            throw std::runtime_error("has_key() takes exactly 2 arguments");
+            codegenError("has_key() takes exactly 2 arguments");
         llvm::Value *mapPtr = emitExpr(*e.args[0]);
         if (mapPtr->getType() != ptrTy_)
-            throw std::runtime_error("has_key() requires map as first argument");
+            codegenError("has_key() requires map as first argument");
         llvm::Type *keyTy = getMapKeyType(mapPtr);
         if (!keyTy)
-            throw std::runtime_error("has_key() requires map as first argument");
+            codegenError("has_key() requires map as first argument");
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
-            throw std::runtime_error("has_key() key type mismatch");
+            codegenError("has_key() key type mismatch");
         llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
     }
@@ -1468,14 +1469,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // filter(list, predicate) → new list with elements matching predicate
     if (e.callee == "filter") {
         if (e.args.size() != 2)
-            throw std::runtime_error("filter() takes exactly 2 arguments");
+            codegenError("filter() takes exactly 2 arguments");
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
-            throw std::runtime_error("filter() requires a list as first argument");
+            codegenError("filter() requires a list as first argument");
 
         // Get lambda type info (handle LoadInst for variable-passed functions)
         auto fnIt = fn_type_info_.find(lambdaVal);
@@ -1484,11 +1485,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         }
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("filter() requires a function as second argument");
+            codegenError("filter() requires a function as second argument");
         auto &info = fnIt->second;
 
         if (info.paramTypes.size() != 1 || info.returnType != i1Ty_)
-            throw std::runtime_error("filter() predicate must take 1 argument and return bool");
+            codegenError("filter() predicate must take 1 argument and return bool");
 
         // Read source list
         llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "filter_src_len_ptr");
@@ -1571,14 +1572,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // map(list, transform) → new list with transformed elements
     if (e.callee == "map") {
         if (e.args.size() != 2)
-            throw std::runtime_error("map() takes exactly 2 arguments");
+            codegenError("map() takes exactly 2 arguments");
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
-            throw std::runtime_error("map() requires a list as first argument");
+            codegenError("map() requires a list as first argument");
 
         auto fnIt = fn_type_info_.find(lambdaVal);
         if (fnIt == fn_type_info_.end()) {
@@ -1586,11 +1587,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         }
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("map() requires a function as second argument");
+            codegenError("map() requires a function as second argument");
         auto &info = fnIt->second;
 
         if (info.paramTypes.size() != 1)
-            throw std::runtime_error("map() transform must take exactly 1 argument");
+            codegenError("map() transform must take exactly 1 argument");
 
         llvm::Type *outElemTy = info.returnType;
 
@@ -1654,12 +1655,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // sort(list) or sort(list, comparator) → new sorted list
     if (e.callee == "sort") {
         if (e.args.size() < 1 || e.args.size() > 2)
-            throw std::runtime_error("sort() takes 1 or 2 arguments");
+            codegenError("sort() takes 1 or 2 arguments");
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
-            throw std::runtime_error("sort() requires a list as first argument");
+            codegenError("sort() requires a list as first argument");
 
         bool hasComparator = (e.args.size() == 2);
         llvm::Value *compVal = nullptr;
@@ -1672,10 +1673,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
                     fnIt = fn_type_info_.find(load->getPointerOperand());
             }
             if (fnIt == fn_type_info_.end())
-                throw std::runtime_error("sort() comparator must be a function");
+                codegenError("sort() comparator must be a function");
             compInfo = fnIt->second;
             if (compInfo.paramTypes.size() != 2 || compInfo.returnType != i1Ty_)
-                throw std::runtime_error("sort() comparator must take 2 arguments and return bool");
+                codegenError("sort() comparator must take 2 arguments and return bool");
         }
 
         // Read source list
@@ -1724,7 +1725,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {a, b}, "sort_strcmp");
                 return builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
             } else {
-                throw std::runtime_error("sort() does not support this element type");
+                codegenError("sort() does not support this element type");
             }
         };
 
@@ -1974,17 +1975,17 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== reduce(list, fn(a, b) -> a op b) =====
     if (e.callee == "reduce") {
         if (e.args.size() != 2)
-            throw std::runtime_error("reduce() takes exactly 2 arguments");
+            codegenError("reduce() takes exactly 2 arguments");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("reduce() requires a list");
+        if (!elemTy) codegenError("reduce() requires a list");
         auto fnIt = fn_type_info_.find(lambdaVal);
         if (fnIt == fn_type_info_.end())
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("reduce() requires a function");
+            codegenError("reduce() requires a function");
         auto &info = fnIt->second;
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "reduce_len");
@@ -2028,23 +2029,23 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== fold(list, init, fn(a, b) -> a op b) =====
     if (e.callee == "fold") {
         if (e.args.size() != 3)
-            throw std::runtime_error("fold() takes exactly 3 arguments");
+            codegenError("fold() takes exactly 3 arguments");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *initVal = emitExpr(*e.args[1]);
         llvm::Value *lambdaVal = emitExpr(*e.args[2]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("fold() requires a list");
+        if (!elemTy) codegenError("fold() requires a list");
         auto fnIt = fn_type_info_.find(lambdaVal);
         if (fnIt == fn_type_info_.end())
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("fold() requires a function");
+            codegenError("fold() requires a function");
         auto &info = fnIt->second;
         if (info.paramTypes.size() != 2)
-            throw std::runtime_error("fold() function must take 2 parameters (accumulator, element)");
+            codegenError("fold() function must take 2 parameters (accumulator, element)");
         if (info.returnType != initVal->getType())
-            throw std::runtime_error("fold() initial value type must match function return type");
+            codegenError("fold() initial value type must match function return type");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "fold_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "fold_data");
@@ -2076,22 +2077,22 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== any(list, pred) =====
     if (e.callee == "any") {
         if (e.args.size() != 2)
-            throw std::runtime_error("any() takes exactly 2 arguments");
+            codegenError("any() takes exactly 2 arguments");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("any() requires a list");
+        if (!elemTy) codegenError("any() requires a list");
         auto fnIt = fn_type_info_.find(lambdaVal);
         if (fnIt == fn_type_info_.end())
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("any() requires a function");
+            codegenError("any() requires a function");
         auto &info = fnIt->second;
         if (info.paramTypes.size() != 1)
-            throw std::runtime_error("any() predicate must take 1 parameter");
+            codegenError("any() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
-            throw std::runtime_error("any() predicate must return bool");
+            codegenError("any() predicate must return bool");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "any_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "any_data");
@@ -2125,22 +2126,22 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== all(list, pred) =====
     if (e.callee == "all") {
         if (e.args.size() != 2)
-            throw std::runtime_error("all() takes exactly 2 arguments");
+            codegenError("all() takes exactly 2 arguments");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("all() requires a list");
+        if (!elemTy) codegenError("all() requires a list");
         auto fnIt = fn_type_info_.find(lambdaVal);
         if (fnIt == fn_type_info_.end())
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         if (fnIt == fn_type_info_.end())
-            throw std::runtime_error("all() requires a function");
+            codegenError("all() requires a function");
         auto &info = fnIt->second;
         if (info.paramTypes.size() != 1)
-            throw std::runtime_error("all() predicate must take 1 parameter");
+            codegenError("all() predicate must take 1 parameter");
         if (info.returnType != i1Ty_)
-            throw std::runtime_error("all() predicate must return bool");
+            codegenError("all() predicate must return bool");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "all_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "all_data");
@@ -2174,12 +2175,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== sum(list) =====
     if (e.callee == "sum") {
         if (e.args.size() != 1)
-            throw std::runtime_error("sum() takes exactly 1 argument");
+            codegenError("sum() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error("sum() requires a list");
+        if (!elemTy) codegenError("sum() requires a list");
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
-            throw std::runtime_error("sum() requires a numeric list (int, float, or byte)");
+            codegenError("sum() requires a numeric list (int, float, or byte)");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "sum_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "sum_data");
@@ -2218,13 +2219,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // ===== min(list) / max(list) =====
     if (e.callee == "min" || e.callee == "max") {
         if (e.args.size() != 1)
-            throw std::runtime_error(e.callee + "() takes exactly 1 argument");
+            codegenError(e.callee + "() takes exactly 1 argument");
         bool isMax = (e.callee == "max");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy) throw std::runtime_error(e.callee + "() requires a list");
+        if (!elemTy) codegenError(e.callee + "() requires a list");
         if (elemTy != i64Ty_ && elemTy != f64Ty_)
-            throw std::runtime_error(e.callee + "() requires a numeric list (int or float)");
+            codegenError(e.callee + "() requires a numeric list (int or float)");
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "mm_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "mm_data");
@@ -2290,7 +2291,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (elemTy) {
             llvm::Value *elem = emitExpr(*e.args[1]);
             if (elem->getType() != elemTy)
-                throw std::runtime_error("add() element type mismatch");
+                codegenError("add() element type mismatch");
 
             llvm::Value *idx = emitSetElementLookup(setPtr, elem, elemTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
@@ -2362,7 +2363,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (elemTy) {
             llvm::Value *elem = emitExpr(*e.args[1]);
             if (elem->getType() != elemTy)
-                throw std::runtime_error("remove() element type mismatch");
+                codegenError("remove() element type mismatch");
 
             llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
@@ -2451,7 +2452,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (listElemTy) {
             llvm::Value *val = emitExpr(*e.args[1]);
             if (val->getType() != listElemTy)
-                throw std::runtime_error("remove() value type mismatch with list element type");
+                codegenError("remove() value type mismatch with list element type");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
@@ -2488,7 +2489,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             llvm::Value *match;
             if (listElemTy == ptrTy_) {
                 if (getNestedListElementType(containerPtr))
-                    throw std::runtime_error("remove() is not supported for lists of non-string pointer elements");
+                    codegenError("remove() is not supported for lists of non-string pointer elements");
                 auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
                 auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
@@ -2544,7 +2545,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (keyTy && valTy) {
             llvm::Value *key = emitExpr(*e.args[1]);
             if (key->getType() != keyTy)
-                throw std::runtime_error("remove() key type mismatch");
+                codegenError("remove() key type mismatch");
             llvm::Value *idx = emitMapKeyLookup(containerPtr, key, keyTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "mrem_found");
 
@@ -2627,7 +2628,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (elemTy) {
             llvm::Value *val = emitExpr(*e.args[1]);
             if (val->getType() != elemTy)
-                throw std::runtime_error("append() element type mismatch");
+                codegenError("append() element type mismatch");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -2776,10 +2777,10 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (elemTy) {
             llvm::Value *idx = emitExpr(*e.args[1]);
             if (idx->getType() != i64Ty_)
-                throw std::runtime_error("insert() index must be int");
+                codegenError("insert() index must be int");
             llvm::Value *val = emitExpr(*e.args[2]);
             if (val->getType() != elemTy)
-                throw std::runtime_error("insert() element type mismatch");
+                codegenError("insert() element type mismatch");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -2858,7 +2859,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (elemTy) {
             llvm::Value *idx = emitExpr(*e.args[1]);
             if (idx->getType() != i64Ty_)
-                throw std::runtime_error("remove_at() index must be int");
+                codegenError("remove_at() index must be int");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -2905,11 +2906,11 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
-            throw std::runtime_error("distinct() requires a list as argument");
+            codegenError("distinct() requires a list as argument");
 
         // Reject non-string pointer elements (e.g. list-of-lists) — strcmp would be UB
         if (elemTy == ptrTy_ && getNestedListElementType(listVal))
-            throw std::runtime_error("distinct() is not supported for lists of non-string pointer elements");
+            codegenError("distinct() is not supported for lists of non-string pointer elements");
 
         llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "dist_src_len_ptr");
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "dist_src_len");
@@ -3034,12 +3035,12 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *outerElemTy = getListElementType(listVal);
         if (!outerElemTy || outerElemTy != ptrTy_)
-            throw std::runtime_error("flatten() requires a list of lists");
+            codegenError("flatten() requires a list of lists");
 
         // Look up the inner element type
         llvm::Type *innerElemTy = getNestedListElementType(listVal);
         if (!innerElemTy)
-            throw std::runtime_error("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
+            codegenError("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
@@ -3191,10 +3192,10 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         if (keyTy && valTy) {
             llvm::Value *key = emitExpr(*e.args[1]);
             if (key->getType() != keyTy)
-                throw std::runtime_error("get() key type mismatch");
+                codegenError("get() key type mismatch");
             llvm::Value *defaultVal = emitExpr(*e.args[2]);
             if (defaultVal->getType() != valTy)
-                throw std::runtime_error("get() default value type must match map's value type");
+                codegenError("get() default value type must match map's value type");
             llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
             llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get_found");
 
@@ -3230,12 +3231,12 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         llvm::Type *keyTy = getMapKeyType(map1);
         llvm::Type *valTy = getMapValueType(map1);
         if (!keyTy || !valTy)
-            throw std::runtime_error("merge() requires maps as arguments");
+            codegenError("merge() requires maps as arguments");
         {
             llvm::Type *keyTy2 = getMapKeyType(map2);
             llvm::Type *valTy2 = getMapValueType(map2);
             if (!keyTy2 || keyTy2 != keyTy || !valTy2 || valTy2 != valTy)
-                throw std::runtime_error("merge() requires two maps with the same key and value types");
+                codegenError("merge() requires two maps with the same key and value types");
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
@@ -3375,7 +3376,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("union() requires two sets with the same element type");
+                codegenError("union() requires two sets with the same element type");
             // Create new set with all elements from set1, then add elements from set2
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "u_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "u_len2");
@@ -3478,7 +3479,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("intersection() requires two sets with the same element type");
+                codegenError("intersection() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "is_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "is_data1");
 
@@ -3543,7 +3544,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("difference() requires two sets with the same element type");
+                codegenError("difference() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "df_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "df_data1");
 
@@ -3608,7 +3609,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("symmetric_difference() requires two sets with the same element type");
+                codegenError("symmetric_difference() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "sd_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "sd_len2");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "sd_data1");
@@ -3679,7 +3680,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("is_subset() requires two sets with the same element type");
+                codegenError("is_subset() requires two sets with the same element type");
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set1, 0), "sub_len1");
             llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set1, 2), "sub_data1");
 
@@ -3723,7 +3724,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
         if (elemTy) {
             llvm::Type *elemTy2 = getSetElementType(set2);
             if (!elemTy2 || elemTy2 != elemTy)
-                throw std::runtime_error("is_superset() requires two sets with the same element type");
+                codegenError("is_superset() requires two sets with the same element type");
             // Check all elements of set2 are in set1
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(setHeaderTy_, set2, 0), "sup_len2");
             llvm::Value *data2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(setHeaderTy_, set2, 2), "sup_data2");
@@ -3800,15 +3801,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 auto &info = eit->second;
                 auto vit = info.variants.find(variantName);
                 if (vit == info.variants.end())
-                    throw std::runtime_error("unknown variant '" + variantName + "' in enum '" + enumName + "'");
+                    codegenError("unknown variant '" + variantName + "' in enum '" + enumName + "'");
                 int64_t tag = vit->second;
 
                 auto fit = info.variantFields.find(variantName);
                 if (fit == info.variantFields.end())
-                    throw std::runtime_error("variant '" + variantName + "' has no associated data");
+                    codegenError("variant '" + variantName + "' has no associated data");
                 auto &fieldInfo = fit->second;
                 if (e->args.size() != fieldInfo.fieldTypes.size())
-                    throw std::runtime_error("variant '" + variantName + "' expects " +
+                    codegenError("variant '" + variantName + "' expects " +
                         std::to_string(fieldInfo.fieldTypes.size()) + " arguments");
 
                 llvm::Value *adtVal = llvm::UndefValue::get(info.adtType);
@@ -3869,13 +3870,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 argVals.push_back(emitExpr(*arg));
 
             if (argVals.size() != info.paramTypes.size())
-                throw std::runtime_error(
+                codegenError(
                     "lambda call: expected " + std::to_string(info.paramTypes.size()) +
                     " arguments, got " + std::to_string(argVals.size()));
 
             for (size_t i = 0; i < argVals.size(); ++i) {
                 if (argVals[i]->getType() != info.paramTypes[i])
-                    throw std::runtime_error(
+                    codegenError(
                         "lambda call: argument " + std::to_string(i) + " type mismatch");
             }
 
@@ -3949,6 +3950,6 @@ void CodeGen::validateNativeCallArgs(const std::string &callee,
         if (i > 0) expected += " or ";
         expected += std::to_string(unique_counts[i]);
     }
-    throw std::runtime_error(callee + "() expects " + expected +
+    codegenError(callee + "() expects " + expected +
         " argument(s), but got " + std::to_string(args.size()));
 }

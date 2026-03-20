@@ -1,12 +1,14 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
-CodeGen::CodeGen(bool test_mode) : ctx_(std::make_unique<llvm::LLVMContext>()),
+CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_unique<llvm::LLVMContext>()),
                      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
                      builder_(*ctx_),
-                     test_mode_(test_mode) {
+                     test_mode_(test_mode),
+                     sm_(sm) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
     i8Ty_  = llvm::Type::getInt8Ty(*ctx_);
@@ -41,6 +43,16 @@ CodeGen::FnScope::~FnScope() {
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
+}
+
+// ===== Error helpers =====
+
+[[noreturn]] void CodeGen::codegenError(const SourceLocation &loc, const std::string &msg) {
+    throw DiagnosticError(loc, msg, sm_);
+}
+
+[[noreturn]] void CodeGen::codegenError(const std::string &msg) {
+    codegenError(current_loc_, msg);
 }
 
 // ===== Scope management =====
@@ -99,7 +111,7 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     std::string err;
     llvm::raw_string_ostream errStream(err);
     if (llvm::verifyFunction(*fn_, &errStream))
-        throw std::runtime_error("IR verify error: " + err);
+        codegenError("IR verify error: " + err);
 
     return llvm::orc::ThreadSafeModule(std::move(mod_), std::move(ctx_));
 }
@@ -151,7 +163,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                                           std::vector<llvm::Value*> &outArgVals) {
     auto fit = functions_.find(callee);
     if (fit == functions_.end())
-        throw std::runtime_error("undefined function: " + callee);
+        codegenError("undefined function: " + callee);
 
     auto &overloads = fit->second;
 
@@ -200,9 +212,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     }
 
     if (candidates.empty())
-        throw std::runtime_error("no matching overload for '" + callee + "'");
+        codegenError("no matching overload for '" + callee + "'");
     if (candidates.size() > 1)
-        throw std::runtime_error("ambiguous call to '" + callee + "'");
+        codegenError("ambiguous call to '" + callee + "'");
 
     auto *chosen = candidates[0];
 
@@ -454,7 +466,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // enum name → i64
     if (enum_types_.count(typeName)) return i64Ty_;
 
-    throw std::runtime_error("unknown type: " + typeName);
+    codegenError("unknown type: " + typeName);
 }
 
 llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
@@ -499,7 +511,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
     size_t openParen = typeStr.find('(');
     size_t closeParen = typeStr.find(')');
     if (openParen == std::string::npos || closeParen == std::string::npos)
-        throw std::runtime_error("invalid function type: " + typeStr);
+        codegenError("invalid function type: " + typeStr);
 
     std::string paramStr = typeStr.substr(openParen + 1, closeParen - openParen - 1);
     // Parse comma-separated parameter types
@@ -591,7 +603,7 @@ std::string CodeGen::resolveTypeAlias(const std::string &typeName) {
     std::string current = typeName;
     while (true) {
         if (!visited.insert(current).second)
-            throw std::runtime_error("Circular type alias detected: " + typeName);
+            codegenError("Circular type alias detected: " + typeName);
         auto it = type_aliases_.find(current);
         if (it == type_aliases_.end())
             break;
@@ -654,7 +666,7 @@ std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::s
         tc.range_low = std::stoll(typeName.substr(0, pos));
         tc.range_high = std::stoll(typeName.substr(pos + 2));
         if (tc.range_low > tc.range_high)
-            throw std::runtime_error("invalid range type: low bound " +
+            codegenError("invalid range type: low bound " +
                 std::to_string(tc.range_low) + " > high bound " +
                 std::to_string(tc.range_high));
         return tc;
@@ -727,7 +739,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
                     if (i > 0) allowed_str += " | ";
                     allowed_str += std::to_string(constraint.int_values[i]);
                 }
-                throw std::runtime_error(
+                codegenError(
                     "value " + std::to_string(v) + " is not in literal type " + allowed_str +
                     " for variable '" + varName + "'");
             }
@@ -753,7 +765,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
             int64_t v = ci->getSExtValue();
             if (v < constraint.range_low || v > constraint.range_high) {
-                throw std::runtime_error(
+                codegenError(
                     "value " + std::to_string(v) + " is out of range " +
                     std::to_string(constraint.range_low) + ".." +
                     std::to_string(constraint.range_high) +

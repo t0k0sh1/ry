@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
@@ -187,7 +188,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
 
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
-        throw std::runtime_error("print() takes exactly 1 argument");
+        codegenError("print() takes exactly 1 argument");
 
     llvm::FunctionType *printfTy = llvm::FunctionType::get(
         i32Ty_, {llvm::PointerType::getUnqual(*ctx_)}, /*isVarArg=*/true);
@@ -585,7 +586,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     }
 
     if (llvm::isa<llvm::StructType>(val->getType()))
-        throw std::runtime_error("print() does not support struct types");
+        codegenError("print() does not support struct types");
 
     if (val->getType() == i1Ty_) {
         llvm::Constant *trueStr  = builder_.CreateGlobalString("true\n",  ".fmt_true");
@@ -623,7 +624,7 @@ static LambdaExpr &extractTrailingLambda(CallStmt &s, const std::string &callee)
 
 void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
-        throw std::runtime_error("'describe' is only allowed in test mode (use 'ry test')");
+        codegenError("'describe' is only allowed in test mode (use 'ry test')");
 
     auto &lambda = extractTrailingLambda(s, "describe");
 
@@ -637,7 +638,7 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
 
     llvm::Value *descName = emitExpr(*s.args[0]);
     if (!descName->getType()->isPointerTy())
-        throw std::runtime_error("describe() first argument must be a string");
+        codegenError("describe() first argument must be a string");
     builder_.CreateCall(descBeginFn, {descName});
 
     for (auto &stmt : lambda.body)
@@ -648,7 +649,7 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
 
 void CodeGen::emitItCall(CallStmt &s) {
     if (!test_mode_)
-        throw std::runtime_error("'it' is only allowed in test mode (use 'ry test')");
+        codegenError("'it' is only allowed in test mode (use 'ry test')");
 
     auto &lambda = extractTrailingLambda(s, "it");
 
@@ -662,7 +663,7 @@ void CodeGen::emitItCall(CallStmt &s) {
 
     llvm::Value *itName = emitExpr(*s.args[0]);
     if (!itName->getType()->isPointerTy())
-        throw std::runtime_error("it() first argument must be a string");
+        codegenError("it() first argument must be a string");
 
     // Create a test function for this it-block
     std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
@@ -687,7 +688,7 @@ void CodeGen::emitItCall(CallStmt &s) {
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*testFunc, &errStream))
-            throw std::runtime_error("IR verify error in test: " + err);
+            codegenError("IR verify error in test: " + err);
     }
 
     builder_.CreateCall(itBeginFn, {itName});
@@ -699,7 +700,7 @@ void CodeGen::emitItCall(CallStmt &s) {
 
 void CodeGen::emitStmt(ExpectStmt &s) {
     if (!test_mode_)
-        throw std::runtime_error("'expect' is only allowed in test mode (use 'ry test')");
+        codegenError("'expect' is only allowed in test mode (use 'ry test')");
 
     llvm::Value *actualVal = emitExpr(*s.actual);
     llvm::Type *actualTy = actualVal->getType();
@@ -727,7 +728,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
             eqResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
         } else {
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": " + s.matcher + ": unsupported types for comparison");
         }
         cmpResult = (s.matcher == "to_not_eq")
@@ -735,23 +736,23 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             : eqResult;
     } else if (s.matcher == "to_be_true") {
         if (actualTy != i1Ty_)
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_true: expected bool");
         cmpResult = actualVal;
     } else if (s.matcher == "to_be_false") {
         if (actualTy != i1Ty_)
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_false: expected bool");
         cmpResult = builder_.CreateNot(actualVal, "not");
     } else if (s.matcher == "to_be_none") {
         if (!isOptionType(actualTy))
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_none: expected Option type");
         llvm::Value *hasVal = builder_.CreateExtractValue(actualVal, {0}, "has_val");
         cmpResult = builder_.CreateNot(hasVal, "is_none");
     } else if (s.matcher == "to_be_some") {
         if (!isOptionType(actualTy))
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_some: expected Option type");
         cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_some");
     } else if (s.matcher == "to_contain") {
@@ -773,7 +774,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                 headerTy = setHeaderTy_;
             }
             if (!elemTy)
-                throw std::runtime_error("line " + std::to_string(s.line) +
+                codegenError("line " + std::to_string(s.loc.line) +
                                          ": to_contain: expected list, set, or string");
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, actualVal, 0, "len_ptr");
@@ -802,7 +803,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             llvm::Value *ePtr = builder_.CreateGEP(elemTy, dataPtr, {curI}, "elem_ptr");
             llvm::Value *elem = builder_.CreateLoad(elemTy, ePtr, "elem");
             if (expectedVal->getType() != elemTy)
-                throw std::runtime_error("line " + std::to_string(s.line) +
+                codegenError("line " + std::to_string(s.loc.line) +
                                          ": to_contain: element type mismatch");
             llvm::Value *eq;
             if (elemTy == i64Ty_)
@@ -830,7 +831,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             builder_.SetInsertPoint(eBB);
             cmpResult = builder_.CreateLoad(i1Ty_, foundVar, "contain_result");
         } else {
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_contain: expected list, set, or string");
         }
     }
@@ -898,7 +899,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         expectedStr = builder_.CreateGlobalString("None", ".exp_none");
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.line), actualStr, expectedStr});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), actualStr, expectedStr});
     builder_.CreateBr(contBB);
 
     // Continue block
@@ -1004,7 +1005,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 }
                 for (auto &[vname, _] : it->second.variants) {
                     if (!covered.count(vname))
-                        throw std::runtime_error("non-exhaustive match: missing variant '" +
+                        codegenError("non-exhaustive match: missing variant '" +
                             enumName + "::" + vname + "'");
                 }
             }
@@ -1026,7 +1027,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
-            throw std::runtime_error("non-exhaustive match: Option requires both Some and None cases (or use '_')");
+            codegenError("non-exhaustive match: Option requires both Some and None cases (or use '_')");
 
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
@@ -1048,11 +1049,11 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if (subjectTy == i1Ty_ && !(hasTrue && hasFalse) && !hasWildcardOrVar)
-            throw std::runtime_error("non-exhaustive match: bool requires both true and false cases (or use '_')");
+            codegenError("non-exhaustive match: bool requires both true and false cases (or use '_')");
 
         // For int/float/string literals without wildcard
         if (enumName.empty() && !hasSome && !hasNone && !hasTrue && !hasFalse)
-            throw std::runtime_error("non-exhaustive match: literal patterns require a wildcard '_' case");
+            codegenError("non-exhaustive match: literal patterns require a wildcard '_' case");
     }
 
     // --- Code generation: chain of conditional branches ---
@@ -1106,7 +1107,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                     testResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match.streq");
                 } else {
-                    throw std::runtime_error("match: incompatible types in literal pattern");
+                    codegenError("match: incompatible types in literal pattern");
                 }
             } else if constexpr (std::is_same_v<T, VariablePattern>) {
                 testResult = llvm::ConstantInt::get(i1Ty_, 1);
@@ -1122,10 +1123,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     }
                 }
                 if (enumIt == enum_types_.end())
-                    throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                    codegenError("match: unknown enum '" + pat.enum_name + "'");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
-                    throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
                 if (enumIt->second.isADT) {
                     llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
                     testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
@@ -1144,22 +1145,22 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     }
                 }
                 if (enumIt == enum_types_.end())
-                    throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                    codegenError("match: unknown enum '" + pat.enum_name + "'");
                 if (!enumIt->second.isADT)
-                    throw std::runtime_error("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
+                    codegenError("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
-                    throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
                 llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
                 testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
             } else if constexpr (std::is_same_v<T, SomePattern>) {
                 if (!isOptionType(subjectTy))
-                    throw std::runtime_error("match: Some pattern requires Option type");
+                    codegenError("match: Some pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = hasValue;
             } else if constexpr (std::is_same_v<T, NonePattern>) {
                 if (!isOptionType(subjectTy))
-                    throw std::runtime_error("match: None pattern requires Option type");
+                    codegenError("match: None pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
             } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
@@ -1183,26 +1184,26 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                                 altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
                             } else {
-                                throw std::runtime_error("match: incompatible types in OR literal pattern");
+                                codegenError("match: incompatible types in OR literal pattern");
                             }
                         } else if constexpr (std::is_same_v<U, EnumPattern>) {
                             auto enumIt = enum_types_.find(altPat.enum_name);
                             if (enumIt == enum_types_.end())
-                                throw std::runtime_error("match: unknown enum '" + altPat.enum_name + "'");
+                                codegenError("match: unknown enum '" + altPat.enum_name + "'");
                             auto varIt = enumIt->second.variants.find(altPat.variant_name);
                             if (varIt == enumIt->second.variants.end())
-                                throw std::runtime_error("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
+                                codegenError("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
                             llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
                             altResult = builder_.CreateICmpEQ(subjectVal, tag, "or.enum_eq");
                         } else if constexpr (std::is_same_v<U, WildcardPattern>) {
                             altResult = llvm::ConstantInt::get(i1Ty_, 1);
                         } else if constexpr (std::is_same_v<U, NonePattern>) {
                             if (!isOptionType(subjectTy))
-                                throw std::runtime_error("match: None pattern requires Option type");
+                                codegenError("match: None pattern requires Option type");
                             llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                             altResult = builder_.CreateNot(hasValue, "is_none");
                         } else {
-                            throw std::runtime_error("match: unsupported pattern type in OR pattern");
+                            codegenError("match: unsupported pattern type in OR pattern");
                         }
                     }, alt);
                     testResult = builder_.CreateOr(testResult, altResult, "or.comb");
@@ -1368,7 +1369,7 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
         if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
     }
     if (tagIdx < 0)
-        throw std::runtime_error("type is not in union " + norm);
+        codegenError("type is not in union " + norm);
 
     llvm::AllocaInst *tmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.tmp");
     auto *tagPtr = builder_.CreateStructGEP(info.llvmType, tmp, 0, "union.tag");
@@ -1382,10 +1383,10 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
 
 void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
-        throw std::runtime_error("exit() takes exactly 1 argument");
+        codegenError("exit() takes exactly 1 argument");
     llvm::Value *code = emitExpr(*args[0]);
     if (!code->getType()->isIntegerTy())
-        throw std::runtime_error("exit() argument must be an integer");
+        codegenError("exit() argument must be an integer");
     if (code->getType() != i32Ty_)
         code = builder_.CreateIntCast(code, i32Ty_, true, "exit_code");
     llvm::FunctionType *exitTy = llvm::FunctionType::get(

@@ -1,7 +1,9 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <stdexcept>
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
+    if (node.loc.isValid()) current_loc_ = node.loc;
     return std::visit([this](const auto &e) -> llvm::Value* { return emitExprVariant(e); },
                       node.data);
 }
@@ -42,7 +44,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         fn_type_info_[func] = info;
         return func;
     }
-    throw std::runtime_error("undefined variable: " + e.name);
+    codegenError("undefined variable: " + e.name);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
@@ -68,11 +70,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     }
     if (e->op == "~") {
         if (val->getType()->isDoubleTy())
-            throw std::runtime_error("bitwise NOT (~) requires integer, got float");
+            codegenError("bitwise NOT (~) requires integer, got float");
         val = promoteToInt(val);
         return builder_.CreateNot(val, "bnot");
     }
-    throw std::runtime_error("unknown unary operator: " + e->op);
+    codegenError("unknown unary operator: " + e->op);
 }
 
 // ===== Operator overload helpers =====
@@ -146,7 +148,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (op == "<=") return builder_.CreateICmpSLE(cmp, zero, "str_le");
         if (op == ">")  return builder_.CreateICmpSGT(cmp, zero, "str_gt");
         if (op == ">=") return builder_.CreateICmpSGE(cmp, zero, "str_ge");
-        throw std::runtime_error("unsupported string comparison: " + op);
+        codegenError("unsupported string comparison: " + op);
     }
 
     lhs = promoteToInt(lhs);
@@ -185,7 +187,7 @@ llvm::Value *CodeGen::emitLogicalOp(const std::string &op, llvm::Value *lhs, llv
 
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy())
-        throw std::runtime_error(
+        codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
@@ -195,7 +197,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl");
     if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr");
     if (op == ">>>") return builder_.CreateLShr(lhs, rhs, "lshr");
-    throw std::runtime_error("unknown bitwise operator: " + op);
+    codegenError("unknown bitwise operator: " + op);
 }
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
@@ -351,12 +353,12 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (op == "+") return builder_.CreateFAdd(lhs, rhs, "fadd");
         if (op == "-") return builder_.CreateFSub(lhs, rhs, "fsub");
         if (op == "*") return builder_.CreateFMul(lhs, rhs, "fmul");
-        throw std::runtime_error("unknown operator: " + op);
+        codegenError("unknown operator: " + op);
     }
     if (op == "+") return builder_.CreateAdd(lhs, rhs, "add");
     if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
     if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
-    throw std::runtime_error("unknown operator: " + op);
+    codegenError("unknown operator: " + op);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
@@ -369,7 +371,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Type *setElemTy = getSetElementType(container);
         if (setElemTy) {
             if (elem->getType() != setElemTy)
-                throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
+                codegenError("'" + e->op + "' operator: element type mismatch");
             llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
             if (e->op == "not in")
@@ -381,7 +383,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Type *mapKeyTy = getMapKeyType(container);
         if (mapKeyTy) {
             if (elem->getType() != mapKeyTy)
-                throw std::runtime_error("'" + e->op + "' operator: key type mismatch");
+                codegenError("'" + e->op + "' operator: key type mismatch");
             llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
             llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
             if (e->op == "not in")
@@ -393,7 +395,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         llvm::Type *listElemTy = getListElementType(container);
         if (listElemTy) {
             if (elem->getType() != listElemTy)
-                throw std::runtime_error("'" + e->op + "' operator: element type mismatch");
+                codegenError("'" + e->op + "' operator: element type mismatch");
 
             // Linear search loop
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, container, 0, "in_len_ptr");
@@ -454,19 +456,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
             return result;
         }
 
-        throw std::runtime_error("'" + e->op + "' operator requires a set, list, or map on the right side");
+        codegenError("'" + e->op + "' operator requires a set, list, or map on the right side");
     }
 
     // Null coalescing operator: lhs ?? rhs
     if (e->op == "??") {
         llvm::Value *lhs = emitExpr(*e->lhs);
         if (!isOptionType(lhs->getType()))
-            throw std::runtime_error("'" "??" "' operator requires Option type on the left side");
+            codegenError("'" "??" "' operator requires Option type on the left side");
         llvm::Value *hasVal = builder_.CreateExtractValue(lhs, {0}, "has_val");
         llvm::Value *innerVal = builder_.CreateExtractValue(lhs, {1}, "inner_val");
         llvm::Value *rhs = emitExpr(*e->rhs);
         if (rhs->getType() != innerVal->getType())
-            throw std::runtime_error("'" "??" "' operator: right-hand side type must match Option's inner type");
+            codegenError("'" "??" "' operator: right-hand side type must match Option's inner type");
         return builder_.CreateSelect(hasVal, innerVal, rhs, "coalesce");
     }
 
@@ -495,7 +497,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
 
 void CodeGen::emitStmt(RecordStmt &s) {
     if (struct_types_.count(s.name))
-        throw std::runtime_error("redefined type: " + s.name);
+        codegenError("redefined type: " + s.name);
 
     std::vector<llvm::Type*> fieldTypes;
     for (auto &f : s.fields)
@@ -516,7 +518,7 @@ llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
                                              const std::string &name,
                                              const std::vector<ExprPtr> &args) {
     if (args.size() != info.fields.size())
-        throw std::runtime_error("type '" + name + "': expected " +
+        codegenError("type '" + name + "': expected " +
                                  std::to_string(info.fields.size()) + " arguments, got " +
                                  std::to_string(args.size()));
 
@@ -526,7 +528,7 @@ llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
         llvm::Value *val = emitExpr(*args[i]);
         llvm::Type *expectedTy = info.llvmType->getElementType(i);
         if (val->getType() != expectedTy)
-            throw std::runtime_error("type '" + name + "': field '" + info.fields[i].name +
+            codegenError("type '" + name + "': field '" + info.fields[i].name +
                                      "' type mismatch");
         result = builder_.CreateInsertValue(result, val, i);
     }
@@ -544,7 +546,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
-        throw std::runtime_error("field access on non-struct type");
+        codegenError("field access on non-struct type");
 
     // Error type field access: .message (idx 0), .code (idx 1)
     if (structTy == errorTy_) {
@@ -552,21 +554,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
             return builder_.CreateExtractValue(obj, 0, "err.message");
         if (e->field == "code")
             return builder_.CreateExtractValue(obj, 1, "err.code");
-        throw std::runtime_error("Error type has no field '" + e->field + "'");
+        codegenError("Error type has no field '" + e->field + "'");
     }
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
         unsigned idx = std::stoul(e->field);
         if (idx >= structTy->getNumElements())
-            throw std::runtime_error("tuple index " + e->field + " out of range");
+            codegenError("tuple index " + e->field + " out of range");
         return builder_.CreateExtractValue(obj, idx, "tuple." + e->field);
     }
 
     std::string typeName = structTy->getName().str();
     auto it = struct_types_.find(typeName);
     if (it == struct_types_.end())
-        throw std::runtime_error("unknown struct type: " + typeName);
+        codegenError("unknown struct type: " + typeName);
 
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
@@ -578,7 +580,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
         }
     }
 
-    throw std::runtime_error("type '" + typeName + "' has no field '" + e->field + "'");
+    codegenError("type '" + typeName + "' has no field '" + e->field + "'");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
@@ -598,7 +600,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     if (e->elements.empty())
-        throw std::runtime_error("empty list literal requires type annotation (not yet supported)");
+        codegenError("empty list literal requires type annotation (not yet supported)");
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
@@ -609,7 +611,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     llvm::Type *elemTy = vals[0]->getType();
     for (size_t i = 1; i < vals.size(); ++i) {
         if (vals[i]->getType() != elemTy)
-            throw std::runtime_error("list elements must all have the same type");
+            codegenError("list elements must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -672,7 +674,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     if (e->keys.empty())
-        throw std::runtime_error("empty map literal requires type annotation");
+        codegenError("empty map literal requires type annotation");
 
     // Evaluate all keys and values
     std::vector<llvm::Value*> keyVals, valVals;
@@ -683,14 +685,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     llvm::Type *keyTy = keyVals[0]->getType();
     for (size_t i = 1; i < keyVals.size(); ++i) {
         if (keyVals[i]->getType() != keyTy)
-            throw std::runtime_error("map keys must all have the same type");
+            codegenError("map keys must all have the same type");
     }
 
     // Check all values have the same type
     llvm::Type *valTy = valVals[0]->getType();
     for (size_t i = 1; i < valVals.size(); ++i) {
         if (valVals[i]->getType() != valTy)
-            throw std::runtime_error("map values must all have the same type");
+            codegenError("map values must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(keyVals.size());
@@ -775,7 +777,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     if (e->elements.empty()) {
         // Empty set — requires type annotation (handled in emitVarDecl)
         // If reached here directly, error
-        throw std::runtime_error("empty set literal requires type annotation");
+        codegenError("empty set literal requires type annotation");
     }
 
     // Evaluate all elements
@@ -787,7 +789,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     llvm::Type *elemTy = vals[0]->getType();
     for (size_t i = 1; i < vals.size(); ++i) {
         if (vals[i]->getType() != elemTy)
-            throw std::runtime_error("set elements must all have the same type");
+            codegenError("set elements must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -878,16 +880,16 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
     }
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
-        throw std::runtime_error("undefined enum: " + e.enum_name);
+        codegenError("undefined enum: " + e.enum_name);
     auto vit = it->second.variants.find(e.variant_name);
     if (vit == it->second.variants.end())
-        throw std::runtime_error("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
+        codegenError("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
 
     if (it->second.isADT) {
         // Reject access to payload-carrying variants without arguments
         auto fit = it->second.variantFields.find(e.variant_name);
         if (fit != it->second.variantFields.end() && !fit->second.fieldTypes.empty())
-            throw std::runtime_error("variant '" + e.enum_name + "::" + e.variant_name +
+            codegenError("variant '" + e.enum_name + "::" + e.variant_name +
                 "' requires " + std::to_string(fit->second.fieldTypes.size()) +
                 " argument(s); use '" + e.enum_name + "::" + e.variant_name + "(...)' instead");
         // ADT enum: create struct { tag, zero-payload } for data-less variants
@@ -908,18 +910,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *index = emitExpr(*e->index);
 
     if (objPtr->getType() != ptrTy_)
-        throw std::runtime_error("index operator requires list or map");
+        codegenError("index operator requires list or map");
 
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
         llvm::Type *mapValTy = getMapValueType(objPtr);
         if (!mapValTy)
-            throw std::runtime_error("cannot determine map value type");
+            codegenError("cannot determine map value type");
 
         // Check key type matches
         if (index->getType() != mapKeyTy)
-            throw std::runtime_error("map key type mismatch");
+            codegenError("map key type mismatch");
 
         // Lookup key
         llvm::Value *idx = emitMapKeyLookup(objPtr, index, mapKeyTy);
@@ -947,7 +949,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // List index access
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
-        throw std::runtime_error("cannot determine list element type for index access");
+        codegenError("cannot determine list element type for index access");
 
     if (index->getType() == i1Ty_)
         index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
@@ -978,19 +980,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<OldExpr> &e) {
     if (!in_ensure_context_)
-        throw std::runtime_error("old() can only be used in ensure clause");
+        codegenError("old() can only be used in ensure clause");
     auto it = old_value_map_.find(e.get());
     if (it == old_value_map_.end())
-        throw std::runtime_error("old() value not found (internal error)");
+        codegenError("old() value not found (internal error)");
     llvm::AllocaInst *alloca = it->second;
     return builder_.CreateLoad(alloca->getAllocatedType(), alloca, "old_load");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
     if (!in_ensure_context_)
-        throw std::runtime_error("result can only be used in ensure clause");
+        codegenError("result can only be used in ensure clause");
     if (!result_alloca_)
-        throw std::runtime_error("result used in void function");
+        codegenError("result used in void function");
     llvm::Type *ty = result_alloca_->getAllocatedType();
     return builder_.CreateLoad(ty, result_alloca_, "result_load");
 }
@@ -1004,10 +1006,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             llvm::Value *src = load->getPointerOperand();
             if (list_element_types_.count(src) || map_key_types_.count(src) ||
                 set_element_types_.count(src))
-                throw std::runtime_error("cannot convert collection to string");
+                codegenError("cannot convert collection to string");
         }
         if (fn_type_info_.count(val))
-            throw std::runtime_error("cannot convert function to string");
+            codegenError("cannot convert function to string");
         return val; // string pointer
     }
 
@@ -1052,21 +1054,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         else if (srcTy == i8Ty_) val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
         if (val->getType()->isIntegerTy())
             return builder_.CreateSIToFP(val, f64Ty_, "cast_f");
-        throw std::runtime_error("cannot cast to float");
+        codegenError("cannot cast to float");
     }
     if (target == "int") {
         if (srcTy == i64Ty_) return val;
         if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
         if (srcTy == i8Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
-        throw std::runtime_error("cannot cast to int");
+        codegenError("cannot cast to int");
     }
     if (target == "bool") {
         if (srcTy == i1Ty_) return val;
         if (srcTy == i64Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i64Ty_, 0), "cast_b");
         if (srcTy == i8Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i8Ty_, 0), "cast_b");
         if (srcTy->isDoubleTy()) return builder_.CreateFCmpONE(val, llvm::ConstantFP::get(f64Ty_, 0.0), "cast_b");
-        throw std::runtime_error("cannot cast to bool");
+        codegenError("cannot cast to bool");
     }
     if (target == "str") {
         return valueToString(val);
@@ -1075,9 +1077,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy == i8Ty_) return val;
         if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i8Ty_, "cast_byte");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
-        throw std::runtime_error("cannot cast to byte");
+        codegenError("cannot cast to byte");
     }
-    throw std::runtime_error("unsupported cast target type: " + target);
+    codegenError("unsupported cast target type: " + target);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
@@ -1156,7 +1158,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
     builder_.CreateBr(mergeBB);
 
     if (trueVal->getType() != falseVal->getType())
-        throw std::runtime_error("ternary expression: both branches must have the same type");
+        codegenError("ternary expression: both branches must have the same type");
 
     // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
     if (trueVal->getType() == ptrTy_) {
@@ -1170,14 +1172,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
         SemanticKind trueKind = classify(trueVal);
         SemanticKind falseKind = classify(falseVal);
         if (trueKind != falseKind)
-            throw std::runtime_error("ternary expression: both branches must have the same type");
+            codegenError("ternary expression: both branches must have the same type");
 
         // For List, check element types match
         if (trueKind == SemanticKind::List) {
             llvm::Type *trueElem = list_element_types_[trueVal];
             llvm::Type *falseElem = list_element_types_[falseVal];
             if (trueElem != falseElem)
-                throw std::runtime_error("ternary expression: both branches must have the same type");
+                codegenError("ternary expression: both branches must have the same type");
         }
     }
 
@@ -1214,7 +1216,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     llvm::Value *endVal = emitExpr(*e->end);
 
     if (startVal->getType() != i64Ty_ || endVal->getType() != i64Ty_)
-        throw std::runtime_error("range (..) operator requires int operands");
+        codegenError("range (..) operator requires int operands");
 
     // Calculate length: end - start + 1 (inclusive range)
     llvm::Value *diff = builder_.CreateSub(endVal, startVal, "range_diff");
@@ -1289,21 +1291,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     // Verify operand is a 2-element struct (tuple)
     auto *structTy = llvm::dyn_cast<llvm::StructType>(tupleTy);
     if (!structTy || structTy->getNumElements() != 2)
-        throw std::runtime_error("!! operator requires a (T, Error?) tuple");
+        codegenError("!! operator requires a (T, Error?) tuple");
 
     // Verify second element is Option<Error>
     llvm::StructType *errOptTy = getOptionType(errorTy_);
     if (structTy->getElementType(1) != errOptTy)
-        throw std::runtime_error("!! operator requires second tuple element to be Error?");
+        codegenError("!! operator requires second tuple element to be Error?");
 
     // Verify current function returns (X, Error?)
     if (!fn_)
-        throw std::runtime_error("!! operator can only be used inside a function");
+        codegenError("!! operator can only be used inside a function");
     llvm::Type *retTy = fn_->getReturnType();
     auto *retStructTy = llvm::dyn_cast<llvm::StructType>(retTy);
     if (!retStructTy || retStructTy->getNumElements() != 2 ||
         retStructTy->getElementType(1) != errOptTy)
-        throw std::runtime_error("!! operator requires enclosing function to return (T, Error?)");
+        codegenError("!! operator requires enclosing function to return (T, Error?)");
 
     // Extract the error option (second element)
     llvm::Value *errOpt = builder_.CreateExtractValue(tuple, 1, "err_opt");

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ry/source_location.hpp"
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -18,7 +19,7 @@ struct DirectiveParam {
 struct Directive {
     std::string name;
     std::vector<DirectiveParam> params;
-    int line;
+    SourceLocation loc;
 };
 
 inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
@@ -79,6 +80,7 @@ struct ExprNode {
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>> data;
+    SourceLocation loc;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -124,34 +126,35 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; };  // immutable
-struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; };  // mutable
-struct AssignStmt { std::string name; ExprPtr value; };
-struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
+struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // immutable
+struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // mutable
+struct AssignStmt { std::string name; ExprPtr value; SourceLocation loc; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; SourceLocation loc; };
 
-struct ReturnStmt { ExprPtr value; };
+struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; std::string type; };
 
 struct ImportStmt {
     std::string module_path;              // "utils/math.ry"
     std::vector<std::string> names;       // {"add", "sub"} — empty means import all
-    int line;
+    SourceLocation loc;
 };
 
 struct IndexAssignStmt {
     ExprPtr object;
     ExprPtr index;
     ExprPtr value;
+    SourceLocation loc;
 };
 
 struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
 
-struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; };
+struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
-struct TypeAliasStmt { std::string name; std::string target_type; };
+struct TypeAliasStmt { std::string name; std::string target_type; SourceLocation loc; };
 
-struct BreakStmt {};
-struct ContinueStmt {};
+struct BreakStmt { SourceLocation loc; };
+struct ContinueStmt { SourceLocation loc; };
 
 struct EnumVariant {
     std::string name;
@@ -162,6 +165,7 @@ struct EnumStmt {
     std::string name;
     std::vector<std::string> type_params;  // for generics
     std::vector<EnumVariant> variants;
+    SourceLocation loc;
 };
 
 struct TupleDestructStmt {
@@ -169,12 +173,14 @@ struct TupleDestructStmt {
     ExprPtr value;
     bool is_immutable;
     std::vector<Directive> directives;
+    SourceLocation loc;
 };
 
 struct FieldAssignStmt {
     ExprPtr object;
     std::string field;
     ExprPtr value;
+    SourceLocation loc;
 };
 
 struct IfStmt;
@@ -187,7 +193,7 @@ struct ExpectStmt {
     ExprPtr actual;
     std::string matcher;   // "to_eq", "to_be_true", "to_be_false", "to_be_none"
     ExprPtr expected;      // to_eq only
-    int line;
+    SourceLocation loc;
 };
 
 using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
@@ -210,11 +216,13 @@ struct IfBranch {
 struct IfStmt {
     std::vector<IfBranch> branches;    // if + elif*
     std::vector<StmtNode> else_body;   // else（空なら else なし）
+    SourceLocation loc;
 };
 
 struct WhileStmt {
     ExprPtr condition;
     std::vector<StmtNode> body;
+    SourceLocation loc;
 };
 
 struct ForStmt {
@@ -222,6 +230,7 @@ struct ForStmt {
     std::optional<std::string> var_name2;
     ExprPtr iterable;
     std::vector<StmtNode> body;
+    SourceLocation loc;
 };
 
 struct OldExpr { ExprPtr expr; };
@@ -260,6 +269,7 @@ struct FnStmt {
     std::vector<ExprPtr> preconditions;
     std::vector<ExprPtr> postconditions;
     std::vector<Directive> directives;
+    SourceLocation loc;
 };
 
 struct LambdaExpr {
@@ -303,4 +313,5 @@ struct MatchArm {
 struct MatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
+    SourceLocation loc;
 };
