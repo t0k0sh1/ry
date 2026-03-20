@@ -71,7 +71,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
 }
 
 // ============================================================
-// Mock void function
+// Mock function used as expression / return value
 // ============================================================
 
 TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {

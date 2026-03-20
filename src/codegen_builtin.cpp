@@ -726,23 +726,29 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
+    // Look up function type info, supporting variables (LoadInst) that hold the function
+    llvm::Value *fnInfoKey = replacement;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(replacement))
+        fnInfoKey = load->getPointerOperand();
+
+    auto fnInfoIt = fn_type_info_.find(fnInfoKey);
+    if (fnInfoIt == fn_type_info_.end())
+        codegenError("mock(): second argument must be a non-capturing lambda or function reference");
+
     // Verify it's a function pointer (not a closure)
-    auto fnInfoIt = fn_type_info_.find(replacement);
-    if (fnInfoIt != fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty())
+    if (!fnInfoIt->second.capturedVars.empty())
         codegenError("mock(): capture-based closures are not supported, use a plain lambda");
 
     // Verify type compatibility
     llvm::Type *origRetTy = origFn->getReturnType();
-    if (fnInfoIt != fn_type_info_.end()) {
-        if (fnInfoIt->second.returnType != origRetTy)
-            codegenError("mock(): replacement return type does not match '" + fnName + "'");
-        if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
-            codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
-        for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
-            if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
-                codegenError("mock(): replacement parameter type " + std::to_string(i) +
-                             " does not match '" + fnName + "'");
-        }
+    if (fnInfoIt->second.returnType != origRetTy)
+        codegenError("mock(): replacement return type does not match '" + fnName + "'");
+    if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
+        codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
+    for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
+        if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
+            codegenError("mock(): replacement parameter type " + std::to_string(i) +
+                         " does not match '" + fnName + "'");
     }
 
     // Track that this function is mocked (for selective dispatch in emitUserFnCall)
