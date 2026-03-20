@@ -40,7 +40,7 @@ For detailed language specifications, see the reference pages below.
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
 | [Built-in Functions](reference/builtins.md) | print, len, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
-| [Module System](reference/modules.md) | from/import syntax and search rules |
+| [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and ry.toml specification |
 | [Design by Contract](reference/contracts.md) | require, ensure, invariant, old, result |

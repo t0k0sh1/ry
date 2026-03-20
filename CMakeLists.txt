@@ -61,6 +61,7 @@ add_library(ry_lib STATIC
     src/project_config.cpp
     src/self_update.cpp
     src/args_runtime.cpp
+    src/paths.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -93,6 +94,7 @@ add_executable(ry_tests
     tests/test_project_config.cpp
     tests/test_self_update.cpp
     tests/test_diagnostic.cpp
+    tests/test_paths.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

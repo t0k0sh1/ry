@@ -170,7 +170,7 @@ StmtNode Parser::parseImportStatement() {
 
     Token modTok = lex_.peek();
     if (modTok.kind != TokenKind::Ident)
-        parseError(modTok.line, "expected module name after 'from'");
+        parseError(modTok.line, "expected package name after 'from'");
     std::string modulePath = lex_.next().value;
 
     while (lex_.peek().kind == TokenKind::Dot) {
@@ -180,8 +180,6 @@ StmtNode Parser::parseImportStatement() {
             parseError(part.line, "expected identifier after '.'");
         modulePath += "/" + lex_.next().value;
     }
-    modulePath += ".ry";
-
     std::vector<std::string> names;
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
