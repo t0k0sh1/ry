@@ -976,3 +976,27 @@ TEST(LexerTest, ColumnString) {
     EXPECT_EQ(toks[2].col, 7);  // =
     EXPECT_EQ(toks[3].col, 9);  // "hello"
 }
+
+TEST(LexerTest, ManyConsecutiveComments) {
+    // Generate many comment lines to verify no stack overflow
+    std::string src;
+    // Reserve enough capacity to avoid repeated reallocations while building src
+    const std::size_t perLine = std::string("# comment line ").size() + 4 + 1; // prefix + up to 4 digits + '\n'
+    src.reserve(perLine * 10000 + 3); // +3 for "42\n"
+    for (int i = 0; i < 10000; ++i) {
+        src.append("# comment line ");
+        src.append(std::to_string(i));
+        src.push_back('\n');
+    }
+    src.append("42\n");
+    auto toks = tokenize(src);
+    // Should find the number token after all comments
+    bool found = false;
+    for (auto &t : toks) {
+        if (t.kind == TokenKind::Number && t.value == "42") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}

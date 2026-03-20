@@ -82,7 +82,7 @@ Token Lexer::readToken() {
             ++pos_;
             ++col_;
         }
-        return readToken();
+        // Fall through to handle the newline/EOF normally (no recursive call)
     }
 
     // 5. EOF - generate remaining DEDENTs

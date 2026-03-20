@@ -1120,19 +1120,17 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 builder_.CreateRetVoid();
             else if (defaultRet)
                 builder_.CreateRet(defaultRet);
+            else
+                builder_.CreateRet(llvm::UndefValue::get(retTy));
         }
-
-        // Reset contract context
-        current_postconditions_ = nullptr;
-        result_alloca_ = nullptr;
-        old_value_map_.clear();
 
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
             codegenError("IR verify error in function '" + s->name + "': " + err);
     }
-    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point
+    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point,
+    // and contract state (current_postconditions_, result_alloca_, in_ensure_context_, old_value_map_)
 }
 
 // ===== Contract helpers =====

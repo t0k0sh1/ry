@@ -167,6 +167,10 @@ private:
         std::vector<std::unordered_set<std::string>> savedConstScope_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
+        std::vector<ExprPtr> *savedPostconditions_;
+        llvm::AllocaInst *savedResultAlloca_;
+        bool savedInEnsureContext_;
+        std::unordered_map<OldExpr*, llvm::AllocaInst*> savedOldValueMap_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
@@ -250,7 +254,6 @@ private:
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitLogicalOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
 

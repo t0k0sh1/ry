@@ -177,14 +177,6 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
 }
 
-llvm::Value *CodeGen::emitLogicalOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
-    llvm::Value *lhsBool = toBool(lhs);
-    llvm::Value *rhsBool = toBool(rhs);
-    if (op == "and")
-        return builder_.CreateAnd(lhsBool, rhsBool, "and");
-    return builder_.CreateOr(lhsBool, rhsBool, "or");
-}
-
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy())
         codegenError(
@@ -459,6 +451,33 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         codegenError("'" + e->op + "' operator requires a set, list, or map on the right side");
     }
 
+    // Short-circuit evaluation for 'and' / 'or'
+    if (e->op == "and" || e->op == "or") {
+        llvm::Value *lhs = emitExpr(*e->lhs);
+        llvm::Value *lhsBool = toBool(lhs);
+
+        llvm::BasicBlock *rhsBB = llvm::BasicBlock::Create(*ctx_, "sc.rhs", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sc.merge", fn_);
+        llvm::BasicBlock *lhsBB = builder_.GetInsertBlock();
+
+        if (e->op == "and")
+            builder_.CreateCondBr(lhsBool, rhsBB, mergeBB);
+        else
+            builder_.CreateCondBr(lhsBool, mergeBB, rhsBB);
+
+        builder_.SetInsertPoint(rhsBB);
+        llvm::Value *rhs = emitExpr(*e->rhs);
+        llvm::Value *rhsBool = toBool(rhs);
+        llvm::BasicBlock *rhsEndBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, e->op);
+        phi->addIncoming(lhsBool, lhsBB);
+        phi->addIncoming(rhsBool, rhsEndBB);
+        return phi;
+    }
+
     // Null coalescing operator: lhs ?? rhs
     if (e->op == "??") {
         llvm::Value *lhs = emitExpr(*e->lhs);
@@ -484,9 +503,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
         return emitComparisonOp(op, lhs, rhs);
-
-    if (op == "and" || op == "or")
-        return emitLogicalOp(op, lhs, rhs);
 
     if (op == "&" || op == "|" || op == "^" ||
         op == "<<" || op == ">>" || op == ">>>")

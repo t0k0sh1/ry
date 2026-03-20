@@ -1373,3 +1373,49 @@ TEST_F(CodeGenTest, FnParamIntLiteralFail) {
         "f(2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+// ===== Short-circuit evaluation for and/or =====
+
+TEST_F(CodeGenTest, AndShortCircuitFalse) {
+    // When left side is false, right side should NOT be evaluated (no "side" printed)
+    std::string src =
+        "fn side_effect() -> bool:\n"
+        "    print(\"side\")\n"
+        "    return true\n"
+        "let res = false and side_effect()\n"
+        "print(res)";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, AndShortCircuitTrue) {
+    // When left side is true, right side should be evaluated ("side" printed)
+    std::string src =
+        "fn side_effect() -> bool:\n"
+        "    print(\"side\")\n"
+        "    return true\n"
+        "let res = true and side_effect()\n"
+        "print(res)";
+    EXPECT_EQ(runSource(src), "side\ntrue\n");
+}
+
+TEST_F(CodeGenTest, OrShortCircuitTrue) {
+    // When left side is true, right side should NOT be evaluated (no "side" printed)
+    std::string src =
+        "fn side_effect() -> bool:\n"
+        "    print(\"side\")\n"
+        "    return false\n"
+        "let res = true or side_effect()\n"
+        "print(res)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, OrShortCircuitFalse) {
+    // When left side is false, right side should be evaluated ("side" printed)
+    std::string src =
+        "fn side_effect() -> bool:\n"
+        "    print(\"side\")\n"
+        "    return true\n"
+        "let res = false or side_effect()\n"
+        "print(res)";
+    EXPECT_EQ(runSource(src), "side\ntrue\n");
+}
