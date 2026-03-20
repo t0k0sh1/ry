@@ -21,8 +21,12 @@ private:
     SourceManager *sm_ = nullptr;
     std::unordered_set<std::string> loaded_;
     std::unordered_set<std::string> loading_;
-    // Cache: abs_path -> set of function names defined in that module
+    // Cache: abs_path -> set of exported names defined in that package/file
     std::unordered_map<std::string, std::unordered_set<std::string>> fn_cache_;
 
-    std::string resolve(const std::string &module_path, const std::string &referrer_dir);
+    // Resolve a package path to an absolute path (directory or .ry file)
+    std::string resolve(const std::string &package_path, const std::string &referrer_dir);
+
+    // Load all .ry files from a package directory and return collected statements
+    Program loadPackageDir(const std::string &abs_dir_path);
 };

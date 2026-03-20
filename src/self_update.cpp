@@ -1,7 +1,10 @@
 #include "ry/self_update.hpp"
+#include "ry/paths.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <algorithm>
 #include <vector>
@@ -266,16 +269,11 @@ bool download_file(const std::string &url, const std::string &dest_path) {
     return run_command({"curl", "-sfL", "-o", dest_path, url}) == 0;
 }
 
-static bool file_exists(const std::string &path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
-}
-
-bool replace_binary(const std::string &download_url, const std::string &binary_path) {
+std::string download_and_extract(const std::string &download_url) {
     char tmp_dir[] = "/tmp/ry-update-XXXXXX";
     if (mkdtemp(tmp_dir) == nullptr) {
         std::cerr << "Error: Failed to create temporary directory.\n";
-        return false;
+        return "";
     }
 
     std::string tmp_dir_str(tmp_dir);
@@ -286,27 +284,30 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
         std::cerr << " failed.\n";
         std::cerr << "Error: Download failed. Check your network connection.\n";
         run_command({"rm", "-rf", tmp_dir_str});
-        return false;
+        return "";
     }
     std::cerr << " done.\n";
 
     if (run_command({"tar", "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
         run_command({"rm", "-rf", tmp_dir_str});
-        return false;
+        return "";
     }
 
+    return tmp_dir_str;
+}
+
+bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_path) {
+    namespace fs = std::filesystem;
     std::string new_binary = tmp_dir_str + "/ry";
 
-    if (!file_exists(new_binary)) {
+    if (!fs::is_regular_file(new_binary)) {
         std::cerr << "Error: Expected binary not found in archive.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
 
     if (chmod(new_binary.c_str(), 0755) != 0) {
         std::cerr << "Error: Failed to set permissions on downloaded binary.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
         return false;
     }
 
@@ -315,12 +316,64 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
         if (run_command({"cp", new_binary, binary_path}) != 0) {
             std::cerr << "Error: Failed to replace binary at " << binary_path << "\n";
             std::cerr << "You may need to run with sudo.\n";
-            run_command({"rm", "-rf", tmp_dir_str});
             return false;
         }
     }
 
-    run_command({"rm", "-rf", tmp_dir_str});
+    return true;
+}
+
+bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_version) {
+    namespace fs = std::filesystem;
+
+    fs::path src_std = fs::path(tmp_dir_str) / "lib" / "std";
+    if (!fs::is_directory(src_std)) {
+        return false;  // No stdlib in archive
+    }
+
+    fs::path dest_std = ry::get_ry_home() / "lib" / "std";
+
+    // Read old manifest for cleanup
+    auto old_manifest = ry::read_manifest(dest_std);
+
+    // Create destination directory
+    std::error_code ec;
+    fs::create_directories(dest_std, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to create stdlib directory: " << ec.message() << "\n";
+        return false;
+    }
+
+    // Copy new files
+    std::vector<std::string> new_files;
+    for (const auto &entry : fs::directory_iterator(src_std)) {
+        if (!entry.is_regular_file()) continue;
+        auto filename = entry.path().filename().string();
+        fs::copy_file(entry.path(), dest_std / filename,
+                      fs::copy_options::overwrite_existing, ec);
+        if (!ec && filename != "manifest.json") {
+            new_files.push_back(filename);
+        }
+    }
+
+    // Delete files that were in old manifest but not in new
+    std::sort(new_files.begin(), new_files.end());
+    for (const auto &old_file : old_manifest.files) {
+        // Validate manifest entry is a simple filename (no path traversal)
+        if (old_file.empty() || old_file == "." || old_file == ".." ||
+            old_file.find('/') != std::string::npos ||
+            old_file.find('\\') != std::string::npos) {
+            std::cerr << "Warning: Skipping invalid stdlib manifest entry: " << old_file << "\n";
+            continue;
+        }
+        if (!std::binary_search(new_files.begin(), new_files.end(), old_file)) {
+            fs::remove(dest_std / old_file, ec);
+        }
+    }
+
+    // Write new manifest
+    ry::write_manifest(dest_std, new_version, new_files);
+
     return true;
 }
 
@@ -375,9 +428,24 @@ int cmd_self_update(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!replace_binary(target.download_url, binary_path)) {
+    std::string tmp_dir = detail::download_and_extract(target.download_url);
+    if (tmp_dir.empty()) {
         return 1;
     }
+
+    if (!detail::replace_binary(tmp_dir, binary_path)) {
+        detail::run_command({"rm", "-rf", tmp_dir});
+        return 1;
+    }
+
+    // Install/update stdlib
+    std::string version = target.tag;
+    if (!version.empty() && version[0] == 'v') version = version.substr(1);
+    if (detail::install_stdlib(tmp_dir, version)) {
+        std::cerr << "Standard library updated.\n";
+    }
+
+    detail::run_command({"rm", "-rf", tmp_dir});
 
     std::cerr << "Successfully updated to " << target.tag << ".\n";
     return 0;

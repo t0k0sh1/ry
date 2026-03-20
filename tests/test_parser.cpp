@@ -490,7 +490,7 @@ TEST(ParserTest, ImportAll) {
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[0]));
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     EXPECT_TRUE(imp.names.empty());
 }
 
@@ -498,7 +498,7 @@ TEST(ParserTest, ImportSingleFunction) {
     Program prog = parseStr("from math import add");
     ASSERT_EQ(prog.size(), 1u);
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 1u);
     EXPECT_EQ(imp.names[0], "add");
 }
@@ -506,7 +506,7 @@ TEST(ParserTest, ImportSingleFunction) {
 TEST(ParserTest, ImportMultipleFunctions) {
     Program prog = parseStr("from math import add, sub");
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 2u);
     EXPECT_EQ(imp.names[0], "add");
     EXPECT_EQ(imp.names[1], "sub");
@@ -515,7 +515,7 @@ TEST(ParserTest, ImportMultipleFunctions) {
 TEST(ParserTest, ImportDotPath) {
     Program prog = parseStr("from utils.math import add");
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "utils/math.ry");
+    EXPECT_EQ(imp.module_path, "utils/math");
     ASSERT_EQ(imp.names.size(), 1u);
     EXPECT_EQ(imp.names[0], "add");
 }

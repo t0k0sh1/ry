@@ -14,7 +14,7 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 - **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
-- **Modules** — Function imports via `from ... import ...`
+- **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
 
 ## Sample Code
@@ -93,6 +93,8 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s 
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.
+
+The standard library is installed to `$RY_HOME/lib/std/` (default: `~/.ry/lib/std/`).
 
 ### Build from Source
 

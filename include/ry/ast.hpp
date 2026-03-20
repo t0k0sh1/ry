@@ -135,7 +135,7 @@ struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; std::string type; };
 
 struct ImportStmt {
-    std::string module_path;              // "utils/math.ry"
+    std::string module_path;              // "utils/math" (resolved to dir or .ry file)
     std::vector<std::string> names;       // {"add", "sub"} — empty means import all
     SourceLocation loc;
 };

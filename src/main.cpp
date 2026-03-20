@@ -9,6 +9,7 @@
 #include "ry/project_config.hpp"
 #include "ry/self_update.hpp"
 #include "ry/args_runtime.hpp"
+#include "ry/paths.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -26,39 +27,6 @@ using namespace llvm;
 using namespace llvm::orc;
 
 namespace fs = std::filesystem;
-
-// Load prelude (@native declarations from core/*.ry)
-static Program loadPrelude(const char *argv0) {
-    Program prelude;
-    fs::path exe_dir = fs::path(argv0).parent_path();
-    std::error_code ec;
-    exe_dir = fs::canonical(exe_dir, ec);
-    fs::path core_dir = exe_dir.parent_path() / "core";
-    if (!fs::exists(core_dir))
-        core_dir = exe_dir / "core";
-    if (!fs::exists(core_dir))
-        return prelude;
-
-    std::vector<std::string> prelude_files = {
-        "builtins.ry", "str.ry", "convert.ry",
-        "list.ry", "map.ry", "set.ry", "higher_order.ry"
-    };
-    for (const auto &f : prelude_files) {
-        std::string fpath = (core_dir / f).string();
-        if (!fs::exists(fpath))
-            continue;
-        try {
-            Program pmod = loadAndParse(fpath);
-            prelude.insert(prelude.end(),
-                std::make_move_iterator(pmod.begin()),
-                std::make_move_iterator(pmod.end()));
-        } catch (const std::exception &e) {
-            errs() << "Warning: failed to load prelude " << f
-                   << ": " << e.what() << "\n";
-        }
-    }
-    return prelude;
-}
 
 // Compile and run a .ry file via JIT. Returns the JIT function's exit code.
 static int runRyFile(const std::string &filepath, bool test_mode,
@@ -79,18 +47,31 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     Parser parser(lexer, &sm, fileId);
     Program prog = parser.parseProgram();
 
-    // Resolve imports
-    std::string referrer_dir = fs::path(filepath).parent_path().string();
-    ModuleLoader loader({}, &sm);
-    prog = loader.resolveImports(prog, referrer_dir);
+    // Set up search paths with lib/ for stdlib
+    std::vector<std::string> search_paths;
+    std::string lib_dir = ry::find_lib_dir(argv0).string();
+    if (!lib_dir.empty()) search_paths.push_back(lib_dir);
 
-    // Prepend prelude
-    Program prelude = loadPrelude(argv0);
-    if (!prelude.empty()) {
+    std::string referrer_dir = fs::path(filepath).parent_path().string();
+    ModuleLoader loader(search_paths, &sm);
+
+    // Implicit `from std` import (like Java's java.lang)
+    // Only insert if std can be found (graceful degradation without stdlib)
+    try {
+        Program std_prog;
+        std_prog.push_back(ImportStmt{"std", {}, {0, 0, fileId}});
+        // Resolve against stdlib search paths only (not referrer_dir)
+        // to prevent local std/ from shadowing the bundled stdlib
+        std_prog = loader.resolveImports(std_prog, "");
         prog.insert(prog.begin(),
-            std::make_move_iterator(prelude.begin()),
-            std::make_move_iterator(prelude.end()));
+            std::make_move_iterator(std_prog.begin()),
+            std::make_move_iterator(std_prog.end()));
+    } catch (const std::runtime_error &) {
+        // stdlib not installed — continue without it
     }
+
+    // Resolve remaining imports
+    prog = loader.resolveImports(prog, referrer_dir);
 
     // CodeGen -> ThreadSafeModule
     CodeGen cg(test_mode, &sm);

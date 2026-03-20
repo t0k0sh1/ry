@@ -945,6 +945,66 @@ TEST_F(ImportTest, SearchPathRYPATH) {
     std::filesystem::remove_all(lib_dir);
 }
 
+// ===== directory package tests =====
+
+TEST_F(ImportTest, DirectoryPackageImportAll) {
+    writeFile("mypack/math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n");
+    writeFile("mypack/string.ry",
+        "fn greet() -> int:\n"
+        "    print(42)\n"
+        "    return 0\n");
+
+    EXPECT_EQ(runWithImports(
+        "from mypack\n"
+        "print(add(1, 2))\n"
+        "greet()"),
+        "3\n42\n");
+}
+
+TEST_F(ImportTest, DirectoryPackageSelectiveImport) {
+    writeFile("mypack/math.ry",
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "fn sub(a: int, b: int) -> int:\n"
+        "    return a - b\n");
+    writeFile("mypack/string.ry",
+        "fn greet() -> int:\n"
+        "    print(99)\n"
+        "    return 0\n");
+
+    EXPECT_EQ(runWithImports(
+        "from mypack import add\n"
+        "print(add(10, 20))"),
+        "30\n");
+}
+
+TEST_F(ImportTest, DirectoryPackageSkipsUnderscoreFiles) {
+    writeFile("mypack/public.ry",
+        "fn visible() -> int:\n"
+        "    return 42\n");
+    writeFile("mypack/_hidden.ry",
+        "fn secret() -> int:\n"
+        "    return 99\n");
+
+    // 'secret' should not be available
+    EXPECT_THROW(runWithImports(
+        "from mypack import secret"), std::runtime_error);
+}
+
+TEST_F(ImportTest, DirectoryPackageFallbackToFile) {
+    // When both directory and file don't exist, but file exists
+    writeFile("single.ry",
+        "fn solo() -> int:\n"
+        "    return 7\n");
+
+    EXPECT_EQ(runWithImports(
+        "from single import solo\n"
+        "print(solo())"),
+        "7\n");
+}
+
 // ===== record キーワード =====
 
 TEST_F(CodeGenTest, RecordKeyword) {
