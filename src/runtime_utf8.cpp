@@ -2,13 +2,16 @@
 #include <cstdlib>
 #include <cstring>
 
-// UTF-8 lead byte → byte count
-static int utf8_char_len(unsigned char c) {
+// UTF-8 lead byte → validated byte count (clamps to remaining bytes)
+static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
+
+static int utf8_char_len_safe(const char *s) {
+    unsigned char c = static_cast<unsigned char>(s[0]);
     if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0) return 2;
-    if ((c & 0xF0) == 0xE0) return 3;
-    if ((c & 0xF8) == 0xF0) return 4;
-    return 1; // invalid byte treated as 1
+    if ((c & 0xE0) == 0xC0 && is_cont(s[1])) return 2;
+    if ((c & 0xF0) == 0xE0 && is_cont(s[1]) && is_cont(s[2])) return 3;
+    if ((c & 0xF8) == 0xF0 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
+    return 1; // invalid/truncated byte treated as 1
 }
 
 extern "C" {
@@ -16,7 +19,7 @@ extern "C" {
 int64_t __ry_utf8_len(const char *s) {
     int64_t count = 0;
     while (*s) {
-        s += utf8_char_len(static_cast<unsigned char>(*s));
+        s += utf8_char_len_safe(s);
         ++count;
     }
     return count;
@@ -25,7 +28,7 @@ int64_t __ry_utf8_len(const char *s) {
 char *__ry_utf8_char_at(const char *s, int64_t i) {
     const char *p = s;
     for (int64_t idx = 0; *p; ++idx) {
-        int len = utf8_char_len(static_cast<unsigned char>(*p));
+        int len = utf8_char_len_safe(p);
         if (idx == i) {
             char *buf = static_cast<char *>(malloc(len + 1));
             memcpy(buf, p, len);
@@ -49,7 +52,7 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t end) {
     while (*p) {
         if (idx == start) startPtr = p;
         if (idx == end) { endPtr = p; break; }
-        p += utf8_char_len(static_cast<unsigned char>(*p));
+        p += utf8_char_len_safe(p);
         ++idx;
     }
     if (idx == start) startPtr = p;
@@ -80,7 +83,7 @@ char *__ry_utf8_reverse(const char *s) {
             capacity *= 2;
             cps = static_cast<CPInfo *>(realloc(cps, capacity * sizeof(CPInfo)));
         }
-        int len = utf8_char_len(static_cast<unsigned char>(*p));
+        int len = utf8_char_len_safe(p);
         cps[count++] = {p, len};
         p += len;
     }
@@ -102,7 +105,7 @@ int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
     int64_t charIdx = 0;
     int64_t byteIdx = 0;
     while (*p && byteIdx < byte_offset) {
-        p += utf8_char_len(static_cast<unsigned char>(*p));
+        p += utf8_char_len_safe(p);
         byteIdx = p - s;
         ++charIdx;
     }

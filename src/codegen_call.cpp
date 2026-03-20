@@ -2030,17 +2030,22 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (e.args.size() < 1 || e.args.size() > 2)
             codegenError("sort!() takes 1 or 2 arguments");
 
-        // Reuse sort() by temporarily changing callee and calling the right dispatch
-        const_cast<CallExpr &>(e).callee = "sort";
-        llvm::Value *sorted = emitBuiltinHigherOrder(e);
-        const_cast<CallExpr &>(e).callee = "sort!";
+        // Evaluate list arg once before sort() re-evaluates it
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (!elemTy) codegenError("sort!() requires a list");
+
+        // Reuse sort() via a proxy CallExpr (avoid const_cast mutation)
+        CallExpr sortProxy;
+        sortProxy.callee = "sort";
+        sortProxy.args = std::move(const_cast<CallExpr &>(e).args);
+        llvm::Value *sorted = emitBuiltinHigherOrder(sortProxy);
+        const_cast<CallExpr &>(e).args = std::move(sortProxy.args); // restore
 
         if (!sorted)
             codegenError("sort!() internal error");
 
-        // Get original list (re-emit first arg — safe for variable references)
-        llvm::Value *listPtr = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getListElementType(listPtr);
+        // Copy sorted data back into original list
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
@@ -2053,7 +2058,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *copySize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
         builder_.CreateCall(memcpyFn, {srcData, sortedData, copySize});
 
-        // Free the temporary sorted list (header + data)
+        // Free the temporary sorted list
         auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         auto freeFn = mod_->getOrInsertFunction("free", freeTy);
         builder_.CreateCall(freeFn, {sortedData});
@@ -2815,9 +2820,11 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
     // append!(list, elem) → alias for append
     if (e.callee == "append!" && e.args.size() == 2) {
-        const_cast<CallExpr &>(e).callee = "append";
-        llvm::Value *result = emitBuiltinCollection(e);
-        const_cast<CallExpr &>(e).callee = "append!";
+        CallExpr appendProxy;
+        appendProxy.callee = "append";
+        appendProxy.args = std::move(const_cast<CallExpr &>(e).args);
+        llvm::Value *result = emitBuiltinCollection(appendProxy);
+        const_cast<CallExpr &>(e).args = std::move(appendProxy.args);
         return result;
     }
 
