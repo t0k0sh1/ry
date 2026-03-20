@@ -208,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...`（Ellipsis）
+
+- 不執行任何操作的語句（no-op）。用作空區塊的佔位符。
+- 可在任何區塊中使用：函數主體、`if`/`elif`/`else`、`while`、`for`、`match case` 等。
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### 語法

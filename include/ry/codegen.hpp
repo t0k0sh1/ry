@@ -194,6 +194,7 @@ private:
     void emitStmt(IndexAssignStmt &s);
     void emitStmt(BreakStmt &s);
     void emitStmt(ContinueStmt &s);
+    void emitStmt(EllipsisStmt &s);
     void emitStmt(FieldAssignStmt &s);
     void emitStmt(EnumStmt &s);
     void emitStmt(ExpectStmt &s);

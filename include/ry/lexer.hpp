@@ -60,6 +60,7 @@ enum class TokenKind {
     RBrace,         // }
     // --- range ---
     DotDot,         // ..
+    Ellipsis,       // ...
     // --- null coalescing ---
     QuestionQuestion, // ??
     NoneKw,         // none

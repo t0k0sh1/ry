@@ -1226,6 +1226,29 @@ TEST(ParserTest, NativeFnOperatorDeclaration) {
     EXPECT_EQ(fs->directives[0].name, "native");
 }
 
+TEST(ParserTest, EllipsisTopLevel) {
+    Program prog = parseStr("...");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(prog[0]));
+}
+
+TEST(ParserTest, EllipsisInFnBody) {
+    Program prog = parseStr("fn stub():\n    ...\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fs->body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(fs->body[0]));
+}
+
+TEST(ParserTest, EllipsisInIfBody) {
+    Program prog = parseStr("if true:\n    ...\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &is = std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(is->branches.size(), 1u);
+    ASSERT_EQ(is->branches[0].body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(is->branches[0].body[0]));
+}
+
 TEST(ParserTest, NativeFnWithColonError) {
     EXPECT_THROW({
         parseStr("@native\nfn bad() -> int:\n    return 1\n");

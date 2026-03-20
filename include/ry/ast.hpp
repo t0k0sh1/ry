@@ -155,6 +155,7 @@ struct TypeAliasStmt { std::string name; std::string target_type; SourceLocation
 
 struct BreakStmt { SourceLocation loc; };
 struct ContinueStmt { SourceLocation loc; };
+struct EllipsisStmt { SourceLocation loc; };
 
 struct EnumVariant {
     std::string name;
@@ -198,7 +199,7 @@ struct ExpectStmt {
 
 using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, RecordStmt,
-                              IndexAssignStmt, BreakStmt, ContinueStmt,
+                              IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt,
                               TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,

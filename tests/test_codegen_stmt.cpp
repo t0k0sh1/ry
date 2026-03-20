@@ -1316,6 +1316,48 @@ TEST_F(CodeGenTest, FnParamRangeTypeConstFail) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, EllipsisNoOp) {
+    std::string src = "...";
+    EXPECT_EQ(runSource(src), "");
+}
+
+TEST_F(CodeGenTest, EllipsisFnBody) {
+    std::string src =
+        "fn stub():\n"
+        "    ...\n"
+        "stub()\n"
+        "print(1)";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, EllipsisIfElse) {
+    std::string src =
+        "if true:\n"
+        "    ...\n"
+        "else:\n"
+        "    ...\n"
+        "print(42)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, EllipsisWhile) {
+    std::string src =
+        "var i = 0\n"
+        "while i < 3:\n"
+        "    ...\n"
+        "    i += 1\n"
+        "print(i)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, EllipsisFor) {
+    std::string src =
+        "for i in range(3):\n"
+        "    ...\n"
+        "print(\"done\")";
+    EXPECT_EQ(runSource(src), "done\n");
+}
+
 TEST_F(CodeGenTest, FnParamIntLiteralSuccess) {
     std::string src =
         "fn f(x: 0 | 1) -> int:\n"
