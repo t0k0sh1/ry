@@ -74,7 +74,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         return phi;
     }
 
-    // find(s, sub) → int (-1 if not found)
+    // find(s, sub) → Option<int>
     if (e.callee == "find") {
         if (e.args.size() != 2)
             codegenError("find() takes exactly 2 arguments");
@@ -82,20 +82,45 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
             codegenError("find() requires str arguments");
+
+        llvm::StructType *optTy = getOptionType(i64Ty_);
+
         auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "find_ptr");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *isNull = builder_.CreateICmpEQ(result, null, "find_null");
 
+        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "find.found", fn_);
+        llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "find.notfound", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "find.merge", fn_);
+        builder_.CreateCondBr(isNull, notFoundBB, foundBB);
+
+        builder_.SetInsertPoint(foundBB);
         llvm::Value *sInt = builder_.CreatePtrToInt(s, i64Ty_, "s_int");
         llvm::Value *rInt = builder_.CreatePtrToInt(result, i64Ty_, "r_int");
-        llvm::Value *offset = builder_.CreateSub(rInt, sInt, "find_offset");
+        llvm::Value *byteOffset = builder_.CreateSub(rInt, sInt, "find_byte_offset");
+        // Convert byte offset to character index
+        auto charIdxTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
+        auto charIdxFn = mod_->getOrInsertFunction("__ry_utf8_char_index", charIdxTy);
+        llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, byteOffset}, "find_char_idx");
+        llvm::Value *someVal = buildSomeValue(charIdx, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
 
-        return builder_.CreateSelect(isNull, llvm::ConstantInt::get(i64Ty_, -1), offset, "find_result");
+        builder_.SetInsertPoint(notFoundBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "find_result");
+        phi->addIncoming(someVal, foundEndBB);
+        phi->addIncoming(noneVal, notFoundEndBB);
+        return phi;
     }
 
-    // substring(s, start, end) → str
+    // substring(s, start, end) → str (UTF-8 character indices)
     if (e.callee == "substring") {
         if (e.args.size() != 3)
             codegenError("substring() takes exactly 3 arguments");
@@ -105,22 +130,12 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("substring() requires str as first argument");
 
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-
-        llvm::Value *len = builder_.CreateSub(end, start, "sub_len");
-        llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "sub_buf_size");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "sub_buf");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, start, "sub_src");
-        builder_.CreateCall(memcpyFn, {buf, srcPtr, len});
-        llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "sub_end");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), endPtr);
-        return buf;
+        auto substrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
+        auto substrFn = mod_->getOrInsertFunction("__ry_utf8_substring", substrTy);
+        return builder_.CreateCall(substrFn, {s, start, end}, "substring");
     }
 
-    // char_at(s, i) → str (single character as string)
+    // char_at(s, i) → str (single UTF-8 character as string)
     if (e.callee == "char_at") {
         if (e.args.size() != 2)
             codegenError("char_at() takes exactly 2 arguments");
@@ -129,16 +144,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("char_at() requires str as first argument");
 
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 2)}, "char_buf");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "char_src");
-        llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "char_val");
-        builder_.CreateStore(ch, buf);
-        llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, llvm::ConstantInt::get(i64Ty_, 1), "char_end");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), endPtr);
-        return buf;
+        auto charAtTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto charAtFn = mod_->getOrInsertFunction("__ry_utf8_char_at", charAtTy);
+        return builder_.CreateCall(charAtFn, {s, idx}, "char_at");
     }
 
     // replace(s, old, new) → str
@@ -656,48 +664,56 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
             return newHeader;
         }
 
-        // String reverse
+        // String reverse (UTF-8 aware)
         llvm::Value *s = arg;
         if (s->getType() != ptrTy_)
             codegenError("reverse() requires list or str argument");
 
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto revTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto revFn = mod_->getOrInsertFunction("__ry_utf8_reverse", revTy);
+        return builder_.CreateCall(revFn, {s}, "str_rev");
+    }
 
-        llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "rev_len");
-        llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "rev_bsize");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rev_buf");
+    // reverse!(list) → in-place reverse
+    if (e.callee == "reverse!") {
+        if (e.args.size() != 1)
+            codegenError("reverse!() takes exactly 1 argument");
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (!elemTy) codegenError("reverse!() requires a list");
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "rev_i");
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "revm_len_ptr");
+        llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "revm_len");
+        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "revm_data");
+
+        // Swap elements: i from 0 to len/2
+        llvm::Value *half = builder_.CreateSDiv(len, llvm::ConstantInt::get(i64Ty_, 2), "revm_half");
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "revm_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "rev.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "rev.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "rev.end", fn_);
-
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "revm.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "revm.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "revm.end", fn_);
         builder_.CreateBr(condBB);
+
         builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "rev_idx");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "rev_i_cur");
-        llvm::Value *srcIdx = builder_.CreateSub(
-            builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1), "len_m1"),
-            iCur, "rev_src_idx");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, srcIdx, "rev_src");
-        llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "rev_ch");
-        llvm::Value *dstPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, iCur, "rev_dst");
-        builder_.CreateStore(ch, dstPtr);
-        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "rev_next"), iVar);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");
+        llvm::Value *j = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "revm_j");
+        llvm::Value *ptrI = builder_.CreateGEP(elemTy, dataPtr, iCur, "revm_pi");
+        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, dataPtr, j, "revm_pj");
+        llvm::Value *vi = builder_.CreateLoad(elemTy, ptrI, "revm_vi");
+        llvm::Value *vj = builder_.CreateLoad(elemTy, ptrJ, "revm_vj");
+        builder_.CreateStore(vj, ptrI);
+        builder_.CreateStore(vi, ptrJ);
+        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
-        llvm::Value *nullPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "rev_null");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullPtr);
-        return buf;
+        return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
     // split(s, delim) → List<str>
@@ -1019,48 +1035,76 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         return newHeader;
     }
 
-    // ===== first(list) =====
+    // ===== first(list) → Option<T> =====
     if (e.callee == "first") {
         if (e.args.size() != 1)
             codegenError("first() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("first() requires a list");
+        llvm::StructType *optTy = getOptionType(elemTy);
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
 
         llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
-        llvm::BasicBlock *errBBF = llvm::BasicBlock::Create(*ctx_, "first.err", fn_);
-        llvm::BasicBlock *okBBF = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
-        builder_.CreateCondBr(isEmptyF, errBBF, okBBF);
-        builder_.SetInsertPoint(errBBF);
-        emitRuntimeError("runtime error: first() on empty list\n", ".first_empty_err");
-        builder_.SetInsertPoint(okBBF);
+        llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "first.empty", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "first.merge", fn_);
+        builder_.CreateCondBr(isEmptyF, emptyBB, okBB);
 
-        return builder_.CreateLoad(elemTy, srcData, "first_val");
+        builder_.SetInsertPoint(emptyBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *firstVal = builder_.CreateLoad(elemTy, srcData, "first_val");
+        llvm::Value *someVal = buildSomeValue(firstVal, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "first_result");
+        phi->addIncoming(noneVal, emptyEndBB);
+        phi->addIncoming(someVal, okEndBB);
+        return phi;
     }
 
-    // ===== last(list) =====
+    // ===== last(list) → Option<T> =====
     if (e.callee == "last") {
         if (e.args.size() != 1)
             codegenError("last() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("last() requires a list");
+        llvm::StructType *optTy = getOptionType(elemTy);
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
 
         llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
-        llvm::BasicBlock *errBBL = llvm::BasicBlock::Create(*ctx_, "last.err", fn_);
+        llvm::BasicBlock *emptyBBL = llvm::BasicBlock::Create(*ctx_, "last.empty", fn_);
         llvm::BasicBlock *okBBL = llvm::BasicBlock::Create(*ctx_, "last.ok", fn_);
-        builder_.CreateCondBr(isEmptyL, errBBL, okBBL);
-        builder_.SetInsertPoint(errBBL);
-        emitRuntimeError("runtime error: last() on empty list\n", ".last_empty_err");
-        builder_.SetInsertPoint(okBBL);
+        llvm::BasicBlock *mergeBBL = llvm::BasicBlock::Create(*ctx_, "last.merge", fn_);
+        builder_.CreateCondBr(isEmptyL, emptyBBL, okBBL);
 
+        builder_.SetInsertPoint(emptyBBL);
+        llvm::Value *noneValL = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBBL);
+        llvm::BasicBlock *emptyEndBBL = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(okBBL);
         llvm::Value *lastIdx = builder_.CreateSub(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
-        return builder_.CreateLoad(elemTy, elemPtr, "last_val");
+        llvm::Value *lastVal = builder_.CreateLoad(elemTy, elemPtr, "last_val");
+        llvm::Value *someValL = buildSomeValue(lastVal, optTy);
+        builder_.CreateBr(mergeBBL);
+        llvm::BasicBlock *okEndBBL = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBBL);
+        llvm::PHINode *phiL = builder_.CreatePHI(optTy, 2, "last_result");
+        phiL->addIncoming(noneValL, emptyEndBBL);
+        phiL->addIncoming(someValL, okEndBBL);
+        return phiL;
     }
 
     // ===== is_empty(list/map/set) =====
@@ -1398,10 +1442,22 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
             return builder_.CreateLoad(i64Ty_, lenPtr, "len");
         }
-        // String: call strlen
+        // String: call __ry_utf8_len (character count)
+        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
+        return builder_.CreateCall(utf8LenFn, {ptr}, "str_len");
+    }
+
+    // byte_len(str) → int (byte length)
+    if (e.callee == "byte_len") {
+        if (e.args.size() != 1)
+            codegenError("byte_len() takes exactly 1 argument");
+        llvm::Value *ptr = emitExpr(*e.args[0]);
+        if (ptr->getType() != ptrTy_)
+            codegenError("byte_len() requires str argument");
         auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        return builder_.CreateCall(strlenFn, {ptr}, "str_len");
+        return builder_.CreateCall(strlenFn, {ptr}, "byte_len");
     }
 
     // Some(x) → Option<T> constructor
@@ -1967,6 +2023,43 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         builder_.SetInsertPoint(qsDoneBB);
         list_element_types_[newHeader] = elemTy;
         return newHeader;
+    }
+
+    // sort!(list) / sort!(list, comparator) → in-place sort
+    if (e.callee == "sort!") {
+        if (e.args.size() < 1 || e.args.size() > 2)
+            codegenError("sort!() takes 1 or 2 arguments");
+
+        // Reuse sort() by temporarily changing callee and calling the right dispatch
+        const_cast<CallExpr &>(e).callee = "sort";
+        llvm::Value *sorted = emitBuiltinHigherOrder(e);
+        const_cast<CallExpr &>(e).callee = "sort!";
+
+        if (!sorted)
+            codegenError("sort!() internal error");
+
+        // Get original list (re-emit first arg — safe for variable references)
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "sortm_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "sortm_data");
+        llvm::Value *sortedData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, sorted, 2), "sortm_sorted");
+        llvm::Value *copySize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
+        builder_.CreateCall(memcpyFn, {srcData, sortedData, copySize});
+
+        // Free the temporary sorted list (header + data)
+        auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto freeFn = mod_->getOrInsertFunction("free", freeTy);
+        builder_.CreateCall(freeFn, {sortedData});
+        builder_.CreateCall(freeFn, {sorted});
+
+        return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
     // ===== reduce(list, fn(a, b) -> a op b) =====
@@ -2679,32 +2772,91 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         }
     }
 
-    // pop(list) → remove and return last element
+    // appended(list, elem) → new list with element added
+    if (e.callee == "appended" && e.args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *val = emitExpr(*e.args[1]);
+            if (val->getType() != elemTy)
+                codegenError("appended() element type mismatch");
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "apd_len");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "apd_data");
+            llvm::Value *newLen = builder_.CreateAdd(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "apd_new_len");
+
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "apd_header");
+            llvm::Value *newDataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ds");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {newDataSize}, "apd_nd");
+
+            llvm::Value *oldDataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ods");
+            builder_.CreateCall(memcpyFn, {newData, srcData, oldDataSize});
+
+            llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, srcLen, "apd_new_ep");
+            builder_.CreateStore(val, newElemPtr);
+
+            builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+            builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+            builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
+
+    // append!(list, elem) → alias for append
+    if (e.callee == "append!" && e.args.size() == 2) {
+        const_cast<CallExpr &>(e).callee = "append";
+        llvm::Value *result = emitBuiltinCollection(e);
+        const_cast<CallExpr &>(e).callee = "append!";
+        return result;
+    }
+
+    // pop(list) → Option<T>: remove and return last element
     if (e.callee == "pop" && e.args.size() == 1) {
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (elemTy) {
+            llvm::StructType *optTy = getOptionType(elemTy);
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "pop_len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "pop_len");
             llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "pop_data_field");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pop_data");
 
-            // Check empty
             llvm::Value *isEmpty = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "pop_empty");
-            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "pop.err", fn_);
+            llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "pop.empty", fn_);
             llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "pop.ok", fn_);
-            builder_.CreateCondBr(isEmpty, errBB, okBB);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "pop.merge", fn_);
+            builder_.CreateCondBr(isEmpty, emptyBB, okBB);
 
-            builder_.SetInsertPoint(errBB);
-            emitRuntimeError("runtime error: pop() on empty list\n", ".pop_empty_err");
+            builder_.SetInsertPoint(emptyBB);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
             builder_.SetInsertPoint(okBB);
             llvm::Value *lastIdx = builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1), "pop_last_idx");
             llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, lastIdx, "pop_elem_ptr");
             llvm::Value *val = builder_.CreateLoad(elemTy, elemPtr, "pop_val");
-            builder_.CreateStore(lastIdx, lenPtr); // len - 1
+            builder_.CreateStore(lastIdx, lenPtr);
+            llvm::Value *someVal = buildSomeValue(val, optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
-            return val;
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "pop_result");
+            phi->addIncoming(noneVal, emptyEndBB);
+            phi->addIncoming(someVal, okEndBB);
+            return phi;
         }
     }
 
@@ -3178,6 +3330,46 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
             list_element_types_[newHeader] = tupleTy;
             return newHeader;
+        }
+    }
+
+    // ===== get(map, key) — 2-arg → Option<V> =====
+    if (e.callee == "get" && e.args.size() == 2) {
+        llvm::Value *mapPtr = emitExpr(*e.args[0]);
+        llvm::Type *keyTy = getMapKeyType(mapPtr);
+        llvm::Type *valTy = getMapValueType(mapPtr);
+        if (keyTy && valTy) {
+            llvm::Value *key = emitExpr(*e.args[1]);
+            if (key->getType() != keyTy)
+                codegenError("get() key type mismatch");
+            llvm::StructType *optTy = getOptionType(valTy);
+            llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get2_found");
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "get2.found", fn_);
+            llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "get2.notfound", fn_);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "get2.merge", fn_);
+            builder_.CreateCondBr(found, foundBB, notFoundBB);
+
+            builder_.SetInsertPoint(foundBB);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 3, "get2_vals_field");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "get2_vals");
+            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {idx}, "get2_val_ptr");
+            llvm::Value *foundVal = builder_.CreateLoad(valTy, valPtr, "get2_val");
+            llvm::Value *someVal = buildSomeValue(foundVal, optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(notFoundBB);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "get2_result");
+            phi->addIncoming(someVal, foundEndBB);
+            phi->addIncoming(noneVal, notFoundEndBB);
+            return phi;
         }
     }
 

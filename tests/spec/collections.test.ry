@@ -21,8 +21,14 @@ describe("List"):
     it("pop"):
         var xs = [1, 2, 3]
         let v = xs.pop()
-        expect(v).to_eq(3)
+        expect(v).to_eq(Some(3))
         expect(len(xs)).to_eq(2)
+
+    it("pop empty"):
+        var xs = [1]
+        let ys = xs.filter(fn(x: int): x > 10)
+        let v = ys.pop()
+        expect(v).to_be_none()
 
     it("reverse"):
         let xs = [1, 2, 3]
@@ -95,10 +101,20 @@ describe("List"):
         expect(max([3, 1, 4, 1, 5])).to_eq(5)
 
     it("first"):
-        expect(first([10, 20, 30])).to_eq(10)
+        expect(first([10, 20, 30])).to_eq(Some(10))
+
+    it("first empty"):
+        var xs = [1]
+        let ys = xs.filter(fn(x: int): x > 10)
+        expect(first(ys)).to_be_none()
 
     it("last"):
-        expect(last([10, 20, 30])).to_eq(30)
+        expect(last([10, 20, 30])).to_eq(Some(30))
+
+    it("last empty"):
+        var xs = [1]
+        let ys = xs.filter(fn(x: int): x > 10)
+        expect(last(ys)).to_be_none()
 
     it("is_empty"):
         expect(is_empty([1, 2])).to_be_false()
@@ -145,6 +161,33 @@ describe("List"):
         expect(len(ys)).to_eq(4)
         expect(ys[0]).to_eq(1)
         expect(ys[3]).to_eq(4)
+
+    it("sort!"):
+        var xs = [3, 1, 2]
+        xs.sort!()
+        expect(xs[0]).to_eq(1)
+        expect(xs[1]).to_eq(2)
+        expect(xs[2]).to_eq(3)
+
+    it("reverse!"):
+        var xs = [1, 2, 3]
+        xs.reverse!()
+        expect(xs[0]).to_eq(3)
+        expect(xs[1]).to_eq(2)
+        expect(xs[2]).to_eq(1)
+
+    it("appended"):
+        let xs = [1, 2]
+        let ys = xs.appended(3)
+        expect(len(xs)).to_eq(2)
+        expect(len(ys)).to_eq(3)
+        expect(ys[2]).to_eq(3)
+
+    it("append!"):
+        var xs = [1, 2]
+        xs.append!(3)
+        expect(len(xs)).to_eq(3)
+        expect(xs[2]).to_eq(3)
 
     it("chain filter-map-sort"):
         let xs = [5, 3, 1, 4, 2]
@@ -198,10 +241,15 @@ describe("Map"):
         expect(m.has_key("a")).to_be_false()
         expect(len(m)).to_eq(1)
 
-    it("get"):
+    it("get with default"):
         let m = {"a": 1, "b": 2}
         expect(get(m, "a", 0)).to_eq(1)
         expect(get(m, "z", 0)).to_eq(0)
+
+    it("get optional"):
+        let m = {"a": 1, "b": 2}
+        expect(get(m, "a")).to_eq(Some(1))
+        expect(get(m, "z")).to_be_none()
 
     it("merge"):
         let m1 = {"a": 1, "b": 2}

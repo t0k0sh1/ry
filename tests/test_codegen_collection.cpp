@@ -57,10 +57,10 @@ TEST_F(CodeGenTest, ListPrint) {
 
 TEST_F(CodeGenTest, ListInFunction) {
     std::string src =
-        "fn first(xs: List<int>) -> int:\n"
+        "fn head(xs: List<int>) -> int:\n"
         "    return xs[0]\n"
         "let xs = [10, 20, 30]\n"
-        "print(first(xs))";
+        "print(head(xs))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
@@ -782,23 +782,23 @@ TEST_F(CodeGenTest, ToStrUFCS) {
 }
 
 TEST_F(CodeGenTest, FindBasic) {
-    EXPECT_EQ(runSource("print(find(\"hello world\", \"world\"))"), "6\n");
+    EXPECT_EQ(runSource("print(find(\"hello world\", \"world\"))"), "Some(6)\n");
 }
 
 TEST_F(CodeGenTest, FindNotFound) {
-    EXPECT_EQ(runSource("print(find(\"hello\", \"xyz\"))"), "-1\n");
+    EXPECT_EQ(runSource("print(find(\"hello\", \"xyz\"))"), "None\n");
 }
 
 TEST_F(CodeGenTest, FindAtStart) {
-    EXPECT_EQ(runSource("print(find(\"hello\", \"hel\"))"), "0\n");
+    EXPECT_EQ(runSource("print(find(\"hello\", \"hel\"))"), "Some(0)\n");
 }
 
 TEST_F(CodeGenTest, FindEmpty) {
-    EXPECT_EQ(runSource("print(find(\"hello\", \"\"))"), "0\n");
+    EXPECT_EQ(runSource("print(find(\"hello\", \"\"))"), "Some(0)\n");
 }
 
 TEST_F(CodeGenTest, FindUFCS) {
-    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.find(\"cd\"))"), "2\n");
+    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.find(\"cd\"))"), "Some(2)\n");
 }
 
 TEST_F(CodeGenTest, SubstringBasic) {
@@ -1438,15 +1438,15 @@ TEST_F(CodeGenTest, ListPop) {
         "let v = xs.pop()\n"
         "print(v)\n"
         "print(xs)";
-    EXPECT_EQ(runSource(src), "3\n[1, 2]\n");
+    EXPECT_EQ(runSource(src), "Some(3)\n[1, 2]\n");
 }
 
 TEST_F(CodeGenTest, ListPopEmpty) {
     std::string src =
         "var xs: List<int> = [1]\n"
         "let ys = xs.filter(fn(x: int): x > 10)\n"
-        "ys.pop()";
-    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+        "print(ys.pop())";
+    EXPECT_EQ(runSource(src), "None\n");
 }
 
 TEST_F(CodeGenTest, ListReverse) {
@@ -1648,11 +1648,11 @@ TEST_F(CodeGenTest, ZipBasic) {
 // ===== first / last / is_empty =====
 
 TEST_F(CodeGenTest, FirstBasic) {
-    EXPECT_EQ(runSource("print(first([10, 20, 30]))"), "10\n");
+    EXPECT_EQ(runSource("print(first([10, 20, 30]))"), "Some(10)\n");
 }
 
 TEST_F(CodeGenTest, LastBasic) {
-    EXPECT_EQ(runSource("print(last([10, 20, 30]))"), "30\n");
+    EXPECT_EQ(runSource("print(last([10, 20, 30]))"), "Some(30)\n");
 }
 
 TEST_F(CodeGenTest, IsEmptyFalse) {

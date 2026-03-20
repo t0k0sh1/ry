@@ -9,7 +9,7 @@
 | Function | Description |
 |------|------|
 | `print(expr)` | Prints a value to standard output |
-| `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
+| `len(x)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
@@ -27,17 +27,21 @@
 | `has_key(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
-| `append(list, value)` | Adds an element to the end of a list (mutating) |
-| `pop(list)` | Removes and returns the last element of a list |
+| `append(list, value)` / `append!(list, value)` | Adds an element to the end of a list (mutating) |
+| `appended(list, value)` | Returns a new list with the element added (non-mutating) |
+| `pop(list)` | Removes and returns the last element as `Option<T>` |
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
+| `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
+| `sort!(list)` / `sort!(list, comp)` | Sorts a list in place (mutating) |
 | `insert(list, i, val)` | Inserts an element at index i |
 | `remove_at(list, i)` | Removes and returns the element at index i |
 | `items(map)` | Returns a list of (key, value) tuples |
 | `remove(map, key)` | Removes the entry with the specified key |
+| `get(map, key)` | Returns the value for key as `Option<V>` |
 | `get(map, key, default)` | Returns the value for key, or default if not found |
 | `union(set, set)` | Returns the union of two sets |
 | `intersection(set, set)` | Returns the intersection of two sets |
@@ -53,7 +57,8 @@
 | `contains(s, sub)` | Whether a substring is contained |
 | `starts_with(s, prefix)` | Whether it starts with a prefix |
 | `ends_with(s, suffix)` | Whether it ends with a suffix |
-| `find(s, sub)` | Position of a substring (-1 if not found) |
+| `find(s, sub)` | Character position of a substring (`Option<int>`) |
+| `byte_len(s)` | Returns the byte length of a string |
 | `substring(s, start, end)` | Extract a substring |
 | `char_at(s, i)` | Get the character at a specified position |
 | `replace(s, old, new)` | Replace all occurrences of a substring |
@@ -121,13 +126,14 @@ print(x)   # Some(42)
 
 **Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-Returns the number of elements in a list, map, or set, or the byte length of a string.
+Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
 ```python
 print(len([1, 2, 3]))         # 3
 print(len({"a": 1, "b": 2})) # 2
 print(len({1, 2, 3}))         # 3
 print(len("hello"))           # 5
+print(len("あいう"))           # 3 (UTF-8 characters)
 ```
 
 ---
@@ -256,18 +262,16 @@ print(xs)   # [1, 2, 3]
 
 ## pop
 
-**Signature:** `pop(list: List<T>) -> T`
+**Signature:** `pop(list: List<T>) -> Option<T>`
 
-Removes and returns the last element of a list. UFCS notation is also available.
+Removes and returns the last element of a list as `Option<T>`. Returns `None` if the list is empty. UFCS notation is also available.
 
 ```python
 var xs = [1, 2, 3]
 let v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
-
-**Error condition:** Calling `pop()` on an empty list causes a runtime error (exit(1)).
 
 ---
 
@@ -342,4 +346,94 @@ print(xs.sort())   # [1, 2, 3]
 # Descending order
 let desc = xs.sort((a: int, b: int) -> a > b)
 print(desc)   # [3, 2, 1]
+```
+
+---
+
+## sort!
+
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+
+Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
+
+```python
+var xs = [3, 1, 2]
+xs.sort!()
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## reverse!
+
+**Signature:** `reverse!(list: List<T>)`
+
+Reverses a list in place. UFCS notation is also available.
+
+```python
+var xs = [1, 2, 3]
+xs.reverse!()
+print(xs)   # [3, 2, 1]
+```
+
+---
+
+## appended
+
+**Signature:** `appended(list: List<T>, value: T) -> List<T>`
+
+Returns a new list with the element added at the end. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2]
+let ys = xs.appended(3)
+print(xs)   # [1, 2] (unchanged)
+print(ys)   # [1, 2, 3]
+```
+
+---
+
+## append!
+
+**Signature:** `append!(list: List<T>, value: T)`
+
+Alias for `append()`. Adds an element to the end of a list in place. Provided for naming consistency with the `!` convention.
+
+---
+
+## first
+
+**Signature:** `first(list: List<T>) -> Option<T>`
+
+Returns the first element of a list as `Option<T>`. Returns `None` if the list is empty.
+
+```python
+print(first([10, 20, 30]))   # Some(10)
+```
+
+---
+
+## last
+
+**Signature:** `last(list: List<T>) -> Option<T>`
+
+Returns the last element of a list as `Option<T>`. Returns `None` if the list is empty.
+
+```python
+print(last([10, 20, 30]))   # Some(30)
+```
+
+---
+
+## get (Map)
+
+**Signature:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+
+Two-argument form returns the value for key as `Option<V>`. Three-argument form returns the value or the default.
+
+```python
+let m = {"a": 1, "b": 2}
+print(get(m, "a"))       # Some(1)
+print(get(m, "z"))       # None
+print(get(m, "z", 0))   # 0
 ```

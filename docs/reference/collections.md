@@ -369,6 +369,21 @@ print(flatten(xs))   # [1, 2, 3, 4]
 print(xs)            # [[1, 2], [3, 4]] (unchanged)
 ```
 
+### Operation Complexity
+
+| Operation | Complexity |
+|------|--------|
+| `xs[i]` index access | O(1) |
+| `append` / `append!` | O(1) amortized |
+| `pop` | O(1) |
+| `first`, `last` | O(1) |
+| `insert`, `remove_at` | O(n) |
+| `sort` / `sort!` | O(n log n) |
+| `filter`, `map`, `reduce`, `fold` | O(n) |
+| `reverse` / `reverse!` | O(n) |
+| `distinct` | O(n) |
+| `len` | O(1) |
+
 ### Constraints and Errors
 
 | Constraint | Details |
@@ -498,7 +513,7 @@ print(m3["c"])   # 3
 | All values must be the same type | Mixed value types cause a compile error |
 | Empty map | Type annotation is required (e.g., `let m: Map<str, int> = {"a": 1}`) |
 | Accessing a non-existent key | Runtime error (exit(1)) |
-| Key lookup | Linear scan |
+| Key lookup | Hash table (O(1) average) |
 | Capacity overflow | Automatically doubles in size |
 
 ---
@@ -652,5 +667,5 @@ print(is_superset(b, a))   # false
 |------|------|
 | All elements must be the same type | Mixed types cause a compile error |
 | Empty set `{}` | Type annotation is required |
-| Element lookup | Linear scan |
+| Element lookup | Hash table (O(1) average) |
 | Capacity overflow | Automatically doubles in size |

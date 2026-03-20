@@ -4,7 +4,7 @@
 
 文字列（`str`）に対する操作関数の一覧です。すべての関数で UFCS 記法が使用可能です。
 
-> **注意:** すべての文字列操作はバイト単位です。マルチバイト文字（日本語等）では正しく動作しない場合があります。
+> **注意:** すべての文字列操作は UTF-8 対応です。`len()`、`char_at()`、`substring()`、`find()`、`reverse()` は Unicode コードポイント単位で動作し、バイト単位ではありません。バイト長が必要な場合は `byte_len()` を使用してください。
 
 ## 関数一覧
 
@@ -15,14 +15,14 @@
 | `contains` | `(str, str) → bool` | 部分文字列が含まれるかを返す |
 | `starts_with` | `(str, str) → bool` | 接頭辞で始まるかを返す |
 | `ends_with` | `(str, str) → bool` | 接尾辞で終わるかを返す |
-| `find` | `(str, str) → int` | 部分文字列の位置を返す（未発見は -1） |
+| `find` | `(str, str) → Option<int>` | 部分文字列の文字位置を返す（未発見は `None`） |
 
 ### 抽出・変換
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `substring` | `(str, int, int) → str` | 部分文字列を取得 |
-| `char_at` | `(str, int) → str` | 指定位置の文字を取得 |
+| `substring` | `(str, int, int) → str` | 部分文字列を取得（文字インデックス） |
+| `char_at` | `(str, int) → str` | 指定位置の UTF-8 文字を取得 |
 | `replace` | `(str, str, str) → str` | 部分文字列を全置換 |
 
 ### 大文字・小文字
@@ -45,7 +45,8 @@
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
 | `repeat` | `(str, int) → str` | 文字列を n 回繰り返す |
-| `reverse` | `str → str` | 文字列を逆順にする |
+| `reverse` | `str → str` | 文字列を逆順にする（UTF-8 対応） |
+| `byte_len` | `str → int` | 文字列のバイト長を返す |
 
 ### 分割・結合
 
@@ -105,14 +106,14 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**シグネチャ:** `find(s: str, sub: str) -> int`
+**シグネチャ:** `find(s: str, sub: str) -> Option<int>`
 
-文字列 `s` 中の部分文字列 `sub` の最初の出現位置（バイトオフセット）を返します。見つからない場合は `-1` を返します。
+文字列 `s` 中の部分文字列 `sub` の最初の出現位置（文字位置）を返します。見つからない場合は `None` を返します。
 
 ```python
-print(find("hello world", "world"))   # 6
-print(find("hello", "xyz"))           # -1
-print("abcdef".find("cd"))            # 2 (UFCS)
+print(find("hello world", "world"))   # Some(6)
+print(find("hello", "xyz"))           # None
+print("abcdef".find("cd"))            # Some(2) (UFCS)
 ```
 
 ---
@@ -121,7 +122,7 @@ print("abcdef".find("cd"))            # 2 (UFCS)
 
 **シグネチャ:** `substring(s: str, start: int, end: int) -> str`
 
-文字列 `s` の `start` から `end`（排他）までの部分文字列を返します。
+文字列 `s` の `start` から `end`（排他）までの部分文字列を返します。インデックスは文字位置（UTF-8 対応）です。
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -135,7 +136,7 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **シグネチャ:** `char_at(s: str, i: int) -> str`
 
-文字列 `s` の `i` 番目のバイトを1文字の文字列として返します。
+文字列 `s` の `i` 番目の UTF-8 文字を文字列として返します。
 
 ```python
 print(char_at("hello", 0))   # h
@@ -240,11 +241,25 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 **シグネチャ:** `reverse(s: str) -> str`
 
-文字列をバイト単位で逆順にした新しい文字列を返します。
+文字列を逆順にした新しい文字列を返します（UTF-8 対応）。
 
 ```python
 print(reverse("hello"))    # olleh
 print("abc".reverse())     # cba (UFCS)
+```
+
+---
+
+## byte_len
+
+**シグネチャ:** `byte_len(s: str) -> int`
+
+文字列 `s` のバイト長を返します。UTF-8 文字数を返す `len()` とは異なり、`byte_len()` はバイト数を返します。
+
+```python
+print(byte_len("hello"))   # 5
+print(byte_len("あいう"))   # 9
+print(len("あいう"))        # 3 (文字数)
 ```
 
 ---
