@@ -34,8 +34,16 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
+    savedPostconditions_ = cg_.current_postconditions_;
+    savedResultAlloca_ = cg_.result_alloca_;
+    savedInEnsureContext_ = cg_.in_ensure_context_;
+    savedOldValueMap_ = std::move(cg_.old_value_map_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
+    cg_.current_postconditions_ = nullptr;
+    cg_.result_alloca_ = nullptr;
+    cg_.in_ensure_context_ = false;
+    cg_.old_value_map_.clear();
 }
 
 CodeGen::FnScope::~FnScope() {
@@ -43,6 +51,10 @@ CodeGen::FnScope::~FnScope() {
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
+    cg_.current_postconditions_ = savedPostconditions_;
+    cg_.result_alloca_ = savedResultAlloca_;
+    cg_.in_ensure_context_ = savedInEnsureContext_;
+    cg_.old_value_map_ = std::move(savedOldValueMap_);
 }
 
 // ===== Error helpers =====

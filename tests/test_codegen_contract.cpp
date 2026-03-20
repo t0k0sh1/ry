@@ -154,3 +154,19 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
         "print(a.balance)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
+
+// ===== Nested function with contract: FnScope protects contract state =====
+
+TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
+    std::string src =
+        "fn outer(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    fn inner(y: int) -> int:\n"
+        "        ensure:\n"
+        "            result > 0\n"
+        "        return y + 1\n"
+        "    return inner(x)\n"
+        "print(outer(5))";
+    EXPECT_EQ(runSource(src), "6\n");
+}
