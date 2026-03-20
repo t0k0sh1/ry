@@ -1,6 +1,6 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# ry
+# Ry
 
 A simple programming language based on LLVM JIT. It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
 
@@ -73,7 +73,7 @@ enum Color:
 let c = Color::Red
 print(c)               # Red
 
-# Module import
+# Package import
 from math import add
 print(add(1, 2))
 ```
@@ -89,7 +89,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.

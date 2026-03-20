@@ -20,7 +20,9 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | 06 | [構造体と列挙型](tutorial/06-structs.md) | type 定義・フィールドアクセス・メソッド・enum |
 | 07 | [コレクション](tutorial/07-collections.md) | タプル・リスト・マップ・セット |
 | 08 | [高度な機能](tutorial/08-advanced.md) | クロージャ・演算子オーバーロード・Option 型 |
-| 09 | [モジュール](tutorial/09-modules.md) | from/import によるモジュール分割 |
+| 09 | [パッケージ](tutorial/09-modules.md) | パッケージ、std ライブラリ、ディレクトリパッケージ |
+| 10 | [契約による設計](tutorial/10-contracts.md) | require・ensure・invariant・old・result |
+| 11 | [テスト](tutorial/11-testing.md) | describe/it/expect・マッチャー・mock/verify |
 
 環境構築とビルド方法は [01 - はじめに](tutorial/01-getting-started.md) を参照してください。
 
@@ -41,7 +43,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [組み込み関数](reference/builtins.md) | print・len・Some 等 |
 | [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
 | [正規表現](reference/regex.md) | regex_match・regex_search・regex_replace・regex_split・regex_find_all |
-| [モジュールシステム](reference/modules.md) | from/import の文法と探索ルール |
+| [パッケージシステム](reference/packages.md) | from/import の文法・ディレクトリパッケージ・std・RY_HOME |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
 | [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
 | [契約による設計](reference/contracts.md) | require・ensure・invariant・old・result |

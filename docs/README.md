@@ -20,7 +20,9 @@ If you are new to Ry, please read through these in order.
 | 06 | [Structs and Enums](tutorial/06-structs.md) | type definitions, field access, methods, enum |
 | 07 | [Collections](tutorial/07-collections.md) | Tuples, lists, maps, sets |
 | 08 | [Advanced Features](tutorial/08-advanced.md) | Closures, operator overloading, Option type |
-| 09 | [Modules](tutorial/09-modules.md) | Module splitting with from/import |
+| 09 | [Packages](tutorial/09-modules.md) | Packages, std library, directory packages |
+| 10 | [Design by Contract](tutorial/10-contracts.md) | require, ensure, invariant, old, result |
+| 11 | [Testing](tutorial/11-testing.md) | describe/it/expect, matchers, mock/verify |
 
 For setup and build instructions, see [01 - Getting Started](tutorial/01-getting-started.md).
 
