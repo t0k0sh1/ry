@@ -212,6 +212,11 @@ describe("List"):
         expect(xs).to_have_length(5)
         expect(ys).to_have_length(2)
 
+    it("take negative"):
+        let xs = [1, 2, 3]
+        let ys = xs.take(-1)
+        expect(ys).to_have_length(0)
+
     it("tap returns original list"):
         let xs = [1, 2, 3]
         let ys = xs.tap(fn(x: int): x * 2)

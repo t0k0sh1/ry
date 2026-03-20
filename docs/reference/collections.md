@@ -165,7 +165,7 @@ print(xs.take(0))    # []
 
 ### tap
 
-Calls the given function on each element for side effects, then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain.
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain.
 
 ```python
 let xs = [1, 2, 3]

@@ -324,9 +324,9 @@ print(xs.take(0))    # []
 
 ## tap
 
-**Signature:** `tap(list: List<T>, fn: fn(T) -> void) -> List<T>`
+**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
 
-Calls the given function on each element for side effects, then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
 ```python
 let xs = [1, 2, 3]
