@@ -1,4 +1,5 @@
 #include "ry/parser.hpp"
+#include "ry/diagnostic.hpp"
 #include <regex>
 #include <stdexcept>
 #include <string>
@@ -32,7 +33,7 @@ static int64_t parseIntLiteral(const std::string& s) {
 // ===== A1: parseError helpers =====
 
 [[noreturn]] void Parser::parseError(int line, const std::string &msg) {
-    throw std::runtime_error("line " + std::to_string(line) + ": " + msg);
+    throw DiagnosticError({line, lex_.peek().col, file_id_}, msg, sm_);
 }
 
 [[noreturn]] void Parser::parseError(const std::string &msg) {
@@ -50,14 +51,15 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
             if (k == op) { matched = true; break; }
         }
         if (!matched) break;
-        std::string op = lex_.next().value;
+        auto opTok = lex_.next();
         ExprPtr rhs = (this->*operand)();
         auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
+        bin->op  = opTok.value;
         bin->lhs = std::move(lhs);
         bin->rhs = std::move(rhs);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(bin);
+        node->loc = locFromToken(opTok);
         lhs = std::move(node);
     }
     return lhs;
@@ -120,7 +122,7 @@ std::vector<Directive> Parser::parseDirectives() {
 
         Directive d;
         d.name = nameTok.value;
-        d.line = atTok.line;
+        d.loc = {atTok.line, atTok.col, file_id_};
 
         // Optional parameters: @name(key=value, ...)
         if (lex_.peek().kind == TokenKind::LParen) {
@@ -197,7 +199,7 @@ StmtNode Parser::parseImportStatement() {
         }
     }
 
-    return ImportStmt{modulePath, names, fromTok.line};
+    return ImportStmt{modulePath, names, {fromTok.line, fromTok.col, file_id_}};
 }
 
 StmtNode Parser::parseStatement() {
@@ -268,12 +270,12 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::Break) {
         lex_.next();
-        return BreakStmt{};
+        return BreakStmt{locFromToken(first)};
     }
 
     if (first.kind == TokenKind::Continue) {
         lex_.next();
-        return ContinueStmt{};
+        return ContinueStmt{locFromToken(first)};
     }
 
     // identifier-leading statements: assignment, index assignment, or function call
@@ -298,9 +300,11 @@ StmtNode Parser::parseStatement() {
         IndexAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
+        obj->loc = locFromToken(first);
         s.object = std::move(obj);
         s.index = std::move(index);
         s.value = std::move(val);
+        s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::Dot) {
         // field assignment: ident.field = value
@@ -315,8 +319,10 @@ StmtNode Parser::parseStatement() {
             lex_.next(); // consume '('
             CallStmt s;
             s.callee = fieldTok.value;
+            s.loc = locFromToken(first);
             auto obj = std::make_unique<ExprNode>();
             obj->data = VariableExpr{first.value};
+            obj->loc = locFromToken(first);
             s.args.push_back(std::move(obj));
             auto rest = parseArgList();
             for (auto &arg : rest)
@@ -332,15 +338,18 @@ StmtNode Parser::parseStatement() {
         FieldAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
+        obj->loc = locFromToken(first);
         s.object = std::move(obj);
         s.field = fieldTok.value;
         s.value = std::move(val);
+        s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
         s.value = parseTernary();
+        s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::PlusEq  || next.kind == TokenKind::MinusEq ||
                next.kind == TokenKind::StarEq  || next.kind == TokenKind::SlashEq ||
@@ -364,12 +373,14 @@ StmtNode Parser::parseStatement() {
         AssignStmt s;
         s.name = first.value;
         s.value = std::move(binNode);
+        s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::LParen) {
         lex_.next(); // consume '('
         CallStmt s;
         s.callee = first.value;
         s.args = parseArgList();
+        s.loc = locFromToken(first);
         tryParseTrailingBlock(s);
         return s;
     }
@@ -411,6 +422,7 @@ StmtNode Parser::parseLetOrVar() {
         s.names = std::move(names);
         s.value = std::move(value);
         s.is_immutable = !isVar;
+        s.loc = locFromToken(first);
         return s;
     }
 
@@ -431,12 +443,14 @@ StmtNode Parser::parseLetOrVar() {
         s.name = id.value;
         s.type_annotation = typeAnnotation;
         s.value = std::move(value);
+        s.loc = locFromToken(first);
         return s;
     } else {
         LetStmt s;
         s.name = id.value;
         s.type_annotation = typeAnnotation;
         s.value = std::move(value);
+        s.loc = locFromToken(first);
         return s;
     }
 }
@@ -470,7 +484,7 @@ std::vector<StmtNode> Parser::parseBlock() {
 }
 
 StmtNode Parser::parseWhileStatement() {
-    lex_.next(); // consume 'while'
+    Token whileTok = lex_.next(); // consume 'while'
     ExprPtr cond = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
@@ -480,11 +494,12 @@ StmtNode Parser::parseWhileStatement() {
     auto whileStmt = std::make_unique<WhileStmt>();
     whileStmt->condition = std::move(cond);
     whileStmt->body = parseBlock();
+    whileStmt->loc = locFromToken(whileTok);
     return whileStmt;
 }
 
 StmtNode Parser::parseForStatement() {
-    lex_.next(); // consume 'for'
+    Token forTok = lex_.next(); // consume 'for'
 
     Token varTok = lex_.peek();
     if (varTok.kind != TokenKind::Ident)
@@ -520,13 +535,15 @@ StmtNode Parser::parseForStatement() {
     forStmt->var_name2 = var2;
     forStmt->iterable = std::move(iterable);
     forStmt->body = parseBlock();
+    forStmt->loc = locFromToken(forTok);
     return forStmt;
 }
 
 StmtNode Parser::parseIfStatement() {
     auto ifStmt = std::make_unique<IfStmt>();
 
-    lex_.next(); // consume 'if'
+    Token ifTok = lex_.next(); // consume 'if'
+    ifStmt->loc = locFromToken(ifTok);
     ExprPtr cond = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
@@ -572,7 +589,7 @@ ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogical
 ExprPtr Parser::parseTernary() {
     ExprPtr expr = parseNullCoalesce();
     if (lex_.peek().kind == TokenKind::Question) {
-        lex_.next(); // consume '?'
+        Token qTok = lex_.next(); // consume '?'
         ExprPtr trueExpr = parseTernary(); // right-associative
         if (lex_.peek().kind != TokenKind::Colon)
             parseError("expected ':' in ternary expression");
@@ -584,6 +601,7 @@ ExprPtr Parser::parseTernary() {
         ternary->false_expr = std::move(falseExpr);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(ternary);
+        node->loc = locFromToken(qTok);
         return node;
     }
     return expr;
@@ -592,7 +610,7 @@ ExprPtr Parser::parseTernary() {
 ExprPtr Parser::parseNullCoalesce() {
     ExprPtr lhs = parseLogicalOr();
     while (lex_.peek().kind == TokenKind::QuestionQuestion) {
-        lex_.next(); // consume '??'
+        Token opTok = lex_.next(); // consume '??'
         ExprPtr rhs = parseLogicalOr();
         auto bin = std::make_unique<BinaryExpr>();
         bin->op = "??";
@@ -600,6 +618,7 @@ ExprPtr Parser::parseNullCoalesce() {
         bin->rhs = std::move(rhs);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(bin);
+        node->loc = locFromToken(opTok);
         lhs = std::move(node);
     }
     return lhs;
@@ -608,13 +627,14 @@ ExprPtr Parser::parseLogicalAnd() { return parseBinaryLeft(&Parser::parseLogical
 ExprPtr Parser::parseRange() {
     ExprPtr lhs = parseBitwiseOr();
     if (lex_.peek().kind == TokenKind::DotDot) {
-        lex_.next(); // consume '..'
+        Token opTok = lex_.next(); // consume '..'
         ExprPtr rhs = parseBitwiseOr();
         auto range = std::make_unique<RangeExpr>();
         range->start = std::move(lhs);
         range->end = std::move(rhs);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(range);
+        node->loc = locFromToken(opTok);
         return node;
     }
     return lhs;
@@ -627,7 +647,7 @@ ExprPtr Parser::parseComparison() {
         // Handle "not in" as a two-token operator
         if (k == TokenKind::Not) {
             auto saved = lex_.saveState();
-            lex_.next(); // consume 'not'
+            Token notTok = lex_.next(); // consume 'not'
             if (lex_.peek().kind == TokenKind::In) {
                 lex_.next(); // consume 'in'
                 ExprPtr rhs = parseBitwiseOr();
@@ -637,6 +657,7 @@ ExprPtr Parser::parseComparison() {
                 bin->rhs = std::move(rhs);
                 auto node = std::make_unique<ExprNode>();
                 node->data = std::move(bin);
+                node->loc = locFromToken(notTok);
                 lhs = std::move(node);
                 continue;
             }
@@ -647,14 +668,15 @@ ExprPtr Parser::parseComparison() {
             k == TokenKind::Less || k == TokenKind::LessEq ||
             k == TokenKind::Greater || k == TokenKind::GreaterEq ||
             k == TokenKind::In) {
-            std::string op = lex_.next().value;
+            Token opTok = lex_.next();
             ExprPtr rhs = parseBitwiseOr();
             auto bin = std::make_unique<BinaryExpr>();
-            bin->op = op;
+            bin->op = opTok.value;
             bin->lhs = std::move(lhs);
             bin->rhs = std::move(rhs);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(bin);
+            node->loc = locFromToken(opTok);
             lhs = std::move(node);
             continue;
         }
@@ -672,14 +694,15 @@ ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parseCast, {
 ExprPtr Parser::parsePower() {
     ExprPtr lhs = parsePostfix();
     if (lex_.peek().kind == TokenKind::StarStar) {
-        std::string op = lex_.next().value;
+        Token opTok = lex_.next();
         ExprPtr rhs = parsePower();  // 右結合: 再帰呼び出し
         auto bin = std::make_unique<BinaryExpr>();
-        bin->op  = op;
+        bin->op  = opTok.value;
         bin->lhs = std::move(lhs);
         bin->rhs = std::move(rhs);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(bin);
+        node->loc = locFromToken(opTok);
         return node;
     }
     return lhs;
@@ -688,7 +711,7 @@ ExprPtr Parser::parsePower() {
 ExprPtr Parser::parseCast() {
     ExprPtr expr = parsePower();
     while (lex_.peek().kind == TokenKind::As) {
-        lex_.next(); // consume 'as'
+        Token asTok = lex_.next(); // consume 'as'
         Token typeTok = lex_.peek();
         if (typeTok.kind != TokenKind::Ident)
             parseError(typeTok.line, "expected type name after 'as'");
@@ -698,6 +721,7 @@ ExprPtr Parser::parseCast() {
         cast->target_type = targetType;
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(cast);
+        node->loc = locFromToken(asTok);
         expr = std::move(node);
     }
     return expr;
@@ -705,13 +729,14 @@ ExprPtr Parser::parseCast() {
 
 ExprPtr Parser::parseLogicalNot() {
     if (lex_.peek().kind == TokenKind::Not) {
-        lex_.next(); // consume 'not'
+        Token notTok = lex_.next(); // consume 'not'
         ExprPtr operand = parseLogicalNot(); // 右結合
         auto unary = std::make_unique<UnaryExpr>();
         unary->op = "not";
         unary->operand = std::move(operand);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(unary);
+        node->loc = locFromToken(notTok);
         return node;
     }
     return parseComparison();
@@ -730,30 +755,35 @@ ExprPtr Parser::parsePrimary() {
         unary->operand = std::move(operand);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(unary);
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Number) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = NumberExpr{parseIntLiteral(t.value)};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Float) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = FloatExpr{std::stod(t.value)};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::True || t.kind == TokenKind::False) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = BoolExpr{t.kind == TokenKind::True};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::String) {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = StringExpr{t.value};
+        node->loc = locFromToken(t);
         return node;
     }
     // f-string: FStringEnd (no interpolation) or FStringStart...FStringEnd
@@ -761,6 +791,7 @@ ExprPtr Parser::parsePrimary() {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = StringExpr{t.value};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::FStringStart) {
@@ -779,12 +810,14 @@ ExprPtr Parser::parsePrimary() {
         interp->parts.push_back(end.value);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(interp);
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Result) {
         lex_.next(); // consume 'result'
         auto node = std::make_unique<ExprNode>();
         node->data = ResultExpr{};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Old) {
@@ -800,6 +833,7 @@ ExprPtr Parser::parsePrimary() {
         oldExpr->expr = std::move(expr);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(oldExpr);
+        node->loc = locFromToken(t);
         return node;
     }
     // none keyword → NoneExpr
@@ -807,6 +841,7 @@ ExprPtr Parser::parsePrimary() {
         lex_.next();
         auto node = std::make_unique<ExprNode>();
         node->data = NoneExpr{};
+        node->loc = locFromToken(t);
         return node;
     }
     // Error(expr) → CallExpr
@@ -820,12 +855,15 @@ ExprPtr Parser::parsePrimary() {
         call->args = parseArgList();
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(call);
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Fn) {
         // Lambda expression: fn(params) [-> retType]: body
         lex_.next(); // consume 'fn'
-        return parseLambdaExpr();
+        auto lambdaNode = parseLambdaExpr();
+        lambdaNode->loc = locFromToken(t);
+        return lambdaNode;
     }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
@@ -870,10 +908,12 @@ ExprPtr Parser::parsePrimary() {
                         call->args = parseArgList();
                         auto node = std::make_unique<ExprNode>();
                         node->data = std::move(call);
+                        node->loc = locFromToken(t);
                         return node;
                     }
                     auto node = std::make_unique<ExprNode>();
                     node->data = EnumAccessExpr{fullEnumName, variant.value};
+                    node->loc = locFromToken(t);
                     return node;
                 }
                 // Not a generic enum access, restore
@@ -896,10 +936,12 @@ ExprPtr Parser::parsePrimary() {
                 call->args = parseArgList();
                 auto node = std::make_unique<ExprNode>();
                 node->data = std::move(call);
+                node->loc = locFromToken(t);
                 return node;
             }
             auto node = std::make_unique<ExprNode>();
             node->data = EnumAccessExpr{t.value, variant.value};
+            node->loc = locFromToken(t);
             return node;
         }
         if (lex_.peek().kind == TokenKind::LParen) {
@@ -909,10 +951,12 @@ ExprPtr Parser::parsePrimary() {
             call->args = parseArgList();
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
+            node->loc = locFromToken(t);
             return node;
         }
         auto node = std::make_unique<ExprNode>();
         node->data = VariableExpr{t.value};
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::LBrace) {
@@ -924,6 +968,7 @@ ExprPtr Parser::parsePrimary() {
             auto set = std::make_unique<SetExpr>();
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(set);
+            node->loc = locFromToken(t);
             return node;
         }
         // Parse first expression
@@ -950,6 +995,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next(); // consume '}'
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(map);
+            node->loc = locFromToken(t);
             return node;
         } else {
             // Set literal
@@ -964,6 +1010,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next(); // consume '}'
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(set);
+            node->loc = locFromToken(t);
             return node;
         }
     }
@@ -982,6 +1029,7 @@ ExprPtr Parser::parsePrimary() {
         lex_.next(); // consume ']'
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(list);
+        node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::LParen) {
@@ -1001,6 +1049,7 @@ ExprPtr Parser::parsePrimary() {
             lex_.next();
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(tuple);
+            node->loc = locFromToken(t);
             return node;
         }
         // Grouping: (expr)
@@ -1013,9 +1062,10 @@ ExprPtr Parser::parsePrimary() {
 }
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives) {
-    lex_.next(); // consume 'fn'
+    Token fnTok = lex_.next(); // consume 'fn'
 
     auto fnStmt = std::make_unique<FnStmt>();
+    fnStmt->loc = locFromToken(fnTok);
 
     if (lex_.peek().kind == TokenKind::Operator) {
         lex_.next(); // consume 'operator'
@@ -1159,8 +1209,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives) {
 }
 
 StmtNode Parser::parseReturnStatement() {
-    lex_.next(); // consume 'return'
+    Token retTok = lex_.next(); // consume 'return'
     ReturnStmt s;
+    s.loc = locFromToken(retTok);
     TokenKind next = lex_.peek().kind;
     if (next == TokenKind::Newline || next == TokenKind::Dedent || next == TokenKind::Eof) {
         s.value = nullptr;
@@ -1196,7 +1247,7 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
 }
 
 StmtNode Parser::parseRecordStatement() {
-    lex_.next(); // consume 'record'
+    Token recordTok = lex_.next(); // consume 'record'
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
@@ -1220,6 +1271,7 @@ StmtNode Parser::parseRecordStatement() {
 
     RecordStmt ts;
     ts.name = nameTok.value;
+    ts.loc = locFromToken(recordTok);
     std::unordered_set<std::string> seenFields;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
@@ -1266,7 +1318,7 @@ StmtNode Parser::parseRecordStatement() {
 }
 
 StmtNode Parser::parseTypeAliasStatement() {
-    lex_.next(); // consume 'type'
+    Token typeTok = lex_.next(); // consume 'type'
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
@@ -1285,11 +1337,12 @@ StmtNode Parser::parseTypeAliasStatement() {
     TypeAliasStmt s;
     s.name = nameTok.value;
     s.target_type = targetType;
+    s.loc = locFromToken(typeTok);
     return s;
 }
 
 StmtNode Parser::parseEnumStatement() {
-    lex_.next(); // consume 'enum'
+    Token enumTok = lex_.next(); // consume 'enum'
 
     Token nameTok = lex_.peek();
     if (nameTok.kind != TokenKind::Ident)
@@ -1334,6 +1387,7 @@ StmtNode Parser::parseEnumStatement() {
     EnumStmt es;
     es.name = nameTok.value;
     es.type_params = std::move(typeParams);
+    es.loc = locFromToken(enumTok);
     std::unordered_set<std::string> seenVariants;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
@@ -1632,16 +1686,17 @@ ExprPtr Parser::parsePostfix() {
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
            lex_.peek().kind == TokenKind::BangBang) {
         if (lex_.peek().kind == TokenKind::BangBang) {
-            lex_.next(); // consume '!!'
+            Token bangTok = lex_.next(); // consume '!!'
             auto ep = std::make_unique<ErrorPropagateExpr>();
             ep->operand = std::move(expr);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(ep);
+            node->loc = locFromToken(bangTok);
             expr = std::move(node);
             continue;
         }
         if (lex_.peek().kind == TokenKind::LBracket) {
-            lex_.next(); // consume '['
+            Token lbTok = lex_.next(); // consume '['
             ExprPtr index = parseTernary();
             if (lex_.peek().kind != TokenKind::RBracket)
                 parseError("expected ']'");
@@ -1651,11 +1706,12 @@ ExprPtr Parser::parsePostfix() {
             idx->index = std::move(index);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(idx);
+            node->loc = locFromToken(lbTok);
             expr = std::move(node);
             continue;
         }
         // Dot access follows below
-        lex_.next(); // consume '.'
+        Token dotTok = lex_.next(); // consume '.'
         Token field = lex_.peek();
         if (field.kind != TokenKind::Ident && field.kind != TokenKind::Number)
             parseError(field.line, "expected field name or index after '.'");
@@ -1671,6 +1727,7 @@ ExprPtr Parser::parsePostfix() {
                 call->args.push_back(std::move(arg));
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(call);
+            node->loc = locFromToken(dotTok);
             expr = std::move(node);
         } else {
             // Field access: a.x
@@ -1679,6 +1736,7 @@ ExprPtr Parser::parsePostfix() {
             fa->field = field.value;
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(fa);
+            node->loc = locFromToken(dotTok);
             expr = std::move(node);
         }
     }
@@ -1730,7 +1788,7 @@ StmtNode Parser::parseExpectStatement() {
     ExpectStmt es;
     es.actual = std::move(actual);
     es.matcher = matcher;
-    es.line = expectTok.line;
+    es.loc = {expectTok.line, expectTok.col, file_id_};
 
     if (lex_.peek().kind != TokenKind::LParen)
         parseError("expected '(' after matcher name");
@@ -1866,7 +1924,7 @@ Pattern Parser::parsePattern() {
 }
 
 StmtNode Parser::parseMatchStatement() {
-    lex_.next(); // consume 'match'
+    Token matchTok = lex_.next(); // consume 'match'
     ExprPtr subject = parseTernary();
 
     if (lex_.peek().kind != TokenKind::Colon)
@@ -1884,6 +1942,7 @@ StmtNode Parser::parseMatchStatement() {
 
     auto matchStmt = std::make_unique<MatchStmt>();
     matchStmt->subject = std::move(subject);
+    matchStmt->loc = locFromToken(matchTok);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {

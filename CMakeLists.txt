@@ -44,6 +44,8 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
+    src/source_manager.cpp
+    src/diagnostic.cpp
     src/lexer.cpp
     src/parser.cpp
     src/codegen.cpp
@@ -90,6 +92,7 @@ add_executable(ry_tests
     tests/test_codegen_directive.cpp
     tests/test_project_config.cpp
     tests/test_self_update.cpp
+    tests/test_diagnostic.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

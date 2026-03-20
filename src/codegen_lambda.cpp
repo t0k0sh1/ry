@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
@@ -203,7 +204,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
-            throw std::runtime_error("IR verify error in lambda: " + err);
+            codegenError("IR verify error in lambda: " + err);
     }
 
     // Register fn_type_info for the function pointer value

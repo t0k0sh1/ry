@@ -2,6 +2,8 @@
 #include "ry/parser.hpp"
 #include "ry/module_loader.hpp"
 #include "ry/codegen.hpp"
+#include "ry/source_manager.hpp"
+#include "ry/diagnostic.hpp"
 #include "ry/jit.hpp"
 #include "ry/test_runtime.hpp"
 #include "ry/project_config.hpp"
@@ -68,14 +70,18 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     }
     std::string src = (*bufOrErr)->getBuffer().str();
 
+    // Source manager for rich error messages
+    SourceManager sm;
+    int fileId = sm.addSource(filepath, src);
+
     // Lex -> Parse
     Lexer  lexer(src);
-    Parser parser(lexer);
+    Parser parser(lexer, &sm, fileId);
     Program prog = parser.parseProgram();
 
     // Resolve imports
     std::string referrer_dir = fs::path(filepath).parent_path().string();
-    ModuleLoader loader;
+    ModuleLoader loader({}, &sm);
     prog = loader.resolveImports(prog, referrer_dir);
 
     // Prepend prelude
@@ -87,7 +93,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     }
 
     // CodeGen -> ThreadSafeModule
-    CodeGen cg(test_mode);
+    CodeGen cg(test_mode, &sm);
     ThreadSafeModule tsm = cg.compile(prog);
 
     // Build LLJIT
@@ -232,6 +238,9 @@ int main(int argc, char *argv[]) {
             try {
                 int failed = runRyFile(tf, /*test_mode=*/true, argv[0]);
                 total_failed += failed;
+            } catch (const DiagnosticError &e) {
+                errs() << e.what();
+                ++total_failed;
             } catch (const std::exception &e) {
                 errs() << "Error in " << tf << ": " << e.what() << "\n";
                 ++total_failed;
@@ -259,6 +268,9 @@ int main(int argc, char *argv[]) {
 
     try {
         return runRyFile(filename, test_mode, argv[0]);
+    } catch (const DiagnosticError &e) {
+        errs() << e.what();
+        return 1;
     } catch (const std::exception &e) {
         errs() << "Error: " << e.what() << "\n";
         return 1;

@@ -907,3 +907,47 @@ TEST(LexerTest, RawStringNotPrefix) {
     EXPECT_EQ(toks[0].kind, TokenKind::Ident);
     EXPECT_EQ(toks[0].value, "r_foo");
 }
+
+// ===== Column tracking tests =====
+
+TEST(LexerTest, ColumnSimple) {
+    auto toks = tokenize("let x = 42");
+    // let(col=1) x(col=5) =(col=7) 42(col=9) Eof
+    EXPECT_EQ(toks[0].col, 1);  // let
+    EXPECT_EQ(toks[1].col, 5);  // x
+    EXPECT_EQ(toks[2].col, 7);  // =
+    EXPECT_EQ(toks[3].col, 9);  // 42
+}
+
+TEST(LexerTest, ColumnMultiLine) {
+    auto toks = tokenize("a\n  b");
+    // a(line=1,col=1) Newline Indent b(line=2,col=3)
+    EXPECT_EQ(toks[0].col, 1);  // a
+    EXPECT_EQ(toks[0].line, 1);
+    // Find 'b' token
+    for (const auto &t : toks) {
+        if (t.kind == TokenKind::Ident && t.value == "b") {
+            EXPECT_EQ(t.line, 2);
+            EXPECT_EQ(t.col, 3);
+        }
+    }
+}
+
+TEST(LexerTest, ColumnOperators) {
+    auto toks = tokenize("x + y == z");
+    // x(1) +(3) y(5) ==(7) z(10)
+    EXPECT_EQ(toks[0].col, 1);  // x
+    EXPECT_EQ(toks[1].col, 3);  // +
+    EXPECT_EQ(toks[2].col, 5);  // y
+    EXPECT_EQ(toks[3].col, 7);  // ==
+    EXPECT_EQ(toks[4].col, 10); // z
+}
+
+TEST(LexerTest, ColumnString) {
+    auto toks = tokenize("let s = \"hello\"");
+    // let(1) s(5) =(7) "hello"(9)
+    EXPECT_EQ(toks[0].col, 1);  // let
+    EXPECT_EQ(toks[1].col, 5);  // s
+    EXPECT_EQ(toks[2].col, 7);  // =
+    EXPECT_EQ(toks[3].col, 9);  // "hello"
+}

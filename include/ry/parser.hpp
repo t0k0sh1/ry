@@ -2,21 +2,27 @@
 
 #include "ry/lexer.hpp"
 #include "ry/ast.hpp"
+#include "ry/source_manager.hpp"
 
 #include <initializer_list>
 
 class Parser {
 public:
-    explicit Parser(Lexer &lex) : lex_(lex) {}
+    explicit Parser(Lexer &lex, const SourceManager *sm = nullptr, int fileId = 0)
+        : lex_(lex), sm_(sm), file_id_(fileId) {}
 
     Program parseProgram();
 
 private:
     Lexer &lex_;
+    const SourceManager *sm_ = nullptr;
+    int file_id_ = 0;
 
     // Error helpers
     [[noreturn]] void parseError(int line, const std::string &msg);
     [[noreturn]] void parseError(const std::string &msg);
+
+    SourceLocation locFromToken(const Token &t) const { return {t.line, t.col, file_id_}; }
 
     std::vector<Directive> parseDirectives();
     void skipNewlines();

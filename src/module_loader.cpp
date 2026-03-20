@@ -9,8 +9,9 @@
 
 namespace fs = std::filesystem;
 
-ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths)
-    : search_paths_(search_paths) {
+ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
+                           SourceManager *sm)
+    : search_paths_(search_paths), sm_(sm) {
     if (const char *ry_path = std::getenv("RY_PATH")) {
         std::istringstream ss(ry_path);
         std::string path;
@@ -36,7 +37,7 @@ std::string ModuleLoader::resolve(const std::string &module_path,
     throw std::runtime_error("module not found: " + module_path);
 }
 
-Program loadAndParse(const std::string &abs_path) {
+Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
     std::ifstream file(abs_path);
     if (!file.is_open())
         throw std::runtime_error("cannot open module: " + abs_path);
@@ -45,8 +46,13 @@ Program loadAndParse(const std::string &abs_path) {
     ss << file.rdbuf();
     std::string src = ss.str();
 
+    int fileId = 0;
+    if (sm) {
+        fileId = sm->addSource(abs_path, src);
+    }
+
     Lexer lex(src);
-    Parser parser(lex);
+    Parser parser(lex, sm, fileId);
     return parser.parseProgram();
 }
 
@@ -71,7 +77,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
                 auto &fns = fn_cache_[abs_path];
                 for (const auto &name : imp.names) {
                     if (!fns.count(name))
-                        throw std::runtime_error("line " + std::to_string(imp.line) +
+                        throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                                  ": function '" + name +
                                                  "' not found in module '" +
                                                  imp.module_path + "'");
@@ -82,7 +88,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
 
         loading_.insert(abs_path);
 
-        auto sub_prog = loadAndParse(abs_path);
+        auto sub_prog = loadAndParse(abs_path, sm_);
         std::string sub_dir = fs::path(abs_path).parent_path().string();
         sub_prog = resolveImports(sub_prog, sub_dir);
 
@@ -127,7 +133,7 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             }
             for (const auto &name : imp.names) {
                 if (!found.count(name))
-                    throw std::runtime_error("line " + std::to_string(imp.line) +
+                    throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                              ": '" + name +
                                              "' not found in module '" +
                                              imp.module_path + "'");
