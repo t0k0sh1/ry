@@ -310,6 +310,7 @@ private:
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
+    llvm::Value *emitBuiltinRegex(const CallExpr &e);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                         int64_t initialBucketCount);

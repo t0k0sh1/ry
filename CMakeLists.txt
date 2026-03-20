@@ -58,6 +58,7 @@ add_library(ry_lib STATIC
     src/jit.cpp
     src/test_runtime.cpp
     src/runtime_hash.cpp
+    src/runtime_regex.cpp
     src/project_config.cpp
     src/self_update.cpp
     src/args_runtime.cpp
@@ -95,6 +96,8 @@ add_executable(ry_tests
     tests/test_self_update.cpp
     tests/test_diagnostic.cpp
     tests/test_paths.cpp
+    tests/test_regex_runtime.cpp
+    tests/test_codegen_regex.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

@@ -40,6 +40,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [タプル・リスト・マップ・セット](reference/collections.md) | コレクション型の操作方法 |
 | [組み込み関数](reference/builtins.md) | print・len・Some 等 |
 | [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
+| [正規表現](reference/regex.md) | regex_match・regex_search・regex_replace・regex_split・regex_find_all |
 | [モジュールシステム](reference/modules.md) | from/import の文法と探索ルール |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
 | [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |

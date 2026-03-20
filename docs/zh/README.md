@@ -40,6 +40,7 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | [元組、串列、映射、集合](reference/collections.md) | 集合型別的操作方法 |
 | [內建函式](reference/builtins.md) | print、len、Some 等 |
 | [字串操作函式](reference/builtins-string.md) | contains、find、replace、split、join 等 |
+| [正規表達式](reference/regex.md) | regex_match、regex_search、regex_replace、regex_split、regex_find_all |
 | [模組系統](reference/modules.md) | from/import 的文法與搜尋規則 |
 | [測試功能](reference/testing.md) | 使用 describe/it/expect 進行測試 |
 | [專案管理](reference/project.md) | ry init 與 ry.toml 的規格 |
