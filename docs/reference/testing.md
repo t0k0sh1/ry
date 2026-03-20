@@ -106,6 +106,51 @@ describe("Booleans"):
 
 ---
 
+## Mocking
+
+### mock(fn_name, replacement)
+
+Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- The first argument is the function name (identifier, not a string)
+- The second argument is a replacement lambda
+- The replacement must have the same parameter types and return type as the original function
+- Mocks are automatically restored at the end of each `it` block
+
+### verify(fn_name)
+
+Returns the number of times a mocked function was called (as `int`).
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### Limitations
+
+- Overloaded functions cannot be mocked
+- Capture-based closures cannot be used as replacements (use plain lambdas)
+- `@native fn` functions cannot be mocked
+
+---
+
 ## Limitations
 
 - Nesting of `describe` is not supported

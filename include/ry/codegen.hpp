@@ -206,6 +206,9 @@ private:
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
+    void emitMockCall(CallStmt &s);
+    std::unordered_set<std::string> mocked_functions_;
+    std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Value *toBool(llvm::Value *v);
 
     // Type promotion helpers (B1)

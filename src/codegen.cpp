@@ -84,7 +84,50 @@ bool CodeGen::isImmutable(const std::string &name) const {
     return false;
 }
 
+// Pre-pass: collect all function names targeted by mock() in the AST
+static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
+                                    std::unordered_set<std::string> &out) {
+    for (const auto &stmt : stmts) {
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, CallStmt>) {
+                if (s.callee == "mock" && !s.args.empty()) {
+                    if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
+                        out.insert(str->value);
+                }
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                for (auto &br : s->branches)
+                    collectMockedFunctions(br.body, out);
+                collectMockedFunctions(s->else_body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+                collectMockedFunctions(s->body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+                collectMockedFunctions(s->body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+                collectMockedFunctions(s->body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                for (auto &arm : s->arms)
+                    collectMockedFunctions(arm.body, out);
+            }
+        }, stmt);
+        // Also scan lambda args (e.g., describe/it trailing blocks)
+        std::visit([&](const auto &s) {
+            using T = std::decay_t<decltype(s)>;
+            if constexpr (std::is_same_v<T, CallStmt>) {
+                for (auto &arg : s.args) {
+                    if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
+                        collectMockedFunctions((*lam)->body, out);
+                }
+            }
+        }, stmt);
+    }
+}
+
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
+    // Pre-pass: collect all mock targets before codegen
+    if (test_mode_)
+        collectMockedFunctions(prog, mocked_functions_);
+
     llvm::FunctionType *ft = llvm::FunctionType::get(i32Ty_, false);
     fn_ = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__ry_main__", *mod_);
     llvm::BasicBlock *bb = llvm::BasicBlock::Create(*ctx_, "entry", fn_);
@@ -262,6 +305,61 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // In test mode, inject mock dispatch only for functions targeted by mock()
+    if (test_mode_ && mocked_functions_.count(callee)) {
+        llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        llvm::FunctionCallee mockGetFn = mod_->getOrInsertFunction("__ry_mock_get", mockGetTy);
+        llvm::FunctionType *mockIncTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
+
+        auto &nameStr = mock_name_strings_[callee];
+        if (!nameStr) nameStr = builder_.CreateGlobalString(callee, ".mock." + callee);
+        llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
+        llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        llvm::Value *isMocked = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
+
+        llvm::BasicBlock *mockBB = llvm::BasicBlock::Create(*ctx_, "mock_bb", fn_);
+        llvm::BasicBlock *origBB = llvm::BasicBlock::Create(*ctx_, "orig_bb", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "merge_bb", fn_);
+
+        builder_.CreateCondBr(isMocked, mockBB, origBB);
+
+        // Mock path
+        builder_.SetInsertPoint(mockBB);
+        builder_.CreateCall(mockIncFn, {nameStr});
+        llvm::FunctionType *fnTy = fn->getFunctionType();
+        if (fn->getReturnType()->isVoidTy()) {
+            builder_.CreateCall(fnTy, mockPtr, argVals);
+            builder_.CreateBr(mergeBB);
+
+            // Original path (void case)
+            builder_.SetInsertPoint(origBB);
+            builder_.CreateCall(fn, argVals);
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            return nullptr;
+        }
+
+        llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
+
+        // Original path
+        builder_.SetInsertPoint(origBB);
+        llvm::Value *origResult = builder_.CreateCall(fn, argVals, "orig_result");
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *origEndBB = builder_.GetInsertBlock();
+
+        // Merge
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
+        phi->addIncoming(mockResult, mockEndBB);
+        phi->addIncoming(origResult, origEndBB);
+        return phi;
+    }
+
     if (fn->getReturnType()->isVoidTy())
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
@@ -276,6 +374,10 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (s.callee == "it") {
         emitItCall(s);
+        return;
+    }
+    if (s.callee == "mock") {
+        emitMockCall(s);
         return;
     }
     auto it = builtins_.find(s.callee);

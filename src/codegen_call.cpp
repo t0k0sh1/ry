@@ -3839,6 +3839,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // verify(fn_name) → call count
+    if (e->callee == "verify") {
+        if (!test_mode_)
+            codegenError("'verify' is only allowed in test mode (use 'ry test')");
+        if (e->args.size() != 1)
+            codegenError("verify() requires exactly 1 argument");
+        auto *strExpr = std::get_if<StringExpr>(&e->args[0]->data);
+        if (!strExpr)
+            codegenError("verify() argument must be a function name");
+        auto vit = functions_.find(strExpr->value);
+        if (vit == functions_.end())
+            codegenError("verify(): unknown function '" + strExpr->value + "'");
+        if (vit->second.size() != 1)
+            codegenError("verify(): overloaded functions are not supported");
+        llvm::FunctionType *getCountTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        llvm::FunctionCallee getCountFn = mod_->getOrInsertFunction("__ry_mock_get_call_count", getCountTy);
+        llvm::Value *nameStr = builder_.CreateGlobalString(strExpr->value, ".verify_name");
+        return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
+    }
+
     // Validate @native fn type signatures before dispatch
     validateNativeCallArgs(e->callee, e->args);
 

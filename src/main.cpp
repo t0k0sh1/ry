@@ -114,6 +114,16 @@ static int runRyFile(const std::string &filepath, bool test_mode,
             {ExecutorAddr::fromPtr(&__ry_test_expect_fail), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_test_summary")] =
             {ExecutorAddr::fromPtr(&__ry_test_summary), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_set")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_set), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_get")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_get), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_get_call_count")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_get_call_count), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_increment_call")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_increment_call), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_mock_clear_all")] =
+            {ExecutorAddr::fromPtr(&__ry_mock_clear_all), JITSymbolFlags::Exported};
         if (auto err = mainJD.define(absoluteSymbols(std::move(testSymbols)))) {
             errs() << "Failed to define test symbols: ";
             logAllUnhandledErrors(std::move(err), errs());
