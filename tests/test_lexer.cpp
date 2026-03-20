@@ -980,9 +980,15 @@ TEST(LexerTest, ColumnString) {
 TEST(LexerTest, ManyConsecutiveComments) {
     // Generate many comment lines to verify no stack overflow
     std::string src;
-    for (int i = 0; i < 10000; ++i)
-        src += "# comment line " + std::to_string(i) + "\n";
-    src += "42\n";
+    // Reserve enough capacity to avoid repeated reallocations while building src
+    const std::size_t perLine = std::string("# comment line ").size() + 4 + 1; // prefix + up to 4 digits + '\n'
+    src.reserve(perLine * 10000 + 3); // +3 for "42\n"
+    for (int i = 0; i < 10000; ++i) {
+        src.append("# comment line ");
+        src.append(std::to_string(i));
+        src.push_back('\n');
+    }
+    src.append("42\n");
     auto toks = tokenize(src);
     // Should find the number token after all comments
     bool found = false;

@@ -170,3 +170,17 @@ TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
         "print(outer(5))";
     EXPECT_EQ(runSource(src), "6\n");
 }
+
+TEST_F(CodeGenTest, NestedFnWithEnsureViolation) {
+    std::string src =
+        "fn outer(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    fn inner(y: int) -> int:\n"
+        "        ensure:\n"
+        "            result > 0\n"
+        "        return y + 1\n"
+        "    return inner(x)\n"
+        "print(outer(-1))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
