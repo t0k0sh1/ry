@@ -1060,3 +1060,44 @@ TEST(LexerTest, MinusMinusDoesNotBreakExisting) {
     EXPECT_EQ(toks3[0].kind, TokenKind::Arrow);
     EXPECT_EQ(toks3[0].value, "->");
 }
+
+TEST(LexerTest, PlusPlusNotCombinedBeforeOperand) {
+    // ++1 should lex as Plus, Plus, Number (not PlusPlus, Number)
+    auto toks = tokenize("++1");
+    ASSERT_GE(toks.size(), 4u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Plus);
+    EXPECT_EQ(toks[1].kind, TokenKind::Plus);
+    EXPECT_EQ(toks[2].kind, TokenKind::Number);
+    EXPECT_EQ(toks[2].value, "1");
+}
+
+TEST(LexerTest, MinusMinusNotCombinedBeforeOperand) {
+    // --y should lex as Minus, Minus, Ident (not MinusMinus, Ident)
+    auto toks = tokenize("--y");
+    ASSERT_GE(toks.size(), 4u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Minus);
+    EXPECT_EQ(toks[1].kind, TokenKind::Minus);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "y");
+}
+
+TEST(LexerTest, PlusPlusAtEndOfLine) {
+    // x++ at end of line should produce Ident, PlusPlus
+    auto toks = tokenize("x++\n");
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].kind, TokenKind::PlusPlus);
+}
+
+TEST(LexerTest, PlusPlusAtEof) {
+    // x++ at EOF should produce Ident, PlusPlus
+    auto toks = tokenize("x++");
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].kind, TokenKind::PlusPlus);
+}
+
+TEST(LexerTest, PlusPlusBeforeComment) {
+    // x++ # comment should produce Ident, PlusPlus
+    auto toks = tokenize("x++ # comment");
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].kind, TokenKind::PlusPlus);
+}
