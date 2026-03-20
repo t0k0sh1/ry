@@ -13,6 +13,9 @@ fn 函式名(引數名: 型別, ...) -> 回傳型別:
 - 引數型別為必要。
 - 回傳型別可省略（省略時為 `Unit`）。
 - 主體為縮排的區塊。
+- 函式可以定義 `require`（前置條件）和 `ensure`（後置條件）。參閱 [契約式設計](contracts.md)。
+
+> **命名慣例**：函式名稱和引數名稱必須使用 snake_case（如 `add`、`get_value`、`map_list`）。編譯器會強制執行此慣例。
 
 ```python
 fn add(a: int, b: int) -> int:
@@ -100,25 +103,28 @@ fn log_typed(msg: str) -> Unit:
 
 ```python
 # 單一運算式（運算式的值作為回傳值。回傳型別自動推論）
-(引數名: 型別, ...) -> 運算式
+fn(引數名: 型別, ...): 運算式
 
 # 多行區塊
-(引數名: 型別, ...) ->
+fn(引數名: 型別, ...):
     # 多個陳述式
     return 值
+
+# 明確指定回傳型別（可省略）
+fn(引數名: 型別, ...) -> 回傳型別: 運算式
 ```
 
 ### 範例
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 let result = double(5)   # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 let sum = add(3, 4)      # 7
 
 # 多行 lambda
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -132,7 +138,7 @@ Lambda 函式會以**值捕獲**定義時外層作用域的變數。
 
 ```python
 let base = 10
-let add_base = (x: int) -> x + base   # 以值捕獲 base
+let add_base = fn(x: int): x + base   # 以值捕獲 base
 
 base = 99          # 不影響已捕獲的值
 let r = add_base(5)   # 15（使用捕獲時的 base = 10）
@@ -161,8 +167,8 @@ fn(引數型別1, 引數型別2, ...) -> 回傳型別
 ### 範例
 
 ```python
-let f: fn(int) -> int = (x: int) -> x * 2
-let g: fn(int, int) -> int = (a: int, b: int) -> a + b
+let f: fn(int) -> int = fn(x: int): x * 2
+let g: fn(int, int) -> int = fn(a: int, b: int): a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
@@ -183,7 +189,7 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-let doubled = map_list([1, 2, 3], (x: int) -> x * 2)
+let doubled = map_list([1, 2, 3], fn(x: int): x * 2)
 # [2, 4, 6]
 ```
 
@@ -257,7 +263,7 @@ fn operator<op>(a: 型別) -> 回傳型別:
 依引數個數區分。
 
 ```python
-type Vec2:
+record Vec2:
     x: float
     y: float
 

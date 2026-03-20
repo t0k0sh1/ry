@@ -245,10 +245,10 @@ TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
 // ===== type パーサーテスト =====
 
 TEST(ParserTest, TypeDefinition) {
-    Program prog = parseStr("type Point:\n    x: int\n    y: int");
+    Program prog = parseStr("record Point:\n    x: int\n    y: int");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<TypeStmt>(prog[0]));
-    const auto &ts = std::get<TypeStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    const auto &ts = std::get<RecordStmt>(prog[0]);
     EXPECT_EQ(ts.name, "Point");
     ASSERT_EQ(ts.fields.size(), 2u);
     EXPECT_EQ(ts.fields[0].name, "x");
@@ -490,7 +490,7 @@ TEST(ParserTest, ImportAll) {
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[0]));
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     EXPECT_TRUE(imp.names.empty());
 }
 
@@ -498,7 +498,7 @@ TEST(ParserTest, ImportSingleFunction) {
     Program prog = parseStr("from math import add");
     ASSERT_EQ(prog.size(), 1u);
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 1u);
     EXPECT_EQ(imp.names[0], "add");
 }
@@ -506,7 +506,7 @@ TEST(ParserTest, ImportSingleFunction) {
 TEST(ParserTest, ImportMultipleFunctions) {
     Program prog = parseStr("from math import add, sub");
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "math.ry");
+    EXPECT_EQ(imp.module_path, "math");
     ASSERT_EQ(imp.names.size(), 2u);
     EXPECT_EQ(imp.names[0], "add");
     EXPECT_EQ(imp.names[1], "sub");
@@ -515,7 +515,7 @@ TEST(ParserTest, ImportMultipleFunctions) {
 TEST(ParserTest, ImportDotPath) {
     Program prog = parseStr("from utils.math import add");
     const auto &imp = std::get<ImportStmt>(prog[0]);
-    EXPECT_EQ(imp.module_path, "utils/math.ry");
+    EXPECT_EQ(imp.module_path, "utils/math");
     ASSERT_EQ(imp.names.size(), 1u);
     EXPECT_EQ(imp.names[0], "add");
 }
@@ -529,7 +529,7 @@ TEST(ParserTest, ImportInBlockThrows) {
 }
 
 TEST(ParserTest, DuplicateFieldNameThrows) {
-    EXPECT_THROW(parseStr("type Point:\n    x: int\n    x: int"), std::runtime_error);
+    EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }
 
 // ===== タプル パーサーテスト =====
@@ -811,9 +811,9 @@ TEST(ParserTest, EnumDefinition) {
     const auto &es = std::get<EnumStmt>(prog[0]);
     EXPECT_EQ(es.name, "Color");
     ASSERT_EQ(es.variants.size(), 3u);
-    EXPECT_EQ(es.variants[0], "Red");
-    EXPECT_EQ(es.variants[1], "Green");
-    EXPECT_EQ(es.variants[2], "Blue");
+    EXPECT_EQ(es.variants[0].name, "Red");
+    EXPECT_EQ(es.variants[1].name, "Green");
+    EXPECT_EQ(es.variants[2].name, "Blue");
 }
 
 TEST(ParserTest, EnumAccess) {
@@ -864,9 +864,393 @@ TEST(ParserTest, FnUnionReturn) {
     EXPECT_EQ(fn.return_type, "int | str");
 }
 
+// ===== >>> パーサーテスト =====
+
+TEST(ParserTest, LogicalRightShift) {
+    Program prog = parseStr("let x = a >>> b");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(bin.op, ">>>");
+    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "a");
+    EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "b");
+}
+
+// ===== not in パーサーテスト =====
+
+TEST(ParserTest, NotInOperator) {
+    Program prog = parseStr("let r = x not in s");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(bin.op, "not in");
+    EXPECT_EQ(std::get<VariableExpr>(bin.lhs->data).name, "x");
+    EXPECT_EQ(std::get<VariableExpr>(bin.rhs->data).name, "s");
+}
+
+TEST(ParserTest, NotStillWorksAfterNotIn) {
+    // "not x" should still parse as UnaryExpr
+    Program prog = parseStr("let r = not x");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<UnaryExpr>>(s.value->data));
+    const auto &unary = *std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
+    EXPECT_EQ(unary.op, "not");
+}
+
 TEST(ParserTest, UnionThreeTypes) {
     Program prog = parseStr("let x: int | float | str = 42");
     const auto &s = std::get<LetStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int | float | str");
+}
+
+// ===== Contract (Design by Contract) tests =====
+
+TEST(ParserTest, FnWithRequire) {
+    std::string src =
+        "fn deposit(amount: int) -> int:\n"
+        "    require:\n"
+        "        amount > 0\n"
+        "    return amount";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "deposit");
+    EXPECT_EQ(fn->preconditions.size(), 1u);
+    EXPECT_EQ(fn->postconditions.size(), 0u);
+    EXPECT_EQ(fn->body.size(), 1u);
+}
+
+TEST(ParserTest, FnWithEnsure) {
+    std::string src =
+        "fn abs(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    if x < 0:\n"
+        "        return -x\n"
+        "    return x";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 0u);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+}
+
+TEST(ParserTest, FnWithRequireAndEnsure) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    require:\n"
+        "        a >= 0\n"
+        "        b >= 0\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    return a + b";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 2u);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    EXPECT_EQ(fn->body.size(), 1u);
+}
+
+TEST(ParserTest, FnWithoutContract) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->preconditions.size(), 0u);
+    EXPECT_EQ(fn->postconditions.size(), 0u);
+}
+
+TEST(ParserTest, TypeWithInvariant) {
+    std::string src =
+        "record Account:\n"
+        "    balance: int\n"
+        "    min_balance: int\n"
+        "    invariant:\n"
+        "        balance >= min_balance";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Account");
+    EXPECT_EQ(ts.fields.size(), 2u);
+    EXPECT_EQ(ts.invariants.size(), 1u);
+}
+
+TEST(ParserTest, TypeWithoutInvariant) {
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int";
+    Program prog = parseStr(src);
+    auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.invariants.size(), 0u);
+}
+
+TEST(ParserTest, OldExprParse) {
+    std::string src =
+        "fn inc(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result == old(x) + 1\n"
+        "    return x + 1";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    // The postcondition expression should contain an OldExpr
+    auto &postExpr = fn->postconditions[0];
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
+    ASSERT_TRUE(bin != nullptr);
+    // lhs is ResultExpr
+    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+    // rhs is BinaryExpr (old(x) + 1)
+    auto *rhsBin = std::get_if<std::unique_ptr<BinaryExpr>>(&(*bin)->rhs->data);
+    ASSERT_TRUE(rhsBin != nullptr);
+    // rhs.lhs is OldExpr
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<OldExpr>>((*rhsBin)->lhs->data));
+}
+
+TEST(ParserTest, ResultExprParse) {
+    std::string src =
+        "fn double(x: int) -> int:\n"
+        "    ensure:\n"
+        "        result >= 0\n"
+        "    return x * 2";
+    Program prog = parseStr(src);
+    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->postconditions.size(), 1u);
+    // The postcondition should contain result >= 0
+    auto &postExpr = fn->postconditions[0];
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
+    ASSERT_TRUE(bin != nullptr);
+    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+}
+
+// ===== record キーワード =====
+
+TEST(ParserTest, RecordKeyword) {
+    Program prog = parseStr("record Point:\n    x: int\n    y: int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Point");
+    EXPECT_EQ(ts.fields.size(), 2u);
+}
+
+// ===== type エイリアス =====
+
+TEST(ParserTest, TypeAlias) {
+    Program prog = parseStr("type MyInt = int");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<TypeAliasStmt>(prog[0]));
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "MyInt");
+    EXPECT_EQ(ta.target_type, "int");
+}
+
+// ===== for k, v in map =====
+
+TEST(ParserTest, ForKVParsing) {
+    Program prog = parseStr("for k, v in m:\n    print(k)");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
+    EXPECT_EQ(fs->var_name, "k");
+    ASSERT_TRUE(fs->var_name2.has_value());
+    EXPECT_EQ(*fs->var_name2, "v");
+}
+
+// ===== .. 演算子 =====
+
+TEST(ParserTest, RangeExpr) {
+    Program prog = parseStr("let xs = 1 .. 5");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    auto *range = std::get_if<std::unique_ptr<RangeExpr>>(&let.value->data);
+    ASSERT_TRUE(range != nullptr);
+}
+
+// ===== ?? 演算子 =====
+
+TEST(ParserTest, NullCoalesceExpr) {
+    Program prog = parseStr("let x = a ?? 0");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&let.value->data);
+    ASSERT_TRUE(bin != nullptr);
+    EXPECT_EQ((*bin)->op, "??");
+}
+
+// ===== none キーワード =====
+
+TEST(ParserTest, NoneExpr) {
+    Program prog = parseStr("let x = none");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &let = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<NoneExpr>(let.value->data));
+}
+
+// ===== 命名規約チェック =====
+
+TEST(ParserTest, SnakeCaseVariableRequired) {
+    EXPECT_THROW(parseStr("let myVar = 1"), std::runtime_error);
+}
+
+TEST(ParserTest, SnakeCaseFunctionRequired) {
+    EXPECT_THROW(parseStr("fn myFunc() -> int:\n    return 1"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseRecordRequired) {
+    EXPECT_THROW(parseStr("record my_point:\n    x: int"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseEnumRequired) {
+    EXPECT_THROW(parseStr("enum my_color:\n    Red\n    Green"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseEnumVariantRequired) {
+    EXPECT_THROW(parseStr("enum Color:\n    red\n    Green"), std::runtime_error);
+}
+
+TEST(ParserTest, PascalCaseTypeAliasRequired) {
+    EXPECT_THROW(parseStr("type my_int = int"), std::runtime_error);
+}
+
+TEST(ParserTest, TypeAliasFnType) {
+    Program prog = parseStr("type Callback = fn(int, int) -> int");
+    auto &ta = std::get<TypeAliasStmt>(prog[0]);
+    EXPECT_EQ(ta.name, "Callback");
+    EXPECT_EQ(ta.target_type, "fn(int, int) -> int");
+}
+
+TEST(ParserTest, SnakeCaseForLoopVariable) {
+    EXPECT_THROW(parseStr("for myVar in xs:\n    print(myVar)"), std::runtime_error);
+}
+
+TEST(ParserTest, SnakeCaseParamRequired) {
+    EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
+}
+
+// ===== expect マッチャー =====
+
+TEST(ParserTest, ExpectToNotEq) {
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_not_eq(2)");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, ExpectToBeSome) {
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_be_some()");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, ExpectToContain) {
+    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_contain(1)");
+    ASSERT_EQ(prog.size(), 1u);
+}
+
+// ===== trailing block syntax =====
+
+TEST(ParserTest, TrailingBlockNoArgs) {
+    Program prog = parseStr("foo():\n    bar()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "foo");
+    ASSERT_EQ(s.args.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[0]->data));
+}
+
+TEST(ParserTest, TrailingBlockWithArgs) {
+    Program prog = parseStr("foo(\"a\", 1):\n    bar()");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "foo");
+    ASSERT_EQ(s.args.size(), 3u);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.args[0]->data));
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.args[1]->data));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[2]->data));
+}
+
+TEST(ParserTest, TrailingBlockNested) {
+    Program prog = parseStr("describe(\"calc\"):\n    it(\"adds\"):\n        expect(1 + 2).to_eq(3)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "describe");
+    ASSERT_EQ(s.args.size(), 2u);
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[1]->data);
+    ASSERT_NE(lambda, nullptr);
+    ASSERT_EQ((*lambda)->body.size(), 1u);
+    // Inner statement should be a CallStmt (it) with trailing block
+    ASSERT_TRUE(std::holds_alternative<CallStmt>((*lambda)->body[0]));
+    const auto &inner = std::get<CallStmt>((*lambda)->body[0]);
+    EXPECT_EQ(inner.callee, "it");
+    ASSERT_EQ(inner.args.size(), 2u);
+}
+
+TEST(ParserTest, TrailingBlockUFCS) {
+    Program prog = parseStr("x.each():\n    print(1)");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
+    const auto &s = std::get<CallStmt>(prog[0]);
+    EXPECT_EQ(s.callee, "each");
+    // First arg is the UFCS receiver (x), second is the trailing lambda
+    ASSERT_EQ(s.args.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.args[0]->data));
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[1]->data));
+}
+
+// ===== @native fn tests =====
+
+TEST(ParserTest, NativeFnDeclaration) {
+    Program prog = parseStr("@native\nfn contains(s: str, sub: str) -> bool\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fs->name, "contains");
+    EXPECT_EQ(fs->params.size(), 2u);
+    EXPECT_EQ(fs->return_type, "bool");
+    EXPECT_TRUE(fs->body.empty());
+    ASSERT_EQ(fs->directives.size(), 1u);
+    EXPECT_EQ(fs->directives[0].name, "native");
+}
+
+TEST(ParserTest, NativeFnOperatorDeclaration) {
+    Program prog = parseStr("@native\nfn operator+(a: int, b: int) -> int\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fs->name, "operator+");
+    EXPECT_TRUE(fs->is_operator);
+    EXPECT_TRUE(fs->body.empty());
+    ASSERT_EQ(fs->directives.size(), 1u);
+    EXPECT_EQ(fs->directives[0].name, "native");
+}
+
+TEST(ParserTest, EllipsisTopLevel) {
+    Program prog = parseStr("...");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(prog[0]));
+}
+
+TEST(ParserTest, EllipsisInFnBody) {
+    Program prog = parseStr("fn stub():\n    ...\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fs->body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(fs->body[0]));
+}
+
+TEST(ParserTest, EllipsisInIfBody) {
+    Program prog = parseStr("if true:\n    ...\n");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &is = std::get<std::unique_ptr<IfStmt>>(prog[0]);
+    ASSERT_EQ(is->branches.size(), 1u);
+    ASSERT_EQ(is->branches[0].body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(is->branches[0].body[0]));
+}
+
+TEST(ParserTest, NativeFnWithColonError) {
+    EXPECT_THROW({
+        parseStr("@native\nfn bad() -> int:\n    return 1\n");
+    }, std::runtime_error);
 }

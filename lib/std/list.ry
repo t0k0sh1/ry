@@ -1,0 +1,37 @@
+# List operations
+
+@native
+fn append(xs: List<int>, val: int) -> Unit
+
+@native
+fn pop(xs: List<int>) -> int
+
+@native
+fn insert(xs: List<int>, index: int, val: int) -> Unit
+
+@native
+fn remove_at(xs: List<int>, index: int) -> Unit
+
+@native
+fn slice(xs: List<int>, start: int, end: int) -> List<int>
+
+@native
+fn distinct(xs: List<int>) -> List<int>
+
+@native
+fn flatten(xs: List<int>) -> List<int>
+
+@native
+fn sort(xs: List<int>) -> List<int>
+
+@native
+fn sort(xs: List<int>, comp: fn(int, int) -> bool) -> List<int>
+
+@native
+fn first(xs: List<int>) -> int
+
+@native
+fn last(xs: List<int>) -> int
+
+@native
+fn is_empty(xs: List<int>) -> bool

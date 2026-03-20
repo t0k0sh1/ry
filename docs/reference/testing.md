@@ -9,10 +9,19 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 ## Running Tests
 
 ```bash
-ry test test_file.ry
+ry test              # Auto-discover and run all *.test.ry files in the project
+ry test test_file.ry # Run a specific test file
 ```
 
-The exit code is the number of failed tests (0 = all passed).
+The exit code is 0 if all tests passed, 1 if any test failed.
+
+### Auto-Discovery Mode
+
+When `ry test` is run without arguments, it:
+
+1. Searches for `ry.toml` to find the project root
+2. Recursively discovers all `*.test.ry` files under the project root (`.git`, `build`, `node_modules` are skipped)
+3. Runs each file and aggregates results
 
 ---
 
@@ -21,24 +30,42 @@ The exit code is the number of failed tests (0 = all passed).
 ### describe / it
 
 ```
-describe "description":
-    it "test case name":
+describe("description"):
+    it("test case name"):
         # test body
         expect(actual_value).to_eq(expected_value)
 ```
 
-- Only `it` blocks can be written inside a `describe` block
+- `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda passed as the last argument
+- `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
+
+### Trailing Block Syntax
+
+Any function call can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
+
+```
+# These are equivalent:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / Matchers
 
 | Matcher | Description | Supported Types |
 |---|---|---|
 | `to_eq(expected)` | Equality comparison | int, float, bool, str |
+| `to_not_eq(expected)` | Asserts not equal | int, float, bool, str |
 | `to_be_true()` | Asserts `true` | bool |
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
+| `to_be_some()` | Asserts Option is `Some` | Option |
+| `to_contain(val)` | Asserts container includes value | List, Set, str |
 
 ---
 
@@ -62,20 +89,65 @@ Calculator
 ## Example
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
+
+---
+
+## Mocking
+
+### mock(fn_name, replacement)
+
+Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- The first argument is the function name (identifier, not a string)
+- The second argument is a replacement lambda
+- The replacement must have the same parameter types and return type as the original function
+- Mocks are automatically restored at the end of each `it` block
+
+### verify(fn_name)
+
+Returns the number of times a mocked function was called (as `int`).
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### Limitations
+
+- Overloaded functions cannot be mocked
+- Capture-based closures cannot be used as replacements (use plain lambdas)
+- `@native fn` functions cannot be mocked
 
 ---
 
@@ -83,4 +155,3 @@ describe "Booleans":
 
 - Nesting of `describe` is not supported
 - `before_each` / `after_each` are not supported
-- Glob execution of test files (`ry test tests/`) is not supported

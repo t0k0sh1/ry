@@ -39,10 +39,13 @@ jobs:
       - name: Package
         if: env.SKIP != 'true'
         run: |
-          mkdir -p dist
+          mkdir -p dist/lib/std
           cp build/ry dist/ry
+          cp lib/std/*.ry dist/lib/std/
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "{\"version\":\"$VERSION\",\"files\":[$(cd lib/std && ls *.ry | sed 's/.*/"&"/' | paste -sd, -)]}" > dist/lib/std/manifest.json
           cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry lib/
           shasum -a 256 ry-*.tar.gz > checksums.txt
       - name: Create Release
         if: env.SKIP != 'true'

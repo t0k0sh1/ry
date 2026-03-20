@@ -1,7 +1,9 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <stdexcept>
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
+    if (node.loc.isValid()) current_loc_ = node.loc;
     return std::visit([this](const auto &e) -> llvm::Value* { return emitExprVariant(e); },
                       node.data);
 }
@@ -25,12 +27,16 @@ llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     llvm::AllocaInst *alloca = findVar(e.name);
     if (alloca) {
+        if (deprecated_variables_.count(e.name))
+            emitDeprecationWarning(e.name);
         llvm::Type *ty = alloca->getAllocatedType();
         return builder_.CreateLoad(ty, alloca, e.name);
     }
     // Try named function reference
     auto fit = functions_.find(e.name);
     if (fit != functions_.end() && fit->second.size() == 1) {
+        if (deprecated_functions_.count(e.name))
+            emitDeprecationWarning(e.name);
         llvm::Function *func = fit->second[0].func;
         FnTypeInfo info;
         info.paramTypes = fit->second[0].paramTypes;
@@ -38,7 +44,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         fn_type_info_[func] = info;
         return func;
     }
-    throw std::runtime_error("undefined variable: " + e.name);
+    codegenError("undefined variable: " + e.name);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
@@ -64,11 +70,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     }
     if (e->op == "~") {
         if (val->getType()->isDoubleTy())
-            throw std::runtime_error("bitwise NOT (~) requires integer, got float");
+            codegenError("bitwise NOT (~) requires integer, got float");
         val = promoteToInt(val);
         return builder_.CreateNot(val, "bnot");
     }
-    throw std::runtime_error("unknown unary operator: " + e->op);
+    codegenError("unknown unary operator: " + e->op);
 }
 
 // ===== Operator overload helpers =====
@@ -116,6 +122,20 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+    // Option type comparison with none: check has_value flag only
+    // Only allowed when at least one side is Option and both sides are Option
+    // (none is also an Option value with has_value=false)
+    bool lhsIsOpt = isOptionType(lhs->getType());
+    bool rhsIsOpt = isOptionType(rhs->getType());
+    if (lhsIsOpt && rhsIsOpt && (op == "==" || op == "!=")) {
+        // Only support comparison with none (has_value == false on one side)
+        // Extract has_value flags from both
+        llvm::Value *lhsFlag = builder_.CreateExtractValue(lhs, 0, "lhs_has");
+        llvm::Value *rhsFlag = builder_.CreateExtractValue(rhs, 0, "rhs_has");
+        if (op == "==") return builder_.CreateICmpEQ(lhsFlag, rhsFlag, "opt_eq");
+        return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
+    }
+
     // String comparison via strcmp
     if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
         auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
@@ -128,7 +148,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         if (op == "<=") return builder_.CreateICmpSLE(cmp, zero, "str_le");
         if (op == ">")  return builder_.CreateICmpSGT(cmp, zero, "str_gt");
         if (op == ">=") return builder_.CreateICmpSGE(cmp, zero, "str_ge");
-        throw std::runtime_error("unsupported string comparison: " + op);
+        codegenError("unsupported string comparison: " + op);
     }
 
     lhs = promoteToInt(lhs);
@@ -157,17 +177,9 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
 }
 
-llvm::Value *CodeGen::emitLogicalOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
-    llvm::Value *lhsBool = toBool(lhs);
-    llvm::Value *rhsBool = toBool(rhs);
-    if (op == "and")
-        return builder_.CreateAnd(lhsBool, rhsBool, "and");
-    return builder_.CreateOr(lhsBool, rhsBool, "or");
-}
-
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy())
-        throw std::runtime_error(
+        codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
@@ -176,7 +188,8 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     if (op == "^")  return builder_.CreateXor(lhs, rhs,  "bxor");
     if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl");
     if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr");
-    throw std::runtime_error("unknown bitwise operator: " + op);
+    if (op == ">>>") return builder_.CreateLShr(lhs, rhs, "lshr");
+    codegenError("unknown bitwise operator: " + op);
 }
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
@@ -214,6 +227,84 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         builder_.CreateCall(strcpyFn, {buf, lhs});
         builder_.CreateCall(strcatFn, {buf, rhs});
         return buf;
+    }
+
+    // String repetition: "ab" * 3 or 3 * "ab"
+    if (op == "*") {
+        llvm::Value *strVal = nullptr;
+        llvm::Value *intVal = nullptr;
+        if (lhs->getType() == ptrTy_ && rhs->getType()->isIntegerTy()) {
+            strVal = lhs; intVal = rhs;
+        } else if (rhs->getType() == ptrTy_ && lhs->getType()->isIntegerTy()) {
+            strVal = rhs; intVal = lhs;
+        }
+        if (strVal) {
+            if (intVal->getType() == i1Ty_)
+                intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
+            else if (intVal->getType() == i8Ty_)
+                intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
+
+            auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+            auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *strLen = builder_.CreateCall(strlenFn, {strVal}, "str_len");
+
+            // If n <= 0, return empty string
+            llvm::Value *nPos = builder_.CreateICmpSGT(intVal, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
+
+            llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
+            llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "str_rep.repeat", fn_);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "str_rep.merge", fn_);
+
+            builder_.CreateCondBr(nPos, repeatBB, emptyBB);
+
+            // Empty case: return ""
+            builder_.SetInsertPoint(emptyBB);
+            llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
+            builder_.CreateBr(mergeBB);
+
+            // Repeat case
+            builder_.SetInsertPoint(repeatBB);
+            llvm::Value *totalLen = builder_.CreateMul(strLen, intVal, "total_len");
+            llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
+            llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rep_buf");
+
+            // Loop: copy strVal into buf n times
+            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
+            llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "str_rep.done", fn_);
+
+            builder_.CreateBr(loopBB);
+            builder_.SetInsertPoint(loopBB);
+
+            llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
+            i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
+
+            llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
+            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
+            builder_.CreateCall(memcpyFn, {dst, strVal, strLen});
+
+            llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            i->addIncoming(iNext, loopBB);
+            llvm::Value *cond = builder_.CreateICmpSLT(iNext, intVal, "loop_cond");
+            builder_.CreateCondBr(cond, loopBB, doneBB);
+
+            builder_.SetInsertPoint(doneBB);
+            // Null-terminate
+            llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {totalLen}, "end_ptr");
+            builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+            builder_.CreateBr(mergeBB);
+
+            // Merge
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
+            result->addIncoming(emptyStr, emptyBB);
+            result->addIncoming(buf, doneBB);
+            return result;
+        }
     }
 
     // // 整数除算: f64入力はi64に変換してからsdiv
@@ -254,26 +345,150 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (op == "+") return builder_.CreateFAdd(lhs, rhs, "fadd");
         if (op == "-") return builder_.CreateFSub(lhs, rhs, "fsub");
         if (op == "*") return builder_.CreateFMul(lhs, rhs, "fmul");
-        throw std::runtime_error("unknown operator: " + op);
+        codegenError("unknown operator: " + op);
     }
     if (op == "+") return builder_.CreateAdd(lhs, rhs, "add");
     if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
     if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
-    throw std::runtime_error("unknown operator: " + op);
+    codegenError("unknown operator: " + op);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
-    // Handle 'in' operator: lhs in rhs (rhs is set)
-    if (e->op == "in") {
+    // Handle 'in' / 'not in' operator: lhs in rhs (set, list, or map)
+    if (e->op == "in" || e->op == "not in") {
         llvm::Value *elem = emitExpr(*e->lhs);
-        llvm::Value *setVal = emitExpr(*e->rhs);
-        llvm::Type *elemTy = getSetElementType(setVal);
-        if (!elemTy)
-            throw std::runtime_error("'in' operator requires a set on the right side");
-        if (elem->getType() != elemTy)
-            throw std::runtime_error("'in' operator: element type mismatch");
-        llvm::Value *idx = emitSetElementLookup(setVal, elem, elemTy);
-        return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+        llvm::Value *container = emitExpr(*e->rhs);
+
+        // Try set
+        llvm::Type *setElemTy = getSetElementType(container);
+        if (setElemTy) {
+            if (elem->getType() != setElemTy)
+                codegenError("'" + e->op + "' operator: element type mismatch");
+            llvm::Value *idx = emitSetElementLookup(container, elem, setElemTy);
+            llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "set_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "set_not_in");
+            return result;
+        }
+
+        // Try map (key lookup)
+        llvm::Type *mapKeyTy = getMapKeyType(container);
+        if (mapKeyTy) {
+            if (elem->getType() != mapKeyTy)
+                codegenError("'" + e->op + "' operator: key type mismatch");
+            llvm::Value *idx = emitMapKeyLookup(container, elem, mapKeyTy);
+            llvm::Value *result = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "map_in");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "map_not_in");
+            return result;
+        }
+
+        // Try list (linear search)
+        llvm::Type *listElemTy = getListElementType(container);
+        if (listElemTy) {
+            if (elem->getType() != listElemTy)
+                codegenError("'" + e->op + "' operator: element type mismatch");
+
+            // Linear search loop
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, container, 0, "in_len_ptr");
+            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "in_length");
+            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, container, 2, "in_data_ptr");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "in_data");
+
+            llvm::AllocaInst *foundVar = builder_.CreateAlloca(i1Ty_, nullptr, "in_found");
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), foundVar);
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "in_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "in.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "in.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "in.end", fn_);
+
+            builder_.CreateBr(condBB);
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "in_iv");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "in_cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "in_ic");
+            llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, dataPtr, {iCur}, "in_elem_ptr");
+            llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "in_elem");
+
+            llvm::Value *match;
+            if (listElemTy == ptrTy_) {
+                // String comparison
+                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {elem, listElem}, "in_strcmp");
+                match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "in_match");
+            } else if (listElemTy->isDoubleTy()) {
+                match = builder_.CreateFCmpOEQ(elem, listElem, "in_match");
+            } else {
+                match = builder_.CreateICmpEQ(elem, listElem, "in_match");
+            }
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "in.found", fn_);
+            llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "in.next", fn_);
+            builder_.CreateCondBr(match, foundBB, nextBB);
+
+            builder_.SetInsertPoint(foundBB);
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(nextBB);
+            llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "in_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            llvm::Value *result = builder_.CreateLoad(i1Ty_, foundVar, "in_result");
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "list_not_in");
+            return result;
+        }
+
+        codegenError("'" + e->op + "' operator requires a set, list, or map on the right side");
+    }
+
+    // Short-circuit evaluation for 'and' / 'or'
+    if (e->op == "and" || e->op == "or") {
+        llvm::Value *lhs = emitExpr(*e->lhs);
+        llvm::Value *lhsBool = toBool(lhs);
+
+        llvm::BasicBlock *rhsBB = llvm::BasicBlock::Create(*ctx_, "sc.rhs", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sc.merge", fn_);
+        llvm::BasicBlock *lhsBB = builder_.GetInsertBlock();
+
+        if (e->op == "and")
+            builder_.CreateCondBr(lhsBool, rhsBB, mergeBB);
+        else
+            builder_.CreateCondBr(lhsBool, mergeBB, rhsBB);
+
+        builder_.SetInsertPoint(rhsBB);
+        llvm::Value *rhs = emitExpr(*e->rhs);
+        llvm::Value *rhsBool = toBool(rhs);
+        llvm::BasicBlock *rhsEndBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, e->op);
+        phi->addIncoming(lhsBool, lhsBB);
+        phi->addIncoming(rhsBool, rhsEndBB);
+        return phi;
+    }
+
+    // Null coalescing operator: lhs ?? rhs
+    if (e->op == "??") {
+        llvm::Value *lhs = emitExpr(*e->lhs);
+        if (!isOptionType(lhs->getType()))
+            codegenError("'" "??" "' operator requires Option type on the left side");
+        llvm::Value *hasVal = builder_.CreateExtractValue(lhs, {0}, "has_val");
+        llvm::Value *innerVal = builder_.CreateExtractValue(lhs, {1}, "inner_val");
+        llvm::Value *rhs = emitExpr(*e->rhs);
+        if (rhs->getType() != innerVal->getType())
+            codegenError("'" "??" "' operator: right-hand side type must match Option's inner type");
+        return builder_.CreateSelect(hasVal, innerVal, rhs, "coalesce");
     }
 
     llvm::Value *lhs = emitExpr(*e->lhs);
@@ -289,33 +504,37 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         op == "<=" || op == ">"  || op == ">=")
         return emitComparisonOp(op, lhs, rhs);
 
-    if (op == "and" || op == "or")
-        return emitLogicalOp(op, lhs, rhs);
-
     if (op == "&" || op == "|" || op == "^" ||
-        op == "<<" || op == ">>")
+        op == "<<" || op == ">>" || op == ">>>")
         return emitBitwiseOp(op, lhs, rhs);
 
     return emitArithmeticOp(op, lhs, rhs);
 }
 
-void CodeGen::emitStmt(TypeStmt &s) {
+void CodeGen::emitStmt(RecordStmt &s) {
     if (struct_types_.count(s.name))
-        throw std::runtime_error("redefined type: " + s.name);
+        codegenError("redefined type: " + s.name);
 
     std::vector<llvm::Type*> fieldTypes;
     for (auto &f : s.fields)
         fieldTypes.push_back(resolveType(f.type));
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
-    struct_types_[s.name] = {structTy, s.fields};
+    struct_types_[s.name] = {structTy, s.fields, std::move(s.invariants)};
+
+    if (hasDirective(s.directives, "deprecated"))
+        deprecated_types_.insert(s.name);
+    for (auto &f : s.fields) {
+        if (hasDirective(f.directives, "deprecated"))
+            deprecated_fields_.insert(s.name + "." + f.name);
+    }
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
                                              const std::string &name,
                                              const std::vector<ExprPtr> &args) {
     if (args.size() != info.fields.size())
-        throw std::runtime_error("type '" + name + "': expected " +
+        codegenError("type '" + name + "': expected " +
                                  std::to_string(info.fields.size()) + " arguments, got " +
                                  std::to_string(args.size()));
 
@@ -325,10 +544,14 @@ llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
         llvm::Value *val = emitExpr(*args[i]);
         llvm::Type *expectedTy = info.llvmType->getElementType(i);
         if (val->getType() != expectedTy)
-            throw std::runtime_error("type '" + name + "': field '" + info.fields[i].name +
+            codegenError("type '" + name + "': field '" + info.fields[i].name +
                                      "' type mismatch");
         result = builder_.CreateInsertValue(result, val, i);
     }
+
+    // Check invariants after construction
+    if (!info.invariants.empty())
+        emitInvariantCheck(name, info, result);
 
     return result;
 }
@@ -339,28 +562,41 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(objTy);
     if (!structTy)
-        throw std::runtime_error("field access on non-struct type");
+        codegenError("field access on non-struct type");
+
+    // Error type field access: .message (idx 0), .code (idx 1)
+    if (structTy == errorTy_) {
+        if (e->field == "message")
+            return builder_.CreateExtractValue(obj, 0, "err.message");
+        if (e->field == "code")
+            return builder_.CreateExtractValue(obj, 1, "err.code");
+        codegenError("Error type has no field '" + e->field + "'");
+    }
 
     // Numeric index access for tuples (.0, .1, ...)
     if (!e->field.empty() && std::isdigit(static_cast<unsigned char>(e->field[0]))) {
         unsigned idx = std::stoul(e->field);
         if (idx >= structTy->getNumElements())
-            throw std::runtime_error("tuple index " + e->field + " out of range");
+            codegenError("tuple index " + e->field + " out of range");
         return builder_.CreateExtractValue(obj, idx, "tuple." + e->field);
     }
 
     std::string typeName = structTy->getName().str();
     auto it = struct_types_.find(typeName);
     if (it == struct_types_.end())
-        throw std::runtime_error("unknown struct type: " + typeName);
+        codegenError("unknown struct type: " + typeName);
 
     const auto &info = it->second;
     for (unsigned i = 0; i < info.fields.size(); ++i) {
-        if (info.fields[i].name == e->field)
+        if (info.fields[i].name == e->field) {
+            std::string qualifiedField = typeName + "." + e->field;
+            if (deprecated_fields_.count(qualifiedField))
+                emitDeprecationWarning(qualifiedField);
             return builder_.CreateExtractValue(obj, i, e->field);
+        }
     }
 
-    throw std::runtime_error("type '" + typeName + "' has no field '" + e->field + "'");
+    codegenError("type '" + typeName + "' has no field '" + e->field + "'");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
@@ -380,7 +616,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     if (e->elements.empty())
-        throw std::runtime_error("empty list literal requires type annotation (not yet supported)");
+        codegenError("empty list literal requires type annotation (not yet supported)");
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
@@ -391,7 +627,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     llvm::Type *elemTy = vals[0]->getType();
     for (size_t i = 1; i < vals.size(); ++i) {
         if (vals[i]->getType() != elemTy)
-            throw std::runtime_error("list elements must all have the same type");
+            codegenError("list elements must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -431,12 +667,30 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     // Track element type
     list_element_types_[headerPtr] = elemTy;
 
+    // Track nested list element type (for flatten support)
+    // Only set if ALL elements are lists with the same inner element type
+    if (elemTy == ptrTy_) {
+        llvm::Type *innerElemTy = getListElementType(vals[0]);
+        if (innerElemTy) {
+            bool allMatch = true;
+            for (size_t i = 1; i < vals.size(); ++i) {
+                llvm::Type *otherInner = getListElementType(vals[i]);
+                if (!otherInner || otherInner != innerElemTy) {
+                    allMatch = false;
+                    break;
+                }
+            }
+            if (allMatch)
+                nested_list_element_types_[headerPtr] = innerElemTy;
+        }
+    }
+
     return headerPtr;
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     if (e->keys.empty())
-        throw std::runtime_error("empty map literal requires type annotation");
+        codegenError("empty map literal requires type annotation");
 
     // Evaluate all keys and values
     std::vector<llvm::Value*> keyVals, valVals;
@@ -447,14 +701,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     llvm::Type *keyTy = keyVals[0]->getType();
     for (size_t i = 1; i < keyVals.size(); ++i) {
         if (keyVals[i]->getType() != keyTy)
-            throw std::runtime_error("map keys must all have the same type");
+            codegenError("map keys must all have the same type");
     }
 
     // Check all values have the same type
     llvm::Type *valTy = valVals[0]->getType();
     for (size_t i = 1; i < valVals.size(); ++i) {
         if (valVals[i]->getType() != valTy)
-            throw std::runtime_error("map values must all have the same type");
+            codegenError("map values must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(keyVals.size());
@@ -539,7 +793,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     if (e->elements.empty()) {
         // Empty set — requires type annotation (handled in emitVarDecl)
         // If reached here directly, error
-        throw std::runtime_error("empty set literal requires type annotation");
+        codegenError("empty set literal requires type annotation");
     }
 
     // Evaluate all elements
@@ -551,7 +805,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     llvm::Type *elemTy = vals[0]->getType();
     for (size_t i = 1; i < vals.size(); ++i) {
         if (vals[i]->getType() != elemTy)
-            throw std::runtime_error("set elements must all have the same type");
+            codegenError("set elements must all have the same type");
     }
 
     int64_t count = static_cast<int64_t>(vals.size());
@@ -617,12 +871,50 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
+    // Try to instantiate generic enum if not found
+    if (!enum_types_.count(e.enum_name)) {
+        auto ltPos = e.enum_name.find('<');
+        if (ltPos != std::string::npos && e.enum_name.back() == '>') {
+            std::string baseName = e.enum_name.substr(0, ltPos);
+            std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
+            std::vector<std::string> typeArgs;
+            std::string curr;
+            int depth = 0;
+            for (char c : argsStr) {
+                if (c == '<') depth++;
+                else if (c == '>') depth--;
+                else if (c == ',' && depth == 0) {
+                    typeArgs.push_back(curr);
+                    curr.clear();
+                    continue;
+                }
+                curr += c;
+            }
+            if (!curr.empty()) typeArgs.push_back(curr);
+            instantiateGenericEnum(e.enum_name, baseName, typeArgs);
+        }
+    }
     auto it = enum_types_.find(e.enum_name);
     if (it == enum_types_.end())
-        throw std::runtime_error("undefined enum: " + e.enum_name);
+        codegenError("undefined enum: " + e.enum_name);
     auto vit = it->second.variants.find(e.variant_name);
     if (vit == it->second.variants.end())
-        throw std::runtime_error("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
+        codegenError("enum '" + e.enum_name + "' has no variant '" + e.variant_name + "'");
+
+    if (it->second.isADT) {
+        // Reject access to payload-carrying variants without arguments
+        auto fit = it->second.variantFields.find(e.variant_name);
+        if (fit != it->second.variantFields.end() && !fit->second.fieldTypes.empty())
+            codegenError("variant '" + e.enum_name + "::" + e.variant_name +
+                "' requires " + std::to_string(fit->second.fieldTypes.size()) +
+                " argument(s); use '" + e.enum_name + "::" + e.variant_name + "(...)' instead");
+        // ADT enum: create struct { tag, zero-payload } for data-less variants
+        llvm::Value *adtVal = llvm::UndefValue::get(it->second.adtType);
+        adtVal = builder_.CreateInsertValue(adtVal, llvm::ConstantInt::get(i64Ty_, vit->second), 0, "adt.tag");
+        enum_value_types_[adtVal] = e.enum_name;
+        return adtVal;
+    }
+
     llvm::Value *val = llvm::ConstantInt::get(i64Ty_, vit->second);
     enum_value_types_[val] = e.enum_name;
     return val;
@@ -634,18 +926,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *index = emitExpr(*e->index);
 
     if (objPtr->getType() != ptrTy_)
-        throw std::runtime_error("index operator requires list or map");
+        codegenError("index operator requires list or map");
 
     // Check if this is a map
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
         llvm::Type *mapValTy = getMapValueType(objPtr);
         if (!mapValTy)
-            throw std::runtime_error("cannot determine map value type");
+            codegenError("cannot determine map value type");
 
         // Check key type matches
         if (index->getType() != mapKeyTy)
-            throw std::runtime_error("map key type mismatch");
+            codegenError("map key type mismatch");
 
         // Lookup key
         llvm::Value *idx = emitMapKeyLookup(objPtr, index, mapKeyTy);
@@ -673,7 +965,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     // List index access
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
-        throw std::runtime_error("cannot determine list element type for index access");
+        codegenError("cannot determine list element type for index access");
 
     if (index->getType() == i1Ty_)
         index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
@@ -698,5 +990,358 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
     return builder_.CreateLoad(elemTy, elemPtr, "elem");
+}
+
+// ===== Contract expression variants =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<OldExpr> &e) {
+    if (!in_ensure_context_)
+        codegenError("old() can only be used in ensure clause");
+    auto it = old_value_map_.find(e.get());
+    if (it == old_value_map_.end())
+        codegenError("old() value not found (internal error)");
+    llvm::AllocaInst *alloca = it->second;
+    return builder_.CreateLoad(alloca->getAllocatedType(), alloca, "old_load");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
+    if (!in_ensure_context_)
+        codegenError("result can only be used in ensure clause");
+    if (!result_alloca_)
+        codegenError("result used in void function");
+    llvm::Type *ty = result_alloca_->getAllocatedType();
+    return builder_.CreateLoad(ty, result_alloca_, "result_load");
+}
+
+llvm::Value *CodeGen::valueToString(llvm::Value *val) {
+    llvm::Type *ty = val->getType();
+
+    if (ty->isPointerTy()) {
+        // Reject non-string pointer types (collections, function pointers)
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+            llvm::Value *src = load->getPointerOperand();
+            if (list_element_types_.count(src) || map_key_types_.count(src) ||
+                set_element_types_.count(src))
+                codegenError("cannot convert collection to string");
+        }
+        if (fn_type_info_.count(val))
+            codegenError("cannot convert function to string");
+        return val; // string pointer
+    }
+
+    auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    auto snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
+
+    if (ty == i1Ty_) {
+        llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".vts_true");
+        llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".vts_false");
+        return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
+    }
+    if (ty->isDoubleTy()) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_float_fmt");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
+        return buf;
+    }
+    if (ty == i8Ty_) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
+        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        return buf;
+    }
+    // default: int (i64)
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+    llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
+    builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+    return buf;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
+    llvm::Value *val = emitExpr(*e->value);
+    llvm::Type *srcTy = val->getType();
+    const std::string &target = e->target_type;
+
+    if (target == "float") {
+        if (srcTy->isDoubleTy()) return val;
+        if (srcTy == i1Ty_) val = builder_.CreateZExt(val, i64Ty_, "bool_ext");
+        else if (srcTy == i8Ty_) val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
+        if (val->getType()->isIntegerTy())
+            return builder_.CreateSIToFP(val, f64Ty_, "cast_f");
+        codegenError("cannot cast to float");
+    }
+    if (target == "int") {
+        if (srcTy == i64Ty_) return val;
+        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
+        if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        if (srcTy == i8Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        codegenError("cannot cast to int");
+    }
+    if (target == "bool") {
+        if (srcTy == i1Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i64Ty_, 0), "cast_b");
+        if (srcTy == i8Ty_) return builder_.CreateICmpNE(val, llvm::ConstantInt::get(i8Ty_, 0), "cast_b");
+        if (srcTy->isDoubleTy()) return builder_.CreateFCmpONE(val, llvm::ConstantFP::get(f64Ty_, 0.0), "cast_b");
+        codegenError("cannot cast to bool");
+    }
+    if (target == "str") {
+        return valueToString(val);
+    }
+    if (target == "byte") {
+        if (srcTy == i8Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i8Ty_, "cast_byte");
+        if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
+        codegenError("cannot cast to byte");
+    }
+    codegenError("unsupported cast target type: " + target);
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
+    // Convert each expression to string
+    std::vector<llvm::Value*> strParts;
+    for (size_t i = 0; i < e->parts.size(); ++i) {
+        if (!e->parts[i].empty())
+            strParts.push_back(builder_.CreateGlobalString(e->parts[i], ".fstr_lit"));
+        else
+            strParts.push_back(nullptr); // empty literal segment
+        if (i < e->exprs.size()) {
+            llvm::Value *exprVal = emitExpr(*e->exprs[i]);
+            strParts.push_back(valueToString(exprVal));
+        }
+    }
+
+    // Compute total length
+    auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+    auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
+    std::vector<llvm::Value*> lengths;
+    for (auto *sp : strParts) {
+        if (sp) {
+            llvm::Value *len = builder_.CreateCall(strlenFn, {sp}, "fstr_len");
+            lengths.push_back(len);
+            totalLen = builder_.CreateAdd(totalLen, len, "fstr_total");
+        } else {
+            lengths.push_back(llvm::ConstantInt::get(i64Ty_, 0));
+        }
+    }
+
+    // Allocate result buffer
+    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "fstr_bufsize");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "fstr_buf");
+
+    // Copy segments
+    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
+    for (size_t i = 0; i < strParts.size(); ++i) {
+        if (strParts[i]) {
+            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_dst");
+            builder_.CreateCall(memcpyFn, {dst, strParts[i], lengths[i]});
+            offset = builder_.CreateAdd(offset, lengths[i], "fstr_off");
+        }
+    }
+
+    // Null-terminate
+    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "fstr_end");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+
+    return buf;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
+    llvm::Value *cond = emitExpr(*e->condition);
+    cond = toBool(cond);
+
+    llvm::BasicBlock *trueBB = llvm::BasicBlock::Create(*ctx_, "ternary.true", fn_);
+    llvm::BasicBlock *falseBB = llvm::BasicBlock::Create(*ctx_, "ternary.false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ternary.merge", fn_);
+
+    builder_.CreateCondBr(cond, trueBB, falseBB);
+
+    builder_.SetInsertPoint(trueBB);
+    llvm::Value *trueVal = emitExpr(*e->true_expr);
+    llvm::BasicBlock *trueEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(falseBB);
+    llvm::Value *falseVal = emitExpr(*e->false_expr);
+    llvm::BasicBlock *falseEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+
+    if (trueVal->getType() != falseVal->getType())
+        codegenError("ternary expression: both branches must have the same type");
+
+    // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
+    if (trueVal->getType() == ptrTy_) {
+        enum class SemanticKind { Str, List, Map, Set, Other };
+        auto classify = [&](llvm::Value *v) -> SemanticKind {
+            if (list_element_types_.count(v)) return SemanticKind::List;
+            if (map_key_types_.count(v)) return SemanticKind::Map;
+            if (set_element_types_.count(v)) return SemanticKind::Set;
+            return SemanticKind::Str;
+        };
+        SemanticKind trueKind = classify(trueVal);
+        SemanticKind falseKind = classify(falseVal);
+        if (trueKind != falseKind)
+            codegenError("ternary expression: both branches must have the same type");
+
+        // For List, check element types match
+        if (trueKind == SemanticKind::List) {
+            llvm::Type *trueElem = list_element_types_[trueVal];
+            llvm::Type *falseElem = list_element_types_[falseVal];
+            if (trueElem != falseElem)
+                codegenError("ternary expression: both branches must have the same type");
+        }
+    }
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
+    phi->addIncoming(trueVal, trueEndBB);
+    phi->addIncoming(falseVal, falseEndBB);
+
+    // Propagate semantic type metadata to the PHI result
+    if (list_element_types_.count(trueVal))
+        list_element_types_[phi] = list_element_types_[trueVal];
+    if (map_key_types_.count(trueVal)) {
+        map_key_types_[phi] = map_key_types_[trueVal];
+        map_value_types_[phi] = map_value_types_[trueVal];
+    }
+    if (set_element_types_.count(trueVal))
+        set_element_types_[phi] = set_element_types_[trueVal];
+
+    return phi;
+}
+
+// ===== TypeAliasStmt =====
+
+void CodeGen::emitStmt(TypeAliasStmt &s) {
+    // Type aliases are resolved at compile time via resolveType()
+    // Store the alias mapping for later lookup
+    type_aliases_[s.name] = s.target_type;
+}
+
+// ===== RangeExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
+    llvm::Value *startVal = emitExpr(*e->start);
+    llvm::Value *endVal = emitExpr(*e->end);
+
+    if (startVal->getType() != i64Ty_ || endVal->getType() != i64Ty_)
+        codegenError("range (..) operator requires int operands");
+
+    // Calculate length: end - start + 1 (inclusive range)
+    llvm::Value *diff = builder_.CreateSub(endVal, startVal, "range_diff");
+    llvm::Value *length = builder_.CreateAdd(diff, llvm::ConstantInt::get(i64Ty_, 1), "range_len");
+
+    // Clamp negative length to 0
+    llvm::Value *isNeg = builder_.CreateICmpSLT(length, llvm::ConstantInt::get(i64Ty_, 0), "len_neg");
+    length = builder_.CreateSelect(isNeg, llvm::ConstantInt::get(i64Ty_, 0), length, "range_len_clamped");
+
+    // Allocate list: header + data
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+    uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+
+    llvm::Value *headerPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_hdr");
+    llvm::Value *dataSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "data_size");
+    llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
+
+    // Store header: len, cap, data
+    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(dataPtr, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+
+    // Fill data with start..end
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "range.body", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "range.end", fn_);
+
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "range_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "range_cond");
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
+    llvm::Value *val = builder_.CreateAdd(startVal, curI, "range_val");
+    llvm::Value *elemPtr = builder_.CreateGEP(i64Ty_, dataPtr, {curI}, "range_elem_ptr");
+    builder_.CreateStore(val, elemPtr);
+    llvm::Value *nextI = builder_.CreateAdd(curI, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+    builder_.CreateStore(nextI, iVar);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
+    list_element_types_[headerPtr] = i64Ty_;
+    return headerPtr;
+}
+
+// ===== NoneExpr =====
+
+llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
+    // Build a None value for the expected Option type
+    // The type will be inferred from context (assignment, comparison, etc.)
+    // Default to Option<int> if no context is available
+    llvm::StructType *optTy = getOptionType(i64Ty_);
+    return buildNoneValue(optTy);
+}
+
+// ===== ErrorPropagateExpr (!!) =====
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e) {
+    llvm::Value *tuple = emitExpr(*e->operand);
+    llvm::Type *tupleTy = tuple->getType();
+
+    // Verify operand is a 2-element struct (tuple)
+    auto *structTy = llvm::dyn_cast<llvm::StructType>(tupleTy);
+    if (!structTy || structTy->getNumElements() != 2)
+        codegenError("!! operator requires a (T, Error?) tuple");
+
+    // Verify second element is Option<Error>
+    llvm::StructType *errOptTy = getOptionType(errorTy_);
+    if (structTy->getElementType(1) != errOptTy)
+        codegenError("!! operator requires second tuple element to be Error?");
+
+    // Verify current function returns (X, Error?)
+    if (!fn_)
+        codegenError("!! operator can only be used inside a function");
+    llvm::Type *retTy = fn_->getReturnType();
+    auto *retStructTy = llvm::dyn_cast<llvm::StructType>(retTy);
+    if (!retStructTy || retStructTy->getNumElements() != 2 ||
+        retStructTy->getElementType(1) != errOptTy)
+        codegenError("!! operator requires enclosing function to return (T, Error?)");
+
+    // Extract the error option (second element)
+    llvm::Value *errOpt = builder_.CreateExtractValue(tuple, 1, "err_opt");
+    llvm::Value *hasErr = builder_.CreateExtractValue(errOpt, 0, "has_err");
+
+    llvm::BasicBlock *propagateBB = llvm::BasicBlock::Create(*ctx_, "propagate", fn_);
+    llvm::BasicBlock *continueBB = llvm::BasicBlock::Create(*ctx_, "continue", fn_);
+
+    builder_.CreateCondBr(hasErr, propagateBB, continueBB);
+
+    // Propagate: build (zero_T, errOpt) and return
+    builder_.SetInsertPoint(propagateBB);
+    llvm::Value *retVal = llvm::UndefValue::get(retTy);
+    retVal = builder_.CreateInsertValue(retVal,
+        llvm::Constant::getNullValue(retStructTy->getElementType(0)), 0);
+    retVal = builder_.CreateInsertValue(retVal, errOpt, 1);
+    builder_.CreateRet(retVal);
+
+    // Continue: extract the value (first element)
+    builder_.SetInsertPoint(continueBB);
+    return builder_.CreateExtractValue(tuple, 0, "unwrapped");
 }
 

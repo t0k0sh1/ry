@@ -177,8 +177,14 @@ TEST(LexerTest, WhitespaceOnly) {
 }
 
 TEST(LexerTest, UnknownCharIsError) {
-    auto toks = tokenize("@");
+    auto toks = tokenize("$");
     EXPECT_EQ(toks[0].kind, TokenKind::Error);
+    EXPECT_EQ(toks[0].value, "$");
+}
+
+TEST(LexerTest, AtToken) {
+    auto toks = tokenize("@");
+    EXPECT_EQ(toks[0].kind, TokenKind::At);
     EXPECT_EQ(toks[0].value, "@");
 }
 
@@ -660,4 +666,357 @@ TEST(LexerTest, BinaryLiteralZero) {
 TEST(LexerTest, BinaryLiteralInvalidThrows) {
     EXPECT_THROW(tokenize("0b"), std::runtime_error);
     EXPECT_THROW(tokenize("0b2"), std::runtime_error);
+}
+
+// ===== >>> トークンテスト =====
+
+TEST(LexerTest, GreaterGreaterGreater) {
+    auto toks = tokenize(">>>");
+    ASSERT_GE(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::GreaterGreaterGreater);
+    EXPECT_EQ(toks[0].value, ">>>");
+}
+
+TEST(LexerTest, GreaterGreaterGreaterDoesNotBreakOthers) {
+    // >> is still >>
+    auto toks1 = tokenize(">>");
+    EXPECT_EQ(toks1[0].kind, TokenKind::GreaterGreater);
+    EXPECT_EQ(toks1[0].value, ">>");
+
+    // >= is still >=
+    auto toks2 = tokenize(">=");
+    EXPECT_EQ(toks2[0].kind, TokenKind::GreaterEq);
+
+    // > is still >
+    auto toks3 = tokenize(">");
+    EXPECT_EQ(toks3[0].kind, TokenKind::Greater);
+}
+
+// ===== Contract keywords =====
+
+TEST(LexerTest, KeywordRequire) {
+    auto toks = tokenize("require");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Require);
+}
+
+TEST(LexerTest, KeywordEnsure) {
+    auto toks = tokenize("ensure");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ensure);
+}
+
+TEST(LexerTest, KeywordInvariant) {
+    auto toks = tokenize("invariant");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Invariant);
+}
+
+TEST(LexerTest, KeywordOld) {
+    auto toks = tokenize("old");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Old);
+}
+
+TEST(LexerTest, KeywordResult) {
+    auto toks = tokenize("result");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Result);
+}
+
+// ===== f-string tokens =====
+
+TEST(LexerTest, FStringNoInterpolation) {
+    auto toks = tokenize("f\"hello\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[0].value, "hello");
+}
+
+TEST(LexerTest, FStringSingleInterpolation) {
+    auto toks = tokenize("f\"hello {name}\"");
+    ASSERT_GE(toks.size(), 4u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+    EXPECT_EQ(toks[0].value, "hello ");
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "name");
+    EXPECT_EQ(toks[2].kind, TokenKind::FStringEnd);
+}
+
+TEST(LexerTest, FStringMultipleInterpolations) {
+    auto toks = tokenize("f\"{a} + {b}\"");
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringStart);
+    EXPECT_EQ(toks[0].value, "");
+    // a
+    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[1].value, "a");
+    // " + "
+    EXPECT_EQ(toks[2].kind, TokenKind::FStringMid);
+    EXPECT_EQ(toks[2].value, " + ");
+    // b
+    EXPECT_EQ(toks[3].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[3].value, "b");
+    EXPECT_EQ(toks[4].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[4].value, "");
+}
+
+TEST(LexerTest, FStringEscapedBraces) {
+    auto toks = tokenize("f\"{{braces}}\"");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::FStringEnd);
+    EXPECT_EQ(toks[0].value, "{braces}");
+}
+
+// ===== as / Ok / Err keywords =====
+
+// ===== Compound assignment tokens =====
+
+TEST(LexerTest, SlashSlashEqToken) {
+    auto toks = tokenize("//=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::SlashSlashEq);
+    EXPECT_EQ(toks[0].value, "//=");
+}
+
+TEST(LexerTest, StarStarEqToken) {
+    auto toks = tokenize("**=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::StarStarEq);
+    EXPECT_EQ(toks[0].value, "**=");
+}
+
+TEST(LexerTest, AmpEqToken) {
+    auto toks = tokenize("&=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::AmpEq);
+    EXPECT_EQ(toks[0].value, "&=");
+}
+
+TEST(LexerTest, PipeEqToken) {
+    auto toks = tokenize("|=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::PipeEq);
+    EXPECT_EQ(toks[0].value, "|=");
+}
+
+TEST(LexerTest, CaretEqToken) {
+    auto toks = tokenize("^=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::CaretEq);
+    EXPECT_EQ(toks[0].value, "^=");
+}
+
+TEST(LexerTest, LessLessEqToken) {
+    auto toks = tokenize("<<=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::LessLessEq);
+    EXPECT_EQ(toks[0].value, "<<=");
+}
+
+TEST(LexerTest, GreaterGreaterEqToken) {
+    auto toks = tokenize(">>=");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::GreaterGreaterEq);
+    EXPECT_EQ(toks[0].value, ">>=");
+}
+
+TEST(LexerTest, CompoundAssignDoesNotBreakExisting) {
+    // // is still //
+    auto toks1 = tokenize("//");
+    EXPECT_EQ(toks1[0].kind, TokenKind::SlashSlash);
+    // ** is still **
+    auto toks2 = tokenize("**");
+    EXPECT_EQ(toks2[0].kind, TokenKind::StarStar);
+    // & is still &
+    auto toks3 = tokenize("&");
+    EXPECT_EQ(toks3[0].kind, TokenKind::Amp);
+    // | is still |
+    auto toks4 = tokenize("|");
+    EXPECT_EQ(toks4[0].kind, TokenKind::Pipe);
+    // ^ is still ^
+    auto toks5 = tokenize("^");
+    EXPECT_EQ(toks5[0].kind, TokenKind::Caret);
+    // << is still <<
+    auto toks6 = tokenize("<<");
+    EXPECT_EQ(toks6[0].kind, TokenKind::LessLess);
+    // >> is still >>
+    auto toks7 = tokenize(">>");
+    EXPECT_EQ(toks7[0].kind, TokenKind::GreaterGreater);
+    // >>> is still >>>
+    auto toks8 = tokenize(">>>");
+    EXPECT_EQ(toks8[0].kind, TokenKind::GreaterGreaterGreater);
+}
+
+// ===== as / Ok / Err keywords =====
+
+TEST(LexerTest, KeywordAs) {
+    auto toks = tokenize("as");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::As);
+    EXPECT_EQ(toks[0].value, "as");
+}
+
+TEST(LexerTest, KeywordError) {
+    auto toks = tokenize("Error");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::ErrorKw);
+    EXPECT_EQ(toks[0].value, "Error");
+}
+
+TEST(LexerTest, BangBangOperator) {
+    auto toks = tokenize("!!");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::BangBang);
+    EXPECT_EQ(toks[0].value, "!!");
+}
+
+// ===== r-string =====
+
+TEST(LexerTest, RawStringEscapeN) {
+    auto toks = tokenize(R"(r"\n")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\n");
+}
+
+TEST(LexerTest, RawStringEscapeT) {
+    auto toks = tokenize(R"(r"\t")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "\\t");
+}
+
+TEST(LexerTest, RawStringPlain) {
+    auto toks = tokenize(R"(r"hello")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "hello");
+}
+
+TEST(LexerTest, RawStringEmpty) {
+    auto toks = tokenize(R"(r"")");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::String);
+    EXPECT_EQ(toks[0].value, "");
+}
+
+TEST(LexerTest, RawStringNotPrefix) {
+    // 'r' followed by something other than '"' should be an identifier
+    auto toks = tokenize("r_foo");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "r_foo");
+}
+
+// ===== Column tracking tests =====
+
+TEST(LexerTest, ColumnSimple) {
+    auto toks = tokenize("let x = 42");
+    // let(col=1) x(col=5) =(col=7) 42(col=9) Eof
+    EXPECT_EQ(toks[0].col, 1);  // let
+    EXPECT_EQ(toks[1].col, 5);  // x
+    EXPECT_EQ(toks[2].col, 7);  // =
+    EXPECT_EQ(toks[3].col, 9);  // 42
+}
+
+TEST(LexerTest, ColumnMultiLine) {
+    auto toks = tokenize("a\n  b");
+    // a(line=1,col=1) Newline Indent b(line=2,col=3)
+    EXPECT_EQ(toks[0].col, 1);  // a
+    EXPECT_EQ(toks[0].line, 1);
+    // Find 'b' token
+    bool found = false;
+    for (const auto &t : toks) {
+        if (t.kind == TokenKind::Ident && t.value == "b") {
+            found = true;
+            EXPECT_EQ(t.line, 2);
+            EXPECT_EQ(t.col, 3);
+            break;
+        }
+    }
+    ASSERT_TRUE(found) << "Identifier token 'b' was not found in tokens";
+}
+
+TEST(LexerTest, ColumnOperators) {
+    auto toks = tokenize("x + y == z");
+    // x(1) +(3) y(5) ==(7) z(10)
+    EXPECT_EQ(toks[0].col, 1);  // x
+    EXPECT_EQ(toks[1].col, 3);  // +
+    EXPECT_EQ(toks[2].col, 5);  // y
+    EXPECT_EQ(toks[3].col, 7);  // ==
+    EXPECT_EQ(toks[4].col, 10); // z
+}
+
+TEST(LexerTest, Ellipsis) {
+    auto toks = tokenize("...");
+    ASSERT_EQ(toks.size(), 2u); // Ellipsis + Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ellipsis);
+    EXPECT_EQ(toks[0].value, "...");
+}
+
+TEST(LexerTest, EllipsisDoesNotBreakDotDot) {
+    auto toks = tokenize("..");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::DotDot);
+    EXPECT_EQ(toks[0].value, "..");
+}
+
+TEST(LexerTest, EllipsisDoesNotBreakDot) {
+    auto toks = tokenize(".");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[0].value, ".");
+}
+
+TEST(LexerTest, ColumnString) {
+    auto toks = tokenize("let s = \"hello\"");
+    // let(1) s(5) =(7) "hello"(9)
+    EXPECT_EQ(toks[0].col, 1);  // let
+    EXPECT_EQ(toks[1].col, 5);  // s
+    EXPECT_EQ(toks[2].col, 7);  // =
+    EXPECT_EQ(toks[3].col, 9);  // "hello"
+}
+
+TEST(LexerTest, ManyConsecutiveComments) {
+    // Generate many comment lines to verify no stack overflow
+    std::string src;
+    // Reserve enough capacity to avoid repeated reallocations while building src
+    const std::size_t perLine = std::string("# comment line ").size() + 4 + 1; // prefix + up to 4 digits + '\n'
+    src.reserve(perLine * 10000 + 3); // +3 for "42\n"
+    for (int i = 0; i < 10000; ++i) {
+        src.append("# comment line ");
+        src.append(std::to_string(i));
+        src.push_back('\n');
+    }
+    src.append("42\n");
+    auto toks = tokenize(src);
+    // Should find the number token after all comments
+    bool found = false;
+    for (auto &t : toks) {
+        if (t.kind == TokenKind::Number && t.value == "42") {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(LexerTest, IntDotIdentifier) {
+    auto toks = tokenize("5.double()");
+    ASSERT_EQ(toks.size(), 6u); // Number, Dot, Ident, LParen, RParen, Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "5");
+    EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "double");
+    EXPECT_EQ(toks[3].kind, TokenKind::LParen);
+    EXPECT_EQ(toks[4].kind, TokenKind::RParen);
+    EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, IntDotDigitIsFloat) {
+    auto toks = tokenize("3.14");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "3.14");
 }

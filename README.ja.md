@@ -1,17 +1,20 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# ry
+# Ry
 
 LLVM JIT ベースのシンプルなプログラミング言語。ソースコードを読み込み、LLVM ORC JIT でネイティブコードにコンパイル・即時実行します。
 
 ## 特徴
 
 - **LLVM JIT コンパイル** — ORC LLJIT による高速なネイティブ実行
-- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義構造体
-- **演算子** — 算術・比較・論理・ビット演算・複合代入・`in` 演算子（演算子オーバーロード対応）
+- **豊富な型システム** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, タプル, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, 関数型, ユーザー定義構造体
+- **演算子** — 算術・比較・論理・ビット演算（`>>>` 論理右シフト）・複合代入・`in` / `not in`・文字列繰り返し（`"ab" * 3`）・`as` 型キャスト（演算子オーバーロード対応）
+- **f-string** — `f"Hello {name}"` による文字列補間
+- **契約による設計** — `require`（事前条件）・`ensure`（事後条件）・`invariant`（構造体不変条件）・`old()`・`result`
+- **ディレクティブ** — `@deprecated` コンパイル時メタデータ
 - **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
 - **制御構文** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
-- **モジュール** — `from ... import ...` による関数インポート
+- **パッケージ** — ディレクトリベースのパッケージ、自動インポートされる `std` ライブラリ、`from ... import ...`
 - **型安全** — 型推論・型アノテーション・型変更再代入禁止・let/var
 
 ## サンプルコード
@@ -57,6 +60,10 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
+# ストリーム操作 (filter, map, sort)
+let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+print(result)          # [20, 30, 40, 50]
+
 # 列挙型
 enum Color:
     Red
@@ -66,7 +73,7 @@ enum Color:
 let c = Color::Red
 print(c)               # Red
 
-# モジュールインポート
+# パッケージインポート
 from math import add
 print(add(1, 2))
 ```
@@ -82,10 +89,12 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 特定バージョンを指定する場合:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
 ```
 
 デフォルトでは `~/.local/bin` にインストールされます。`RY_INSTALL_DIR` 環境変数で変更可能です。
+
+標準ライブラリは `$RY_HOME/lib/std/`（デフォルト: `~/.ry/lib/std/`）にインストールされます。
 
 ### ソースからビルド
 

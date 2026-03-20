@@ -1,0 +1,677 @@
+#include "ry/runtime_regex.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <memory>
+
+// ============================================================
+// Regex AST
+// ============================================================
+
+namespace {
+
+enum class RegexNodeKind {
+    Literal,      // single character
+    Dot,          // .
+    CharClass,    // [abc], [a-z], [^0-9]
+    Anchor,       // ^ or $
+    Concat,       // AB
+    Alternation,  // A|B
+    Repeat,       // A*, A+, A?
+    Group,        // (A)
+};
+
+struct RegexNode {
+    RegexNodeKind kind;
+
+    // Literal / Anchor
+    char ch = 0;
+
+    // CharClass
+    bool negated = false;
+    std::vector<std::pair<char, char>> ranges; // inclusive ranges
+
+    // Repeat
+    enum RepeatKind { Star, Plus, Question };
+    RepeatKind repeatKind = Star;
+
+    // Children
+    std::vector<std::unique_ptr<RegexNode>> children;
+};
+
+using RegexNodePtr = std::unique_ptr<RegexNode>;
+
+// ============================================================
+// Regex Parser (recursive descent)
+// ============================================================
+
+class RegexParser {
+public:
+    explicit RegexParser(const char *pattern) : src_(pattern), len_(strlen(pattern)), pos_(0) {}
+
+    RegexNodePtr parse() {
+        auto node = parseAlternation();
+        if (pos_ < len_) {
+            fprintf(stderr, "regex error: unexpected character '%c' at position %zu in pattern '%s'\n",
+                    src_[pos_], pos_, src_);
+            exit(1);
+        }
+        return node;
+    }
+
+private:
+    const char *src_;
+    size_t len_;
+    size_t pos_;
+
+    char peek() const {
+        if (pos_ >= len_) return '\0';
+        return src_[pos_];
+    }
+
+    char advance() {
+        return src_[pos_++];
+    }
+
+    bool atEnd() const {
+        return pos_ >= len_;
+    }
+
+    RegexNodePtr parseAlternation() {
+        auto left = parseConcat();
+        if (peek() == '|') {
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Alternation;
+            node->children.push_back(std::move(left));
+            while (peek() == '|') {
+                advance(); // consume '|'
+                node->children.push_back(parseConcat());
+            }
+            return node;
+        }
+        return left;
+    }
+
+    RegexNodePtr parseConcat() {
+        std::vector<RegexNodePtr> parts;
+        while (!atEnd() && peek() != '|' && peek() != ')') {
+            parts.push_back(parseRepeat());
+        }
+        if (parts.empty()) {
+            // Empty concat = match empty string (literal with special handling)
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Concat;
+            return node;
+        }
+        if (parts.size() == 1) return std::move(parts[0]);
+        auto node = std::make_unique<RegexNode>();
+        node->kind = RegexNodeKind::Concat;
+        for (auto &p : parts) node->children.push_back(std::move(p));
+        return node;
+    }
+
+    RegexNodePtr parseRepeat() {
+        auto atom = parseAtom();
+        if (!atEnd() && (peek() == '*' || peek() == '+' || peek() == '?')) {
+            char rep = advance();
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Repeat;
+            node->repeatKind = (rep == '*') ? RegexNode::Star :
+                               (rep == '+') ? RegexNode::Plus :
+                                              RegexNode::Question;
+            node->children.push_back(std::move(atom));
+            return node;
+        }
+        return atom;
+    }
+
+    RegexNodePtr parseAtom() {
+        char c = peek();
+        if (c == '(') {
+            advance(); // consume '('
+            auto inner = parseAlternation();
+            if (peek() != ')') {
+                fprintf(stderr, "regex error: unmatched '(' in pattern '%s'\n", src_);
+                exit(1);
+            }
+            advance(); // consume ')'
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Group;
+            node->children.push_back(std::move(inner));
+            return node;
+        }
+        if (c == '[') {
+            return parseCharClass();
+        }
+        if (c == '.') {
+            advance();
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Dot;
+            return node;
+        }
+        if (c == '^' || c == '$') {
+            advance();
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Anchor;
+            node->ch = c;
+            return node;
+        }
+        if (c == '\\') {
+            advance(); // consume backslash
+            if (atEnd()) {
+                fprintf(stderr, "regex error: trailing backslash in pattern '%s'\n", src_);
+                exit(1);
+            }
+            char escaped = advance();
+            // Handle shorthand character classes
+            if (escaped == 'd' || escaped == 'D' ||
+                escaped == 'w' || escaped == 'W' ||
+                escaped == 's' || escaped == 'S') {
+                return parseShorthandClass(escaped);
+            }
+            auto node = std::make_unique<RegexNode>();
+            node->kind = RegexNodeKind::Literal;
+            node->ch = escaped;
+            return node;
+        }
+        if (c == '*' || c == '+' || c == '?') {
+            fprintf(stderr, "regex error: nothing to repeat at position %zu in pattern '%s'\n", pos_, src_);
+            exit(1);
+        }
+        if (atEnd() || c == '|' || c == ')') {
+            fprintf(stderr, "regex error: unexpected end or character in pattern '%s'\n", src_);
+            exit(1);
+        }
+        // Regular literal
+        advance();
+        auto node = std::make_unique<RegexNode>();
+        node->kind = RegexNodeKind::Literal;
+        node->ch = c;
+        return node;
+    }
+
+    RegexNodePtr parseShorthandClass(char code) {
+        auto node = std::make_unique<RegexNode>();
+        node->kind = RegexNodeKind::CharClass;
+        switch (code) {
+            case 'd': node->negated = false; node->ranges = {{'0','9'}}; break;
+            case 'D': node->negated = true;  node->ranges = {{'0','9'}}; break;
+            case 'w': node->negated = false; node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
+            case 'W': node->negated = true;  node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
+            case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
+            case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
+        }
+        return node;
+    }
+
+    RegexNodePtr parseCharClass() {
+        advance(); // consume '['
+        auto node = std::make_unique<RegexNode>();
+        node->kind = RegexNodeKind::CharClass;
+        node->negated = false;
+        if (peek() == '^') {
+            node->negated = true;
+            advance();
+        }
+        while (!atEnd() && peek() != ']') {
+            char lo = parseClassChar();
+            if (peek() == '-' && pos_ + 1 < len_ && src_[pos_ + 1] != ']') {
+                advance(); // consume '-'
+                char hi = parseClassChar();
+                node->ranges.push_back({lo, hi});
+            } else {
+                node->ranges.push_back({lo, lo});
+            }
+        }
+        if (peek() != ']') {
+            fprintf(stderr, "regex error: unmatched '[' in pattern '%s'\n", src_);
+            exit(1);
+        }
+        advance(); // consume ']'
+        return node;
+    }
+
+    char parseClassChar() {
+        if (peek() == '\\') {
+            advance();
+            if (atEnd()) {
+                fprintf(stderr, "regex error: trailing backslash in character class in pattern '%s'\n", src_);
+                exit(1);
+            }
+            char c = advance();
+            switch (c) {
+                case 'n': return '\n';
+                case 't': return '\t';
+                case 'r': return '\r';
+                default: return c;
+            }
+        }
+        return advance();
+    }
+};
+
+// ============================================================
+// NFA
+// ============================================================
+
+struct NFAState {
+    enum Kind { Match, Split, Char, Dot, CharClass, Anchor };
+    Kind kind;
+
+    // Char
+    char ch = 0;
+
+    // CharClass
+    bool negated = false;
+    std::vector<std::pair<char, char>> ranges;
+
+    // Transitions
+    NFAState *out1 = nullptr;
+    NFAState *out2 = nullptr; // only for Split
+
+    // Generation counter for epsilon closure visited check (O(1) lookup)
+    int visitGeneration = 0;
+};
+
+struct NFAFragment {
+    NFAState *start;
+    std::vector<NFAState **> danglingOuts; // pointers to patch
+};
+
+class NFABuilder {
+public:
+    NFABuilder() = default;
+    ~NFABuilder() {
+        for (auto *s : states_) delete s;
+    }
+    NFABuilder(NFABuilder &&other) noexcept : states_(std::move(other.states_)) {
+        other.states_.clear();
+    }
+    NFABuilder &operator=(NFABuilder &&other) noexcept {
+        if (this != &other) {
+            for (auto *s : states_) delete s;
+            states_ = std::move(other.states_);
+            other.states_.clear();
+        }
+        return *this;
+    }
+    NFABuilder(const NFABuilder &) = delete;
+    NFABuilder &operator=(const NFABuilder &) = delete;
+
+    NFAState *newState(NFAState::Kind kind) {
+        auto *s = new NFAState();
+        s->kind = kind;
+        states_.push_back(s);
+        return s;
+    }
+
+    // Thompson's construction
+    NFAFragment build(const RegexNode &node) {
+        switch (node.kind) {
+        case RegexNodeKind::Literal: {
+            auto *s = newState(NFAState::Char);
+            s->ch = node.ch;
+            return {s, {&s->out1}};
+        }
+        case RegexNodeKind::Dot: {
+            auto *s = newState(NFAState::Dot);
+            return {s, {&s->out1}};
+        }
+        case RegexNodeKind::CharClass: {
+            auto *s = newState(NFAState::CharClass);
+            s->negated = node.negated;
+            s->ranges = node.ranges;
+            return {s, {&s->out1}};
+        }
+        case RegexNodeKind::Anchor: {
+            auto *s = newState(NFAState::Anchor);
+            s->ch = node.ch;
+            return {s, {&s->out1}};
+        }
+        case RegexNodeKind::Concat: {
+            if (node.children.empty()) {
+                // Empty concat: epsilon
+                auto *s = newState(NFAState::Split);
+                return {s, {&s->out1}};
+            }
+            auto frag = build(*node.children[0]);
+            for (size_t i = 1; i < node.children.size(); ++i) {
+                auto next = build(*node.children[i]);
+                patch(frag, next.start);
+                frag.danglingOuts = std::move(next.danglingOuts);
+            }
+            return frag;
+        }
+        case RegexNodeKind::Alternation: {
+            if (node.children.size() == 1) return build(*node.children[0]);
+            // Build pairwise: combine first two, then add rest
+            auto left = build(*node.children[0]);
+            for (size_t i = 1; i < node.children.size(); ++i) {
+                auto right = build(*node.children[i]);
+                auto *split = newState(NFAState::Split);
+                split->out1 = left.start;
+                split->out2 = right.start;
+                std::vector<NFAState **> outs;
+                outs.insert(outs.end(), left.danglingOuts.begin(), left.danglingOuts.end());
+                outs.insert(outs.end(), right.danglingOuts.begin(), right.danglingOuts.end());
+                left = {split, std::move(outs)};
+            }
+            return left;
+        }
+        case RegexNodeKind::Repeat: {
+            auto inner = build(*node.children[0]);
+            if (node.repeatKind == RegexNode::Star) {
+                // e* : split → (inner → back to split) | out
+                auto *split = newState(NFAState::Split);
+                split->out1 = inner.start;
+                patch(inner, split);
+                return {split, {&split->out2}};
+            }
+            if (node.repeatKind == RegexNode::Plus) {
+                // e+ : inner → split → (inner again) | out
+                auto *split = newState(NFAState::Split);
+                split->out1 = inner.start;
+                patch(inner, split);
+                return {inner.start, {&split->out2}};
+            }
+            // e? : split → inner | out
+            auto *split = newState(NFAState::Split);
+            split->out1 = inner.start;
+            std::vector<NFAState **> outs = {&split->out2};
+            outs.insert(outs.end(), inner.danglingOuts.begin(), inner.danglingOuts.end());
+            return {split, std::move(outs)};
+        }
+        case RegexNodeKind::Group:
+            return build(*node.children[0]);
+        }
+        // unreachable
+        fprintf(stderr, "regex internal error: unknown node kind\n");
+        exit(1);
+    }
+
+    void patch(NFAFragment &frag, NFAState *target) {
+        for (auto *p : frag.danglingOuts) *p = target;
+        frag.danglingOuts.clear();
+    }
+
+private:
+    std::vector<NFAState *> states_;
+};
+
+// ============================================================
+// NFA Simulation
+// ============================================================
+
+class NFASimulator {
+public:
+    NFASimulator(NFAState *start, NFAState *matchState)
+        : start_(start), matchState_(matchState), generation_(0) {}
+
+    // Try to match text[startPos..] returning the end position of the match,
+    // or -1 if no match. fullMatch requires matching entire text.
+    int64_t simulate(const char *text, size_t textLen, size_t startPos, bool fullMatch) {
+        current_.clear();
+        next_.clear();
+        int64_t lastMatch = -1;
+
+        ++generation_;
+        addState(current_, start_, text, textLen, startPos);
+
+        if (fullMatch) {
+            if (stateSetContains(current_, matchState_)) {
+                if (startPos == textLen) return (int64_t)startPos;
+            }
+        } else {
+            if (stateSetContains(current_, matchState_)) {
+                lastMatch = (int64_t)startPos;
+            }
+        }
+
+        for (size_t i = startPos; i < textLen; ++i) {
+            char c = text[i];
+            next_.clear();
+            ++generation_;
+
+            for (NFAState *s : current_) {
+                if (s == matchState_) continue;
+                bool matches = false;
+                switch (s->kind) {
+                case NFAState::Char:
+                    matches = (s->ch == c);
+                    break;
+                case NFAState::Dot:
+                    matches = (c != '\n');
+                    break;
+                case NFAState::CharClass:
+                    matches = charClassMatches(s, c);
+                    break;
+                default:
+                    break;
+                }
+                if (matches && s->out1) {
+                    addState(next_, s->out1, text, textLen, i + 1);
+                }
+            }
+
+            current_.swap(next_);
+
+            if (stateSetContains(current_, matchState_)) {
+                if (fullMatch) {
+                    if (i + 1 == textLen) return (int64_t)(i + 1);
+                } else {
+                    lastMatch = (int64_t)(i + 1);
+                }
+            }
+
+            if (current_.empty()) break;
+        }
+
+        if (fullMatch) return -1;
+        return lastMatch;
+    }
+
+private:
+    NFAState *start_;
+    NFAState *matchState_;
+    std::vector<NFAState *> current_;
+    std::vector<NFAState *> next_;
+    int generation_;
+
+    void addState(std::vector<NFAState *> &stateSet, NFAState *s,
+                  const char *text, size_t textLen, size_t pos) {
+        if (!s || s->visitGeneration == generation_) return;
+        s->visitGeneration = generation_;
+
+        if (s->kind == NFAState::Split) {
+            addState(stateSet, s->out1, text, textLen, pos);
+            addState(stateSet, s->out2, text, textLen, pos);
+            return;
+        }
+        if (s->kind == NFAState::Anchor) {
+            if (s->ch == '^') {
+                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos);
+            } else { // '$'
+                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos);
+            }
+            return;
+        }
+        stateSet.push_back(s);
+    }
+
+    static bool stateSetContains(const std::vector<NFAState *> &stateSet, NFAState *target) {
+        for (auto *s : stateSet) {
+            if (s == target) return true;
+        }
+        return false;
+    }
+
+    static bool charClassMatches(NFAState *s, char c) {
+        bool inRange = false;
+        for (auto &[lo, hi] : s->ranges) {
+            if (c >= lo && c <= hi) { inRange = true; break; }
+        }
+        return s->negated ? !inRange : inRange;
+    }
+};
+
+// ============================================================
+// Compiled Regex wrapper
+// ============================================================
+
+struct CompiledRegex {
+    NFABuilder builder;
+    NFAState *matchState;
+    NFAState *start;
+
+    static CompiledRegex compile(const char *pattern) {
+        RegexParser parser(pattern);
+        auto ast = parser.parse();
+
+        CompiledRegex cr;
+        auto frag = cr.builder.build(*ast);
+        cr.matchState = cr.builder.newState(NFAState::Match);
+        cr.builder.patch(frag, cr.matchState);
+        cr.start = frag.start;
+        return cr;
+    }
+
+    // Full match
+    bool fullMatch(const char *text) {
+        size_t len = strlen(text);
+        NFASimulator sim(start, matchState);
+        return sim.simulate(text, len, 0, true) >= 0;
+    }
+
+    // Search: find first match, return {startPos, endPos} or {-1, -1}
+    std::pair<int64_t, int64_t> search(const char *text) {
+        size_t len = strlen(text);
+        NFASimulator sim(start, matchState);
+        for (size_t i = 0; i <= len; ++i) {
+            int64_t endPos = sim.simulate(text, len, i, false);
+            if (endPos >= 0) {
+                return {(int64_t)i, endPos};
+            }
+        }
+        return {-1, -1};
+    }
+
+    // Find all non-overlapping matches
+    std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
+        size_t len = strlen(text);
+        std::vector<std::pair<int64_t, int64_t>> results;
+        NFASimulator sim(start, matchState);
+        size_t pos = 0;
+        while (pos <= len) {
+            int64_t endPos = sim.simulate(text, len, pos, false);
+            if (endPos >= 0) {
+                results.push_back({(int64_t)pos, endPos});
+                if ((size_t)endPos == pos) {
+                    ++pos; // avoid infinite loop on zero-length match
+                } else {
+                    pos = (size_t)endPos;
+                }
+            } else {
+                ++pos;
+            }
+        }
+        return results;
+    }
+};
+
+// ============================================================
+// ListHeader layout: {i64 len, i64 cap, ptr data}
+// ============================================================
+
+struct ListHeader {
+    int64_t len;
+    int64_t cap;
+    char **data;
+};
+
+static char *dupString(const char *s, size_t n) {
+    char *buf = (char *)malloc(n + 1);
+    memcpy(buf, s, n);
+    buf[n] = '\0';
+    return buf;
+}
+
+static ListHeader *makeStringList(const std::vector<std::string> &items) {
+    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
+    header->len = (int64_t)items.size();
+    header->cap = (int64_t)items.size();
+    header->data = (char **)malloc(sizeof(char *) * items.size());
+    for (size_t i = 0; i < items.size(); ++i) {
+        header->data[i] = dupString(items[i].c_str(), items[i].size());
+    }
+    return header;
+}
+
+} // anonymous namespace
+
+// ============================================================
+// Public C API
+// ============================================================
+
+extern "C" {
+
+int64_t __ry_regex_match(const char *pattern, const char *text) {
+    auto cr = CompiledRegex::compile(pattern);
+    return cr.fullMatch(text) ? 1 : 0;
+}
+
+int64_t __ry_regex_search(const char *pattern, const char *text) {
+    auto cr = CompiledRegex::compile(pattern);
+    auto result = cr.search(text);
+    return result.first;
+}
+
+const char *__ry_regex_replace(const char *pattern, const char *text,
+                                const char *replacement) {
+    auto cr = CompiledRegex::compile(pattern);
+    auto matches = cr.findAll(text);
+    if (matches.empty()) {
+        return dupString(text, strlen(text));
+    }
+
+    size_t textLen = strlen(text);
+    size_t repLen = strlen(replacement);
+    std::string result;
+    result.reserve(textLen + matches.size() * repLen);
+    size_t lastEnd = 0;
+    for (auto &[start, end] : matches) {
+        result.append(text + lastEnd, (size_t)start - lastEnd);
+        result.append(replacement, repLen);
+        lastEnd = (size_t)end;
+    }
+    result.append(text + lastEnd);
+    return dupString(result.c_str(), result.size());
+}
+
+void *__ry_regex_split(const char *pattern, const char *text) {
+    auto cr = CompiledRegex::compile(pattern);
+    auto matches = cr.findAll(text);
+
+    std::vector<std::string> parts;
+    size_t lastEnd = 0;
+    for (auto &[start, end] : matches) {
+        parts.emplace_back(text + lastEnd, (size_t)start - lastEnd);
+        lastEnd = (size_t)end;
+    }
+    parts.emplace_back(text + lastEnd);
+    return makeStringList(parts);
+}
+
+void *__ry_regex_find_all(const char *pattern, const char *text) {
+    auto cr = CompiledRegex::compile(pattern);
+    auto matches = cr.findAll(text);
+
+    std::vector<std::string> items;
+    for (auto &[start, end] : matches) {
+        items.emplace_back(text + start, (size_t)(end - start));
+    }
+    return makeStringList(items);
+}
+
+} // extern "C"

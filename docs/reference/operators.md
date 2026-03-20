@@ -8,19 +8,23 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
+| 0 | `!!` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
+| 3.5 | `as` | Type cast | Left |
 | 4 | `*` `/` `%` `//` | Multiplication, division, modulo, integer division | Left |
 | 5 | `+` `-` | Addition, subtraction | Left |
-| 6 | `<<` `>>` | Bit shift | Left |
+| 6 | `<<` `>>` `>>>` | Bit shift | Left |
 | 7 | `&` | Bitwise AND | Left |
 | 8 | `^` | Bitwise XOR | Left |
 | 9 | `\|` | Bitwise OR | Left |
-| 10 | `==` `!=` `<` `<=` `>` `>=` `in` | Comparison, membership | Left |
+| 10 | `==` `!=` `<` `<=` `>` `>=` `in` `not in` | Comparison, membership | Left |
 | 11 | `not` | Logical NOT | Right |
 | 12 | `and` | Logical AND | Left |
 | 13 | `or` | Logical OR | Left |
+| 13.5 | `??` | Null coalescing | Left |
+| 14 | `?:` | Ternary conditional | Right |
 
 ## Arithmetic Operators
 
@@ -28,7 +32,7 @@ Lower numbers indicate higher precedence (evaluated first).
 |---|---|---|
 | `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
-| `*` | Multiplication | `4 * 3` -> `12` |
+| `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
 | `/` | Division (always float) | `7 / 2` -> `3.5` |
 | `//` | Integer division (truncated) | `7 // 2` -> `3` |
 | `%` | Modulo | `7 % 3` -> `1` |
@@ -58,13 +62,20 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
-- The `in` operator is used for membership checks on sets (`x in s`).
+- The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
+- The `not in` operator is the negation of `in` (`x not in s`).
+- For maps, `in` checks whether the key exists.
 
 ```python
 let x = 3 < 5       # true
 let y = "abc" < "abd"  # true (lexicographic)
 let s = {1, 2, 3}
 let z = 2 in s      # true
+let w = 4 not in s  # true
+let xs = [1, 2, 3]
+let a = 2 in xs     # true (list linear search)
+let m = {"a": 1}
+let b = "a" in m    # true (map key lookup)
 ```
 
 ## Logical Operators
@@ -92,13 +103,65 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `^` | Bitwise XOR | `0b1100 ^ 0b1010` -> `0b0110` |
 | `~` | Bitwise NOT (unary) | `~0` -> `-1` |
 | `<<` | Left shift | `1 << 4` -> `16` |
-| `>>` | Right shift | `16 >> 2` -> `4` |
+| `>>` | Arithmetic right shift | `16 >> 2` -> `4` |
+| `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
 let flags = 0b0001 | 0b0010   # 3
 let masked = flags & 0b0011   # 3
 let shifted = 1 << 8          # 256
 ```
+
+## Ternary Conditional Operator
+
+```python
+let x = condition ? true_value : false_value
+```
+
+Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
+
+```python
+let x = 3 > 2 ? 10 : 20     # 10
+let s = false ? "yes" : "no" # "no"
+
+# Nested (right-associative)
+let y = true ? (false ? 1 : 2) : 3   # 2
+```
+
+---
+
+## Range Operator
+
+The `..` operator creates an inclusive integer range.
+
+```python
+let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+
+for i in 1 .. 3:
+    print(i)       # 1 2 3
+```
+
+The result is a `List<int>` containing all integers from the left operand to the right operand (inclusive).
+
+---
+
+## Null Coalescing Operator (`??`)
+
+```python
+let x = option_val ?? default_val
+```
+
+If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
+
+```python
+let a: int? = Some(10)
+let b: int? = none
+
+print(a ?? 0)    # 10
+print(b ?? 0)    # 0
+```
+
+---
 
 ## Compound Assignment Operators
 
@@ -111,12 +174,21 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x *= y` | `x = x * y` |
 | `x /= y` | `x = x / y` |
 | `x %= y` | `x = x % y` |
+| `x //= y` | `x = x // y` |
+| `x **= y` | `x = x ** y` |
+| `x &= y` | `x = x & y` |
+| `x \|= y` | `x = x \| y` |
+| `x ^= y` | `x = x ^ y` |
+| `x <<= y` | `x = x << y` |
+| `x >>= y` | `x = x >> y` |
 
 ```python
-let x = 10
+var x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
+x //= 3  # x = 8
+x &= 6   # x = 0
 ```
 
 ## Type Rules for Operations
@@ -133,8 +205,10 @@ x *= 2    # x = 24
 | `%` | float or int (one is float) | -- | float |
 | `+` | str | str | str |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
-| `in` | any | Set<T> | bool |
-| `& \| ^ ~ << >>` | int | int | int |
+| `*` | str | int | str |
+| `in` | any | Set<T> / List<T> / Map<K, V> | bool |
+| `not in` | any | Set<T> / List<T> / Map<K, V> | bool |
+| `& \| ^ ~ << >> >>>` | int | int | int |
 | `and or not` | bool | bool | bool |
 
 ## Operator Overloading
@@ -159,7 +233,7 @@ fn operator-(a: MyType) -> MyType:
 |---|---|
 | Arithmetic (binary) | `+` `-` `*` `/` `%` `**` `//` |
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
-| Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
+| Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
 | Logical (binary) | `and` `or` |
 | Unary | `-` `~` `not` |
 

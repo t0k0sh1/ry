@@ -2,37 +2,37 @@
 
 # Advanced Features
 
-[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
+[<- Prev: Collections](07-collections.md) | [Next: Packages ->](09-modules.md)
 
 ---
 
 ## Lambda Functions
 
-Lambda functions are a syntax for writing functions as expressions. They use the form `(parameters) -> expression`. The return type is automatically inferred.
+Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters): expression`. The return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-let answer = () -> 42
+let answer = fn(): 42
 print(answer())  # 42
 ```
 
 ### Multi-Line Lambda
 
-You can write multiple statements by adding a newline after `->` and indenting.
+You can write multiple statements by adding a newline after `:` and indenting.
 
 ```python
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -49,7 +49,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 let offset = 10
-let add_offset = (x: int) -> x + offset
+let add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int) -> n + 1, 10))    # 11
+print(apply(fn(n: int): n + 1, 10))    # 11
 ```
 
 ---
@@ -123,7 +123,7 @@ You can define operators for custom types using the `fn operator` syntax.
 Takes two parameters.
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 
@@ -172,15 +172,140 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
+### Extracting the Value
 
-Use `unwrap` to extract the inner value. Calling `unwrap` on `None` causes a runtime error.
+Use `match` to safely extract the inner value and handle the `None` case.
 
 ```python
-let v = unwrap(x)   # 42
-# unwrap(y) -> runtime error
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
 ```
 
 ---
 
-[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
+## F-String (String Interpolation)
+
+Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+Use `{{` and `}}` to include literal braces.
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## Type Casting (`as`)
+
+Convert between types explicitly with `as`.
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3 (truncated)
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## Enum with Associated Data (ADT)
+
+Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data.
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### Constructing ADT Variants
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### Matching ADT Variants
+
+Use `case` with a binding pattern to extract the associated data.
+
+```python
+fn describe(s: Shape) -> str:
+    match s:
+        case Shape::Circle(r):
+            return f"circle with radius {r}"
+        case Shape::Rectangle(w, h):
+            return f"rectangle {w}x{h}"
+        case Shape::Point:
+            return "point"
+
+print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
+print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
+```
+
+---
+
+## Generic Enum
+
+Enums can take type parameters, making them reusable across different payload types.
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### Usage
+
+```python
+let a = MyOption<int>::MySome(42)
+let b: MyOption<int> = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
+
+## Result Type
+
+`Result<T, E>` is used for functions that may fail. Return `Ok(value)` for success and `Err(error)` for failure.
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+Use `match` to handle the result.
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
+[<- Prev: Collections](07-collections.md) | [Next: Packages ->](09-modules.md)

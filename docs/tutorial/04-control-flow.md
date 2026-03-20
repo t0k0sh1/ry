@@ -86,6 +86,25 @@ for i in range(2, 5):
 # 4
 ```
 
+The `..` range operator creates an inclusive range: `1 .. 3` produces `[1, 2, 3]`.
+
+```python
+for i in 1 .. 3:
+    print(i)
+# 1
+# 2
+# 3
+```
+
+You can iterate over map key-value pairs with `for k, v in map`:
+
+```python
+let m = {"x": 10, "y": 20}
+for k, v in m:
+    print(k)
+    print(v)
+```
+
 ---
 
 ## break and continue
@@ -206,7 +225,7 @@ match c:
 
 ### Option Matching
 
-Instead of using `unwrap()`, you can use `match` to safely handle the `None` case as well.
+Use `match` to safely handle both the `Some` and `None` cases.
 
 ```python
 let x: Option<int> = Some(42)

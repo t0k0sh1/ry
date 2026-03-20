@@ -44,6 +44,8 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
+    src/source_manager.cpp
+    src/diagnostic.cpp
     src/lexer.cpp
     src/parser.cpp
     src/codegen.cpp
@@ -56,8 +58,11 @@ add_library(ry_lib STATIC
     src/jit.cpp
     src/test_runtime.cpp
     src/runtime_hash.cpp
+    src/runtime_regex.cpp
     src/project_config.cpp
     src/self_update.cpp
+    src/args_runtime.cpp
+    src/paths.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -85,8 +90,15 @@ add_executable(ry_tests
     tests/test_codegen_stmt.cpp
     tests/test_codegen_collection.cpp
     tests/test_codegen_advanced.cpp
+    tests/test_codegen_contract.cpp
+    tests/test_codegen_directive.cpp
     tests/test_project_config.cpp
     tests/test_self_update.cpp
+    tests/test_diagnostic.cpp
+    tests/test_paths.cpp
+    tests/test_regex_runtime.cpp
+    tests/test_codegen_regex.cpp
+    tests/test_codegen_mock.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

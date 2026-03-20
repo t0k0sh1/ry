@@ -98,6 +98,43 @@ for i in range(n):
 # range（開始・終了指定）
 for i in range(start, end):
     # i = start, start+1, ..., end-1
+
+# range（ステップ指定）
+for i in range(start, end, step):
+    # i = start, start+step, start+2*step, ...
+```
+
+### マップのキー・値走査
+
+```python
+for k, v in map_expr:
+    # k はキー、v は各エントリの値
+```
+
+### タプル分解代入
+
+2要素タプルのリスト（`enumerate()` や `zip()` の戻り値など）を走査する際、2つの変数に分解できます。`_` で値を破棄できます。
+
+```python
+let xs = [10, 20, 30]
+
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
+
+for a, b in zip([1, 2], [10, 20]):
+    print(a + b)          # 11, 22
+
+for _, x in enumerate(xs):
+    print(x)              # インデックスを破棄
+```
+
+### 範囲演算子（`..`）
+
+`..` 演算子は両端を含む整数の範囲を生成します。`1 .. 5` は `[1, 2, 3, 4, 5]` を生成します。
+
+```python
+for i in 1 .. 5:
+    print(i)     # 1 2 3 4 5
 ```
 
 ### 例
@@ -116,6 +153,22 @@ for i in range(5):
 
 for i in range(2, 6):
     print(i)     # 2 3 4 5
+
+for i in range(0, 10, 2):
+    print(i)     # 0 2 4 6 8
+
+for i in range(10, 0, -3):
+    print(i)     # 10 7 4 1
+
+# マップの走査
+let m = {"a": 1, "b": 2}
+for k, v in m:
+    print(k)
+    print(v)
+
+# 範囲演算子
+for i in 1 .. 3:
+    print(i)     # 1 2 3
 ```
 
 ---
@@ -155,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...`（Ellipsis）
+
+- 何もしない文（no-op）。空ブロックのプレースホルダーとして使用する。
+- 関数ボディ、`if`/`elif`/`else`、`while`、`for`、`match case` など任意のブロック内で使用可能。
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### 構文
@@ -176,17 +246,38 @@ match 式:
 | ワイルドカード | `_` | 何にでもマッチ |
 | リテラル | `0`, `"hello"`, `true` | 値の等値比較 |
 | 変数束縛 | `n` | 何にでもマッチし、変数に束縛 |
-| enum バリアント | `Color::Red` | enum タグの比較 |
+| enum バリアント | `Color::Red` | enum タグの比較（単純な enum） |
+| ADT enum バリアント | `Shape::Circle(r)` | 関連データを持つ enum バリアントにマッチし、束縛する |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
+| OR パターン | `1 \| 2 \| 3` | いずれかにマッチ |
 
 ### guard 節
 
 `case パターン if 条件式:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
 
+### OR パターン
+
+複数のパターンを `|` で結合し、いずれかにマッチさせることができます。変数束縛（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）は OR パターン内では使用できません。
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# enum の OR パターン
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### 網羅性チェック
 
-- enum 型: すべてのバリアントをカバーするか `_` が必要。
+- enum 型: すべてのバリアントをカバーするか `_` が必要。OR パターンの各選択肢は個別にカウントされる。
 - Option 型: `Some` と `None` の両方をカバーするか `_` が必要。
 - bool 型: `true` と `false` の両方をカバーするか `_` が必要。
 - int / float / str リテラル: `_` が必須。
@@ -235,6 +326,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT enum マッチ
+
+enum バリアントが関連データを持つ場合、バインディングパターンを使って値を取り出します。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+複数フィールドを持つバリアントは、宣言順に各フィールドを別々の名前に束縛します。
 
 ### スコープルール
 

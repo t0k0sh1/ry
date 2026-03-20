@@ -1,0 +1,18 @@
+name: Enforce Branch Name
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate source branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ ! "$BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Branch name '$BRANCH' does not match the required pattern vX.X.X (e.g., v0.0.3)"
+            exit 1
+          fi
+          echo "Branch name '$BRANCH' is valid."

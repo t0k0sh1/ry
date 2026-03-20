@@ -20,7 +20,9 @@ If you are new to Ry, please read through these in order.
 | 06 | [Structs and Enums](tutorial/06-structs.md) | type definitions, field access, methods, enum |
 | 07 | [Collections](tutorial/07-collections.md) | Tuples, lists, maps, sets |
 | 08 | [Advanced Features](tutorial/08-advanced.md) | Closures, operator overloading, Option type |
-| 09 | [Modules](tutorial/09-modules.md) | Module splitting with from/import |
+| 09 | [Packages](tutorial/09-modules.md) | Packages, std library, directory packages |
+| 10 | [Design by Contract](tutorial/10-contracts.md) | require, ensure, invariant, old, result |
+| 11 | [Testing](tutorial/11-testing.md) | describe/it/expect, matchers, mock/verify |
 
 For setup and build instructions, see [01 - Getting Started](tutorial/01-getting-started.md).
 
@@ -38,9 +40,12 @@ For detailed language specifications, see the reference pages below.
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Structs and Enums](reference/structs.md) | Complete grammar for type and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
-| [Built-in Functions](reference/builtins.md) | print, len, Some, unwrap, etc. |
+| [Built-in Functions](reference/builtins.md) | print, len, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
-| [Module System](reference/modules.md) | from/import syntax and search rules |
+| [Regular Expressions](reference/regex.md) | regex_match, regex_search, regex_replace, regex_split, regex_find_all |
+| [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and ry.toml specification |
+| [Design by Contract](reference/contracts.md) | require, ensure, invariant, old, result |
+| [Directives](reference/directives.md) | @deprecated and compile-time metadata |
 | [Error List](reference/errors.md) | Compile errors and runtime errors |

@@ -1,101 +1,66 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
 // ===== Collection helpers =====
 
-llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
-    auto it = list_element_types_.find(listAlloca);
-    if (it != list_element_types_.end())
-        return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(listAlloca)) {
-        auto it2 = list_element_types_.find(load->getPointerOperand());
-        if (it2 != list_element_types_.end())
-            return it2->second;
+// Step 2: Unified collection type lookup helper
+llvm::Type *CodeGen::lookupCollectionType(
+    const std::unordered_map<llvm::Value*, llvm::Type*> &map, llvm::Value *val) {
+    auto it = map.find(val);
+    if (it != map.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto it2 = map.find(load->getPointerOperand());
+        if (it2 != map.end()) return it2->second;
     }
     return nullptr;
+}
+
+llvm::Type *CodeGen::getListElementType(llvm::Value *listAlloca) {
+    return lookupCollectionType(list_element_types_, listAlloca);
 }
 
 llvm::Type *CodeGen::getMapKeyType(llvm::Value *mapVal) {
-    auto it = map_key_types_.find(mapVal);
-    if (it != map_key_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
-        auto it2 = map_key_types_.find(load->getPointerOperand());
-        if (it2 != map_key_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(map_key_types_, mapVal);
 }
 
 llvm::Type *CodeGen::getMapValueType(llvm::Value *mapVal) {
-    auto it = map_value_types_.find(mapVal);
-    if (it != map_value_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(mapVal)) {
-        auto it2 = map_value_types_.find(load->getPointerOperand());
-        if (it2 != map_value_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(map_value_types_, mapVal);
 }
 
 llvm::Type *CodeGen::getSetElementType(llvm::Value *setVal) {
-    auto it = set_element_types_.find(setVal);
-    if (it != set_element_types_.end()) return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(setVal)) {
-        auto it2 = set_element_types_.find(load->getPointerOperand());
-        if (it2 != set_element_types_.end()) return it2->second;
-    }
-    return nullptr;
+    return lookupCollectionType(set_element_types_, setVal);
 }
 
-llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    // Hash table lookup via __ry_ht_find_*
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 3, "set_bc_ptr");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "set_bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "set_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 4, "set_buckets_ptr");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "set_buckets");
-
-    llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, setPtr, 0, "set_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
-    llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "set_elems_ptr");
-    llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
-
-    std::string fnName;
-    llvm::Type *keyArgTy;
-    if (elemTy == ptrTy_) {
-        fnName = "__ry_ht_find_str";
-        keyArgTy = ptrTy_;
-    } else if (elemTy->isDoubleTy()) {
-        fnName = "__ry_ht_find_f64";
-        keyArgTy = f64Ty_;
-    } else {
-        fnName = "__ry_ht_find_i64";
-        keyArgTy = i64Ty_;
-    }
-
-    llvm::FunctionType *findTy = llvm::FunctionType::get(
-        i64Ty_, {ptrTy_, i64Ty_, ptrTy_, i64Ty_, keyArgTy}, false);
-    llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
-
-    llvm::Value *keyArg = elem;
-    if (elemTy != keyArgTy && elemTy == i1Ty_)
-        keyArg = builder_.CreateZExt(elem, i64Ty_, "elem_ext");
-
-    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, elemsPtr, length, keyArg}, "set_lookup_idx");
+llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
+    return lookupCollectionType(nested_list_element_types_, listVal);
 }
 
-llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
-    // Hash table lookup via __ry_ht_find_*
-    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 4, "map_bc_ptr");
-    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "map_bc");
-    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "map_bmask");
-    llvm::Value *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 5, "map_buckets_ptr");
-    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "map_buckets");
+// Step 1: Hash function resolution helper
+CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
+    if (keyTy == ptrTy_)
+        return {"__ry_hash_str", "__ry_ht_rehash_str", ptrTy_};
+    if (keyTy->isDoubleTy())
+        return {"__ry_hash_f64", "__ry_ht_rehash_f64", f64Ty_};
+    return {"__ry_hash_i64", "__ry_ht_rehash_i64", i64Ty_};
+}
 
-    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 0, "map_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 2, "map_keys_ptr");
-    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "map_keys");
+// Step 3: Unified hash table lookup
+llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
+                                            const HashTableLayout &layout,
+                                            llvm::Value *key, llvm::Type *keyTy) {
+    llvm::Value *bucketCountPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketCountIdx, "ht_bc_ptr");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bucketCountPtr, "ht_bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "ht_bmask");
+    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, containerPtr, layout.bucketsPtrIdx, "ht_buckets_ptr");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "ht_buckets");
+
+    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, containerPtr, layout.lenIdx, "ht_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "ht_len");
+    llvm::Value *keysPtrField = builder_.CreateStructGEP(headerTy, containerPtr, layout.keysPtrIdx, "ht_keys_ptr");
+    llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "ht_keys");
 
     std::string fnName;
     llvm::Type *keyArgTy;
@@ -115,10 +80,18 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
     llvm::FunctionCallee findFn = mod_->getOrInsertFunction(fnName, findTy);
 
     llvm::Value *keyArg = key;
-    if (keyTy != keyArgTy && keyTy == i1Ty_)
-        keyArg = builder_.CreateZExt(key, i64Ty_, "key_ext");
+    if (keyTy != keyArgTy && keyTy->isIntegerTy() && keyArgTy->isIntegerTy())
+        keyArg = builder_.CreateZExt(key, keyArgTy, "key_ext");
 
-    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "lookup_idx");
+    return builder_.CreateCall(findFn, {bucketsPtr, bucketMask, keysPtr, length, keyArg}, "ht_lookup_idx");
+}
+
+llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
+    return emitHashTableLookup(setPtr, setHeaderTy_, {0, 3, 4, 2}, elem, elemTy);
+}
+
+llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
+    return emitHashTableLookup(mapPtr, mapHeaderTy_, {0, 4, 5, 2}, key, keyTy);
 }
 
 // Helper: initialize bucket array fields in a header
@@ -148,27 +121,17 @@ void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
 void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::StructType *headerTy,
                                               unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                               llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex) {
-    // Get hash function and rehash function names
-    std::string hashFnName, rehashFnName;
-    llvm::Type *hashArgTy;
-    if (keyTy == ptrTy_) {
-        hashFnName = "__ry_hash_str";
-        rehashFnName = "__ry_ht_rehash_str";
-        hashArgTy = ptrTy_;
-    } else if (keyTy->isDoubleTy()) {
-        hashFnName = "__ry_hash_f64";
-        rehashFnName = "__ry_ht_rehash_f64";
-        hashArgTy = f64Ty_;
-    } else {
-        hashFnName = "__ry_hash_i64";
-        rehashFnName = "__ry_ht_rehash_i64";
-        hashArgTy = i64Ty_;
-    }
+    auto hfi = resolveHashFn(keyTy);
+
+    // Coerce key to match hash function argument type (e.g. i1 → i64)
+    llvm::Value *hashKey = key;
+    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
+        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, "hash_key_zext");
 
     // Compute hash
-    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hashArgTy}, false);
-    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hashFnName, hashTy);
-    llvm::Value *hashVal = builder_.CreateCall(hashFn, {key}, "hash_val");
+    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
+    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
+    llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, "hash_val");
 
     // Insert into buckets
     llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, bucketsPtrIdx, "bp_field");
@@ -204,7 +167,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *lenForRehash = builder_.CreateLoad(i64Ty_, lenPtr, "len_for_rehash2");
 
     llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashFnName, rehashTy);
+    llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(hfi.rehashFnName, rehashTy);
     llvm::Value *newBuckets = builder_.CreateCall(rehashFn, {keysPtr, lenForRehash, newBc}, "new_buckets");
 
     // Free old buckets
@@ -225,7 +188,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
 
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
-        throw std::runtime_error("print() takes exactly 1 argument");
+        codegenError("print() takes exactly 1 argument");
 
     llvm::FunctionType *printfTy = llvm::FunctionType::get(
         i32Ty_, {llvm::PointerType::getUnqual(*ctx_)}, /*isVarArg=*/true);
@@ -244,7 +207,106 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         }
         if (evIt != enum_value_types_.end()) {
             auto &einfo = enum_types_[evIt->second];
-            // Use the name array to print the variant name
+            if (einfo.isADT) {
+                // ADT enum: extract tag, print variant name + payload
+                llvm::Value *tag = builder_.CreateExtractValue(val, 0, "adt.tag");
+                llvm::Value *namePtr = builder_.CreateGEP(
+                    llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                    einfo.nameArray,
+                    {llvm::ConstantInt::get(i64Ty_, 0), tag},
+                    "enum_name_ptr");
+                llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+
+                // Check if this variant has associated data
+                // We need to branch for each variant to print payload
+                // Simple approach: store to alloca, iterate variants
+                llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "adt.print.tmp");
+                builder_.CreateStore(val, adtAlloca);
+                llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "adt.print.payload");
+
+                // Check if any variant has fields — create conditional printing
+                bool anyFields = false;
+                for (auto &[vn, vf] : einfo.variantFields)
+                    if (!vf.fieldTypes.empty()) { anyFields = true; break; }
+
+                if (anyFields) {
+                    // Create blocks for each variant
+                    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "adt.print.end", fn_);
+                    llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "adt.print.default", fn_);
+
+                    // Print variant name for data-less variants or with parentheses for data variants
+                    auto *switchInst = builder_.CreateSwitch(tag, defaultBB, einfo.variantCount);
+
+                    for (auto &[vname, vtag] : einfo.variants) {
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "adt.print." + vname, fn_);
+                        switchInst->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vtag)), caseBB);
+                        builder_.SetInsertPoint(caseBB);
+
+                        auto fit = einfo.variantFields.find(vname);
+                        if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
+                            // Print "VariantName("
+                            llvm::Constant *openFmt = builder_.CreateGlobalString("%s(", ".fmt_adt_open");
+                            builder_.CreateCall(printfFn, {openFmt, nameStr});
+
+                            const llvm::DataLayout &dl = mod_->getDataLayout();
+                            size_t offset = 0;
+                            for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
+                                llvm::Type *fieldTy = fit->second.fieldTypes[fi];
+                                uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                                offset = (offset + align - 1) / align * align;
+                                llvm::Value *fieldPtr = builder_.CreateGEP(
+                                    llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                                    {llvm::ConstantInt::get(i64Ty_, offset)},
+                                    "adt.print.field." + std::to_string(fi));
+                                llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "field_val");
+
+                                if (fi > 0) {
+                                    llvm::Constant *commaFmt = builder_.CreateGlobalString(", ", ".fmt_comma");
+                                    builder_.CreateCall(printfFn, {commaFmt});
+                                }
+
+                                if (fieldTy == i64Ty_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%lld", ".fmt_adt_int");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == f64Ty_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_adt_float");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == ptrTy_) {
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_str");
+                                    builder_.CreateCall(printfFn, {fmt, fieldVal});
+                                } else if (fieldTy == i1Ty_) {
+                                    llvm::Value *ext = builder_.CreateZExt(fieldVal, i64Ty_);
+                                    llvm::Value *trueStr = builder_.CreateGlobalString("true", ".true");
+                                    llvm::Value *falseStr = builder_.CreateGlobalString("false", ".false");
+                                    llvm::Value *str = builder_.CreateSelect(
+                                        builder_.CreateICmpNE(ext, llvm::ConstantInt::get(i64Ty_, 0)),
+                                        trueStr, falseStr);
+                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_bool");
+                                    builder_.CreateCall(printfFn, {fmt, str});
+                                }
+                                offset += dl.getTypeAllocSize(fieldTy);
+                            }
+
+                            llvm::Constant *closeFmt = builder_.CreateGlobalString(")\n", ".fmt_adt_close");
+                            builder_.CreateCall(printfFn, {closeFmt});
+                        } else {
+                            // No data — just print variant name
+                            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum_nodata");
+                            builder_.CreateCall(printfFn, {fmt, nameStr});
+                        }
+                        builder_.CreateBr(endBB);
+                    }
+
+                    builder_.SetInsertPoint(defaultBB);
+                    builder_.CreateBr(endBB);
+                    builder_.SetInsertPoint(endBB);
+                } else {
+                    llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+                    builder_.CreateCall(printfFn, {fmt, nameStr});
+                }
+                return;
+            }
+            // Non-ADT enum: use tag directly as index
             llvm::Value *namePtr = builder_.CreateGEP(
                 llvm::ArrayType::get(ptrTy_, einfo.variantCount),
                 einfo.nameArray,
@@ -516,8 +578,15 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         }
     }
 
+    if (val->getType() == errorTy_) {
+        emitPrintValue(val, errorTy_, printfFn, "_err");
+        llvm::Constant *nl = builder_.CreateGlobalString("\n", ".fmt_nl_err");
+        builder_.CreateCall(printfFn, {nl});
+        return;
+    }
+
     if (llvm::isa<llvm::StructType>(val->getType()))
-        throw std::runtime_error("print() does not support struct types");
+        codegenError("print() does not support struct types");
 
     if (val->getType() == i1Ty_) {
         llvm::Constant *trueStr  = builder_.CreateGlobalString("true\n",  ".fmt_true");
@@ -542,11 +611,22 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     builder_.CreateCall(printfFn, {fmt, val});
 }
 
-// ===== Test: DescribeStmt =====
+// ===== Test: describe/it (trailing block) =====
 
-void CodeGen::emitStmt(std::unique_ptr<DescribeStmt> &s) {
+static LambdaExpr &extractTrailingLambda(CallStmt &s, const std::string &callee) {
+    if (s.args.size() != 2)
+        throw std::runtime_error(callee + "() requires exactly one description string and a trailing block");
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
+    if (!lambda)
+        throw std::runtime_error(callee + "() last argument must be a trailing block");
+    return **lambda;
+}
+
+void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
-        throw std::runtime_error("'describe' is only allowed in test mode (use 'ry test')");
+        codegenError("'describe' is only allowed in test mode (use 'ry test')");
+
+    auto &lambda = extractTrailingLambda(s, "describe");
 
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -555,101 +635,274 @@ void CodeGen::emitStmt(std::unique_ptr<DescribeStmt> &s) {
 
     llvm::FunctionCallee descBeginFn = mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy);
     llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
-    llvm::FunctionCallee itBeginFn   = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
-    llvm::FunctionCallee itEndFn     = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
 
-    // describe_begin
-    llvm::Value *descName = builder_.CreateGlobalString(s->description, ".desc_name");
+    llvm::Value *descName = emitExpr(*s.args[0]);
+    if (!descName->getType()->isPointerTy())
+        codegenError("describe() first argument must be a string");
     builder_.CreateCall(descBeginFn, {descName});
 
-    for (auto &itCase : s->cases) {
-        // Create a test function for this it-block
-        std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
-        llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
-        llvm::Function *testFunc = llvm::Function::Create(
-            testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
-
-        {
-            FnScope guard(*this);
-            fn_ = testFunc;
-            pushScope();
-
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
-            builder_.SetInsertPoint(entry);
-
-            for (auto &stmt : itCase.body)
-                std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-            if (!builder_.GetInsertBlock()->getTerminator())
-                builder_.CreateRetVoid();
-
-            std::string err;
-            llvm::raw_string_ostream errStream(err);
-            if (llvm::verifyFunction(*testFunc, &errStream))
-                throw std::runtime_error("IR verify error in test '" + itCase.description + "': " + err);
-        }
-
-        // Call it_begin, test function, it_end
-        llvm::Value *itName = builder_.CreateGlobalString(itCase.description, ".it_name");
-        builder_.CreateCall(itBeginFn, {itName});
-        builder_.CreateCall(testFunc);
-        builder_.CreateCall(itEndFn);
-    }
+    for (auto &stmt : lambda.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
     builder_.CreateCall(descEndFn);
+}
+
+void CodeGen::emitItCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'it' is only allowed in test mode (use 'ry test')");
+
+    auto &lambda = extractTrailingLambda(s, "it");
+
+    llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionType *voidTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), false);
+
+    llvm::FunctionCallee itBeginFn = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
+    llvm::FunctionCallee itEndFn   = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
+
+    llvm::Value *itName = emitExpr(*s.args[0]);
+    if (!itName->getType()->isPointerTy())
+        codegenError("it() first argument must be a string");
+
+    // Create a test function for this it-block
+    std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
+    llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
+    llvm::Function *testFunc = llvm::Function::Create(
+        testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
+
+    {
+        FnScope guard(*this);
+        fn_ = testFunc;
+        pushScope();
+
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
+        builder_.SetInsertPoint(entry);
+
+        for (auto &stmt : lambda.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateRetVoid();
+
+        std::string err;
+        llvm::raw_string_ostream errStream(err);
+        if (llvm::verifyFunction(*testFunc, &errStream))
+            codegenError("IR verify error in test: " + err);
+    }
+
+    builder_.CreateCall(itBeginFn, {itName});
+    builder_.CreateCall(testFunc);
+    builder_.CreateCall(itEndFn);
+}
+
+// ===== Test: mock(fn_name, replacement) =====
+
+void CodeGen::emitMockCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'mock' is only allowed in test mode (use 'ry test')");
+
+    if (s.args.size() != 2)
+        codegenError("mock() requires exactly 2 arguments: function name and replacement");
+
+    // First arg is the function name (converted to StringExpr by parser)
+    auto *strExpr = std::get_if<StringExpr>(&s.args[0]->data);
+    if (!strExpr)
+        codegenError("mock() first argument must be a function name");
+    const std::string &fnName = strExpr->value;
+
+    // Check function exists
+    auto fit = functions_.find(fnName);
+    if (fit == functions_.end())
+        codegenError("mock(): unknown function '" + fnName + "'");
+
+    // Check no overloads (v1 limitation)
+    if (fit->second.size() > 1)
+        codegenError("mock(): overloaded functions are not supported");
+
+    auto &entry = fit->second[0];
+    llvm::Function *origFn = entry.func;
+
+    // Emit the replacement lambda
+    llvm::Value *replacement = emitExpr(*s.args[1]);
+
+    // Look up function type info, supporting variables (LoadInst) that hold the function
+    llvm::Value *fnInfoKey = replacement;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(replacement))
+        fnInfoKey = load->getPointerOperand();
+
+    auto fnInfoIt = fn_type_info_.find(fnInfoKey);
+    if (fnInfoIt == fn_type_info_.end())
+        codegenError("mock(): second argument must be a non-capturing lambda or function reference");
+
+    // Verify it's a function pointer (not a closure)
+    if (!fnInfoIt->second.capturedVars.empty())
+        codegenError("mock(): capture-based closures are not supported, use a plain lambda");
+
+    // Verify type compatibility
+    llvm::Type *origRetTy = origFn->getReturnType();
+    if (fnInfoIt->second.returnType != origRetTy)
+        codegenError("mock(): replacement return type does not match '" + fnName + "'");
+    if (fnInfoIt->second.paramTypes.size() != entry.paramTypes.size())
+        codegenError("mock(): replacement parameter count does not match '" + fnName + "'");
+    for (size_t i = 0; i < entry.paramTypes.size(); ++i) {
+        if (fnInfoIt->second.paramTypes[i] != entry.paramTypes[i])
+            codegenError("mock(): replacement parameter type " + std::to_string(i) +
+                         " does not match '" + fnName + "'");
+    }
+
+    // Track that this function is mocked (for selective dispatch in emitUserFnCall)
+    mocked_functions_.insert(fnName);
+
+    // Call __ry_mock_set(name, fn_ptr)
+    llvm::FunctionType *mockSetTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee mockSetFn = mod_->getOrInsertFunction("__ry_mock_set", mockSetTy);
+
+    // Cache global string per function name
+    auto &nameStr = mock_name_strings_[fnName];
+    if (!nameStr) nameStr = builder_.CreateGlobalString(fnName, ".mock." + fnName);
+    builder_.CreateCall(mockSetFn, {nameStr, replacement});
 }
 
 // ===== Test: ExpectStmt =====
 
 void CodeGen::emitStmt(ExpectStmt &s) {
     if (!test_mode_)
-        throw std::runtime_error("'expect' is only allowed in test mode (use 'ry test')");
+        codegenError("'expect' is only allowed in test mode (use 'ry test')");
 
     llvm::Value *actualVal = emitExpr(*s.actual);
     llvm::Type *actualTy = actualVal->getType();
 
     llvm::Value *cmpResult = nullptr;
 
-    if (s.matcher == "to_eq") {
+    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         llvm::Type *expectedTy = expectedVal->getType();
 
+        llvm::Value *eqResult = nullptr;
         if (actualTy == i64Ty_ && expectedTy == i64Ty_) {
-            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == f64Ty_ && expectedTy == f64Ty_) {
-            cmpResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateFCmpOEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
-            cmpResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
+            eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == ptrTy_ && expectedTy == ptrTy_) {
-            // String comparison via strcmp
             llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
             llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
             llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
-            cmpResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
+            eqResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
         } else if ((actualTy == i64Ty_ && expectedTy == f64Ty_) ||
                    (actualTy == f64Ty_ && expectedTy == i64Ty_)) {
             auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
-            cmpResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
+            eqResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
         } else {
-            throw std::runtime_error("line " + std::to_string(s.line) +
-                                     ": to_eq: unsupported types for comparison");
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": " + s.matcher + ": unsupported types for comparison");
         }
+        cmpResult = (s.matcher == "to_not_eq")
+            ? builder_.CreateNot(eqResult, "not_eq")
+            : eqResult;
     } else if (s.matcher == "to_be_true") {
         if (actualTy != i1Ty_)
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_true: expected bool");
         cmpResult = actualVal;
     } else if (s.matcher == "to_be_false") {
         if (actualTy != i1Ty_)
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_false: expected bool");
         cmpResult = builder_.CreateNot(actualVal, "not");
     } else if (s.matcher == "to_be_none") {
         if (!isOptionType(actualTy))
-            throw std::runtime_error("line " + std::to_string(s.line) +
+            codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_none: expected Option type");
         llvm::Value *hasVal = builder_.CreateExtractValue(actualVal, {0}, "has_val");
         cmpResult = builder_.CreateNot(hasVal, "is_none");
+    } else if (s.matcher == "to_be_some") {
+        if (!isOptionType(actualTy))
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": to_be_some: expected Option type");
+        cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_some");
+    } else if (s.matcher == "to_contain") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+
+        if (actualTy == ptrTy_ && expectedVal->getType() == ptrTy_) {
+            // String contains: use strstr
+            llvm::FunctionType *strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+            llvm::FunctionCallee strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+            llvm::Value *result = builder_.CreateCall(strstrFn, {actualVal, expectedVal}, "strstr");
+            cmpResult = builder_.CreateICmpNE(result, llvm::ConstantPointerNull::get(
+                llvm::PointerType::getUnqual(*ctx_)), "contains");
+        } else if (actualTy == ptrTy_) {
+            // List/Set contains: use "in" operator logic
+            llvm::Type *elemTy = getListElementType(actualVal);
+            llvm::StructType *headerTy = listHeaderTy_;
+            if (!elemTy) {
+                elemTy = getSetElementType(actualVal);
+                headerTy = setHeaderTy_;
+            }
+            if (!elemTy)
+                codegenError("line " + std::to_string(s.loc.line) +
+                                         ": to_contain: expected list, set, or string");
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, actualVal, 0, "len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "len");
+            llvm::Value *dataField = builder_.CreateStructGEP(headerTy, actualVal, 2, "data_field");
+            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "data_ptr");
+
+            llvm::AllocaInst *foundVar = builder_.CreateAlloca(i1Ty_, nullptr, "found");
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), foundVar);
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+            llvm::Function *currentFnContain = builder_.GetInsertBlock()->getParent();
+            llvm::BasicBlock *cBB = llvm::BasicBlock::Create(*ctx_, "contain.cond", currentFnContain);
+            llvm::BasicBlock *bBB = llvm::BasicBlock::Create(*ctx_, "contain.body", currentFnContain);
+            llvm::BasicBlock *nBB = llvm::BasicBlock::Create(*ctx_, "contain.next", currentFnContain);
+            llvm::BasicBlock *eBB = llvm::BasicBlock::Create(*ctx_, "contain.end", currentFnContain);
+
+            builder_.CreateBr(cBB);
+            builder_.SetInsertPoint(cBB);
+            llvm::Value *ci = builder_.CreateLoad(i64Ty_, iVar, "ci");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(ci, len, "clt"), bBB, eBB);
+
+            builder_.SetInsertPoint(bBB);
+            llvm::Value *curI = builder_.CreateLoad(i64Ty_, iVar, "cur_i");
+            llvm::Value *ePtr = builder_.CreateGEP(elemTy, dataPtr, {curI}, "elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(elemTy, ePtr, "elem");
+            if (expectedVal->getType() != elemTy)
+                codegenError("line " + std::to_string(s.loc.line) +
+                                         ": to_contain: element type mismatch");
+            llvm::Value *eq;
+            if (elemTy == i64Ty_)
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+            else if (elemTy == ptrTy_) {
+                llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *cmp = builder_.CreateCall(strcmpFn, {elem, expectedVal}, "strcmp");
+                eq = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "eq");
+            } else
+                eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "contain.found", currentFnContain);
+            builder_.CreateCondBr(eq, foundBB, nBB);
+            builder_.SetInsertPoint(foundBB);
+            builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), foundVar);
+            builder_.CreateBr(eBB);
+
+            builder_.SetInsertPoint(nBB);
+            llvm::Value *nextI = builder_.CreateAdd(
+                builder_.CreateLoad(i64Ty_, iVar, "ni"), llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+            builder_.CreateStore(nextI, iVar);
+            builder_.CreateBr(cBB);
+
+            builder_.SetInsertPoint(eBB);
+            cmpResult = builder_.CreateLoad(i1Ty_, foundVar, "contain_result");
+        } else {
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": to_contain: expected list, set, or string");
+        }
     }
 
     // Branch: if cmpResult is false, call __ry_test_expect_fail
@@ -699,18 +952,23 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     llvm::Value *actualStr = formatValue(actualVal, actualTy, "actual_buf");
 
     llvm::Value *expectedStr;
-    if (s.matcher == "to_eq") {
+    if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         expectedStr = formatValue(expectedVal, expectedVal->getType(), "expected_buf");
     } else if (s.matcher == "to_be_true") {
         expectedStr = builder_.CreateGlobalString("true", ".exp_true");
     } else if (s.matcher == "to_be_false") {
         expectedStr = builder_.CreateGlobalString("false", ".exp_false");
+    } else if (s.matcher == "to_be_some") {
+        expectedStr = builder_.CreateGlobalString("Some(...)", ".exp_some");
+    } else if (s.matcher == "to_contain") {
+        llvm::Value *expectedVal = emitExpr(*s.expected);
+        expectedStr = formatValue(expectedVal, expectedVal->getType(), "expected_buf");
     } else {
         expectedStr = builder_.CreateGlobalString("None", ".exp_none");
     }
 
-    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.line), actualStr, expectedStr});
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), actualStr, expectedStr});
     builder_.CreateBr(contBB);
 
     // Continue block
@@ -726,11 +984,22 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     // --- Exhaustiveness check ---
     bool hasWildcardOrVar = false;
     bool hasGuardedArm = false;
+    auto checkWildcardOrVar = [](const Pattern &p) {
+        return std::holds_alternative<WildcardPattern>(p) ||
+               std::holds_alternative<VariablePattern>(p);
+    };
     for (auto &arm : s->arms) {
-        if (std::holds_alternative<WildcardPattern>(arm.pattern) ||
-            std::holds_alternative<VariablePattern>(arm.pattern)) {
-            if (!arm.guard)
+        if (!arm.guard) {
+            if (checkWildcardOrVar(arm.pattern)) {
                 hasWildcardOrVar = true;
+            } else if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                for (auto &alt : (*op)->alternatives) {
+                    if (checkWildcardOrVar(alt)) {
+                        hasWildcardOrVar = true;
+                        break;
+                    }
+                }
+            }
         }
         if (arm.guard)
             hasGuardedArm = true;
@@ -744,8 +1013,42 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 enumName = ep->enum_name;
                 break;
             }
+            if (auto *ecp = std::get_if<EnumConstructorPattern>(&arm.pattern)) {
+                enumName = ecp->enum_name;
+                break;
+            }
+            if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                for (auto &alt : (*op)->alternatives) {
+                    if (auto *ep = std::get_if<EnumPattern>(&alt)) {
+                        enumName = ep->enum_name;
+                        break;
+                    }
+                    if (auto *ecp = std::get_if<EnumConstructorPattern>(&alt)) {
+                        enumName = ecp->enum_name;
+                        break;
+                    }
+                }
+                if (!enumName.empty()) break;
+            }
         }
         if (!enumName.empty()) {
+            // Resolve enumName for generic enums using subject type
+            if (!enum_types_.count(enumName)) {
+                std::string subEnumType;
+                auto evIt2 = enum_value_types_.find(subject);
+                if (evIt2 != enum_value_types_.end()) {
+                    subEnumType = evIt2->second;
+                } else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(subject)) {
+                    auto evIt3 = enum_value_types_.find(load->getPointerOperand());
+                    if (evIt3 != enum_value_types_.end())
+                        subEnumType = evIt3->second;
+                }
+                if (!subEnumType.empty()) {
+                    auto ltPos = subEnumType.find('<');
+                    if (ltPos != std::string::npos && subEnumType.substr(0, ltPos) == enumName)
+                        enumName = subEnumType;
+                }
+            }
             auto it = enum_types_.find(enumName);
             if (it != enum_types_.end()) {
                 std::unordered_set<std::string> covered;
@@ -754,10 +1057,24 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         if (!arm.guard)
                             covered.insert(ep->variant_name);
                     }
+                    if (auto *ecp = std::get_if<EnumConstructorPattern>(&arm.pattern)) {
+                        if (!arm.guard)
+                            covered.insert(ecp->variant_name);
+                    }
+                    if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                        if (!arm.guard) {
+                            for (auto &alt : (*op)->alternatives) {
+                                if (auto *ep = std::get_if<EnumPattern>(&alt))
+                                    covered.insert(ep->variant_name);
+                                if (auto *ecp = std::get_if<EnumConstructorPattern>(&alt))
+                                    covered.insert(ecp->variant_name);
+                            }
+                        }
+                    }
                 }
                 for (auto &[vname, _] : it->second.variants) {
                     if (!covered.count(vname))
-                        throw std::runtime_error("non-exhaustive match: missing variant '" +
+                        codegenError("non-exhaustive match: missing variant '" +
                             enumName + "::" + vname + "'");
                 }
             }
@@ -765,31 +1082,47 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
 
         // Check Option exhaustiveness
         bool hasSome = false, hasNone = false;
+        auto checkOptionPattern = [&](const Pattern &p) {
+            if (std::holds_alternative<SomePattern>(p)) hasSome = true;
+            if (std::holds_alternative<NonePattern>(p)) hasNone = true;
+        };
         for (auto &arm : s->arms) {
-            if (std::holds_alternative<SomePattern>(arm.pattern) && !arm.guard)
-                hasSome = true;
-            if (std::holds_alternative<NonePattern>(arm.pattern) && !arm.guard)
-                hasNone = true;
+            if (!arm.guard) {
+                checkOptionPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkOptionPattern(alt);
+                }
+            }
         }
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
-            throw std::runtime_error("non-exhaustive match: Option requires both Some and None cases (or use '_')");
+            codegenError("non-exhaustive match: Option requires both Some and None cases (or use '_')");
 
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
-        for (auto &arm : s->arms) {
-            if (auto *lp = std::get_if<LiteralPattern>(&arm.pattern)) {
+        auto checkBoolPattern = [&](const Pattern &p) {
+            if (auto *lp = std::get_if<LiteralPattern>(&p)) {
                 if (auto *be = std::get_if<BoolExpr>(&lp->value->data)) {
-                    if (be->value && !arm.guard) hasTrue = true;
-                    if (!be->value && !arm.guard) hasFalse = true;
+                    if (be->value) hasTrue = true;
+                    if (!be->value) hasFalse = true;
+                }
+            }
+        };
+        for (auto &arm : s->arms) {
+            if (!arm.guard) {
+                checkBoolPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkBoolPattern(alt);
                 }
             }
         }
         if (subjectTy == i1Ty_ && !(hasTrue && hasFalse) && !hasWildcardOrVar)
-            throw std::runtime_error("non-exhaustive match: bool requires both true and false cases (or use '_')");
+            codegenError("non-exhaustive match: bool requires both true and false cases (or use '_')");
 
         // For int/float/string literals without wildcard
         if (enumName.empty() && !hasSome && !hasNone && !hasTrue && !hasFalse)
-            throw std::runtime_error("non-exhaustive match: literal patterns require a wildcard '_' case");
+            codegenError("non-exhaustive match: literal patterns require a wildcard '_' case");
     }
 
     // --- Code generation: chain of conditional branches ---
@@ -843,29 +1176,107 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                     testResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match.streq");
                 } else {
-                    throw std::runtime_error("match: incompatible types in literal pattern");
+                    codegenError("match: incompatible types in literal pattern");
                 }
             } else if constexpr (std::is_same_v<T, VariablePattern>) {
                 testResult = llvm::ConstantInt::get(i1Ty_, 1);
             } else if constexpr (std::is_same_v<T, EnumPattern>) {
-                auto enumIt = enum_types_.find(pat.enum_name);
+                std::string resolvedEnum = pat.enum_name;
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
+                    // Fallback: try subject's enum type (for generic enums)
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
+                        resolvedEnum = subjectEnumType;
+                        enumIt = enum_types_.find(resolvedEnum);
+                    }
+                }
                 if (enumIt == enum_types_.end())
-                    throw std::runtime_error("match: unknown enum '" + pat.enum_name + "'");
+                    codegenError("match: unknown enum '" + pat.enum_name + "'");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
-                    throw std::runtime_error("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
-                llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
-                testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
+                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                if (enumIt->second.isADT) {
+                    llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
+                    testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
+                } else {
+                    llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                    testResult = builder_.CreateICmpEQ(subjectVal, tag, "match.enum_eq");
+                }
+            } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
+                std::string resolvedEnum = pat.enum_name;
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt == enum_types_.end() && !subjectEnumType.empty()) {
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name) {
+                        resolvedEnum = subjectEnumType;
+                        enumIt = enum_types_.find(resolvedEnum);
+                    }
+                }
+                if (enumIt == enum_types_.end())
+                    codegenError("match: unknown enum '" + pat.enum_name + "'");
+                if (!enumIt->second.isADT)
+                    codegenError("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
+                auto varIt = enumIt->second.variants.find(pat.variant_name);
+                if (varIt == enumIt->second.variants.end())
+                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
+                testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
             } else if constexpr (std::is_same_v<T, SomePattern>) {
                 if (!isOptionType(subjectTy))
-                    throw std::runtime_error("match: Some pattern requires Option type");
+                    codegenError("match: Some pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = hasValue;
             } else if constexpr (std::is_same_v<T, NonePattern>) {
                 if (!isOptionType(subjectTy))
-                    throw std::runtime_error("match: None pattern requires Option type");
+                    codegenError("match: None pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
+                // OR pattern: test each alternative and combine with OR
+                testResult = llvm::ConstantInt::get(i1Ty_, 0);
+                for (auto &alt : pat->alternatives) {
+                    llvm::Value *altResult = nullptr;
+                    std::visit([&](auto &altPat) {
+                        using U = std::decay_t<decltype(altPat)>;
+                        if constexpr (std::is_same_v<U, LiteralPattern>) {
+                            llvm::Value *litVal = emitExpr(*altPat.value);
+                            if (subjectTy == i64Ty_ && litVal->getType() == i64Ty_)
+                                altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.eq");
+                            else if (subjectTy == f64Ty_ && litVal->getType() == f64Ty_)
+                                altResult = builder_.CreateFCmpOEQ(subjectVal, litVal, "or.feq");
+                            else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_)
+                                altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.beq");
+                            else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
+                                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                                llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
+                                altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
+                            } else {
+                                codegenError("match: incompatible types in OR literal pattern");
+                            }
+                        } else if constexpr (std::is_same_v<U, EnumPattern>) {
+                            auto enumIt = enum_types_.find(altPat.enum_name);
+                            if (enumIt == enum_types_.end())
+                                codegenError("match: unknown enum '" + altPat.enum_name + "'");
+                            auto varIt = enumIt->second.variants.find(altPat.variant_name);
+                            if (varIt == enumIt->second.variants.end())
+                                codegenError("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
+                            llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
+                            altResult = builder_.CreateICmpEQ(subjectVal, tag, "or.enum_eq");
+                        } else if constexpr (std::is_same_v<U, WildcardPattern>) {
+                            altResult = llvm::ConstantInt::get(i1Ty_, 1);
+                        } else if constexpr (std::is_same_v<U, NonePattern>) {
+                            if (!isOptionType(subjectTy))
+                                codegenError("match: None pattern requires Option type");
+                            llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
+                            altResult = builder_.CreateNot(hasValue, "is_none");
+                        } else {
+                            codegenError("match: unsupported pattern type in OR pattern");
+                        }
+                    }, alt);
+                    testResult = builder_.CreateOr(testResult, altResult, "or.comb");
+                }
             }
         }, arm.pattern);
 
@@ -923,6 +1334,40 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
+            } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
+                std::string resolvedEnum = pat.enum_name;
+                if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {
+                    auto ltPos = subjectEnumType.find('<');
+                    if (ltPos != std::string::npos && subjectEnumType.substr(0, ltPos) == pat.enum_name)
+                        resolvedEnum = subjectEnumType;
+                }
+                auto enumIt = enum_types_.find(resolvedEnum);
+                if (enumIt != enum_types_.end()) {
+                    auto fit = enumIt->second.variantFields.find(pat.variant_name);
+                    if (fit != enumIt->second.variantFields.end()) {
+                        llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "adt.val");
+                        // Get payload pointer via alloca
+                        llvm::AllocaInst *tmpAlloca = builder_.CreateAlloca(subjectTy, nullptr, "adt.tmp");
+                        builder_.CreateStore(sv, tmpAlloca);
+                        llvm::Value *payloadPtr = builder_.CreateStructGEP(
+                            enumIt->second.adtType, tmpAlloca, 1, "adt.payload");
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        size_t offset = 0;
+                        for (size_t bi = 0; bi < pat.bindings.size() && bi < fit->second.fieldTypes.size(); ++bi) {
+                            llvm::Type *fieldTy = fit->second.fieldTypes[bi];
+                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                            offset = (offset + align - 1) / align * align;
+                            llvm::Value *fieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "adt.bind." + std::to_string(bi));
+                            llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, pat.bindings[bi]);
+                            llvm::AllocaInst *bindAlloca = getOrCreateVar(pat.bindings[bi], fieldTy);
+                            builder_.CreateStore(fieldVal, bindAlloca);
+                            offset += dl.getTypeAllocSize(fieldTy);
+                        }
+                    }
+                }
             }
         }, arm.pattern);
 
@@ -993,7 +1438,7 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
         if (info.componentTypes[i] == val->getType()) { tagIdx = i; break; }
     }
     if (tagIdx < 0)
-        throw std::runtime_error("type is not in union " + norm);
+        codegenError("type is not in union " + norm);
 
     llvm::AllocaInst *tmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.tmp");
     auto *tagPtr = builder_.CreateStructGEP(info.llvmType, tmp, 0, "union.tag");
@@ -1001,4 +1446,21 @@ llvm::Value *CodeGen::wrapInUnion(llvm::Value *val, const std::string &unionType
     auto *dataPtr = builder_.CreateStructGEP(info.llvmType, tmp, 1, "union.data");
     builder_.CreateStore(val, dataPtr);
     return builder_.CreateLoad(info.llvmType, tmp, "union.val");
+}
+
+// ===== exit(code) =====
+
+void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
+    if (args.size() != 1)
+        codegenError("exit() takes exactly 1 argument");
+    llvm::Value *code = emitExpr(*args[0]);
+    if (!code->getType()->isIntegerTy())
+        codegenError("exit() argument must be an integer");
+    if (code->getType() != i32Ty_)
+        code = builder_.CreateIntCast(code, i32Ty_, true, "exit_code");
+    llvm::FunctionType *exitTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    builder_.CreateCall(exitFn, {code});
+    builder_.CreateUnreachable();
 }

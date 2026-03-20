@@ -2,37 +2,37 @@
 
 # 高度な機能
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+[← 前: コレクション](07-collections.md) | [次: パッケージ →](09-modules.md)
 
 ---
 
 ## ラムダ関数
 
-ラムダ関数は、関数を式として記述する構文です。`(引数) -> 式` の形で書きます。戻り値型は自動推論されます。
+ラムダ関数は、関数を式として記述する構文です。`fn(引数): 式` の形で書きます。戻り値型は自動推論されます。
 
 ### 単一式ラムダ
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### 引数なしラムダ
 
 ```python
-let answer = () -> 42
+let answer = fn(): 42
 print(answer())  # 42
 ```
 
 ### 複数行ラムダ
 
-`->` の後に改行してインデントすることで、複数の文を書けます。
+`:` の後に改行してインデントすることで、複数の文を書けます。
 
 ```python
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -49,7 +49,7 @@ print(abs(3))   # 3
 
 ```python
 let offset = 10
-let add_offset = (x: int) -> x + offset
+let add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int) -> n + 1, 10))    # 11
+print(apply(fn(n: int): n + 1, 10))    # 11
 ```
 
 ---
@@ -123,7 +123,7 @@ print(x.add(2).double())   # double(add(x, 2)) → 6
 パラメータを2個取ります。
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 
@@ -172,15 +172,140 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
+### 値の取り出し
 
-`unwrap` で内部の値を取り出します。`None` に対して `unwrap` を呼ぶとランタイムエラーになります。
+`match` を使って内部の値を安全に取り出し、`None` の場合も処理できます。
 
 ```python
-let v = unwrap(x)   # 42
-# unwrap(y) → ランタイムエラー
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
 ```
 
 ---
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+## F-String（文字列補間）
+
+`f"..."` を使って、文字列内に式を直接埋め込むことができます。式は `{}` 内に記述します。
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+リテラルの波括弧を出力するには `{{` と `}}` を使います。
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## 型キャスト（`as`）
+
+`as` を使って型を明示的に変換できます。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3（切り捨て）
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## 関連データを持つ enum（ADT）
+
+enum バリアントに関連する値を持たせることができます。これにより、1 つの enum でさまざまな形のデータファミリーを表現できます。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### ADT バリアントの構築
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### ADT バリアントのマッチング
+
+`case` にバインディングパターンを使って関連データを取り出します。
+
+```python
+fn describe(s: Shape) -> str:
+    match s:
+        case Shape::Circle(r):
+            return f"circle with radius {r}"
+        case Shape::Rectangle(w, h):
+            return f"rectangle {w}x{h}"
+        case Shape::Point:
+            return "point"
+
+print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
+print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
+```
+
+---
+
+## ジェネリック enum
+
+enum は型パラメータを取ることができ、異なるペイロード型で再利用可能になります。
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### 使用法
+
+```python
+let a = MyOption<int>::MySome(42)
+let b: MyOption<int> = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
+
+## Result 型
+
+`Result<T, E>` は失敗する可能性のある関数に使用します。成功時は `Ok(value)`、失敗時は `Err(error)` を返します。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+`match` を使って結果を処理します。
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
+[← 前: コレクション](07-collections.md) | [次: パッケージ →](09-modules.md)

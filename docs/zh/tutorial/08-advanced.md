@@ -2,37 +2,37 @@
 
 # 進階功能
 
-[← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)
+[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)
 
 ---
 
 ## Lambda 函式
 
-Lambda 函式是將函式以表達式形式撰寫的語法，以 `(參數) -> 表達式` 的形式書寫。回傳值型別會自動推論。
+Lambda 函式是將函式以表達式形式撰寫的語法，以 `fn(參數): 表達式` 的形式書寫。回傳值型別會自動推論。
 
 ### 單一表達式 Lambda
 
 ```python
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = (a: int, b: int) -> a + b
+let add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### 無參數 Lambda
 
 ```python
-let answer = () -> 42
+let answer = fn(): 42
 print(answer())  # 42
 ```
 
 ### 多行 Lambda
 
-在 `->` 後換行並縮排，即可撰寫多個陳述式。
+在 `:` 後換行並縮排，即可撰寫多個陳述式。
 
 ```python
-let abs = (x: int) ->
+let abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -49,7 +49,7 @@ Lambda 函式可以捕獲定義時作用域中的變數。
 
 ```python
 let offset = 10
-let add_offset = (x: int) -> x + offset
+let add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = (x: int) -> x * 2
+let double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int) -> n + 1, 10))    # 11
+print(apply(fn(n: int): n + 1, 10))    # 11
 ```
 
 ---
@@ -123,7 +123,7 @@ print(x.add(2).double())   # double(add(x, 2)) → 6
 接受 2 個參數。
 
 ```python
-type Vec2:
+record Vec2:
     x: int
     y: int
 
@@ -172,15 +172,140 @@ let y: Option<int> = None
 print(y)   # None
 ```
 
-### unwrap
+### 取出值
 
-使用 `unwrap` 取出內部的值。對 `None` 呼叫 `unwrap` 會產生執行期錯誤。
+使用 `match` 安全地取出內部的值，並處理 `None` 的情況。
 
 ```python
-let v = unwrap(x)   # 42
-# unwrap(y) → 執行期錯誤
+match x:
+    case Some(v):
+        print(v)    # 42
+    case None:
+        print("nothing")
 ```
 
 ---
 
-[← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)
+## F-String（字串插值）
+
+使用 `f"..."` 可以在字串中直接嵌入表達式。表達式放在 `{}` 內。
+
+```python
+let name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+let x = 3
+let y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+使用 `{{` 和 `}}` 來包含字面大括號。
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+---
+
+## 型別轉換（`as`）
+
+使用 `as` 在型別之間進行明確轉換。
+
+```python
+let x = 42 as float     # 42.0
+let y = 3.14 as int      # 3（截斷）
+let s = 42 as str         # "42"
+let b = true as int       # 1
+```
+
+---
+
+## 帶關聯資料的 enum（ADT）
+
+enum 變體可以攜帶關聯值，讓單一 enum 代表一系列不同形狀的資料。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+```
+
+### 建構 ADT 變體
+
+```python
+let c = Shape::Circle(3.14)
+let r = Shape::Rectangle(4.0, 5.0)
+let p = Shape::Point
+```
+
+### 匹配 ADT 變體
+
+在 `case` 中使用綁定模式來取出關聯資料。
+
+```python
+fn describe(s: Shape) -> str:
+    match s:
+        case Shape::Circle(r):
+            return f"circle with radius {r}"
+        case Shape::Rectangle(w, h):
+            return f"rectangle {w}x{h}"
+        case Shape::Point:
+            return "point"
+
+print(describe(Shape::Circle(3.14)))         # circle with radius 3.14
+print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
+```
+
+---
+
+## 泛型 enum
+
+enum 可以帶有型別參數，使其可在不同酬載型別間重複使用。
+
+```python
+enum MyOption<T>:
+    MySome(T)
+    MyNone
+```
+
+### 使用方式
+
+```python
+let a = MyOption<int>::MySome(42)
+let b: MyOption<int> = MyOption<int>::MyNone
+
+match a:
+    case MyOption::MySome(v):
+        print(v)      # 42
+    case MyOption::MyNone:
+        print("none")
+```
+
+---
+
+## Result 型別
+
+`Result<T, E>` 用於可能失敗的函式。成功時回傳 `Ok(value)`，失敗時回傳 `Err(error)`。
+
+```python
+fn divide(a: int, b: int) -> Result<int, str>:
+    if b == 0:
+        return Err("division by zero")
+    return Ok(a // b)
+```
+
+使用 `match` 來處理結果。
+
+```python
+let r = divide(10, 0)
+match r:
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e)   # division by zero
+```
+
+---
+
+[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)

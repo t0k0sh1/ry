@@ -1,12 +1,16 @@
 #include "ry/self_update.hpp"
+#include "ry/paths.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
-#include <array>
 #include <algorithm>
+#include <vector>
 #include <regex>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #ifdef __APPLE__
@@ -15,7 +19,7 @@
 
 namespace ry::self_update {
 
-static const char *REPO = "pricklywiggles/ry";
+static const char *REPO = "t0k0sh1/ry";
 
 bool is_valid_tag(const std::string &tag) {
     static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
@@ -60,17 +64,45 @@ std::string get_executable_path() {
 #endif
 }
 
-std::string shell_exec(const std::string &cmd) {
-    std::array<char, 4096> buffer;
-    std::string result;
-    FILE *pipe = popen(cmd.c_str(), "r");
-    if (!pipe) return "";
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-        result += buffer.data();
+int run_command(const std::vector<std::string> &args, std::string *output) {
+    int pipefd[2] = {-1, -1};
+    if (output) {
+        if (pipe(pipefd) == -1) return -1;
     }
-    int status = pclose(pipe);
-    if (status != 0) return "";
-    return result;
+
+    pid_t pid = fork();
+    if (pid == -1) {
+        if (output) { close(pipefd[0]); close(pipefd[1]); }
+        return -1;
+    }
+
+    if (pid == 0) {
+        if (output) {
+            close(pipefd[0]);
+            dup2(pipefd[1], STDOUT_FILENO);
+            close(pipefd[1]);
+        }
+        std::vector<char *> argv;
+        for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
+        argv.push_back(nullptr);
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+
+    if (output) {
+        close(pipefd[1]);
+        char buf[4096];
+        ssize_t n;
+        while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
+            output->append(buf, n);
+        }
+        close(pipefd[0]);
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return -1;
 }
 
 std::string extract_json_string(const std::string &json, const std::string &key) {
@@ -162,10 +194,21 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
     UpdateTarget target;
 
     if (mode == "stable") {
-        std::string cmd = "curl -sfL -H 'Accept: application/json' "
-                          "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
-        std::string json = shell_exec(cmd);
-        if (json.empty()) {
+        std::string api_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
+        // Check HTTP status first to distinguish 404 from other errors
+        std::string http_status;
+        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}",
+                     "-H", "Accept: application/json", api_url}, &http_status);
+        http_status.erase(std::remove_if(http_status.begin(), http_status.end(), ::isspace), http_status.end());
+
+        if (http_status == "404") {
+            // No stable release exists yet — treat as already up to date
+            target.tag = std::string("v") + RY_VERSION;
+            return target;
+        }
+
+        std::string json;
+        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", api_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch latest release info.\n";
             return target;
         }
@@ -176,10 +219,9 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
         target.download_url = build_download_url(target.tag, platform);
     } else if (mode == "nightly") {
-        std::string cmd = "curl -sfL -H 'Accept: application/json' "
-                          "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
-        std::string json = shell_exec(cmd);
-        if (json.empty()) {
+        std::string releases_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
+        std::string json;
+        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", releases_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch releases.\n";
             return target;
         }
@@ -208,8 +250,8 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
 
         std::string url = build_download_url(tag, platform);
-        std::string cmd = "curl -sfL -o /dev/null -w '%{http_code}' --head '" + url + "'";
-        std::string status = shell_exec(cmd);
+        std::string status;
+        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
         status.erase(std::remove_if(status.begin(), status.end(), ::isspace), status.end());
 
         if (status.empty() || (status != "200" && status != "302")) {
@@ -224,21 +266,14 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
 }
 
 bool download_file(const std::string &url, const std::string &dest_path) {
-    std::string cmd = "curl -sfL -o '" + dest_path + "' '" + url + "'";
-    int status = system(cmd.c_str());
-    return status == 0;
+    return run_command({"curl", "-sfL", "-o", dest_path, url}) == 0;
 }
 
-static bool file_exists(const std::string &path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
-}
-
-bool replace_binary(const std::string &download_url, const std::string &binary_path) {
+std::string download_and_extract(const std::string &download_url) {
     char tmp_dir[] = "/tmp/ry-update-XXXXXX";
     if (mkdtemp(tmp_dir) == nullptr) {
         std::cerr << "Error: Failed to create temporary directory.\n";
-        return false;
+        return "";
     }
 
     std::string tmp_dir_str(tmp_dir);
@@ -248,44 +283,97 @@ bool replace_binary(const std::string &download_url, const std::string &binary_p
     if (!download_file(download_url, archive_path)) {
         std::cerr << " failed.\n";
         std::cerr << "Error: Download failed. Check your network connection.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
-        return false;
+        run_command({"rm", "-rf", tmp_dir_str});
+        return "";
     }
     std::cerr << " done.\n";
 
-    std::string extract_cmd = "tar xzf '" + archive_path + "' -C '" + tmp_dir_str + "'";
-    if (system(extract_cmd.c_str()) != 0) {
+    if (run_command({"tar", "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
-        return false;
+        run_command({"rm", "-rf", tmp_dir_str});
+        return "";
     }
 
+    return tmp_dir_str;
+}
+
+bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_path) {
+    namespace fs = std::filesystem;
     std::string new_binary = tmp_dir_str + "/ry";
 
-    if (!file_exists(new_binary)) {
+    if (!fs::is_regular_file(new_binary)) {
         std::cerr << "Error: Expected binary not found in archive.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
         return false;
     }
 
     if (chmod(new_binary.c_str(), 0755) != 0) {
         std::cerr << "Error: Failed to set permissions on downloaded binary.\n";
-        system(("rm -rf '" + tmp_dir_str + "'").c_str());
         return false;
     }
 
     if (rename(new_binary.c_str(), binary_path.c_str()) != 0) {
         // rename() may fail across filesystems, try cp fallback
-        std::string cp_cmd = "cp '" + new_binary + "' '" + binary_path + "'";
-        if (system(cp_cmd.c_str()) != 0) {
+        if (run_command({"cp", new_binary, binary_path}) != 0) {
             std::cerr << "Error: Failed to replace binary at " << binary_path << "\n";
             std::cerr << "You may need to run with sudo.\n";
-            system(("rm -rf '" + tmp_dir_str + "'").c_str());
             return false;
         }
     }
 
-    system(("rm -rf '" + tmp_dir_str + "'").c_str());
+    return true;
+}
+
+bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_version) {
+    namespace fs = std::filesystem;
+
+    fs::path src_std = fs::path(tmp_dir_str) / "lib" / "std";
+    if (!fs::is_directory(src_std)) {
+        return false;  // No stdlib in archive
+    }
+
+    fs::path dest_std = ry::get_ry_home() / "lib" / "std";
+
+    // Read old manifest for cleanup
+    auto old_manifest = ry::read_manifest(dest_std);
+
+    // Create destination directory
+    std::error_code ec;
+    fs::create_directories(dest_std, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to create stdlib directory: " << ec.message() << "\n";
+        return false;
+    }
+
+    // Copy new files
+    std::vector<std::string> new_files;
+    for (const auto &entry : fs::directory_iterator(src_std)) {
+        if (!entry.is_regular_file()) continue;
+        auto filename = entry.path().filename().string();
+        fs::copy_file(entry.path(), dest_std / filename,
+                      fs::copy_options::overwrite_existing, ec);
+        if (!ec && filename != "manifest.json") {
+            new_files.push_back(filename);
+        }
+    }
+
+    // Delete files that were in old manifest but not in new
+    std::sort(new_files.begin(), new_files.end());
+    for (const auto &old_file : old_manifest.files) {
+        // Validate manifest entry is a simple filename (no path traversal)
+        if (old_file.empty() || old_file == "." || old_file == ".." ||
+            old_file.find('/') != std::string::npos ||
+            old_file.find('\\') != std::string::npos) {
+            std::cerr << "Warning: Skipping invalid stdlib manifest entry: " << old_file << "\n";
+            continue;
+        }
+        if (!std::binary_search(new_files.begin(), new_files.end(), old_file)) {
+            fs::remove(dest_std / old_file, ec);
+        }
+    }
+
+    // Write new manifest
+    ry::write_manifest(dest_std, new_version, new_files);
+
     return true;
 }
 
@@ -340,9 +428,24 @@ int cmd_self_update(int argc, char *argv[]) {
         return 1;
     }
 
-    if (!replace_binary(target.download_url, binary_path)) {
+    std::string tmp_dir = detail::download_and_extract(target.download_url);
+    if (tmp_dir.empty()) {
         return 1;
     }
+
+    if (!detail::replace_binary(tmp_dir, binary_path)) {
+        detail::run_command({"rm", "-rf", tmp_dir});
+        return 1;
+    }
+
+    // Install/update stdlib
+    std::string version = target.tag;
+    if (!version.empty() && version[0] == 'v') version = version.substr(1);
+    if (detail::install_stdlib(tmp_dir, version)) {
+        std::cerr << "Standard library updated.\n";
+    }
+
+    detail::run_command({"rm", "-rf", tmp_dir});
 
     std::cerr << "Successfully updated to " << target.tag << ".\n";
     return 0;

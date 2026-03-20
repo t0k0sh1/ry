@@ -10,14 +10,15 @@
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
 | `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
-| `range(n)` / `range(start, end)` | 整数のリストを生成 |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
+| `exit(code)` | 指定した終了コードでプロセスを終了 |
+| `args()` | コマンドライン引数を `List<str>` として返す |
 
 ### Option
 
 | 関数 | 説明 |
 |------|------|
 | `Some(expr)` | Option型の値ありバリアントを構築 |
-| `unwrap(opt)` | Option値を取り出す |
 
 ### コレクション操作
 
@@ -26,6 +27,24 @@
 | `has_key(map, key)` | マップにキーが存在するかを返す |
 | `add(set, value)` | セットに要素を追加（重複は無視） |
 | `remove(set, value)` | セットから要素を削除 |
+| `append(list, value)` | リストの末尾に要素を追加（ミューテーション操作） |
+| `pop(list)` | リストの末尾の要素を削除して返す |
+| `reverse(list)` | 逆順の新しいリストを返す（文字列にも対応） |
+| `slice(list, start, end)` | start から end までの新しい部分リストを返す |
+| `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
+| `map(list, fn)` | 各要素を変換した新しいリストを返す |
+| `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
+| `insert(list, i, val)` | インデックス i に要素を挿入 |
+| `remove_at(list, i)` | インデックス i の要素を削除して返す |
+| `items(map)` | (キー, 値) タプルのリストを返す |
+| `remove(map, key)` | 指定したキーのエントリを削除 |
+| `get(map, key, default)` | キーの値を返す（存在しない場合はデフォルト値） |
+| `union(set, set)` | 2つのセットの和集合を返す |
+| `intersection(set, set)` | 2つのセットの積集合を返す |
+| `difference(set, set)` | 2つのセットの差集合を返す |
+| `symmetric_difference(set, set)` | 2つのセットの対称差を返す |
+| `is_subset(set, set)` | 最初のセットが2番目の部分集合かを返す |
+| `is_superset(set, set)` | 最初のセットが2番目の上位集合かを返す |
 
 ### [文字列操作](builtins-string.md)
 
@@ -98,22 +117,6 @@ print(x)   # Some(42)
 
 ---
 
-## unwrap
-
-**シグネチャ:** `unwrap(opt: Option<T>) -> T`
-
-Option値から中身を取り出します。UFCS記法も使用可能です。
-
-```python
-let x = Some(42)
-print(unwrap(x))    # 42
-print(x.unwrap())   # 42 (UFCS)
-```
-
-**エラー条件:** `None` を渡すとランタイムエラー（exit(1)）。
-
----
-
 ## len
 
 **シグネチャ:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
@@ -175,7 +178,7 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 整数のリストを生成します。
 
@@ -183,14 +186,159 @@ print(2 in s)     # false
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
+| `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (`end` は含まない) |
+
+- `step > 0` の場合、`start` から昇順に `end` に向かって生成します。
+- `step < 0` の場合、`start` から降順に `end` に向かって生成します。
+- `step == 0` の場合、ランタイムエラーになります。
 
 ```python
-print(range(3))       # [0, 1, 2]
-print(range(2, 5))    # [2, 3, 4]
+print(range(3))           # [0, 1, 2]
+print(range(2, 5))        # [2, 3, 4]
+print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
+print(range(10, 0, -3))   # [10, 7, 4, 1]
 
 for i in range(3):
     print(i)
 # 0
 # 1
 # 2
+```
+
+---
+
+## exit
+
+**シグネチャ:** `exit(code: int)`
+
+指定した終了コードでプロセスを即座に終了します。`exit()` 以降のコードは到達不能になります。
+
+```python
+exit(0)        # 正常終了
+exit(1)        # エラー終了
+```
+
+---
+
+## args
+
+**シグネチャ:** `args() -> List<str>`
+
+スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません — スクリプトパスの後の引数のみです。
+
+```python
+# 実行: ry script.ry hello world
+let a = args()
+print(len(a))    # 2
+print(a[0])      # hello
+print(a[1])      # world
+
+for x in args():
+    print(x)
+```
+
+---
+
+## append
+
+**シグネチャ:** `append(list: List<T>, value: T)`
+
+リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。UFCS記法も使用可能です。
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## pop
+
+**シグネチャ:** `pop(list: List<T>) -> T`
+
+リストの末尾の要素を削除して返します。UFCS記法も使用可能です。
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+**エラー条件:** 空のリストに対して `pop()` を呼び出すとランタイムエラー（exit(1)）。
+
+---
+
+## reverse (list)
+
+**シグネチャ:** `reverse(list: List<T>) -> List<T>`
+
+要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます（[文字列操作関数リファレンス](builtins-string.md)を参照）。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3]
+let ys = reverse(xs)
+print(ys)   # [3, 2, 1]
+print(xs)   # [1, 2, 3]（変更なし）
+```
+
+---
+
+## slice
+
+**シグネチャ:** `slice(list: List<T>, start: int, end: int) -> List<T>`
+
+`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `len(list)` まで）にクランプされます。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
+```
+
+---
+
+## filter
+
+**シグネチャ:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+
+述語が `true` を返す要素のみを含む新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.filter((x: int) -> x > 3)
+print(ys)   # [4, 5]
+print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
+```
+
+---
+
+## map
+
+**シグネチャ:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+
+各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.map((x: int) -> x * 2)
+print(ys)   # [2, 4, 6]
+```
+
+---
+
+## sort
+
+**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+
+ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。UFCS記法も使用可能です。
+
+```python
+let xs = [3, 1, 2]
+print(xs.sort())   # [1, 2, 3]
+
+# 降順ソート
+let desc = xs.sort((a: int, b: int) -> a > b)
+print(desc)   # [3, 2, 1]
 ```

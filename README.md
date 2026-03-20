@@ -1,17 +1,20 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# ry
+# Ry
 
 A simple programming language based on LLVM JIT. It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
 
 ## Features
 
 - **LLVM JIT Compilation** — Fast native execution powered by ORC LLJIT
-- **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
-- **Operators** — Arithmetic, comparison, logical, bitwise, compound assignment, `in` operator (with operator overloading support)
+- **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
+- **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, with operator overloading support
+- **F-String** — String interpolation with `f"Hello {name}"`
+- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (struct invariants), `old()`, `result`
+- **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
-- **Modules** — Function imports via `from ... import ...`
+- **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
 
 ## Sample Code
@@ -57,6 +60,10 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
+# Stream-like operations (filter, map, sort)
+let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+print(result)          # [20, 30, 40, 50]
+
 # Enums
 enum Color:
     Red
@@ -66,7 +73,7 @@ enum Color:
 let c = Color::Red
 print(c)               # Red
 
-# Module import
+# Package import
 from math import add
 print(add(1, 2))
 ```
@@ -82,10 +89,12 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.
+
+The standard library is installed to `$RY_HOME/lib/std/` (default: `~/.ry/lib/std/`).
 
 ### Build from Source
 

@@ -1,0 +1,89 @@
+describe("search and check"):
+    it("contains"):
+        expect(contains("hello", "ell")).to_be_true()
+        expect("hello".contains("xyz")).to_be_false()
+
+    it("starts_with"):
+        expect(starts_with("hello", "hel")).to_be_true()
+        expect("hello".starts_with("world")).to_be_false()
+
+    it("ends_with"):
+        expect(ends_with("hello", "llo")).to_be_true()
+        expect("hello".ends_with("world")).to_be_false()
+
+    it("find"):
+        expect(find("hello world", "world")).to_eq(6)
+        expect(find("hello", "xyz")).to_eq(-1)
+        expect("abcdef".find("cd")).to_eq(2)
+
+describe("extraction and transformation"):
+    it("substring"):
+        expect(substring("hello world", 0, 5)).to_eq("hello")
+        expect("abcdef".substring(1, 4)).to_eq("bcd")
+
+    it("char_at"):
+        expect(char_at("hello", 0)).to_eq("h")
+        expect("abc".char_at(2)).to_eq("c")
+
+    it("replace"):
+        expect(replace("hello world", "world", "ry")).to_eq("hello ry")
+        expect("foo bar foo".replace("foo", "baz")).to_eq("baz bar baz")
+
+describe("case conversion"):
+    it("to_upper"):
+        expect(to_upper("hello")).to_eq("HELLO")
+        expect("Hello World".to_upper()).to_eq("HELLO WORLD")
+
+    it("to_lower"):
+        expect(to_lower("HELLO")).to_eq("hello")
+        expect("Hello World".to_lower()).to_eq("hello world")
+
+describe("whitespace"):
+    it("trim"):
+        expect(trim("  hello  ")).to_eq("hello")
+        expect("  hi  ".trim()).to_eq("hi")
+
+    it("trim_start"):
+        expect(trim_start("  hello  ")).to_eq("hello  ")
+        expect("  hi".trim_start()).to_eq("hi")
+
+    it("trim_end"):
+        expect(trim_end("  hello  ")).to_eq("  hello")
+        expect("hi  ".trim_end()).to_eq("hi")
+
+describe("generation"):
+    it("repeat"):
+        expect(repeat("ab", 3)).to_eq("ababab")
+        expect("ha".repeat(3)).to_eq("hahaha")
+
+    it("reverse"):
+        expect(reverse("hello")).to_eq("olleh")
+        expect("abc".reverse()).to_eq("cba")
+
+describe("split and join"):
+    it("split"):
+        let parts = split("a,b,c", ",")
+        expect(len(parts)).to_eq(3)
+        expect(parts[0]).to_eq("a")
+        expect(parts[1]).to_eq("b")
+        expect(parts[2]).to_eq("c")
+
+    it("join"):
+        let parts = ["a", "b", "c"]
+        expect(join(parts, ",")).to_eq("a,b,c")
+        expect(parts.join("-")).to_eq("a-b-c")
+
+describe("type conversion"):
+    it("to_int"):
+        expect(to_int("42")).to_eq(42)
+        expect(to_int("-7")).to_eq(-7)
+        expect("123".to_int()).to_eq(123)
+
+    it("to_float"):
+        expect(to_float("3.14")).to_eq(3.14)
+        expect("2.5".to_float()).to_eq(2.5)
+
+    it("to_str"):
+        expect(to_str(42)).to_eq("42")
+        expect(to_str(true)).to_eq("true")
+        expect(99.to_str()).to_eq("99")

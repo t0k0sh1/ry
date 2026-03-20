@@ -112,6 +112,14 @@ TEST_F(CodeGenTest, ListStringElements) {
 
 // ===== UFCS コード生成テスト =====
 
+TEST_F(CodeGenTest, UFCSIntLiteral) {
+    std::string src =
+        "fn double(x: int) -> int:\n"
+        "    return x * 2\n"
+        "print(5.double())";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
 TEST_F(CodeGenTest, UFCSBasicCall) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
@@ -134,7 +142,7 @@ TEST_F(CodeGenTest, UFCSChainedCall) {
 
 TEST_F(CodeGenTest, UFCSWithStruct) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn get_x(p: Point) -> int:\n"
@@ -442,7 +450,7 @@ TEST_F(CodeGenTest, OverloadRecursive) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -457,7 +465,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator-(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -472,7 +480,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
 
 TEST_F(CodeGenTest, OperatorOverloadStructEq) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator==(a: Point, b: Point) -> bool:\n"
@@ -487,7 +495,7 @@ TEST_F(CodeGenTest, OperatorOverloadStructEq) {
 
 TEST_F(CodeGenTest, OperatorOverloadUnaryMinus) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator-(a: Vec2) -> Vec2:\n"
@@ -508,7 +516,7 @@ TEST_F(CodeGenTest, OperatorOverloadBuiltinUnchanged) {
 
 TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
     std::string src =
-        "type Vec2:\n"
+        "record Vec2:\n"
         "    x: int\n"
         "    y: int\n"
         "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
@@ -1048,4 +1056,993 @@ TEST_F(CodeGenTest, SplitJoinRoundTrip) {
         "let s = \"hello,world,ry\"\n"
         "print(join(split(s, \",\"), \",\"))";
     EXPECT_EQ(runSource(src), "hello,world,ry\n");
+}
+
+// ===== filter テスト =====
+
+TEST_F(CodeGenTest, FilterIntBasic) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let ys = filter(xs, fn(x: int): x > 3)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[4, 5]\n");
+}
+
+TEST_F(CodeGenTest, FilterIntEmpty) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = filter(xs, fn(x: int): x > 10)\n"
+        "print(len(ys))";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, FilterAllMatch) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = filter(xs, fn(x: int): x > 0)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, FilterFloat) {
+    std::string src =
+        "let xs = [1.5, 2.5, 0.5]\n"
+        "let ys = filter(xs, fn(x: float): x > 1.0)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
+}
+
+TEST_F(CodeGenTest, FilterString) {
+    std::string src =
+        "let xs = [\"hello\", \"hi\", \"hey\"]\n"
+        "let ys = filter(xs, fn(s: str): s.starts_with(\"he\"))\n"
+        "print(len(ys))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, FilterWithClosure) {
+    std::string src =
+        "let threshold = 3\n"
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let ys = filter(xs, fn(x: int): x > threshold)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[4, 5]\n");
+}
+
+TEST_F(CodeGenTest, FilterUFCS) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let ys = xs.filter(fn(x: int): x > 3)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[4, 5]\n");
+}
+
+// ===== map テスト =====
+
+TEST_F(CodeGenTest, MapIntToInt) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = map(xs, fn(x: int): x * 2)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
+}
+
+TEST_F(CodeGenTest, MapIntToFloat) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = map(xs, fn(x: int): x * 1.5)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1.5, 3, 4.5]\n");
+}
+
+TEST_F(CodeGenTest, MapStrToInt) {
+    std::string src =
+        "let xs = [\"hello\", \"hi\"]\n"
+        "let ys = map(xs, fn(s: str): len(s))\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[5, 2]\n");
+}
+
+TEST_F(CodeGenTest, MapFloat) {
+    std::string src =
+        "let xs = [1.0, 2.0]\n"
+        "let ys = map(xs, fn(x: float): x + 0.5)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
+}
+
+TEST_F(CodeGenTest, MapWithClosure) {
+    std::string src =
+        "let factor = 10\n"
+        "let xs = [1, 2, 3]\n"
+        "let ys = map(xs, fn(x: int): x * factor)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
+}
+
+TEST_F(CodeGenTest, MapPreservesOriginal) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = map(xs, fn(x: int): x * 2)\n"
+        "print(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n[2, 4, 6]\n");
+}
+
+// ===== filter + map チェーンテスト =====
+
+TEST_F(CodeGenTest, FilterThenMap) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let ys = xs.filter(fn(x: int): x > 2).map(fn(x: int): x * 10)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[30, 40, 50]\n");
+}
+
+TEST_F(CodeGenTest, MapThenFilter) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = xs.map(fn(x: int): x * 2).filter(fn(x: int): x > 4)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[6]\n");
+}
+
+TEST_F(CodeGenTest, FilterThenFilter) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "let ys = xs.filter(fn(x: int): x > 1).filter(fn(x: int): x < 5)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[2, 3, 4]\n");
+}
+
+// ===== sort テスト =====
+
+TEST_F(CodeGenTest, SortIntAsc) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = sort(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortFloatAsc) {
+    std::string src =
+        "let xs = [3.0, 1.0, 2.0]\n"
+        "let ys = sort(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortStrAsc) {
+    std::string src =
+        "let xs = [\"banana\", \"apple\", \"cherry\"]\n"
+        "let ys = sort(xs)\n"
+        "print(ys[0])\n"
+        "print(ys[1])\n"
+        "print(ys[2])";
+    EXPECT_EQ(runSource(src), "apple\nbanana\ncherry\n");
+}
+
+TEST_F(CodeGenTest, SortSingleElement) {
+    std::string src =
+        "let xs = [42]\n"
+        "let ys = sort(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[42]\n");
+}
+
+TEST_F(CodeGenTest, SortWithComparator) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = sort(xs, fn(a: int, b: int): a > b)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
+}
+
+TEST_F(CodeGenTest, SortPreservesOriginal) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = sort(xs)\n"
+        "print(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[3, 1, 2]\n[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortUFCS) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = xs.sort()\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortWithComparatorUFCS) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = xs.sort(fn(a: int, b: int): a > b)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
+}
+
+// ===== filter + map + sort 全チェーンテスト =====
+
+TEST_F(CodeGenTest, FilterMapSort) {
+    std::string src =
+        "let xs = [5, 3, 1, 4, 2]\n"
+        "let ys = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[20, 30, 40, 50]\n");
+}
+
+TEST_F(CodeGenTest, SortThenFilter) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = xs.sort().filter(fn(x: int): x > 1)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortThenMap) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = xs.sort().map(fn(x: int): x * 2)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
+}
+
+TEST_F(CodeGenTest, SortAlreadySorted) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
+}
+
+TEST_F(CodeGenTest, SortReverseSorted) {
+    std::string src =
+        "let xs = [5, 4, 3, 2, 1]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
+}
+
+TEST_F(CodeGenTest, SortDuplicates) {
+    std::string src =
+        "let xs = [3, 1, 2, 1, 3]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 1, 2, 3, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortEmpty) {
+    std::string src =
+        "let xs: List<int> = [1]\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "print(sort(ys))";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
+TEST_F(CodeGenTest, SortLargerList) {
+    std::string src =
+        "let xs = [15, 3, 9, 1, 14, 7, 20, 5, 18, 2, 12, 8, 16, 4, 11, 6, 19, 10, 17, 13]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]\n");
+}
+
+// ===== 複合代入演算子 (追加分) =====
+
+TEST_F(CodeGenTest, CompoundAssignFloorDiv) {
+    std::string src =
+        "var x = 7\n"
+        "x //= 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignPower) {
+    std::string src =
+        "var x = 2.0\n"
+        "x **= 3.0\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitAnd) {
+    std::string src =
+        "var x = 12\n"
+        "x &= 10\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitOr) {
+    std::string src =
+        "var x = 12\n"
+        "x |= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBitXor) {
+    std::string src =
+        "var x = 12\n"
+        "x ^= 10\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignLeftShift) {
+    std::string src =
+        "var x = 1\n"
+        "x <<= 3\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "8\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignRightShift) {
+    std::string src =
+        "var x = 16\n"
+        "x >>= 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "4\n");
+}
+
+// ===== in / not in: List・Map対応 =====
+
+TEST_F(CodeGenTest, InListInt) {
+    EXPECT_EQ(runSource("print(2 in [1, 2, 3])"), "true\n");
+}
+
+TEST_F(CodeGenTest, InListIntFalse) {
+    EXPECT_EQ(runSource("print(4 in [1, 2, 3])"), "false\n");
+}
+
+TEST_F(CodeGenTest, InListStr) {
+    EXPECT_EQ(runSource("print(\"a\" in [\"a\", \"b\"])"), "true\n");
+}
+
+TEST_F(CodeGenTest, NotInList) {
+    EXPECT_EQ(runSource("print(4 not in [1, 2, 3])"), "true\n");
+}
+
+TEST_F(CodeGenTest, InMapKey) {
+    EXPECT_EQ(runSource("print(\"a\" in {\"a\": 1})"), "true\n");
+}
+
+TEST_F(CodeGenTest, InMapKeyFalse) {
+    EXPECT_EQ(runSource("print(\"c\" in {\"a\": 1})"), "false\n");
+}
+
+TEST_F(CodeGenTest, NotInMapKey) {
+    EXPECT_EQ(runSource("print(\"b\" not in {\"a\": 1})"), "true\n");
+}
+
+// ===== List append / pop / reverse / slice =====
+
+TEST_F(CodeGenTest, ListAppend) {
+    std::string src =
+        "var xs = [1, 2]\n"
+        "xs.append(3)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListAppendString) {
+    std::string src =
+        "var xs = [\"a\"]\n"
+        "xs.append(\"b\")\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[a, b]\n");
+}
+
+TEST_F(CodeGenTest, ListPop) {
+    std::string src =
+        "var xs = [1, 2, 3]\n"
+        "let v = xs.pop()\n"
+        "print(v)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "3\n[1, 2]\n");
+}
+
+TEST_F(CodeGenTest, ListPopEmpty) {
+    std::string src =
+        "var xs: List<int> = [1]\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "ys.pop()";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ListReverse) {
+    std::string src =
+        "print(reverse([1, 2, 3]))";
+    EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
+}
+
+TEST_F(CodeGenTest, ListReverseOriginal) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = reverse(xs)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListReverseStr) {
+    // str reverse still works
+    EXPECT_EQ(runSource("print(reverse(\"hello\"))"), "olleh\n");
+}
+
+TEST_F(CodeGenTest, ListSlice) {
+    std::string src =
+        "print(slice([1, 2, 3, 4, 5], 1, 3))";
+    EXPECT_EQ(runSource(src), "[2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListSliceClamp) {
+    std::string src =
+        "print(slice([1, 2, 3], 0, 100))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListSliceEmpty) {
+    std::string src =
+        "print(slice([1, 2, 3], 2, 2))";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
+// ===== range() ステップ対応 =====
+
+TEST_F(CodeGenTest, RangeStep) {
+    std::string src =
+        "for i in range(0, 10, 2):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "0\n2\n4\n6\n8\n");
+}
+
+TEST_F(CodeGenTest, RangeStepNegative) {
+    std::string src =
+        "for i in range(10, 0, -1):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n");
+}
+
+TEST_F(CodeGenTest, RangeStepNegative3) {
+    std::string src =
+        "for i in range(10, 0, -3):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "10\n7\n4\n1\n");
+}
+
+TEST_F(CodeGenTest, RangeStepEmpty) {
+    std::string src =
+        "for i in range(0, 10, -1):\n"
+        "    print(i)";
+    EXPECT_EQ(runSource(src), "");
+}
+
+TEST_F(CodeGenTest, RangeStepList) {
+    std::string src =
+        "let xs = range(0, 10, 3)\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "4\n");
+}
+
+// ===== reduce / fold =====
+
+TEST_F(CodeGenTest, ReduceBasic) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "let sum = reduce(xs, fn(a: int, b: int): a + b)\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, ReduceUFCS) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "print(xs.reduce(fn(a: int, b: int): a + b))";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, FoldBasic) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let sum = fold(xs, 10, fn(a: int, b: int): a + b)\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "16\n");
+}
+
+TEST_F(CodeGenTest, FoldUFCS) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(xs.fold(0, fn(a: int, b: int): a + b))";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
+// ===== keys / values / items =====
+
+TEST_F(CodeGenTest, MapKeys) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "let ks = keys(m)\n"
+        "print(len(ks))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, MapValues) {
+    std::string src =
+        "let m = {\"a\": 1, \"b\": 2}\n"
+        "let vs = values(m)\n"
+        "print(len(vs))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+// ===== any / all =====
+
+TEST_F(CodeGenTest, AnyTrue) {
+    std::string src =
+        "let xs = [1, 2, 3, 4]\n"
+        "print(any(xs, fn(x: int): x > 3))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, AnyFalse) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(any(xs, fn(x: int): x > 10))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, AllTrue) {
+    std::string src =
+        "let xs = [2, 4, 6]\n"
+        "print(all(xs, fn(x: int): x > 0))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, AllFalse) {
+    std::string src =
+        "let xs = [2, 4, 6]\n"
+        "print(all(xs, fn(x: int): x > 3))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+// ===== sum / min / max =====
+
+TEST_F(CodeGenTest, SumInt) {
+    std::string src =
+        "let xs = [1, 2, 3, 4, 5]\n"
+        "print(sum(xs))";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, MinInt) {
+    std::string src =
+        "let xs = [3, 1, 4, 1, 5]\n"
+        "print(min(xs))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, MaxInt) {
+    std::string src =
+        "let xs = [3, 1, 4, 1, 5]\n"
+        "print(max(xs))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+// ===== enumerate / zip =====
+
+TEST_F(CodeGenTest, EnumerateBasic) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "let es = enumerate(xs)\n"
+        "print(len(es))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ZipBasic) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = [\"a\", \"b\", \"c\"]\n"
+        "let zs = zip(xs, ys)\n"
+        "print(len(zs))";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+// ===== first / last / is_empty =====
+
+TEST_F(CodeGenTest, FirstBasic) {
+    EXPECT_EQ(runSource("print(first([10, 20, 30]))"), "10\n");
+}
+
+TEST_F(CodeGenTest, LastBasic) {
+    EXPECT_EQ(runSource("print(last([10, 20, 30]))"), "30\n");
+}
+
+TEST_F(CodeGenTest, IsEmptyFalse) {
+    EXPECT_EQ(runSource("print(is_empty([1, 2]))"), "false\n");
+}
+
+TEST_F(CodeGenTest, IsEmptyTrue) {
+    std::string src =
+        "let xs: List<int> = [1]\n"
+        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "print(is_empty(ys))";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+// ===== insert(list, i, val) =====
+
+TEST_F(CodeGenTest, ListInsert) {
+    std::string src =
+        "var xs = [1, 3, 4]\n"
+        "insert(xs, 1, 2)\n"
+        "print(xs[0])\n"
+        "print(xs[1])\n"
+        "print(xs[2])\n"
+        "print(len(xs))";
+    EXPECT_EQ(runSource(src), "1\n2\n3\n4\n");
+}
+
+// ===== remove_at(list, i) =====
+
+TEST_F(CodeGenTest, ListRemoveAt) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "let removed = remove_at(xs, 1)\n"
+        "print(removed)\n"
+        "print(len(xs))\n"
+        "print(xs[0])\n"
+        "print(xs[1])";
+    EXPECT_EQ(runSource(src), "20\n2\n10\n30\n");
+}
+
+// ===== items(map) =====
+
+TEST_F(CodeGenTest, MapItems) {
+    std::string src =
+        "let m = {\"a\": 1}\n"
+        "let pairs = items(m)\n"
+        "print(len(pairs))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+// ===== get(map, key, default) =====
+
+TEST_F(CodeGenTest, MapGetWithDefault) {
+    std::string src =
+        "let m = {\"a\": 10}\n"
+        "print(get(m, \"a\", 0))\n"
+        "print(get(m, \"b\", 99))";
+    EXPECT_EQ(runSource(src), "10\n99\n");
+}
+
+// ===== remove(map, key) =====
+
+TEST_F(CodeGenTest, MapRemove) {
+    std::string src =
+        "var m = {\"a\": 1, \"b\": 2}\n"
+        "remove(m, \"a\")\n"
+        "print(len(m))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+// ===== Set operations =====
+
+TEST_F(CodeGenTest, SetUnion) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {3, 4, 5}\n"
+        "let c = union(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, SetIntersection) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = intersection(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, SetDifference) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = difference(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, SetSymmetricDifference) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {2, 3, 4}\n"
+        "let c = symmetric_difference(a, b)\n"
+        "print(len(c))";
+    EXPECT_EQ(runSource(src), "2\n");
+}
+
+TEST_F(CodeGenTest, SetIsSubset) {
+    std::string src =
+        "let a: Set<int> = {1, 2}\n"
+        "let b: Set<int> = {1, 2, 3}\n"
+        "print(is_subset(a, b))\n"
+        "print(is_subset(b, a))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, SetIsSuperset) {
+    std::string src =
+        "let a: Set<int> = {1, 2, 3}\n"
+        "let b: Set<int> = {1, 2}\n"
+        "print(is_superset(a, b))\n"
+        "print(is_superset(b, a))";
+    EXPECT_EQ(runSource(src), "true\nfalse\n");
+}
+
+// ===== remove(list, val) テスト =====
+
+TEST_F(CodeGenTest, ListRemoveInt) {
+    std::string src =
+        "var xs = [1, 2, 3, 4]\n"
+        "remove(xs, 3)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 4]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveStr) {
+    std::string src =
+        "var xs = [\"a\", \"b\", \"c\"]\n"
+        "remove(xs, \"b\")\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[a, c]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveFloat) {
+    std::string src =
+        "var xs = [1.0, 2.5, 3.0]\n"
+        "remove(xs, 2.5)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveNotFound) {
+    std::string src =
+        "var xs = [1, 2, 3]\n"
+        "remove(xs, 99)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveFirst) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "remove(xs, 10)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[20, 30]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveLast) {
+    std::string src =
+        "var xs = [10, 20, 30]\n"
+        "remove(xs, 30)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[10, 20]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveDuplicate) {
+    std::string src =
+        "var xs = [1, 2, 3, 2, 4]\n"
+        "remove(xs, 2)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[1, 3, 2, 4]\n");
+}
+
+TEST_F(CodeGenTest, ListRemoveSingleElement) {
+    std::string src =
+        "var xs = [42]\n"
+        "remove(xs, 42)\n"
+        "print(xs)";
+    EXPECT_EQ(runSource(src), "[]\n");
+}
+
+// ===== distinct(list) テスト =====
+
+TEST_F(CodeGenTest, DistinctInt) {
+    std::string src =
+        "let xs = [1, 2, 3, 2, 1, 4]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+}
+
+TEST_F(CodeGenTest, DistinctStr) {
+    std::string src =
+        "let xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[a, b, c]\n");
+}
+
+TEST_F(CodeGenTest, DistinctFloat) {
+    std::string src =
+        "let xs = [1.0, 2.0, 1.0, 3.0]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, DistinctAlreadyUnique) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, DistinctAllSame) {
+    std::string src =
+        "let xs = [5, 5, 5, 5]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[5]\n");
+}
+
+TEST_F(CodeGenTest, DistinctPreservesOrder) {
+    std::string src =
+        "let xs = [3, 1, 2, 1, 3]\n"
+        "print(distinct(xs))";
+    EXPECT_EQ(runSource(src), "[3, 1, 2]\n");
+}
+
+TEST_F(CodeGenTest, DistinctNonDestructive) {
+    std::string src =
+        "let xs = [1, 2, 1, 3]\n"
+        "let ys = distinct(xs)\n"
+        "print(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 1, 3]\n[1, 2, 3]\n");
+}
+
+// ===== merge(map1, map2) テスト =====
+
+TEST_F(CodeGenTest, MergeNoOverlap) {
+    std::string src =
+        "let m1 = {\"a\": 1, \"b\": 2}\n"
+        "let m2 = {\"c\": 3, \"d\": 4}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[\"a\"])\n"
+        "print(m3[\"b\"])\n"
+        "print(m3[\"c\"])\n"
+        "print(m3[\"d\"])";
+    EXPECT_EQ(runSource(src), "4\n1\n2\n3\n4\n");
+}
+
+TEST_F(CodeGenTest, MergeOverlap) {
+    std::string src =
+        "let m1 = {\"a\": 1, \"b\": 2}\n"
+        "let m2 = {\"b\": 99, \"c\": 3}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[\"a\"])\n"
+        "print(m3[\"b\"])\n"
+        "print(m3[\"c\"])";
+    EXPECT_EQ(runSource(src), "3\n1\n99\n3\n");
+}
+
+TEST_F(CodeGenTest, MergeIntKeys) {
+    std::string src =
+        "let m1 = {1: \"a\", 2: \"b\"}\n"
+        "let m2 = {2: \"x\", 3: \"c\"}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m3))\n"
+        "print(m3[1])\n"
+        "print(m3[2])\n"
+        "print(m3[3])";
+    EXPECT_EQ(runSource(src), "3\na\nx\nc\n");
+}
+
+TEST_F(CodeGenTest, MergeNonDestructive) {
+    std::string src =
+        "let m1 = {\"a\": 1}\n"
+        "let m2 = {\"b\": 2}\n"
+        "let m3 = merge(m1, m2)\n"
+        "print(len(m1))\n"
+        "print(len(m2))\n"
+        "print(len(m3))";
+    EXPECT_EQ(runSource(src), "1\n1\n2\n");
+}
+
+// ===== flatten(list) テスト =====
+
+TEST_F(CodeGenTest, FlattenIntLists) {
+    std::string src =
+        "let xs = [[1, 2], [3, 4]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
+}
+
+TEST_F(CodeGenTest, FlattenStrLists) {
+    std::string src =
+        "let xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[a, b, c, d]\n");
+}
+
+TEST_F(CodeGenTest, FlattenUnevenInner) {
+    std::string src =
+        "let xs = [[1], [2, 3, 4], [5, 6]]\n"
+        "let ys = flatten(xs)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6]\n");
+}
+
+TEST_F(CodeGenTest, FlattenSingleInner) {
+    std::string src =
+        "let xs = [[10, 20, 30]]\n"
+        "print(flatten(xs))";
+    EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
+}
+
+TEST_F(CodeGenTest, FlattenNonDestructive) {
+    std::string src =
+        "let xs = [[1, 2], [3, 4]]\n"
+        "let ys = flatten(xs)\n"
+        "print(len(xs))\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "2\n[1, 2, 3, 4]\n");
+}
+
+// ===== for tuple destructuring =====
+
+TEST_F(CodeGenTest, ForEnumerateDestructure) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for i, x in enumerate(xs):\n"
+        "    total = total + i + x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "63\n");
+}
+
+TEST_F(CodeGenTest, ForZipDestructure) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "let ys = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for a, b in zip(xs, ys):\n"
+        "    total = total + a + b\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "66\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWildcardFirst) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for _, x in enumerate(xs):\n"
+        "    total = total + x\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "60\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWildcardSecond) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "var total = 0\n"
+        "for i, _ in enumerate(xs):\n"
+        "    total = total + i\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ForEnumerateWithPrint) {
+    std::string src =
+        "let xs = [10, 20, 30]\n"
+        "for i, x in enumerate(xs):\n"
+        "    print(f\"{i}: {x}\")";
+    EXPECT_EQ(runSource(src), "0: 10\n1: 20\n2: 30\n");
+}
+
+TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
+    std::string src =
+        "let xs = [1, 2, 3]\n"
+        "for a, b in xs:\n"
+        "    print(a)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
 }

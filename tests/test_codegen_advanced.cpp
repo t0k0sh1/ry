@@ -58,7 +58,7 @@ TEST_F(CodeGenTest, ContinueInWhile) {
 
 TEST_F(CodeGenTest, StructFieldAssign) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "var p = Point(1, 2)\n"
@@ -70,7 +70,7 @@ TEST_F(CodeGenTest, StructFieldAssign) {
 
 TEST_F(CodeGenTest, StructFieldAssignMultiple) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "var p = Point(0, 0)\n"
@@ -83,7 +83,7 @@ TEST_F(CodeGenTest, StructFieldAssignMultiple) {
 
 TEST_F(CodeGenTest, StructFieldAssignLetError) {
     std::string src =
-        "type Point:\n"
+        "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "let p = Point(1, 2)\n"
@@ -136,28 +136,28 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
-        "let double = (x: int) -> x * 2\n"
+        "let double = fn(x: int): x * 2\n"
         "print(double(5))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, LambdaNoParams) {
     std::string src =
-        "let answer = () ->42\n"
+        "let answer = fn(): 42\n"
         "print(answer())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, LambdaMultipleParams) {
     std::string src =
-        "let add = (a: int, b: int) -> a + b\n"
+        "let add = fn(a: int, b: int): a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
 
 TEST_F(CodeGenTest, LambdaFloat) {
     std::string src =
-        "let half = (x: float) -> x / 2.0\n"
+        "let half = fn(x: float): x / 2.0\n"
         "print(half(7.0))";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
@@ -166,7 +166,7 @@ TEST_F(CodeGenTest, LambdaAsArgument) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "let doubled = apply((n: int) -> n * 2, 10)\n"
+        "let doubled = apply(fn(n: int): n * 2, 10)\n"
         "print(doubled)";
     EXPECT_EQ(runSource(src), "20\n");
 }
@@ -175,7 +175,7 @@ TEST_F(CodeGenTest, LambdaStoredAndPassed) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "let triple = (n: int) -> n * 3\n"
+        "let triple = fn(n: int): n * 3\n"
         "print(apply(triple, 5))";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -192,7 +192,7 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "let is_positive = (x: int) -> x > 0\n"
+        "let is_positive = fn(x: int): x > 0\n"
         "print(is_positive(5))\n"
         "print(is_positive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -200,7 +200,7 @@ TEST_F(CodeGenTest, LambdaBoolReturn) {
 
 TEST_F(CodeGenTest, LambdaMultiLine) {
     std::string src =
-        "let abs = (x: int) ->\n"
+        "let abs = fn(x: int):\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
@@ -212,7 +212,7 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "let offset = 10\n"
-        "let add_offset = (x: int) -> x + offset\n"
+        "let add_offset = fn(x: int): x + offset\n"
         "print(add_offset(5))\n"
         "print(add_offset(20))";
     EXPECT_EQ(runSource(src), "15\n30\n");
@@ -220,14 +220,14 @@ TEST_F(CodeGenTest, LambdaClosure) {
 
 TEST_F(CodeGenTest, LambdaArgCountError) {
     std::string src =
-        "let f = (x: int) -> x\n"
+        "let f = fn(x: int): x\n"
         "f(1, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, LambdaArgTypeError) {
     std::string src =
-        "let f = (x: int) -> x\n"
+        "let f = fn(x: int): x\n"
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -670,4 +670,465 @@ TEST_F(CodeGenTest, UnionThreeTypes) {
         "let x: int | float | str = 3.14\n"
         "print(x)\n";
     EXPECT_EQ(runSource(src), "3.14\n");
+}
+
+// ===== not in テスト =====
+
+TEST_F(CodeGenTest, NotInSetTrue) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(4 not in s)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, NotInSetFalse) {
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(2 not in s)";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, NotInSetString) {
+    std::string src =
+        "let s = {\"a\", \"b\"}\n"
+        "print(\"c\" not in s)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, NotInWithInRegression) {
+    // in still works after not in was added
+    std::string src =
+        "let s = {1, 2, 3}\n"
+        "print(2 in s)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, NotExprRegression) {
+    // not x still works
+    EXPECT_EQ(runSource("let x = not true\nprint(x)"), "false\n");
+}
+
+// ===== f-string tests =====
+
+TEST_F(CodeGenTest, FStringBasic) {
+    EXPECT_EQ(runSource("let name = \"world\"\nprint(f\"Hello {name}\")"), "Hello world\n");
+}
+
+TEST_F(CodeGenTest, FStringMultipleExprs) {
+    EXPECT_EQ(runSource("let a = 1\nlet b = 2\nprint(f\"{a} + {b} = {a + b}\")"), "1 + 2 = 3\n");
+}
+
+TEST_F(CodeGenTest, FStringNoInterpolation) {
+    EXPECT_EQ(runSource("print(f\"plain text\")"), "plain text\n");
+}
+
+TEST_F(CodeGenTest, FStringEscapedBraces) {
+    EXPECT_EQ(runSource("print(f\"{{braces}}\")"), "{braces}\n");
+}
+
+TEST_F(CodeGenTest, FStringIntValue) {
+    EXPECT_EQ(runSource("print(f\"value = {42}\")"), "value = 42\n");
+}
+
+TEST_F(CodeGenTest, FStringFloatValue) {
+    EXPECT_EQ(runSource("print(f\"pi = {3.14}\")"), "pi = 3.14\n");
+}
+
+TEST_F(CodeGenTest, FStringBoolValue) {
+    EXPECT_EQ(runSource("print(f\"flag = {true}\")"), "flag = true\n");
+}
+
+// ===== as cast tests =====
+
+TEST_F(CodeGenTest, AsCastIntToFloat) {
+    EXPECT_EQ(runSource("let x = 42 as float\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, AsCastFloatToInt) {
+    EXPECT_EQ(runSource("let x = 3.14 as int\nprint(x)"), "3\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToBool) {
+    EXPECT_EQ(runSource("let x = 1 as bool\nprint(x)"), "true\n");
+    EXPECT_EQ(runSource("let x = 0 as bool\nprint(x)"), "false\n");
+}
+
+TEST_F(CodeGenTest, AsCastBoolToInt) {
+    EXPECT_EQ(runSource("let x = true as int\nprint(x)"), "1\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToStr) {
+    EXPECT_EQ(runSource("let x = 42 as str\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, AsCastFloatToStr) {
+    EXPECT_EQ(runSource("let x = 3.14 as str\nprint(x)"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, AsCastBoolToStr) {
+    EXPECT_EQ(runSource("let x = true as str\nprint(x)"), "true\n");
+}
+
+TEST_F(CodeGenTest, AsCastIntToByte) {
+    EXPECT_EQ(runSource("let x = 255 as byte\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, AsCastByteToInt) {
+    EXPECT_EQ(runSource("let b: byte = 200\nlet x = b as int\nprint(x)"), "200\n");
+}
+
+// ===== Error type tests =====
+
+TEST_F(CodeGenTest, ErrorConstructor1Arg) {
+    std::string src = R"(
+let e = Error("something went wrong")
+print(e.message)
+print(e.code)
+)";
+    EXPECT_EQ(runSource(src), "something went wrong\n0\n");
+}
+
+TEST_F(CodeGenTest, ErrorConstructor2Args) {
+    std::string src = R"(
+let e = Error("not found", 404)
+print(e.message)
+print(e.code)
+)";
+    EXPECT_EQ(runSource(src), "not found\n404\n");
+}
+
+TEST_F(CodeGenTest, ErrorOptionNone) {
+    std::string src = R"(
+let e: Error? = none
+print(e == none)
+)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ErrorPrint) {
+    std::string src = R"(
+let e = Error("test error", 42)
+print(e)
+)";
+    EXPECT_EQ(runSource(src), "Error: test error (code: 42)\n");
+}
+
+// ===== !! operator tests =====
+
+TEST_F(CodeGenTest, BangBangPropagateSuccess) {
+    std::string src = R"(
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("test.txt")!!
+    return (data, none)
+
+let val, err = process()
+print(val)
+print(err == none)
+)";
+    EXPECT_EQ(runSource(src), "content\ntrue\n");
+}
+
+TEST_F(CodeGenTest, BangBangPropagateError) {
+    std::string src = R"(
+fn read_file(path: str) -> (str, Error?):
+    if path == "":
+        return ("", Some(Error("empty path")))
+    return ("content", none)
+
+fn process() -> (str, Error?):
+    let data = read_file("")!!
+    return (data, none)
+
+let val, err = process()
+print(err != none)
+)";
+    EXPECT_EQ(runSource(src), "true\n");
+}
+
+TEST_F(CodeGenTest, ErrorTupleDestructure) {
+    std::string src = R"(
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 2)
+if err != none:
+    print("error")
+else:
+    print(val)
+)";
+    EXPECT_EQ(runSource(src), "5\n");
+}
+
+TEST_F(CodeGenTest, ErrorTupleDestructureWithError) {
+    std::string src = R"(
+fn divide(a: int, b: int) -> (int, Error?):
+    if b == 0:
+        return (0, Some(Error("division by zero")))
+    return (a // b, none)
+
+let val, err = divide(10, 0)
+match err:
+    case Some(e):
+        print(e.message)
+    case None:
+        print(val)
+)";
+    EXPECT_EQ(runSource(src), "division by zero\n");
+}
+
+// ===== match OR pattern =====
+
+TEST_F(CodeGenTest, MatchOrPatternInt) {
+    std::string src =
+        "let x = 2\n"
+        "match x:\n"
+        "    case 1 | 2 | 3:\n"
+        "        print(\"small\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "small\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternIntNoMatch) {
+    std::string src =
+        "let x = 5\n"
+        "match x:\n"
+        "    case 1 | 2 | 3:\n"
+        "        print(\"small\")\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_EQ(runSource(src), "other\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternEnum) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Red\n"
+        "match c:\n"
+        "    case Color::Red | Color::Blue:\n"
+        "        print(\"rb\")\n"
+        "    case Color::Green:\n"
+        "        print(\"g\")\n";
+    EXPECT_EQ(runSource(src), "rb\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternExhaustive) {
+    std::string src =
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "let c = Color::Green\n"
+        "match c:\n"
+        "    case Color::Red | Color::Blue:\n"
+        "        print(\"rb\")\n"
+        "    case Color::Green:\n"
+        "        print(\"g\")\n";
+    EXPECT_EQ(runSource(src), "g\n");
+}
+
+TEST_F(CodeGenTest, MatchOrPatternVariableError) {
+    std::string src =
+        "let x = 1\n"
+        "match x:\n"
+        "    case a | b:\n"
+        "        print(a)\n"
+        "    case _:\n"
+        "        print(\"other\")\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+// ===== enum ADT (associated data) =====
+
+TEST_F(CodeGenTest, EnumADTCreate) {
+    std::string src =
+        "enum Shape:\n"
+        "    Circle(float)\n"
+        "    Rectangle(float, float)\n"
+        "    Point\n"
+        "let s = Shape::Circle(3.14)\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "Circle(3.14)\n");
+}
+
+TEST_F(CodeGenTest, EnumADTMatchBinding) {
+    std::string src =
+        "enum Shape:\n"
+        "    Circle(float)\n"
+        "    Rectangle(float, float)\n"
+        "    Point\n"
+        "let s = Shape::Circle(3.14)\n"
+        "match s:\n"
+        "    case Shape::Circle(r):\n"
+        "        print(r)\n"
+        "    case Shape::Rectangle(w, h):\n"
+        "        print(w)\n"
+        "    case Shape::Point:\n"
+        "        print(\"point\")";
+    EXPECT_EQ(runSource(src), "3.14\n");
+}
+
+TEST_F(CodeGenTest, EnumADTMatchRect) {
+    std::string src =
+        "enum Shape:\n"
+        "    Circle(float)\n"
+        "    Rectangle(float, float)\n"
+        "    Point\n"
+        "let s = Shape::Rectangle(3.0, 4.0)\n"
+        "match s:\n"
+        "    case Shape::Circle(r):\n"
+        "        print(r)\n"
+        "    case Shape::Rectangle(w, h):\n"
+        "        print(w + h)\n"
+        "    case Shape::Point:\n"
+        "        print(\"point\")";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, EnumADTMixed) {
+    std::string src =
+        "enum Shape:\n"
+        "    Circle(float)\n"
+        "    Rectangle(float, float)\n"
+        "    Point\n"
+        "let s = Shape::Point\n"
+        "match s:\n"
+        "    case Shape::Circle(r):\n"
+        "        print(r)\n"
+        "    case Shape::Rectangle(w, h):\n"
+        "        print(w)\n"
+        "    case Shape::Point:\n"
+        "        print(\"point\")";
+    EXPECT_EQ(runSource(src), "point\n");
+}
+
+TEST_F(CodeGenTest, EnumADTSingleField) {
+    std::string src =
+        "enum Wrapper:\n"
+        "    IntVal(int)\n"
+        "    StrVal(str)\n"
+        "let w = Wrapper::IntVal(42)\n"
+        "match w:\n"
+        "    case Wrapper::IntVal(v):\n"
+        "        print(v)\n"
+        "    case Wrapper::StrVal(s):\n"
+        "        print(s)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+// ===== Generic enum =====
+
+TEST_F(CodeGenTest, GenericEnumBasic) {
+    std::string src =
+        "enum MyOption<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "let x = MyOption<int>::MySome(42)\n"
+        "match x:\n"
+        "    case MyOption::MySome(v):\n"
+        "        print(v)\n"
+        "    case MyOption::MyNone:\n"
+        "        print(\"none\")";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, GenericEnumNone) {
+    std::string src =
+        "enum MyOption<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "let x = MyOption<int>::MyNone\n"
+        "match x:\n"
+        "    case MyOption::MySome(v):\n"
+        "        print(v)\n"
+        "    case MyOption::MyNone:\n"
+        "        print(\"none\")";
+    EXPECT_EQ(runSource(src), "none\n");
+}
+
+TEST_F(CodeGenTest, GenericEnumFloat) {
+    std::string src =
+        "enum MyOption<T>:\n"
+        "    MySome(T)\n"
+        "    MyNone\n"
+        "let x = MyOption<float>::MySome(3.14)\n"
+        "match x:\n"
+        "    case MyOption::MySome(v):\n"
+        "        print(v)\n"
+        "    case MyOption::MyNone:\n"
+        "        print(\"none\")";
+    EXPECT_EQ(runSource(src), "3.14\n");
+}
+
+// ===== r-string =====
+
+TEST_F(CodeGenTest, RawStringPrint) {
+    EXPECT_EQ(runSource(R"(print(r"\n"))"), "\\n\n");
+}
+
+TEST_F(CodeGenTest, RawStringConcat) {
+    EXPECT_EQ(runSource(R"(print(r"\t" + "hello"))"), "\\thello\n");
+}
+
+// ===== test matcher: to_not_eq =====
+
+TEST_F(CodeGenTest, ExpectToNotEq) {
+    std::string src =
+        "describe(\"matchers\"):\n"
+        "    it(\"not equal\"):\n"
+        "        expect(1).to_not_eq(2)";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== test matcher: to_be_some =====
+
+TEST_F(CodeGenTest, ExpectToBeSome) {
+    std::string src =
+        "describe(\"matchers\"):\n"
+        "    it(\"some\"):\n"
+        "        let x = Some(5)\n"
+        "        expect(x).to_be_some()";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== test matcher: to_contain =====
+
+TEST_F(CodeGenTest, ExpectToContainList) {
+    std::string src =
+        "describe(\"matchers\"):\n"
+        "    it(\"contains\"):\n"
+        "        let xs = [1, 2, 3]\n"
+        "        expect(xs).to_contain(2)";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+TEST_F(CodeGenTest, ExpectToContainString) {
+    std::string src =
+        "describe(\"matchers\"):\n"
+        "    it(\"contains str\"):\n"
+        "        let s = \"hello world\"\n"
+        "        expect(s).to_contain(\"world\")";
+    EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== trailing block syntax =====
+
+TEST_F(CodeGenTest, TrailingBlockDescribeIt) {
+    std::string src =
+        "describe(\"Calculator\"):\n"
+        "    it(\"adds\"):\n"
+        "        expect(1 + 2).to_eq(3)\n"
+        "    it(\"subtracts\"):\n"
+        "        expect(5 - 3).to_eq(2)";
+    EXPECT_NO_THROW(runTestSource(src));
 }

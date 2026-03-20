@@ -2,6 +2,24 @@
 
 # 錯誤參考
 
+## 錯誤格式
+
+ry 以 Rust 風格的豐富格式顯示編譯錯誤，顯示錯誤的確切位置及原始碼上下文：
+
+```
+error: cannot reassign let variable: x
+  --> main.ry:5:1
+  |
+5 | x = 10
+  | ^ cannot reassign let variable: x
+```
+
+每條錯誤訊息包含：
+- **錯誤等級和訊息** (`error: ...`)
+- **檔案位置** (`--> 檔案:行:列`)
+- **原始碼行** (相關程式碼)
+- **插入符號指示器** (`^`) 指向確切的列位置
+
 ## 編譯錯誤一覽
 
 | 錯誤內容 | 原因 | 範例 |
@@ -22,6 +40,8 @@
 | 循環匯入 | 模組之間互相匯入 | `a.ry` 匯入 `b.ry`，`b.ry` 匯入 `a.ry` |
 | 相同欄位名重複 | 在結構體內定義了兩次相同的欄位名 | 在 `type T: x: int` 中定義了兩個 `x` |
 | match 窮舉性不足 | match 未覆蓋所有模式 | enum 的部分變體未覆蓋、Option 缺少 `None`、字面值缺少 `_` |
+| `!!` 回傳型別不匹配 | 在未回傳 `(T, Error?)` 的函式中使用 `!!` | 在回傳 `int` 的函式中使用 `!!` |
+| `!!` 運算元型別不匹配 | 對非 `(T, Error?)` 值使用 `!!` | 對普通 `int` 使用 `!!` |
 
 ### 編譯錯誤範例
 
@@ -45,7 +65,7 @@ fn foo():
     from math   # 錯誤：僅能在頂層匯入
 
 # 相同欄位名重複
-type Bad:
+record Bad:
     x: int
     x: float   # 錯誤：x 重複
 ```
@@ -58,7 +78,8 @@ type Bad:
 |-----------|------|-----|
 | 串列超出範圍的存取 | 串列的索引超出範圍 | `let xs = [1, 2, 3]` → `xs[5]` |
 | 映射不存在的鍵存取 | 參照映射中不存在的鍵 | `let m = {"a": 1}` → `m["b"]` |
-| unwrap(None) | 對 `None` 值呼叫 `unwrap` | `unwrap(None)` |
+
+| 契約違反 | `require`、`ensure` 或 `invariant` 條件評估為 false | 參閱 [契約式設計](contracts.md) |
 
 所有執行時錯誤都會以 `exit(1)` 結束程序。
 
@@ -72,8 +93,4 @@ print(xs[10])   # 執行時錯誤：exit(1)
 # 映射不存在的鍵存取
 let m = {"a": 1}
 print(m["z"])   # 執行時錯誤：exit(1)
-
-# unwrap(None)
-let x: Option<int> = None
-print(unwrap(x))   # 執行時錯誤：exit(1)
 ```

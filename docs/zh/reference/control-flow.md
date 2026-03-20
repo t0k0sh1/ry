@@ -98,6 +98,43 @@ for i in range(n):
 # range（指定起始與結束）
 for i in range(start, end):
     # i = start, start+1, ..., end-1
+
+# range（指定步長）
+for i in range(start, end, step):
+    # i = start, start+step, start+2*step, ...
+```
+
+### 映射鍵值走訪
+
+```python
+for k, v in map_expr:
+    # k 為鍵，v 為各條目的值
+```
+
+### 元組解構
+
+走訪 2 元素元組的列表（例如 `enumerate()` 或 `zip()` 的回傳值）時，可以解構為兩個變數。使用 `_` 捨棄值。
+
+```python
+let xs = [10, 20, 30]
+
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
+
+for a, b in zip([1, 2], [10, 20]):
+    print(a + b)          # 11, 22
+
+for _, x in enumerate(xs):
+    print(x)              # 捨棄索引
+```
+
+### 範圍運算子（`..`）
+
+`..` 運算子建立包含兩端的整數範圍。`1 .. 5` 產生 `[1, 2, 3, 4, 5]`。
+
+```python
+for i in 1 .. 5:
+    print(i)     # 1 2 3 4 5
 ```
 
 ### 範例
@@ -116,6 +153,22 @@ for i in range(5):
 
 for i in range(2, 6):
     print(i)     # 2 3 4 5
+
+for i in range(0, 10, 2):
+    print(i)     # 0 2 4 6 8
+
+for i in range(10, 0, -3):
+    print(i)     # 10 7 4 1
+
+# 映射走訪
+let m = {"a": 1, "b": 2}
+for k, v in m:
+    print(k)
+    print(v)
+
+# 範圍運算子
+for i in 1 .. 3:
+    print(i)     # 1 2 3
 ```
 
 ---
@@ -155,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...`（Ellipsis）
+
+- 不執行任何操作的語句（no-op）。用作空區塊的佔位符。
+- 可在任何區塊中使用：函數主體、`if`/`elif`/`else`、`while`、`for`、`match case` 等。
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### 語法
@@ -176,17 +246,38 @@ match 運算式:
 | 萬用字元 | `_` | 匹配任何值 |
 | 字面值 | `0`, `"hello"`, `true` | 值的相等比較 |
 | 變數綁定 | `n` | 匹配任何值並綁定到變數 |
-| enum 變體 | `Color::Red` | enum 標籤的比較 |
+| enum 變體 | `Color::Red` | enum 標籤的比較（簡單 enum） |
+| ADT enum 變體 | `Shape::Circle(r)` | 匹配帶有關聯資料的 enum 變體並綁定 |
 | `Some(x)` | `Some(v)` | 當 Option 有值時，綁定其內容 |
 | `None` | `None` | 當 Option 無值時 |
+| OR 模式 | `1 \| 2 \| 3` | 任一替代方案匹配時即匹配 |
 
 ### guard 子句
 
 可以使用 `case 模式 if 條件式:` 的形式指定守衛條件。只有當模式匹配且守衛條件為真時，該分支才會被執行。
 
+### OR 模式
+
+可以使用 `|` 組合多個模式，任一模式匹配時即匹配。OR 模式中不允許使用變數綁定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# enum OR 模式
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### 窮舉性檢查
 
-- enum 型別：必須覆蓋所有變體或包含 `_`。
+- enum 型別：必須覆蓋所有變體或包含 `_`。OR 模式中的各替代方案會分別計算。
 - Option 型別：必須覆蓋 `Some` 和 `None` 或包含 `_`。
 - bool 型別：必須覆蓋 `true` 和 `false` 或包含 `_`。
 - int / float / str 字面值：`_` 為必要。
@@ -235,6 +326,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT enum 匹配
+
+當 enum 變體攜帶關聯資料時，使用綁定模式來取出值。
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+多欄位變體會按宣告順序將各欄位綁定到不同的名稱。
 
 ### 作用域規則
 

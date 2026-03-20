@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
@@ -78,6 +79,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s.object); scanExpr(*s.index); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
                 scanExpr(*s.object); scanExpr(*s.value);
+            } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
+                scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 for (auto &br : s->branches) {
                     scanExpr(*br.condition);
@@ -159,8 +162,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scope_stack_.back()[e->params[idx].name] = alloca;
                 // Track fn type info for fn-typed parameters
                 const std::string &ptype = e->params[idx].type;
-                if (ptype.size() > 3 && ptype.substr(0, 3) == "fn(") {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(ptype);
+                std::string resolvedPtype = resolveTypeAlias(ptype);
+                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
+                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
             } else {
                 // Captured variable
@@ -200,7 +204,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
-            throw std::runtime_error("IR verify error in lambda: " + err);
+            codegenError("IR verify error in lambda: " + err);
     }
 
     // Register fn_type_info for the function pointer value
@@ -290,7 +294,35 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             auto it = functions_.find(v->callee);
             if (it != functions_.end() && !it->second.empty())
                 return it->second[0].func->getReturnType();
+            // Known builtin return types
+            const std::string &c = v->callee;
+            if (c == "len" || c == "to_int" || c == "find")
+                return i64Ty_;
+            // sum/min/max/first/last return the element type of the list argument
+            if (c == "sum" || c == "min" || c == "max" || c == "first" || c == "last") {
+                if (!v->args.empty()) {
+                    llvm::Type *argTy = inferExprType(*v->args[0], paramTypeMap);
+                    // If the argument is a pointer (list), we can't determine element type
+                    // at inference time, so default to i64; actual codegen handles correctly
+                    (void)argTy;
+                }
+                return i64Ty_; // conservative default; codegen uses actual element type
+            }
+            if (c == "to_float")
+                return f64Ty_;
+            if (c == "contains" || c == "starts_with" || c == "ends_with" ||
+                c == "has_key" || c == "any" || c == "all" || c == "is_empty")
+                return i1Ty_;
+            if (c == "to_str" || c == "to_upper" || c == "to_lower" ||
+                c == "trim" || c == "trim_start" || c == "trim_end" ||
+                c == "substring" || c == "char_at" || c == "replace" ||
+                c == "repeat" || c == "reverse" || c == "join" ||
+                c == "filter" || c == "map" || c == "sort" ||
+                c == "keys" || c == "values" || c == "enumerate" || c == "zip")
+                return ptrTy_;
             return i64Ty_; // fallback
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {
+            return inferExprType(*v->true_expr, paramTypeMap);
         } else {
             return i64Ty_; // fallback
         }

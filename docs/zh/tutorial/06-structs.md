@@ -6,12 +6,12 @@
 
 ---
 
-## 使用 type 定義結構體
+## 使用 record 定義結構體
 
-使用 `type` 關鍵字定義結構體。各欄位以 `name: type` 的格式描述。
+使用 `record` 關鍵字定義結構體。各欄位以 `name: type` 的格式描述。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 ```
@@ -63,7 +63,7 @@ print(p.x)   # 100
 可以將結構體作為函式的參數傳遞。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
@@ -82,11 +82,11 @@ print(distance_x(p1, p2))   # 6
 結構體的欄位可以使用其他結構體。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Line:
+record Line:
     start: Point
     end: Point
 

@@ -17,16 +17,14 @@ my-project/
   ry.toml          # 專案設定檔
   src/
     main.ry        # 進入點（範例程式碼）
-  test/            # 測試程式碼目錄
 ```
 
 ### 行為
 
 1. 若 `ry.toml` 已存在則錯誤結束
 2. 建立 `src/` 目錄（若不存在）
-3. 建立 `test/` 目錄（若不存在）
-4. 生成 `ry.toml`（`name` 為當前目錄名稱）
-5. 生成 `src/main.ry`（若已存在則跳過）
+3. 生成 `ry.toml`（`name` 為當前目錄名稱）
+4. 生成 `src/main.ry`（若已存在則跳過）
 
 ---
 
@@ -70,7 +68,6 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-test = "test"
 ```
 
 ### `[project]` 區段
@@ -86,7 +83,6 @@ test = "test"
 | 鍵 | 說明 |
 |------|------|
 | `src` | 原始碼目錄 |
-| `test` | 測試程式碼目錄 |
 
 ### TOML 子集規格
 

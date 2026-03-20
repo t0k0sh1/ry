@@ -9,10 +9,19 @@ Ry 內建 RSpec 風格的測試語法。使用 `ry test` 子指令執行測試�
 ## 執行方式
 
 ```bash
-ry test test_file.ry
+ry test              # 自動探索並執行專案內所有 *.test.ry 檔案
+ry test test_file.ry # 執行指定的測試檔案
 ```
 
-測試的結束代碼為失敗的測試數量（0 = 全部通過）。
+結束代碼為 0 表示所有測試通過，1 表示有測試失敗。
+
+### 自動探索模式
+
+不帶引數執行 `ry test` 時：
+
+1. 搜尋 `ry.toml` 以找到專案根目錄
+2. 在專案根目錄下遞迴探索所有 `*.test.ry` 檔案（`.git`、`build`、`node_modules` 會被跳過）
+3. 逐一執行並彙總結果
 
 ---
 
@@ -21,24 +30,42 @@ ry test test_file.ry
 ### describe / it
 
 ```
-describe "說明文字":
-    it "測試案例名稱":
+describe("說明文字"):
+    it("測試案例名稱"):
         # 測試主體
         expect(實際值).to_eq(預期值)
 ```
 
-- `describe` 區塊內只能撰寫 `it` 區塊
+- `describe` 和 `it` 使用**尾隨區塊語法**: 函式呼叫後加上 `:` 會將縮排區塊作為 lambda 傳入最後的參數
+- `describe` 區塊內可以撰寫 `it` 區塊及其他語句（如變數宣告等）
 - 各 `it` 區塊為獨立的測試案例
 - `describe` / `expect` 僅能在 `ry test` 中使用（在一般的 `ry` 執行中會產生編譯錯誤）
+
+### 尾隨區塊語法
+
+任何函式呼叫都可以使用尾隨區塊語法。在 `()` 後加上 `:` 會將縮排區塊作為無參數 lambda 傳入最後的參數位置:
+
+```
+# 以下兩者等價:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / 匹配器
 
 | 匹配器 | 說明 | 支援型別 |
 |---|---|---|
 | `to_eq(expected)` | 相等比較 | int, float, bool, str |
+| `to_not_eq(expected)` | 不相等 | int, float, bool, str |
 | `to_be_true()` | 為 `true` | bool |
 | `to_be_false()` | 為 `false` | bool |
 | `to_be_none()` | 為 `None` | Option |
+| `to_be_some()` | Option 為 `Some` | Option |
+| `to_contain(val)` | 容器包含值 | List, Set, str |
 
 ---
 
@@ -62,20 +89,65 @@ Calculator
 ## 範例
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
+
+---
+
+## 模擬（Mock）
+
+### mock(fn_name, replacement)
+
+在當前 `it` 區塊中將函式替換為模擬實作。`it` 區塊結束時模擬會自動清除。
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- 第一個參數為函式名稱（識別符，非字串）
+- 第二個參數為替換用 lambda
+- 替換函式必須與原始函式具有相同的參數型別和回傳型別
+- `it` 區塊結束時模擬會自動還原
+
+### verify(fn_name)
+
+回傳模擬函式被呼叫的次數（`int`）。
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### 模擬的限制事項
+
+- 不支援多載函式的模擬
+- 不支援使用捕獲閉包進行模擬（僅支援純 lambda）
+- 不支援 `@native fn` 的模擬
 
 ---
 
@@ -83,4 +155,3 @@ describe "Booleans":
 
 - 不支援 `describe` 的巢狀
 - 不支援 `before_each` / `after_each`
-- 不支援以 glob 執行測試檔案（`ry test tests/`）

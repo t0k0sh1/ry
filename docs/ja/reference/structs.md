@@ -4,14 +4,16 @@
 
 ## 概要
 
-構造体はスタック上の値型です。`type` キーワードで定義します。
+構造体はスタック上の値型です。`record` キーワードで定義します。構造体には `invariant` 節で不変条件を定義できます。[契約による設計](contracts.md) を参照。
+
+> **命名規則**: 構造体名は PascalCase（例: `Point`、`Rectangle`）を使用する必要があります。フィールド名は snake_case を使用します。コンパイラがこれらの規則を強制します。
 
 ---
 
 ## 定義構文
 
 ```python
-type 型名:
+record 型名:
     フィールド名: 型
     フィールド名: 型
 ```
@@ -19,11 +21,11 @@ type 型名:
 ### 例
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Rectangle:
+record Rectangle:
     width: float
     height: float
 ```
@@ -87,11 +89,11 @@ fn make_point(x: int, y: int) -> Point:
 構造体を別の構造体のフィールドとして使用できます。
 
 ```python
-type Point:
+record Point:
     x: int
     y: int
 
-type Circle:
+record Circle:
     center: Point
     radius: float
 
@@ -111,7 +113,7 @@ print(c.center.x)   # 0
 
 ```python
 # エラー例: 同一フィールド名の重複
-type Bad:
+record Bad:
     x: int
     x: int   # エラー
 

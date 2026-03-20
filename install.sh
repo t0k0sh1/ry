@@ -3,6 +3,7 @@ set -eu
 
 REPO="t0k0sh1/ry"
 INSTALL_DIR="${RY_INSTALL_DIR:-$HOME/.local/bin}"
+RY_HOME="${RY_HOME:-$HOME/.ry}"
 VERSION="${1:-latest}"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
@@ -25,6 +26,14 @@ echo "Downloading ry..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
+
+# Install standard library
+STD_DIR="$RY_HOME/lib/std"
+mkdir -p "$STD_DIR"
+if [ -d "$TMPDIR/lib/std" ]; then
+    cp "$TMPDIR/lib/std/"* "$STD_DIR/"
+    echo "Standard library installed to $STD_DIR"
+fi
 
 echo "ry installed to ${INSTALL_DIR}/ry"
 case ":$PATH:" in

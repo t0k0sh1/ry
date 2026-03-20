@@ -9,10 +9,19 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 ## 実行方法
 
 ```bash
-ry test test_file.ry
+ry test              # プロジェクト内の *.test.ry を自動検出して実行
+ry test test_file.ry # 特定のテストファイルを実行
 ```
 
-テストの終了コードは失敗したテスト数です（0 = 全パス）。
+終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
+
+### 自動検出モード
+
+`ry test` を引数なしで実行すると:
+
+1. `ry.toml` を探してプロジェクトルートを特定
+2. プロジェクトルート以下の `*.test.ry` ファイルを再帰的に検出（`.git`、`build`、`node_modules` はスキップ）
+3. 各ファイルを実行し、結果を集計
 
 ---
 
@@ -21,24 +30,42 @@ ry test test_file.ry
 ### describe / it
 
 ```
-describe "説明文":
-    it "テストケース名":
+describe("説明文"):
+    it("テストケース名"):
         # テスト本体
         expect(実際の値).to_eq(期待値)
 ```
 
-- `describe` ブロック内には `it` ブロックのみ記述可能
+- `describe` と `it` は**トレイリングブロック構文**を使用: 関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして最後の引数に渡される
+- `describe` ブロック内には `it` ブロックやその他の文（変数宣言など）を記述可能
 - 各 `it` ブロックは独立したテストケース
 - `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
+
+### トレイリングブロック構文
+
+任意の関数呼び出しにトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
+
+```
+# 以下は等価:
+foo("arg"):
+    bar()
+
+foo("arg", fn():
+    bar()
+)
+```
 
 ### expect / マッチャー
 
 | マッチャー | 説明 | 対応型 |
 |---|---|---|
 | `to_eq(expected)` | 等値比較 | int, float, bool, str |
+| `to_not_eq(expected)` | 等しくないこと | int, float, bool, str |
 | `to_be_true()` | `true` であること | bool |
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
+| `to_be_some()` | Option が `Some` であること | Option |
+| `to_contain(val)` | コンテナが値を含むこと | List, Set, str |
 
 ---
 
@@ -62,20 +89,65 @@ Calculator
 ## 例
 
 ```
-describe "Arithmetic":
-    it "adds integers":
+describe("Arithmetic"):
+    it("adds integers"):
         expect(1 + 2).to_eq(3)
 
-    it "compares strings":
+    it("compares strings"):
         expect("hello").to_eq("hello")
 
-    it "checks booleans":
+    it("checks booleans"):
         expect(3 > 1).to_be_true()
 
-describe "Booleans":
-    it "false check":
+describe("Booleans"):
+    it("false check"):
         expect(1 > 2).to_be_false()
 ```
+
+---
+
+## モック
+
+### mock(fn_name, replacement)
+
+現在の `it` ブロック内で関数をモック実装に差し替えます。`it` ブロック終了時にモックは自動的にクリアされます。
+
+```
+fn fetch_data() -> str:
+    return "real data"
+
+describe("mocking"):
+    it("replaces function"):
+        mock(fetch_data, fn(): "fake")
+        expect(fetch_data()).to_eq("fake")
+
+    it("auto-restores"):
+        expect(fetch_data()).to_eq("real data")
+```
+
+- 第1引数は関数名（識別子、文字列ではない）
+- 第2引数は差し替え用ラムダ
+- 差し替え関数は元の関数と同じ引数型・戻り値型である必要がある
+- `it` ブロック終了時にモックは自動復元される
+
+### verify(fn_name)
+
+モック済み関数の呼び出し回数を `int` で返します。
+
+```
+describe("verify"):
+    it("counts calls"):
+        mock(fetch_data, fn(): "fake")
+        fetch_data()
+        fetch_data()
+        expect(verify(fetch_data)).to_eq(2)
+```
+
+### モックの制限事項
+
+- オーバーロードされた関数のモックは非対応
+- キャプチャ付きクロージャでのモックは非対応（プレーンラムダのみ）
+- `@native fn` のモックは非対応
 
 ---
 
@@ -83,4 +155,3 @@ describe "Booleans":
 
 - `describe` のネストは未対応
 - `before_each` / `after_each` は未対応
-- テストファイルのglob実行（`ry test tests/`）は未対応

@@ -10,14 +10,15 @@
 |------|------|
 | `print(expr)` | Prints a value to standard output |
 | `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
-| `range(n)` / `range(start, end)` | Generates a list of integers |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
+| `exit(code)` | Terminates the process with the given exit code |
+| `args()` | Returns command-line arguments as `List<str>` |
 
 ### Option
 
 | Function | Description |
 |------|------|
 | `Some(expr)` | Constructs the value-present variant of an Option type |
-| `unwrap(opt)` | Extracts the value from an Option |
 
 ### Collection Operations
 
@@ -26,6 +27,24 @@
 | `has_key(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
+| `append(list, value)` | Adds an element to the end of a list (mutating) |
+| `pop(list)` | Removes and returns the last element of a list |
+| `reverse(list)` | Returns a new reversed list (also works on strings) |
+| `slice(list, start, end)` | Returns a new sub-list from start to end |
+| `filter(list, pred)` | Returns a new list with elements matching the predicate |
+| `map(list, fn)` | Returns a new list with each element transformed |
+| `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
+| `insert(list, i, val)` | Inserts an element at index i |
+| `remove_at(list, i)` | Removes and returns the element at index i |
+| `items(map)` | Returns a list of (key, value) tuples |
+| `remove(map, key)` | Removes the entry with the specified key |
+| `get(map, key, default)` | Returns the value for key, or default if not found |
+| `union(set, set)` | Returns the union of two sets |
+| `intersection(set, set)` | Returns the intersection of two sets |
+| `difference(set, set)` | Returns the difference of two sets |
+| `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
+| `is_subset(set, set)` | Returns whether the first set is a subset of the second |
+| `is_superset(set, set)` | Returns whether the first set is a superset of the second |
 
 ### [String Operations](builtins-string.md)
 
@@ -98,22 +117,6 @@ print(x)   # Some(42)
 
 ---
 
-## unwrap
-
-**Signature:** `unwrap(opt: Option<T>) -> T`
-
-Extracts the inner value from an Option. UFCS notation is also available.
-
-```python
-let x = Some(42)
-print(unwrap(x))    # 42
-print(x.unwrap())   # 42 (UFCS)
-```
-
-**Error condition:** Passing `None` causes a runtime error (exit(1)).
-
----
-
 ## len
 
 **Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
@@ -175,7 +178,7 @@ print(2 in s)     # false
 
 ## range
 
-**Signature:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>`
+**Signature:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 Generates a list of integers.
 
@@ -183,14 +186,160 @@ Generates a list of integers.
 |------|------------|
 | `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
+| `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (up to but not including `end`) |
+
+- When `step > 0`, generates values from `start` ascending toward `end`.
+- When `step < 0`, generates values from `start` descending toward `end`.
+- When `step == 0`, a runtime error occurs.
+- If the range is empty (e.g., `range(0, 10, -1)`), returns an empty list.
 
 ```python
-print(range(3))       # [0, 1, 2]
-print(range(2, 5))    # [2, 3, 4]
+print(range(3))           # [0, 1, 2]
+print(range(2, 5))        # [2, 3, 4]
+print(range(0, 10, 2))    # [0, 2, 4, 6, 8]
+print(range(10, 0, -3))   # [10, 7, 4, 1]
 
 for i in range(3):
     print(i)
 # 0
 # 1
 # 2
+```
+
+---
+
+## exit
+
+**Signature:** `exit(code: int)`
+
+Terminates the process immediately with the given exit code. Code after `exit()` is unreachable.
+
+```python
+exit(0)        # normal termination
+exit(1)        # error termination
+```
+
+---
+
+## args
+
+**Signature:** `args() -> List<str>`
+
+Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
+
+```python
+# Run: ry script.ry hello world
+let a = args()
+print(len(a))    # 2
+print(a[0])      # hello
+print(a[1])      # world
+
+for x in args():
+    print(x)
+```
+
+---
+
+## append
+
+**Signature:** `append(list: List<T>, value: T)`
+
+Adds an element to the end of a list. This is a mutating operation — the list is modified in place. UFCS notation is also available.
+
+```python
+var xs = [1, 2]
+xs.append(3)
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## pop
+
+**Signature:** `pop(list: List<T>) -> T`
+
+Removes and returns the last element of a list. UFCS notation is also available.
+
+```python
+var xs = [1, 2, 3]
+let v = xs.pop()
+print(v)    # 3
+print(xs)   # [1, 2]
+```
+
+**Error condition:** Calling `pop()` on an empty list causes a runtime error (exit(1)).
+
+---
+
+## reverse (list)
+
+**Signature:** `reverse(list: List<T>) -> List<T>`
+
+Returns a new list with elements in reverse order. The original list is not modified. Also works on strings (see [String Operations](builtins-string.md)). UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = reverse(xs)
+print(ys)   # [3, 2, 1]
+print(xs)   # [1, 2, 3] (unchanged)
+```
+
+---
+
+## slice
+
+**Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
+
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+print(slice(xs, 1, 3))     # [2, 3]
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+```
+
+---
+
+## filter
+
+**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+
+Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.filter((x: int) -> x > 3)
+print(ys)   # [4, 5]
+print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
+```
+
+---
+
+## map
+
+**Signature:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+
+Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.map((x: int) -> x * 2)
+print(ys)   # [2, 4, 6]
+```
+
+---
+
+## sort
+
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+
+Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [3, 1, 2]
+print(xs.sort())   # [1, 2, 3]
+
+# Descending order
+let desc = xs.sort((a: int, b: int) -> a > b)
+print(desc)   # [3, 2, 1]
 ```

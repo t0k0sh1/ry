@@ -66,7 +66,6 @@ ProjectConfig ProjectConfigParser::load(const std::string &toml_content) {
     config.version  = sections["project"]["version"];
     config.entry    = sections["project"]["entry"];
     config.src_dir  = sections["paths"]["src"];
-    config.test_dir = sections["paths"]["test"];
     return config;
 }
 
@@ -79,7 +78,6 @@ std::string ProjectConfigParser::serialize(const ProjectConfig &config) {
     out << "\n";
     out << "[paths]\n";
     out << "src = \"" << config.src_dir << "\"\n";
-    out << "test = \"" << config.test_dir << "\"\n";
     return out.str();
 }
 
@@ -113,7 +111,6 @@ int cmd_init() {
 
     // 2. Create directories
     fs::create_directories(cwd / "src");
-    fs::create_directories(cwd / "test");
 
     // 3. Generate ry.toml
     ProjectConfig config;
@@ -121,7 +118,6 @@ int cmd_init() {
     config.version  = "0.1.0";
     config.entry    = "src/main.ry";
     config.src_dir  = "src";
-    config.test_dir = "test";
 
     {
         std::ofstream f(cwd / "ry.toml");

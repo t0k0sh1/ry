@@ -1,0 +1,7 @@
+[project]
+name = "ry"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"

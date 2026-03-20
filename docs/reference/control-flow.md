@@ -98,6 +98,43 @@ for i in range(n):
 # range (with start and end)
 for i in range(start, end):
     # i = start, start+1, ..., end-1
+
+# range (with step)
+for i in range(start, end, step):
+    # i = start, start+step, start+2*step, ...
+```
+
+### Map Key-Value Iteration
+
+```python
+for k, v in map_expr:
+    # k is the key, v is the value for each entry
+```
+
+### Tuple Destructuring
+
+When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
+
+```python
+let xs = [10, 20, 30]
+
+for i, x in enumerate(xs):
+    print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
+
+for a, b in zip([1, 2], [10, 20]):
+    print(a + b)          # 11, 22
+
+for _, x in enumerate(xs):
+    print(x)              # index discarded
+```
+
+### Range Operator (`..`)
+
+The `..` operator creates an inclusive integer range. `1 .. 5` produces `[1, 2, 3, 4, 5]`.
+
+```python
+for i in 1 .. 5:
+    print(i)     # 1 2 3 4 5
 ```
 
 ### Example
@@ -116,6 +153,22 @@ for i in range(5):
 
 for i in range(2, 6):
     print(i)     # 2 3 4 5
+
+for i in range(0, 10, 2):
+    print(i)     # 0 2 4 6 8
+
+for i in range(10, 0, -3):
+    print(i)     # 10 7 4 1
+
+# Map iteration
+let m = {"a": 1, "b": 2}
+for k, v in m:
+    print(k)
+    print(v)
+
+# Range operator
+for i in 1 .. 3:
+    print(i)     # 1 2 3
 ```
 
 ---
@@ -155,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...` (Ellipsis)
+
+- A no-op statement that does nothing. Used as a placeholder for empty blocks.
+- Can be used in any block: function body, `if`/`elif`/`else`, `while`, `for`, `match case`, etc.
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### Syntax
@@ -176,17 +246,38 @@ match expression:
 | Wildcard | `_` | Matches anything |
 | Literal | `0`, `"hello"`, `true` | Equality comparison |
 | Variable binding | `n` | Matches anything and binds to a variable |
-| enum variant | `Color::Red` | Compares enum tag |
+| enum variant | `Color::Red` | Compares enum tag (simple enum) |
+| ADT enum variant | `Shape::Circle(r)` | Matches an enum variant with associated data and binds it |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
+| OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
 ### Guard Clause
 
 A guard condition can be specified in the form `case pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
 
+### OR Pattern
+
+Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
+
+```python
+match x:
+    case 1 | 2 | 3:
+        print("small")
+    case _:
+        print("other")
+
+# Enum OR pattern
+match color:
+    case Color::Red | Color::Blue:
+        print("warm or cool")
+    case Color::Green:
+        print("green")
+```
+
 ### Exhaustiveness Checking
 
-- enum types: Must cover all variants or include `_`.
+- enum types: Must cover all variants or include `_`. OR patterns count each alternative individually.
 - Option types: Must cover both `Some` and `None` or include `_`.
 - bool type: Must cover both `true` and `false` or include `_`.
 - int / float / str literals: `_` is required.
@@ -235,6 +326,29 @@ match x:
     case _:
         print("zero")
 ```
+
+### ADT Enum Match
+
+When an enum variant carries associated data, use a binding pattern to extract the value(s).
+
+```python
+enum Shape:
+    Circle(float)
+    Rectangle(float, float)
+    Point
+
+let s = Shape::Circle(3.14)
+match s:
+    case Shape::Circle(r):
+        print(r)        # 3.14
+    case Shape::Rectangle(w, h):
+        print(w)
+        print(h)
+    case Shape::Point:
+        print("point")
+```
+
+Multi-field variants bind each field to a separate name in declaration order.
 
 ### Scope Rules
 

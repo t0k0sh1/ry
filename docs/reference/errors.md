@@ -2,6 +2,24 @@
 
 # Error Reference
 
+## Error Format
+
+ry displays compile errors in a Rust-inspired rich format that shows the exact location of the error with source context:
+
+```
+error: cannot reassign let variable: x
+  --> main.ry:5:1
+  |
+5 | x = 10
+  | ^ cannot reassign let variable: x
+```
+
+Each error message includes:
+- **Error level and message** (`error: ...`)
+- **File location** (`--> file:line:col`)
+- **Source line** with the relevant code
+- **Caret indicator** (`^`) pointing to the exact column
+
 ## Compile Errors
 
 | Error | Cause | Example |
@@ -22,6 +40,8 @@
 | Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
 | Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive match | match does not cover all patterns | Some enum variants uncovered, missing `None` for Option, no `_` for literals |
+| `!!` return type mismatch | `!!` used in function not returning `(T, Error?)` | Using `!!` in a function returning `int` |
+| `!!` operand type mismatch | `!!` applied to non `(T, Error?)` value | Applying `!!` to a plain `int` |
 
 ### Compile Error Examples
 
@@ -45,7 +65,7 @@ fn foo():
     from math   # Error: top level only
 
 # Duplicate field name
-type Bad:
+record Bad:
     x: int
     x: float   # Error: x is duplicated
 ```
@@ -58,7 +78,7 @@ type Bad:
 |-----------|------|-----|
 | List out-of-range access | List index exceeds bounds | `let xs = [1, 2, 3]` -> `xs[5]` |
 | Map non-existent key access | Referenced a key that does not exist in the map | `let m = {"a": 1}` -> `m["b"]` |
-| unwrap(None) | Called `unwrap` on a `None` value | `unwrap(None)` |
+| Contract violation | A `require`, `ensure`, or `invariant` condition evaluated to false | See [Design by Contract](contracts.md) |
 
 All runtime errors terminate the process with `exit(1)`.
 
@@ -72,8 +92,4 @@ print(xs[10])   # Runtime error: exit(1)
 # Map non-existent key access
 let m = {"a": 1}
 print(m["z"])   # Runtime error: exit(1)
-
-# unwrap(None)
-let x: Option<int> = None
-print(unwrap(x))   # Runtime error: exit(1)
 ```

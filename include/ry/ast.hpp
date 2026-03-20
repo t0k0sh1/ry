@@ -1,11 +1,32 @@
 #pragma once
 
+#include "ry/source_location.hpp"
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
+
+// ===== Directive =====
+
+struct DirectiveParam {
+    std::string key;
+    std::string value;
+};
+
+struct Directive {
+    std::string name;
+    std::vector<DirectiveParam> params;
+    SourceLocation loc;
+};
+
+inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
+    for (const auto &d : directives)
+        if (d.name == name) return true;
+    return false;
+}
 
 struct NumberExpr   { int64_t value; };
 struct FloatExpr    { double value; };
@@ -29,6 +50,15 @@ struct EnumAccessExpr {
     std::string variant_name;
 };
 
+struct OldExpr;
+struct ResultExpr {};
+struct CastExpr;
+struct InterpolatedStringExpr;
+struct TernaryExpr;
+struct RangeExpr;
+struct NoneExpr {};
+struct ErrorPropagateExpr;
+
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
@@ -41,7 +71,16 @@ struct ExprNode {
                  std::unique_ptr<MapExpr>,
                  std::unique_ptr<SetExpr>,
                  EnumAccessExpr,
-                 std::unique_ptr<LambdaExpr>> data;
+                 std::unique_ptr<LambdaExpr>,
+                 std::unique_ptr<OldExpr>,
+                 ResultExpr,
+                 std::unique_ptr<CastExpr>,
+                 std::unique_ptr<InterpolatedStringExpr>,
+                 std::unique_ptr<TernaryExpr>,
+                 std::unique_ptr<RangeExpr>,
+                 NoneExpr,
+                 std::unique_ptr<ErrorPropagateExpr>> data;
+    SourceLocation loc;
 };
 using ExprPtr = std::unique_ptr<ExprNode>;
 
@@ -87,67 +126,86 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // immutable
-struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; };  // mutable
-struct AssignStmt { std::string name; ExprPtr value; };
-struct CallStmt   { std::string callee; std::vector<ExprPtr> args; };
+struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // immutable
+struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // mutable
+struct AssignStmt { std::string name; ExprPtr value; SourceLocation loc; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; SourceLocation loc; };
 
-struct ReturnStmt { ExprPtr value; };
+struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; std::string type; };
 
 struct ImportStmt {
-    std::string module_path;              // "utils/math.ry"
+    std::string module_path;              // "utils/math" (resolved to dir or .ry file)
     std::vector<std::string> names;       // {"add", "sub"} — empty means import all
-    int line;
+    SourceLocation loc;
 };
 
 struct IndexAssignStmt {
     ExprPtr object;
     ExprPtr index;
     ExprPtr value;
+    SourceLocation loc;
 };
 
-struct FieldDef { std::string name; std::string type; };
+struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
 
-struct TypeStmt { std::string name; std::vector<FieldDef> fields; };
+struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
-struct BreakStmt {};
-struct ContinueStmt {};
+struct TypeAliasStmt { std::string name; std::string target_type; SourceLocation loc; };
+
+struct BreakStmt { SourceLocation loc; };
+struct ContinueStmt { SourceLocation loc; };
+struct EllipsisStmt { SourceLocation loc; };
+
+struct EnumVariant {
+    std::string name;
+    std::vector<std::string> field_types;  // empty = no associated data
+};
 
 struct EnumStmt {
     std::string name;
-    std::vector<std::string> variants;
+    std::vector<std::string> type_params;  // for generics
+    std::vector<EnumVariant> variants;
+    SourceLocation loc;
+};
+
+struct TupleDestructStmt {
+    std::vector<std::string> names;  // "_" is wildcard
+    ExprPtr value;
+    bool is_immutable;
+    std::vector<Directive> directives;
+    SourceLocation loc;
 };
 
 struct FieldAssignStmt {
     ExprPtr object;
     std::string field;
     ExprPtr value;
+    SourceLocation loc;
 };
 
 struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
-struct DescribeStmt;
 struct MatchStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
     std::string matcher;   // "to_eq", "to_be_true", "to_be_false", "to_be_none"
     ExprPtr expected;      // to_eq only
-    int line;
+    SourceLocation loc;
 };
 
 using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
-                              ReturnStmt, ImportStmt, TypeStmt,
-                              IndexAssignStmt, BreakStmt, ContinueStmt,
+                              ReturnStmt, ImportStmt, RecordStmt,
+                              IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt,
+                              TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<DescribeStmt>,
                               std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
@@ -159,17 +217,48 @@ struct IfBranch {
 struct IfStmt {
     std::vector<IfBranch> branches;    // if + elif*
     std::vector<StmtNode> else_body;   // else（空なら else なし）
+    SourceLocation loc;
 };
 
 struct WhileStmt {
     ExprPtr condition;
     std::vector<StmtNode> body;
+    SourceLocation loc;
 };
 
 struct ForStmt {
     std::string var_name;
+    std::optional<std::string> var_name2;
     ExprPtr iterable;
     std::vector<StmtNode> body;
+    SourceLocation loc;
+};
+
+struct OldExpr { ExprPtr expr; };
+
+struct CastExpr {
+    ExprPtr value;
+    std::string target_type;
+};
+
+struct TernaryExpr {
+    ExprPtr condition;
+    ExprPtr true_expr;
+    ExprPtr false_expr;
+};
+
+struct InterpolatedStringExpr {
+    std::vector<std::string> parts;   // literal text segments (parts.size() == exprs.size() + 1)
+    std::vector<ExprPtr> exprs;       // interpolated expressions
+};
+
+struct RangeExpr {
+    ExprPtr start;
+    ExprPtr end;
+};
+
+struct ErrorPropagateExpr {
+    ExprPtr operand;
 };
 
 struct FnStmt {
@@ -178,6 +267,10 @@ struct FnStmt {
     std::string return_type;
     std::vector<StmtNode> body;
     bool is_operator = false;
+    std::vector<ExprPtr> preconditions;
+    std::vector<ExprPtr> postconditions;
+    std::vector<Directive> directives;
+    SourceLocation loc;
 };
 
 struct LambdaExpr {
@@ -185,16 +278,6 @@ struct LambdaExpr {
     std::string return_type;
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
-};
-
-struct ItBlock {
-    std::string description;
-    std::vector<StmtNode> body;
-};
-
-struct DescribeStmt {
-    std::string description;
-    std::vector<ItBlock> cases;
 };
 
 // ===== Match patterns =====
@@ -205,11 +288,22 @@ struct VariablePattern { std::string name; };
 struct EnumPattern { std::string enum_name; std::string variant_name; };
 struct SomePattern { std::string binding; };
 struct NonePattern {};
+struct EnumConstructorPattern {
+    std::string enum_name;
+    std::string variant_name;
+    std::vector<std::string> bindings;
+};
+
+struct OrPattern;
 
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
-    EnumPattern, SomePattern, NonePattern
+    EnumPattern, SomePattern, NonePattern,
+    EnumConstructorPattern,
+    std::unique_ptr<OrPattern>
 >;
+
+struct OrPattern { std::vector<Pattern> alternatives; };
 
 struct MatchArm {
     Pattern pattern;
@@ -220,4 +314,5 @@ struct MatchArm {
 struct MatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
+    SourceLocation loc;
 };
