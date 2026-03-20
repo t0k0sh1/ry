@@ -10,28 +10,45 @@
 
 namespace fs = std::filesystem;
 
-// Collect exported names (FnStmt + RecordStmt) from a program
+// Check if a statement is an exportable definition
+static bool isExportable(const StmtNode &stmt) {
+    return std::holds_alternative<std::unique_ptr<FnStmt>>(stmt) ||
+           std::holds_alternative<RecordStmt>(stmt) ||
+           std::holds_alternative<EnumStmt>(stmt) ||
+           std::holds_alternative<TypeAliasStmt>(stmt);
+}
+
+// Get the name of an exportable definition
+static std::string getExportName(const StmtNode &stmt) {
+    if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
+        return std::get<std::unique_ptr<FnStmt>>(stmt)->name;
+    if (std::holds_alternative<RecordStmt>(stmt))
+        return std::get<RecordStmt>(stmt).name;
+    if (std::holds_alternative<EnumStmt>(stmt))
+        return std::get<EnumStmt>(stmt).name;
+    if (std::holds_alternative<TypeAliasStmt>(stmt))
+        return std::get<TypeAliasStmt>(stmt).name;
+    return "";
+}
+
+// Collect exported names from a program
 static std::unordered_set<std::string> collectExportedNames(const Program &prog) {
     std::unordered_set<std::string> names;
     for (const auto &stmt : prog) {
-        if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt))
-            names.insert(std::get<std::unique_ptr<FnStmt>>(stmt)->name);
-        else if (std::holds_alternative<RecordStmt>(stmt))
-            names.insert(std::get<RecordStmt>(stmt).name);
+        if (isExportable(stmt))
+            names.insert(getExportName(stmt));
     }
     return names;
 }
 
-// Extract FnStmt/RecordStmt from a program, optionally filtering by requested names
+// Extract exportable definitions from a program, optionally filtering by requested names
 static void extractDefinitions(Program &source, Program &dest,
                                 const std::vector<std::string> &requested_names,
                                 const std::string &import_path, int line) {
     if (requested_names.empty()) {
         for (auto &stmt : source) {
-            if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt) ||
-                std::holds_alternative<RecordStmt>(stmt)) {
+            if (isExportable(stmt))
                 dest.push_back(std::move(stmt));
-            }
         }
         return;
     }
@@ -39,16 +56,10 @@ static void extractDefinitions(Program &source, Program &dest,
     std::unordered_set<std::string> requested(requested_names.begin(), requested_names.end());
     std::unordered_set<std::string> found;
     for (auto &stmt : source) {
-        if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt)) {
-            const auto &fn = std::get<std::unique_ptr<FnStmt>>(stmt);
-            if (requested.count(fn->name)) {
-                found.insert(fn->name);
-                dest.push_back(std::move(stmt));
-            }
-        } else if (std::holds_alternative<RecordStmt>(stmt)) {
-            const auto &ts = std::get<RecordStmt>(stmt);
-            if (requested.count(ts.name)) {
-                found.insert(ts.name);
+        if (isExportable(stmt)) {
+            std::string name = getExportName(stmt);
+            if (requested.count(name)) {
+                found.insert(name);
                 dest.push_back(std::move(stmt));
             }
         }
@@ -85,7 +96,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
 
         // 2. Single file (backward compatibility)
         fs::path file_candidate = fs::path(dir) / (package_path + ".ry");
-        if (fs::exists(file_candidate))
+        if (fs::is_regular_file(file_candidate))
             return fs::canonical(file_candidate).string();
 
         return "";
@@ -130,7 +141,7 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
         auto filename = entry.path().filename().string();
         if (!filename.empty() && filename[0] == '_') continue;
         if (filename.size() < 3 || filename.compare(filename.size() - 3, 3, ".ry") != 0) continue;
-        ry_files.push_back(entry.path().string());
+        ry_files.push_back(fs::canonical(entry.path()).string());
     }
 
     std::sort(ry_files.begin(), ry_files.end());
@@ -147,12 +158,9 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
 
         fn_cache_[file_path] = collectExportedNames(sub_prog);
 
-        // Collect FnStmt/RecordStmt into result in single pass
         for (auto &stmt : sub_prog) {
-            if (std::holds_alternative<std::unique_ptr<FnStmt>>(stmt) ||
-                std::holds_alternative<RecordStmt>(stmt)) {
+            if (isExportable(stmt))
                 collected.push_back(std::move(stmt));
-            }
         }
     }
 

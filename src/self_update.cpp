@@ -359,6 +359,13 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
     // Delete files that were in old manifest but not in new
     std::sort(new_files.begin(), new_files.end());
     for (const auto &old_file : old_manifest.files) {
+        // Validate manifest entry is a simple filename (no path traversal)
+        if (old_file.empty() || old_file == "." || old_file == ".." ||
+            old_file.find('/') != std::string::npos ||
+            old_file.find('\\') != std::string::npos) {
+            std::cerr << "Warning: Skipping invalid stdlib manifest entry: " << old_file << "\n";
+            continue;
+        }
         if (!std::binary_search(new_files.begin(), new_files.end(), old_file)) {
             fs::remove(dest_std / old_file, ec);
         }

@@ -60,7 +60,9 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     try {
         Program std_prog;
         std_prog.push_back(ImportStmt{"std", {}, {0, 0, fileId}});
-        std_prog = loader.resolveImports(std_prog, referrer_dir);
+        // Resolve against stdlib search paths only (not referrer_dir)
+        // to prevent local std/ from shadowing the bundled stdlib
+        std_prog = loader.resolveImports(std_prog, "");
         prog.insert(prog.begin(),
             std::make_move_iterator(std_prog.begin()),
             std::make_move_iterator(std_prog.end()));

@@ -23,10 +23,16 @@ TEST(Paths, GetRyHomeDefault) {
 
 TEST(Paths, GetRyHomeFromEnv) {
     const char *orig = std::getenv("RY_HOME");
-    setenv("RY_HOME", "/tmp/test-ry-home", 1);
+
+    char tmp_dir[] = "/tmp/test-ry-home-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+
+    setenv("RY_HOME", tmp_dir, 1);
 
     auto home = ry::get_ry_home();
-    EXPECT_EQ(home, fs::path("/tmp/test-ry-home"));
+    EXPECT_EQ(home, fs::path(tmp_dir));
+
+    fs::remove_all(tmp_dir);
 
     // Restore
     if (orig) setenv("RY_HOME", orig, 1);
