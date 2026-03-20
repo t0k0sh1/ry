@@ -9,7 +9,7 @@
 | 関数 | 説明 |
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
-| `len(x)` | リスト・マップ・セットの要素数、文字列の長さを返す |
+| `len(x)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
@@ -27,17 +27,21 @@
 | `has_key(map, key)` | マップにキーが存在するかを返す |
 | `add(set, value)` | セットに要素を追加（重複は無視） |
 | `remove(set, value)` | セットから要素を削除 |
-| `append(list, value)` | リストの末尾に要素を追加（ミューテーション操作） |
-| `pop(list)` | リストの末尾の要素を削除して返す |
+| `append(list, value)` / `append!(list, value)` | リストの末尾に要素を追加（ミューテーション操作） |
+| `appended(list, value)` | 要素を末尾に追加した新しいリストを返す（非破壊） |
+| `pop(list)` | リストの末尾の要素を削除して `Option<T>` として返す |
 | `reverse(list)` | 逆順の新しいリストを返す（文字列にも対応） |
+| `reverse!(list)` | リストをその場で逆順にする（ミューテーション操作） |
 | `slice(list, start, end)` | start から end までの新しい部分リストを返す |
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
 | `map(list, fn)` | 各要素を変換した新しいリストを返す |
 | `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
+| `sort!(list)` / `sort!(list, comp)` | リストをその場でソートする（ミューテーション操作） |
 | `insert(list, i, val)` | インデックス i に要素を挿入 |
 | `remove_at(list, i)` | インデックス i の要素を削除して返す |
 | `items(map)` | (キー, 値) タプルのリストを返す |
 | `remove(map, key)` | 指定したキーのエントリを削除 |
+| `get(map, key)` | キーの値を `Option<V>` として返す |
 | `get(map, key, default)` | キーの値を返す（存在しない場合はデフォルト値） |
 | `union(set, set)` | 2つのセットの和集合を返す |
 | `intersection(set, set)` | 2つのセットの積集合を返す |
@@ -53,7 +57,8 @@
 | `contains(s, sub)` | 部分文字列が含まれるか |
 | `starts_with(s, prefix)` | 接頭辞で始まるか |
 | `ends_with(s, suffix)` | 接尾辞で終わるか |
-| `find(s, sub)` | 部分文字列の位置（未発見は -1） |
+| `find(s, sub)` | 部分文字列の文字位置（`Option<int>`） |
+| `byte_len(s)` | 文字列のバイト長を返す |
 | `substring(s, start, end)` | 部分文字列を取得 |
 | `char_at(s, i)` | 指定位置の文字を取得 |
 | `replace(s, old, new)` | 部分文字列を全置換 |
@@ -121,13 +126,14 @@ print(x)   # Some(42)
 
 **シグネチャ:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-リスト・マップ・セットの要素数、または文字列のバイト長を返します。
+リスト・マップ・セットの要素数、または文字列の UTF-8 文字数を返します。バイト長が必要な場合は `byte_len()` を使用してください。
 
 ```python
 print(len([1, 2, 3]))         # 3
 print(len({"a": 1, "b": 2})) # 2
 print(len({1, 2, 3}))         # 3
 print(len("hello"))           # 5
+print(len("あいう"))           # 3 (UTF-8 文字数)
 ```
 
 ---
@@ -255,18 +261,16 @@ print(xs)   # [1, 2, 3]
 
 ## pop
 
-**シグネチャ:** `pop(list: List<T>) -> T`
+**シグネチャ:** `pop(list: List<T>) -> Option<T>`
 
-リストの末尾の要素を削除して返します。UFCS記法も使用可能です。
+リストの末尾の要素を削除して `Option<T>` として返します。リストが空の場合は `None` を返します。UFCS記法も使用可能です。
 
 ```python
 var xs = [1, 2, 3]
 let v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
-
-**エラー条件:** 空のリストに対して `pop()` を呼び出すとランタイムエラー（exit(1)）。
 
 ---
 
@@ -341,4 +345,94 @@ print(xs.sort())   # [1, 2, 3]
 # 降順ソート
 let desc = xs.sort((a: int, b: int) -> a > b)
 print(desc)   # [3, 2, 1]
+```
+
+---
+
+## sort!
+
+**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+
+リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS記法も使用可能です。
+
+```python
+var xs = [3, 1, 2]
+xs.sort!()
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## reverse!
+
+**シグネチャ:** `reverse!(list: List<T>)`
+
+リストをその場で逆順にします。UFCS記法も使用可能です。
+
+```python
+var xs = [1, 2, 3]
+xs.reverse!()
+print(xs)   # [3, 2, 1]
+```
+
+---
+
+## appended
+
+**シグネチャ:** `appended(list: List<T>, value: T) -> List<T>`
+
+要素を末尾に追加した新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+
+```python
+let xs = [1, 2]
+let ys = xs.appended(3)
+print(xs)   # [1, 2]（変更なし）
+print(ys)   # [1, 2, 3]
+```
+
+---
+
+## append!
+
+**シグネチャ:** `append!(list: List<T>, value: T)`
+
+`append()` のエイリアスです。リストの末尾に要素をその場で追加します。`!` 命名規約との一貫性のために提供されています。
+
+---
+
+## first
+
+**シグネチャ:** `first(list: List<T>) -> Option<T>`
+
+リストの最初の要素を `Option<T>` として返します。リストが空の場合は `None` を返します。
+
+```python
+print(first([10, 20, 30]))   # Some(10)
+```
+
+---
+
+## last
+
+**シグネチャ:** `last(list: List<T>) -> Option<T>`
+
+リストの最後の要素を `Option<T>` として返します。リストが空の場合は `None` を返します。
+
+```python
+print(last([10, 20, 30]))   # Some(30)
+```
+
+---
+
+## get (Map)
+
+**シグネチャ:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+
+2引数形式はキーの値を `Option<V>` として返します。3引数形式はキーの値またはデフォルト値を返します。
+
+```python
+let m = {"a": 1, "b": 2}
+print(get(m, "a"))       # Some(1)
+print(get(m, "z"))       # None
+print(get(m, "z", 0))   # 0
 ```

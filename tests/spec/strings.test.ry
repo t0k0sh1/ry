@@ -12,9 +12,9 @@ describe("search and check"):
         expect("hello".ends_with("world")).to_be_false()
 
     it("find"):
-        expect(find("hello world", "world")).to_eq(6)
-        expect(find("hello", "xyz")).to_eq(-1)
-        expect("abcdef".find("cd")).to_eq(2)
+        expect(find("hello world", "world")).to_eq(Some(6))
+        expect(find("hello", "xyz")).to_be_none()
+        expect("abcdef".find("cd")).to_eq(Some(2))
 
 describe("extraction and transformation"):
     it("substring"):
@@ -72,6 +72,24 @@ describe("split and join"):
         let parts = ["a", "b", "c"]
         expect(join(parts, ",")).to_eq("a,b,c")
         expect(parts.join("-")).to_eq("a-b-c")
+
+describe("UTF-8 support"):
+    it("len counts characters"):
+        expect(len("hello")).to_eq(5)
+        expect(len("あいう")).to_eq(3)
+
+    it("byte_len counts bytes"):
+        expect(byte_len("hello")).to_eq(5)
+        expect(byte_len("あいう")).to_eq(9)
+
+    it("char_at UTF-8"):
+        expect(char_at("あいう", 1)).to_eq("い")
+
+    it("substring UTF-8"):
+        expect(substring("あいう", 0, 2)).to_eq("あい")
+
+    it("reverse UTF-8"):
+        expect(reverse("あいう")).to_eq("ういあ")
 
 describe("type conversion"):
     it("to_int"):

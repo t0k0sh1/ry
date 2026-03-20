@@ -4,7 +4,7 @@
 fn append(xs: List<int>, val: int) -> Unit
 
 @native
-fn pop(xs: List<int>) -> int
+fn pop(xs: List<int>) -> Option<int>
 
 @native
 fn insert(xs: List<int>, index: int, val: int) -> Unit
@@ -28,10 +28,25 @@ fn sort(xs: List<int>) -> List<int>
 fn sort(xs: List<int>, comp: fn(int, int) -> bool) -> List<int>
 
 @native
-fn first(xs: List<int>) -> int
+fn first(xs: List<int>) -> Option<int>
 
 @native
-fn last(xs: List<int>) -> int
+fn last(xs: List<int>) -> Option<int>
+
+@native
+fn sort!(xs: List<int>) -> Unit
+
+@native
+fn sort!(xs: List<int>, comp: fn(int, int) -> bool) -> Unit
+
+@native
+fn reverse!(xs: List<int>) -> Unit
+
+@native
+fn appended(xs: List<int>, val: int) -> List<int>
+
+@native
+fn append!(xs: List<int>, val: int) -> Unit
 
 @native
 fn is_empty(xs: List<int>) -> bool

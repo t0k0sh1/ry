@@ -796,6 +796,36 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                    (actualTy == f64Ty_ && expectedTy == i64Ty_)) {
             auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
             eqResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
+        } else if (isOptionType(actualTy) && isOptionType(expectedTy) && actualTy == expectedTy) {
+            // Option<T> == Option<T>: both None or both Some with equal inner
+            llvm::Value *aHas = builder_.CreateExtractValue(actualVal, 0, "opt_a_has");
+            llvm::Value *bHas = builder_.CreateExtractValue(expectedVal, 0, "opt_b_has");
+            llvm::Value *bothNone = builder_.CreateAnd(
+                builder_.CreateNot(aHas), builder_.CreateNot(bHas), "both_none");
+            llvm::Value *bothSome = builder_.CreateAnd(aHas, bHas, "both_some");
+
+            llvm::Value *aInner = builder_.CreateExtractValue(actualVal, 1, "opt_a_inner");
+            llvm::Value *bInner = builder_.CreateExtractValue(expectedVal, 1, "opt_b_inner");
+            llvm::Type *innerTy = aInner->getType();
+
+            llvm::Value *innerEq;
+            if (innerTy == i64Ty_)
+                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
+            else if (innerTy == f64Ty_)
+                innerEq = builder_.CreateFCmpOEQ(aInner, bInner, "opt_inner_eq");
+            else if (innerTy == i1Ty_)
+                innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
+            else if (innerTy == ptrTy_) {
+                llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+                llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                llvm::Value *r = builder_.CreateCall(strcmpFn, {aInner, bInner}, "strcmp");
+                innerEq = builder_.CreateICmpEQ(r, llvm::ConstantInt::get(i32Ty_, 0), "opt_inner_eq");
+            } else {
+                codegenError("line " + std::to_string(s.loc.line) +
+                    ": " + s.matcher + ": unsupported Option inner type for comparison");
+            }
+
+            eqResult = builder_.CreateOr(bothNone, builder_.CreateAnd(bothSome, innerEq), "opt_eq");
         } else {
             codegenError("line " + std::to_string(s.loc.line) +
                                      ": " + s.matcher + ": unsupported types for comparison");
@@ -942,6 +972,45 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else if (ty == ptrTy_) {
             // Assume string pointer, return directly
             return val;
+        } else if (isOptionType(ty)) {
+            llvm::Value *hasVal = builder_.CreateExtractValue(val, 0, "fmt_opt_has");
+            llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "fmt_opt_inner");
+            llvm::Type *innerTy = innerVal->getType();
+
+            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "fmt.some", fn_);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "fmt.none", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "fmt.end", fn_);
+            builder_.CreateCondBr(hasVal, someBB, noneBB);
+
+            builder_.SetInsertPoint(someBB);
+            // Format as "Some(<inner>)"
+            if (innerTy == i64Ty_) {
+                llvm::Value *fmt = builder_.CreateGlobalString("Some(%ld)", ".fmt_opt_i");
+                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
+            } else if (innerTy == f64Ty_) {
+                llvm::Value *fmt = builder_.CreateGlobalString("Some(%g)", ".fmt_opt_f");
+                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
+            } else if (innerTy == i1Ty_) {
+                llvm::Value *trueStr = builder_.CreateGlobalString("Some(true)", ".fmt_opt_bt");
+                llvm::Value *falseStr = builder_.CreateGlobalString("Some(false)", ".fmt_opt_bf");
+                llvm::Value *boolFmt = builder_.CreateSelect(innerVal, trueStr, falseStr, "opt_bool_fmt");
+                builder_.CreateCall(snprintfFn, {buf, bufSize, boolFmt});
+            } else if (innerTy == ptrTy_) {
+                llvm::Value *fmt = builder_.CreateGlobalString("Some(%s)", ".fmt_opt_s");
+                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
+            } else {
+                llvm::Value *fmt = builder_.CreateGlobalString("Some(...)", ".fmt_opt_u");
+                builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
+            }
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(noneBB);
+            llvm::Value *noneFmt = builder_.CreateGlobalString("None", ".fmt_opt_none");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, noneFmt});
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(endBB);
+            return buf;
         } else {
             llvm::Value *fmt = builder_.CreateGlobalString("<value>", ".fmt_val");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});

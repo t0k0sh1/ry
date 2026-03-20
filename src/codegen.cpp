@@ -415,10 +415,13 @@ void CodeGen::emitStmt(CallStmt &s) {
 
                 if (isList &&
                     ((s.callee == "append" && nargs == 2) ||
+                     (s.callee == "append!" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||
                      (s.callee == "insert" && nargs == 3) ||
                      (s.callee == "remove_at" && nargs == 2) ||
-                     (s.callee == "remove" && nargs == 2))) {
+                     (s.callee == "remove" && nargs == 2) ||
+                     (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
+                     (s.callee == "reverse!" && nargs == 1))) {
                     intercept = true;
                 } else if (isSet &&
                     ((s.callee == "add" && nargs == 2) ||
@@ -433,7 +436,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                 } else if (isMap &&
                     ((s.callee == "remove" && nargs == 2) ||
                      (s.callee == "items" && nargs == 1) ||
-                     (s.callee == "get" && nargs == 3))) {
+                     (s.callee == "get" && (nargs == 2 || nargs == 3)))) {
                     intercept = true;
                 }
             }
