@@ -2,7 +2,7 @@
 
 # 高度な機能
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+[← 前: コレクション](07-collections.md) | [次: パッケージ →](09-modules.md)
 
 ---
 
@@ -308,4 +308,4 @@ match r:
 
 ---
 
-[← 前: コレクション](07-collections.md) | [次: モジュール →](09-modules.md)
+[← 前: コレクション](07-collections.md) | [次: パッケージ →](09-modules.md)

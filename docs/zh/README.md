@@ -20,7 +20,9 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | 06 | [結構體與列舉型別](tutorial/06-structs.md) | type 定義、欄位存取、方法、enum |
 | 07 | [集合型別](tutorial/07-collections.md) | 元組、串列、映射、集合 |
 | 08 | [進階功能](tutorial/08-advanced.md) | 閉包、運算子多載、Option 型別 |
-| 09 | [模組](tutorial/09-modules.md) | 使用 from/import 進行模組分割 |
+| 09 | [套件](tutorial/09-modules.md) | 套件、std 函式庫、目錄套件 |
+| 10 | [契約式設計](tutorial/10-contracts.md) | require、ensure、invariant、old、result |
+| 11 | [測試](tutorial/11-testing.md) | describe/it/expect、匹配器、mock/verify |
 
 環境建置與建置方法請參閱 [01 - 入門](tutorial/01-getting-started.md)。
 
@@ -41,7 +43,7 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | [內建函式](reference/builtins.md) | print、len、Some 等 |
 | [字串操作函式](reference/builtins-string.md) | contains、find、replace、split、join 等 |
 | [正規表達式](reference/regex.md) | regex_match、regex_search、regex_replace、regex_split、regex_find_all |
-| [模組系統](reference/modules.md) | from/import 的文法與搜尋規則 |
+| [套件系統](reference/packages.md) | from/import 的文法、目錄套件、std、RY_HOME |
 | [測試功能](reference/testing.md) | 使用 describe/it/expect 進行測試 |
 | [專案管理](reference/project.md) | ry init 與 ry.toml 的規格 |
 | [契約式設計](reference/contracts.md) | require、ensure、invariant、old、result |

@@ -1,6 +1,6 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# ry
+# Ry
 
 基於 LLVM JIT 的簡潔程式語言。讀取原始碼後，透過 LLVM ORC JIT 編譯為原生程式碼並即時執行。
 
@@ -14,7 +14,7 @@
 - **指令** — `@deprecated` 編譯時元資料標註
 - **函式** — `fn` 定義、遞迴、多載、Lambda（閉包）、高階函式、UFCS
 - **控制流程** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
-- **模組** — 透過 `from ... import ...` 匯入函式
+- **套件** — 基於目錄的套件、自動匯入的 `std` 函式庫、`from ... import ...`
 - **型別安全** — 型別推論、型別標註、禁止變更型別的重新賦值、let/var
 
 ## 範例程式碼
@@ -60,6 +60,10 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
+# 串流操作 (filter, map, sort)
+let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+print(result)          # [20, 30, 40, 50]
+
 # 列舉型別
 enum Color:
     Red
@@ -69,7 +73,7 @@ enum Color:
 let c = Color::Red
 print(c)               # Red
 
-# 模組匯入
+# 套件匯入
 from math import add
 print(add(1, 2))
 ```
@@ -85,10 +89,12 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 指定特定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.1
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
 ```
 
 預設安裝至 `~/.local/bin`。可透過 `RY_INSTALL_DIR` 環境變數變更安裝位置。
+
+標準函式庫安裝至 `$RY_HOME/lib/std/`（預設：`~/.ry/lib/std/`）。
 
 ### 從原始碼建置
 

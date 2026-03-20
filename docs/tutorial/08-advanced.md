@@ -2,7 +2,7 @@
 
 # Advanced Features
 
-[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
+[<- Prev: Collections](07-collections.md) | [Next: Packages ->](09-modules.md)
 
 ---
 
@@ -308,4 +308,4 @@ match r:
 
 ---
 
-[<- Prev: Collections](07-collections.md) | [Next: Modules ->](09-modules.md)
+[<- Prev: Collections](07-collections.md) | [Next: Packages ->](09-modules.md)

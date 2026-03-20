@@ -2,7 +2,7 @@
 
 # 進階功能
 
-[← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)
+[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)
 
 ---
 
@@ -308,4 +308,4 @@ match r:
 
 ---
 
-[← 前一篇：集合](07-collections.md) | [下一篇：模組 →](09-modules.md)
+[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)
