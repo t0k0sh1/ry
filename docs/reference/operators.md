@@ -191,6 +191,30 @@ x //= 3  # x = 8
 x &= 6   # x = 0
 ```
 
+## Increment / Decrement Operators
+
+Postfix-only, statement-level operators for incrementing or decrementing a variable by 1. These are desugared to `x = x + 1` and `x = x - 1` respectively.
+
+| Operator | Equivalent Expression |
+|---|---|
+| `x++` | `x = x + 1` |
+| `x--` | `x = x - 1` |
+
+```python
+var count = 0
+count++       # count = 1
+count++       # count = 2
+count--       # count = 1
+
+var f = 1.5
+f++           # f = 2.5 (int 1 is promoted to float)
+```
+
+> **Note**: `++` / `--` can only be used as statements, not as expressions.
+> `let` variables cannot be incremented/decremented (immutability is enforced).
+
+---
+
 ## Type Rules for Operations
 
 | Operation | Left Type | Right Type | Result Type |

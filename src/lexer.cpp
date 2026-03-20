@@ -119,6 +119,9 @@ Token Lexer::readToken() {
     }
     if (c == '+') {
         ++pos_; ++col_;
+        if (pos_ < src_.size() && src_[pos_] == '+') {
+            ++pos_; ++col_; return {TokenKind::PlusPlus, "++", line_, startCol};
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::PlusEq, "+=", line_, startCol};
         }
@@ -128,6 +131,9 @@ Token Lexer::readToken() {
         ++pos_; ++col_;
         if (pos_ < src_.size() && src_[pos_] == '>') {
             ++pos_; ++col_; return {TokenKind::Arrow, "->", line_, startCol};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '-') {
+            ++pos_; ++col_; return {TokenKind::MinusMinus, "--", line_, startCol};
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::MinusEq, "-=", line_, startCol};

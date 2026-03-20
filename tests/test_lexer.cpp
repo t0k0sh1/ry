@@ -1020,3 +1020,43 @@ TEST(LexerTest, IntDotDigitIsFloat) {
     EXPECT_EQ(toks[0].kind, TokenKind::Float);
     EXPECT_EQ(toks[0].value, "3.14");
 }
+
+// ===== ++ / -- トークンテスト =====
+
+TEST(LexerTest, PlusPlusToken) {
+    auto toks = tokenize("++");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::PlusPlus);
+    EXPECT_EQ(toks[0].value, "++");
+}
+
+TEST(LexerTest, MinusMinusToken) {
+    auto toks = tokenize("--");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::MinusMinus);
+    EXPECT_EQ(toks[0].value, "--");
+}
+
+TEST(LexerTest, PlusPlusDoesNotBreakExisting) {
+    // + is still +
+    auto toks1 = tokenize("+");
+    EXPECT_EQ(toks1[0].kind, TokenKind::Plus);
+    // += is still +=
+    auto toks2 = tokenize("+=");
+    EXPECT_EQ(toks2[0].kind, TokenKind::PlusEq);
+    EXPECT_EQ(toks2[0].value, "+=");
+}
+
+TEST(LexerTest, MinusMinusDoesNotBreakExisting) {
+    // - is still -
+    auto toks1 = tokenize("-");
+    EXPECT_EQ(toks1[0].kind, TokenKind::Minus);
+    // -= is still -=
+    auto toks2 = tokenize("-=");
+    EXPECT_EQ(toks2[0].kind, TokenKind::MinusEq);
+    EXPECT_EQ(toks2[0].value, "-=");
+    // -> is still ->
+    auto toks3 = tokenize("->");
+    EXPECT_EQ(toks3[0].kind, TokenKind::Arrow);
+    EXPECT_EQ(toks3[0].value, "->");
+}

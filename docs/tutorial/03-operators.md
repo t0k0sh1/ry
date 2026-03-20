@@ -138,6 +138,26 @@ x /= 4    # x == 6.0 (becomes float)
 
 ---
 
+## Increment / Decrement Operators
+
+Shorthand for incrementing or decrementing a variable by 1.
+
+| Operator | Description | Equivalent Expression |
+|----------|-------------|-----------------------|
+| `x++` | Increment by 1 | `x = x + 1` |
+| `x--` | Decrement by 1 | `x = x - 1` |
+
+```python
+var count = 0
+count++       # count == 1
+count++       # count == 2
+count--       # count == 1
+```
+
+> **Note**: These are statement-only operators. They cannot be used inside expressions.
+
+---
+
 ## Type Promotion Rules
 
 The following describes the behavior when `int` and `float` are mixed in operations.
