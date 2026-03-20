@@ -1,0 +1,16 @@
+# Regular expression operations
+
+@native
+fn regex_match(pattern: str, text: str) -> bool
+
+@native
+fn regex_search(pattern: str, text: str) -> int
+
+@native
+fn regex_replace(pattern: str, text: str, replacement: str) -> str
+
+@native
+fn regex_split(pattern: str, text: str) -> List<str>
+
+@native
+fn regex_find_all(pattern: str, text: str) -> List<str>

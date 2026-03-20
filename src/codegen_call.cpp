@@ -3850,6 +3850,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinHigherOrder(*e)) return v;
     if (auto *v = emitBuiltinCollection(*e)) return v;
     if (auto *v = emitBuiltinSetOps(*e))     return v;
+    if (auto *v = emitBuiltinRegex(*e))     return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -3926,6 +3927,84 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
             return builder_.CreateCall(ft, fnPtr, fullArgs);
         return builder_.CreateCall(ft, fnPtr, fullArgs, name);
     }
+}
+
+// ===== Builtin Regex =====
+
+llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
+    // regex_match(pattern, text) -> bool
+    if (e.callee == "regex_match") {
+        if (e.args.size() != 2)
+            codegenError("regex_match() takes exactly 2 arguments");
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_match() requires str arguments");
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_regex_match", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_match");
+        return builder_.CreateTrunc(result, i1Ty_, "regex_match_bool");
+    }
+
+    // regex_search(pattern, text) -> int
+    if (e.callee == "regex_search") {
+        if (e.args.size() != 2)
+            codegenError("regex_search() takes exactly 2 arguments");
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_search() requires str arguments");
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_regex_search", fnTy);
+        return builder_.CreateCall(fn, {pattern, text}, "regex_search");
+    }
+
+    // regex_replace(pattern, text, replacement) -> str
+    if (e.callee == "regex_replace") {
+        if (e.args.size() != 3)
+            codegenError("regex_replace() takes exactly 3 arguments");
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        llvm::Value *replacement = emitExpr(*e.args[2]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_ ||
+            replacement->getType() != ptrTy_)
+            codegenError("regex_replace() requires str arguments");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy);
+        return builder_.CreateCall(fn, {pattern, text, replacement}, "regex_replace");
+    }
+
+    // regex_split(pattern, text) -> List<str>
+    if (e.callee == "regex_split") {
+        if (e.args.size() != 2)
+            codegenError("regex_split() takes exactly 2 arguments");
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_split() requires str arguments");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_split");
+        list_element_types_[result] = ptrTy_;
+        return result;
+    }
+
+    // regex_find_all(pattern, text) -> List<str>
+    if (e.callee == "regex_find_all") {
+        if (e.args.size() != 2)
+            codegenError("regex_find_all() takes exactly 2 arguments");
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_find_all() requires str arguments");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_regex_find_all", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
+        list_element_types_[result] = ptrTy_;
+        return result;
+    }
+
+    return nullptr;
 }
 
 void CodeGen::validateNativeCallArgs(const std::string &callee,
