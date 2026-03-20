@@ -521,7 +521,8 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
     builder_.SetInsertPoint(endBB);
 }
 
-void CodeGen::emitStmt(BreakStmt &) {
+void CodeGen::emitStmt(BreakStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (loop_stack_.empty())
         codegenError("break outside of loop");
     builder_.CreateBr(loop_stack_.back().second);
@@ -530,7 +531,8 @@ void CodeGen::emitStmt(BreakStmt &) {
     builder_.SetInsertPoint(deadBB);
 }
 
-void CodeGen::emitStmt(ContinueStmt &) {
+void CodeGen::emitStmt(ContinueStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (loop_stack_.empty())
         codegenError("continue outside of loop");
     builder_.CreateBr(loop_stack_.back().first);
@@ -539,6 +541,7 @@ void CodeGen::emitStmt(ContinueStmt &) {
 }
 
 void CodeGen::emitStmt(FieldAssignStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     // Get the variable name from the object expression
     auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
     if (!varExpr)
@@ -722,11 +725,13 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
 
 
 void CodeGen::emitStmt(ImportStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     codegenError("unresolved import: " + s.module_path +
                              " (ModuleLoader should have resolved this)");
 }
 
 void CodeGen::emitStmt(IndexAssignStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     llvm::Value *objPtr = emitExpr(*s.object);
     llvm::Value *key = emitExpr(*s.index);
     llvm::Value *val = emitExpr(*s.value);
@@ -880,6 +885,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 }
 
 void CodeGen::emitStmt(ReturnStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
     if (!s.value) {
         if (!fn_->getReturnType()->isVoidTy())
             codegenError("return without value in non-Unit function");

@@ -925,12 +925,16 @@ TEST(LexerTest, ColumnMultiLine) {
     EXPECT_EQ(toks[0].col, 1);  // a
     EXPECT_EQ(toks[0].line, 1);
     // Find 'b' token
+    bool found = false;
     for (const auto &t : toks) {
         if (t.kind == TokenKind::Ident && t.value == "b") {
+            found = true;
             EXPECT_EQ(t.line, 2);
             EXPECT_EQ(t.col, 3);
+            break;
         }
     }
+    ASSERT_TRUE(found) << "Identifier token 'b' was not found in tokens";
 }
 
 TEST(LexerTest, ColumnOperators) {

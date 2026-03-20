@@ -41,5 +41,8 @@ std::string_view SourceManager::getLine(int fileId, int line) const {
 }
 
 const std::string& SourceManager::getFilename(int fileId) const {
+    static const std::string empty;
+    if (fileId < 0 || fileId >= static_cast<int>(files_.size()))
+        return empty;
     return files_[fileId].filename;
 }
