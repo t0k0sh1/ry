@@ -376,7 +376,7 @@ Token Lexer::readToken() {
         }
         while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
         if (pos_ < src_.size() && src_[pos_] == '.' &&
-            !(pos_ + 1 < src_.size() && src_[pos_ + 1] == '.')) {
+            pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])) {
             ++pos_; ++col_;
             while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
             return {TokenKind::Float, std::string(src_, start, pos_ - start), line_, startCol};

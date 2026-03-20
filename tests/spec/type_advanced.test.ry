@@ -1,0 +1,92 @@
+describe("f-string"):
+    it("int interpolation"):
+        let x = 42
+        expect(f"value: {x}").to_eq("value: 42")
+
+    it("float interpolation"):
+        let x = 3.14
+        expect(f"pi: {x}").to_eq("pi: 3.14")
+
+    it("bool interpolation"):
+        let x = true
+        expect(f"flag: {x}").to_eq("flag: true")
+
+    it("expression interpolation"):
+        let a = 1
+        let b = 2
+        expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
+
+    it("escaped braces"):
+        expect(f"{{braces}}").to_eq("{braces}")
+
+describe("type cast as"):
+    it("int to float"):
+        expect(42 as float).to_eq(42.0)
+
+    it("float to int"):
+        expect(3.14 as int).to_eq(3)
+
+    it("int to bool"):
+        expect(1 as bool).to_be_true()
+        expect(0 as bool).to_be_false()
+
+    it("int to str"):
+        expect(42 as str).to_eq("42")
+
+    it("byte to int"):
+        let b: byte = 200
+        expect(b as int).to_eq(200)
+
+    it("int to byte to int"):
+        let b = 255 as byte
+        expect(b as int).to_eq(255)
+
+describe("type alias"):
+    it("basic alias"):
+        type Meters = float
+        let d: Meters = 3.14
+        expect(d).to_eq(3.14)
+
+describe("Error type"):
+    it("constructor with message"):
+        let e = Error("something went wrong")
+        expect(e.message).to_eq("something went wrong")
+        expect(e.code).to_eq(0)
+
+    it("constructor with code"):
+        let e = Error("not found", 404)
+        expect(e.message).to_eq("not found")
+        expect(e.code).to_eq(404)
+
+describe("!! error propagation"):
+    fn safe_divide(a: int, b: int) -> (int, Error?):
+        if b == 0:
+            return (0, Some(Error("division by zero")))
+        return (a // b, none)
+
+    fn use_divide() -> (int, Error?):
+        let v = safe_divide(10, 2)!!
+        return (v, none)
+
+    fn use_divide_err() -> (int, Error?):
+        let v = safe_divide(10, 0)!!
+        return (v, none)
+
+    it("propagates success"):
+        let val, err = use_divide()
+        expect(val).to_eq(5)
+        expect(err).to_be_none()
+
+    it("propagates error"):
+        let val, err = use_divide_err()
+        expect(err).to_be_some()
+
+fn accept_union(x: int | str) -> bool:
+    return true
+
+describe("union type"):
+    it("accepts int"):
+        expect(accept_union(42)).to_be_true()
+
+    it("accepts str"):
+        expect(accept_union("hello")).to_be_true()

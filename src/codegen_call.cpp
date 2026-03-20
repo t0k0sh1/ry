@@ -1410,10 +1410,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             codegenError("Some() takes exactly 1 argument");
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::StructType *optTy = getOptionType(inner->getType());
-        llvm::Value *result = llvm::UndefValue::get(optTy);
-        result = builder_.CreateInsertValue(result, llvm::ConstantInt::get(i1Ty_, 1), 0);
-        result = builder_.CreateInsertValue(result, inner, 1);
-        return result;
+        return buildSomeValue(inner, optTy);
     }
 
     // Error("msg") / Error("msg", code) → Error struct constructor

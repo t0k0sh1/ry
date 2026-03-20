@@ -112,6 +112,14 @@ TEST_F(CodeGenTest, ListStringElements) {
 
 // ===== UFCS コード生成テスト =====
 
+TEST_F(CodeGenTest, UFCSIntLiteral) {
+    std::string src =
+        "fn double(x: int) -> int:\n"
+        "    return x * 2\n"
+        "print(5.double())";
+    EXPECT_EQ(runSource(src), "10\n");
+}
+
 TEST_F(CodeGenTest, UFCSBasicCall) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
@@ -1246,6 +1254,14 @@ TEST_F(CodeGenTest, SortUFCS) {
         "let ys = xs.sort()\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
+}
+
+TEST_F(CodeGenTest, SortWithComparatorUFCS) {
+    std::string src =
+        "let xs = [3, 1, 2]\n"
+        "let ys = xs.sort(fn(a: int, b: int): a > b)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
 }
 
 // ===== filter + map + sort 全チェーンテスト =====

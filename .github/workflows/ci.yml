@@ -23,5 +23,7 @@ jobs:
         run: |
           cmake -B build -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
           cmake --build build
-      - name: Test
+      - name: Test (C++)
         run: ./build/ry_tests
+      - name: Test (Ry self-tests)
+        run: ./build/ry test

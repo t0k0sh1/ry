@@ -1000,3 +1000,23 @@ TEST(LexerTest, ManyConsecutiveComments) {
     }
     EXPECT_TRUE(found);
 }
+
+TEST(LexerTest, IntDotIdentifier) {
+    auto toks = tokenize("5.double()");
+    ASSERT_EQ(toks.size(), 6u); // Number, Dot, Ident, LParen, RParen, Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Number);
+    EXPECT_EQ(toks[0].value, "5");
+    EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[2].value, "double");
+    EXPECT_EQ(toks[3].kind, TokenKind::LParen);
+    EXPECT_EQ(toks[4].kind, TokenKind::RParen);
+    EXPECT_EQ(toks[5].kind, TokenKind::Eof);
+}
+
+TEST(LexerTest, IntDotDigitIsFloat) {
+    auto toks = tokenize("3.14");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Float);
+    EXPECT_EQ(toks[0].value, "3.14");
+}

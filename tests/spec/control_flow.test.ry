@@ -1,0 +1,250 @@
+describe("if/elif/else"):
+    it("if true"):
+        var res = 0
+        if true:
+            res = 1
+        expect(res).to_eq(1)
+
+    it("if false goes to else"):
+        var res = 0
+        if false:
+            res = 1
+        else:
+            res = 2
+        expect(res).to_eq(2)
+
+    it("elif"):
+        var res = 0
+        let x = 5
+        if x > 10:
+            res = 1
+        elif x == 5:
+            res = 2
+        else:
+            res = 3
+        expect(res).to_eq(2)
+
+describe("while"):
+    it("basic loop"):
+        var i = 0
+        var sum = 0
+        while i < 5:
+            sum += i
+            i += 1
+        expect(sum).to_eq(10)
+
+    it("break"):
+        var i = 0
+        while true:
+            if i >= 3:
+                break
+            i += 1
+        expect(i).to_eq(3)
+
+    it("continue"):
+        var sum = 0
+        var i = 0
+        while i < 5:
+            i += 1
+            if i == 3:
+                continue
+            sum += i
+        expect(sum).to_eq(12)
+
+describe("for"):
+    it("list iteration"):
+        var sum = 0
+        let xs = [10, 20, 30]
+        for x in xs:
+            sum += x
+        expect(sum).to_eq(60)
+
+    it("range 1 arg"):
+        var sum = 0
+        for i in range(5):
+            sum += i
+        expect(sum).to_eq(10)
+
+    it("range 2 args"):
+        var sum = 0
+        for i in range(2, 5):
+            sum += i
+        expect(sum).to_eq(9)
+
+    it("range 3 args"):
+        var sum = 0
+        for i in range(0, 10, 3):
+            sum += i
+        expect(sum).to_eq(18)
+
+    it("range negative step"):
+        var sum = 0
+        for i in range(10, 0, -3):
+            sum += i
+        expect(sum).to_eq(22)
+
+    it(".. range"):
+        var sum = 0
+        for i in 1 .. 3:
+            sum += i
+        expect(sum).to_eq(6)
+
+    it("map key-value"):
+        let m = {"a": 1, "b": 2}
+        var total = 0
+        for k, v in m:
+            total += v
+        expect(total).to_eq(3)
+
+    it("enumerate destructuring"):
+        let xs = [10, 20, 30]
+        var idx_sum = 0
+        var val_sum = 0
+        for i, x in enumerate(xs):
+            idx_sum += i
+            val_sum += x
+        expect(idx_sum).to_eq(3)
+        expect(val_sum).to_eq(60)
+
+    it("zip destructuring"):
+        var sum = 0
+        for a, b in zip([1, 2], [10, 20]):
+            sum += a + b
+        expect(sum).to_eq(33)
+
+describe("match"):
+    it("literal pattern"):
+        var res = 0
+        let x = 2
+        match x:
+            case 1:
+                res = 10
+            case 2:
+                res = 20
+            case _:
+                res = 30
+        expect(res).to_eq(20)
+
+    it("variable binding"):
+        var res = 0
+        let x = 42
+        match x:
+            case n if n > 0:
+                res = n
+            case _:
+                res = 0
+        expect(res).to_eq(42)
+
+    it("guard"):
+        var res = ""
+        let x = -5
+        match x:
+            case n if n > 0:
+                res = "positive"
+            case n if n < 0:
+                res = "negative"
+            case _:
+                res = "zero"
+        expect(res).to_eq("negative")
+
+    it("OR pattern"):
+        var res = ""
+        let x = 2
+        match x:
+            case 1 | 2 | 3:
+                res = "small"
+            case _:
+                res = "other"
+        expect(res).to_eq("small")
+
+    it("wildcard"):
+        var res = ""
+        let x = 999
+        match x:
+            case 0:
+                res = "zero"
+            case _:
+                res = "other"
+        expect(res).to_eq("other")
+
+describe("match Option"):
+    it("Some"):
+        var res = 0
+        let x: Option<int> = Some(42)
+        match x:
+            case Some(v):
+                res = v
+            case None:
+                res = -1
+        expect(res).to_eq(42)
+
+    it("None"):
+        var res = 0
+        let x: Option<int> = None
+        match x:
+            case Some(v):
+                res = v
+            case None:
+                res = -1
+        expect(res).to_eq(-1)
+
+enum Direction:
+    North
+    South
+    East
+    West
+
+describe("match enum"):
+    it("simple enum"):
+        var res = ""
+        let d = Direction::North
+        match d:
+            case Direction::North:
+                res = "north"
+            case Direction::South:
+                res = "south"
+            case Direction::East:
+                res = "east"
+            case Direction::West:
+                res = "west"
+        expect(res).to_eq("north")
+
+enum Shape:
+    Circle(float)
+    Rect(float, float)
+    Point
+
+describe("match ADT enum"):
+    it("with associated data"):
+        var res = 0.0
+        let s = Shape::Circle(3.14)
+        match s:
+            case Shape::Circle(r):
+                res = r
+            case Shape::Rect(w, h):
+                res = w * h
+            case Shape::Point:
+                res = 0.0
+        expect(res).to_eq(3.14)
+
+    it("multi-field variant"):
+        var res = 0.0
+        let s = Shape::Rect(4.0, 5.0)
+        match s:
+            case Shape::Circle(r):
+                res = r
+            case Shape::Rect(w, h):
+                res = w * h
+            case Shape::Point:
+                res = 0.0
+        expect(res).to_eq(20.0)
+
+describe("scope and shadowing"):
+    it("block scope"):
+        let x = 10
+        var res = 0
+        if true:
+            let x = 99
+            res = x
+        expect(res).to_eq(99)
+        expect(x).to_eq(10)

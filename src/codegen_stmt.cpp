@@ -182,6 +182,16 @@ void CodeGen::emitVarDecl(const std::string &name,
                     // Allow none coercion to target Option type
                     val = buildNoneValue(annotTy);
                     newTy = annotTy;
+                } else if (isOptionType(annotTy) && !isOptionType(newTy)) {
+                    // Auto-wrap non-Option value in Some() (e.g., let x: int? = 42)
+                    auto *optTy = llvm::cast<llvm::StructType>(annotTy);
+                    llvm::Type *innerTy = optTy->getElementType(1);
+                    if (val->getType() != innerTy)
+                        codegenError(
+                            "type error: annotation '" + *type_annotation +
+                            "' does not match expression type for variable '" + name + "'");
+                    val = buildSomeValue(val, annotTy);
+                    newTy = annotTy;
                 } else if (isUnionType(*type_annotation)) {
                     val = wrapInUnion(val, *type_annotation);
                     newTy = val->getType();
