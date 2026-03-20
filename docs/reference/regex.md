@@ -22,7 +22,7 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 |--------|-------------|---------|
 | `abc` | Literal characters | `"hello"` |
 | `.` | Any character (except newline) | `"a.c"` matches `"abc"`, `"aXc"` |
-| `\|` | Alternation | `"cat\|dog"` matches `"cat"` or `"dog"` |
+| <code>&#124;</code> | Alternation | <code>"cat&#124;dog"</code> matches `"cat"` or `"dog"` |
 | `*` | Zero or more | `"a*"` matches `""`, `"a"`, `"aaa"` |
 | `+` | One or more | `"a+"` matches `"a"`, `"aaa"` |
 | `?` | Zero or one | `"a?"` matches `""` or `"a"` |

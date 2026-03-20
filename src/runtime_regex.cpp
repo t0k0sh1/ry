@@ -176,6 +176,10 @@ private:
             node->ch = escaped;
             return node;
         }
+        if (c == '*' || c == '+' || c == '?') {
+            fprintf(stderr, "regex error: nothing to repeat at position %zu in pattern '%s'\n", pos_, src_);
+            exit(1);
+        }
         if (atEnd() || c == '|' || c == ')') {
             fprintf(stderr, "regex error: unexpected end or character in pattern '%s'\n", src_);
             exit(1);
@@ -278,9 +282,23 @@ struct NFAFragment {
 
 class NFABuilder {
 public:
+    NFABuilder() = default;
     ~NFABuilder() {
         for (auto *s : states_) delete s;
     }
+    NFABuilder(NFABuilder &&other) noexcept : states_(std::move(other.states_)) {
+        other.states_.clear();
+    }
+    NFABuilder &operator=(NFABuilder &&other) noexcept {
+        if (this != &other) {
+            for (auto *s : states_) delete s;
+            states_ = std::move(other.states_);
+            other.states_.clear();
+        }
+        return *this;
+    }
+    NFABuilder(const NFABuilder &) = delete;
+    NFABuilder &operator=(const NFABuilder &) = delete;
 
     NFAState *newState(NFAState::Kind kind) {
         auto *s = new NFAState();
@@ -398,6 +416,7 @@ public:
         next_.clear();
         int64_t lastMatch = -1;
 
+        ++generation_;
         addState(current_, start_, text, textLen, startPos);
 
         if (fullMatch) {
@@ -413,6 +432,7 @@ public:
         for (size_t i = startPos; i < textLen; ++i) {
             char c = text[i];
             next_.clear();
+            ++generation_;
 
             for (NFAState *s : current_) {
                 if (s == matchState_) continue;
@@ -461,25 +481,19 @@ private:
 
     void addState(std::vector<NFAState *> &stateSet, NFAState *s,
                   const char *text, size_t textLen, size_t pos) {
-        ++generation_;
-        addStateImpl(stateSet, s, text, textLen, pos);
-    }
-
-    void addStateImpl(std::vector<NFAState *> &stateSet, NFAState *s,
-                      const char *text, size_t textLen, size_t pos) {
         if (!s || s->visitGeneration == generation_) return;
         s->visitGeneration = generation_;
 
         if (s->kind == NFAState::Split) {
-            addStateImpl(stateSet, s->out1, text, textLen, pos);
-            addStateImpl(stateSet, s->out2, text, textLen, pos);
+            addState(stateSet, s->out1, text, textLen, pos);
+            addState(stateSet, s->out2, text, textLen, pos);
             return;
         }
         if (s->kind == NFAState::Anchor) {
             if (s->ch == '^') {
-                if (pos == 0) addStateImpl(stateSet, s->out1, text, textLen, pos);
+                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos);
             } else { // '$'
-                if (pos == textLen) addStateImpl(stateSet, s->out1, text, textLen, pos);
+                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos);
             }
             return;
         }
@@ -609,8 +623,8 @@ int64_t __ry_regex_match(const char *pattern, const char *text) {
 
 int64_t __ry_regex_search(const char *pattern, const char *text) {
     auto cr = CompiledRegex::compile(pattern);
-    auto [startPos, endPos] = cr.search(text);
-    return startPos;
+    auto result = cr.search(text);
+    return result.first;
 }
 
 const char *__ry_regex_replace(const char *pattern, const char *text,
