@@ -61,7 +61,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # 串流操作 (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter((x: int) -> x > 1).map((x: int) -> x * 10).sort()
+let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 列舉型別

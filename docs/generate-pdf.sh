@@ -42,7 +42,7 @@ generate_pdf() {
     fi
 
     echo "Generating $label.pdf ..."
-    pandoc "${files[@]}" -o "$output" "${opts[@]}" 2>/dev/null
+    pandoc "${files[@]}" -o "$output" "${opts[@]}"
     echo "  -> $output"
 }
 

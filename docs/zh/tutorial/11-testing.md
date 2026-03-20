@@ -38,7 +38,7 @@ describe("Calculator"):
 ```
 
 - `describe` 和 `it` 使用**尾隨區塊語法**：在函式呼叫後加上 `:` 會將縮排區塊作為 Lambda 傳入。
-- `describe` / `expect` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
+- `describe` / `it` / `expect` / `mock` / `verify` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
 
 ---
 

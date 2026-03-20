@@ -38,7 +38,7 @@ describe("Calculator"):
 ```
 
 - `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda
-- `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
+- `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
 
 ---
 

@@ -38,7 +38,7 @@ describe("Calculator"):
 ```
 
 - `describe` と `it` は**トレーリングブロック構文**を使用します。関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして渡されます。
-- `describe` / `expect` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）。
+- `describe` / `it` / `expect` / `mock` / `verify` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）。
 
 ---
 
