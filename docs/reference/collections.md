@@ -151,6 +151,28 @@ print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 ```
 
+### take
+
+Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
+print(xs.take(0))    # []
+```
+
+### tap
+
+Calls the given function on each element for side effects, then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# prints 1, 2, 3, then ys = [2, 4, 6]
+```
+
 ### filter
 
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
@@ -379,6 +401,8 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | `first`, `last` | O(1) |
 | `insert`, `remove_at` | O(n) |
 | `sort` / `sort!` | O(n log n) |
+| `take` | O(n) |
+| `tap` | O(n) |
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |

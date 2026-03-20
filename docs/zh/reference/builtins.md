@@ -33,6 +33,8 @@
 | `reverse(list)` | 傳回反轉後的新串列（也適用於字串） |
 | `reverse!(list)` | 就地反轉串列（破壞性） |
 | `slice(list, start, end)` | 傳回從 start 到 end 的新子串列 |
+| `take(list, n)` | 傳回包含前 n 個元素的新串列 |
+| `tap(list, fn)` | 對每個元素呼叫 fn 以執行副作用，傳回原始串列 |
 | `filter(list, pred)` | 傳回僅包含滿足述詞的元素的新串列 |
 | `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
 | `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
@@ -299,6 +301,36 @@ print(xs)   # [1, 2, 3]（未修改）
 let xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
+```
+
+---
+
+## take
+
+**簽名：** `take(list: List<T>, n: int) -> List<T>`
+
+傳回包含前 `n` 個元素的新串列。若 `n` 超過串列長度，傳回整個串列的副本。若 `n <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5]（鉗制）
+print(xs.take(0))    # []
+```
+
+---
+
+## tap
+
+**簽名：** `tap(list: List<T>, fn: fn(T) -> void) -> List<T>`
+
+對每個元素呼叫給定函式以執行副作用，然後傳回原始串列。適用於方法鏈中的除錯或插入副作用。也可使用 UFCS 記法。
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# 輸出 1, 2, 3，然後 ys = [2, 4, 6]
 ```
 
 ---
