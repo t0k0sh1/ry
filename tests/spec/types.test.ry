@@ -33,13 +33,13 @@ describe("str"):
         expect("").to_eq("")
 
     it("escape newline"):
-        expect(len("a\nb")).to_eq(3)
+        expect("a\nb").to_have_length(3)
 
     it("escape tab"):
-        expect(len("a\tb")).to_eq(3)
+        expect("a\tb").to_have_length(3)
 
     it("escape backslash"):
-        expect(len("a\\b")).to_eq(3)
+        expect("a\\b").to_have_length(3)
 
 describe("byte"):
     it("as int"):

@@ -65,7 +65,16 @@ foo("arg", fn():
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
 | `to_be_some()` | Option が `Some` であること | Option |
-| `to_contain(val)` | コンテナが値を含むこと | List, Set, str |
+| `to_contain(val)` | コンテナが値を含むこと | List, Set, Map, str |
+| `to_not_contain(val)` | コンテナが値を含まないこと | List, Set, Map, str |
+| `to_be_greater_than(v)` | `actual > v` であること | int, float |
+| `to_be_less_than(v)` | `actual < v` であること | int, float |
+| `to_be_greater_than_or_eq(v)` | `actual >= v` であること | int, float |
+| `to_be_less_than_or_eq(v)` | `actual <= v` であること | int, float |
+| `to_have_length(n)` | 長さが `n` であること | List, Set, Map, str |
+| `to_be_empty()` | 長さが 0 であること | List, Set, Map, str |
+| `to_start_with(prefix)` | 文字列が prefix で始まること | str |
+| `to_end_with(suffix)` | 文字列が suffix で終わること | str |
 
 ---
 

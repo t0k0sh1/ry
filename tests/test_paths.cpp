@@ -40,6 +40,10 @@ TEST(Paths, GetRyHomeFromEnv) {
 }
 
 TEST(Paths, FindLibDirWithStd) {
+    // Override RY_HOME so the real ~/.ry/lib doesn't interfere
+    const char *orig_ry_home = std::getenv("RY_HOME");
+    setenv("RY_HOME", "/nonexistent-ry-home", 1);
+
     // Create a temp directory structure: tmp/lib/std/
     char tmp_dir[] = "/tmp/ry-test-XXXXXX";
     ASSERT_NE(mkdtemp(tmp_dir), nullptr);
@@ -56,11 +60,23 @@ TEST(Paths, FindLibDirWithStd) {
     EXPECT_EQ(result, fs::canonical(tmp + "/lib"));
 
     fs::remove_all(tmp);
+
+    // Restore RY_HOME
+    if (orig_ry_home) setenv("RY_HOME", orig_ry_home, 1);
+    else unsetenv("RY_HOME");
 }
 
 TEST(Paths, FindLibDirNotFound) {
+    // Override RY_HOME so the real ~/.ry/lib doesn't interfere
+    const char *orig_ry_home = std::getenv("RY_HOME");
+    setenv("RY_HOME", "/nonexistent-ry-home", 1);
+
     auto result = ry::find_lib_dir("/nonexistent/path/ry");
     EXPECT_TRUE(result.empty());
+
+    // Restore RY_HOME
+    if (orig_ry_home) setenv("RY_HOME", orig_ry_home, 1);
+    else unsetenv("RY_HOME");
 }
 
 TEST(Paths, ManifestReadWrite) {
