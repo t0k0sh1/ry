@@ -202,6 +202,40 @@ describe("membership"):
         let m = {"a": 1}
         expect(m).to_not_contain("b")
 
+describe("increment/decrement"):
+    it("x++ increments int"):
+        var x = 10
+        x++
+        expect(x).to_eq(11)
+
+    it("x-- decrements int"):
+        var x = 10
+        x--
+        expect(x).to_eq(9)
+
+    it("multiple increments"):
+        var x = 0
+        x++
+        x++
+        x++
+        expect(x).to_eq(3)
+
+    it("decrement to negative"):
+        var x = 1
+        x--
+        x--
+        expect(x).to_eq(-1)
+
+    it("f++ increments float"):
+        var f = 1.5
+        f++
+        expect(f).to_eq(2.5)
+
+    it("f-- decrements float"):
+        var f = 3.5
+        f--
+        expect(f).to_eq(2.5)
+
 describe("range operator"):
     it("creates inclusive range"):
         let xs = 1 .. 5

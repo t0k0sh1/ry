@@ -83,6 +83,9 @@ enum class TokenKind {
     CaretEq,        // ^=
     LessLessEq,     // <<=
     GreaterGreaterEq, // >>=
+    // --- increment/decrement ---
+    PlusPlus,         // ++
+    MinusMinus,       // --
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::

@@ -50,6 +50,26 @@ static int64_t parseIntLiteral(const std::string& s) {
     parseError(lex_.peek().line, msg);
 }
 
+// ===== Desugar helper: x = x op rhs =====
+
+AssignStmt Parser::makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs) {
+    auto varRef = std::make_unique<ExprNode>();
+    varRef->data = VariableExpr{nameTok.value};
+    varRef->loc = locFromToken(nameTok);
+    auto bin = std::make_unique<BinaryExpr>();
+    bin->op = op;
+    bin->lhs = std::move(varRef);
+    bin->rhs = std::move(rhs);
+    auto binNode = std::make_unique<ExprNode>();
+    binNode->data = std::move(bin);
+    binNode->loc = locFromToken(opTok);
+    AssignStmt s;
+    s.name = nameTok.value;
+    s.value = std::move(binNode);
+    s.loc = locFromToken(nameTok);
+    return s;
+}
+
 // ===== A2: parseBinaryLeft helper =====
 
 ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops) {
@@ -374,20 +394,14 @@ StmtNode Parser::parseStatement() {
         // Compound assignment: desugar x += e → x = x + e
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
-        ExprPtr rhs = parseTernary();
-        auto varRef = std::make_unique<ExprNode>();
-        varRef->data = VariableExpr{first.value};
-        auto bin = std::make_unique<BinaryExpr>();
-        bin->op = op;
-        bin->lhs = std::move(varRef);
-        bin->rhs = std::move(rhs);
-        auto binNode = std::make_unique<ExprNode>();
-        binNode->data = std::move(bin);
-        AssignStmt s;
-        s.name = first.value;
-        s.value = std::move(binNode);
-        s.loc = locFromToken(first);
-        return s;
+        return makeDesugarAssign(first, opTok, op, parseTernary());
+    } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
+        Token opTok = lex_.next(); // consume ++ or --
+        std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
+        auto one = std::make_unique<ExprNode>();
+        one->data = NumberExpr{1};
+        one->loc = locFromToken(first);
+        return makeDesugarAssign(first, opTok, op, std::move(one));
     } else if (next.kind == TokenKind::LParen) {
         lex_.next(); // consume '('
         CallStmt s;
@@ -401,7 +415,7 @@ StmtNode Parser::parseStatement() {
         }
         return s;
     }
-    parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '.', '[', or '(' after identifier");
+    parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '++', '--', '.', '[', or '(' after identifier");
 }
 
 // ===== A4: parseLetOrVar =====

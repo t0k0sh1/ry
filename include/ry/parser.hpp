@@ -48,6 +48,9 @@ private:
     std::vector<ExprPtr> parseArgList();
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
 
+    // Desugar helper: x = x op rhs
+    AssignStmt makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs);
+
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();
     ExprPtr parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind> ops);
