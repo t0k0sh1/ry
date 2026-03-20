@@ -947,6 +947,27 @@ TEST(LexerTest, ColumnOperators) {
     EXPECT_EQ(toks[4].col, 10); // z
 }
 
+TEST(LexerTest, Ellipsis) {
+    auto toks = tokenize("...");
+    ASSERT_EQ(toks.size(), 2u); // Ellipsis + Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ellipsis);
+    EXPECT_EQ(toks[0].value, "...");
+}
+
+TEST(LexerTest, EllipsisDoesNotBreakDotDot) {
+    auto toks = tokenize("..");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::DotDot);
+    EXPECT_EQ(toks[0].value, "..");
+}
+
+TEST(LexerTest, EllipsisDoesNotBreakDot) {
+    auto toks = tokenize(".");
+    ASSERT_EQ(toks.size(), 2u);
+    EXPECT_EQ(toks[0].kind, TokenKind::Dot);
+    EXPECT_EQ(toks[0].value, ".");
+}
+
 TEST(LexerTest, ColumnString) {
     auto toks = tokenize("let s = \"hello\"");
     // let(1) s(5) =(7) "hello"(9)

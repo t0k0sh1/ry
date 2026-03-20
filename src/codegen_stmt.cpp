@@ -540,6 +540,10 @@ void CodeGen::emitStmt(ContinueStmt &s) {
     builder_.SetInsertPoint(deadBB);
 }
 
+void CodeGen::emitStmt(EllipsisStmt &) {
+    // no-op: intentionally does nothing
+}
+
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     // Get the variable name from the object expression

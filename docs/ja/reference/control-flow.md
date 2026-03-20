@@ -208,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...`（Ellipsis）
+
+- 何もしない文（no-op）。空ブロックのプレースホルダーとして使用する。
+- 関数ボディ、`if`/`elif`/`else`、`while`、`for`、`match case` など任意のブロック内で使用可能。
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### 構文

@@ -252,7 +252,11 @@ Token Lexer::readToken() {
     if (c == '.') {
         ++pos_; ++col_;
         if (pos_ < src_.size() && src_[pos_] == '.') {
-            ++pos_; ++col_; return {TokenKind::DotDot, "..", line_, startCol};
+            ++pos_; ++col_;
+            if (pos_ < src_.size() && src_[pos_] == '.') {
+                ++pos_; ++col_; return {TokenKind::Ellipsis, "...", line_, startCol};
+            }
+            return {TokenKind::DotDot, "..", line_, startCol};
         }
         return {TokenKind::Dot, ".", line_, startCol};
     }

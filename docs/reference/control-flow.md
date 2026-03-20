@@ -208,6 +208,23 @@ for i in range(5):
 
 ---
 
+## `...` (Ellipsis)
+
+- A no-op statement that does nothing. Used as a placeholder for empty blocks.
+- Can be used in any block: function body, `if`/`elif`/`else`, `while`, `for`, `match case`, etc.
+
+```python
+fn not_yet():
+    ...
+
+if true:
+    ...
+else:
+    ...
+```
+
+---
+
 ## match
 
 ### Syntax
