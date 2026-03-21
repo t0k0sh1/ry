@@ -28,7 +28,8 @@ jobs:
   # アクティブブランチに対応しない古い nightly プレリリースを削除
   cleanup-stale-nightlies:
     needs: discover
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && needs.discover.outputs.branches != '[]'
+    continue-on-error: true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -39,7 +40,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ACTIVE_BRANCHES: ${{ needs.discover.outputs.branches }}
         run: |
-          gh release list --json tagName,isPrerelease -q \
+          gh release list --limit 1000 --json tagName,isPrerelease -q \
             '.[] | select(.isPrerelease and (.tagName | endswith("-nightly"))) | .tagName' \
             | while read -r tag; do
                 branch="${tag%-nightly}"
