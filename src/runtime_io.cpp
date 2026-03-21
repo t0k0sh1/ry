@@ -5,14 +5,7 @@
 #include <cstring>
 #include <unistd.h>
 
-// ListHeader layout: {i64 len, i64 cap, ptr data}
-// Matches the generic list ABI used by codegen (same as runtime_regex.cpp)
-// but with i8* data for byte lists instead of char** for string lists.
-struct IOListHeader {
-    int64_t len;
-    int64_t cap;
-    int8_t *data;
-};
+// IOListHeader is defined in runtime_io.hpp (shared with runtime_net.cpp)
 
 static IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));

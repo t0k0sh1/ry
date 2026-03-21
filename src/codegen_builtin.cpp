@@ -46,6 +46,25 @@ llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
     return lookupCollectionType(iterator_element_types_, iterVal);
 }
 
+// ===== TCP socket type tracking helpers =====
+
+static bool lookupValueSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
+    if (set.count(val)) return true;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        if (load->getType()->isPointerTy())
+            return set.count(load->getPointerOperand()) > 0;
+    }
+    return false;
+}
+
+bool CodeGen::isTcpListener(llvm::Value *val) {
+    return lookupValueSet(tcp_listener_values_, val);
+}
+
+bool CodeGen::isTcpStream(llvm::Value *val) {
+    return lookupValueSet(tcp_stream_values_, val);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
@@ -1678,6 +1697,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             enum_value_types_[subjectAlloca] = subjectEnumType;
     }
 
+    // Track TCP types for subject alloca
+    if (isTcpListener(subject)) tcp_listener_values_.insert(subjectAlloca);
+    if (isTcpStream(subject))   tcp_stream_values_.insert(subjectAlloca);
+
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
         llvm::BasicBlock *armBodyBB = llvm::BasicBlock::Create(*ctx_, "match.arm.body", fn_);
@@ -1832,6 +1855,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                     llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                     builder_.CreateStore(inner, varAlloca);
+                    if (tcp_listener_values_.count(subjectAlloca))
+                        tcp_listener_values_.insert(varAlloca);
+                    if (tcp_stream_values_.count(subjectAlloca))
+                        tcp_stream_values_.insert(varAlloca);
                 }
             }, arm.pattern);
 
@@ -1863,6 +1890,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
+                if (tcp_listener_values_.count(subjectAlloca))
+                    tcp_listener_values_.insert(varAlloca);
+                if (tcp_stream_values_.count(subjectAlloca))
+                    tcp_stream_values_.insert(varAlloca);
             } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
                 std::string resolvedEnum = pat.enum_name;
                 if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {

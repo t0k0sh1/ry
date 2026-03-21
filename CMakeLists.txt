@@ -68,6 +68,7 @@ add_library(ry_lib STATIC
     src/paths.cpp
     src/runtime_parallel.cpp
     src/runtime_io.cpp
+    src/runtime_net.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -111,6 +112,7 @@ add_executable(ry_tests
     tests/test_codegen_parameterized.cpp
     tests/test_runtime_utf8.cpp
     tests/test_codegen_io.cpp
+    tests/test_codegen_net.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

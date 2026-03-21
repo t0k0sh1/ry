@@ -429,7 +429,8 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
         s.callee == "close" ||
         s.callee == "write_text" || s.callee == "append_text" ||
-        s.callee == "delete_file" || s.callee == "write_bytes") {
+        s.callee == "delete_file" || s.callee == "write_bytes" ||
+        s.callee == "listen") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
@@ -613,6 +614,10 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName.size() > 8 && typeName.substr(0, 8) == "Channel<" && typeName.back() == '>') {
         return ptrTy_;
     }
+
+    // TCP socket opaque handle types
+    if (typeName == "TcpListener") return ptrTy_;
+    if (typeName == "TcpStream")   return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
