@@ -485,7 +485,7 @@ print(get(m, "z", 0))   # 0
 
 ## iter
 
-**Signature:** `iter(collection: List<T> | Set<T> | Map<K, V>) -> Iterator<T>`
+**Signature:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
 
 Creates a lazy iterator from a collection. The iterator does not copy data; it references the original collection. UFCS notation is also available.
 

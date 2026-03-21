@@ -420,7 +420,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
 
     // Check if this is a list or set (ptr type with known element type)
     if (iterable->getType() != ptrTy_)
-        codegenError("for loop requires list or set iterable");
+        codegenError("for loop requires list, set, map, or iterator iterable");
 
     // Check if iterable is an iterator
     llvm::Type *iterElemTy = getIteratorElementType(iterable);

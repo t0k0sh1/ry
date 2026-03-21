@@ -1213,6 +1213,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
     }
     if (set_element_types_.count(trueVal))
         set_element_types_[phi] = set_element_types_[trueVal];
+    if (iterator_element_types_.count(trueVal))
+        iterator_element_types_[phi] = iterator_element_types_[trueVal];
 
     return phi;
 }

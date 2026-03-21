@@ -4538,7 +4538,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
                 i64Ty_, ptrTy_, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
         }
 
-        return nullptr;
+        codegenError("iter() argument must be a List, Set, or Map");
     }
 
     // to_list() → collect Iterator into List
@@ -4621,6 +4621,14 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
             builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
 
         list_element_types_[headerPtr] = elemTy;
+
+        // Propagate nested list metadata for flatten() support
+        {
+            llvm::Type *nestedTy = getNestedListElementType(iterVal);
+            if (nestedTy)
+                nested_list_element_types_[headerPtr] = nestedTy;
+        }
+
         return headerPtr;
     }
 
