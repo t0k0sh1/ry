@@ -25,8 +25,33 @@ jobs:
             | jq -Rsc 'split("\n") | map(select(. != ""))')
           echo "branches=$branches" >> "$GITHUB_OUTPUT"
 
-  nightly:
+  # アクティブブランチに対応しない古い nightly プレリリースを削除
+  cleanup-stale-nightlies:
     needs: discover
+    if: github.event_name == 'schedule' && needs.discover.outputs.branches != '[]'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete stale nightly releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTIVE_BRANCHES: ${{ needs.discover.outputs.branches }}
+        run: |
+          gh release list --limit 1000 --json tagName,isPrerelease -q \
+            '.[] | select(.isPrerelease and (.tagName | endswith("-nightly"))) | .tagName' \
+            | while read -r tag; do
+                branch="${tag%-nightly}"
+                if ! echo "$ACTIVE_BRANCHES" | jq -e --arg b "$branch" 'index($b) != null' > /dev/null 2>&1; then
+                  echo "Deleting stale nightly release: $tag"
+                  gh release delete "$tag" --yes --cleanup-tag || true
+                fi
+              done
+
+  nightly:
+    needs: [discover, cleanup-stale-nightlies]
     if: github.event_name == 'schedule' && needs.discover.outputs.branches != '[]'
     runs-on: macos-14
     permissions:
