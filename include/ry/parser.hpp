@@ -29,7 +29,7 @@ private:
     void skipStructuralTokens();
     StmtNode parseImportStatement();
     StmtNode parseStatement();
-    StmtNode parseLetOrVar();
+    StmtNode parseLetOrVar(const std::vector<Directive> &directives = {});
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();

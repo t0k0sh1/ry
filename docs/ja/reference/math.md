@@ -14,27 +14,18 @@ from std.math import sqrt, PI, sin
 
 ## 定数
 
-定数は引数なし関数としてアクセスします。
-
-| 関数 | 戻り値型 | 説明 |
-|------|----------|------|
-| `PI()` | `float` | 円周率 (3.141592653589793) |
-| `E()` | `float` | ネイピア数 (2.718281828459045) |
+| 定数 | 型 | 説明 |
+|------|------|------|
+| `PI` | `float` | 円周率 (3.141592653589793) |
+| `E` | `float` | ネイピア数 (2.718281828459045) |
+| `Inf` | `float` | 正の無限大 |
+| `NaN` | `float` | 非数 (Not a Number) |
 
 ```python
-from std.math import PI, E
+from std.math import PI, E, Inf, NaN
 
-let circumference = 2.0 * PI() * radius
+let circumference = 2.0 * PI * radius
 ```
-
----
-
-## 特殊値
-
-| 関数 | シグネチャ | 説明 |
-|------|-----------|------|
-| `inf()` | `() -> float` | 正の無限大 |
-| `nan()` | `() -> float` | 非数 (Not a Number) |
 
 ---
 
@@ -143,9 +134,9 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | x が正または負の無限大なら true |
 
 ```python
-from std.math import is_nan, is_inf, nan, inf
+from std.math import is_nan, is_inf, NaN, Inf
 
-is_nan(nan())   # true
-is_inf(inf())   # true
-is_nan(1.0)     # false
+is_nan(NaN)   # true
+is_inf(Inf)   # true
+is_nan(1.0)   # false
 ```

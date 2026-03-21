@@ -295,7 +295,7 @@ StmtNode Parser::parseStatement() {
     }
 
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Var) {
-        auto stmt = parseLetOrVar();
+        auto stmt = parseLetOrVar(directives);
         if (auto *ls = std::get_if<LetStmt>(&stmt))
             ls->directives = std::move(directives);
         else if (auto *vs = std::get_if<VarStmt>(&stmt))
@@ -493,15 +493,22 @@ StmtNode Parser::parseStatement() {
 
 // ===== A4: parseLetOrVar =====
 
-StmtNode Parser::parseLetOrVar() {
+StmtNode Parser::parseLetOrVar(const std::vector<Directive> &directives) {
     Token first = lex_.next(); // consume let/var
     bool isVar = (first.kind == TokenKind::Var);
+    bool isNative = hasDirective(directives, "native");
 
     Token id = lex_.peek();
     if (id.kind != TokenKind::Ident)
         parseError(id.line, "expected identifier after '" + first.value + "'");
-    if (!isSnakeCase(id.value))
-        parseError(id.line, "variable name '" + id.value + "' must be snake_case");
+    // @native let allows SCREAMING_SNAKE_CASE or PascalCase
+    if (isNative && !isVar) {
+        if (!isSnakeCase(id.value) && !isScreamingSnakeCase(id.value) && !isPascalCase(id.value))
+            parseError(id.line, "variable name '" + id.value + "' must be snake_case, SCREAMING_SNAKE_CASE, or PascalCase");
+    } else {
+        if (!isSnakeCase(id.value))
+            parseError(id.line, "variable name '" + id.value + "' must be snake_case");
+    }
     lex_.next(); // consume ident
 
     // Tuple destructuring: let a, b = (10, 20)
@@ -534,6 +541,16 @@ StmtNode Parser::parseLetOrVar() {
     if (lex_.peek().kind == TokenKind::Colon) {
         lex_.next(); // consume ':'
         typeAnnotation = parseTypeName();
+    }
+
+    // @native let allows omitting '= value'
+    if (isNative && !isVar && lex_.peek().kind != TokenKind::Equals) {
+        LetStmt s;
+        s.name = id.value;
+        s.type_annotation = typeAnnotation;
+        s.value = nullptr;
+        s.loc = locFromToken(first);
+        return s;
     }
 
     if (lex_.peek().kind != TokenKind::Equals)

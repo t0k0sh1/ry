@@ -126,6 +126,10 @@ private:
 
     void emitDeprecationWarning(const std::string &name);
 
+    // @native let constants
+    std::unordered_set<std::string> native_constants_;
+    llvm::Value *emitNativeConstant(const std::string &name);
+
     // @native fn signature registry (argument count per overload)
     std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
     void validateNativeCallArgs(const std::string &callee, const std::vector<ExprPtr> &args);

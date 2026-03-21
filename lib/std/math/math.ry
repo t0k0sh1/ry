@@ -1,16 +1,16 @@
 # Math constants and functions
 
 @native
-fn PI() -> float
+let PI: float
 
 @native
-fn E() -> float
+let E: float
 
 @native
-fn inf() -> float
+let Inf: float
 
 @native
-fn nan() -> float
+let NaN: float
 
 @native
 fn abs(x: int) -> int

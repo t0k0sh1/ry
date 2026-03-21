@@ -14,27 +14,18 @@ from std.math import sqrt, PI, sin
 
 ## 常數
 
-常數以零參數函式的方式存取。
-
-| 函式 | 回傳型別 | 說明 |
-|------|----------|------|
-| `PI()` | `float` | 圓周率 (3.141592653589793) |
-| `E()` | `float` | 尤拉數 (2.718281828459045) |
+| 常數 | 型別 | 說明 |
+|------|------|------|
+| `PI` | `float` | 圓周率 (3.141592653589793) |
+| `E` | `float` | 尤拉數 (2.718281828459045) |
+| `Inf` | `float` | 正無窮大 |
+| `NaN` | `float` | 非數值 (Not a Number) |
 
 ```python
-from std.math import PI, E
+from std.math import PI, E, Inf, NaN
 
-let circumference = 2.0 * PI() * radius
+let circumference = 2.0 * PI * radius
 ```
-
----
-
-## 特殊值
-
-| 函式 | 簽章 | 說明 |
-|------|------|------|
-| `inf()` | `() -> float` | 正無窮大 |
-| `nan()` | `() -> float` | 非數值 (Not a Number) |
 
 ---
 
@@ -143,9 +134,9 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | 若 x 為正或負無窮大則回傳 true |
 
 ```python
-from std.math import is_nan, is_inf, nan, inf
+from std.math import is_nan, is_inf, NaN, Inf
 
-is_nan(nan())   # true
-is_inf(inf())   # true
-is_nan(1.0)     # false
+is_nan(NaN)   # true
+is_inf(Inf)   # true
+is_nan(1.0)   # false
 ```
