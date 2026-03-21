@@ -26,6 +26,13 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 | `*` | Zero or more | `"a*"` matches `""`, `"a"`, `"aaa"` |
 | `+` | One or more | `"a+"` matches `"a"`, `"aaa"` |
 | `?` | Zero or one | `"a?"` matches `""` or `"a"` |
+| `{n}` | Exactly n times | `"a{3}"` matches `"aaa"` |
+| `{n,m}` | Between n and m times | `"a{2,4}"` matches `"aa"` to `"aaaa"` |
+| `{n,}` | At least n times | `"a{2,}"` matches `"aa"`, `"aaa"`, ... |
+| `*?` | Zero or more (non-greedy) | `".*?"` matches shortest |
+| `+?` | One or more (non-greedy) | `".+?"` matches shortest |
+| `??` | Zero or one (non-greedy) | `"a??"` prefers zero |
+| `{n,m}?` | Range (non-greedy) | `"a{2,4}?"` prefers n times |
 | `(...)` | Group | `"(ab)+"` matches `"abab"` |
 | `[abc]` | Character class | `"[aeiou]"` matches vowels |
 | `[a-z]` | Character range | `"[a-z]+"` matches lowercase words |
@@ -81,6 +88,32 @@ print(matches[0])    # 1
 print(matches[1])    # 23
 print(matches[2])    # 456
 ```
+
+### Range Quantifiers
+
+```ry
+print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
+print(regex_match("a{2,4}", "aaa"))               # true
+print(regex_match("(ab){2,}", "ababab"))           # true
+```
+
+### Non-Greedy (Lazy) Match
+
+```ry
+# Greedy: matches longest
+let g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+print(g)  # X
+
+# Non-greedy: matches shortest
+let l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+print(l)  # X and X
+
+# Find individual HTML-like tags
+let tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+print(len(tags))  # 3
+```
+
+> **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
 
 ### UFCS Notation
 
