@@ -195,7 +195,7 @@ print(ys)   # [2, 4, 6]
 
 ### sort
 
-Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified.
+Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified. The sort is **stable** (equal elements preserve their original order). Internally uses TimSort.
 
 ```python
 let xs = [3, 1, 2]
