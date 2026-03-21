@@ -4075,6 +4075,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinSetOps(*e))     return v;
     if (auto *v = emitBuiltinRegex(*e))     return v;
     if (auto *v = emitBuiltinMath(*e))      return v;
+    if (auto *v = emitBuiltinIO(*e))       return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -4225,6 +4226,66 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         auto fn = mod_->getOrInsertFunction("__ry_regex_find_all", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
         list_element_types_[result] = ptrTy_;
+        return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin IO =====
+
+llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: emit a call to __ry_<name> with ptr args, validate count and types
+    auto emitIOCall = [&](const std::string &name, size_t nargs,
+                          llvm::Type *retTy) -> llvm::Value * {
+        if (e.args.size() != nargs)
+            codegenError(name + "() takes exactly " + std::to_string(nargs) + " argument(s)");
+        std::vector<llvm::Value *> args;
+        std::vector<llvm::Type *> argTys;
+        for (size_t i = 0; i < nargs; ++i) {
+            args.push_back(emitExpr(*e.args[i]));
+            if (args.back()->getType() != ptrTy_)
+                codegenError(name + "() requires str/ptr arguments");
+            argTys.push_back(ptrTy_);
+        }
+        auto fnTy = llvm::FunctionType::get(retTy, argTys, false);
+        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
+        if (retTy->isVoidTy()) {
+            builder_.CreateCall(fn, args);
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+        return builder_.CreateCall(fn, args, name);
+    };
+
+    // 0-arg -> str
+    if (e.callee == "read_line" || e.callee == "read_all")
+        return emitIOCall(e.callee, 0, ptrTy_);
+
+    // 1-arg str -> str
+    if (e.callee == "read_text" || e.callee == "bytes_to_str")
+        return emitIOCall(e.callee, 1, ptrTy_);
+
+    // 2-arg (str, str) -> Unit
+    if (e.callee == "write_text" || e.callee == "append_text" || e.callee == "write_bytes")
+        return emitIOCall(e.callee, 2, llvm::Type::getVoidTy(*ctx_));
+
+    // 1-arg str -> Unit
+    if (e.callee == "delete_file")
+        return emitIOCall(e.callee, 1, llvm::Type::getVoidTy(*ctx_));
+
+    // file_exists(path) -> bool (i64 truncated to i1)
+    if (e.callee == "file_exists") {
+        llvm::Value *result = emitIOCall(e.callee, 1, i64Ty_);
+        return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
+    }
+
+    // 1-arg str -> List<byte>
+    if (e.callee == "read_bytes" || e.callee == "str_to_bytes") {
+        llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
+        list_element_types_[result] = i8Ty_;
         return result;
     }
 

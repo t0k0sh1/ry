@@ -105,6 +105,7 @@ from mypackage import add   # 僅匯入 add
 | 套件 | 說明 |
 |------|------|
 | [`std.math`](math.md) | 數學常數與函式 |
+| [`std.io`](io.md) | 檔案 I/O、標準輸入、位元組轉換 |
 
 ```python
 from std.math import sqrt, PI, sin

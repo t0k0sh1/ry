@@ -1,0 +1,42 @@
+from std.io import read_text, write_text, append_text, file_exists, delete_file, read_bytes, write_bytes, str_to_bytes, bytes_to_str
+
+describe("file I/O", fn():
+    it("write and read text", fn():
+        write_text("/tmp/ry_selftest_io.txt", "hello world")
+        let s = read_text("/tmp/ry_selftest_io.txt")
+        expect(s).to_eq("hello world")
+        delete_file("/tmp/ry_selftest_io.txt")
+    )
+
+    it("append text", fn():
+        write_text("/tmp/ry_selftest_io_append.txt", "hello")
+        append_text("/tmp/ry_selftest_io_append.txt", " world")
+        let s = read_text("/tmp/ry_selftest_io_append.txt")
+        expect(s).to_eq("hello world")
+        delete_file("/tmp/ry_selftest_io_append.txt")
+    )
+
+    it("file_exists", fn():
+        write_text("/tmp/ry_selftest_io_exists.txt", "test")
+        expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(true)
+        delete_file("/tmp/ry_selftest_io_exists.txt")
+        expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(false)
+    )
+
+    it("byte conversions", fn():
+        let bs = str_to_bytes("ABC")
+        expect(len(bs)).to_eq(3)
+        let s = bytes_to_str(bs)
+        expect(s).to_eq("ABC")
+    )
+
+    it("read/write bytes", fn():
+        let data = str_to_bytes("binary test")
+        write_bytes("/tmp/ry_selftest_io_bytes.bin", data)
+        let rb = read_bytes("/tmp/ry_selftest_io_bytes.bin")
+        expect(len(rb)).to_eq(11)
+        let s = bytes_to_str(rb)
+        expect(s).to_eq("binary test")
+        delete_file("/tmp/ry_selftest_io_bytes.bin")
+    )
+)

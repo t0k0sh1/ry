@@ -427,7 +427,9 @@ void CodeGen::emitStmt(CallStmt &s) {
     if (s.callee == "join" || s.callee == "available_parallelism" || s.callee == "args" ||
         s.callee == "range" || s.callee == "send" || s.callee == "try_send" ||
         s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
-        s.callee == "close") {
+        s.callee == "close" ||
+        s.callee == "write_text" || s.callee == "append_text" ||
+        s.callee == "delete_file" || s.callee == "write_bytes") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);

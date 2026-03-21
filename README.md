@@ -14,6 +14,7 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 - **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
+- **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
 

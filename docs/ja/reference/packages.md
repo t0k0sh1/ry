@@ -105,6 +105,7 @@ from mypackage import add   # add のみインポート
 | パッケージ | 説明 |
 |-----------|------|
 | [`std.math`](math.md) | 数学定数・関数 |
+| [`std.io`](io.md) | ファイル I/O・標準入力・バイト変換 |
 
 ```python
 from std.math import sqrt, PI, sin
