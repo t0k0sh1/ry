@@ -357,3 +357,93 @@ TEST(RegexRuntime, LazyFindAll) {
     EXPECT_STREQ(list->data[2], "<ccc>");
     freeStringList(list);
 }
+
+// ============================================================
+// Word boundary \b / \B tests
+// ============================================================
+
+TEST(RegexRuntime, WordBoundarySearch) {
+    // \bworld\b matches "world" in "hello world"
+    EXPECT_EQ(__ry_regex_search("\\bworld\\b", "hello world"), 6);
+    // \bword\b does NOT match in "helloworld" (no boundary)
+    EXPECT_EQ(__ry_regex_search("\\bword\\b", "helloworld"), -1);
+}
+
+TEST(RegexRuntime, WordBoundaryNonBoundary) {
+    // \Bword matches in "helloworld" (non-boundary before 'w')
+    EXPECT_EQ(__ry_regex_search("\\Bworld", "helloworld"), 5);
+    // \Bworld should NOT match at start of "world test"
+    EXPECT_EQ(__ry_regex_search("\\Bworld", "world test"), -1);
+}
+
+TEST(RegexRuntime, WordBoundaryStartEnd) {
+    // \b at start of string
+    EXPECT_EQ(__ry_regex_search("\\bhello", "hello world"), 0);
+    // \b at end of string
+    EXPECT_EQ(__ry_regex_search("world\\b", "hello world"), 6);
+}
+
+TEST(RegexRuntime, WordBoundaryDigitUnderscore) {
+    // digits and underscores are word characters
+    EXPECT_EQ(__ry_regex_match("\\b\\w+\\b", "hello_123"), 1);
+    EXPECT_EQ(__ry_regex_search("\\b123\\b", "abc 123 def"), 4);
+    EXPECT_EQ(__ry_regex_search("\\b_foo\\b", "x _foo y"), 2);
+}
+
+TEST(RegexRuntime, WordBoundaryFullMatch) {
+    EXPECT_EQ(__ry_regex_match("\\btest\\b", "test"), 1);
+    EXPECT_EQ(__ry_regex_match("\\btest\\b", "testing"), 0);
+}
+
+TEST(RegexRuntime, WordBoundaryFindAll) {
+    auto *list = (ListHeader *)__ry_regex_find_all("\\b\\w+\\b", "hello world foo");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "hello");
+    EXPECT_STREQ(list->data[1], "world");
+    EXPECT_STREQ(list->data[2], "foo");
+    freeStringList(list);
+}
+
+// ============================================================
+// Case-insensitive (?i) tests
+// ============================================================
+
+TEST(RegexRuntime, CaseInsensitiveMatch) {
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "HELLO"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "Hello"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "hello"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "hElLo"), 1);
+}
+
+TEST(RegexRuntime, CaseInsensitiveCharClass) {
+    EXPECT_EQ(__ry_regex_match("(?i)[a-z]+", "ABC"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-z]+", "AbCdE"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-f]+", "ABCDEF"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-f]+", "abcdef"), 1);
+}
+
+TEST(RegexRuntime, CaseSensitiveDefault) {
+    // Without (?i), should be case-sensitive
+    EXPECT_EQ(__ry_regex_match("hello", "HELLO"), 0);
+    EXPECT_EQ(__ry_regex_match("[a-z]+", "ABC"), 0);
+}
+
+TEST(RegexRuntime, CaseInsensitiveSearch) {
+    EXPECT_EQ(__ry_regex_search("(?i)world", "Hello WORLD"), 6);
+    EXPECT_EQ(__ry_regex_search("(?i)\\bworld\\b", "Hello WORLD"), 6);
+}
+
+TEST(RegexRuntime, CaseInsensitiveReplace) {
+    const char *result = __ry_regex_replace("(?i)hello", "Hello HELLO hello", "X");
+    EXPECT_STREQ(result, "X X X");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, CaseInsensitiveFindAll) {
+    auto *list = (ListHeader *)__ry_regex_find_all("(?i)hello", "Hello HELLO hello");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "Hello");
+    EXPECT_STREQ(list->data[1], "HELLO");
+    EXPECT_STREQ(list->data[2], "hello");
+    freeStringList(list);
+}

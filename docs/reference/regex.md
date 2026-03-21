@@ -45,6 +45,9 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 | `\W` | Non-word character | |
 | `\s` | Whitespace | `"\s+"` matches spaces/tabs |
 | `\S` | Non-whitespace | |
+| `\b` | Word boundary | `"\bword\b"` matches whole word |
+| `\B` | Non-word boundary | `"\Bword"` matches inside a word |
+| `(?i)` | Case-insensitive flag | `"(?i)hello"` matches `"HELLO"` |
 | `\.` | Escaped special character | `"\."` matches literal `.` |
 
 ## Usage Examples
@@ -114,6 +117,39 @@ print(len(tags))  # 3
 ```
 
 > **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
+
+### Word Boundary
+
+```ry
+# Match whole words only
+let pos = regex_search("\\bworld\\b", "hello world")
+print(pos)  # 6
+
+# Find all words
+let words = regex_find_all("\\b\\w+\\b", "hello world foo")
+print(len(words))  # 3
+
+# \B matches non-boundary (inside a word)
+let pos2 = regex_search("\\Bworld", "helloworld")
+print(pos2)  # 5
+```
+
+### Case-Insensitive Matching
+
+```ry
+# (?i) at the start of pattern enables case-insensitive matching
+print(regex_match("(?i)hello", "HELLO"))  # true
+print(regex_match("(?i)hello", "Hello"))  # true
+
+# Works with character classes
+print(regex_match("(?i)[a-z]+", "ABC"))  # true
+
+# Works with replace and find_all
+let s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+print(s)  # X X X
+```
+
+> **Note:** `(?i)` must appear at the beginning of the pattern and applies to the entire pattern. Partial case-insensitive matching (e.g., `(?i:sub)pattern`) is not supported.
 
 ### UFCS Notation
 
