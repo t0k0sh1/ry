@@ -47,13 +47,17 @@ extern "C" const char *__ry_read_all() {
     size_t len = 0;
     char *buf = (char *)malloc(cap);
 
-    size_t n;
-    while ((n = fread(buf + len, 1, cap - len - 1, stdin)) > 0) {
-        len += n;
+    for (;;) {
         if (len + 1 >= cap) {
             cap *= 2;
             buf = (char *)realloc(buf, cap);
         }
+        size_t to_read = cap - len - 1;
+        size_t n = fread(buf + len, 1, to_read, stdin);
+        if (n == 0) {
+            break;
+        }
+        len += n;
     }
     buf[len] = '\0';
     return buf;
@@ -170,6 +174,13 @@ extern "C" void *__ry_str_to_bytes(const char *s) {
 
 extern "C" const char *__ry_bytes_to_str(void *list) {
     auto *header = (IOListHeader *)list;
+    for (int64_t i = 0; i < header->len; ++i) {
+        if (header->data[i] == 0) {
+            fprintf(stderr, "runtime error: bytes_to_str() input contains NUL byte at index %lld\n",
+                    (long long)i);
+            exit(1);
+        }
+    }
     char *buf = (char *)malloc(header->len + 1);
     memcpy(buf, header->data, header->len);
     buf[header->len] = '\0';

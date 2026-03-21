@@ -1,7 +1,6 @@
 #include "test_codegen_common.hpp"
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <string>
 
 // Helper to create a unique temp file path

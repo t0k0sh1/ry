@@ -4235,6 +4235,9 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 // ===== Builtin IO =====
 
 llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
     // Helper: emit a call to __ry_<name> with ptr args, validate count and types
     auto emitIOCall = [&](const std::string &name, size_t nargs,
                           llvm::Type *retTy) -> llvm::Value * {
