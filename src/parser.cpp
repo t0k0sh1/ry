@@ -543,8 +543,11 @@ StmtNode Parser::parseLetOrVar(const std::vector<Directive> &directives) {
         typeAnnotation = parseTypeName();
     }
 
-    // @native let allows omitting '= value'
+    // @native let allows omitting '= value' when followed by a statement terminator
     if (isNative && !isVar && lex_.peek().kind != TokenKind::Equals) {
+        auto next = lex_.peek().kind;
+        if (next != TokenKind::Newline && next != TokenKind::Dedent && next != TokenKind::Eof)
+            parseError("expected '=' in " + first.value + " declaration");
         LetStmt s;
         s.name = id.value;
         s.type_annotation = typeAnnotation;

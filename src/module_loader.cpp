@@ -40,12 +40,13 @@ static std::string getExportName(const StmtNode &stmt) {
 }
 
 // Collect exported names from a program
+// Collect all exported names (including private) for cache/validation purposes
 static std::unordered_set<std::string> collectExportedNames(const Program &prog) {
     std::unordered_set<std::string> names;
     for (const auto &stmt : prog) {
         if (isExportable(stmt)) {
             std::string name = getExportName(stmt);
-            if (!isPrivateName(name))
+            if (!name.empty())
                 names.insert(name);
         }
     }
@@ -209,6 +210,11 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             if (!imp.names.empty()) {
                 auto &fns = fn_cache_[abs_path];
                 for (const auto &name : imp.names) {
+                    if (isPrivateName(name))
+                        throw std::runtime_error("line " + std::to_string(imp.loc.line) +
+                                                 ": cannot import private symbol '" +
+                                                 name + "' from package '" +
+                                                 imp.module_path + "'");
                     if (!fns.count(name))
                         throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                                  ": '" + name +

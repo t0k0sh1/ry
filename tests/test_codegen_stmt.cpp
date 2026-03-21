@@ -1971,6 +1971,12 @@ TEST_F(ImportTest, PrivateSymbolWildcardImport) {
         "from mypkg\n"
         "print(public_fn())"),
         "42\n");
+
+    // Attempting to use a _prefixed symbol after a wildcard import should error
+    EXPECT_THROW(runWithImports(
+        "from mypkg\n"
+        "_private_fn()"),
+        std::runtime_error);
 }
 
 TEST_F(ImportTest, PrivateSymbolNamedImportError) {
@@ -1996,4 +2002,15 @@ TEST_F(ImportTest, PrivateLetSymbolExcluded) {
         "from mypkg3\n"
         "print(public_val)"),
         "10\n");
+
+    // Referencing _secret after a wildcard import should fail
+    EXPECT_THROW(runWithImports(
+        "from mypkg3\n"
+        "print(_secret)"),
+        std::runtime_error);
+
+    // Attempting a named import of _secret should also error
+    EXPECT_THROW(runWithImports(
+        "from mypkg3 import _secret"),
+        std::runtime_error);
 }

@@ -323,7 +323,11 @@ void CodeGen::emitVarDecl(const std::string &name,
 void CodeGen::emitStmt(LetStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     if (hasDirective(s.directives, "native") && !s.value) {
-        native_constants_.insert(s.name);
+        if (s.name == "PI" || s.name == "E" || s.name == "Inf" || s.name == "NaN") {
+            native_constants_.insert(s.name);
+        } else {
+            codegenError("unsupported native constant: " + s.name);
+        }
         return;
     }
     emitVarDecl(s.name, s.type_annotation, *s.value, true);
