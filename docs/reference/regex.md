@@ -113,7 +113,7 @@ let tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
 print(len(tags))  # 3
 ```
 
-> **Note:** Non-greedy matching controls the overall match length. Without capture groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
+> **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
 
 ### UFCS Notation
 

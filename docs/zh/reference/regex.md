@@ -111,7 +111,7 @@ let tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
 print(len(tags))  # 3
 ```
 
-> **注意：** 非貪婪匹配控制整體匹配長度。沒有捕獲群組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
+> **注意：** 非貪婪匹配控制整體匹配長度。沒有使用括號分組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
 
 ### UFCS 記法
 

@@ -165,7 +165,10 @@ private:
         advance(); // consume '{'
         if (atEnd() || !std::isdigit(static_cast<unsigned char>(peek()))) return false;
         int n = parseNumber();
-        if (n < 0 || n > 1000) return false;
+        if (n > 1000) {
+            fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", n, src_);
+            exit(1);
+        }
         if (atEnd()) return false;
         if (peek() == '}') {
             advance();
@@ -182,7 +185,10 @@ private:
             }
             if (!std::isdigit(static_cast<unsigned char>(peek()))) return false;
             int m = parseNumber();
-            if (m < 0 || m > 1000) return false;
+            if (m > 1000) {
+                fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", m, src_);
+                exit(1);
+            }
             if (atEnd() || peek() != '}') return false;
             advance();
             if (n > m) {

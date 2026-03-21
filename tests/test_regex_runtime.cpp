@@ -278,8 +278,11 @@ TEST(RegexRuntime, QuantifierEdgeCases) {
 }
 
 TEST(RegexRuntime, QuantifierBraceLiteralFallback) {
-    // Invalid brace pattern should be treated as literal '{'
+    // Explicitly escaped literal brace
     EXPECT_EQ(__ry_regex_match("\\{abc\\}", "{abc}"), 1);
+
+    // Invalid brace pattern should be treated as literal '{'
+    EXPECT_EQ(__ry_regex_match("a{,}b", "a{,}b"), 1);
 }
 
 TEST(RegexRuntime, QuantifierFindAll) {
