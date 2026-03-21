@@ -218,6 +218,48 @@ For channels, `recv(ch)` is the strict form and raises on a closed drained chann
 
 ---
 
+## Networking (TCP Sockets)
+
+Ry provides TCP socket support through the `std.net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
+
+```python
+from std.net import bind, listen, accept, connect
+from std.io import str_to_bytes, bytes_to_str
+
+fn echo_server(port: int) -> str:
+    match bind("127.0.0.1", port):
+        case Some(server):
+            listen(server, 1)
+            match accept(server):
+                case Some(conn):
+                    let data: List<byte> = recv(conn, 4096)
+                    send(conn, data)
+                    close(conn)
+                case None:
+                    ...
+            close(server)
+        case None:
+            ...
+    return "done"
+
+let t: Task<str> = spawn echo_server(8080)
+
+match connect("127.0.0.1", 8080):
+    case Some(conn):
+        send(conn, str_to_bytes("hello"))
+        let resp: List<byte> = recv(conn, 4096)
+        print(bytes_to_str(resp))   # hello
+        close(conn)
+    case None:
+        print("connect failed")
+
+join(t)
+```
+
+See [Network Reference](../reference/net.md) for the full API.
+
+---
+
 ## F-String (String Interpolation)
 
 Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.

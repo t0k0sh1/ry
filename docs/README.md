@@ -45,6 +45,7 @@ For detailed language specifications, see the reference pages below.
 | [Regular Expressions](reference/regex.md) | regex_match, regex_search, regex_replace, regex_split, regex_find_all |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |
 | [I/O Functions](reference/io.md) | read_text, write_text, file_exists, read_bytes, str_to_bytes, etc. |
+| [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/recv/close for TCP sockets |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and ry.toml specification |

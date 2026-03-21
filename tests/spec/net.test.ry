@@ -1,0 +1,57 @@
+from std.net import bind, listen, accept, connect
+from std.io import str_to_bytes, bytes_to_str
+
+describe("TCP socket API", fn():
+    it("bind returns Some on valid address", fn():
+        match bind("127.0.0.1", 18090):
+            case Some(server):
+                close(server)
+                expect(true).to_eq(true)
+            case None:
+                expect(true).to_eq(false)
+
+    )
+    it("connect to closed port returns None", fn():
+        match connect("127.0.0.1", 19998):
+            case Some(conn):
+                close(conn)
+                expect(true).to_eq(false)
+            case None:
+                expect(true).to_eq(true)
+
+    )
+    it("echo round-trip with spawn", fn():
+        fn echo_server(port: int) -> str:
+            match bind("127.0.0.1", port):
+                case Some(server):
+                    listen(server, 1)
+                    match accept(server):
+                        case Some(conn):
+                            let data: List<byte> = recv(conn, 4096)
+                            send(conn, data)
+                            close(conn)
+                        case None:
+                            ...
+                    close(server)
+                case None:
+                    ...
+            return "done"
+
+        fn echo_client(port: int) -> str:
+            match connect("127.0.0.1", port):
+                case Some(conn):
+                    send(conn, str_to_bytes("ping"))
+                    let resp: List<byte> = recv(conn, 4096)
+                    let msg = bytes_to_str(resp)
+                    close(conn)
+                    return msg
+                case None:
+                    return "fail"
+
+        let t: Task<str> = spawn echo_server(18091)
+        let msg = echo_client(18091)
+        expect(msg).to_eq("ping")
+        join(t)
+
+    )
+)

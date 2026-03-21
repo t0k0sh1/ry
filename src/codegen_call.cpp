@@ -1313,10 +1313,17 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "send") {
         if (e.args.size() != 2)
             codegenError("send() takes exactly 2 arguments");
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
+        llvm::Value *firstArg = emitExpr(*e.args[0]);
+        if (isTcpStream(firstArg)) {
+            llvm::Value *data = emitExpr(*e.args[1]);
+            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_send", fnTy);
+            return builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
+        }
+        llvm::Value *channelVal = firstArg;
         llvm::Type *elemTy = getChannelElementType(channelVal);
         if (!elemTy)
-            codegenError("send() requires Channel<T> as first argument");
+            codegenError("send() requires Channel<T> or TcpStream as first argument");
         llvm::Value *valueVal = emitExpr(*e.args[1]);
         if (valueVal->getType() != elemTy)
             codegenError("send() value type does not match channel element type");
@@ -1358,8 +1365,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "recv") {
+        if (e.args.size() == 2) {
+            // TCP recv(stream, max_bytes)
+            llvm::Value *streamVal = emitExpr(*e.args[0]);
+            if (!isTcpStream(streamVal))
+                codegenError("recv() with 2 arguments requires TcpStream as first argument");
+            llvm::Value *maxBytes = emitExpr(*e.args[1]);
+            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_recv", fnTy);
+            llvm::Value *result = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+            list_element_types_[result] = i8Ty_;
+            return result;
+        }
         if (e.args.size() != 1)
-            codegenError("recv() takes exactly 1 argument");
+            codegenError("recv() takes 1 or 2 arguments");
         llvm::Value *channelVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getChannelElementType(channelVal);
         if (!elemTy)
@@ -1445,14 +1464,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "close") {
         if (e.args.size() != 1)
             codegenError("close() takes exactly 1 argument");
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
-        if (!getChannelElementType(channelVal))
-            codegenError("close() requires Channel<T> argument");
+        llvm::Value *val = emitExpr(*e.args[0]);
+        if (isTcpStream(val) || isTcpListener(val)) {
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_tcp_close", fnTy);
+            return builder_.CreateCall(fn, {val});
+        }
+        if (!getChannelElementType(val))
+            codegenError("close() requires Channel<T>, TcpStream, or TcpListener argument");
 
         llvm::FunctionType *fnTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_close", fnTy);
-        return builder_.CreateCall(fn, {channelVal});
+        return builder_.CreateCall(fn, {val});
     }
 
     // range(n), range(start, end), or range(start, end, step) → List<int>
@@ -4076,6 +4101,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinRegex(*e))     return v;
     if (auto *v = emitBuiltinMath(*e))      return v;
     if (auto *v = emitBuiltinIO(*e))       return v;
+    if (auto *v = emitBuiltinNet(*e))     return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -4287,6 +4313,79 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
         list_element_types_[result] = i8Ty_;
         return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin Net =====
+
+llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: wrap a nullable ptr result in Option<ptr> and register it in a tracking set
+    auto emitPtrToOption = [&](llvm::Value *ptr, const std::string &name,
+                               std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(ptr, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        llvm::Value *opt = builder_.CreateSelect(isNull, noneVal, someVal, name + "_opt");
+        trackingSet.insert(opt);
+        return opt;
+    };
+
+    // bind(host, port) -> Option<TcpListener>
+    if (e.callee == "bind") {
+        if (e.args.size() != 2)
+            codegenError("bind() takes exactly 2 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_bind", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "bind_result");
+        return emitPtrToOption(result, "bind", tcp_listener_values_);
+    }
+
+    // listen(listener, backlog) -> Unit
+    if (e.callee == "listen") {
+        if (e.args.size() != 2)
+            codegenError("listen() takes exactly 2 arguments");
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("listen() requires TcpListener as first argument");
+        llvm::Value *backlog = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_listen", fnTy);
+        builder_.CreateCall(fn, {listener, backlog});
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    // accept(listener) -> Option<TcpStream>
+    if (e.callee == "accept") {
+        if (e.args.size() != 1)
+            codegenError("accept() takes exactly 1 argument");
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("accept() requires TcpListener argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_accept", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {listener}, "accept_result");
+        return emitPtrToOption(result, "accept", tcp_stream_values_);
+    }
+
+    // connect(host, port) -> Option<TcpStream>
+    if (e.callee == "connect") {
+        if (e.args.size() != 2)
+            codegenError("connect() takes exactly 2 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
+        return emitPtrToOption(result, "connect", tcp_stream_values_);
     }
 
     return nullptr;

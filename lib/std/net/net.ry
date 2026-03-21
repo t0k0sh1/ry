@@ -1,0 +1,13 @@
+# TCP socket operations
+
+@native
+fn bind(host: str, port: int) -> Option<TcpListener>
+
+@native
+fn listen(listener: TcpListener, backlog: int) -> Unit
+
+@native
+fn accept(listener: TcpListener) -> Option<TcpStream>
+
+@native
+fn connect(host: str, port: int) -> Option<TcpStream>

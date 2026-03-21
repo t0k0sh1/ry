@@ -362,6 +362,11 @@ private:
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
     llvm::Value *emitBuiltinMath(const CallExpr &e);
     llvm::Value *emitBuiltinIO(const CallExpr &e);
+    llvm::Value *emitBuiltinNet(const CallExpr &e);
+    bool isTcpListener(llvm::Value *val);
+    bool isTcpStream(llvm::Value *val);
+    std::unordered_set<llvm::Value*> tcp_listener_values_;
+    std::unordered_set<llvm::Value*> tcp_stream_values_;
     llvm::Value *emitBuiltinIterator(const CallExpr &e);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,

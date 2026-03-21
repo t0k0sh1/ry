@@ -285,6 +285,16 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (channelTy)
             channel_element_types_[ptr] = channelTy;
 
+        // --- TcpListener/TcpStream tracking ---
+        if (isTcpListener(val))
+            tcp_listener_values_.insert(ptr);
+        else if (type_annotation && *type_annotation == "TcpListener")
+            tcp_listener_values_.insert(ptr);
+        if (isTcpStream(val))
+            tcp_stream_values_.insert(ptr);
+        else if (type_annotation && *type_annotation == "TcpStream")
+            tcp_stream_values_.insert(ptr);
+
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
@@ -404,6 +414,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
         llvm::Type *channelTy = getChannelElementType(val);
         if (channelTy)
             channel_element_types_[ptr] = channelTy;
+        if (isTcpListener(val)) tcp_listener_values_.insert(ptr);
+        if (isTcpStream(val))   tcp_stream_values_.insert(ptr);
     }
 }
 
@@ -1286,6 +1298,8 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                     enum_value_types_[dst] = it->second;
                 if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
                     channel_element_types_[dst] = it->second;
+                if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
+                if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
             }
         }
 
@@ -1643,6 +1657,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 std::string inner = ptype.substr(8, ptype.size() - 9);
                 channel_element_types_[alloca] = resolveType(inner);
             }
+            if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
+            if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);

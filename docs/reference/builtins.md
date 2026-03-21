@@ -17,11 +17,14 @@
 | `channel[T]()` | Creates an unbuffered `Channel<T>` |
 | `channel[T](capacity)` | Creates a buffered `Channel<T>` |
 | `send(ch, value)` | Sends a value through `Channel<T>` |
+| `send(stream, data)` | Sends `List<byte>` through `TcpStream`, returns bytes sent |
 | `try_send(ch, value)` | Attempts to send through `Channel<T>` without blocking |
 | `recv(ch)` | Receives a value from `Channel<T>` |
+| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<byte>` |
 | `recv_opt(ch)` | Receives from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
 | `try_recv(ch)` | Attempts to receive from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
 | `close(ch)` | Closes a `Channel<T>` |
+| `close(handle)` | Closes a `TcpStream` or `TcpListener` |
 | `join(task)` | Waits for a `Task<T>` to complete and returns its result |
 
 ### Option
