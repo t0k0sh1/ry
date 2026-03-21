@@ -24,12 +24,17 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     if (fd < 0)
         return nullptr;
 
+    if (port < 0 || port > 65535) {
+        ::close(fd);
+        return nullptr;
+    }
+
     int opt = 1;
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons((uint16_t)port);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
 
     if (::inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
         ::close(fd);
@@ -109,6 +114,13 @@ extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
 }
 
 extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
+    if (max_bytes <= 0) {
+        auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+        header->len = 0;
+        header->cap = 0;
+        header->data = nullptr;
+        return header;
+    }
     auto *handle = (TcpStreamHandle *)stream;
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
     header->data = (int8_t *)malloc((size_t)max_bytes);

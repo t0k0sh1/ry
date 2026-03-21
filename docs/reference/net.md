@@ -1,4 +1,4 @@
-[English](net.md) | [日本語](../ja/reference/net.md) | [繁體中文](../zh/reference/net.md)
+[English](net.md)
 
 # Network (TCP) Reference
 
@@ -103,7 +103,7 @@ join(t)
 - `bind()` and `connect()` return `Option<T>` — use `match` to handle failure.
 - `listen()` raises a runtime error on failure.
 - `send()` raises a runtime error on failure.
-- `recv()` returns an empty `List<byte>` when the connection is closed (not an error).
+- `recv()` returns an empty `List<byte>` when the connection is closed or when a receive error occurs; unlike `listen()`/`send()`, it does not raise on failure.
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 
 ## Byte Conversion

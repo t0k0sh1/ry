@@ -50,8 +50,10 @@ llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
 
 static bool lookupValueSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
     if (set.count(val)) return true;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-        return set.count(load->getPointerOperand()) > 0;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        if (load->getType()->isPointerTy())
+            return set.count(load->getPointerOperand()) > 0;
+    }
     return false;
 }
 
