@@ -827,8 +827,11 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 
     // join(list, sep) → str
     if (e.callee == "join") {
-        if (e.args.size() != 2)
+        if (e.args.size() != 2) {
+            if (e.args.size() != 1)
+                codegenError("join() expects 1 argument (Task<T>) or 2 arguments (List<str>, str)");
             return nullptr;
+        }
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Value *sep = emitExpr(*e.args[1]);
         if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
@@ -1350,7 +1353,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *taskVal = emitExpr(*e.args[0]);
         llvm::Type *resultTy = getTaskResultType(taskVal);
         if (!resultTy)
-            return nullptr;
+            codegenError("join() requires Task<T>");
 
         llvm::FunctionType *joinTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);

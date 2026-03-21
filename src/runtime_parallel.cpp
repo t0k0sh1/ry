@@ -219,8 +219,9 @@ public:
         }
         cv_.notify_all();
         for (std::thread &worker : workers_) {
-            if (worker.joinable())
-                worker.join();
+            if (worker.joinable()) {
+                try { worker.join(); } catch (...) {}
+            }
         }
 
         {
@@ -313,6 +314,9 @@ private:
     std::unordered_set<ChannelHandle *> live_channels_;
 };
 
+// Intentionally heap-allocated and never deleted: avoids destructor
+// running in forked child processes (death tests) where worker threads
+// do not exist, which would cause thread::join to fail/abort.
 RuntimeScheduler &scheduler() {
     static RuntimeScheduler *runtime = new RuntimeScheduler();
     return *runtime;
@@ -731,43 +735,48 @@ extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_inde
             }
         };
 
-        for (const SelectCaseEntry &entry : state->cases) {
-            if ((entry.kind != SelectCaseKind::Recv && entry.kind != SelectCaseKind::RecvOpt) ||
-                entry.channel->capacity > 0)
-                continue;
-            if (std::find(registered_channels.begin(), registered_channels.end(), entry.channel) != registered_channels.end())
-                continue;
+        try {
+            for (const SelectCaseEntry &entry : state->cases) {
+                if ((entry.kind != SelectCaseKind::Recv && entry.kind != SelectCaseKind::RecvOpt) ||
+                    entry.channel->capacity > 0)
+                    continue;
+                if (std::find(registered_channels.begin(), registered_channels.end(), entry.channel) != registered_channels.end())
+                    continue;
 
-            std::lock_guard<std::mutex> lock(entry.channel->mu);
-            if (selectCaseInvalid(entry))
-                throw std::runtime_error("runtime error: recv() on closed empty channel");
-            entry.channel->waiting_select_receivers += 1;
-            entry.channel->cv.notify_all();
-            registered_channels.push_back(entry.channel);
-        }
+                std::lock_guard<std::mutex> lock(entry.channel->mu);
+                if (selectCaseInvalid(entry))
+                    throw std::runtime_error("runtime error: recv() on closed empty channel");
+                entry.channel->waiting_select_receivers += 1;
+                entry.channel->cv.notify_all();
+                registered_channels.push_back(entry.channel);
+            }
 
-        std::unique_lock<std::mutex> lock(g_select_mu);
-        const uint64_t current_epoch = g_select_epoch.load(std::memory_order_relaxed);
-        if (current_epoch != probe_epoch) {
-            lock.unlock();
-            unregisterChannels();
-            continue;
-        }
-        if (has_timeout) {
-            if (!g_select_cv.wait_until(lock, deadline, [&]() {
-                    return g_select_epoch.load(std::memory_order_relaxed) != current_epoch;
-                })) {
+            std::unique_lock<std::mutex> lock(g_select_mu);
+            const uint64_t current_epoch = g_select_epoch.load(std::memory_order_relaxed);
+            if (current_epoch != probe_epoch) {
                 lock.unlock();
                 unregisterChannels();
-                return timeout_index;
+                continue;
             }
-        } else {
-            g_select_cv.wait(lock, [&]() {
-                return g_select_epoch.load(std::memory_order_relaxed) != current_epoch;
-            });
+            if (has_timeout) {
+                if (!g_select_cv.wait_until(lock, deadline, [&]() {
+                        return g_select_epoch.load(std::memory_order_relaxed) != current_epoch;
+                    })) {
+                    lock.unlock();
+                    unregisterChannels();
+                    return timeout_index;
+                }
+            } else {
+                g_select_cv.wait(lock, [&]() {
+                    return g_select_epoch.load(std::memory_order_relaxed) != current_epoch;
+                });
+            }
+            lock.unlock();
+            unregisterChannels();
+        } catch (...) {
+            unregisterChannels();
+            throw;
         }
-        lock.unlock();
-        unregisterChannels();
     }
 }
 
