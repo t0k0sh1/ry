@@ -44,6 +44,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
 | [正規表現](reference/regex.md) | regex_match・regex_search・regex_replace・regex_split・regex_find_all |
 | [数学関数](reference/math.md) | PI・E・sqrt・sin・cos・abs・floor・ceil・round 等 |
+| [I/O 関数](reference/io.md) | read_text・write_text・file_exists・read_bytes・str_to_bytes 等 |
 | [パッケージシステム](reference/packages.md) | from/import の文法・ディレクトリパッケージ・std・RY_HOME |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
 | [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |

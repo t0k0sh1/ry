@@ -361,6 +361,7 @@ private:
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
     llvm::Value *emitBuiltinMath(const CallExpr &e);
+    llvm::Value *emitBuiltinIO(const CallExpr &e);
     llvm::Value *emitBuiltinIterator(const CallExpr &e);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,

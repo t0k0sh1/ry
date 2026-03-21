@@ -105,6 +105,7 @@ The following sub-packages require explicit import:
 | Package | Description |
 |---------|-------------|
 | [`std.math`](math.md) | Mathematical constants and functions |
+| [`std.io`](io.md) | File I/O, standard input, and byte conversions |
 
 ```python
 from std.math import sqrt, PI, sin
