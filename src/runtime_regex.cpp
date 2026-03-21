@@ -1,6 +1,7 @@
 #include "ry/runtime_regex.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -34,8 +35,9 @@ struct RegexNode {
     std::vector<std::pair<char, char>> ranges; // inclusive ranges
 
     // Repeat
-    enum RepeatKind { Star, Plus, Question };
-    RepeatKind repeatKind = Star;
+    int repeatMin = 0;   // minimum repetitions
+    int repeatMax = -1;  // maximum repetitions (-1 = unlimited)
+    bool greedy = true;  // false = non-greedy (lazy)
 
     // Children
     std::vector<std::unique_ptr<RegexNode>> children;
@@ -114,17 +116,98 @@ private:
 
     RegexNodePtr parseRepeat() {
         auto atom = parseAtom();
-        if (!atEnd() && (peek() == '*' || peek() == '+' || peek() == '?')) {
-            char rep = advance();
+        if (atEnd()) return atom;
+
+        int rmin = -1, rmax = -1;
+        bool hasQuantifier = false;
+
+        char c = peek();
+        if (c == '*') {
+            advance();
+            rmin = 0; rmax = -1;
+            hasQuantifier = true;
+        } else if (c == '+') {
+            advance();
+            rmin = 1; rmax = -1;
+            hasQuantifier = true;
+        } else if (c == '?') {
+            advance();
+            rmin = 0; rmax = 1;
+            hasQuantifier = true;
+        } else if (c == '{') {
+            size_t saved = pos_;
+            if (parseQuantifierBrace(rmin, rmax)) {
+                hasQuantifier = true;
+            } else {
+                pos_ = saved; // fallback: treat '{' as literal
+            }
+        }
+
+        if (hasQuantifier) {
             auto node = std::make_unique<RegexNode>();
             node->kind = RegexNodeKind::Repeat;
-            node->repeatKind = (rep == '*') ? RegexNode::Star :
-                               (rep == '+') ? RegexNode::Plus :
-                                              RegexNode::Question;
+            node->repeatMin = rmin;
+            node->repeatMax = rmax;
+            node->greedy = true;
+            // Non-greedy suffix '?'
+            if (!atEnd() && peek() == '?') {
+                advance();
+                node->greedy = false;
+            }
             node->children.push_back(std::move(atom));
             return node;
         }
         return atom;
+    }
+
+    // Try to parse {n}, {n,}, {n,m}. Returns true on success.
+    bool parseQuantifierBrace(int &rmin, int &rmax) {
+        advance(); // consume '{'
+        if (atEnd() || !std::isdigit(static_cast<unsigned char>(peek()))) return false;
+        int n = parseNumber();
+        if (n > 1000) {
+            fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", n, src_);
+            exit(1);
+        }
+        if (atEnd()) return false;
+        if (peek() == '}') {
+            advance();
+            rmin = n; rmax = n;
+            return true;
+        }
+        if (peek() == ',') {
+            advance();
+            if (atEnd()) return false;
+            if (peek() == '}') {
+                advance();
+                rmin = n; rmax = -1;
+                return true;
+            }
+            if (!std::isdigit(static_cast<unsigned char>(peek()))) return false;
+            int m = parseNumber();
+            if (m > 1000) {
+                fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", m, src_);
+                exit(1);
+            }
+            if (atEnd() || peek() != '}') return false;
+            advance();
+            if (n > m) {
+                fprintf(stderr, "regex error: invalid quantifier {%d,%d} in pattern '%s'\n", n, m, src_);
+                exit(1);
+            }
+            rmin = n; rmax = m;
+            return true;
+        }
+        return false;
+    }
+
+    int parseNumber() {
+        int val = 0;
+        while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek()))) {
+            val = val * 10 + (advance() - '0');
+            if (val > 1000) return val; // early exit on overflow
+        }
+        return val;
     }
 
     RegexNodePtr parseAtom() {
@@ -361,27 +444,78 @@ public:
             return left;
         }
         case RegexNodeKind::Repeat: {
-            auto inner = build(*node.children[0]);
-            if (node.repeatKind == RegexNode::Star) {
-                // e* : split → (inner → back to split) | out
-                auto *split = newState(NFAState::Split);
-                split->out1 = inner.start;
-                patch(inner, split);
-                return {split, {&split->out2}};
+            int rmin = node.repeatMin;
+            int rmax = node.repeatMax;
+            bool gr = node.greedy;
+
+            // Helper: configure split for greedy/non-greedy.
+            // Sets the "preferred" out to inner, returns pointer to the "skip" out.
+            auto configureSplit = [](NFAState *split, NFAState *inner, bool greedy) -> NFAState ** {
+                if (greedy) {
+                    split->out1 = inner;
+                    return &split->out2;
+                } else {
+                    split->out2 = inner;
+                    return &split->out1;
+                }
+            };
+
+            // Step 1: Build min required copies concatenated
+            NFAFragment result;
+            bool hasResult = false;
+            for (int i = 0; i < rmin; ++i) {
+                auto copy = build(*node.children[0]);
+                if (!hasResult) {
+                    result = std::move(copy);
+                    hasResult = true;
+                } else {
+                    patch(result, copy.start);
+                    result.danglingOuts = std::move(copy.danglingOuts);
+                }
             }
-            if (node.repeatKind == RegexNode::Plus) {
-                // e+ : inner → split → (inner again) | out
+
+            if (rmax == -1) {
+                // Step 2a: Unlimited → append Star loop
+                auto loopInner = build(*node.children[0]);
                 auto *split = newState(NFAState::Split);
-                split->out1 = inner.start;
-                patch(inner, split);
-                return {inner.start, {&split->out2}};
+                NFAState **skipOut = configureSplit(split, loopInner.start, gr);
+                patch(loopInner, split);
+
+                if (!hasResult) {
+                    return {split, {skipOut}};
+                } else {
+                    patch(result, split);
+                    result.danglingOuts = {skipOut};
+                    return result;
+                }
+            } else {
+                // Step 2b: Finite max → append (max - min) optional copies
+                int optCount = rmax - rmin;
+                for (int i = 0; i < optCount; ++i) {
+                    auto optInner = build(*node.children[0]);
+                    auto *split = newState(NFAState::Split);
+                    NFAState **skipOut = configureSplit(split, optInner.start, gr);
+
+                    if (!hasResult) {
+                        std::vector<NFAState **> outs = {skipOut};
+                        outs.insert(outs.end(), optInner.danglingOuts.begin(), optInner.danglingOuts.end());
+                        result = {split, std::move(outs)};
+                        hasResult = true;
+                    } else {
+                        patch(result, split);
+                        result.danglingOuts = {skipOut};
+                        result.danglingOuts.insert(result.danglingOuts.end(),
+                            optInner.danglingOuts.begin(), optInner.danglingOuts.end());
+                    }
+                }
+
+                if (!hasResult) {
+                    // {0,0} = match empty
+                    auto *s = newState(NFAState::Split);
+                    return {s, {&s->out1}};
+                }
+                return result;
             }
-            // e? : split → inner | out
-            auto *split = newState(NFAState::Split);
-            split->out1 = inner.start;
-            std::vector<NFAState **> outs = {&split->out2};
-            outs.insert(outs.end(), inner.danglingOuts.begin(), inner.danglingOuts.end());
-            return {split, std::move(outs)};
         }
         case RegexNodeKind::Group:
             return build(*node.children[0]);
@@ -411,7 +545,9 @@ public:
 
     // Try to match text[startPos..] returning the end position of the match,
     // or -1 if no match. fullMatch requires matching entire text.
-    int64_t simulate(const char *text, size_t textLen, size_t startPos, bool fullMatch) {
+    // preferShortest: return earliest match (for non-greedy patterns).
+    int64_t simulate(const char *text, size_t textLen, size_t startPos,
+                     bool fullMatch, bool preferShortest = false) {
         current_.clear();
         next_.clear();
         int64_t lastMatch = -1;
@@ -426,6 +562,7 @@ public:
         } else {
             if (stateSetContains(current_, matchState_)) {
                 lastMatch = (int64_t)startPos;
+                if (preferShortest) return lastMatch;
             }
         }
 
@@ -462,6 +599,7 @@ public:
                     if (i + 1 == textLen) return (int64_t)(i + 1);
                 } else {
                     lastMatch = (int64_t)(i + 1);
+                    if (preferShortest) return lastMatch;
                 }
             }
 
@@ -524,12 +662,22 @@ struct CompiledRegex {
     NFABuilder builder;
     NFAState *matchState;
     NFAState *start;
+    bool hasLazy_ = false;
+
+    static bool detectLazy(const RegexNode &node) {
+        if (node.kind == RegexNodeKind::Repeat && !node.greedy) return true;
+        for (auto &child : node.children) {
+            if (detectLazy(*child)) return true;
+        }
+        return false;
+    }
 
     static CompiledRegex compile(const char *pattern) {
         RegexParser parser(pattern);
         auto ast = parser.parse();
 
         CompiledRegex cr;
+        cr.hasLazy_ = detectLazy(*ast);
         auto frag = cr.builder.build(*ast);
         cr.matchState = cr.builder.newState(NFAState::Match);
         cr.builder.patch(frag, cr.matchState);
@@ -549,7 +697,7 @@ struct CompiledRegex {
         size_t len = strlen(text);
         NFASimulator sim(start, matchState);
         for (size_t i = 0; i <= len; ++i) {
-            int64_t endPos = sim.simulate(text, len, i, false);
+            int64_t endPos = sim.simulate(text, len, i, false, hasLazy_);
             if (endPos >= 0) {
                 return {(int64_t)i, endPos};
             }
@@ -564,7 +712,7 @@ struct CompiledRegex {
         NFASimulator sim(start, matchState);
         size_t pos = 0;
         while (pos <= len) {
-            int64_t endPos = sim.simulate(text, len, pos, false);
+            int64_t endPos = sim.simulate(text, len, pos, false, hasLazy_);
             if (endPos >= 0) {
                 results.push_back({(int64_t)pos, endPos});
                 if ((size_t)endPos == pos) {
