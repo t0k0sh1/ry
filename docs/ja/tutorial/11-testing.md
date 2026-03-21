@@ -26,18 +26,22 @@ ry test tests/my_test.test.ry # 特定のテストファイルを実行
 `describe` で関連するテストをグループ化し、`it` で個々のテストケースを定義します。
 
 ```python
-describe("Calculator"):
-    it("adds integers"):
+describe("Calculator", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("subtracts integers"):
+    )
+    it("subtracts integers", fn():
         expect(5 - 3).to_eq(2)
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
+    )
+)
 ```
 
-- `describe` と `it` は**トレーリングブロック構文**を使用します。関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして渡されます。
+- `describe` と `it` は説明文字列と**ラムダ引数** `fn():` を第二引数に取ります。
 - `describe` / `it` / `expect` / `mock` / `verify` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）。
 
 ---
@@ -82,13 +86,16 @@ Calculator
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 ### `verify(fn_name)`
@@ -96,12 +103,14 @@ describe("mocking"):
 モックされた関数の呼び出し回数を返します。
 
 ```python
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ---

@@ -1281,17 +1281,17 @@ TEST(ParserTest, SnakeCaseParamRequired) {
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_not_eq(2)");
+    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_not_eq(2)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_be_some()");
+    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_be_some()\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe(\"test\"):\n    it(\"t\"):\n        expect(1).to_contain(1)");
+    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_contain(1)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
@@ -1319,8 +1319,8 @@ TEST(ParserTest, TrailingBlockWithArgs) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[2]->data));
 }
 
-TEST(ParserTest, TrailingBlockNested) {
-    Program prog = parseStr("describe(\"calc\"):\n    it(\"adds\"):\n        expect(1 + 2).to_eq(3)");
+TEST(ParserTest, LambdaArgNested) {
+    Program prog = parseStr("describe(\"calc\", fn():\n    it(\"adds\", fn():\n        expect(1 + 2).to_eq(3)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
     const auto &s = std::get<CallStmt>(prog[0]);

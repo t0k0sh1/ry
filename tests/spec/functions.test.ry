@@ -31,61 +31,81 @@ fn operator+(a: Vec2, b: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-describe("basic function"):
-    it("call"):
+describe("basic function", fn():
+    it("call", fn():
         expect(add(1, 2)).to_eq(3)
 
-describe("recursion"):
-    it("factorial"):
+    )
+)
+describe("recursion", fn():
+    it("factorial", fn():
         expect(factorial(5)).to_eq(120)
 
-describe("overloading"):
-    it("1 arg"):
+    )
+)
+describe("overloading", fn():
+    it("1 arg", fn():
         expect(area(5)).to_eq(25)
 
-    it("2 args"):
+    )
+    it("2 args", fn():
         expect(area(3, 4)).to_eq(12)
 
-describe("lambda"):
-    it("single expression"):
+    )
+)
+describe("lambda", fn():
+    it("single expression", fn():
         let double = fn(x: int): x * 2
         expect(double(5)).to_eq(10)
 
-    it("multi-line"):
+    )
+    it("multi-line", fn():
         let abs_val = fn(x: int):
             if x < 0:
                 return -x
             return x
         expect(abs_val(-5)).to_eq(5)
 
-describe("closure"):
-    it("captures by value"):
+    )
+)
+describe("closure", fn():
+    it("captures by value", fn():
         var base = 10
         let add_base = fn(x: int): x + base
         base = 99
         expect(add_base(5)).to_eq(15)
 
-describe("higher-order function"):
-    it("function as argument"):
+    )
+)
+describe("higher-order function", fn():
+    it("function as argument", fn():
         let res = apply(fn(x: int): x * 3, 5)
         expect(res).to_eq(15)
 
-describe("UFCS"):
-    it("method-style call"):
+    )
+)
+describe("UFCS", fn():
+    it("method-style call", fn():
         expect(5.double()).to_eq(10)
 
-    it("chaining"):
+    )
+    it("chaining", fn():
         expect(5.double().add_one()).to_eq(11)
 
-describe("operator overloading"):
-    it("binary +"):
+    )
+)
+describe("operator overloading", fn():
+    it("binary +", fn():
         let v1 = Vec2(1.0, 2.0)
         let v2 = Vec2(3.0, 4.0)
         let v3 = v1 + v2
         expect(v3.x).to_eq(4.0)
         expect(v3.y).to_eq(6.0)
 
-    it("== comparison"):
+    )
+    it("== comparison", fn():
         let v1 = Vec2(1.0, 2.0)
         let v2 = Vec2(1.0, 2.0)
         expect(v1 == v2).to_be_true()
+    )
+)

@@ -30,20 +30,22 @@ ry test test_file.ry # 執行指定的測試檔案
 ### describe / it
 
 ```
-describe("說明文字"):
-    it("測試案例名稱"):
+describe("說明文字", fn():
+    it("測試案例名稱", fn():
         # 測試主體
         expect(實際值).to_eq(預期值)
+    )
+)
 ```
 
-- `describe` 和 `it` 使用**尾隨區塊語法**: 函式呼叫後加上 `:` 會將縮排區塊作為 lambda 傳入最後的參數
+- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數
 - `describe` 區塊內可以撰寫 `it` 區塊及其他語句（如變數宣告等）
 - 各 `it` 區塊為獨立的測試案例
 - `describe` / `expect` 僅能在 `ry test` 中使用（在一般的 `ry` 執行中會產生編譯錯誤）
 
 ### 尾隨區塊語法
 
-任何函式呼叫都可以使用尾隨區塊語法。在 `()` 後加上 `:` 會將縮排區塊作為無參數 lambda 傳入最後的參數位置:
+任何函式呼叫（`describe`/`it`/`mock` 除外）都可以使用尾隨區塊語法。在 `()` 後加上 `:` 會將縮排區塊作為無參數 lambda 傳入最後的參數位置:
 
 ```
 # 以下兩者等價:
@@ -98,19 +100,25 @@ Calculator
 ## 範例
 
 ```
-describe("Arithmetic"):
-    it("adds integers"):
+describe("Arithmetic", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("compares strings"):
+    )
+    it("compares strings", fn():
         expect("hello").to_eq("hello")
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
 
-describe("Booleans"):
-    it("false check"):
+    )
+)
+describe("Booleans", fn():
+    it("false check", fn():
         expect(1 > 2).to_be_false()
+    )
+)
 ```
 
 ---
@@ -125,13 +133,16 @@ describe("Booleans"):
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 - 第一個參數為函式名稱（識別符，非字串）
@@ -144,12 +155,14 @@ describe("mocking"):
 回傳模擬函式被呼叫的次數（`int`）。
 
 ```
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ### 模擬的限制事項

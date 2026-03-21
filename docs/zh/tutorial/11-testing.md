@@ -26,18 +26,22 @@ ry test tests/my_test.test.ry # 執行特定的測試檔案
 使用 `describe` 將相關測試分組，使用 `it` 定義各個測試案例。
 
 ```python
-describe("Calculator"):
-    it("adds integers"):
+describe("Calculator", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("subtracts integers"):
+    )
+    it("subtracts integers", fn():
         expect(5 - 3).to_eq(2)
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
+    )
+)
 ```
 
-- `describe` 和 `it` 使用**尾隨區塊語法**：在函式呼叫後加上 `:` 會將縮排區塊作為 Lambda 傳入。
+- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數。
 - `describe` / `it` / `expect` / `mock` / `verify` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
 
 ---
@@ -82,13 +86,16 @@ Calculator
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 ### `verify(fn_name)`
@@ -96,12 +103,14 @@ describe("mocking"):
 傳回模擬函式被呼叫的次數。
 
 ```python
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ---

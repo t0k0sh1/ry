@@ -1,64 +1,82 @@
-describe("f-string"):
-    it("int interpolation"):
+describe("f-string", fn():
+    it("int interpolation", fn():
         let x = 42
         expect(f"value: {x}").to_eq("value: 42")
 
-    it("float interpolation"):
+    )
+    it("float interpolation", fn():
         let x = 3.14
         expect(f"pi: {x}").to_eq("pi: 3.14")
 
-    it("bool interpolation"):
+    )
+    it("bool interpolation", fn():
         let x = true
         expect(f"flag: {x}").to_eq("flag: true")
 
-    it("expression interpolation"):
+    )
+    it("expression interpolation", fn():
         let a = 1
         let b = 2
         expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
 
-    it("escaped braces"):
+    )
+    it("escaped braces", fn():
         expect(f"{{braces}}").to_eq("{braces}")
 
-describe("type cast as"):
-    it("int to float"):
+    )
+)
+describe("type cast as", fn():
+    it("int to float", fn():
         expect(42 as float).to_eq(42.0)
 
-    it("float to int"):
+    )
+    it("float to int", fn():
         expect(3.14 as int).to_eq(3)
 
-    it("int to bool"):
+    )
+    it("int to bool", fn():
         expect(1 as bool).to_be_true()
         expect(0 as bool).to_be_false()
 
-    it("int to str"):
+    )
+    it("int to str", fn():
         expect(42 as str).to_eq("42")
 
-    it("byte to int"):
+    )
+    it("byte to int", fn():
         let b: byte = 200
         expect(b as int).to_eq(200)
 
-    it("int to byte to int"):
+    )
+    it("int to byte to int", fn():
         let b = 255 as byte
         expect(b as int).to_eq(255)
 
-describe("type alias"):
-    it("basic alias"):
+    )
+)
+describe("type alias", fn():
+    it("basic alias", fn():
         type Meters = float
         let d: Meters = 3.14
         expect(d).to_eq(3.14)
 
-describe("Error type"):
-    it("constructor with message"):
+    )
+)
+describe("Error type", fn():
+    it("constructor with message", fn():
         let e = Error("something went wrong")
         expect(e.message).to_eq("something went wrong")
         expect(e.code).to_eq(0)
 
-    it("constructor with code"):
+    )
+    it("constructor with code", fn():
         let e = Error("not found", 404)
         expect(e.message).to_eq("not found")
         expect(e.code).to_eq(404)
 
-describe("!! error propagation"):
+    )
+)
+describe("!! error propagation", fn():
     fn safe_divide(a: int, b: int) -> (int, Error?):
         if b == 0:
             return (0, Some(Error("division by zero")))
@@ -72,21 +90,27 @@ describe("!! error propagation"):
         let v = safe_divide(10, 0)!!
         return (v, none)
 
-    it("propagates success"):
+    it("propagates success", fn():
         let val, err = use_divide()
         expect(val).to_eq(5)
         expect(err).to_be_none()
 
-    it("propagates error"):
+    )
+    it("propagates error", fn():
         let val, err = use_divide_err()
         expect(err).to_be_some()
 
+    )
+)
 fn accept_union(x: int | str) -> bool:
     return true
 
-describe("union type"):
-    it("accepts int"):
+describe("union type", fn():
+    it("accepts int", fn():
         expect(accept_union(42)).to_be_true()
 
-    it("accepts str"):
+    )
+    it("accepts str", fn():
         expect(accept_union("hello")).to_be_true()
+    )
+)

@@ -30,20 +30,22 @@ ry test test_file.ry # 特定のテストファイルを実行
 ### describe / it
 
 ```
-describe("説明文"):
-    it("テストケース名"):
+describe("説明文", fn():
+    it("テストケース名", fn():
         # テスト本体
         expect(実際の値).to_eq(期待値)
+    )
+)
 ```
 
-- `describe` と `it` は**トレイリングブロック構文**を使用: 関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして最後の引数に渡される
+- `describe` と `it` は説明文字列と**ラムダ引数** `fn():` を第二引数に取る
 - `describe` ブロック内には `it` ブロックやその他の文（変数宣言など）を記述可能
 - 各 `it` ブロックは独立したテストケース
 - `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
 
 ### トレイリングブロック構文
 
-任意の関数呼び出しにトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
+任意の関数呼び出し（`describe`/`it`/`mock` を除く）にトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
 
 ```
 # 以下は等価:
@@ -98,19 +100,25 @@ Calculator
 ## 例
 
 ```
-describe("Arithmetic"):
-    it("adds integers"):
+describe("Arithmetic", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("compares strings"):
+    )
+    it("compares strings", fn():
         expect("hello").to_eq("hello")
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
 
-describe("Booleans"):
-    it("false check"):
+    )
+)
+describe("Booleans", fn():
+    it("false check", fn():
         expect(1 > 2).to_be_false()
+    )
+)
 ```
 
 ---
@@ -125,13 +133,16 @@ describe("Booleans"):
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 - 第1引数は関数名（識別子、文字列ではない）
@@ -144,12 +155,14 @@ describe("mocking"):
 モック済み関数の呼び出し回数を `int` で返します。
 
 ```
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ### モックの制限事項

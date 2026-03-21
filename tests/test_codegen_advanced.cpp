@@ -1102,9 +1102,11 @@ TEST_F(CodeGenTest, RawStringConcat) {
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src =
-        "describe(\"matchers\"):\n"
-        "    it(\"not equal\"):\n"
-        "        expect(1).to_not_eq(2)";
+        "describe(\"matchers\", fn():\n"
+        "    it(\"not equal\", fn():\n"
+        "        expect(1).to_not_eq(2)\n"
+        "    )\n"
+        ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
@@ -1112,10 +1114,12 @@ TEST_F(CodeGenTest, ExpectToNotEq) {
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src =
-        "describe(\"matchers\"):\n"
-        "    it(\"some\"):\n"
+        "describe(\"matchers\", fn():\n"
+        "    it(\"some\", fn():\n"
         "        let x = Some(5)\n"
-        "        expect(x).to_be_some()";
+        "        expect(x).to_be_some()\n"
+        "    )\n"
+        ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
@@ -1123,30 +1127,37 @@ TEST_F(CodeGenTest, ExpectToBeSome) {
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src =
-        "describe(\"matchers\"):\n"
-        "    it(\"contains\"):\n"
+        "describe(\"matchers\", fn():\n"
+        "    it(\"contains\", fn():\n"
         "        let xs = [1, 2, 3]\n"
-        "        expect(xs).to_contain(2)";
+        "        expect(xs).to_contain(2)\n"
+        "    )\n"
+        ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
 TEST_F(CodeGenTest, ExpectToContainString) {
     std::string src =
-        "describe(\"matchers\"):\n"
-        "    it(\"contains str\"):\n"
+        "describe(\"matchers\", fn():\n"
+        "    it(\"contains str\", fn():\n"
         "        let s = \"hello world\"\n"
-        "        expect(s).to_contain(\"world\")";
+        "        expect(s).to_contain(\"world\")\n"
+        "    )\n"
+        ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
 
-// ===== trailing block syntax =====
+// ===== lambda argument syntax =====
 
-TEST_F(CodeGenTest, TrailingBlockDescribeIt) {
+TEST_F(CodeGenTest, LambdaArgDescribeIt) {
     std::string src =
-        "describe(\"Calculator\"):\n"
-        "    it(\"adds\"):\n"
+        "describe(\"Calculator\", fn():\n"
+        "    it(\"adds\", fn():\n"
         "        expect(1 + 2).to_eq(3)\n"
-        "    it(\"subtracts\"):\n"
-        "        expect(5 - 3).to_eq(2)";
+        "    )\n"
+        "    it(\"subtracts\", fn():\n"
+        "        expect(5 - 3).to_eq(2)\n"
+        "    )\n"
+        ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
