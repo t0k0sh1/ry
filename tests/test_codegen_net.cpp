@@ -51,10 +51,11 @@ match connect("127.0.0.1", 19999):
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-fn run_server(port: int) -> str:
+fn run_server(port: int, ready: Channel<int>) -> str:
     match bind("127.0.0.1", port):
         case Some(server):
             listen(server, 1)
+            send(ready, 1)
             match accept(server):
                 case Some(conn):
                     let data: List<byte> = recv(conn, 4096)
@@ -65,7 +66,7 @@ fn run_server(port: int) -> str:
                     ...
             close(server)
         case None:
-            ...
+            send(ready, 0)
     return "done"
 
 fn run_client(port: int) -> str:
@@ -79,7 +80,9 @@ fn run_client(port: int) -> str:
         case None:
             return "fail"
 
-let t: Task<str> = spawn run_server(18081)
+let ready: Channel<int> = channel[int]()
+let t: Task<str> = spawn run_server(18081, ready)
+recv(ready)
 let resp_msg = run_client(18081)
 print(resp_msg)
 join(t)

@@ -21,10 +21,11 @@ describe("TCP socket API", fn():
 
     )
     it("echo round-trip with spawn", fn():
-        fn echo_server(port: int) -> str:
+        fn echo_server(port: int, ready: Channel<int>) -> str:
             match bind("127.0.0.1", port):
                 case Some(server):
                     listen(server, 1)
+                    send(ready, 1)
                     match accept(server):
                         case Some(conn):
                             let data: List<byte> = recv(conn, 4096)
@@ -34,7 +35,7 @@ describe("TCP socket API", fn():
                             ...
                     close(server)
                 case None:
-                    ...
+                    send(ready, 0)
             return "done"
 
         fn echo_client(port: int) -> str:
@@ -48,7 +49,9 @@ describe("TCP socket API", fn():
                 case None:
                     return "fail"
 
-        let t: Task<str> = spawn echo_server(18091)
+        let ready: Channel<int> = channel[int]()
+        let t: Task<str> = spawn echo_server(18091, ready)
+        recv(ready)
         let msg = echo_client(18091)
         expect(msg).to_eq("ping")
         join(t)
