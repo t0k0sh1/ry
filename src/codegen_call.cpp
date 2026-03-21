@@ -4104,6 +4104,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinMath(*e))      return v;
     if (auto *v = emitBuiltinIO(*e))       return v;
     if (auto *v = emitBuiltinNet(*e))     return v;
+    if (auto *v = emitBuiltinHttp(*e))    return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -4388,6 +4389,194 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
         return emitPtrToOption(result, "connect", tcp_stream_values_);
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin HTTP =====
+
+llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // http_response(status, headers, body) -> HttpResponse
+    if (e.callee == "http_response") {
+        if (e.args.size() != 3)
+            codegenError("http_response() takes exactly 3 arguments");
+        llvm::Value *status = emitExpr(*e.args[0]);
+        llvm::Value *headers = emitExpr(*e.args[1]);
+        llvm::Value *body = emitExpr(*e.args[2]);
+        if (status->getType() != i64Ty_)
+            codegenError("http_response() status must be int");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_response() headers must be Map<str, str>");
+        if (body->getType() != ptrTy_)
+            codegenError("http_response() body must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_, ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_response_create", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {status, headers, body}, "http_resp");
+        http_response_values_.insert(result);
+        return result;
+    }
+
+    // http_method/http_path/http_body: single-arg HttpRequest accessors returning str
+    if (e.callee == "http_method" || e.callee == "http_path" || e.callee == "http_body") {
+        if (e.args.size() != 1)
+            codegenError(e.callee + "() takes exactly 1 argument");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError(e.callee + "() requires HttpRequest argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        return builder_.CreateCall(fn, {req}, e.callee);
+    }
+
+    // http_header(req, key) -> Option<str>
+    if (e.callee == "http_header") {
+        if (e.args.size() != 2)
+            codegenError("http_header() takes exactly 2 arguments");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_header() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_header() key must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_header", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_hdr");
+        // Convert nullable ptr to Option<str>
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_hdr_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(result, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        return builder_.CreateSelect(isNull, noneVal, someVal, "http_hdr_opt");
+    }
+
+    // http_listen(host, port, handler) -> Unit
+    if (e.callee == "http_listen") {
+        if (e.args.size() != 3)
+            codegenError("http_listen() takes exactly 3 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        llvm::Value *handler = emitExpr(*e.args[2]);
+        if (host->getType() != ptrTy_)
+            codegenError("http_listen() host must be str");
+        if (port->getType() != i64Ty_)
+            codegenError("http_listen() port must be int");
+
+        // Get handler FnTypeInfo
+        FnTypeInfo handlerInfo;
+        bool foundInfo = false;
+        // Try fn_type_info_ lookup on handler value directly
+        auto fnIt = fn_type_info_.find(handler);
+        if (fnIt != fn_type_info_.end()) {
+            handlerInfo = fnIt->second;
+            foundInfo = true;
+        }
+        if (!foundInfo) {
+            // Check if handler is a LoadInst, look up the alloca
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(handler)) {
+                auto fnIt2 = fn_type_info_.find(load->getPointerOperand());
+                if (fnIt2 != fn_type_info_.end()) {
+                    handlerInfo = fnIt2->second;
+                    foundInfo = true;
+                }
+            }
+        }
+        if (!foundInfo)
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+
+        // 1. bind(host, port)
+        auto bindFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
+        llvm::Value *listener = builder_.CreateCall(bindFn, {host, port}, "http_listener");
+
+        // null check
+        llvm::Value *isNull = builder_.CreateICmpEQ(listener,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "bind_null");
+        llvm::BasicBlock *bindFailBB = llvm::BasicBlock::Create(*ctx_, "http.bind_fail", fn_);
+        llvm::BasicBlock *bindOkBB = llvm::BasicBlock::Create(*ctx_, "http.bind_ok", fn_);
+        builder_.CreateCondBr(isNull, bindFailBB, bindOkBB);
+
+        builder_.SetInsertPoint(bindFailBB);
+        static int httpErrCounter = 0;
+        emitRuntimeError("runtime error: http_listen() bind failed\n",
+                          ".http_err_" + std::to_string(httpErrCounter++));
+
+        // 2. listen(listener, 128)
+        builder_.SetInsertPoint(bindOkBB);
+        auto listenFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto listenFn = mod_->getOrInsertFunction("__ry_listen", listenFnTy);
+        builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(i64Ty_, 128)});
+
+        // 3. accept loop
+        llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "http.loop", fn_);
+        llvm::BasicBlock *loopBodyBB = llvm::BasicBlock::Create(*ctx_, "http.loop_body", fn_);
+        llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*ctx_, "http.loop_end", fn_);
+
+        builder_.CreateBr(loopBB);
+        builder_.SetInsertPoint(loopBB);
+
+        // accept(listener) -> conn
+        auto acceptFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto acceptFn = mod_->getOrInsertFunction("__ry_accept", acceptFnTy);
+        llvm::Value *conn = builder_.CreateCall(acceptFn, {listener}, "http_conn");
+
+        llvm::Value *connNull = builder_.CreateICmpEQ(conn,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "conn_null");
+        builder_.CreateCondBr(connNull, loopEndBB, loopBodyBB);
+
+        // Loop body: read request, call handler, send response, cleanup
+        builder_.SetInsertPoint(loopBodyBB);
+
+        // __ry_http_read_request(conn) -> req
+        auto readReqFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto readReqFn = mod_->getOrInsertFunction("__ry_http_read_request", readReqFnTy);
+        llvm::Value *req = builder_.CreateCall(readReqFn, {conn}, "http_req");
+        http_request_values_.insert(req);
+
+        // Check if req is null (malformed request)
+        llvm::Value *reqNull = builder_.CreateICmpEQ(req,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "req_null");
+        llvm::BasicBlock *reqOkBB = llvm::BasicBlock::Create(*ctx_, "http.req_ok", fn_);
+        llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*ctx_, "http.req_bad", fn_);
+        builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
+
+        // Shared function types for cleanup calls
+        auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
+        auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
+        auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
+
+        // Bad request: close conn and continue loop
+        builder_.SetInsertPoint(reqBadBB);
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        builder_.SetInsertPoint(reqOkBB);
+
+        // Call handler(req) -> resp
+        llvm::Value *resp = emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
+        http_response_values_.insert(resp);
+
+        // __ry_http_send_response(conn, resp)
+        auto sendRespFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        auto sendRespFn = mod_->getOrInsertFunction("__ry_http_send_response", sendRespFnTy);
+        builder_.CreateCall(sendRespFn, {conn, resp});
+
+        // Cleanup
+        builder_.CreateCall(freeReqFn, {req});
+        builder_.CreateCall(freeRespFn, {resp});
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        // Loop end (after accept returns null)
+        builder_.SetInsertPoint(loopEndBB);
+        builder_.CreateCall(closeFn, {listener});
+
+        return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
     return nullptr;

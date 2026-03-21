@@ -295,6 +295,16 @@ void CodeGen::emitVarDecl(const std::string &name,
         else if (type_annotation && *type_annotation == "TcpStream")
             tcp_stream_values_.insert(ptr);
 
+        // --- HttpRequest/HttpResponse tracking ---
+        if (isHttpRequest(val))
+            http_request_values_.insert(ptr);
+        else if (type_annotation && *type_annotation == "HttpRequest")
+            http_request_values_.insert(ptr);
+        if (isHttpResponse(val))
+            http_response_values_.insert(ptr);
+        else if (type_annotation && *type_annotation == "HttpResponse")
+            http_response_values_.insert(ptr);
+
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
@@ -416,6 +426,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
             channel_element_types_[ptr] = channelTy;
         if (isTcpListener(val)) tcp_listener_values_.insert(ptr);
         if (isTcpStream(val))   tcp_stream_values_.insert(ptr);
+        if (isHttpRequest(val))  http_request_values_.insert(ptr);
+        if (isHttpResponse(val)) http_response_values_.insert(ptr);
     }
 }
 
@@ -1659,6 +1671,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
             if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
             if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
+            if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
+            if (ptype == "HttpResponse") http_response_values_.insert(alloca);
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
