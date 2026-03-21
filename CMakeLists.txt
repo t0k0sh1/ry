@@ -100,6 +100,7 @@ add_executable(ry_tests
     tests/test_regex_runtime.cpp
     tests/test_codegen_regex.cpp
     tests/test_codegen_mock.cpp
+    tests/test_codegen_iterator.cpp
     tests/test_runtime_utf8.cpp
 )
 if(APPLE)

@@ -52,6 +52,17 @@
 | `is_subset(set, set)` | Returns whether the first set is a subset of the second |
 | `is_superset(set, set)` | Returns whether the first set is a superset of the second |
 
+### Iterator
+
+| Function | Description |
+|------|------|
+| `iter(collection)` | Creates a lazy iterator from a List, Set, or Map |
+| `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
+| `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
+| `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
+| `map(iter, fn)` | Returns a lazy iterator that transforms each element |
+| `take(iter, n)` | Returns a lazy iterator that yields at most n elements |
+
 ### [String Operations](builtins-string.md)
 
 | Function | Description |
@@ -468,4 +479,54 @@ let m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**Signature:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+Creates a lazy iterator from a collection. The iterator does not copy data; it references the original collection. UFCS notation is also available.
+
+- For `List<T>` and `Set<T>`, the element type is `T`.
+- For `Map<K, V>`, the element type is the tuple `(K, V)`.
+
+```python
+let xs = [1, 2, 3]
+let it = xs.iter()           # Iterator<int>
+let ys = it.to_list()        # [1, 2, 3]
+
+let m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**Signature:** `next(iter: Iterator<T>) -> Option<T>`
+
+Returns the next element from the iterator as `Option<T>`. Returns `None` when the iterator is exhausted. The iterator advances its internal state on each call. UFCS notation is also available.
+
+```python
+let it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**Signature:** `to_list(iter: Iterator<T>) -> List<T>`
+
+Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.iter().filter(fn(x: int): x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```
