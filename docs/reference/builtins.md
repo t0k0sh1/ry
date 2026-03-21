@@ -43,6 +43,8 @@
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
 | `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
+| `take(list, n)` | Returns a new list with the first n elements |
+| `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
@@ -59,6 +61,17 @@
 | `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
 | `is_subset(set, set)` | Returns whether the first set is a subset of the second |
 | `is_superset(set, set)` | Returns whether the first set is a superset of the second |
+
+### Iterator
+
+| Function | Description |
+|------|------|
+| `iter(collection)` | Creates a lazy iterator from a List, Set, or Map |
+| `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
+| `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
+| `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
+| `map(iter, fn)` | Returns a lazy iterator that transforms each element |
+| `take(iter, n)` | Returns a lazy iterator that yields at most n elements |
 
 ### [String Operations](builtins-string.md)
 
@@ -314,6 +327,36 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ---
 
+## take
+
+**Signature:** `take(list: List<T>, n: int) -> List<T>`
+
+Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
+print(xs.take(0))    # []
+```
+
+---
+
+## tap
+
+**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# prints 1, 2, 3, then ys = [2, 4, 6]
+```
+
+---
+
 ## filter
 
 **Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
@@ -347,7 +390,7 @@ print(ys)   # [2, 4, 6]
 
 **Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
-Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. UFCS notation is also available.
+Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
 ```python
 let xs = [3, 1, 2]
@@ -446,4 +489,54 @@ let m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**Signature:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+Creates a lazy iterator from a collection. The iterator does not copy data; it references the original collection. UFCS notation is also available.
+
+- For `List<T>` and `Set<T>`, the element type is `T`.
+- For `Map<K, V>`, the element type is the tuple `(K, V)`.
+
+```python
+let xs = [1, 2, 3]
+let it = xs.iter()           # Iterator<int>
+let ys = it.to_list()        # [1, 2, 3]
+
+let m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**Signature:** `next(iter: Iterator<T>) -> Option<T>`
+
+Returns the next element from the iterator as `Option<T>`. Returns `None` when the iterator is exhausted. The iterator advances its internal state on each call. UFCS notation is also available.
+
+```python
+let it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**Signature:** `to_list(iter: Iterator<T>) -> List<T>`
+
+Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.iter().filter(fn(x: int): x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```

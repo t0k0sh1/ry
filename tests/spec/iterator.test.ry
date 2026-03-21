@@ -1,0 +1,99 @@
+describe("Iterator"):
+    it("iter and to_list on list"):
+        let xs = [1, 2, 3]
+        let ys = xs.iter().to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)
+        expect(ys[1]).to_eq(2)
+        expect(ys[2]).to_eq(3)
+
+    it("iter on empty list"):
+        let xs = [1]
+        let empty = xs.filter(fn(x: int): x > 10)
+        let ys = empty.iter().to_list()
+        expect(ys).to_have_length(0)
+
+    it("lazy filter"):
+        let xs = [1, 2, 3, 4, 5]
+        let ys = xs.iter().filter(fn(x: int): x > 2).to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(3)
+        expect(ys[1]).to_eq(4)
+        expect(ys[2]).to_eq(5)
+
+    it("lazy map"):
+        let xs = [1, 2, 3]
+        let ys = xs.iter().map(fn(x: int): x * 10).to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(10)
+        expect(ys[1]).to_eq(20)
+        expect(ys[2]).to_eq(30)
+
+    it("lazy take"):
+        let xs = [1, 2, 3, 4, 5]
+        let ys = xs.iter().take(3).to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)
+        expect(ys[1]).to_eq(2)
+        expect(ys[2]).to_eq(3)
+
+    it("chained filter map take"):
+        let xs = [1, 2, 3, 4, 5]
+        let ys = xs.iter().filter(fn(x: int): x > 2).map(fn(x: int): x * 2).take(2).to_list()
+        expect(ys).to_have_length(2)
+        expect(ys[0]).to_eq(6)
+        expect(ys[1]).to_eq(8)
+
+    it("take 0"):
+        let xs = [1, 2, 3]
+        let ys = xs.iter().take(0).to_list()
+        expect(ys).to_have_length(0)
+
+    it("take more than length"):
+        let xs = [1, 2, 3]
+        let ys = xs.iter().take(10).to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)
+        expect(ys[2]).to_eq(3)
+
+    it("for loop over iterator"):
+        let xs = [10, 20, 30]
+        var sum = 0
+        for x in xs.iter():
+            sum = sum + x
+        expect(sum).to_eq(60)
+
+    it("for loop with filter"):
+        let xs = [1, 2, 3, 4, 5]
+        var sum = 0
+        for x in xs.iter().filter(fn(x: int): x > 3):
+            sum = sum + x
+        expect(sum).to_eq(9)
+
+    it("next returns Option"):
+        let xs = [10, 20]
+        let it = xs.iter()
+        let a = it.next()
+        expect(a).to_eq(Some(10))
+        let b = it.next()
+        expect(b).to_eq(Some(20))
+        let c = it.next()
+        expect(c).to_be_none()
+
+    it("iter on set"):
+        let s = {1, 2, 3}
+        let ys = s.iter().to_list()
+        expect(ys).to_have_length(3)
+
+    it("iter on map"):
+        let m = {"a": 1, "b": 2}
+        var count = 0
+        for k, v in m.iter():
+            count = count + 1
+        expect(count).to_eq(2)
+
+    it("UFCS iter"):
+        let xs = [1, 2, 3]
+        let ys = iter(xs).to_list()
+        expect(ys).to_have_length(3)
+        expect(ys[0]).to_eq(1)

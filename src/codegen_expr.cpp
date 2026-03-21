@@ -1219,6 +1219,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
         task_result_types_[phi] = task_result_types_[trueVal];
     if (channel_element_types_.count(trueVal))
         channel_element_types_[phi] = channel_element_types_[trueVal];
+    if (iterator_element_types_.count(trueVal))
+        iterator_element_types_[phi] = iterator_element_types_[trueVal];
 
     return phi;
 }

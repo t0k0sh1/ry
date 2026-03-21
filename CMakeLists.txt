@@ -61,6 +61,7 @@ add_library(ry_lib STATIC
     src/runtime_hash.cpp
     src/runtime_regex.cpp
     src/runtime_utf8.cpp
+    src/runtime_sort.cpp
     src/project_config.cpp
     src/self_update.cpp
     src/args_runtime.cpp
@@ -105,6 +106,7 @@ add_executable(ry_tests
     tests/test_regex_runtime.cpp
     tests/test_codegen_regex.cpp
     tests/test_codegen_mock.cpp
+    tests/test_codegen_iterator.cpp
     tests/test_runtime_utf8.cpp
 )
 if(APPLE)

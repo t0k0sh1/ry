@@ -1,6 +1,7 @@
 #include "ry/runtime_regex.hpp"
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -13,14 +14,15 @@
 namespace {
 
 enum class RegexNodeKind {
-    Literal,      // single character
-    Dot,          // .
-    CharClass,    // [abc], [a-z], [^0-9]
-    Anchor,       // ^ or $
-    Concat,       // AB
-    Alternation,  // A|B
-    Repeat,       // A*, A+, A?
-    Group,        // (A)
+    Literal,       // single character
+    Dot,           // .
+    CharClass,     // [abc], [a-z], [^0-9]
+    Anchor,        // ^ or $
+    WordBoundary,  // \b, \B
+    Concat,        // AB
+    Alternation,   // A|B
+    Repeat,        // A*, A+, A?
+    Group,         // (A)
 };
 
 struct RegexNode {
@@ -34,14 +36,19 @@ struct RegexNode {
     std::vector<std::pair<char, char>> ranges; // inclusive ranges
 
     // Repeat
-    enum RepeatKind { Star, Plus, Question };
-    RepeatKind repeatKind = Star;
+    int repeatMin = 0;   // minimum repetitions
+    int repeatMax = -1;  // maximum repetitions (-1 = unlimited)
+    bool greedy = true;  // false = non-greedy (lazy)
 
     // Children
     std::vector<std::unique_ptr<RegexNode>> children;
 };
 
 using RegexNodePtr = std::unique_ptr<RegexNode>;
+
+// Shared word-character ranges used by \w, \W, \b, \B
+static const std::vector<std::pair<char, char>> WORD_CHAR_RANGES =
+    {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}};
 
 // ============================================================
 // Regex Parser (recursive descent)
@@ -50,6 +57,8 @@ using RegexNodePtr = std::unique_ptr<RegexNode>;
 class RegexParser {
 public:
     explicit RegexParser(const char *pattern) : src_(pattern), len_(strlen(pattern)), pos_(0) {}
+
+    bool caseInsensitive() const { return caseInsensitive_; }
 
     RegexNodePtr parse() {
         auto node = parseAlternation();
@@ -65,6 +74,7 @@ private:
     const char *src_;
     size_t len_;
     size_t pos_;
+    bool caseInsensitive_ = false;
 
     char peek() const {
         if (pos_ >= len_) return '\0';
@@ -114,23 +124,117 @@ private:
 
     RegexNodePtr parseRepeat() {
         auto atom = parseAtom();
-        if (!atEnd() && (peek() == '*' || peek() == '+' || peek() == '?')) {
-            char rep = advance();
+        if (atEnd()) return atom;
+
+        int rmin = -1, rmax = -1;
+        bool hasQuantifier = false;
+
+        char c = peek();
+        if (c == '*') {
+            advance();
+            rmin = 0; rmax = -1;
+            hasQuantifier = true;
+        } else if (c == '+') {
+            advance();
+            rmin = 1; rmax = -1;
+            hasQuantifier = true;
+        } else if (c == '?') {
+            advance();
+            rmin = 0; rmax = 1;
+            hasQuantifier = true;
+        } else if (c == '{') {
+            size_t saved = pos_;
+            if (parseQuantifierBrace(rmin, rmax)) {
+                hasQuantifier = true;
+            } else {
+                pos_ = saved; // fallback: treat '{' as literal
+            }
+        }
+
+        if (hasQuantifier) {
             auto node = std::make_unique<RegexNode>();
             node->kind = RegexNodeKind::Repeat;
-            node->repeatKind = (rep == '*') ? RegexNode::Star :
-                               (rep == '+') ? RegexNode::Plus :
-                                              RegexNode::Question;
+            node->repeatMin = rmin;
+            node->repeatMax = rmax;
+            node->greedy = true;
+            // Non-greedy suffix '?'
+            if (!atEnd() && peek() == '?') {
+                advance();
+                node->greedy = false;
+            }
             node->children.push_back(std::move(atom));
             return node;
         }
         return atom;
     }
 
+    // Try to parse {n}, {n,}, {n,m}. Returns true on success.
+    bool parseQuantifierBrace(int &rmin, int &rmax) {
+        advance(); // consume '{'
+        if (atEnd() || !std::isdigit(static_cast<unsigned char>(peek()))) return false;
+        int n = parseNumber();
+        if (n > 1000) {
+            fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", n, src_);
+            exit(1);
+        }
+        if (atEnd()) return false;
+        if (peek() == '}') {
+            advance();
+            rmin = n; rmax = n;
+            return true;
+        }
+        if (peek() == ',') {
+            advance();
+            if (atEnd()) return false;
+            if (peek() == '}') {
+                advance();
+                rmin = n; rmax = -1;
+                return true;
+            }
+            if (!std::isdigit(static_cast<unsigned char>(peek()))) return false;
+            int m = parseNumber();
+            if (m > 1000) {
+                fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", m, src_);
+                exit(1);
+            }
+            if (atEnd() || peek() != '}') return false;
+            advance();
+            if (n > m) {
+                fprintf(stderr, "regex error: invalid quantifier {%d,%d} in pattern '%s'\n", n, m, src_);
+                exit(1);
+            }
+            rmin = n; rmax = m;
+            return true;
+        }
+        return false;
+    }
+
+    int parseNumber() {
+        int val = 0;
+        while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek()))) {
+            val = val * 10 + (advance() - '0');
+            if (val > 1000) return val; // early exit on overflow
+        }
+        return val;
+    }
+
     RegexNodePtr parseAtom() {
         char c = peek();
         if (c == '(') {
             advance(); // consume '('
+            // Check for inline flags (?i)
+            if (peek() == '?' && pos_ + 1 < len_ && src_[pos_ + 1] == 'i') {
+                advance(); // consume '?'
+                advance(); // consume 'i'
+                if (peek() != ')') {
+                    fprintf(stderr, "regex error: expected ')' after '(?i' in pattern '%s'\n", src_);
+                    exit(1);
+                }
+                advance(); // consume ')'
+                caseInsensitive_ = true;
+                // Return next atom (flag is stateful, not a node)
+                return parseAtom();
+            }
             auto inner = parseAlternation();
             if (peek() != ')') {
                 fprintf(stderr, "regex error: unmatched '(' in pattern '%s'\n", src_);
@@ -165,6 +269,13 @@ private:
                 exit(1);
             }
             char escaped = advance();
+            // Handle word boundary
+            if (escaped == 'b' || escaped == 'B') {
+                auto node = std::make_unique<RegexNode>();
+                node->kind = RegexNodeKind::WordBoundary;
+                node->negated = (escaped == 'B');
+                return node;
+            }
             // Handle shorthand character classes
             if (escaped == 'd' || escaped == 'D' ||
                 escaped == 'w' || escaped == 'W' ||
@@ -198,8 +309,8 @@ private:
         switch (code) {
             case 'd': node->negated = false; node->ranges = {{'0','9'}}; break;
             case 'D': node->negated = true;  node->ranges = {{'0','9'}}; break;
-            case 'w': node->negated = false; node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
-            case 'W': node->negated = true;  node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
+            case 'w': node->negated = false; node->ranges = WORD_CHAR_RANGES; break;
+            case 'W': node->negated = true;  node->ranges = WORD_CHAR_RANGES; break;
             case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
             case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
         }
@@ -257,7 +368,7 @@ private:
 // ============================================================
 
 struct NFAState {
-    enum Kind { Match, Split, Char, Dot, CharClass, Anchor };
+    enum Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
     Kind kind;
 
     // Char
@@ -330,6 +441,11 @@ public:
             s->ch = node.ch;
             return {s, {&s->out1}};
         }
+        case RegexNodeKind::WordBoundary: {
+            auto *s = newState(NFAState::WordBoundary);
+            s->negated = node.negated;
+            return {s, {&s->out1}};
+        }
         case RegexNodeKind::Concat: {
             if (node.children.empty()) {
                 // Empty concat: epsilon
@@ -361,27 +477,78 @@ public:
             return left;
         }
         case RegexNodeKind::Repeat: {
-            auto inner = build(*node.children[0]);
-            if (node.repeatKind == RegexNode::Star) {
-                // e* : split → (inner → back to split) | out
-                auto *split = newState(NFAState::Split);
-                split->out1 = inner.start;
-                patch(inner, split);
-                return {split, {&split->out2}};
+            int rmin = node.repeatMin;
+            int rmax = node.repeatMax;
+            bool gr = node.greedy;
+
+            // Helper: configure split for greedy/non-greedy.
+            // Sets the "preferred" out to inner, returns pointer to the "skip" out.
+            auto configureSplit = [](NFAState *split, NFAState *inner, bool greedy) -> NFAState ** {
+                if (greedy) {
+                    split->out1 = inner;
+                    return &split->out2;
+                } else {
+                    split->out2 = inner;
+                    return &split->out1;
+                }
+            };
+
+            // Step 1: Build min required copies concatenated
+            NFAFragment result;
+            bool hasResult = false;
+            for (int i = 0; i < rmin; ++i) {
+                auto copy = build(*node.children[0]);
+                if (!hasResult) {
+                    result = std::move(copy);
+                    hasResult = true;
+                } else {
+                    patch(result, copy.start);
+                    result.danglingOuts = std::move(copy.danglingOuts);
+                }
             }
-            if (node.repeatKind == RegexNode::Plus) {
-                // e+ : inner → split → (inner again) | out
+
+            if (rmax == -1) {
+                // Step 2a: Unlimited → append Star loop
+                auto loopInner = build(*node.children[0]);
                 auto *split = newState(NFAState::Split);
-                split->out1 = inner.start;
-                patch(inner, split);
-                return {inner.start, {&split->out2}};
+                NFAState **skipOut = configureSplit(split, loopInner.start, gr);
+                patch(loopInner, split);
+
+                if (!hasResult) {
+                    return {split, {skipOut}};
+                } else {
+                    patch(result, split);
+                    result.danglingOuts = {skipOut};
+                    return result;
+                }
+            } else {
+                // Step 2b: Finite max → append (max - min) optional copies
+                int optCount = rmax - rmin;
+                for (int i = 0; i < optCount; ++i) {
+                    auto optInner = build(*node.children[0]);
+                    auto *split = newState(NFAState::Split);
+                    NFAState **skipOut = configureSplit(split, optInner.start, gr);
+
+                    if (!hasResult) {
+                        std::vector<NFAState **> outs = {skipOut};
+                        outs.insert(outs.end(), optInner.danglingOuts.begin(), optInner.danglingOuts.end());
+                        result = {split, std::move(outs)};
+                        hasResult = true;
+                    } else {
+                        patch(result, split);
+                        result.danglingOuts = {skipOut};
+                        result.danglingOuts.insert(result.danglingOuts.end(),
+                            optInner.danglingOuts.begin(), optInner.danglingOuts.end());
+                    }
+                }
+
+                if (!hasResult) {
+                    // {0,0} = match empty
+                    auto *s = newState(NFAState::Split);
+                    return {s, {&s->out1}};
+                }
+                return result;
             }
-            // e? : split → inner | out
-            auto *split = newState(NFAState::Split);
-            split->out1 = inner.start;
-            std::vector<NFAState **> outs = {&split->out2};
-            outs.insert(outs.end(), inner.danglingOuts.begin(), inner.danglingOuts.end());
-            return {split, std::move(outs)};
         }
         case RegexNodeKind::Group:
             return build(*node.children[0]);
@@ -406,12 +573,14 @@ private:
 
 class NFASimulator {
 public:
-    NFASimulator(NFAState *start, NFAState *matchState)
-        : start_(start), matchState_(matchState), generation_(0) {}
+    NFASimulator(NFAState *start, NFAState *matchState, bool caseInsensitive = false)
+        : start_(start), matchState_(matchState), generation_(0), caseInsensitive_(caseInsensitive) {}
 
     // Try to match text[startPos..] returning the end position of the match,
     // or -1 if no match. fullMatch requires matching entire text.
-    int64_t simulate(const char *text, size_t textLen, size_t startPos, bool fullMatch) {
+    // preferShortest: return earliest match (for non-greedy patterns).
+    int64_t simulate(const char *text, size_t textLen, size_t startPos,
+                     bool fullMatch, bool preferShortest = false) {
         current_.clear();
         next_.clear();
         int64_t lastMatch = -1;
@@ -426,6 +595,7 @@ public:
         } else {
             if (stateSetContains(current_, matchState_)) {
                 lastMatch = (int64_t)startPos;
+                if (preferShortest) return lastMatch;
             }
         }
 
@@ -439,13 +609,17 @@ public:
                 bool matches = false;
                 switch (s->kind) {
                 case NFAState::Char:
-                    matches = (s->ch == c);
+                    if (caseInsensitive_) {
+                        matches = (std::tolower((unsigned char)s->ch) == std::tolower((unsigned char)c));
+                    } else {
+                        matches = (s->ch == c);
+                    }
                     break;
                 case NFAState::Dot:
                     matches = (c != '\n');
                     break;
                 case NFAState::CharClass:
-                    matches = charClassMatches(s, c);
+                    matches = charClassMatches(s, c, caseInsensitive_);
                     break;
                 default:
                     break;
@@ -462,6 +636,7 @@ public:
                     if (i + 1 == textLen) return (int64_t)(i + 1);
                 } else {
                     lastMatch = (int64_t)(i + 1);
+                    if (preferShortest) return lastMatch;
                 }
             }
 
@@ -478,6 +653,7 @@ private:
     std::vector<NFAState *> current_;
     std::vector<NFAState *> next_;
     int generation_;
+    bool caseInsensitive_;
 
     void addState(std::vector<NFAState *> &stateSet, NFAState *s,
                   const char *text, size_t textLen, size_t pos) {
@@ -497,7 +673,23 @@ private:
             }
             return;
         }
+        if (s->kind == NFAState::WordBoundary) {
+            bool prevIsWord = (pos > 0) && isWordChar(text[pos - 1]);
+            bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
+            bool atBoundary = (prevIsWord != currIsWord);
+            if (atBoundary != s->negated) {
+                addState(stateSet, s->out1, text, textLen, pos);
+            }
+            return;
+        }
         stateSet.push_back(s);
+    }
+
+    static bool isWordChar(char c) {
+        for (auto &[lo, hi] : WORD_CHAR_RANGES) {
+            if (c >= lo && c <= hi) return true;
+        }
+        return false;
     }
 
     static bool stateSetContains(const std::vector<NFAState *> &stateSet, NFAState *target) {
@@ -507,10 +699,20 @@ private:
         return false;
     }
 
-    static bool charClassMatches(NFAState *s, char c) {
+    static bool charInRange(char c, char lo, char hi, bool caseInsensitive) {
+        if (c >= lo && c <= hi) return true;
+        if (caseInsensitive) {
+            char cl = std::tolower((unsigned char)c);
+            char cu = std::toupper((unsigned char)c);
+            return (cl >= lo && cl <= hi) || (cu >= lo && cu <= hi);
+        }
+        return false;
+    }
+
+    static bool charClassMatches(NFAState *s, char c, bool caseInsensitive = false) {
         bool inRange = false;
         for (auto &[lo, hi] : s->ranges) {
-            if (c >= lo && c <= hi) { inRange = true; break; }
+            if (charInRange(c, lo, hi, caseInsensitive)) { inRange = true; break; }
         }
         return s->negated ? !inRange : inRange;
     }
@@ -524,12 +726,24 @@ struct CompiledRegex {
     NFABuilder builder;
     NFAState *matchState;
     NFAState *start;
+    bool hasLazy_ = false;
+    bool caseInsensitive_ = false;
+
+    static bool detectLazy(const RegexNode &node) {
+        if (node.kind == RegexNodeKind::Repeat && !node.greedy) return true;
+        for (auto &child : node.children) {
+            if (detectLazy(*child)) return true;
+        }
+        return false;
+    }
 
     static CompiledRegex compile(const char *pattern) {
         RegexParser parser(pattern);
         auto ast = parser.parse();
 
         CompiledRegex cr;
+        cr.hasLazy_ = detectLazy(*ast);
+        cr.caseInsensitive_ = parser.caseInsensitive();
         auto frag = cr.builder.build(*ast);
         cr.matchState = cr.builder.newState(NFAState::Match);
         cr.builder.patch(frag, cr.matchState);
@@ -540,16 +754,16 @@ struct CompiledRegex {
     // Full match
     bool fullMatch(const char *text) {
         size_t len = strlen(text);
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         return sim.simulate(text, len, 0, true) >= 0;
     }
 
     // Search: find first match, return {startPos, endPos} or {-1, -1}
     std::pair<int64_t, int64_t> search(const char *text) {
         size_t len = strlen(text);
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         for (size_t i = 0; i <= len; ++i) {
-            int64_t endPos = sim.simulate(text, len, i, false);
+            int64_t endPos = sim.simulate(text, len, i, false, hasLazy_);
             if (endPos >= 0) {
                 return {(int64_t)i, endPos};
             }
@@ -561,10 +775,10 @@ struct CompiledRegex {
     std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
         size_t len = strlen(text);
         std::vector<std::pair<int64_t, int64_t>> results;
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         size_t pos = 0;
         while (pos <= len) {
-            int64_t endPos = sim.simulate(text, len, pos, false);
+            int64_t endPos = sim.simulate(text, len, pos, false, hasLazy_);
             if (endPos >= 0) {
                 results.push_back({(int64_t)pos, endPos});
                 if ((size_t)endPos == pos) {

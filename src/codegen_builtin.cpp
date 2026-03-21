@@ -42,6 +42,10 @@ llvm::Type *CodeGen::getChannelElementType(llvm::Value *channelVal) {
     return lookupCollectionType(channel_element_types_, channelVal);
 }
 
+llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
+    return lookupCollectionType(iterator_element_types_, iterVal);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)

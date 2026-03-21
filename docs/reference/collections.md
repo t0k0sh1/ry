@@ -151,6 +151,28 @@ print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 ```
 
+### take
+
+Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified.
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
+print(xs.take(0))    # []
+```
+
+### tap
+
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain.
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# prints 1, 2, 3, then ys = [2, 4, 6]
+```
+
 ### filter
 
 Returns a new list containing only elements that satisfy the predicate. The original list is not modified.
@@ -173,7 +195,7 @@ print(ys)   # [2, 4, 6]
 
 ### sort
 
-Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified.
+Returns a new sorted list. Default is ascending order. A custom comparator can be provided. The original list is not modified. The sort is **stable** (equal elements preserve their original order). Internally uses TimSort.
 
 ```python
 let xs = [3, 1, 2]
@@ -379,6 +401,8 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | `first`, `last` | O(1) |
 | `insert`, `remove_at` | O(n) |
 | `sort` / `sort!` | O(n log n) |
+| `take` | O(n) |
+| `tap` | O(n) |
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
@@ -669,3 +693,73 @@ print(is_superset(b, a))   # false
 | Empty set `{}` | Type annotation is required |
 | Element lookup | Hash table (O(1) average) |
 | Capacity overflow | Automatically doubles in size |
+
+---
+
+## Iterator
+
+### Overview
+
+A lazy iterator abstraction that enables efficient data transformation pipelines. Iterators do not copy or materialize intermediate results — each element is processed on demand.
+
+### Creating Iterators
+
+Use `iter()` to create an iterator from any collection:
+
+```python
+let xs = [1, 2, 3, 4, 5]
+let it = xs.iter()           # Iterator<int>
+
+let s = {10, 20, 30}
+let sit = s.iter()           # Iterator<int>
+
+let m = {"a": 1, "b": 2}
+let mit = m.iter()           # Iterator<(str, int)>
+```
+
+### Lazy Method Chaining
+
+Iterator methods return new iterators, forming a pipeline that is only evaluated when consumed:
+
+| Method | Description |
+|--------|-------------|
+| `.filter(fn)` | Yields only elements where the predicate returns `true` |
+| `.map(fn)` | Transforms each element using the given function |
+| `.take(n)` | Yields at most `n` elements |
+
+```python
+let result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int): x > 2)
+    .map(fn(x: int): x * 2)
+    .take(2)
+    .to_list()   # [6, 8]
+```
+
+### Consuming Iterators
+
+| Method | Description |
+|--------|-------------|
+| `.to_list()` | Collects all elements into a `List<T>` |
+| `.next()` | Returns the next element as `Option<T>` |
+
+```python
+let it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### For Loop Support
+
+Iterators can be used directly in `for` loops:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int): x > 1):
+    print(x)
+# 2
+# 3
+
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```

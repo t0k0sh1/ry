@@ -26,6 +26,13 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 | `*` | Zero or more | `"a*"` matches `""`, `"a"`, `"aaa"` |
 | `+` | One or more | `"a+"` matches `"a"`, `"aaa"` |
 | `?` | Zero or one | `"a?"` matches `""` or `"a"` |
+| `{n}` | Exactly n times | `"a{3}"` matches `"aaa"` |
+| `{n,m}` | Between n and m times | `"a{2,4}"` matches `"aa"` to `"aaaa"` |
+| `{n,}` | At least n times | `"a{2,}"` matches `"aa"`, `"aaa"`, ... |
+| `*?` | Zero or more (non-greedy) | `".*?"` matches shortest |
+| `+?` | One or more (non-greedy) | `".+?"` matches shortest |
+| `??` | Zero or one (non-greedy) | `"a??"` prefers zero |
+| `{n,m}?` | Range (non-greedy) | `"a{2,4}?"` prefers n times |
 | `(...)` | Group | `"(ab)+"` matches `"abab"` |
 | `[abc]` | Character class | `"[aeiou]"` matches vowels |
 | `[a-z]` | Character range | `"[a-z]+"` matches lowercase words |
@@ -38,6 +45,9 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 | `\W` | Non-word character | |
 | `\s` | Whitespace | `"\s+"` matches spaces/tabs |
 | `\S` | Non-whitespace | |
+| `\b` | Word boundary | `"\bword\b"` matches whole word |
+| `\B` | Non-word boundary | `"\Bword"` matches inside a word |
+| `(?i)` | Case-insensitive flag | `"(?i)hello"` matches `"HELLO"` |
 | `\.` | Escaped special character | `"\."` matches literal `.` |
 
 ## Usage Examples
@@ -81,6 +91,65 @@ print(matches[0])    # 1
 print(matches[1])    # 23
 print(matches[2])    # 456
 ```
+
+### Range Quantifiers
+
+```ry
+print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
+print(regex_match("a{2,4}", "aaa"))               # true
+print(regex_match("(ab){2,}", "ababab"))           # true
+```
+
+### Non-Greedy (Lazy) Match
+
+```ry
+# Greedy: matches longest
+let g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+print(g)  # X
+
+# Non-greedy: matches shortest
+let l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+print(l)  # X and X
+
+# Find individual HTML-like tags
+let tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+print(len(tags))  # 3
+```
+
+> **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
+
+### Word Boundary
+
+```ry
+# Match whole words only
+let pos = regex_search("\\bworld\\b", "hello world")
+print(pos)  # 6
+
+# Find all words
+let words = regex_find_all("\\b\\w+\\b", "hello world foo")
+print(len(words))  # 3
+
+# \B matches non-boundary (inside a word)
+let pos2 = regex_search("\\Bworld", "helloworld")
+print(pos2)  # 5
+```
+
+### Case-Insensitive Matching
+
+```ry
+# (?i) at the start of pattern enables case-insensitive matching
+print(regex_match("(?i)hello", "HELLO"))  # true
+print(regex_match("(?i)hello", "Hello"))  # true
+
+# Works with character classes
+print(regex_match("(?i)[a-z]+", "ABC"))  # true
+
+# Works with replace and find_all
+let s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+print(s)  # X X X
+```
+
+> **Note:** `(?i)` must appear at the beginning of the pattern and applies to the entire pattern. Partial case-insensitive matching (e.g., `(?i:sub)pattern`) is not supported.
 
 ### UFCS Notation
 

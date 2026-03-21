@@ -1960,264 +1960,63 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sort_data_field");
         builder_.CreateStore(newData, newDataField);
 
-        // Iterative Quick Sort with Hoare partition and median-of-three pivot
-        // Helper lambda: emit less-than comparison IR (reused in 3 places)
-        auto emitLessThan = [&](llvm::Value *a, llvm::Value *b) -> llvm::Value* {
+        // Generate trampoline function for TimSort comparator
+        std::string trampName = "__sort_trampoline_" + std::to_string(lambda_counter_++);
+        llvm::FunctionType *trampTy = llvm::FunctionType::get(
+            i1Ty_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        llvm::Function *trampFn = llvm::Function::Create(
+            trampTy, llvm::Function::ExternalLinkage, trampName, mod_.get());
+        trampFn->setCallingConv(llvm::CallingConv::C);
+
+        auto trampArgs = trampFn->arg_begin();
+        llvm::Argument *argA = &*trampArgs++;
+        llvm::Argument *argB = &*trampArgs++;
+        llvm::Argument *argCtx = &*trampArgs++;
+        argA->setName("a_ptr");
+        argB->setName("b_ptr");
+        argCtx->setName("ctx");
+
+        {
+            FnScope guard(*this);
+            fn_ = trampFn;
+            llvm::BasicBlock *trampBB = llvm::BasicBlock::Create(*ctx_, "entry", trampFn);
+            builder_.SetInsertPoint(trampBB);
+
+            llvm::Value *valA = builder_.CreateLoad(elemTy, argA, "val_a");
+            llvm::Value *valB = builder_.CreateLoad(elemTy, argB, "val_b");
+
+            llvm::Value *result;
             if (hasComparator) {
-                return emitLambdaCall(compVal, compInfo, {a, b}, "sort_comp");
+                // ctx is the closure struct pointer (or raw fn ptr for non-closures)
+                result = emitLambdaCall(argCtx, compInfo, {valA, valB}, "sort_comp");
             } else if (elemTy == i64Ty_) {
-                return builder_.CreateICmpSLT(a, b, "sort_lt");
+                result = builder_.CreateICmpSLT(valA, valB, "sort_lt");
             } else if (elemTy == f64Ty_) {
-                return builder_.CreateFCmpOLT(a, b, "sort_lt");
+                result = builder_.CreateFCmpOLT(valA, valB, "sort_lt");
             } else if (elemTy == ptrTy_) {
                 auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
                 auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
-                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {a, b}, "sort_strcmp");
-                return builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
+                result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
             } else {
                 codegenError("sort() does not support this element type");
             }
-        };
 
-        auto emitSwap = [&](llvm::Value *idxA, llvm::Value *idxB) {
-            llvm::Value *pA = builder_.CreateGEP(elemTy, newData, {idxA}, "swap_ptr_a");
-            llvm::Value *pB = builder_.CreateGEP(elemTy, newData, {idxB}, "swap_ptr_b");
-            llvm::Value *vA = builder_.CreateLoad(elemTy, pA, "swap_val_a");
-            llvm::Value *vB = builder_.CreateLoad(elemTy, pB, "swap_val_b");
-            builder_.CreateStore(vB, pA);
-            builder_.CreateStore(vA, pB);
-        };
-
-        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *two = llvm::ConstantInt::get(i64Ty_, 2);
-
-        // BasicBlocks
-        llvm::BasicBlock *qsCheckLenBB = llvm::BasicBlock::Create(*ctx_, "qs.check.len", fn_);
-        llvm::BasicBlock *qsInitBB = llvm::BasicBlock::Create(*ctx_, "qs.init", fn_);
-        llvm::BasicBlock *qsLoopCondBB = llvm::BasicBlock::Create(*ctx_, "qs.loop.cond", fn_);
-        llvm::BasicBlock *qsPopBB = llvm::BasicBlock::Create(*ctx_, "qs.pop", fn_);
-        llvm::BasicBlock *qsCheckTrivialBB = llvm::BasicBlock::Create(*ctx_, "qs.check.trivial", fn_);
-        llvm::BasicBlock *qsPivotBB = llvm::BasicBlock::Create(*ctx_, "qs.pivot", fn_);
-        llvm::BasicBlock *qsPartInitBB = llvm::BasicBlock::Create(*ctx_, "qs.part.init", fn_);
-        llvm::BasicBlock *qsAdvIBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.i", fn_);
-        llvm::BasicBlock *qsAdvJBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.j", fn_);
-        llvm::BasicBlock *qsPartCheckBB = llvm::BasicBlock::Create(*ctx_, "qs.part.check", fn_);
-        llvm::BasicBlock *qsPartSwapBB = llvm::BasicBlock::Create(*ctx_, "qs.part.swap", fn_);
-        llvm::BasicBlock *qsPushBB = llvm::BasicBlock::Create(*ctx_, "qs.push", fn_);
-        llvm::BasicBlock *qsEndBB = llvm::BasicBlock::Create(*ctx_, "qs.end", fn_);
-        llvm::BasicBlock *qsDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.done", fn_);
-
-        builder_.CreateBr(qsCheckLenBB);
-
-        // qs.check.len: if len <= 1, skip sort
-        builder_.SetInsertPoint(qsCheckLenBB);
-        llvm::Value *lenLE1 = builder_.CreateICmpSLE(srcLen, one, "len_le_1");
-        builder_.CreateCondBr(lenLE1, qsDoneBB, qsInitBB);
-
-        // qs.init: allocate explicit stack, push (0, len-1)
-        builder_.SetInsertPoint(qsInitBB);
-        // Stack: array of i64 pairs, max 128 levels deep (push-smaller-first bounds depth to O(log n))
-        llvm::Value *stackSize = llvm::ConstantInt::get(i64Ty_, 128 * 2 * 8);
-        llvm::Value *stack = builder_.CreateCall(mallocFn, {stackSize}, "qs_stack");
-        llvm::AllocaInst *stackTopVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_stack_top");
-        builder_.CreateStore(zero, stackTopVar);
-        // Alloca for partition indices (hoisted out of loop to avoid stack growth)
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_i");
-        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_j");
-        // Push initial range (0, len-1)
-        llvm::Value *lenM1 = builder_.CreateSub(srcLen, one, "len_m1");
-        // stack[0] = 0 (lo)
-        llvm::Value *stackSlot0 = builder_.CreateGEP(i64Ty_, stack, {zero}, "stack_slot0");
-        builder_.CreateStore(zero, stackSlot0);
-        // stack[1] = len-1 (hi)
-        llvm::Value *stackSlot1 = builder_.CreateGEP(i64Ty_, stack, {one}, "stack_slot1");
-        builder_.CreateStore(lenM1, stackSlot1);
-        builder_.CreateStore(two, stackTopVar); // stackTop = 2
-        builder_.CreateBr(qsLoopCondBB);
-
-        // qs.loop.cond: while stackTop > 0
-        builder_.SetInsertPoint(qsLoopCondBB);
-        llvm::Value *stackTop = builder_.CreateLoad(i64Ty_, stackTopVar, "stack_top");
-        llvm::Value *stackNotEmpty = builder_.CreateICmpSGT(stackTop, zero, "stack_not_empty");
-        builder_.CreateCondBr(stackNotEmpty, qsPopBB, qsEndBB);
-
-        // qs.pop: pop (lo, hi) from stack
-        builder_.SetInsertPoint(qsPopBB);
-        llvm::Value *st1 = builder_.CreateLoad(i64Ty_, stackTopVar, "st1");
-        llvm::Value *hiIdx = builder_.CreateSub(st1, one, "hi_idx");
-        llvm::Value *loIdx = builder_.CreateSub(st1, two, "lo_idx");
-        llvm::Value *loSlot = builder_.CreateGEP(i64Ty_, stack, {loIdx}, "lo_slot");
-        llvm::Value *hiSlot = builder_.CreateGEP(i64Ty_, stack, {hiIdx}, "hi_slot");
-        llvm::Value *lo = builder_.CreateLoad(i64Ty_, loSlot, "lo");
-        llvm::Value *hi = builder_.CreateLoad(i64Ty_, hiSlot, "hi");
-        llvm::Value *newST = builder_.CreateSub(st1, two, "new_st");
-        builder_.CreateStore(newST, stackTopVar);
-        builder_.CreateBr(qsCheckTrivialBB);
-
-        // qs.check.trivial: if lo >= hi, skip
-        builder_.SetInsertPoint(qsCheckTrivialBB);
-        llvm::Value *loGeHi = builder_.CreateICmpSGE(lo, hi, "lo_ge_hi");
-        builder_.CreateCondBr(loGeHi, qsLoopCondBB, qsPivotBB);
-
-        // qs.pivot: median-of-three pivot selection
-        builder_.SetInsertPoint(qsPivotBB);
-        llvm::Value *mid = builder_.CreateAdd(lo, builder_.CreateSDiv(builder_.CreateSub(hi, lo), two), "mid");
-        // Load arr[lo], arr[mid], arr[hi]
-        llvm::Value *ptrLo = builder_.CreateGEP(elemTy, newData, {lo}, "ptr_lo");
-        llvm::Value *ptrMid = builder_.CreateGEP(elemTy, newData, {mid}, "ptr_mid");
-        llvm::Value *ptrHi = builder_.CreateGEP(elemTy, newData, {hi}, "ptr_hi");
-        llvm::Value *valLo = builder_.CreateLoad(elemTy, ptrLo, "val_lo");
-        llvm::Value *valMid = builder_.CreateLoad(elemTy, ptrMid, "val_mid");
-        llvm::Value *valHi = builder_.CreateLoad(elemTy, ptrHi, "val_hi");
-        // Sort the three: if arr[lo] > arr[mid], swap
-        llvm::BasicBlock *qsMot1BB = llvm::BasicBlock::Create(*ctx_, "qs.mot1", fn_);
-        llvm::BasicBlock *qsMot2BB = llvm::BasicBlock::Create(*ctx_, "qs.mot2", fn_);
-        llvm::BasicBlock *qsMot3BB = llvm::BasicBlock::Create(*ctx_, "qs.mot3", fn_);
-        llvm::BasicBlock *qsMotDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.mot.done", fn_);
-        llvm::Value *loGtMid = emitLessThan(valMid, valLo); // mid < lo => lo > mid
-        builder_.CreateCondBr(loGtMid, qsMot1BB, qsMot2BB);
-
-        builder_.SetInsertPoint(qsMot1BB);
-        emitSwap(lo, mid);
-        builder_.CreateBr(qsMot2BB);
-
-        // if arr[lo] > arr[hi], swap
-        builder_.SetInsertPoint(qsMot2BB);
-        llvm::Value *valLo2 = builder_.CreateLoad(elemTy, ptrLo, "val_lo2");
-        llvm::Value *valHi2 = builder_.CreateLoad(elemTy, ptrHi, "val_hi2");
-        llvm::Value *loGtHi = emitLessThan(valHi2, valLo2);
-        builder_.CreateCondBr(loGtHi, qsMot3BB, qsMotDoneBB);
-
-        builder_.SetInsertPoint(qsMot3BB);
-        emitSwap(lo, hi);
-        builder_.CreateBr(qsMotDoneBB);
-
-        // if arr[mid] > arr[hi], swap
-        builder_.SetInsertPoint(qsMotDoneBB);
-        llvm::BasicBlock *qsMot4BB = llvm::BasicBlock::Create(*ctx_, "qs.mot4", fn_);
-        llvm::BasicBlock *qsMot5BB = llvm::BasicBlock::Create(*ctx_, "qs.mot5", fn_);
-        llvm::Value *valMid3 = builder_.CreateLoad(elemTy, ptrMid, "val_mid3");
-        llvm::Value *valHi3 = builder_.CreateLoad(elemTy, ptrHi, "val_hi3");
-        llvm::Value *midGtHi = emitLessThan(valHi3, valMid3);
-        builder_.CreateCondBr(midGtHi, qsMot4BB, qsMot5BB);
-
-        builder_.SetInsertPoint(qsMot4BB);
-        emitSwap(mid, hi);
-        builder_.CreateBr(qsMot5BB);
-
-        // Pivot = arr[mid], swap mid to lo+1 position for Hoare partition
-        builder_.SetInsertPoint(qsMot5BB);
-        // Use arr[mid] as pivot value
-        llvm::Value *pivotVal = builder_.CreateLoad(elemTy, ptrMid, "pivot_val");
-        builder_.CreateBr(qsPartInitBB);
-
-        // qs.part.init: i = lo - 1, j = hi + 1
-        builder_.SetInsertPoint(qsPartInitBB);
-        builder_.CreateStore(builder_.CreateSub(lo, one, "lo_m1"), iVar);
-        builder_.CreateStore(builder_.CreateAdd(hi, one, "hi_p1"), jVar);
-        builder_.CreateBr(qsAdvIBB);
-
-        // qs.adv.i: do { i++ } while arr[i] < pivot
-        builder_.SetInsertPoint(qsAdvIBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "i_next");
-        builder_.CreateStore(iNext, iVar);
-        llvm::Value *ptrI = builder_.CreateGEP(elemTy, newData, {iNext}, "ptr_i");
-        llvm::Value *valI = builder_.CreateLoad(elemTy, ptrI, "val_i");
-        llvm::Value *iLtPivot = emitLessThan(valI, pivotVal);
-        builder_.CreateCondBr(iLtPivot, qsAdvIBB, qsAdvJBB);
-
-        // qs.adv.j: do { j-- } while arr[j] > pivot (i.e., pivot < arr[j])
-        builder_.SetInsertPoint(qsAdvJBB);
-        llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "j_cur");
-        llvm::Value *jNext = builder_.CreateSub(jCur, one, "j_next");
-        builder_.CreateStore(jNext, jVar);
-        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, newData, {jNext}, "ptr_j");
-        llvm::Value *valJ = builder_.CreateLoad(elemTy, ptrJ, "val_j");
-        llvm::Value *pivotLtJ = emitLessThan(pivotVal, valJ);
-        builder_.CreateCondBr(pivotLtJ, qsAdvJBB, qsPartCheckBB);
-
-        // qs.part.check: if i >= j, partition done
-        builder_.SetInsertPoint(qsPartCheckBB);
-        llvm::Value *iFinal = builder_.CreateLoad(i64Ty_, iVar, "i_final");
-        llvm::Value *jFinal = builder_.CreateLoad(i64Ty_, jVar, "j_final");
-        llvm::Value *iGeJ = builder_.CreateICmpSGE(iFinal, jFinal, "i_ge_j");
-        builder_.CreateCondBr(iGeJ, qsPushBB, qsPartSwapBB);
-
-        // qs.part.swap: swap arr[i] and arr[j], continue partitioning
-        builder_.SetInsertPoint(qsPartSwapBB);
-        llvm::Value *iSwap = builder_.CreateLoad(i64Ty_, iVar, "i_swap");
-        llvm::Value *jSwap = builder_.CreateLoad(i64Ty_, jVar, "j_swap");
-        emitSwap(iSwap, jSwap);
-        builder_.CreateBr(qsAdvIBB);
-
-        // qs.push: push larger sub-range first (bounds stack depth to O(log n))
-        builder_.SetInsertPoint(qsPushBB);
-        llvm::Value *partJ = builder_.CreateLoad(i64Ty_, jVar, "part_j");
-        llvm::Value *partJp1 = builder_.CreateAdd(partJ, one, "part_j_p1");
-        // Compute sizes: leftSize = partJ - lo, rightSize = hi - partJp1
-        llvm::Value *leftSize = builder_.CreateSub(partJ, lo, "left_size");
-        llvm::Value *rightSize = builder_.CreateSub(hi, partJp1, "right_size");
-        // Push larger sub-range first (processed last), smaller second (processed next)
-        llvm::BasicBlock *qsPushLeftFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.left_first", fn_);
-        llvm::BasicBlock *qsPushRightFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.right_first", fn_);
-        llvm::BasicBlock *qsPushDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.push.done", fn_);
-        llvm::Value *leftGtRight = builder_.CreateICmpSGT(leftSize, rightSize, "left_gt_right");
-        builder_.CreateCondBr(leftGtRight, qsPushLeftFirstBB, qsPushRightFirstBB);
-
-        // Left is larger: push (lo, partJ) first, then (partJp1, hi)
-        builder_.SetInsertPoint(qsPushLeftFirstBB);
-        {
-            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_lf");
-            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_lf");
-            builder_.CreateStore(lo, s0);
-            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_lf");
-            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_lf");
-            builder_.CreateStore(partJ, s1);
-            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_lf");
-            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_lf");
-            builder_.CreateStore(partJp1, s2);
-            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_lf");
-            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_lf");
-            builder_.CreateStore(hi, s3);
-            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_lf");
-            builder_.CreateStore(st4, stackTopVar);
+            builder_.CreateRet(result);
         }
-        builder_.CreateBr(qsPushDoneBB);
 
-        // Right is larger: push (partJp1, hi) first, then (lo, partJ)
-        builder_.SetInsertPoint(qsPushRightFirstBB);
-        {
-            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_rf");
-            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_rf");
-            builder_.CreateStore(partJp1, s0);
-            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_rf");
-            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_rf");
-            builder_.CreateStore(hi, s1);
-            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_rf");
-            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_rf");
-            builder_.CreateStore(lo, s2);
-            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_rf");
-            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_rf");
-            builder_.CreateStore(partJ, s3);
-            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_rf");
-            builder_.CreateStore(st4, stackTopVar);
-        }
-        builder_.CreateBr(qsPushDoneBB);
+        // Call __ry_timsort(newData, srcLen, elemSize, trampoline, cmpCtx)
+        llvm::Value *elemSizeConst = llvm::ConstantInt::get(i64Ty_, elemSz);
+        llvm::Value *cmpCtx = hasComparator
+            ? compVal
+            : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
-        builder_.SetInsertPoint(qsPushDoneBB);
-        builder_.CreateBr(qsLoopCondBB);
+        auto timsortTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
+        auto timsortFn = mod_->getOrInsertFunction("__ry_timsort", timsortTy);
+        builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
 
-        // qs.end: free stack
-        builder_.SetInsertPoint(qsEndBB);
-        llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
-        builder_.CreateCall(freeFn, {stack});
-        builder_.CreateBr(qsDoneBB);
-
-        // qs.done: return sorted list
-        builder_.SetInsertPoint(qsDoneBB);
+        // Return sorted list
         list_element_types_[newHeader] = elemTy;
         return newHeader;
     }
@@ -2568,6 +2367,64 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         return builder_.CreateLoad(elemTy, bestVar, "mm_result");
     }
 
+
+    // tap(list, fn) → call fn on each element, return original list
+    if (e.callee == "tap") {
+        if (e.args.size() != 2)
+            codegenError("tap() takes exactly 2 arguments");
+
+        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            codegenError("tap() requires a list as first argument");
+
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("tap() requires a function as second argument");
+        auto &info = fnIt->second;
+
+        if (info.paramTypes.size() != 1)
+            codegenError("tap() function must take exactly 1 argument");
+
+        // Read source list
+        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "tap_src_len_ptr");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "tap_src_len");
+        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "tap_src_data_field");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "tap_src_data");
+
+        // Loop: call fn on each element
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "tap_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tap.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tap.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tap.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "tap_iv");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "tap_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "tap_elem_ptr");
+        llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
+        emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
+        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return listVal;
+    }
 
     return nullptr;
 }
@@ -3117,6 +2974,55 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sl_new_cap");
             builder_.CreateStore(count, newCapPtr);
             llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sl_new_data");
+            builder_.CreateStore(newData, newDataField);
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
+
+    // take(list, n) → new list with first n elements
+    if (e.callee == "take" && e.args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *nVal = emitExpr(*e.args[1]);
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "tk_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "tk_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "tk_data_field");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, dataField, "tk_src_data");
+
+            // Clamp n: max(0, min(n, len))
+            llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+            llvm::Value *clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSLT(nVal, zero), zero, nVal, "tk_cn");
+            clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSGT(clampedN, len), len, clampedN, "tk_cn2");
+
+            // Allocate new list
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tk_header");
+            llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
+
+            // Copy elements
+            builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
+
+            // Set header fields
+            llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "tk_new_len");
+            builder_.CreateStore(clampedN, newLenPtr);
+            llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "tk_new_cap");
+            builder_.CreateStore(clampedN, newCapPtr);
+            llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "tk_new_data");
             builder_.CreateStore(newData, newDataField);
 
             list_element_types_[newHeader] = elemTy;
@@ -4256,6 +4162,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     validateNativeCallArgs(e->callee, e->args);
 
     // Dispatch to category helpers
+    if (auto *v = emitBuiltinIterator(*e))   return v;
     if (auto *v = emitBuiltinString(*e))     return v;
     if (auto *v = emitBuiltinConversion(*e)) return v;
     if (auto *v = emitBuiltinQuery(*e))      return v;
@@ -4444,4 +4351,517 @@ void CodeGen::validateNativeCallArgs(const std::string &callee,
     }
     codegenError(callee + "() expects " + expected +
         " argument(s), but got " + std::to_string(args.size()));
+}
+
+// ===== Builtin Iterator =====
+
+// Helper: allocate IteratorHeader {next_fn, state} and track element type
+static llvm::Value *emitIteratorHeaderAlloc(
+    CodeGen &cg, llvm::IRBuilder<> &builder, llvm::Module &mod,
+    llvm::StructType *iterHeaderTy, llvm::Type *i64Ty, llvm::Type *ptrTy,
+    llvm::Function *nextFn, llvm::Value *stateAlloc, llvm::Type *elemTy,
+    std::unordered_map<llvm::Value*, llvm::Type*> &elemTypes,
+    const std::string &name) {
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
+    llvm::FunctionCallee mallocFn = mod.getOrInsertFunction("malloc", mallocTy);
+    uint64_t headerSize = mod.getDataLayout().getTypeAllocSize(iterHeaderTy);
+    llvm::Value *header = builder.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty, headerSize)}, name);
+    builder.CreateStore(nextFn, builder.CreateStructGEP(iterHeaderTy, header, 0));
+    builder.CreateStore(stateAlloc, builder.CreateStructGEP(iterHeaderTy, header, 1));
+    elemTypes[header] = elemTy;
+    return header;
+}
+
+// Helper: load {next_fn, state} from an IteratorHeader
+static std::pair<llvm::Value*, llvm::Value*> loadIteratorFields(
+    llvm::IRBuilder<> &builder, llvm::StructType *iterHeaderTy,
+    llvm::Type *ptrTy, llvm::Value *iterVal, const std::string &prefix) {
+    llvm::Value *nfField = builder.CreateStructGEP(iterHeaderTy, iterVal, 0, prefix + "_nf");
+    llvm::Value *nf = builder.CreateLoad(ptrTy, nfField, prefix + "_next_fn");
+    llvm::Value *stField = builder.CreateStructGEP(iterHeaderTy, iterVal, 1, prefix + "_st");
+    llvm::Value *st = builder.CreateLoad(ptrTy, stField, prefix + "_state");
+    return {nf, st};
+}
+
+llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
+    // iter(collection) → Iterator
+    if (e.callee == "iter" && e.args.size() == 1) {
+        llvm::Value *collVal = emitExpr(*e.args[0]);
+        if (collVal->getType() != ptrTy_)
+            return nullptr;
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        // Helper lambda: generate a dense-array next function for List/Set
+        // State: { ptr data, i64 length, i64 index }
+        auto emitDenseIterator = [&](llvm::Type *elemTy, llvm::StructType *collHeaderTy,
+                                     unsigned dataPtrIdx, unsigned lenIdx,
+                                     const std::string &kind) -> llvm::Value* {
+            llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, i64Ty_, i64Ty_});
+            uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+            std::string fnName = "__iter_" + kind + "_next." + std::to_string(iterator_fn_counter_++);
+            llvm::StructType *optTy = getOptionType(elemTy);
+            llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::Function *nextFn = llvm::Function::Create(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+            {
+                FnScope guard(*this);
+                fn_ = nextFn;
+                pushScope();
+                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                builder_.SetInsertPoint(entry);
+
+                llvm::Value *statePtr = nextFn->getArg(0);
+                llvm::Value *data = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 0), "data");
+                llvm::Value *len = builder_.CreateLoad(i64Ty_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 1), "len");
+                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 2, "idx_field");
+                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+
+                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
+                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+
+                builder_.SetInsertPoint(someBB);
+                llvm::Value *elem = builder_.CreateLoad(elemTy,
+                    builder_.CreateGEP(elemTy, data, {idx}, "elem_ptr"), "elem");
+                builder_.CreateStore(
+                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
+                builder_.CreateRet(buildSomeValue(elem, optTy));
+
+                builder_.SetInsertPoint(noneBB);
+                builder_.CreateRet(buildNoneValue(optTy));
+                popScope();
+            }
+
+            // Allocate and fill state
+            llvm::Value *stateAlloc = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "iter_state");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(collHeaderTy, collVal, dataPtrIdx), "src_data");
+            llvm::Value *srcLen = builder_.CreateLoad(i64Ty_,
+                builder_.CreateStructGEP(collHeaderTy, collVal, lenIdx), "src_len");
+            builder_.CreateStore(srcData, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+            builder_.CreateStore(srcLen, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, ptrTy_, nextFn, stateAlloc, elemTy, iterator_element_types_, "iter_header");
+        };
+
+        // Try List (data at index 2, len at index 0)
+        if (llvm::Type *elemTy = getListElementType(collVal))
+            return emitDenseIterator(elemTy, listHeaderTy_, 2, 0, "list");
+
+        // Try Set (data at index 2, len at index 0)
+        if (llvm::Type *setElemTy = getSetElementType(collVal))
+            return emitDenseIterator(setElemTy, setHeaderTy_, 2, 0, "set");
+
+        // Try Map → Iterator over (K, V) tuples
+        llvm::Type *keyTy = getMapKeyType(collVal);
+        llvm::Type *valTy = getMapValueType(collVal);
+        if (keyTy && valTy) {
+            llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
+            llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_, i64Ty_});
+            uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+            std::string fnName = "__iter_map_next." + std::to_string(iterator_fn_counter_++);
+            llvm::StructType *optTy = getOptionType(tupleTy);
+            llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::Function *nextFn = llvm::Function::Create(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+            {
+                FnScope guard(*this);
+                fn_ = nextFn;
+                pushScope();
+                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                builder_.SetInsertPoint(entry);
+
+                llvm::Value *statePtr = nextFn->getArg(0);
+                llvm::Value *keys = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 0), "keys");
+                llvm::Value *vals = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 1), "vals");
+                llvm::Value *len = builder_.CreateLoad(i64Ty_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 2), "len");
+                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 3, "idx_field");
+                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+
+                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
+                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+
+                builder_.SetInsertPoint(someBB);
+                llvm::Value *key = builder_.CreateLoad(keyTy,
+                    builder_.CreateGEP(keyTy, keys, {idx}, "key_ptr"), "key");
+                llvm::Value *val = builder_.CreateLoad(valTy,
+                    builder_.CreateGEP(valTy, vals, {idx}, "val_ptr"), "val");
+                llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
+                tuple = builder_.CreateInsertValue(tuple, key, 0, "tuple_k");
+                tuple = builder_.CreateInsertValue(tuple, val, 1, "tuple_kv");
+                builder_.CreateStore(
+                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
+                builder_.CreateRet(buildSomeValue(tuple, optTy));
+
+                builder_.SetInsertPoint(noneBB);
+                builder_.CreateRet(buildNoneValue(optTy));
+                popScope();
+            }
+
+            llvm::Value *stateAlloc = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "iter_state");
+            builder_.CreateStore(
+                builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 2)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+            builder_.CreateStore(
+                builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 3)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+            builder_.CreateStore(
+                builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 0)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 3));
+
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, ptrTy_, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
+        }
+
+        codegenError("iter() argument must be a List, Set, or Map");
+    }
+
+    // to_list() → collect Iterator into List
+    if (e.callee == "to_list" && e.args.size() == 1) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        llvm::FunctionType *reallocTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee reallocFn = mod_->getOrInsertFunction("realloc", reallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+        auto [nextFnPtr, statePtr] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "tl");
+
+        // Allocate list header
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *headerPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tl_header");
+
+        // Initial capacity = 8
+        llvm::AllocaInst *capVar = builder_.CreateAlloca(i64Ty_, nullptr, "tl_cap");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 8), capVar);
+        llvm::AllocaInst *lenVar = builder_.CreateAlloca(i64Ty_, nullptr, "tl_len");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenVar);
+        llvm::AllocaInst *dataVar = builder_.CreateAlloca(ptrTy_, nullptr, "tl_data_var");
+        llvm::Value *initData = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 8)}, "tl_init_data");
+        builder_.CreateStore(initData, dataVar);
+
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tl.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tl.body", fn_);
+        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "tl.grow", fn_);
+        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "tl.store", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tl.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "tl_opt");
+        llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "tl_has");
+        builder_.CreateCondBr(hasVal, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "tl_elem");
+        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_cur_len");
+        llvm::Value *curCap = builder_.CreateLoad(i64Ty_, capVar, "tl_cur_cap");
+        builder_.CreateCondBr(builder_.CreateICmpEQ(curLen, curCap, "tl_need_grow"), growBB, storeBB);
+
+        builder_.SetInsertPoint(growBB);
+        llvm::Value *newCap = builder_.CreateMul(curCap, llvm::ConstantInt::get(i64Ty_, 2), "tl_new_cap");
+        builder_.CreateStore(newCap, capVar);
+        llvm::Value *newData = builder_.CreateCall(reallocFn, {
+            builder_.CreateLoad(ptrTy_, dataVar, "tl_old_data"),
+            builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "tl_new_size")
+        }, "tl_new_data");
+        builder_.CreateStore(newData, dataVar);
+        builder_.CreateBr(storeBB);
+
+        builder_.SetInsertPoint(storeBB);
+        llvm::Value *storeLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_store_len");
+        llvm::Value *storeData = builder_.CreateLoad(ptrTy_, dataVar, "tl_store_data");
+        builder_.CreateStore(elem, builder_.CreateGEP(elemTy, storeData, {storeLen}, "tl_dst_ptr"));
+        builder_.CreateStore(
+            builder_.CreateAdd(storeLen, llvm::ConstantInt::get(i64Ty_, 1), "tl_new_len"), lenVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        builder_.CreateStore(builder_.CreateLoad(i64Ty_, lenVar, "tl_final_len"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+        builder_.CreateStore(builder_.CreateLoad(i64Ty_, capVar, "tl_final_cap"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+        builder_.CreateStore(builder_.CreateLoad(ptrTy_, dataVar, "tl_final_data"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+
+        list_element_types_[headerPtr] = elemTy;
+
+        // Propagate nested list metadata for flatten() support
+        {
+            llvm::Type *nestedTy = getNestedListElementType(iterVal);
+            if (nestedTy)
+                nested_list_element_types_[headerPtr] = nestedTy;
+        }
+
+        return headerPtr;
+    }
+
+    // next() → call next_fn(state) on Iterator
+    if (e.callee == "next" && e.args.size() == 1) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        auto [nextFnPtr, statePtr] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "next");
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        return builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "next_result");
+    }
+
+    // filter(iter, predicate) → new Iterator
+    if (e.callee == "filter" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("filter() on iterator requires a predicate function");
+        auto &info = fnIt->second;
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        // State: { ptr src_next_fn, ptr src_state, ptr predicate }
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+
+        std::string fnName = "__iter_filter_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        llvm::Function *filterNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = filterNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", filterNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = filterNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *predPtr = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 2), "pred_ptr");
+
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "loop", filterNextFn);
+            builder_.CreateBr(loopBB);
+
+            builder_.SetInsertPoint(loopBB);
+            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+            llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "check", filterNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", filterNextFn);
+            builder_.CreateCondBr(hasVal, checkBB, noneBB);
+
+            builder_.SetInsertPoint(checkBB);
+            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
+            llvm::Value *predResult = emitLambdaCall(predPtr, info, {elem}, "pred_result");
+            llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "match", filterNextFn);
+            builder_.CreateCondBr(predResult, matchBB, loopBB);
+
+            builder_.SetInsertPoint(matchBB);
+            builder_.CreateRet(buildSomeValue(elem, optTy));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(optTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "filter");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "filter_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, filterNextFn, stateAlloc, elemTy, iterator_element_types_, "filter_iter");
+    }
+
+    // map(iter, transform) → new Iterator with transformed element type
+    if (e.callee == "map" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("map() on iterator requires a transform function");
+        auto &info = fnIt->second;
+        llvm::Type *outElemTy = info.returnType;
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+
+        std::string fnName = "__iter_map_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *srcOptTy = getOptionType(elemTy);
+        llvm::StructType *outOptTy = getOptionType(outElemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(outOptTy, {ptrTy_}, false);
+        llvm::Function *mapNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = mapNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", mapNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = mapNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *transPtr = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 2), "trans_ptr");
+
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(srcOptTy, {ptrTy_}, false);
+            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+
+            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", mapNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", mapNextFn);
+            builder_.CreateCondBr(hasVal, someBB, noneBB);
+
+            builder_.SetInsertPoint(someBB);
+            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
+            builder_.CreateRet(buildSomeValue(emitLambdaCall(transPtr, info, {elem}, "mapped"), outOptTy));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(outOptTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "map");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "map_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, mapNextFn, stateAlloc, outElemTy, iterator_element_types_, "map_iter");
+    }
+
+    // take(iter, n) → new Iterator that yields at most n elements
+    if (e.callee == "take" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *n = emitExpr(*e.args[1]);
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_});
+
+        std::string fnName = "__iter_take_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        llvm::Function *takeNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = takeNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", takeNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = takeNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *remField = builder_.CreateStructGEP(stateTy, statePtr, 2, "rem_f");
+            llvm::Value *remaining = builder_.CreateLoad(i64Ty_, remField, "remaining");
+
+            llvm::BasicBlock *callBB = llvm::BasicBlock::Create(*ctx_, "call", takeNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", takeNextFn);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(remaining, llvm::ConstantInt::get(i64Ty_, 0), "has_rem"),
+                callBB, noneBB);
+
+            builder_.SetInsertPoint(callBB);
+            builder_.CreateStore(
+                builder_.CreateSub(remaining, llvm::ConstantInt::get(i64Ty_, 1), "new_rem"), remField);
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            builder_.CreateRet(builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt"));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(optTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "take");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "take_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, takeNextFn, stateAlloc, elemTy, iterator_element_types_, "take_iter");
+    }
+
+    return nullptr;
 }

@@ -2046,3 +2046,77 @@ TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
         "    print(a)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+// ===== TimSort / Hybrid Sort テスト =====
+
+TEST_F(CodeGenTest, SortExactly2Elements) {
+    std::string src =
+        "let xs = [2, 1]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2]\n");
+}
+
+TEST_F(CodeGenTest, SortExactly32Elements) {
+    // MIN_MERGE threshold: 32 elements
+    std::string src =
+        "let xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
+        "16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, "
+              "17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]\n");
+}
+
+TEST_F(CodeGenTest, SortExactly33Elements) {
+    // minRun+1: enters TimSort merge path
+    std::string src =
+        "let xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
+        "16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]\n"
+        "print(sort(xs))";
+    EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, "
+              "17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]\n");
+}
+
+TEST_F(CodeGenTest, SortLargeListWithDuplicates) {
+    // 50 elements with many duplicates
+    std::string src =
+        "let xs = [5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
+        "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
+        "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
+        "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
+        "5, 3, 8, 1, 9, 2, 7, 4, 6, 10]\n"
+        "let ys = sort(xs)\n"
+        "print(len(ys))\n"
+        "print(ys[0])\n"
+        "print(ys[49])";
+    EXPECT_EQ(runSource(src), "50\n1\n10\n");
+}
+
+TEST_F(CodeGenTest, SortStability) {
+    // Stability test: sort by first digit only, equal elements should preserve order
+    // Use pairs represented as values: encode (key, order) as key*100+order
+    // Sort by key (value / 100), check order preservation for equal keys
+    std::string src =
+        "let xs = [201, 102, 303, 104, 205]\n"
+        "let ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)\n"
+        "print(ys)";
+    // key=1: 102, 104 (original order preserved)
+    // key=2: 201, 205 (original order preserved)
+    // key=3: 303
+    EXPECT_EQ(runSource(src), "[102, 104, 201, 205, 303]\n");
+}
+
+TEST_F(CodeGenTest, SortStabilityLarger) {
+    // Larger stability test crossing TimSort merge boundary
+    std::string src =
+        "let xs = range(40).map(fn(i: int): (i % 5) * 1000 + i)\n"
+        "let ys = sort(xs, fn(a: int, b: int): a / 1000 < b / 1000)\n"
+        "var stable = true\n"
+        "for i in range(1, 40):\n"
+        "    let ka = ys[i - 1] / 1000\n"
+        "    let kb = ys[i] / 1000\n"
+        "    if ka == kb:\n"
+        "        if ys[i - 1] % 1000 > ys[i] % 1000:\n"
+        "            stable = false\n"
+        "print(stable)";
+    EXPECT_EQ(runSource(src), "true\n");
+}

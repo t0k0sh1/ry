@@ -119,6 +119,15 @@ Token Lexer::readToken() {
     }
     if (c == '+') {
         ++pos_; ++col_;
+        if (pos_ < src_.size() && src_[pos_] == '+') {
+            // Emit PlusPlus only when followed by a statement terminator
+            // (whitespace, newline, EOF, comment) to avoid breaking `x + +1`
+            size_t after = pos_ + 1;
+            if (after >= src_.size() || src_[after] == ' ' || src_[after] == '\t' ||
+                src_[after] == '\n' || src_[after] == '\r' || src_[after] == '#') {
+                ++pos_; ++col_; return {TokenKind::PlusPlus, "++", line_, startCol};
+            }
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::PlusEq, "+=", line_, startCol};
         }
@@ -128,6 +137,14 @@ Token Lexer::readToken() {
         ++pos_; ++col_;
         if (pos_ < src_.size() && src_[pos_] == '>') {
             ++pos_; ++col_; return {TokenKind::Arrow, "->", line_, startCol};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '-') {
+            // Emit MinusMinus only when followed by a statement terminator
+            size_t after = pos_ + 1;
+            if (after >= src_.size() || src_[after] == ' ' || src_[after] == '\t' ||
+                src_[after] == '\n' || src_[after] == '\r' || src_[after] == '#') {
+                ++pos_; ++col_; return {TokenKind::MinusMinus, "--", line_, startCol};
+            }
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::MinusEq, "-=", line_, startCol};
