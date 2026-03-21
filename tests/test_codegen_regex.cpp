@@ -131,3 +131,35 @@ let s = "[0-9]+".regex_replace("a1b2c3", "X")
 print(s)
 )"), "aXbXcX\n");
 }
+
+// ============================================================
+// Range quantifiers
+// ============================================================
+
+TEST_F(CodeGenTest, RegexQuantifierExact) {
+    EXPECT_EQ(runSource(R"(
+print(regex_match("\\d{3}", "123"))
+print(regex_match("\\d{3}", "12"))
+print(regex_match("\\d{3}", "1234"))
+)"), "true\nfalse\nfalse\n");
+}
+
+// ============================================================
+// Non-greedy match
+// ============================================================
+
+TEST_F(CodeGenTest, RegexLazyReplace) {
+    EXPECT_EQ(runSource(R"(
+let s = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+print(s)
+)"), "X and X\n");
+}
+
+TEST_F(CodeGenTest, RegexLazyFindAll) {
+    EXPECT_EQ(runSource(R"(
+let tags = regex_find_all("<.*?>", "<x> <yy>")
+print(len(tags))
+print(tags[0])
+print(tags[1])
+)"), "2\n<x>\n<yy>\n");
+}
