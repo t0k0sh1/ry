@@ -15,7 +15,8 @@ static bool isExportable(const StmtNode &stmt) {
     return std::holds_alternative<std::unique_ptr<FnStmt>>(stmt) ||
            std::holds_alternative<RecordStmt>(stmt) ||
            std::holds_alternative<EnumStmt>(stmt) ||
-           std::holds_alternative<TypeAliasStmt>(stmt);
+           std::holds_alternative<TypeAliasStmt>(stmt) ||
+           std::holds_alternative<LetStmt>(stmt);
 }
 
 // Get the name of an exportable definition
@@ -28,6 +29,8 @@ static std::string getExportName(const StmtNode &stmt) {
         return std::get<EnumStmt>(stmt).name;
     if (std::holds_alternative<TypeAliasStmt>(stmt))
         return std::get<TypeAliasStmt>(stmt).name;
+    if (std::holds_alternative<LetStmt>(stmt))
+        return std::get<LetStmt>(stmt).name;
     return "";
 }
 

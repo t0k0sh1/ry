@@ -4074,6 +4074,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinCollection(*e)) return v;
     if (auto *v = emitBuiltinSetOps(*e))     return v;
     if (auto *v = emitBuiltinRegex(*e))     return v;
+    if (auto *v = emitBuiltinMath(*e))      return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -4225,6 +4226,132 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
         list_element_types_[result] = ptrTy_;
         return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin Math =====
+
+llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
+    // PI() -> float
+    if (e.callee == "PI") {
+        if (!e.args.empty())
+            codegenError("PI() takes no arguments");
+        return llvm::ConstantFP::get(f64Ty_, 3.141592653589793);
+    }
+
+    // E() -> float
+    if (e.callee == "E") {
+        if (!e.args.empty())
+            codegenError("E() takes no arguments");
+        return llvm::ConstantFP::get(f64Ty_, 2.718281828459045);
+    }
+
+    // inf() -> float
+    if (e.callee == "inf") {
+        if (!e.args.empty())
+            codegenError("inf() takes no arguments");
+        return llvm::ConstantFP::getInfinity(f64Ty_);
+    }
+
+    // nan() -> float
+    if (e.callee == "nan") {
+        if (!e.args.empty())
+            codegenError("nan() takes no arguments");
+        return llvm::ConstantFP::getNaN(f64Ty_);
+    }
+
+    // Helper: get fabs C function
+    auto getFabs = [&]() {
+        auto ty = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+        return mod_->getOrInsertFunction("fabs", ty);
+    };
+
+    // abs(int) -> int, abs(float) -> float
+    if (e.callee == "abs") {
+        if (e.args.size() != 1)
+            codegenError("abs() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() == f64Ty_)
+            return builder_.CreateCall(getFabs(), {x}, "abs");
+        if (x->getType()->isIntegerTy(64)) {
+            llvm::Value *neg = builder_.CreateNeg(x, "neg");
+            llvm::Value *isNeg = builder_.CreateICmpSLT(x, llvm::ConstantInt::get(i64Ty_, 0), "is_neg");
+            return builder_.CreateSelect(isNeg, neg, x, "abs");
+        }
+        codegenError("abs() requires int or float argument");
+    }
+
+    // floor/ceil/round(float) -> int
+    if (e.callee == "floor" || e.callee == "ceil" || e.callee == "round") {
+        if (e.args.size() != 1)
+            codegenError(e.callee + "() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError(e.callee + "() requires float argument");
+        auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
+        return builder_.CreateFPToSI(result, i64Ty_, e.callee + "_i");
+    }
+
+    // 1-arg float -> float: sqrt, log, log2, log10, exp, sin, cos, tan, asin, acos, atan
+    {
+        static const std::unordered_set<std::string> oneArgFloat = {
+            "sqrt", "log", "log2", "log10", "exp",
+            "sin", "cos", "tan", "asin", "acos", "atan"
+        };
+        if (oneArgFloat.count(e.callee)) {
+            if (e.args.size() != 1)
+                codegenError(e.callee + "() takes exactly 1 argument");
+            llvm::Value *x = emitExpr(*e.args[0]);
+            if (x->getType() != f64Ty_)
+                codegenError(e.callee + "() requires float argument");
+            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+            return builder_.CreateCall(fn, {x}, e.callee);
+        }
+    }
+
+    // 2-arg float -> float: pow, atan2, hypot
+    {
+        static const std::unordered_set<std::string> twoArgFloat = {
+            "pow", "atan2", "hypot"
+        };
+        if (twoArgFloat.count(e.callee)) {
+            if (e.args.size() != 2)
+                codegenError(e.callee + "() takes exactly 2 arguments");
+            llvm::Value *x = emitExpr(*e.args[0]);
+            llvm::Value *y = emitExpr(*e.args[1]);
+            if (x->getType() != f64Ty_ || y->getType() != f64Ty_)
+                codegenError(e.callee + "() requires float arguments");
+            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+            return builder_.CreateCall(fn, {x, y}, e.callee);
+        }
+    }
+
+    // is_nan(float) -> bool
+    if (e.callee == "is_nan") {
+        if (e.args.size() != 1)
+            codegenError("is_nan() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError("is_nan() requires float argument");
+        return builder_.CreateFCmpUNO(x, x, "is_nan");
+    }
+
+    // is_inf(float) -> bool
+    if (e.callee == "is_inf") {
+        if (e.args.size() != 1)
+            codegenError("is_inf() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError("is_inf() requires float argument");
+        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_for_inf");
+        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
+        return builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
     }
 
     return nullptr;
