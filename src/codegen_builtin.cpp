@@ -614,14 +614,14 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     builder_.CreateCall(printfFn, {fmt, val});
 }
 
-// ===== Test: describe/it (trailing block) =====
+// ===== Test: describe/it (lambda argument) =====
 
-static LambdaExpr &extractTrailingLambda(CallStmt &s, const std::string &callee) {
+static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
     if (s.args.size() != 2)
-        throw std::runtime_error(callee + "() requires exactly one description string and a trailing block");
+        throw std::runtime_error(callee + "() requires exactly one description string and a lambda argument");
     auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
     if (!lambda)
-        throw std::runtime_error(callee + "() last argument must be a trailing block");
+        throw std::runtime_error(callee + "() last argument must be a lambda argument");
     return **lambda;
 }
 
@@ -629,7 +629,7 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'describe' is only allowed in test mode (use 'ry test')");
 
-    auto &lambda = extractTrailingLambda(s, "describe");
+    auto &lambda = extractLambdaArg(s, "describe");
 
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -654,7 +654,7 @@ void CodeGen::emitItCall(CallStmt &s) {
     if (!test_mode_)
         codegenError("'it' is only allowed in test mode (use 'ry test')");
 
-    auto &lambda = extractTrailingLambda(s, "it");
+    auto &lambda = extractLambdaArg(s, "it");
 
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);

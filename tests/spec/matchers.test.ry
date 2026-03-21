@@ -1,100 +1,130 @@
-describe("Numeric comparison matchers"):
-    it("to_be_greater_than with int"):
+describe("Numeric comparison matchers", fn():
+    it("to_be_greater_than with int", fn():
         expect(5).to_be_greater_than(3)
         expect(10).to_be_greater_than(0)
 
-    it("to_be_less_than with int"):
+    )
+    it("to_be_less_than with int", fn():
         expect(3).to_be_less_than(5)
         expect(-1).to_be_less_than(0)
 
-    it("to_be_greater_than_or_eq with int"):
+    )
+    it("to_be_greater_than_or_eq with int", fn():
         expect(5).to_be_greater_than_or_eq(5)
         expect(6).to_be_greater_than_or_eq(5)
 
-    it("to_be_less_than_or_eq with int"):
+    )
+    it("to_be_less_than_or_eq with int", fn():
         expect(5).to_be_less_than_or_eq(5)
         expect(4).to_be_less_than_or_eq(5)
 
-    it("to_be_greater_than with float"):
+    )
+    it("to_be_greater_than with float", fn():
         expect(3.14).to_be_greater_than(2.71)
 
-    it("to_be_less_than with float"):
+    )
+    it("to_be_less_than with float", fn():
         expect(2.71).to_be_less_than(3.14)
 
-    it("to_be_greater_than_or_eq with float"):
+    )
+    it("to_be_greater_than_or_eq with float", fn():
         expect(3.14).to_be_greater_than_or_eq(3.14)
         expect(3.15).to_be_greater_than_or_eq(3.14)
 
-    it("to_be_less_than_or_eq with float"):
+    )
+    it("to_be_less_than_or_eq with float", fn():
         expect(3.14).to_be_less_than_or_eq(3.14)
         expect(3.13).to_be_less_than_or_eq(3.14)
 
-    it("mixed int/float comparison"):
+    )
+    it("mixed int/float comparison", fn():
         expect(5).to_be_greater_than(3.5)
         expect(2.5).to_be_less_than(3)
 
-describe("Length and empty matchers"):
-    it("to_have_length with list"):
+    )
+)
+describe("Length and empty matchers", fn():
+    it("to_have_length with list", fn():
         let xs = [1, 2, 3]
         expect(xs).to_have_length(3)
 
-    it("to_have_length with set"):
+    )
+    it("to_have_length with set", fn():
         let s = {1, 2, 3}
         expect(s).to_have_length(3)
 
-    it("to_have_length with map"):
+    )
+    it("to_have_length with map", fn():
         let m = {"a": 1, "b": 2}
         expect(m).to_have_length(2)
 
-    it("to_have_length with str"):
+    )
+    it("to_have_length with str", fn():
         expect("hello").to_have_length(5)
 
-    it("to_be_empty with empty list"):
+    )
+    it("to_be_empty with empty list", fn():
         let xs: List<int> = [1]
         let ys = xs.filter(fn(x: int): x > 10)
         expect(ys).to_be_empty()
 
-    it("to_be_empty with empty string"):
+    )
+    it("to_be_empty with empty string", fn():
         expect("").to_be_empty()
 
-describe("Containment matchers"):
-    it("to_not_contain with list"):
+    )
+)
+describe("Containment matchers", fn():
+    it("to_not_contain with list", fn():
         let xs = [1, 2, 3]
         expect(xs).to_not_contain(4)
 
-    it("to_not_contain with set"):
+    )
+    it("to_not_contain with set", fn():
         let s = {1, 2, 3}
         expect(s).to_not_contain(4)
 
-    it("to_not_contain with string"):
+    )
+    it("to_not_contain with string", fn():
         expect("hello").to_not_contain("xyz")
 
-    it("to_contain with map key"):
+    )
+    it("to_contain with map key", fn():
         let m = {"a": 1, "b": 2}
         expect(m).to_contain("a")
         expect(m).to_contain("b")
 
-    it("to_not_contain with map key"):
+    )
+    it("to_not_contain with map key", fn():
         let m = {"a": 1, "b": 2}
         expect(m).to_not_contain("c")
 
-describe("String matchers"):
-    it("to_start_with"):
+    )
+)
+describe("String matchers", fn():
+    it("to_start_with", fn():
         expect("hello world").to_start_with("hello")
         expect("abc").to_start_with("a")
 
-    it("to_end_with"):
+    )
+    it("to_end_with", fn():
         expect("hello world").to_end_with("world")
         expect("abc").to_end_with("c")
 
-    it("to_start_with with empty prefix"):
+    )
+    it("to_start_with with empty prefix", fn():
         expect("hello").to_start_with("")
 
-    it("to_end_with with empty suffix"):
+    )
+    it("to_end_with with empty suffix", fn():
         expect("hello").to_end_with("")
 
-    it("to_start_with with full string"):
+    )
+    it("to_start_with with full string", fn():
         expect("hello").to_start_with("hello")
 
-    it("to_end_with with full string"):
+    )
+    it("to_end_with with full string", fn():
         expect("hello").to_end_with("hello")
+    )
+)

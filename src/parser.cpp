@@ -442,7 +442,7 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         if (s.callee == "mock")
             coerceFirstArgToString(s.args);
-        if (s.callee != "mock") {
+        if (s.callee != "mock" && s.callee != "it" && s.callee != "describe") {
             tryParseTrailingBlock(s);
         }
         return s;

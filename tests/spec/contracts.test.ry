@@ -22,23 +22,31 @@ record BankAccount:
     invariant:
         balance >= min_balance
 
-describe("require"):
-    it("passes when precondition met"):
+describe("require", fn():
+    it("passes when precondition met", fn():
         let res = deposit(100, 50)
         expect(res).to_eq(150)
 
-describe("ensure"):
-    it("passes when postcondition met"):
+    )
+)
+describe("ensure", fn():
+    it("passes when postcondition met", fn():
         expect(abs_val(-5)).to_eq(5)
         expect(abs_val(3)).to_eq(3)
 
-describe("old expression"):
-    it("captures value at entry"):
+    )
+)
+describe("old expression", fn():
+    it("captures value at entry", fn():
         expect(increment(10)).to_eq(11)
         expect(increment(0)).to_eq(1)
 
-describe("struct invariant"):
-    it("passes when invariant holds"):
+    )
+)
+describe("struct invariant", fn():
+    it("passes when invariant holds", fn():
         let a = BankAccount(100, 0)
         expect(a.balance).to_eq(100)
         expect(a.min_balance).to_eq(0)
+    )
+)

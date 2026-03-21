@@ -6,38 +6,44 @@ record Circle:
     center: Point
     radius: float
 
-describe("record"):
-    it("constructor and field access"):
+describe("record", fn():
+    it("constructor and field access", fn():
         let p = Point(10, 20)
         expect(p.x).to_eq(10)
         expect(p.y).to_eq(20)
 
-    it("var field assignment"):
+    )
+    it("var field assignment", fn():
         var p = Point(10, 20)
         p.x = 100
         expect(p.x).to_eq(100)
 
-    it("nested record"):
+    )
+    it("nested record", fn():
         let c = Circle(Point(0, 0), 1.0)
         expect(c.center.x).to_eq(0)
         expect(c.center.y).to_eq(0)
         expect(c.radius).to_eq(1.0)
 
+    )
+)
 enum Color:
     Red
     Green
     Blue
 
-describe("simple enum"):
-    it("variant access"):
+describe("simple enum", fn():
+    it("variant access", fn():
         let c = Color::Red
         expect(c == Color::Red).to_be_true()
 
-    it("comparison"):
+    )
+    it("comparison", fn():
         expect(Color::Red == Color::Red).to_be_true()
         expect(Color::Red != Color::Green).to_be_true()
 
-    it("match"):
+    )
+    it("match", fn():
         var res = ""
         let c = Color::Blue
         match c:
@@ -49,13 +55,15 @@ describe("simple enum"):
                 res = "blue"
         expect(res).to_eq("blue")
 
+    )
+)
 enum Shape:
     CircleS(float)
     RectS(float, float)
     PointS
 
-describe("ADT enum"):
-    it("associated data"):
+describe("ADT enum", fn():
+    it("associated data", fn():
         let s = Shape::CircleS(3.14)
         var res = 0.0
         match s:
@@ -67,7 +75,8 @@ describe("ADT enum"):
                 res = 0.0
         expect(res).to_eq(3.14)
 
-    it("multi-field pattern match"):
+    )
+    it("multi-field pattern match", fn():
         let s = Shape::RectS(4.0, 5.0)
         var res = 0.0
         match s:
@@ -79,12 +88,14 @@ describe("ADT enum"):
                 res = 0.0
         expect(res).to_eq(20.0)
 
+    )
+)
 enum MyOption<T>:
     MySome(T)
     MyNone
 
-describe("generic enum"):
-    it("with type parameter"):
+describe("generic enum", fn():
+    it("with type parameter", fn():
         let a = MyOption<int>::MySome(42)
         var res = 0
         match a:
@@ -94,7 +105,8 @@ describe("generic enum"):
                 res = -1
         expect(res).to_eq(42)
 
-    it("none variant"):
+    )
+    it("none variant", fn():
         let b = MyOption<int>::MyNone
         var res = 0
         match b:
@@ -103,3 +115,5 @@ describe("generic enum"):
             case MyOption::MyNone:
                 res = -1
         expect(res).to_eq(-1)
+    )
+)

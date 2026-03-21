@@ -30,13 +30,15 @@ When `ry test` is run without arguments, it:
 ### describe / it
 
 ```
-describe("description"):
-    it("test case name"):
+describe("description", fn():
+    it("test case name", fn():
         # test body
         expect(actual_value).to_eq(expected_value)
+    )
+)
 ```
 
-- `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda passed as the last argument
+- `describe` and `it` take a description string and a **lambda argument** `fn()` as the second parameter
 - `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
@@ -98,19 +100,25 @@ Calculator
 ## Example
 
 ```
-describe("Arithmetic"):
-    it("adds integers"):
+describe("Arithmetic", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("compares strings"):
+    )
+    it("compares strings", fn():
         expect("hello").to_eq("hello")
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
 
-describe("Booleans"):
-    it("false check"):
+    )
+)
+describe("Booleans", fn():
+    it("false check", fn():
         expect(1 > 2).to_be_false()
+    )
+)
 ```
 
 ---
@@ -125,13 +133,16 @@ Replaces a function with a mock implementation for the current `it` block. The m
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 - The first argument is the function name (identifier, not a string)
@@ -144,12 +155,14 @@ describe("mocking"):
 Returns the number of times a mocked function was called (as `int`).
 
 ```
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ### Limitations

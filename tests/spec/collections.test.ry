@@ -1,223 +1,263 @@
-describe("List"):
-    it("indexing"):
+describe("List", fn():
+    it("indexing", fn():
         let xs = [1, 2, 3]
         expect(xs[0]).to_eq(1)
         expect(xs[2]).to_eq(3)
 
-    it("index assignment"):
+    )
+    it("index assignment", fn():
         let xs = [1, 2, 3]
         xs[0] = 99
         expect(xs[0]).to_eq(99)
 
-    it("len"):
+    )
+    it("len", fn():
         expect([1, 2, 3]).to_have_length(3)
 
-    it("append"):
+    )
+    it("append", fn():
         var xs = [1, 2]
         xs.append(3)
         expect(xs).to_have_length(3)
         expect(xs[2]).to_eq(3)
 
-    it("pop"):
+    )
+    it("pop", fn():
         var xs = [1, 2, 3]
         let v = xs.pop()
         expect(v).to_eq(Some(3))
         expect(xs).to_have_length(2)
 
-    it("pop empty"):
+    )
+    it("pop empty", fn():
         var xs = [1]
         let ys = xs.filter(fn(x: int): x > 10)
         let v = ys.pop()
         expect(v).to_be_none()
 
-    it("reverse"):
+    )
+    it("reverse", fn():
         let xs = [1, 2, 3]
         let ys = reverse(xs)
         expect(ys[0]).to_eq(3)
         expect(ys[2]).to_eq(1)
         expect(xs[0]).to_eq(1)
 
-    it("slice"):
+    )
+    it("slice", fn():
         let xs = [1, 2, 3, 4, 5]
         let ys = slice(xs, 1, 3)
         expect(ys).to_have_length(2)
         expect(ys[0]).to_eq(2)
         expect(ys[1]).to_eq(3)
 
-    it("filter"):
+    )
+    it("filter", fn():
         let xs = [1, 2, 3, 4, 5]
         let ys = xs.filter(fn(x: int): x > 3)
         expect(ys).to_have_length(2)
         expect(ys[0]).to_eq(4)
 
-    it("map"):
+    )
+    it("map", fn():
         let xs = [1, 2, 3]
         let ys = xs.map(fn(x: int): x * 2)
         expect(ys[0]).to_eq(2)
         expect(ys[1]).to_eq(4)
         expect(ys[2]).to_eq(6)
 
-    it("sort default"):
+    )
+    it("sort default", fn():
         let xs = [3, 1, 2]
         let ys = xs.sort()
         expect(ys[0]).to_eq(1)
         expect(ys[1]).to_eq(2)
         expect(ys[2]).to_eq(3)
 
-    it("sort custom comparator"):
+    )
+    it("sort custom comparator", fn():
         let xs = [3, 1, 2]
         let ys = xs.sort(fn(a: int, b: int): a > b)
         expect(ys[0]).to_eq(3)
         expect(ys[1]).to_eq(2)
         expect(ys[2]).to_eq(1)
 
-    it("reduce"):
+    )
+    it("reduce", fn():
         let xs = [1, 2, 3, 4, 5]
         let total = reduce(xs, fn(a: int, b: int): a + b)
         expect(total).to_eq(15)
 
-    it("fold"):
+    )
+    it("fold", fn():
         let xs = [1, 2, 3, 4, 5]
         let total = fold(xs, 0, fn(a: int, b: int): a + b)
         expect(total).to_eq(15)
 
-    it("any"):
+    )
+    it("any", fn():
         let xs = [1, 2, 3, 4, 5]
         expect(any(xs, fn(x: int): x > 4)).to_be_true()
         expect(any(xs, fn(x: int): x > 9)).to_be_false()
 
-    it("all"):
+    )
+    it("all", fn():
         let xs = [2, 4, 6]
         expect(all(xs, fn(x: int): x > 0)).to_be_true()
         expect(all(xs, fn(x: int): x > 3)).to_be_false()
 
-    it("sum"):
+    )
+    it("sum", fn():
         expect(sum([1, 2, 3, 4, 5])).to_eq(15)
 
-    it("min"):
+    )
+    it("min", fn():
         expect(min([3, 1, 4, 1, 5])).to_eq(1)
 
-    it("max"):
+    )
+    it("max", fn():
         expect(max([3, 1, 4, 1, 5])).to_eq(5)
 
-    it("first"):
+    )
+    it("first", fn():
         expect(first([10, 20, 30])).to_eq(Some(10))
 
-    it("first empty"):
+    )
+    it("first empty", fn():
         var xs = [1]
         let ys = xs.filter(fn(x: int): x > 10)
         expect(first(ys)).to_be_none()
 
-    it("last"):
+    )
+    it("last", fn():
         expect(last([10, 20, 30])).to_eq(Some(30))
 
-    it("last empty"):
+    )
+    it("last empty", fn():
         var xs = [1]
         let ys = xs.filter(fn(x: int): x > 10)
         expect(last(ys)).to_be_none()
 
-    it("is_empty"):
+    )
+    it("is_empty", fn():
         expect(is_empty([1, 2])).to_be_false()
 
-    it("enumerate"):
+    )
+    it("enumerate", fn():
         let xs = [10, 20, 30]
         let pairs = enumerate(xs)
         expect(pairs[0].0).to_eq(0)
         expect(pairs[0].1).to_eq(10)
 
-    it("zip"):
+    )
+    it("zip", fn():
         let pairs = zip([1, 2], [10, 20])
         expect(pairs[0].0).to_eq(1)
         expect(pairs[0].1).to_eq(10)
 
-    it("insert"):
+    )
+    it("insert", fn():
         var xs = [1, 2, 3]
         insert(xs, 1, 99)
         expect(xs[1]).to_eq(99)
         expect(xs).to_have_length(4)
 
-    it("remove_at"):
+    )
+    it("remove_at", fn():
         var xs = [1, 2, 3, 4]
         let v = remove_at(xs, 1)
         expect(v).to_eq(2)
         expect(xs).to_have_length(3)
 
-    it("remove"):
+    )
+    it("remove", fn():
         var xs = [1, 2, 3, 2, 4]
         remove(xs, 2)
         expect(xs[0]).to_eq(1)
         expect(xs[1]).to_eq(3)
 
-    it("distinct"):
+    )
+    it("distinct", fn():
         let xs = [1, 2, 3, 2, 1, 4]
         let ys = distinct(xs)
         expect(ys).to_have_length(4)
         expect(ys[0]).to_eq(1)
         expect(ys[3]).to_eq(4)
 
-    it("flatten"):
+    )
+    it("flatten", fn():
         let xs = [[1, 2], [3, 4]]
         let ys = flatten(xs)
         expect(ys).to_have_length(4)
         expect(ys[0]).to_eq(1)
         expect(ys[3]).to_eq(4)
 
-    it("sort!"):
+    )
+    it("sort!", fn():
         var xs = [3, 1, 2]
         xs.sort!()
         expect(xs[0]).to_eq(1)
         expect(xs[1]).to_eq(2)
         expect(xs[2]).to_eq(3)
 
-    it("reverse!"):
+    )
+    it("reverse!", fn():
         var xs = [1, 2, 3]
         xs.reverse!()
         expect(xs[0]).to_eq(3)
         expect(xs[1]).to_eq(2)
         expect(xs[2]).to_eq(1)
 
-    it("appended"):
+    )
+    it("appended", fn():
         let xs = [1, 2]
         let ys = xs.appended(3)
         expect(xs).to_have_length(2)
         expect(ys).to_have_length(3)
         expect(ys[2]).to_eq(3)
 
-    it("append!"):
+    )
+    it("append!", fn():
         var xs = [1, 2]
         xs.append!(3)
         expect(xs).to_have_length(3)
         expect(xs[2]).to_eq(3)
 
-    it("take"):
+    )
+    it("take", fn():
         let xs = [1, 2, 3, 4, 5]
         let ys = xs.take(3)
         expect(ys).to_have_length(3)
         expect(ys[0]).to_eq(1)
         expect(ys[2]).to_eq(3)
 
-    it("take exceeds length"):
+    )
+    it("take exceeds length", fn():
         let xs = [1, 2, 3]
         let ys = xs.take(10)
         expect(ys).to_have_length(3)
 
-    it("take zero"):
+    )
+    it("take zero", fn():
         let xs = [1, 2, 3]
         let ys = xs.take(0)
         expect(ys).to_have_length(0)
 
-    it("take non-mutating"):
+    )
+    it("take non-mutating", fn():
         let xs = [1, 2, 3, 4, 5]
         let ys = xs.take(2)
         expect(xs).to_have_length(5)
         expect(ys).to_have_length(2)
 
-    it("take negative"):
+    )
+    it("take negative", fn():
         let xs = [1, 2, 3]
         let ys = xs.take(-1)
         expect(ys).to_have_length(0)
 
-    it("tap returns original list"):
+    )
+    it("tap returns original list", fn():
         let xs = [1, 2, 3]
         let ys = xs.tap(fn(x: int): x * 2)
         expect(ys).to_have_length(3)
@@ -225,7 +265,8 @@ describe("List"):
         expect(ys[1]).to_eq(2)
         expect(ys[2]).to_eq(3)
 
-    it("tap in chain"):
+    )
+    it("tap in chain", fn():
         let xs = [5, 3, 1, 4, 2]
         let res = xs.filter(fn(x: int): x > 2).tap(fn(x: int): x + 1).sort()
         expect(res).to_have_length(3)
@@ -233,7 +274,8 @@ describe("List"):
         expect(res[1]).to_eq(4)
         expect(res[2]).to_eq(5)
 
-    it("chain filter-map-sort"):
+    )
+    it("chain filter-map-sort", fn():
         let xs = [5, 3, 1, 4, 2]
         let res = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
         expect(res[0]).to_eq(20)
@@ -241,19 +283,22 @@ describe("List"):
         expect(res[2]).to_eq(40)
         expect(res[3]).to_eq(50)
 
-    it("sort 32 elements (MIN_MERGE threshold)"):
+    )
+    it("sort 32 elements (MIN_MERGE threshold)", fn():
         let xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
         let ys = sort(xs)
         expect(ys[0]).to_eq(1)
         expect(ys[31]).to_eq(32)
 
-    it("sort 33 elements (TimSort merge path)"):
+    )
+    it("sort 33 elements (TimSort merge path)", fn():
         let xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
         let ys = sort(xs)
         expect(ys[0]).to_eq(1)
         expect(ys[32]).to_eq(33)
 
-    it("sort stability"):
+    )
+    it("sort stability", fn():
         let xs = [201, 102, 303, 104, 205]
         let ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)
         expect(ys[0]).to_eq(102)
@@ -262,61 +307,73 @@ describe("List"):
         expect(ys[3]).to_eq(205)
         expect(ys[4]).to_eq(303)
 
-describe("Map"):
-    it("key access"):
+    )
+)
+describe("Map", fn():
+    it("key access", fn():
         let m = {"a": 1, "b": 2}
         expect(m["a"]).to_eq(1)
 
-    it("insert and update"):
+    )
+    it("insert and update", fn():
         let m = {"a": 1}
         m["b"] = 2
         m["a"] = 99
         expect(m["a"]).to_eq(99)
         expect(m["b"]).to_eq(2)
 
-    it("len"):
+    )
+    it("len", fn():
         let m = {"a": 1, "b": 2, "c": 3}
         expect(m).to_have_length(3)
 
-    it("has_key"):
+    )
+    it("has_key", fn():
         let m = {"a": 1, "b": 2}
         expect(m).to_contain("a")
         expect(m).to_not_contain("z")
 
-    it("keys"):
+    )
+    it("keys", fn():
         let m = {"x": 1}
         let ks = keys(m)
         expect(ks).to_have_length(1)
         expect(ks[0]).to_eq("x")
 
-    it("values"):
+    )
+    it("values", fn():
         let m = {"x": 10}
         let vs = values(m)
         expect(vs).to_have_length(1)
         expect(vs).to_contain(10)
 
-    it("items"):
+    )
+    it("items", fn():
         let m = {"a": 1}
         let pairs = items(m)
         expect(pairs).to_have_length(1)
 
-    it("remove"):
+    )
+    it("remove", fn():
         let m = {"a": 1, "b": 2}
         remove(m, "a")
         expect(m).to_not_contain("a")
         expect(m).to_have_length(1)
 
-    it("get with default"):
+    )
+    it("get with default", fn():
         let m = {"a": 1, "b": 2}
         expect(get(m, "a", 0)).to_eq(1)
         expect(get(m, "z", 0)).to_eq(0)
 
-    it("get optional"):
+    )
+    it("get optional", fn():
         let m = {"a": 1, "b": 2}
         expect(get(m, "a")).to_eq(Some(1))
         expect(get(m, "z")).to_be_none()
 
-    it("merge"):
+    )
+    it("merge", fn():
         let m1 = {"a": 1, "b": 2}
         let m2 = {"b": 99, "c": 3}
         let m3 = merge(m1, m2)
@@ -324,39 +381,47 @@ describe("Map"):
         expect(m3["b"]).to_eq(99)
         expect(m3["c"]).to_eq(3)
 
-    it("in operator"):
+    )
+    it("in operator", fn():
         let m = {"a": 1}
         expect(m).to_contain("a")
         expect(m).to_not_contain("z")
 
-describe("Set"):
-    it("in"):
+    )
+)
+describe("Set", fn():
+    it("in", fn():
         let s = {1, 2, 3}
         expect(s).to_contain(2)
         expect(s).to_not_contain(5)
 
-    it("len"):
+    )
+    it("len", fn():
         let s = {1, 2, 3}
         expect(s).to_have_length(3)
 
-    it("add"):
+    )
+    it("add", fn():
         let s = {1, 2, 3}
         s.add(4)
         s.add(1)
         expect(s).to_have_length(4)
 
-    it("remove"):
+    )
+    it("remove", fn():
         let s = {1, 2, 3}
         s.remove(2)
         expect(s).to_not_contain(2)
 
-    it("union"):
+    )
+    it("union", fn():
         let a = {1, 2, 3}
         let b = {3, 4, 5}
         let c = union(a, b)
         expect(c).to_have_length(5)
 
-    it("intersection"):
+    )
+    it("intersection", fn():
         let a = {1, 2, 3}
         let b = {2, 3, 4}
         let c = intersection(a, b)
@@ -364,14 +429,16 @@ describe("Set"):
         expect(c).to_contain(2)
         expect(c).to_contain(3)
 
-    it("difference"):
+    )
+    it("difference", fn():
         let a = {1, 2, 3}
         let b = {2, 3, 4}
         let c = difference(a, b)
         expect(c).to_have_length(1)
         expect(c).to_contain(1)
 
-    it("symmetric_difference"):
+    )
+    it("symmetric_difference", fn():
         let a = {1, 2, 3}
         let b = {2, 3, 4}
         let c = symmetric_difference(a, b)
@@ -379,27 +446,34 @@ describe("Set"):
         expect(c).to_contain(1)
         expect(c).to_contain(4)
 
-    it("is_subset"):
+    )
+    it("is_subset", fn():
         let a = {1, 2}
         let b = {1, 2, 3}
         expect(is_subset(a, b)).to_be_true()
         expect(is_subset(b, a)).to_be_false()
 
-    it("is_superset"):
+    )
+    it("is_superset", fn():
         let a = {1, 2, 3}
         let b = {1, 2}
         expect(is_superset(a, b)).to_be_true()
         expect(is_superset(b, a)).to_be_false()
 
-describe("Tuple"):
-    it("element access"):
+    )
+)
+describe("Tuple", fn():
+    it("element access", fn():
         let t = (10, "hello")
         expect(t.0).to_eq(10)
         expect(t.1).to_eq("hello")
 
-    it("function return"):
+    )
+    it("function return", fn():
         fn swap(a: int, b: int) -> (int, int):
             return (b, a)
         let res = swap(1, 2)
         expect(res.0).to_eq(2)
         expect(res.1).to_eq(1)
+    )
+)
