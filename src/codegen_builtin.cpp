@@ -715,6 +715,8 @@ static void parseFormatPlaceholders(const std::string &fmtStr,
             cFmt += "%s";
             fieldOrder.push_back(fmtStr[i+1] - '0');
             i += 2;
+        } else if (fmtStr[i] == '%') {
+            cFmt += "%%";
         } else {
             cFmt += fmtStr[i];
         }
@@ -840,13 +842,16 @@ void CodeGen::emitEachItCall(CallStmt &s) {
         llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 256), nullptr, "fmt_buf");
     llvm::Value *fmtGlobal = builder_.CreateGlobalString(cFmt, ".each_fmt");
 
+    for (unsigned idx : fieldOrder) {
+        if (idx >= fieldStrs.size())
+            codegenError("@each: placeholder {" + std::to_string(idx) + "} exceeds tuple arity");
+    }
+
     std::vector<llvm::Value*> snprintfArgs = {
         fmtBuf, llvm::ConstantInt::get(i64Ty_, 256), fmtGlobal
     };
-    for (unsigned idx : fieldOrder) {
-        if (idx < fieldStrs.size())
-            snprintfArgs.push_back(fieldStrs[idx]);
-    }
+    for (unsigned idx : fieldOrder)
+        snprintfArgs.push_back(fieldStrs[idx]);
     builder_.CreateCall(snprintfFn, snprintfArgs);
 
     builder_.CreateCall(itBeginFn, {fmtBuf});
@@ -869,7 +874,17 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
     for (auto &d : s.directives) {
         if (d.name == "property") {
             for (auto &p : d.params) {
-                if (p.key == "count") count = std::stoll(p.value);
+                if (p.key == "count") {
+                    try {
+                        std::size_t pos = 0;
+                        long long parsed = std::stoll(p.value, &pos, 10);
+                        if (pos != p.value.size() || parsed <= 0)
+                            codegenError("@property 'count' must be a positive integer");
+                        count = static_cast<int64_t>(parsed);
+                    } catch (const std::exception &) {
+                        codegenError("@property 'count' must be a valid integer");
+                    }
+                }
             }
         }
     }
