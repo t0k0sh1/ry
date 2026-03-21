@@ -83,7 +83,19 @@ from mypackage import add   # add のみインポート
 - 型変換関数（`to_int`, `to_float`, `to_str`）
 - コレクション関数（`map`, `filter`, `sort` など）
 
-特定の定義を明示的にインポートすることもできます:
+### サブパッケージ
+
+以下のサブパッケージは明示的なインポートが必要です:
+
+| パッケージ | 説明 |
+|-----------|------|
+| [`std.math`](math.md) | 数学定数・関数 |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+特定の定義を `std` から明示的にインポートすることもできます:
 
 ```python
 from std.str import contains

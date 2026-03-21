@@ -83,7 +83,19 @@ The `std` package is automatically imported into every program. It provides:
 - Type conversion functions (`to_int`, `to_float`, `to_str`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
-You can also explicitly import specific definitions:
+### Sub-packages
+
+The following sub-packages require explicit import:
+
+| Package | Description |
+|---------|-------------|
+| [`std.math`](math.md) | Mathematical constants and functions |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+You can also explicitly import specific definitions from `std`:
 
 ```python
 from std.str import contains

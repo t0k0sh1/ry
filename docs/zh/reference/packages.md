@@ -83,7 +83,19 @@ from mypackage import add   # 僅匯入 add
 - 型別轉換函式（`to_int`, `to_float`, `to_str`）
 - 集合函式（`map`, `filter`, `sort` 等）
 
-也可以明確匯入特定的定義：
+### 子套件
+
+以下子套件需要明確匯入：
+
+| 套件 | 說明 |
+|------|------|
+| [`std.math`](math.md) | 數學常數與函式 |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+也可以從 `std` 明確匯入特定的定義：
 
 ```python
 from std.str import contains

@@ -1,0 +1,76 @@
+# Math constants and functions
+
+@native
+fn PI() -> float
+
+@native
+fn E() -> float
+
+@native
+fn inf() -> float
+
+@native
+fn nan() -> float
+
+@native
+fn abs(x: int) -> int
+
+@native
+fn abs(x: float) -> float
+
+@native
+fn floor(x: float) -> int
+
+@native
+fn ceil(x: float) -> int
+
+@native
+fn round(x: float) -> int
+
+@native
+fn sqrt(x: float) -> float
+
+@native
+fn pow(x: float, y: float) -> float
+
+@native
+fn log(x: float) -> float
+
+@native
+fn log2(x: float) -> float
+
+@native
+fn log10(x: float) -> float
+
+@native
+fn exp(x: float) -> float
+
+@native
+fn sin(x: float) -> float
+
+@native
+fn cos(x: float) -> float
+
+@native
+fn tan(x: float) -> float
+
+@native
+fn asin(x: float) -> float
+
+@native
+fn acos(x: float) -> float
+
+@native
+fn atan(x: float) -> float
+
+@native
+fn atan2(y: float, x: float) -> float
+
+@native
+fn hypot(x: float, y: float) -> float
+
+@native
+fn is_nan(x: float) -> bool
+
+@native
+fn is_inf(x: float) -> bool
