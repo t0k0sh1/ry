@@ -35,3 +35,6 @@ fn exit(code: int) -> Unit
 
 @native
 fn args() -> List<str>
+
+@native
+fn available_parallelism() -> int

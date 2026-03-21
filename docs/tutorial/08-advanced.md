@@ -186,6 +186,38 @@ match x:
 
 ---
 
+## Concurrency Basics
+
+`Task<T>` is the runtime handle for concurrent work. Use `spawn` for explicit task creation, `async fn` for task-returning functions, and `await` or `join(task)` to wait for completion.
+
+```python
+fn square(x: int) -> int:
+    return x * x
+
+let t: Task<int> = spawn square(12)
+print(await t)   # 144
+
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+print(await add(20, 22))   # 42
+await add(1, 2)            # statement form also works
+```
+
+`@parallel` can be applied to counted `for` loops over `range(...)` or integer `..` ranges:
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+In v1, `spawn` does not support `Unit`-returning calls, and `@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
+
+For channels, `recv(ch)` is the strict form and raises on a closed drained channel, while `recv_opt(ch)` returns `Some(value)` or `None` instead. `for x in ch:` is the close-aware consumer form and ends normally once the channel is closed and drained. For `Channel<Unit>`, `recv_opt(ch)` returns `bool` and `for _ in ch:` can be used to consume values.
+
+---
+
 ## F-String (String Interpolation)
 
 Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.

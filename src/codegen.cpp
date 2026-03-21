@@ -121,6 +121,14 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) {
+                for (auto &selectCase : s->cases) {
+                    std::visit([&](const auto &c) {
+                        collectMockedFunctions(c.body, out);
+                    }, selectCase);
+                }
+                collectMockedFunctions(s->else_body, out);
+                collectMockedFunctions(s->timeout_body, out);
             }
         }, stmt);
         // Also scan lambda args (e.g., describe/it trailing blocks)
@@ -377,6 +385,20 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
+    if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
+        matchedEntry->returnTypeName.substr(0, 5) == "Task<" &&
+        matchedEntry->returnTypeName.back() == '>') {
+        std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
+        task_result_types_[callResult] = resolveType(inner);
+    }
+
+    if (matchedEntry && matchedEntry->returnTypeName.size() > 8 &&
+        matchedEntry->returnTypeName.substr(0, 8) == "Channel<" &&
+        matchedEntry->returnTypeName.back() == '>') {
+        std::string inner = matchedEntry->returnTypeName.substr(8, matchedEntry->returnTypeName.size() - 9);
+        channel_element_types_[callResult] = resolveType(inner);
+    }
+
     return callResult;
 }
 
@@ -401,6 +423,16 @@ void CodeGen::emitStmt(CallStmt &s) {
     auto sit = struct_types_.find(s.callee);
     if (sit != struct_types_.end()) {
         emitStructConstructor(sit->second, s.callee, s.args);
+        return;
+    }
+    if (s.callee == "join" || s.callee == "available_parallelism" || s.callee == "args" ||
+        s.callee == "range" || s.callee == "send" || s.callee == "try_send" ||
+        s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
+        s.callee == "close") {
+        auto ce = std::make_unique<CallExpr>();
+        ce->callee = s.callee;
+        ce->args = std::move(s.args);
+        emitExprVariant(ce);
         return;
     }
     // Intercept collection operations and route through CallExpr emitter
@@ -571,6 +603,16 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // Task<T> parsing
+    if (typeName.size() > 5 && typeName.substr(0, 5) == "Task<" && typeName.back() == '>') {
+        return ptrTy_;
+    }
+
+    // Channel<T> parsing
+    if (typeName.size() > 8 && typeName.substr(0, 8) == "Channel<" && typeName.back() == '>') {
+        return ptrTy_;
+    }
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -620,6 +662,18 @@ std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::s
         }
     }
     return {nullptr, nullptr};
+}
+
+llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
+    auto it = task_result_types_.find(taskVal);
+    if (it != task_result_types_.end())
+        return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(taskVal)) {
+        auto ptrIt = task_result_types_.find(load->getPointerOperand());
+        if (ptrIt != task_result_types_.end())
+            return ptrIt->second;
+    }
+    return nullptr;
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
@@ -940,4 +994,3 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         builder_.SetInsertPoint(okBB);
     }
 }
-

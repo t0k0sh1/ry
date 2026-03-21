@@ -1059,6 +1059,513 @@ TEST_F(CodeGenTest, RangeExprIterate) {
     EXPECT_EQ(runSource(src), "6\n");
 }
 
+TEST_F(CodeGenTest, SpawnJoinNamedFunction) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let t: Task<int> = spawn add(20, 22)\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, SpawnJoinLambdaVariable) {
+    std::string src =
+        "let add = fn(a: int, b: int) -> int: a + b\n"
+        "let t: Task<int> = spawn add(7, 8)\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, SpawnJoinNestedTask) {
+    std::string src =
+        "fn inner(x: int) -> int:\n"
+        "    return x + 1\n"
+        "fn outer(x: int) -> int:\n"
+        "    let t: Task<int> = spawn inner(x)\n"
+        "    return join(t) * 2\n"
+        "let t: Task<int> = spawn outer(20)\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, AsyncAwaitDirectCall) {
+    std::string src =
+        "async fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "print(await add(20, 22))";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, AsyncAwaitTaskVariable) {
+    std::string src =
+        "async fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let t: Task<int> = add(7, 8)\n"
+        "print(await t)";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, AsyncAwaitChain) {
+    std::string src =
+        "async fn inner() -> int:\n"
+        "    return 21\n"
+        "async fn outer() -> int:\n"
+        "    return (await inner()) * 2\n"
+        "print(await outer())";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, AwaitRequiresTask) {
+    std::string src =
+        "let x = await 123\n"
+        "print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AsyncUnitJoinStatement) {
+    std::string src =
+        "async fn bump() -> Unit:\n"
+        "    print(\"done\")\n"
+        "join(bump())\n"
+        "print(\"after\")";
+    EXPECT_EQ(runSource(src), "done\nafter\n");
+}
+
+TEST_F(CodeGenTest, AsyncUnitAwaitStatement) {
+    std::string src =
+        "async fn bump() -> Unit:\n"
+        "    print(\"done\")\n"
+        "await bump()\n"
+        "print(\"after\")";
+    EXPECT_EQ(runSource(src), "done\nafter\n");
+}
+
+TEST_F(CodeGenTest, AsyncAwaitStatementDiscardsValue) {
+    std::string src =
+        "async fn add(a: int, b: int) -> int:\n"
+        "    print(a + b)\n"
+        "    return a + b\n"
+        "await add(20, 22)\n"
+        "print(\"after\")";
+    EXPECT_EQ(runSource(src), "42\nafter\n");
+}
+
+TEST_F(CodeGenTest, AwaitStatementRequiresTask) {
+    EXPECT_THROW(runSource("await 123"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AvailableParallelismBuiltin) {
+    EXPECT_EQ(runSource("print(available_parallelism() > 0)"), "true\n");
+}
+
+TEST_F(CodeGenTest, ChannelSendRecvUnbuffered) {
+    std::string src =
+        "fn produce(ch: Channel<int>) -> int:\n"
+        "    send(ch, 42)\n"
+        "    return 0\n"
+        "let ch: Channel<int> = channel[int]()\n"
+        "let t: Task<int> = spawn produce(ch)\n"
+        "print(recv(ch))\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "42\n0\n");
+}
+
+TEST_F(CodeGenTest, ChannelSendRecvBufferedFifo) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](2)\n"
+        "send(ch, 1)\n"
+        "send(ch, 2)\n"
+        "print(recv(ch))\n"
+        "print(recv(ch))";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
+TEST_F(CodeGenTest, ChannelWorksAcrossAsyncTasks) {
+    std::string src =
+        "async fn produce(ch: Channel<int>) -> Unit:\n"
+        "    send(ch, 7)\n"
+        "let ch: Channel<int> = channel[int]()\n"
+        "let t: Task<Unit> = produce(ch)\n"
+        "print(recv(ch))\n"
+        "await t";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, ChannelSendRejectsWrongType) {
+    std::string src =
+        "let ch: Channel<int> = channel[int]()\n"
+        "send(ch, \"x\")";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ChannelRecvRequiresChannel) {
+    EXPECT_THROW(runSource("print(recv(123))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ChannelCloseThenSendFails) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "send(ch, 1)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ChannelCloseThenEmptyRecvFails) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "recv(ch)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SelectRecvReadyCase) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "send(ch, 42)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    else:\n"
+        "        print(0)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, SelectSendReadyCase) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case send(ch, 42):\n"
+        "        print(recv(ch))\n"
+        "    else:\n"
+        "        print(0)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, SelectElseDefaultCase) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    else:\n"
+        "        print(0)";
+    EXPECT_EQ(runSource(src), "0\n");
+}
+
+TEST_F(CodeGenTest, SelectClosedRecvFails) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    else:\n"
+        "        print(0)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, RecvOptReturnsSomeThenNoneForClosedBufferedChannel) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](2)\n"
+        "send(ch, 7)\n"
+        "close(ch)\n"
+        "print(recv_opt(ch))\n"
+        "print(recv_opt(ch))";
+    EXPECT_EQ(runSource(src), "Some(7)\nNone\n");
+}
+
+TEST_F(CodeGenTest, RecvOptReturnsBoolForUnitChannel) {
+    std::string src =
+        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "close(ch)\n"
+        "print(recv_opt(ch))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, RecvOptRejectsNonChannel) {
+    EXPECT_THROW(runSource("print(recv_opt(123))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TryRecvReturnsSomeThenNoneForBufferedChannel) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "send(ch, 9)\n"
+        "print(try_recv(ch))\n"
+        "print(try_recv(ch))";
+    EXPECT_EQ(runSource(src), "Some(9)\nNone\n");
+}
+
+TEST_F(CodeGenTest, TryRecvReturnsFalseForDrainedUnitChannel) {
+    std::string src =
+        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "print(try_recv(ch))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, TrySendReturnsFalseForClosedChannel) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "print(try_send(ch, 1))";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, TrySendEventuallySucceedsForUnbufferedReceiver) {
+    std::string src =
+        "fn consume(ch: Channel<int>) -> int:\n"
+        "    return recv(ch)\n"
+        "let ch: Channel<int> = channel[int]()\n"
+        "let t: Task<int> = spawn consume(ch)\n"
+        "var sent = false\n"
+        "while not sent:\n"
+        "    sent = try_send(ch, 13)\n"
+        "print(sent)\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "true\n13\n");
+}
+
+TEST_F(CodeGenTest, ForLoopIteratesClosedBufferedChannel) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](2)\n"
+        "send(ch, 1)\n"
+        "send(ch, 2)\n"
+        "close(ch)\n"
+        "for x in ch:\n"
+        "    print(x)";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
+TEST_F(CodeGenTest, ForLoopIteratesUnbufferedChannelFromSpawnedProducer) {
+    std::string src =
+        "fn produce(ch: Channel<int>) -> int:\n"
+        "    send(ch, 3)\n"
+        "    send(ch, 4)\n"
+        "    close(ch)\n"
+        "    return 0\n"
+        "let ch: Channel<int> = channel[int]()\n"
+        "let t: Task<int> = spawn produce(ch)\n"
+        "for x in ch:\n"
+        "    print(x)\n"
+        "print(join(t))";
+    EXPECT_EQ(runSource(src), "3\n4\n0\n");
+}
+
+TEST_F(CodeGenTest, ForLoopSupportsBreakAndContinueOnChannels) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](3)\n"
+        "send(ch, 1)\n"
+        "send(ch, 2)\n"
+        "send(ch, 3)\n"
+        "close(ch)\n"
+        "for x in ch:\n"
+        "    if x == 2:\n"
+        "        continue\n"
+        "    print(x)\n"
+        "    if x == 3:\n"
+        "        break";
+    EXPECT_EQ(runSource(src), "1\n3\n");
+}
+
+TEST_F(CodeGenTest, ForLoopOverClosedDrainedChannelDoesNothing) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "for x in ch:\n"
+        "    print(x)\n"
+        "print(99)";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, ForLoopOverUnitChannelRequiresDiscardBinding) {
+    std::string src =
+        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "close(ch)\n"
+        "for x in ch:\n"
+        "    print(1)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TryRecvRejectsNonChannel) {
+    EXPECT_THROW(runSource("print(try_recv(123))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, TrySendRejectsNonChannel) {
+    EXPECT_THROW(runSource("print(try_send(123, 1))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SelectRecvOptClosedBufferedChannelReturnsNone) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "close(ch)\n"
+        "select:\n"
+        "    case let x = recv_opt(ch):\n"
+        "        print(x)\n"
+        "    else:\n"
+        "        print(Some(0))";
+    EXPECT_EQ(runSource(src), "None\n");
+}
+
+TEST_F(CodeGenTest, SelectRecvOptUnitChannelBindsBool) {
+    std::string src =
+        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "close(ch)\n"
+        "select:\n"
+        "    case let ok = recv_opt(ch):\n"
+        "        print(ok)\n"
+        "    else:\n"
+        "        print(true)";
+    EXPECT_EQ(runSource(src), "false\n");
+}
+
+TEST_F(CodeGenTest, SelectSendRejectsWrongType) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case send(ch, \"x\"):\n"
+        "        print(1)\n"
+        "    else:\n"
+        "        print(0)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SelectTimeoutZeroActsAsDefault) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    timeout 0:\n"
+        "        print(99)";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, SelectReadyCaseWinsOverTimeout) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "send(ch, 7)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    timeout 0:\n"
+        "        print(99)";
+    EXPECT_EQ(runSource(src), "7\n");
+}
+
+TEST_F(CodeGenTest, SelectRejectsNonIntTimeout) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    timeout \"x\":\n"
+        "        print(0)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SelectRejectsNegativeTimeoutAtRuntime) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "select:\n"
+        "    case let x = recv(ch):\n"
+        "        print(x)\n"
+        "    timeout -1:\n"
+        "        print(0)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ParallelForRangeComputesSum) {
+    std::string src =
+        "fn one(x: int) -> int:\n"
+        "    return 1\n"
+        "@parallel\n"
+        "for i in range(5):\n"
+        "    print(one(i))";
+    EXPECT_EQ(runSource(src), "1\n1\n1\n1\n1\n");
+}
+
+TEST_F(CodeGenTest, ParallelForRejectsOuterMutation) {
+    std::string src =
+        "var total = 0\n"
+        "@parallel\n"
+        "for i in range(4):\n"
+        "    total = total + i\n"
+        "print(total)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ParallelForPropagatesWorkerException) {
+    std::string src =
+        "fn fail(x: int) -> int:\n"
+        "    let ch: Channel<int> = channel[int](1)\n"
+        "    close(ch)\n"
+        "    send(ch, x)\n"
+        "    return 0\n"
+        "@parallel\n"
+        "for i in range(4):\n"
+        "    fail(i)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ParallelForRejectsChannelIteration) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "@parallel\n"
+        "for x in ch:\n"
+        "    print(x)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SpawnUnitReturningCallRejected) {
+    std::string src =
+        "fn log_value(x: int):\n"
+        "    print(x)\n"
+        "let t = spawn log_value(1)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, DoubleJoinThrowsRuntimeError) {
+    std::string src =
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "let t: Task<int> = spawn add(1, 2)\n"
+        "let r1 = join(t)\n"
+        "let r2 = join(t)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, SpawnWithoutJoinDoesNotCrash) {
+    std::string src =
+        "fn work(x: int) -> int:\n"
+        "    return x * 2\n"
+        "let t: Task<int> = spawn work(5)\n"
+        "print(\"ok\")";
+    EXPECT_EQ(runSource(src), "ok\n");
+}
+
+TEST_F(CodeGenTest, ChannelWithoutCloseDoesNotCrash) {
+    std::string src =
+        "let ch: Channel<int> = channel[int](1)\n"
+        "send(ch, 42)\n"
+        "print(recv(ch))";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, ParallelForCapturesChannel) {
+    std::string src =
+        "fn producer(ch: Channel<int>, val: int) -> int:\n"
+        "    send(ch, val)\n"
+        "    return 0\n"
+        "let ch: Channel<int> = channel[int](10)\n"
+        "@parallel\n"
+        "for i in range(3):\n"
+        "    producer(ch, i)\n"
+        "var total = 0\n"
+        "for j in range(3):\n"
+        "    total = total + recv(ch)\n"
+        "print(total)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
 // ===== Option auto-wrap =====
 
 TEST_F(CodeGenTest, OptionAutoWrapInt) {

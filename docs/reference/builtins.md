@@ -13,6 +13,16 @@
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
+| `available_parallelism()` | Returns the runtime worker count as `int` |
+| `channel[T]()` | Creates an unbuffered `Channel<T>` |
+| `channel[T](capacity)` | Creates a buffered `Channel<T>` |
+| `send(ch, value)` | Sends a value through `Channel<T>` |
+| `try_send(ch, value)` | Attempts to send through `Channel<T>` without blocking |
+| `recv(ch)` | Receives a value from `Channel<T>` |
+| `recv_opt(ch)` | Receives from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
+| `try_recv(ch)` | Attempts to receive from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
+| `close(ch)` | Closes a `Channel<T>` |
+| `join(task)` | Waits for a `Task<T>` to complete and returns its result |
 
 ### Option
 

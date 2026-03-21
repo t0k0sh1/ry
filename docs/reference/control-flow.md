@@ -173,6 +173,114 @@ for i in 1 .. 3:
 
 ---
 
+## spawn / await
+
+`spawn` starts a user-defined function or lambda call on the runtime worker pool and returns `Task<T>`. `await` and `join(task)` both wait for a task to complete.
+
+```python
+fn square(x: int) -> int:
+    return x * x
+
+let t: Task<int> = spawn square(12)
+print(await t)          # 144
+let u: Task<int> = spawn square(3)
+print(join(u))          # 9, function-form equivalent of await
+```
+
+### Constraints
+
+- `spawn` only accepts a function-call expression.
+- The callee must be a user-defined function or lambda.
+- `spawn` does not support `Unit`-returning calls in v1.
+- Spawned work runs as lightweight runtime jobs rather than one OS thread per task.
+- `await` requires a `Task<T>` value.
+- `await expr` can be used as either an expression or a statement.
+
+## channels
+
+`Channel<T>` is the built-in blocking communication primitive for passing values between tasks.
+
+```python
+fn worker(ch: Channel<int>) -> int:
+    send(ch, 42)
+    close(ch)
+    return 0
+
+let ch: Channel<int> = channel[int]()
+let t: Task<int> = spawn worker(ch)
+for x in ch:
+    print(x)
+print(join(t))
+```
+
+### Rules
+
+- `channel[T]()` creates an unbuffered channel.
+- `channel[T](n)` creates a buffered channel with capacity `n`.
+- `send(ch, value)` blocks until the value is accepted.
+- `try_send(ch, value)` attempts an immediate send and returns `bool`.
+- `recv(ch)` blocks until a value is available and remains the strict receive API.
+- `recv_opt(ch)` blocks until a value is available or the channel is closed and drained.
+- `try_recv(ch)` attempts an immediate receive and returns `Option<T>` or `bool` for `Channel<Unit>`.
+- `for x in ch:` iterates values until the channel is closed and drained.
+- `close(ch)` closes the channel.
+- In v1, `send` on a closed channel and `recv` on an empty closed channel raise a runtime error.
+- `recv_opt(ch: Channel<T>) -> Option<T>` returns `Some(v)` for received values and `None` once the channel is closed and drained.
+- `recv_opt(ch: Channel<Unit>) -> bool` returns `true` for a received `Unit` value and `false` once the channel is closed and drained.
+- `try_recv(ch: Channel<T>) -> Option<T>` returns `Some(v)` if a value is immediately available and `None` otherwise, including closed-and-drained channels.
+- `try_recv(ch: Channel<Unit>) -> bool` returns `true` if a `Unit` value is immediately available and `false` otherwise.
+- `for _ in ch:` can be used to consume `Channel<Unit>`.
+
+## select
+
+`select` waits on multiple channel operations and executes exactly one ready branch.
+
+```python
+select:
+    case let x = recv(inbox):
+        print(x)
+    case send(outbox, 42):
+        print("sent")
+    else:
+        print("idle")
+```
+
+### Rules
+
+- `select` is a statement, not an expression.
+- Cases must be `case let name = recv(ch):`, `case let name = recv_opt(ch):`, or `case send(ch, value):`.
+- Use `let _ = recv(ch)` to discard a received value.
+- `recv_opt` cases bind `Option<T>` or `bool` for `Channel<Unit>`.
+- `else:` is optional, and if present it must be the last branch.
+- `timeout n:` is an optional last branch that waits up to `n` milliseconds for the whole `select`.
+- `else` and `timeout` cannot be used together.
+- Without `else`, `select` blocks until one case becomes ready.
+- In v1, closed-channel errors are preserved inside `select`: `send` on a closed channel and `recv` on an empty closed channel still raise runtime errors.
+
+---
+
+## `@parallel for`
+
+`@parallel` can be attached only to counted `for` loops over `range(...)` or integer `..` ranges. The loop body runs in parallel chunks on the runtime worker pool.
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+### Constraints
+
+- Only `range(...)` and integer `..` loops are supported.
+- Destructuring iteration is not supported.
+- Assigning to outer `var` bindings is rejected.
+- `break` and `continue` are rejected.
+- Indexed assignment and field assignment inside the loop body are rejected in v1.
+
+Use `available_parallelism()` to inspect the runtime worker count.
+
+---
+
 ## break
 
 - Immediately exits the innermost loop (`while` or `for`).

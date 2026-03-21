@@ -95,6 +95,34 @@ fn log_typed(msg: str) -> Unit:
 
 ---
 
+## Tasks And Async Functions
+
+`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T`, and `join(task)` is the blocking function-form equivalent of `await task`.
+
+```python
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+let t: Task<int> = add(20, 22)
+print(await t)          # 42
+await add(1, 2)         # waits and discards the result
+print(join(add(1, 2)))  # 3
+```
+
+### Rules
+
+- `async fn name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async fn` immediately returns `Task<T>`.
+- `await expr` requires `expr` to be `Task<T>` and produces `T`.
+- `await` is allowed anywhere an expression is allowed, and `await expr` is also allowed as a statement.
+- `async fn ... -> Unit` is supported; `await task` is the primary way to wait when no value is produced.
+- Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
+- `async` lambdas and `async @native fn` are not supported in v1.
+
+`Channel<T>` is the built-in handle type for blocking message passing between tasks. Create channels with `channel[T]()` or `channel[T](capacity)`, send values with `send(ch, value)`, use `try_send(ch, value)` for a non-blocking send attempt, use `recv(ch)` for strict receive, use `recv_opt(ch)` for close-aware receive, use `try_recv(ch)` for a non-blocking receive attempt, iterate consumers with `for x in ch:`, and terminate a channel with `close(ch)`.
+
+---
+
 ## Lambda Functions
 
 Anonymous functions can be defined inline.

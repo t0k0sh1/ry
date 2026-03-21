@@ -280,6 +280,26 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (setElemTy)
             set_element_types_[ptr] = setElemTy;
 
+        // --- Task tracking ---
+        llvm::Type *taskTy = getTaskResultType(val);
+        if (!taskTy && type_annotation && type_annotation->size() > 5 &&
+            type_annotation->substr(0, 5) == "Task<" && type_annotation->back() == '>') {
+            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+            taskTy = resolveType(inner);
+        }
+        if (taskTy)
+            task_result_types_[ptr] = taskTy;
+
+        // --- Channel tracking ---
+        llvm::Type *channelTy = getChannelElementType(val);
+        if (!channelTy && type_annotation && type_annotation->size() > 8 &&
+            type_annotation->substr(0, 8) == "Channel<" && type_annotation->back() == '>') {
+            std::string inner = type_annotation->substr(8, type_annotation->size() - 9);
+            channelTy = resolveType(inner);
+        }
+        if (channelTy)
+            channel_element_types_[ptr] = channelTy;
+
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
@@ -385,6 +405,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end())
             fn_type_info_[ptr] = fnIt->second;
+        llvm::Type *taskTy = getTaskResultType(val);
+        if (taskTy)
+            task_result_types_[ptr] = taskTy;
+        llvm::Type *channelTy = getChannelElementType(val);
+        if (channelTy)
+            channel_element_types_[ptr] = channelTy;
     }
 }
 
@@ -415,12 +441,58 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 }
 
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
+    if (hasDirective(s->directives, "parallel")) {
+        if (s->var_name2.has_value())
+            codegenError(s->loc, "@parallel for does not support destructuring iteration");
+
+        validateParallelFor(*s);
+
+        llvm::Value *begin = nullptr;
+        llvm::Value *end = nullptr;
+        llvm::Value *step = llvm::ConstantInt::get(i64Ty_, 1);
+
+        if (auto *rangeExpr = std::get_if<std::unique_ptr<RangeExpr>>(&s->iterable->data)) {
+            begin = emitExpr(*(*rangeExpr)->start);
+            llvm::Value *inclusiveEnd = emitExpr(*(*rangeExpr)->end);
+            end = builder_.CreateAdd(inclusiveEnd, llvm::ConstantInt::get(i64Ty_, 1), "parallel_inclusive_end");
+        } else if (auto *callExpr = std::get_if<std::unique_ptr<CallExpr>>(&s->iterable->data)) {
+            if ((*callExpr)->callee != "range")
+                codegenError(s->loc, "@parallel for only supports range(...) or .. iterables");
+            if ((*callExpr)->args.size() < 1 || (*callExpr)->args.size() > 3)
+                codegenError(s->loc, "range() takes 1, 2, or 3 arguments");
+            if ((*callExpr)->args.size() == 1) {
+                begin = llvm::ConstantInt::get(i64Ty_, 0);
+                end = emitExpr(*(*callExpr)->args[0]);
+            } else {
+                begin = emitExpr(*(*callExpr)->args[0]);
+                end = emitExpr(*(*callExpr)->args[1]);
+            }
+            if ((*callExpr)->args.size() == 3)
+                step = emitExpr(*(*callExpr)->args[2]);
+        } else {
+            codegenError(s->loc, "@parallel for only supports range(...) or .. iterables");
+        }
+
+        if (begin->getType() != i64Ty_ || end->getType() != i64Ty_ || step->getType() != i64Ty_)
+            codegenError(s->loc, "@parallel for requires integer range bounds");
+
+        emitParallelForRange(*s, begin, end, step);
+        return;
+    }
+
     // Evaluate iterable
     llvm::Value *iterable = emitExpr(*s->iterable);
 
-    // Check if this is a list or set (ptr type with known element type)
+    // Check if this is a pointer-backed iterable (list/set/map/channel)
     if (iterable->getType() != ptrTy_)
-        codegenError("for loop requires list, set, map, or iterator iterable");
+        codegenError("for loop requires list, set, map, channel, or iterator iterable");
+
+    if (llvm::Type *channelElemTy = getChannelElementType(iterable)) {
+        if (s->var_name2.has_value())
+            codegenError("channel iteration does not support destructuring");
+        emitChannelForLoop(*s, iterable, channelElemTy);
+        return;
+    }
 
     // Check if iterable is an iterator
     llvm::Type *iterElemTy = getIteratorElementType(iterable);
@@ -558,6 +630,50 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
         builder_.CreateStore(elem, loopVar);
     });
+}
+
+void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy) {
+    llvm::FunctionType *recvOptTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee recvOptFn = mod_->getOrInsertFunction("__ry_channel_recv_opt", recvOptTy);
+
+    llvm::AllocaInst *recvSlot = nullptr;
+    llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*ctx_));
+    if (!elemTy->isVoidTy()) {
+        recvSlot = builder_.CreateAlloca(elemTy, nullptr, "for_channel_recv");
+        outPtr = recvSlot;
+    } else if (s.var_name != "_") {
+        codegenError(s.loc, "for x in Channel<Unit> requires '_' loop variable");
+    }
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.channel.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.channel.body", fn_);
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "for.channel.end", fn_);
+
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *hasValue = builder_.CreateCall(recvOptFn, {channel, outPtr}, "for_channel_has_value");
+    builder_.CreateCondBr(hasValue, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    loop_stack_.push_back({condBB, endBB});
+    pushScope();
+
+    if (s.var_name != "_" && recvSlot) {
+        llvm::AllocaInst *loopVar = getOrCreateVar(s.var_name, elemTy);
+        llvm::Value *elem = builder_.CreateLoad(elemTy, recvSlot, "for_channel_elem");
+        builder_.CreateStore(elem, loopVar);
+    }
+
+    for (auto &stmt : s.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+    popScope();
+    loop_stack_.pop_back();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
 }
 
 void CodeGen::emitIndexedForLoop(llvm::Value *length,
@@ -749,6 +865,208 @@ void CodeGen::emitStmt(EnumStmt &s) {
     enum_types_[s.name] = std::move(info);
 }
 
+void CodeGen::emitStmt(AwaitStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+
+    auto awaitExpr = std::make_unique<AwaitExpr>();
+    awaitExpr->operand = std::move(s.operand);
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(awaitExpr);
+    node->loc = s.loc;
+    (void)emitExpr(*node);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<SelectStmt> &s) {
+    if (s->loc.isValid()) current_loc_ = s->loc;
+
+    llvm::FunctionType *beginTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionType *addRecvTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionType *addRecvOptTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionType *addSendTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionType *waitTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionType *destroyTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+
+    llvm::FunctionCallee beginFn = mod_->getOrInsertFunction("__ry_select_begin", beginTy);
+    llvm::FunctionCallee addRecvFn = mod_->getOrInsertFunction("__ry_select_add_recv", addRecvTy);
+    llvm::FunctionCallee addRecvOptFn = mod_->getOrInsertFunction("__ry_select_add_recv_opt", addRecvOptTy);
+    llvm::FunctionCallee addSendFn = mod_->getOrInsertFunction("__ry_select_add_send", addSendTy);
+    llvm::FunctionCallee waitFn = mod_->getOrInsertFunction("__ry_select_wait", waitTy);
+    llvm::FunctionCallee destroyFn = mod_->getOrInsertFunction("__ry_select_destroy", destroyTy);
+
+    llvm::Value *state = builder_.CreateCall(
+        beginFn, {llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(s->cases.size()))}, "select_state");
+
+    struct CaseCodegenInfo {
+        llvm::Type *recvTy = nullptr;
+        llvm::AllocaInst *recvSlot = nullptr;
+        llvm::AllocaInst *recvOptFlagSlot = nullptr;
+        std::string recvName;
+        SelectRecvMode recvMode = SelectRecvMode::Strict;
+    };
+    std::vector<CaseCodegenInfo> caseInfos(s->cases.size());
+
+    for (size_t i = 0; i < s->cases.size(); ++i) {
+        std::visit([&](auto &selectCase) {
+            using T = std::decay_t<decltype(selectCase)>;
+            if constexpr (std::is_same_v<T, SelectRecvCase>) {
+                if (selectCase.loc.isValid()) current_loc_ = selectCase.loc;
+                llvm::Value *channelVal = emitExpr(*selectCase.channel);
+                llvm::Type *elemTy = getChannelElementType(channelVal);
+                if (!elemTy)
+                    codegenError(selectCase.loc,
+                        selectCase.mode == SelectRecvMode::Optional
+                            ? "select recv_opt requires Channel<T>"
+                            : "select recv requires Channel<T>");
+
+                llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+                if (!elemTy->isVoidTy()) {
+                    caseInfos[i].recvSlot = builder_.CreateAlloca(elemTy, nullptr, "select_recv");
+                    if (selectCase.mode == SelectRecvMode::Optional)
+                        builder_.CreateStore(llvm::Constant::getNullValue(elemTy), caseInfos[i].recvSlot);
+                    outPtr = caseInfos[i].recvSlot;
+                }
+                caseInfos[i].recvTy = elemTy;
+                caseInfos[i].recvName = selectCase.name;
+                caseInfos[i].recvMode = selectCase.mode;
+                if (selectCase.mode == SelectRecvMode::Optional) {
+                    caseInfos[i].recvOptFlagSlot = builder_.CreateAlloca(i1Ty_, nullptr, "select_recv_opt_flag");
+                    builder_.CreateCall(addRecvOptFn, {state, channelVal, outPtr, caseInfos[i].recvOptFlagSlot});
+                } else {
+                    builder_.CreateCall(addRecvFn, {state, channelVal, outPtr});
+                }
+            } else if constexpr (std::is_same_v<T, SelectSendCase>) {
+                if (selectCase.loc.isValid()) current_loc_ = selectCase.loc;
+                llvm::Value *channelVal = emitExpr(*selectCase.channel);
+                llvm::Type *elemTy = getChannelElementType(channelVal);
+                if (!elemTy)
+                    codegenError(selectCase.loc, "select send requires Channel<T>");
+                llvm::Value *valueVal = emitExpr(*selectCase.value);
+                if (valueVal->getType() != elemTy)
+                    codegenError(selectCase.loc, "select send value type does not match channel element type");
+
+                llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+                if (!elemTy->isVoidTy()) {
+                    llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "select_send");
+                    builder_.CreateStore(valueVal, valueSlot);
+                    valuePtr = valueSlot;
+                }
+                builder_.CreateCall(addSendFn, {state, channelVal, valuePtr});
+            }
+        }, s->cases[i]);
+    }
+
+    const int64_t elseIndex = s->else_body.empty() ? -1 : static_cast<int64_t>(s->cases.size());
+    const int64_t timeoutIndex = s->timeout_ms ? static_cast<int64_t>(s->cases.size()) : -1;
+    llvm::Value *timeoutMsVal = llvm::ConstantInt::get(i64Ty_, -1);
+    if (s->timeout_ms) {
+        if (s->timeout_loc.isValid()) current_loc_ = s->timeout_loc;
+        timeoutMsVal = emitExpr(*s->timeout_ms);
+        if (timeoutMsVal->getType() != i64Ty_)
+            codegenError(s->timeout_loc, "select timeout requires int milliseconds");
+    }
+    llvm::Value *selected = builder_.CreateCall(
+        waitFn,
+        {state,
+         llvm::ConstantInt::get(i64Ty_, elseIndex),
+         timeoutMsVal,
+         llvm::ConstantInt::get(i64Ty_, timeoutIndex)},
+        "select_index");
+    builder_.CreateCall(destroyFn, {state});
+
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "select.end", fn_);
+    llvm::BasicBlock *defaultBB = s->else_body.empty() ? mergeBB : llvm::BasicBlock::Create(*ctx_, "select.else", fn_);
+    llvm::BasicBlock *timeoutBB = s->timeout_body.empty() ? mergeBB : llvm::BasicBlock::Create(*ctx_, "select.timeout", fn_);
+    llvm::SwitchInst *switchInst = builder_.CreateSwitch(selected, mergeBB,
+        static_cast<unsigned>(s->cases.size() + (s->else_body.empty() ? 0 : 1) + (s->timeout_body.empty() ? 0 : 1)));
+
+    for (size_t i = 0; i < s->cases.size(); ++i) {
+        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "select.case", fn_);
+        switchInst->addCase(
+            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(i))),
+            caseBB);
+        builder_.SetInsertPoint(caseBB);
+
+        pushScope();
+        std::visit([&](auto &selectCase) {
+            using T = std::decay_t<decltype(selectCase)>;
+            if constexpr (std::is_same_v<T, SelectRecvCase>) {
+                if (selectCase.name != "_") {
+                    llvm::Type *recvTy = caseInfos[i].recvTy;
+                    llvm::Value *boundValue = nullptr;
+                    llvm::Type *boundTy = nullptr;
+                    if (caseInfos[i].recvMode == SelectRecvMode::Optional) {
+                        llvm::Value *hasValue = builder_.CreateLoad(i1Ty_, caseInfos[i].recvOptFlagSlot, "select_recv_opt_has");
+                        if (recvTy->isVoidTy()) {
+                            boundValue = hasValue;
+                            boundTy = i1Ty_;
+                        } else {
+                            llvm::StructType *optTy = getOptionType(recvTy);
+                            llvm::Value *recvVal = builder_.CreateLoad(recvTy, caseInfos[i].recvSlot, "select_received");
+                            llvm::Value *optInner = builder_.CreateSelect(
+                                hasValue, recvVal, llvm::UndefValue::get(recvTy), "select_recv_opt_inner");
+                            llvm::Value *opt = llvm::UndefValue::get(optTy);
+                            opt = builder_.CreateInsertValue(opt, hasValue, 0, "select_recv_opt_has_field");
+                            opt = builder_.CreateInsertValue(opt, optInner, 1, "select_recv_opt_value_field");
+                            boundValue = opt;
+                            boundTy = optTy;
+                        }
+                    } else {
+                        if (recvTy->isVoidTy())
+                            codegenError(selectCase.loc, "select recv binding requires a non-Unit channel value");
+                        boundValue = builder_.CreateLoad(recvTy, caseInfos[i].recvSlot, "select_received");
+                        boundTy = recvTy;
+                    }
+
+                    llvm::AllocaInst *varPtr = getOrCreateVar(selectCase.name, boundTy);
+                    builder_.CreateStore(boundValue, varPtr);
+                    immutable_scope_stack_.back().insert(selectCase.name);
+                }
+                for (auto &stmt : selectCase.body)
+                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
+            } else if constexpr (std::is_same_v<T, SelectSendCase>) {
+                for (auto &stmt : selectCase.body)
+                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
+            }
+        }, s->cases[i]);
+        popScope();
+
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(mergeBB);
+    }
+
+    if (!s->else_body.empty()) {
+        switchInst->addCase(
+            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, elseIndex)),
+            defaultBB);
+        builder_.SetInsertPoint(defaultBB);
+        pushScope();
+        for (auto &stmt : s->else_body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(mergeBB);
+    }
+
+    if (!s->timeout_body.empty()) {
+        switchInst->addCase(
+            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, timeoutIndex)),
+            timeoutBB);
+        builder_.SetInsertPoint(timeoutBB);
+        pushScope();
+        for (auto &stmt : s->timeout_body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(mergeBB);
+    }
+
+    builder_.SetInsertPoint(mergeBB);
+}
+
 void CodeGen::emitStmt(TupleDestructStmt &s) {
     llvm::Value *tupleVal = emitExpr(*s.value);
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
@@ -812,6 +1130,213 @@ void CodeGen::emitStmt(ImportStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     codegenError("unresolved import: " + s.module_path +
                              " (ModuleLoader should have resolved this)");
+}
+
+void CodeGen::validateParallelFor(const ForStmt &s) {
+    std::vector<std::unordered_set<std::string>> localScopes(1);
+    localScopes.back().insert(s.var_name);
+    if (s.var_name2)
+        localScopes.back().insert(*s.var_name2);
+
+    auto isLocal = [&](const std::string &name) {
+        for (auto it = localScopes.rbegin(); it != localScopes.rend(); ++it) {
+            if (it->count(name))
+                return true;
+        }
+        return false;
+    };
+
+    std::function<void(const std::vector<StmtNode>&)> scanBlock;
+    std::function<void(const StmtNode&)> scanStmt;
+
+    scanBlock = [&](const std::vector<StmtNode> &body) {
+        localScopes.push_back({});
+        for (const auto &stmt : body)
+            scanStmt(stmt);
+        localScopes.pop_back();
+    };
+
+    scanStmt = [&](const StmtNode &stmt) {
+        std::visit([&](const auto &node) {
+            using T = std::decay_t<decltype(node)>;
+            if constexpr (std::is_same_v<T, LetStmt> || std::is_same_v<T, VarStmt>) {
+                localScopes.back().insert(node.name);
+            } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
+                for (const auto &name : node.names) {
+                    if (name != "_")
+                        localScopes.back().insert(name);
+                }
+            } else if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (!isLocal(node.name))
+                    codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
+            } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
+                codegenError(node.loc, "parallel for does not allow indexed assignment");
+            } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
+                codegenError(node.loc, "parallel for does not allow field assignment");
+            } else if constexpr (std::is_same_v<T, BreakStmt>) {
+                codegenError(node.loc, "parallel for does not allow break");
+            } else if constexpr (std::is_same_v<T, ContinueStmt>) {
+                codegenError(node.loc, "parallel for does not allow continue");
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+                for (const auto &branch : node->branches)
+                    scanBlock(branch.body);
+                scanBlock(node->else_body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+                scanBlock(node->body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+                scanBlock(node->body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                for (const auto &arm : node->arms)
+                    scanBlock(arm.body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+                codegenError(node->loc, "parallel for does not allow nested function definitions");
+            }
+        }, stmt);
+    };
+
+    for (const auto &stmt : s.body)
+        scanStmt(stmt);
+}
+
+void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step) {
+    std::vector<std::pair<std::string, llvm::AllocaInst*>> captures;
+    std::unordered_set<std::string> seen;
+    for (auto scopeIt = scope_stack_.rbegin(); scopeIt != scope_stack_.rend(); ++scopeIt) {
+        for (const auto &[name, alloca] : *scopeIt) {
+            if (name == s.var_name || seen.count(name))
+                continue;
+            seen.insert(name);
+            captures.push_back({name, alloca});
+        }
+    }
+
+    std::vector<llvm::Type*> envFields;
+    if (captures.empty())
+        envFields.push_back(i8Ty_);
+    else
+        for (const auto &[_, alloca] : captures)
+            envFields.push_back(alloca->getAllocatedType());
+    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t envSize = std::max<uint64_t>(1, dl.getTypeAllocSize(envTy));
+    llvm::Value *envPtr = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, envSize)}, "parallel_env");
+
+    if (captures.empty()) {
+        llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "parallel_env_dummy");
+        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
+    } else {
+        for (size_t i = 0; i < captures.size(); ++i) {
+            llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, i, "parallel_env_field");
+            llvm::AllocaInst *src = captures[i].second;
+            builder_.CreateStore(
+                builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".par_cap"),
+                fieldPtr);
+        }
+    }
+
+    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::Function *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage,
+        "__ry_parallel_for." + std::to_string(lambda_counter_++), *mod_);
+
+    {
+        FnScope guard(*this);
+        fn_ = thunk;
+        pushScope();
+
+        llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        builder_.SetInsertPoint(entryBB);
+
+        auto argIt = thunk->arg_begin();
+        llvm::Value *envRaw = &*argIt++;
+        envRaw->setName("env_raw");
+        llvm::Value *chunkBegin = &*argIt++;
+        chunkBegin->setName("chunk_begin");
+        llvm::Value *chunkEnd = &*argIt++;
+        chunkEnd->setName("chunk_end");
+        llvm::Value *stepArg = &*argIt;
+        stepArg->setName("step");
+
+        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "parallel_env_typed");
+
+        if (!captures.empty()) {
+            for (size_t i = 0; i < captures.size(); ++i) {
+                const auto &[name, src] = captures[i];
+                llvm::Type *capTy = src->getAllocatedType();
+                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, typedEnv, i, name + ".field");
+                llvm::AllocaInst *dst = builder_.CreateAlloca(capTy, nullptr, name);
+                builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
+                scope_stack_.back()[name] = dst;
+
+                if (auto it = list_element_types_.find(src); it != list_element_types_.end())
+                    list_element_types_[dst] = it->second;
+                if (auto it = nested_list_element_types_.find(src); it != nested_list_element_types_.end())
+                    nested_list_element_types_[dst] = it->second;
+                if (auto it = map_key_types_.find(src); it != map_key_types_.end())
+                    map_key_types_[dst] = it->second;
+                if (auto it = map_value_types_.find(src); it != map_value_types_.end())
+                    map_value_types_[dst] = it->second;
+                if (auto it = set_element_types_.find(src); it != set_element_types_.end())
+                    set_element_types_[dst] = it->second;
+                if (auto it = fn_type_info_.find(src); it != fn_type_info_.end())
+                    fn_type_info_[dst] = it->second;
+                if (auto it = task_result_types_.find(src); it != task_result_types_.end())
+                    task_result_types_[dst] = it->second;
+                if (auto it = union_value_types_.find(src); it != union_value_types_.end())
+                    union_value_types_[dst] = it->second;
+                if (auto it = enum_value_types_.find(src); it != enum_value_types_.end())
+                    enum_value_types_[dst] = it->second;
+                if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
+                    channel_element_types_[dst] = it->second;
+            }
+        }
+
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, s.var_name);
+        builder_.CreateStore(chunkBegin, iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "parallel.cond", thunk);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "parallel.body", thunk);
+        llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "parallel.step", thunk);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "parallel.end", thunk);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "parallel_i");
+        llvm::Value *stepPos = builder_.CreateICmpSGT(stepArg, llvm::ConstantInt::get(i64Ty_, 0), "parallel_step_pos");
+        llvm::Value *posCond = builder_.CreateICmpSLT(iCur, chunkEnd, "parallel_pos_cond");
+        llvm::Value *negCond = builder_.CreateICmpSGT(iCur, chunkEnd, "parallel_neg_cond");
+        llvm::Value *loopCond = builder_.CreateSelect(stepPos, posCond, negCond, "parallel_cond");
+        builder_.CreateCondBr(loopCond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        pushScope();
+        scope_stack_.back()[s.var_name] = iVar;
+        for (auto &stmt : s.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(stepBB);
+
+        builder_.SetInsertPoint(stepBB);
+        llvm::Value *iNext = builder_.CreateAdd(
+            builder_.CreateLoad(i64Ty_, iVar, "parallel_i_step"), stepArg, "parallel_i_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        builder_.CreateRetVoid();
+    }
+
+    llvm::FunctionType *parallelTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
+    builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
 }
 
 void CodeGen::emitStmt(IndexAssignStmt &s) {
@@ -1037,6 +1562,8 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
     if (hasDirective(s->directives, "native")) {
+        if (s->is_async)
+            codegenError("async native functions are not supported");
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
 
@@ -1048,13 +1575,15 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type));
-    llvm::Type *retTy = resolveType(s->return_type);
+    llvm::Type *bodyRetTy = resolveType(s->return_type);
+    std::string exposedReturnTypeName = s->is_async ? "Task<" + s->return_type + ">" : s->return_type;
+    llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
     // Check for duplicate signatures
     auto &overloads = functions_[s->name];
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
-            if (entry.func->getReturnType() == retTy)
+            if (entry.func->getReturnType() == exposedRetTy)
                 codegenError("function '" + s->name +
                     "' is already defined with the same signature");
             else
@@ -1068,29 +1597,30 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (!overloads.empty())
         irName = s->name + "." + std::to_string(overloads.size());
 
-    llvm::FunctionType *ft = llvm::FunctionType::get(retTy, paramTypes, false);
+    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
     llvm::Function *func = llvm::Function::Create(
         ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
     std::vector<std::string> paramTypeNames;
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type);
-    overloads.push_back({func, paramTypes, paramTypeNames, s->return_type});
+    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
 
     if (hasDirective(s->directives, "deprecated"))
         deprecated_functions_.insert(s->name);
 
-    {
+    auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
+                                const std::string &returnTypeName, const std::string &fnNameForErrors) {
         FnScope guard(*this);
-        fn_ = func;
-        current_fn_return_type_ = s->return_type;
+        fn_ = targetFunc;
+        current_fn_return_type_ = returnTypeName;
         pushScope();
 
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
         builder_.SetInsertPoint(entry);
 
         unsigned idx = 0;
-        for (auto &arg : func->args()) {
+        for (auto &arg : targetFunc->args()) {
             arg.setName(s->params[idx].name);
             llvm::AllocaInst *alloca = builder_.CreateAlloca(
                 paramTypes[idx], nullptr, s->params[idx].name);
@@ -1116,6 +1646,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
                 if (kTy) map_key_types_[alloca] = kTy;
                 if (vTy) map_value_types_[alloca] = vTy;
+            }
+            if (ptype.size() > 5 && ptype.substr(0, 5) == "Task<" && ptype.back() == '>') {
+                std::string inner = ptype.substr(5, ptype.size() - 6);
+                task_result_types_[alloca] = resolveType(inner);
+            }
+            if (ptype.size() > 8 && ptype.substr(0, 8) == "Channel<" && ptype.back() == '>') {
+                std::string inner = ptype.substr(8, ptype.size() - 9);
+                channel_element_types_[alloca] = resolveType(inner);
             }
             // Track fn type info and constraint check (shared alias resolution)
             {
@@ -1206,11 +1744,106 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         std::string err;
         llvm::raw_string_ostream errStream(err);
+        if (llvm::verifyFunction(*targetFunc, &errStream))
+            codegenError("IR verify error in function '" + fnNameForErrors + "': " + err);
+    };
+
+    if (!s->is_async) {
+        emitFunctionBody(func, bodyRetTy, s->return_type, s->name);
+        return;
+    }
+
+    llvm::FunctionType *bodyFt = llvm::FunctionType::get(bodyRetTy, paramTypes, false);
+    llvm::Function *bodyFunc = llvm::Function::Create(
+        bodyFt, llvm::Function::InternalLinkage, irName + ".__async_body", *mod_);
+    emitFunctionBody(bodyFunc, bodyRetTy, s->return_type, s->name);
+
+    std::vector<llvm::Type*> envFields = paramTypes;
+    if (envFields.empty())
+        envFields.push_back(i8Ty_);
+    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
+
+    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    llvm::Function *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage,
+        "__ry_async." + std::to_string(lambda_counter_++), *mod_);
+
+    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point,
+    // and contract state (current_postconditions_, result_alloca_, in_ensure_context_, old_value_map_)
+
+    {
+        FnScope guard(*this);
+        fn_ = thunk;
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        builder_.SetInsertPoint(entry);
+
+        auto argIt = thunk->arg_begin();
+        llvm::Value *envRaw = &*argIt++;
+        envRaw->setName("env_raw");
+        llvm::Value *outRaw = &*argIt;
+        outRaw->setName("out_raw");
+
+        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "async_env_typed");
+        std::vector<llvm::Value*> thunkArgs;
+        for (size_t i = 0; i < paramTypes.size(); ++i) {
+            llvm::Value *argField = builder_.CreateStructGEP(
+                envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
+            thunkArgs.push_back(builder_.CreateLoad(paramTypes[i], argField, "async_arg." + std::to_string(i)));
+        }
+
+        llvm::Value *result = builder_.CreateCall(bodyFunc, thunkArgs, bodyRetTy->isVoidTy() ? "" : "async_result");
+        if (!bodyRetTy->isVoidTy()) {
+            llvm::Value *outTyped = builder_.CreateBitCast(outRaw, ptrTy_, "async_out_typed");
+            builder_.CreateStore(result, outTyped);
+        }
+        builder_.CreateRetVoid();
+    }
+
+    {
+        FnScope guard(*this);
+        fn_ = func;
+        current_fn_return_type_ = exposedReturnTypeName;
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        builder_.SetInsertPoint(entry);
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        llvm::Value *envPtr = builder_.CreateCall(
+            mallocFn,
+            {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
+            "async_env");
+
+        if (paramTypes.empty()) {
+            llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "async_env_dummy");
+            builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
+        } else {
+            size_t idx = 0;
+            for (auto &arg : func->args()) {
+                llvm::Value *argField = builder_.CreateStructGEP(
+                    envTy, envPtr, idx++, "async_env_arg");
+                builder_.CreateStore(&arg, argField);
+            }
+        }
+
+        llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
+        llvm::Value *task = builder_.CreateCall(
+            spawnFn,
+            {
+                builder_.CreateBitCast(thunk, ptrTy_),
+                envPtr,
+                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? 0 : dl.getTypeAllocSize(bodyRetTy))
+            },
+            "task");
+        builder_.CreateRet(task);
+
+        std::string err;
+        llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*func, &errStream))
             codegenError("IR verify error in function '" + s->name + "': " + err);
     }
-    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point,
-    // and contract state (current_postconditions_, result_alloca_, in_ensure_context_, old_value_map_)
 }
 
 // ===== Contract helpers =====

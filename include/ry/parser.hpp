@@ -32,7 +32,7 @@ private:
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();
-    StmtNode parseFnStatement(const std::vector<Directive> &directives);
+    StmtNode parseFnStatement(const std::vector<Directive> &directives, bool is_async = false);
     StmtNode parseRecordStatement();
     StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();
@@ -41,6 +41,7 @@ private:
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
+    StmtNode parseSelectStatement();
     Pattern parsePattern();
     std::string parseTypeName();
     std::string parseTypeNameSingle();
@@ -73,4 +74,6 @@ private:
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
     ExprPtr parseLambdaExpr();
+    ExprPtr parseSpawnExpr();
+    ExprPtr parseAwaitExpr();
 };

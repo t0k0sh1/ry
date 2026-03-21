@@ -173,6 +173,114 @@ for i in 1 .. 3:
 
 ---
 
+## spawn / await
+
+`spawn` はユーザー定義関数またはラムダ呼び出しをランタイムの worker pool で開始し、`Task<T>` を返します。`await` と `join(task)` はどちらも task の完了を待機します。
+
+```python
+fn square(x: int) -> int:
+    return x * x
+
+let t: Task<int> = spawn square(12)
+print(await t)          # 144
+let u: Task<int> = spawn square(3)
+print(join(u))          # 9, await の関数形式
+```
+
+### 制約
+
+- `spawn` は関数呼び出し式にのみ使用できます。
+- 呼び出し先はユーザー定義関数またはラムダに限られます。
+- v1 の `spawn` は `Unit` 戻り値の呼び出しをサポートしません。
+- task は OS スレッド 1 本ごとではなく、ランタイム上の軽量 job として実行されます。
+- `await` は `Task<T>` にのみ使用できます。
+- `await expr` は式としても文としても使えます。
+
+## channels
+
+`Channel<T>` は task 間で値を受け渡すための組み込みブロッキング通信プリミティブです。
+
+```python
+fn worker(ch: Channel<int>) -> int:
+    send(ch, 42)
+    close(ch)
+    return 0
+
+let ch: Channel<int> = channel[int]()
+let t: Task<int> = spawn worker(ch)
+for x in ch:
+    print(x)
+print(join(t))
+```
+
+### ルール
+
+- `channel[T]()` は unbuffered channel を作成します。
+- `channel[T](n)` は容量 `n` の buffered channel を作成します。
+- `send(ch, value)` は受け入れられるまで待機します。
+- `try_send(ch, value)` は送信を即時に試み、`bool` を返します。
+- `recv(ch)` は strict な受信 API で、値が届くまで待機します。
+- `recv_opt(ch)` は値が届くか、channel が close 済みかつ drained になるまで待機します。
+- `try_recv(ch)` は受信を即時に試み、`Option<T>` または `Channel<Unit>` では `bool` を返します。
+- `for x in ch:` は channel が close 済みかつ drained になるまで値を反復します。
+- `close(ch)` は channel を閉じます。
+- v1 では、閉じた channel への `send` と、空の closed channel からの `recv` はランタイムエラーです。
+- `recv_opt(ch: Channel<T>) -> Option<T>` は受信した値を `Some(v)` として返し、channel が close 済みかつ drained なら `None` を返します。
+- `recv_opt(ch: Channel<Unit>) -> bool` は `Unit` を受信したら `true`、close 済みかつ drained なら `false` を返します。
+- `try_recv(ch: Channel<T>) -> Option<T>` は値が即時に取れれば `Some(v)`、そうでなければ `None` を返します。close 済みかつ drained な channel でも `None` です。
+- `try_recv(ch: Channel<Unit>) -> bool` は `Unit` を即時に受信できれば `true`、そうでなければ `false` を返します。
+- `for _ in ch:` を使うと `Channel<Unit>` を消費できます。
+
+## select
+
+`select` は複数の channel 操作を待ち合わせし、ready になった branch を 1 つだけ実行します。
+
+```python
+select:
+    case let x = recv(inbox):
+        print(x)
+    case send(outbox, 42):
+        print("sent")
+    else:
+        print("idle")
+```
+
+### Rules
+
+- `select` は式ではなく文です。
+- case は `case let name = recv(ch):`、`case let name = recv_opt(ch):`、`case send(ch, value):` のみです。
+- 受信値を捨てる場合は `let _ = recv(ch)` を使います。
+- `recv_opt` を使う case では `Option<T>`、`Channel<Unit>` の場合は `bool` が束縛されます。
+- `else:` は省略可能で、書く場合は最後の branch に限られます。
+- `timeout n:` は select 全体の待機上限をミリ秒で指定する最後の branch です。
+- `else` と `timeout` は同時に指定できません。
+- `else` が無い場合、いずれかの case が ready になるまで block します。
+- v1 では `select` 内でも closed channel のエラーは変わりません。閉じた channel への `send` と、空の closed channel からの `recv` はランタイムエラーです。
+
+---
+
+## `@parallel for`
+
+`@parallel` は `range(...)` または整数 `..` を使う counted `for` ループにだけ付与できます。ループ本体はランタイムのワーカープール上でチャンク単位に並列実行されます。
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+### 制約
+
+- 対応するのは `range(...)` と整数 `..` のみです。
+- 分解代入付きの反復は未対応です。
+- 外側スコープの `var` への代入は拒否されます。
+- `break` と `continue` は使えません。
+- v1 ではループ本体内のインデックス代入とフィールド代入も拒否されます。
+
+ランタイムの worker 数は `available_parallelism()` で取得できます。
+
+---
+
 ## break
 
 - 最も内側のループ（`while` または `for`）を即座に脱出する。

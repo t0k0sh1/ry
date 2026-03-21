@@ -12,6 +12,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
+find_package(Threads REQUIRED)
 
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
@@ -65,12 +66,13 @@ add_library(ry_lib STATIC
     src/self_update.cpp
     src/args_runtime.cpp
     src/paths.cpp
+    src/runtime_parallel.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
 )
-target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS})
+target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads)
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
@@ -90,6 +92,9 @@ add_executable(ry_tests
     tests/test_parser.cpp
     tests/test_codegen.cpp
     tests/test_codegen_stmt.cpp
+    tests/test_spec_concurrency.cpp
+    tests/test_spec_concurrency_channels.cpp
+    tests/test_spec_concurrency_select.cpp
     tests/test_codegen_collection.cpp
     tests/test_codegen_advanced.cpp
     tests/test_codegen_contract.cpp

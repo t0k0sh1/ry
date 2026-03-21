@@ -54,6 +54,24 @@ TEST_F(CodeGenTest, ContinueInWhile) {
     EXPECT_EQ(runSource(src), "25\n");
 }
 
+TEST_F(CodeGenTest, ParallelForBreakRejected) {
+    std::string src =
+        "@parallel\n"
+        "for i in range(5):\n"
+        "    if i == 2:\n"
+        "        break\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, ParallelForContinueRejected) {
+    std::string src =
+        "@parallel\n"
+        "for i in range(5):\n"
+        "    if i == 2:\n"
+        "        continue\n";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== Struct field assignment =====
 
 TEST_F(CodeGenTest, StructFieldAssign) {

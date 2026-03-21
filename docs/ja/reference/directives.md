@@ -21,6 +21,7 @@
 - `record` - 構造体定義
 - `let` / `var` - 変数宣言
 - `record` 定義内のフィールド
+- `for` - `@parallel` のみ対応
 
 ## 組み込みディレクティブ
 
@@ -112,7 +113,7 @@ print("hello".to_upper())  # HELLO
 
 | ファイル | 内容 |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
@@ -129,6 +130,28 @@ print("hello".to_upper())  # HELLO
 
 **将来の拡張方向:**
 - `@native("libfoo.so")` — 外部共有ライブラリへの FFI バインディング。
+
+### `@parallel`
+
+counted `for` ループを並列実行対象としてマークします。
+
+```
+@parallel
+for i in range(8):
+    work(i)
+```
+
+**対応対象:**
+
+- `for` 文のみ
+
+**制約事項:**
+
+- `for` 文には 1 つの `@parallel` だけ指定できます。
+- 反復対象は `range(...)` または整数 `..` に限られます。
+- 分解代入付きの反復は未対応です。
+- 外側の可変変数への代入は拒否されます。
+- v1 ではループ本体内の `break`、`continue`、インデックス代入、フィールド代入は拒否されます。
 
 ### パラメータ（将来拡張）
 
@@ -148,4 +171,4 @@ fn old_api() -> int:
 - 警告は使用箇所で出力され、定義箇所では出力されません。
 - 非推奨のエンティティを定義しても、使用しなければ警告は出力されません。
 - 未知のディレクティブ名はパースエラーになります。
-- サポートされない対象（`if`、`while` 等）にディレクティブを付与するとパースエラーになります。
+- サポートされない対象（`if`、`while` 等）にディレクティブを付与するとパースエラーになります。`for` に使えるのは `@parallel` のみです。

@@ -1,0 +1,48 @@
+describe("spawn and join"):
+    it("joins spawned computation"):
+        fn spawned_add(a: int, b: int) -> int:
+            return a + b
+
+        let t: Task<int> = spawn spawned_add(20, 22)
+        expect(join(t)).to_eq(42)
+
+describe("async and await"):
+    it("awaits direct async call"):
+        async fn async_add_direct(a: int, b: int) -> int:
+            return a + b
+
+        expect(await async_add_direct(20, 22)).to_eq(42)
+
+    it("awaits task variable"):
+        async fn async_add_task(a: int, b: int) -> int:
+            return a + b
+
+        let t: Task<int> = async_add_task(7, 8)
+        expect(await t).to_eq(15)
+
+    it("chains async functions"):
+        async fn inner() -> int:
+            return 21
+
+        async fn outer() -> int:
+            return (await inner()) * 2
+
+        expect(await outer()).to_eq(42)
+
+    it("supports Unit-returning async functions through await"):
+        async fn bump() -> Unit:
+            print("done")
+
+        await bump()
+        expect(1).to_eq(1)
+
+describe("parallel for"):
+    it("executes counted loops"):
+        fn consume(x: int) -> int:
+            return x + 1
+
+        expect(available_parallelism() > 0).to_be_true()
+
+        @parallel
+        for i in range(5):
+            consume(i)
