@@ -102,10 +102,8 @@ llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, ll
 void CodeGen::emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                               unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                               int64_t initialBucketCount) {
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-    llvm::FunctionType *memsetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
-    llvm::FunctionCallee memsetFn = mod_->getOrInsertFunction("memset", memsetTy);
+    auto mallocFn = getStdlibMalloc();
+    auto memsetFn = getStdlibMemset();
 
     int64_t bucketBytes = initialBucketCount * 8; // sizeof(int64_t)
     llvm::Value *bucketsPtr = builder_.CreateCall(
@@ -175,8 +173,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     llvm::Value *newBuckets = builder_.CreateCall(rehashFn, {keysPtr, lenForRehash, newBc}, "new_buckets");
 
     // Free old buckets
-    llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+    auto freeFn = getStdlibFree();
     llvm::Value *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsField, "old_buckets");
     builder_.CreateCall(freeFn, {oldBuckets});
 
@@ -194,9 +191,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     if (args.size() != 1)
         codegenError("print() takes exactly 1 argument");
 
-    llvm::FunctionType *printfTy = llvm::FunctionType::get(
-        i32Ty_, {llvm::PointerType::getUnqual(*ctx_)}, /*isVarArg=*/true);
-    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    auto printfFn = getStdlibPrintf();
 
     llvm::Value *val = emitExpr(*args[0]);
 
@@ -795,8 +790,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else if (actualTy == i1Ty_ && expectedTy == i1Ty_) {
             eqResult = builder_.CreateICmpEQ(actualVal, expectedVal, "eq");
         } else if (actualTy == ptrTy_ && expectedTy == ptrTy_) {
-            llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-            llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+            auto strcmpFn = getStdlibStrcmp();
             llvm::Value *result = builder_.CreateCall(strcmpFn, {actualVal, expectedVal}, "strcmp");
             eqResult = builder_.CreateICmpEQ(result, llvm::ConstantInt::get(i32Ty_, 0), "eq");
         } else if ((actualTy == i64Ty_ && expectedTy == f64Ty_) ||
@@ -823,8 +817,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             else if (innerTy == i1Ty_)
                 innerEq = builder_.CreateICmpEQ(aInner, bInner, "opt_inner_eq");
             else if (innerTy == ptrTy_) {
-                llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *r = builder_.CreateCall(strcmpFn, {aInner, bInner}, "strcmp");
                 innerEq = builder_.CreateICmpEQ(r, llvm::ConstantInt::get(i32Ty_, 0), "opt_inner_eq");
             } else {
@@ -914,8 +907,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             if (elemTy == i64Ty_)
                 eq = builder_.CreateICmpEQ(elem, expectedVal, "eq");
             else if (elemTy == ptrTy_) {
-                llvm::FunctionType *strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {elem, expectedVal}, "strcmp");
                 eq = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "eq");
             } else
@@ -937,8 +929,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             containResult = builder_.CreateLoad(i1Ty_, foundVar, "contain_result");
         } else if (actualTy == ptrTy_ && expectedVal->getType() == ptrTy_) {
             // String contains: use strstr
-            llvm::FunctionType *strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-            llvm::FunctionCallee strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+            auto strstrFn = getStdlibStrstr();
             llvm::Value *result = builder_.CreateCall(strstrFn, {actualVal, expectedVal}, "strstr");
             containResult = builder_.CreateICmpNE(result, llvm::ConstantPointerNull::get(
                 llvm::PointerType::getUnqual(*ctx_)), "contains");
@@ -1013,10 +1004,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         if (actualTy != ptrTy_ || expectedVal->getType() != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
                 ": to_start_with: requires str operands");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {expectedVal}, "prefix_len");
         llvm::Value *cmp = builder_.CreateCall(strncmpFn, {actualVal, expectedVal, prefixLen}, "strncmp");
         cmpResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
@@ -1026,10 +1015,8 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         if (actualTy != ptrTy_ || expectedVal->getType() != ptrTy_)
             codegenError("line " + std::to_string(s.loc.line) +
                 ": to_end_with: requires str operands");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {actualVal}, "s_len");
         llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {expectedVal}, "suffix_len");
 
@@ -1072,8 +1059,7 @@ void CodeGen::emitStmt(ExpectStmt &s) {
 
     // For now, format actual and expected as string representations
     // Use snprintf to format values at runtime
-    llvm::FunctionType *snprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
-    llvm::FunctionCallee snprintfFn = mod_->getOrInsertFunction("snprintf", snprintfTy);
+    auto snprintfFn = getStdlibSnprintf();
 
     auto formatValue = [&](llvm::Value *val, llvm::Type *ty, const std::string &bufName) -> llvm::Value* {
         llvm::Value *buf = builder_.CreateAlloca(
@@ -1401,8 +1387,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 } else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_) {
                     testResult = builder_.CreateICmpEQ(subjectVal, litVal, "match.beq");
                 } else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
-                    auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                    auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                    auto strcmpFn = getStdlibStrcmp();
                     llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                     testResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match.streq");
                 } else {
@@ -1478,8 +1463,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                             else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_)
                                 altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.beq");
                             else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
-                                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                                auto strcmpFn = getStdlibStrcmp();
                                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                                 altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
                             } else {
@@ -1688,9 +1672,7 @@ void CodeGen::emitExit(const std::vector<ExprPtr> &args) {
         codegenError("exit() argument must be an integer");
     if (code->getType() != i32Ty_)
         code = builder_.CreateIntCast(code, i32Ty_, true, "exit_code");
-    llvm::FunctionType *exitTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {code});
     builder_.CreateUnreachable();
 }

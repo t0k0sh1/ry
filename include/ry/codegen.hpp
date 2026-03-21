@@ -286,6 +286,24 @@ private:
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
     llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
+    llvm::Value *emitIsWhitespace(llvm::Value *ch);
+
+    // C stdlib function helpers
+    llvm::FunctionCallee getStdlibMalloc();
+    llvm::FunctionCallee getStdlibRealloc();
+    llvm::FunctionCallee getStdlibFree();
+    llvm::FunctionCallee getStdlibStrlen();
+    llvm::FunctionCallee getStdlibMemcpy();
+    llvm::FunctionCallee getStdlibMemmove();
+    llvm::FunctionCallee getStdlibMemset();
+    llvm::FunctionCallee getStdlibStrcmp();
+    llvm::FunctionCallee getStdlibStrncmp();
+    llvm::FunctionCallee getStdlibStrstr();
+    llvm::FunctionCallee getStdlibStrcpy();
+    llvm::FunctionCallee getStdlibStrcat();
+    llvm::FunctionCallee getStdlibSnprintf();
+    llvm::FunctionCallee getStdlibPrintf();
+    llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
