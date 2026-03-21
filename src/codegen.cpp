@@ -2,7 +2,6 @@
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
-#include <stdexcept>
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_unique<llvm::LLVMContext>()),
                      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
@@ -736,14 +735,88 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     return val;
 }
 
+// ===== C stdlib function helpers =====
+
+llvm::FunctionCallee CodeGen::getStdlibMalloc() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    return mod_->getOrInsertFunction("malloc", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibRealloc() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("realloc", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibFree() {
+    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    return mod_->getOrInsertFunction("free", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrlen() {
+    auto ty = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    return mod_->getOrInsertFunction("strlen", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemcpy() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memcpy", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemmove() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memmove", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemset() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memset", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcmp", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrncmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("strncmp", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrstr() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strstr", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcpy() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcpy", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcat() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcat", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibSnprintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    return mod_->getOrInsertFunction("snprintf", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("printf", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibExit() {
+    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    return mod_->getOrInsertFunction("exit", ty);
+}
+
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    auto printfFn = getStdlibPrintf();
     llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
     builder_.CreateCall(printfFn, {errMsg});
-    llvm::FunctionType *exitTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
 }
@@ -972,9 +1045,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
             // Can't easily extract string from ConstantExpr, fall through to runtime
         }
         // For string literals, we need runtime strcmp checks
-        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(
-            i32Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+        auto strcmpFn = getStdlibStrcmp();
 
         llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
         for (const auto &allowed : constraint.str_values) {

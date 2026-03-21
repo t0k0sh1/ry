@@ -3,7 +3,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
-#include <stdexcept>
 
 // ===== LambdaExpr =====
 
@@ -226,8 +225,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         closureFields.push_back(t);
     llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t closureSize = dl.getTypeAllocSize(closureTy);
     llvm::Value *closurePtr = builder_.CreateCall(

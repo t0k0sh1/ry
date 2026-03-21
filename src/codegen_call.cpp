@@ -1,6 +1,25 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
-#include <stdexcept>
+
+namespace {
+// RAII guard to restore moved-out args after proxy CallExpr delegation
+struct ArgsRestoreGuard {
+    std::vector<ExprPtr> &dst;
+    std::vector<ExprPtr> &src;
+    ~ArgsRestoreGuard() { dst = std::move(src); }
+};
+} // namespace
+
+// ===== Whitespace helper =====
+
+llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
+    llvm::Value *isSp  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' '));
+    llvm::Value *isTab = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'));
+    llvm::Value *isNl  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n'));
+    llvm::Value *isCr  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'));
+    return builder_.CreateOr(builder_.CreateOr(isSp, isTab),
+                             builder_.CreateOr(isNl, isCr));
+}
 
 // ===== Builtin String =====
 
@@ -13,8 +32,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
             codegenError("contains() requires str arguments");
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+        auto strstrFn = getStdlibStrstr();
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         return builder_.CreateICmpNE(result, null, "contains");
@@ -28,10 +46,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *prefix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
             codegenError("starts_with() requires str arguments");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
         llvm::Value *cmp = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
         return builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
@@ -45,10 +61,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *suffix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
             codegenError("ends_with() requires str arguments");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
         llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
 
@@ -84,9 +98,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
             codegenError("find() requires str arguments");
 
         llvm::StructType *optTy = getOptionType(i64Ty_);
-
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+        auto strstrFn = getStdlibStrstr();
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "find_ptr");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *isNull = builder_.CreateICmpEQ(result, null, "find_null");
@@ -158,15 +170,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *newStr = emitExpr(*e.args[2]);
         if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
             codegenError("replace() requires str arguments");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strstrFn = getStdlibStrstr();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "repl_s_len");
         llvm::Value *oldLen = builder_.CreateCall(strlenFn, {oldStr}, "repl_old_len");
@@ -255,11 +262,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_upper() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "upper_len");
         llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "upper_buf_size");
@@ -304,11 +308,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_lower() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "lower_len");
         llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "lower_buf_size");
@@ -353,13 +354,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "trim_len");
 
@@ -381,11 +378,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         builder_.SetInsertPoint(startCheckBB);
         llvm::Value *startPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, startIdx, "start_ptr");
         llvm::Value *startCh = builder_.CreateLoad(i8Ty_, startPtr, "start_ch");
-        llvm::Value *isSp = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, ' '), "is_sp");
-        llvm::Value *isTab = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\t'), "is_tab");
-        llvm::Value *isNl = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\n'), "is_nl");
-        llvm::Value *isCr = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\r'), "is_cr");
-        llvm::Value *isWs = builder_.CreateOr(builder_.CreateOr(isSp, isTab), builder_.CreateOr(isNl, isCr), "is_ws");
+        llvm::Value *isWs = emitIsWhitespace(startCh);
         builder_.CreateCondBr(isWs, startBodyBB, startEndBB);
 
         builder_.SetInsertPoint(startBodyBB);
@@ -415,11 +408,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *endPrev = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "end_prev");
         llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, endPrev, "end_ptr");
         llvm::Value *endCh = builder_.CreateLoad(i8Ty_, endPtr, "end_ch");
-        llvm::Value *isSp2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, ' '), "is_sp2");
-        llvm::Value *isTab2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\t'), "is_tab2");
-        llvm::Value *isNl2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\n'), "is_nl2");
-        llvm::Value *isCr2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\r'), "is_cr2");
-        llvm::Value *isWs2 = builder_.CreateOr(builder_.CreateOr(isSp2, isTab2), builder_.CreateOr(isNl2, isCr2), "is_ws2");
+        llvm::Value *isWs2 = emitIsWhitespace(endCh);
         builder_.CreateCondBr(isWs2, endBodyBB, endEndBB);
 
         builder_.SetInsertPoint(endBodyBB);
@@ -449,13 +438,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim_start() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tstart_len");
 
@@ -475,14 +460,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         builder_.SetInsertPoint(checkBB);
         llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "tstart_ptr");
         llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tstart_ch");
-        llvm::Value *isWs = builder_.CreateOr(
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' ')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'))),
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'))),
-            "tstart_ws");
+        llvm::Value *isWs = emitIsWhitespace(ch);
         builder_.CreateCondBr(isWs, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
@@ -508,13 +486,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim_end() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tend_len");
 
@@ -536,14 +510,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *prevIdx = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "tend_prev");
         llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, prevIdx, "tend_ptr");
         llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tend_ch");
-        llvm::Value *isWs = builder_.CreateOr(
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' ')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'))),
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'))),
-            "tend_ws");
+        llvm::Value *isWs = emitIsWhitespace(ch);
         builder_.CreateCondBr(isWs, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
@@ -568,13 +535,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *n = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_)
             codegenError("repeat() requires str as first argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "repeat_slen");
         llvm::Value *totalLen = builder_.CreateMul(sLen, n, "repeat_total");
@@ -616,8 +579,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         // List reverse
         llvm::Type *elemTy = getListElementType(arg);
         if (elemTy) {
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -724,15 +686,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *delim = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
             codegenError("split() requires str arguments");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strstrFn = getStdlibStrstr();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
@@ -838,13 +795,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
             codegenError("join() requires List<str> and str arguments");
         if (getListElementType(listPtr) != ptrTy_)
             codegenError("join() requires List<str> as first argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *listLen = builder_.CreateLoad(i64Ty_,
             builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "join_len_ptr"), "join_len");
@@ -987,17 +940,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "keys_len");
         llvm::Value *keysData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2), "keys_data");
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "keys_header");
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
-
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
         builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
@@ -1018,17 +968,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "vals_len");
         llvm::Value *valsData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3), "vals_data");
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "vals_header");
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
-
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
         builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
@@ -1137,8 +1084,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "enum_data");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "enum_header");
@@ -1192,8 +1138,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *minLen = builder_.CreateSelect(builder_.CreateICmpSLT(len1, len2), len1, len2, "zip_minlen");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "zip_header");
@@ -1282,8 +1227,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *count = builder_.CreateSExt(count32, i64Ty_, "argc64");
 
         // Allocate list header
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *headerPtr = builder_.CreateCall(
@@ -1568,8 +1512,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *count = builder_.CreateSelect(stepPos, countPosClamped, countNegClamped, "range_count");
 
         // Allocate list header
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *headerPtr = builder_.CreateCall(
@@ -1655,8 +1598,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
             codegenError("byte_len() requires str argument");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
+        auto strlenFn = getStdlibStrlen();
         return builder_.CreateCall(strlenFn, {ptr}, "byte_len");
     }
 
@@ -1751,8 +1693,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "filter_src_data");
 
         // Allocate new list header + data (capacity = source length)
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1855,8 +1796,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "map_src_data");
 
         // Allocate new list
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1939,8 +1879,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "sort_src_data");
 
         // Allocate new list and copy data
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1951,8 +1890,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sort_data");
 
         // memcpy source data to new data
-        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
 
         // Set header
@@ -1997,8 +1935,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             } else if (elemTy == f64Ty_) {
                 result = builder_.CreateFCmpOLT(valA, valB, "sort_lt");
             } else if (elemTy == ptrTy_) {
-                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
                 result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
             } else {
@@ -2034,12 +1971,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Type *elemTy = getListElementType(listPtr);
         if (!elemTy) codegenError("sort!() requires a list");
 
-        // Reuse sort() via a proxy CallExpr (avoid const_cast mutation)
+        // Reuse sort() via a proxy CallExpr with scope guard for exception safety
+        auto &mutArgs = const_cast<CallExpr &>(e).args;
         CallExpr sortProxy;
         sortProxy.callee = "sort";
-        sortProxy.args = std::move(const_cast<CallExpr &>(e).args);
+        sortProxy.args = std::move(mutArgs);
+        ArgsRestoreGuard guard{mutArgs, sortProxy.args};
         llvm::Value *sorted = emitBuiltinHigherOrder(sortProxy);
-        const_cast<CallExpr &>(e).args = std::move(sortProxy.args); // restore
 
         if (!sorted)
             codegenError("sort!() internal error");
@@ -2047,9 +1985,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         // Copy sorted data back into original list
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "sortm_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "sortm_data");
@@ -2058,8 +1994,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {srcData, sortedData, copySize});
 
         // Free the temporary sorted list
-        auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto freeFn = mod_->getOrInsertFunction("free", freeTy);
+        auto freeFn = getStdlibFree();
         builder_.CreateCall(freeFn, {sortedData});
         builder_.CreateCall(freeFn, {sorted});
 
@@ -2467,20 +2402,17 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
             llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "new_size");
             llvm::Value *newElemsPtr = builder_.CreateCall(mallocFn, {newSize}, "new_elems");
 
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto memcpyFn = getStdlibMemcpy();
             llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "elems_field");
             llvm::Value *oldElemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "old_elems");
             llvm::Value *oldSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "old_size");
             builder_.CreateCall(memcpyFn, {newElemsPtr, oldElemsPtr, oldSize});
 
-            llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+            auto freeFn = getStdlibFree();
             builder_.CreateCall(freeFn, {oldElemsPtr});
 
             builder_.CreateStore(newElemsPtr, elemsPtrField);
@@ -2642,8 +2574,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             if (listElemTy == ptrTy_) {
                 if (getNestedListElementType(containerPtr))
                     codegenError("remove() is not supported for lists of non-string pointer elements");
-                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
                 match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
             } else if (listElemTy->isDoubleTy()) {
@@ -2675,8 +2606,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             builder_.CreateCondBr(wasFound, removeBB, doneBB);
 
             builder_.SetInsertPoint(removeBB);
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto memmoveFn = getStdlibMemmove();
             llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, dataPtr, {idx}, "lrem_dst");
             llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, dataPtr,
                 {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
@@ -2784,13 +2714,9 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-            auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            auto freeFn = mod_->getOrInsertFunction("free", freeTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+            auto freeFn = getStdlibFree();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "app_len_ptr");
             llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 1, "app_cap_ptr");
@@ -2846,11 +2772,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "apd_len");
             llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "apd_data");
@@ -2877,12 +2800,12 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
     // append!(list, elem) → alias for append
     if (e.callee == "append!" && e.args.size() == 2) {
+        auto &mutArgs = const_cast<CallExpr &>(e).args;
         CallExpr appendProxy;
         appendProxy.callee = "append";
-        appendProxy.args = std::move(const_cast<CallExpr &>(e).args);
-        llvm::Value *result = emitBuiltinCollection(appendProxy);
-        const_cast<CallExpr &>(e).args = std::move(appendProxy.args);
-        return result;
+        appendProxy.args = std::move(mutArgs);
+        ArgsRestoreGuard guard{mutArgs, appendProxy.args};
+        return emitBuiltinCollection(appendProxy);
     }
 
     // pop(list) → Option<T>: remove and return last element
@@ -2935,11 +2858,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "sl_len");
@@ -2994,11 +2914,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "tk_len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "tk_len");
@@ -3047,14 +2964,10 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-            llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+            auto freeFn = getStdlibFree();
+            auto memmoveFn = getStdlibMemmove();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "ins_len_ptr");
             llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 1, "ins_cap_ptr");
@@ -3126,8 +3039,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto memmoveFn = getStdlibMemmove();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "rmat_len_ptr");
             llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "rmat_data_field");
@@ -3180,8 +3092,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "dist_src_data");
 
         // Allocate new list (capacity = source length)
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -3242,8 +3153,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
         llvm::Value *match;
         if (elemTy == ptrTy_) {
-            auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-            auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+            auto strcmpFn = getStdlibStrcmp();
             llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {srcElem, outElem}, "dist_strcmp");
             match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "dist_match");
         } else if (elemTy->isDoubleTy()) {
@@ -3308,10 +3218,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *outerLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "flat_olen_ptr");
         llvm::Value *outerLen = builder_.CreateLoad(i64Ty_, outerLenPtr, "flat_olen");
@@ -3407,8 +3315,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "items_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, tupleSize), "items_ds");
@@ -3545,10 +3452,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
             uint64_t valSize = dl.getTypeAllocSize(valTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map1, 0), "mg_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map2, 0), "mg_len2");
@@ -3688,8 +3593,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             // Allocate max possible size (len1 + len2)
             llvm::Value *maxLen = builder_.CreateAdd(len1, len2, "u_max_len");
@@ -3698,8 +3602,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "u_data");
 
             // Copy all of set1
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto memcpyFn = getStdlibMemcpy();
             llvm::Value *copy1Size = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "u_copy1_size");
             builder_.CreateCall(memcpyFn, {newData, data1, copy1Size});
 
@@ -3788,8 +3691,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "is_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "is_ds");
@@ -3853,8 +3755,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "df_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "df_ds");
@@ -3920,8 +3821,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *maxLen = builder_.CreateAdd(len1, len2, "sd_max_len");
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sd_hdr");
@@ -4394,8 +4294,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         if (collVal->getType() != ptrTy_)
             return nullptr;
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
         // Helper lambda: generate a dense-array next function for List/Set
@@ -4546,10 +4445,8 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        llvm::FunctionType *reallocTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee reallocFn = mod_->getOrInsertFunction("realloc", reallocTy);
+        auto mallocFn = getStdlibMalloc();
+        auto reallocFn = getStdlibRealloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
@@ -4660,8 +4557,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
             codegenError("filter() on iterator requires a predicate function");
         auto &info = fnIt->second;
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
         // State: { ptr src_next_fn, ptr src_state, ptr predicate }
@@ -4743,8 +4639,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         auto &info = fnIt->second;
         llvm::Type *outElemTy = info.returnType;
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
         llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
@@ -4809,8 +4704,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
         llvm::Value *n = emitExpr(*e.args[1]);
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
         llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_});

@@ -2,7 +2,6 @@
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
-#include <stdexcept>
 
 // ===== Directive helpers =====
 
@@ -26,8 +25,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
@@ -59,8 +57,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (!keyTy || !valTy)
                 codegenError("invalid map type annotation: " + *type_annotation);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
@@ -95,28 +92,16 @@ void CodeGen::emitVarDecl(const std::string &name,
         codegenError("empty {} requires Set<T> or Map<K, V> type annotation");
     }
 
-    // Handle None literal
-    if (auto *ve = std::get_if<VariableExpr>(&value.data); ve && ve->name == "None") {
+    // Handle None literal (VariableExpr("None") or NoneExpr)
+    bool isNone = std::holds_alternative<NoneExpr>(value.data) ||
+                  (std::holds_alternative<VariableExpr>(value.data) &&
+                   std::get<VariableExpr>(value.data).name == "None");
+    if (isNone) {
         if (!type_annotation)
             codegenError("type annotation required for None");
         llvm::Type *annotTy = resolveType(*type_annotation);
         if (!isOptionType(annotTy))
             codegenError("None can only be assigned to Option type");
-        llvm::Value *val = buildNoneValue(annotTy);
-        llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
-        builder_.CreateStore(val, ptr);
-        if (is_immutable)
-            immutable_scope_stack_.back().insert(name);
-        return;
-    }
-
-    // Handle none keyword
-    if (std::holds_alternative<NoneExpr>(value.data)) {
-        if (!type_annotation)
-            codegenError("type annotation required for none");
-        llvm::Type *annotTy = resolveType(*type_annotation);
-        if (!isOptionType(annotTy))
-            codegenError("none can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(annotTy);
         llvm::AllocaInst *ptr = getOrCreateVar(name, annotTy);
         builder_.CreateStore(val, ptr);
@@ -1398,8 +1383,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
         llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
 
         // New keys array
         llvm::Value *newKeySize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, keySize), "new_key_size");
@@ -1410,9 +1394,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         llvm::Value *newValsPtr = builder_.CreateCall(mallocFn, {newValSize}, "new_vals");
 
         // memcpy old data
-        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(
-            ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *keysPtrField2 = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 2, "keys_field");
         llvm::Value *oldKeysPtr = builder_.CreateLoad(ptrTy_, keysPtrField2, "old_keys");
@@ -1425,9 +1407,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         builder_.CreateCall(memcpyFn, {newValsPtr, oldValsPtr, oldValSize});
 
         // Free old arrays
-        llvm::FunctionType *freeTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+        auto freeFn = getStdlibFree();
         builder_.CreateCall(freeFn, {oldKeysPtr});
         builder_.CreateCall(freeFn, {oldValsPtr});
 
