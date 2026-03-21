@@ -4231,40 +4231,22 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== Native constant emission =====
+
+llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
+    if (name == "PI")  return llvm::ConstantFP::get(f64Ty_, 3.141592653589793);
+    if (name == "E")   return llvm::ConstantFP::get(f64Ty_, 2.718281828459045);
+    if (name == "Inf") return llvm::ConstantFP::getInfinity(f64Ty_);
+    if (name == "NaN") return llvm::ConstantFP::getNaN(f64Ty_);
+    codegenError("unknown native constant: " + name);
+}
+
 // ===== Builtin Math =====
 
 llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
     // Only dispatch if the callee was declared via @native (i.e., explicitly imported)
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
-
-    // PI() -> float
-    if (e.callee == "PI") {
-        if (!e.args.empty())
-            codegenError("PI() takes no arguments");
-        return llvm::ConstantFP::get(f64Ty_, 3.141592653589793);
-    }
-
-    // E() -> float
-    if (e.callee == "E") {
-        if (!e.args.empty())
-            codegenError("E() takes no arguments");
-        return llvm::ConstantFP::get(f64Ty_, 2.718281828459045);
-    }
-
-    // inf() -> float
-    if (e.callee == "inf") {
-        if (!e.args.empty())
-            codegenError("inf() takes no arguments");
-        return llvm::ConstantFP::getInfinity(f64Ty_);
-    }
-
-    // nan() -> float
-    if (e.callee == "nan") {
-        if (!e.args.empty())
-            codegenError("nan() takes no arguments");
-        return llvm::ConstantFP::getNaN(f64Ty_);
-    }
 
     // Helper: get fabs C function
     auto getFabs = [&]() {

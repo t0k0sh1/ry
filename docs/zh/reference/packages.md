@@ -62,6 +62,21 @@ from math import add, sub
 - 不需要特殊的入口檔案（如 `__init__.py`）
 - 目錄內檔案中定義的所有函式與型別都會被匯出
 
+### 私有符號
+
+名稱以 `_`（底線）開頭的定義為套件內部的私有符號，無法被匯入：
+
+- 萬用匯入（`from pkg`）會自動排除 `_` 前綴的符號
+- 具名匯入（`from pkg import _helper`）會產生編譯錯誤
+
+```python
+# mylib/internal.ry
+fn _helper() -> int:     # 私有 — 無法匯入
+    return 42
+fn public_api() -> int:  # 公開 — 可匯入
+    return _helper()
+```
+
 ```
 mypackage/
   math.ry      # fn add(), fn sub()

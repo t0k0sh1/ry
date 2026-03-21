@@ -1,26 +1,26 @@
-from std.math import PI, E, inf, nan, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
+from std.math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
 
 describe("std.math constants", fn():
     it("PI", fn():
-        expect(PI() > 3.14).to_eq(true)
-        expect(PI() < 3.15).to_eq(true)
+        expect(PI > 3.14).to_eq(true)
+        expect(PI < 3.15).to_eq(true)
 
     )
     it("E", fn():
-        expect(E() > 2.71).to_eq(true)
-        expect(E() < 2.72).to_eq(true)
+        expect(E > 2.71).to_eq(true)
+        expect(E < 2.72).to_eq(true)
 
     )
 )
 
 describe("std.math special values", fn():
-    it("inf", fn():
-        expect(is_inf(inf())).to_eq(true)
-        expect(inf() > 1000000.0).to_eq(true)
+    it("Inf", fn():
+        expect(is_inf(Inf)).to_eq(true)
+        expect(Inf > 1000000.0).to_eq(true)
 
     )
-    it("nan", fn():
-        expect(is_nan(nan())).to_eq(true)
+    it("NaN", fn():
+        expect(is_nan(NaN)).to_eq(true)
 
     )
 )
@@ -135,12 +135,12 @@ describe("std.math two-arg", fn():
 
 describe("std.math predicates", fn():
     it("is_nan", fn():
-        expect(is_nan(nan())).to_eq(true)
+        expect(is_nan(NaN)).to_eq(true)
         expect(is_nan(1.0)).to_eq(false)
 
     )
     it("is_inf", fn():
-        expect(is_inf(inf())).to_eq(true)
+        expect(is_inf(Inf)).to_eq(true)
         expect(is_inf(1.0)).to_eq(false)
 
     )

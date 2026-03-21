@@ -14,27 +14,18 @@ from std.math import sqrt, PI, sin
 
 ## Constants
 
-Constants are accessed as zero-argument functions.
-
-| Function | Return Type | Description |
-|----------|-------------|-------------|
-| `PI()` | `float` | Pi (3.141592653589793) |
-| `E()` | `float` | Euler's number (2.718281828459045) |
+| Constant | Type | Description |
+|----------|------|-------------|
+| `PI` | `float` | Pi (3.141592653589793) |
+| `E` | `float` | Euler's number (2.718281828459045) |
+| `Inf` | `float` | Positive infinity |
+| `NaN` | `float` | Not a Number |
 
 ```python
-from std.math import PI, E
+from std.math import PI, E, Inf, NaN
 
-let circumference = 2.0 * PI() * radius
+let circumference = 2.0 * PI * radius
 ```
-
----
-
-## Special Values
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `inf()` | `() -> float` | Positive infinity |
-| `nan()` | `() -> float` | Not a Number |
 
 ---
 
@@ -143,9 +134,9 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
 
 ```python
-from std.math import is_nan, is_inf, nan, inf
+from std.math import is_nan, is_inf, NaN, Inf
 
-is_nan(nan())   # true
-is_inf(inf())   # true
-is_nan(1.0)     # false
+is_nan(NaN)   # true
+is_inf(Inf)   # true
+is_nan(1.0)   # false
 ```

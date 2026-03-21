@@ -1956,3 +1956,61 @@ TEST_F(CodeGenTest, OrShortCircuitFalse) {
         "print(res)";
     EXPECT_EQ(runSource(src), "side\ntrue\n");
 }
+
+// ===== Private symbol (_prefix) tests =====
+
+TEST_F(ImportTest, PrivateSymbolWildcardImport) {
+    // _prefixed symbols should be excluded from wildcard imports
+    writeFile("mypkg/pub.ry",
+        "fn public_fn() -> int:\n"
+        "    return 42\n"
+        "fn _private_fn() -> int:\n"
+        "    return 99\n");
+
+    EXPECT_EQ(runWithImports(
+        "from mypkg\n"
+        "print(public_fn())"),
+        "42\n");
+
+    // Attempting to use a _prefixed symbol after a wildcard import should error
+    EXPECT_THROW(runWithImports(
+        "from mypkg\n"
+        "_private_fn()"),
+        std::runtime_error);
+}
+
+TEST_F(ImportTest, PrivateSymbolNamedImportError) {
+    // Attempting to import a _prefixed symbol by name should error
+    writeFile("mypkg2/mod.ry",
+        "fn _hidden() -> int:\n"
+        "    return 1\n"
+        "fn visible() -> int:\n"
+        "    return 2\n");
+
+    EXPECT_THROW(runWithImports(
+        "from mypkg2 import _hidden"),
+        std::runtime_error);
+}
+
+TEST_F(ImportTest, PrivateLetSymbolExcluded) {
+    // _prefixed let constants should be excluded from wildcard imports
+    writeFile("mypkg3/mod.ry",
+        "let _secret = 42\n"
+        "let public_val = 10\n");
+
+    EXPECT_EQ(runWithImports(
+        "from mypkg3\n"
+        "print(public_val)"),
+        "10\n");
+
+    // Referencing _secret after a wildcard import should fail
+    EXPECT_THROW(runWithImports(
+        "from mypkg3\n"
+        "print(_secret)"),
+        std::runtime_error);
+
+    // Attempting a named import of _secret should also error
+    EXPECT_THROW(runWithImports(
+        "from mypkg3 import _secret"),
+        std::runtime_error);
+}

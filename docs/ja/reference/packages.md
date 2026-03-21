@@ -62,6 +62,21 @@ from math import add, sub
 - 特別なエントリファイル（`__init__.py` のようなもの）は不要
 - ディレクトリ内のファイルで定義されたすべての関数・型がエクスポートされる
 
+### プライベートシンボル
+
+名前が `_`（アンダースコア）で始まる定義はパッケージ内部のプライベートシンボルとして扱われ、インポートできません:
+
+- ワイルドカードインポート（`from pkg`）では `_` プレフィックスのシンボルが自動的に除外される
+- 名前指定インポート（`from pkg import _helper`）はコンパイルエラーになる
+
+```python
+# mylib/internal.ry
+fn _helper() -> int:     # プライベート — インポート不可
+    return 42
+fn public_api() -> int:  # パブリック — インポート可能
+    return _helper()
+```
+
 ```
 mypackage/
   math.ry      # fn add(), fn sub()

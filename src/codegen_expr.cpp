@@ -31,6 +31,9 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         llvm::Type *ty = alloca->getAllocatedType();
         return builder_.CreateLoad(ty, alloca, e.name);
     }
+    // Check native constants (PI, E, Inf, NaN) after local scope
+    if (!native_constants_.empty() && native_constants_.count(e.name))
+        return emitNativeConstant(e.name);
     // Try named function reference
     auto fit = functions_.find(e.name);
     if (fit != functions_.end() && fit->second.size() == 1) {
