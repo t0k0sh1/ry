@@ -27,10 +27,6 @@ static inline void *elemAt(void *data, int64_t index, int64_t elemSize) {
     return static_cast<char *>(data) + index * elemSize;
 }
 
-static inline bool cmpAt(void *data, int64_t i, int64_t j, int64_t elemSize,
-                          CmpFn cmp, void *ctx) {
-    return cmp(elemAt(data, i, elemSize), elemAt(data, j, elemSize), ctx);
-}
 
 static void reverseRange(void *data, int64_t lo, int64_t hi, int64_t elemSize) {
     char tmp[256];
@@ -214,8 +210,22 @@ void __ry_timsort(void *data, int64_t len, int64_t elemSize,
             runLen = force;
         }
 
+        // If the stack is full, merge top runs to free space instead of
+        // breaking out and leaving the tail of the array unprocessed.
+        while (stackSize >= 85) {
+            int n = stackSize - 2;
+            merge(data, tmpBuf,
+                  runStack[n].base, runStack[n].len,
+                  runStack[n + 1].base, runStack[n + 1].len,
+                  elemSize, cmp, cmpCtx);
+            runStack[n].len += runStack[n + 1].len;
+            if (n + 2 < stackSize) {
+                runStack[n + 1] = runStack[n + 2];
+            }
+            stackSize--;
+        }
+
         // Push run onto stack
-        if (stackSize >= 85) break;
         runStack[stackSize].base = pos;
         runStack[stackSize].len = runLen;
         stackSize++;
