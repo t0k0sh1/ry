@@ -16,4 +16,12 @@ extern "C" {
     int64_t __ry_mock_get_call_count(const char *name);
     void    __ry_mock_increment_call(const char *name);
     void    __ry_mock_clear_all();
+
+    // Property-based test support
+    void        __ry_test_prop_init_rng();
+    int64_t     __ry_test_rand_int();
+    double      __ry_test_rand_float();
+    int64_t     __ry_test_rand_bool();
+    const char *__ry_test_rand_str();
+    int64_t     __ry_test_it_is_failed();
 }

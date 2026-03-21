@@ -650,27 +650,27 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
     builder_.CreateCall(descEndFn);
 }
 
-void CodeGen::emitItCall(CallStmt &s) {
-    if (!test_mode_)
-        codegenError("'it' is only allowed in test mode (use 'ry test')");
-
-    auto &lambda = extractLambdaArg(s, "it");
-
+// Helper: get it_begin/it_end function callees
+std::pair<llvm::FunctionCallee, llvm::FunctionCallee> CodeGen::getTestItFunctions() {
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionType *voidTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), false);
+    return {
+        mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy),
+        mod_->getOrInsertFunction("__ry_test_it_end", voidTy)
+    };
+}
 
-    llvm::FunctionCallee itBeginFn = mod_->getOrInsertFunction("__ry_test_it_begin", voidStrTy);
-    llvm::FunctionCallee itEndFn   = mod_->getOrInsertFunction("__ry_test_it_end", voidTy);
+// Helper: create a test function, bind params, emit body, verify
+llvm::Function *CodeGen::emitTestFunction(
+    const std::string &namePrefix,
+    const std::vector<llvm::Type*> &paramTypes,
+    LambdaExpr &lam, const std::string &context) {
 
-    llvm::Value *itName = emitExpr(*s.args[0]);
-    if (!itName->getType()->isPointerTy())
-        codegenError("it() first argument must be a string");
-
-    // Create a test function for this it-block
-    std::string testFnName = "__test_" + std::to_string(test_fn_counter_++);
-    llvm::FunctionType *testFt = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
+    std::string testFnName = namePrefix + std::to_string(test_fn_counter_++);
+    llvm::FunctionType *testFt = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), paramTypes, false);
     llvm::Function *testFunc = llvm::Function::Create(
         testFt, llvm::Function::InternalLinkage, testFnName, *mod_);
 
@@ -682,7 +682,16 @@ void CodeGen::emitItCall(CallStmt &s) {
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", testFunc);
         builder_.SetInsertPoint(entry);
 
-        for (auto &stmt : lambda.body)
+        for (unsigned i = 0; i < paramTypes.size(); ++i) {
+            llvm::Argument *arg = testFunc->getArg(i);
+            arg->setName(lam.params[i].name);
+            llvm::AllocaInst *alloca = builder_.CreateAlloca(paramTypes[i], nullptr, lam.params[i].name);
+            builder_.CreateStore(arg, alloca);
+            scope_stack_.back()[lam.params[i].name] = alloca;
+            immutable_scope_stack_.back().insert(lam.params[i].name);
+        }
+
+        for (auto &stmt : lam.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
 
         if (!builder_.GetInsertBlock()->getTerminator())
@@ -691,11 +700,298 @@ void CodeGen::emitItCall(CallStmt &s) {
         std::string err;
         llvm::raw_string_ostream errStream(err);
         if (llvm::verifyFunction(*testFunc, &errStream))
-            codegenError("IR verify error in test: " + err);
+            codegenError("IR verify error in " + context + ": " + err);
     }
+
+    return testFunc;
+}
+
+// Helper: parse format placeholders like {0}, {1} → C format string + field indices
+static void parseFormatPlaceholders(const std::string &fmtStr,
+                                     std::string &cFmt, std::vector<unsigned> &fieldOrder) {
+    for (size_t i = 0; i < fmtStr.size(); ++i) {
+        if (fmtStr[i] == '{' && i + 2 < fmtStr.size() && fmtStr[i+2] == '}' &&
+            fmtStr[i+1] >= '0' && fmtStr[i+1] <= '9') {
+            cFmt += "%s";
+            fieldOrder.push_back(fmtStr[i+1] - '0');
+            i += 2;
+        } else {
+            cFmt += fmtStr[i];
+        }
+    }
+}
+
+void CodeGen::emitItCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'it' is only allowed in test mode (use 'ry test')");
+
+    // Check for @each / @property directives
+    if (hasDirective(s.directives, "each")) {
+        emitEachItCall(s);
+        return;
+    }
+    if (hasDirective(s.directives, "property")) {
+        emitPropertyItCall(s);
+        return;
+    }
+
+    auto &lambda = extractLambdaArg(s, "it");
+    auto [itBeginFn, itEndFn] = getTestItFunctions();
+
+    llvm::Value *itName = emitExpr(*s.args[0]);
+    if (!itName->getType()->isPointerTy())
+        codegenError("it() first argument must be a string");
+
+    llvm::Function *testFunc = emitTestFunction("__test_", {}, lambda, "test");
 
     builder_.CreateCall(itBeginFn, {itName});
     builder_.CreateCall(testFunc);
+    builder_.CreateCall(itEndFn);
+}
+
+// ===== Test: @each parameterized test =====
+
+void CodeGen::emitEachItCall(CallStmt &s) {
+    // Find @each directive
+    Directive *eachDir = nullptr;
+    for (auto &d : s.directives) {
+        if (d.name == "each") { eachDir = &d; break; }
+    }
+    if (!eachDir || !eachDir->expr)
+        codegenError("@each directive requires a list expression");
+
+    if (s.args.size() != 2)
+        codegenError("@each it() requires exactly one description string and a lambda argument");
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
+    if (!lambda)
+        codegenError("@each it() last argument must be a lambda");
+    auto &lam = **lambda;
+
+    // Get the description format string
+    auto *descStr = std::get_if<StringExpr>(&s.args[0]->data);
+    if (!descStr)
+        codegenError("@each it() first argument must be a string literal");
+    std::string fmtStr = descStr->value;
+
+    // Evaluate the list expression to get the list header
+    llvm::Value *listPtr = emitExpr(*eachDir->expr);
+    llvm::Type *elemTy = getListElementType(listPtr);
+    if (!elemTy)
+        codegenError("@each requires a list of tuples");
+
+    auto *tupleTy = llvm::dyn_cast<llvm::StructType>(elemTy);
+    if (!tupleTy)
+        codegenError("@each requires a list of tuples");
+
+    unsigned numFields = tupleTy->getNumElements();
+    if (numFields != lam.params.size())
+        codegenError("@each: tuple arity (" + std::to_string(numFields) +
+                     ") doesn't match lambda parameter count (" + std::to_string(lam.params.size()) + ")");
+
+    // Build parameter types from tuple
+    std::vector<llvm::Type*> paramTypes;
+    for (unsigned i = 0; i < numFields; ++i)
+        paramTypes.push_back(tupleTy->getElementType(i));
+
+    llvm::Function *testFunc = emitTestFunction("__test_each_", paramTypes, lam, "@each test");
+
+    // Get list length and data
+    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "each_len_ptr");
+    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "each_len");
+    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "each_data_ptr");
+    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "each_data");
+
+    auto [itBeginFn, itEndFn] = getTestItFunctions();
+    auto snprintfFn = getStdlibSnprintf();
+
+    // Parse format string placeholders in single pass
+    std::string cFmt;
+    std::vector<unsigned> fieldOrder;
+    parseFormatPlaceholders(fmtStr, cFmt, fieldOrder);
+
+    // IR loop: for i in 0..length
+    llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "each_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "each.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "each.body", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "each.end", fn_);
+
+    builder_.CreateBr(condBB);
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "each_cond");
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iVal}, "each_elem_ptr");
+    llvm::Value *tupleVal = builder_.CreateLoad(elemTy, elemPtr, "each_tuple");
+
+    // Extract fields and format name
+    std::vector<llvm::Value*> fieldVals;
+    std::vector<llvm::Value*> fieldStrs;
+    for (unsigned i = 0; i < numFields; ++i) {
+        llvm::Value *field = builder_.CreateExtractValue(tupleVal, i, "field_" + std::to_string(i));
+        fieldVals.push_back(field);
+        fieldStrs.push_back(valueToString(field));
+    }
+
+    llvm::Value *fmtBuf = builder_.CreateAlloca(
+        llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 256), nullptr, "fmt_buf");
+    llvm::Value *fmtGlobal = builder_.CreateGlobalString(cFmt, ".each_fmt");
+
+    std::vector<llvm::Value*> snprintfArgs = {
+        fmtBuf, llvm::ConstantInt::get(i64Ty_, 256), fmtGlobal
+    };
+    for (unsigned idx : fieldOrder) {
+        if (idx < fieldStrs.size())
+            snprintfArgs.push_back(fieldStrs[idx]);
+    }
+    builder_.CreateCall(snprintfFn, snprintfArgs);
+
+    builder_.CreateCall(itBeginFn, {fmtBuf});
+    builder_.CreateCall(testFunc, fieldVals);
+    builder_.CreateCall(itEndFn);
+
+    // Increment loop counter
+    llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+    builder_.CreateStore(nextI, iAlloca);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
+}
+
+// ===== Test: @property property-based test =====
+
+void CodeGen::emitPropertyItCall(CallStmt &s) {
+    // Find @property directive and get count
+    int64_t count = 100; // default
+    for (auto &d : s.directives) {
+        if (d.name == "property") {
+            for (auto &p : d.params) {
+                if (p.key == "count") count = std::stoll(p.value);
+            }
+        }
+    }
+
+    if (s.args.size() != 2)
+        codegenError("@property it() requires exactly one description string and a lambda argument");
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
+    if (!lambda)
+        codegenError("@property it() last argument must be a lambda");
+    auto &lam = **lambda;
+
+    llvm::Value *itName = emitExpr(*s.args[0]);
+    if (!itName->getType()->isPointerTy())
+        codegenError("@property it() first argument must be a string");
+
+    // Resolve parameter types
+    std::vector<llvm::Type*> paramTypes;
+    for (auto &p : lam.params)
+        paramTypes.push_back(resolveType(p.type));
+
+    llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
+
+    auto [itBeginFn, itEndFn] = getTestItFunctions();
+
+    // Declare random generator functions
+    llvm::FunctionType *initRngTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), false);
+    llvm::FunctionCallee initRngFn = mod_->getOrInsertFunction("__ry_test_prop_init_rng", initRngTy);
+
+    llvm::FunctionType *randIntTy = llvm::FunctionType::get(i64Ty_, false);
+    llvm::FunctionCallee randIntFn = mod_->getOrInsertFunction("__ry_test_rand_int", randIntTy);
+
+    llvm::FunctionType *randFloatTy = llvm::FunctionType::get(f64Ty_, false);
+    llvm::FunctionCallee randFloatFn = mod_->getOrInsertFunction("__ry_test_rand_float", randFloatTy);
+
+    llvm::FunctionType *randBoolTy = llvm::FunctionType::get(i64Ty_, false);
+    llvm::FunctionCallee randBoolFn = mod_->getOrInsertFunction("__ry_test_rand_bool", randBoolTy);
+
+    llvm::FunctionType *randStrTy = llvm::FunctionType::get(ptrTy_, false);
+    llvm::FunctionCallee randStrFn = mod_->getOrInsertFunction("__ry_test_rand_str", randStrTy);
+
+    llvm::FunctionType *isFailedTy = llvm::FunctionType::get(i64Ty_, false);
+    llvm::FunctionCallee isFailedFn = mod_->getOrInsertFunction("__ry_test_it_is_failed", isFailedTy);
+
+    // Init RNG
+    builder_.CreateCall(initRngFn);
+
+    // Begin test
+    builder_.CreateCall(itBeginFn, {itName});
+
+    // IR loop: for i in 0..count
+    llvm::Value *iAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "prop_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iAlloca);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "prop.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "prop.body", fn_);
+    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "prop.end", fn_);
+
+    builder_.CreateBr(condBB);
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iAlloca, "i");
+    llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, count), "prop_cond");
+    builder_.CreateCondBr(cond, bodyBB, endBB);
+
+    builder_.SetInsertPoint(bodyBB);
+
+    // Generate random values for each parameter
+    std::vector<llvm::Value*> randVals;
+    for (unsigned i = 0; i < paramTypes.size(); ++i) {
+        llvm::Value *val;
+        if (paramTypes[i] == i64Ty_) {
+            val = builder_.CreateCall(randIntFn, {}, "rand_int");
+        } else if (paramTypes[i] == f64Ty_) {
+            val = builder_.CreateCall(randFloatFn, {}, "rand_float");
+        } else if (paramTypes[i] == i1Ty_) {
+            llvm::Value *r = builder_.CreateCall(randBoolFn, {}, "rand_bool_i64");
+            val = builder_.CreateICmpNE(r, llvm::ConstantInt::get(i64Ty_, 0), "rand_bool");
+        } else if (paramTypes[i] == ptrTy_) {
+            val = builder_.CreateCall(randStrFn, {}, "rand_str");
+        } else {
+            codegenError("@property: unsupported parameter type for '" + lam.params[i].name + "'");
+        }
+        randVals.push_back(val);
+    }
+
+    // Call test function
+    builder_.CreateCall(testFunc, randVals);
+
+    // Check if failed → early exit
+    llvm::Value *failed = builder_.CreateCall(isFailedFn, {}, "is_failed");
+    llvm::Value *didFail = builder_.CreateICmpNE(failed, llvm::ConstantInt::get(i64Ty_, 0), "did_fail");
+
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "prop.fail", fn_);
+    llvm::BasicBlock *contBB = llvm::BasicBlock::Create(*ctx_, "prop.cont", fn_);
+    builder_.CreateCondBr(didFail, failBB, contBB);
+
+    // On failure: print counterexample
+    builder_.SetInsertPoint(failBB);
+    {
+        auto printfFn = getStdlibPrintf();
+
+        // Build counterexample message
+        std::string ceFmt = "    \033[31mCounterexample: (";
+        for (unsigned i = 0; i < paramTypes.size(); ++i) {
+            if (i > 0) ceFmt += ", ";
+            ceFmt += lam.params[i].name + " = %s";
+        }
+        ceFmt += ")\033[0m\n";
+
+        llvm::Value *ceFmtStr = builder_.CreateGlobalString(ceFmt, ".prop_ce_fmt");
+        std::vector<llvm::Value*> ceArgs = {ceFmtStr};
+        for (unsigned i = 0; i < randVals.size(); ++i)
+            ceArgs.push_back(valueToString(randVals[i]));
+        builder_.CreateCall(printfFn, ceArgs);
+    }
+    builder_.CreateBr(endBB);
+
+    builder_.SetInsertPoint(contBB);
+    llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
+    builder_.CreateStore(nextI, iAlloca);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(endBB);
     builder_.CreateCall(itEndFn);
 }
 

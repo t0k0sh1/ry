@@ -115,6 +115,36 @@ describe("verify", fn():
 
 ---
 
+## 參數化測試
+
+使用 `@each` 以多組輸入執行同一個測試:
+
+```python
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+每個元組成為一個獨立的測試案例。描述中的 `{0}`, `{1}` 會被替換為實際值。
+
+---
+
+## 基於屬性的測試
+
+使用 `@property` 以隨機生成的輸入進行測試:
+
+```python
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+測試以隨機值執行 `count` 次。失敗時會顯示反例。
+
+---
+
 ## 限制事項
 
 - 不支援 `describe` 的巢狀使用

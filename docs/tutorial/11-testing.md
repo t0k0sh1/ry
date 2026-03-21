@@ -115,6 +115,36 @@ describe("verify", fn():
 
 ---
 
+## Parameterized Tests
+
+Use `@each` to run the same test with multiple inputs:
+
+```python
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+Each tuple becomes a separate test case. `{0}`, `{1}`, etc. in the description are replaced with actual values.
+
+---
+
+## Property-Based Tests
+
+Use `@property` to test with randomly generated inputs:
+
+```python
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+The test runs `count` times with random values. On failure, the counterexample is printed.
+
+---
+
 ## Limitations
 
 - Nesting of `describe` is not supported

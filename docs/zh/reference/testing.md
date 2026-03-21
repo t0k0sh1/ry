@@ -173,6 +173,46 @@ describe("verify", fn():
 
 ---
 
+## 參數化測試 (@each)
+
+`@each` 可以用多組參數執行同一個測試。將元組列表附加到 `it` 區塊:
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+- 列表必須包含與 lambda 參數數量相同的元組
+- 描述中的 `{0}`, `{1}`, ... 會被替換為參數值
+- 每個元組生成一個獨立的測試案例
+- 支援的參數型別: `int`, `float`, `bool`, `str`
+
+---
+
+## 基於屬性的測試 (@property)
+
+`@property` 生成隨機輸入並多次執行測試:
+
+```
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+- `count=N` 指定隨機試驗次數（預設: 100）
+- 失敗時會顯示反例（導致失敗的輸入值）
+- 在第一次失敗時停止測試
+- 支援的參數型別: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (隨機 ASCII、0-20 字元)
+
+---
+
 ## 限制事項
 
 - 不支援 `describe` 的巢狀
