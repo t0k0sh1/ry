@@ -1278,7 +1278,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         bool validName = isSnakeCase(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
-            parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case");
+            parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native functions)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
     }

@@ -4234,6 +4234,10 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 // ===== Builtin Math =====
 
 llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
+    // Only dispatch if the callee was declared via @native (i.e., explicitly imported)
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
     // PI() -> float
     if (e.callee == "PI") {
         if (!e.args.empty())
@@ -4290,6 +4294,25 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
         llvm::Value *x = emitExpr(*e.args[0]);
         if (x->getType() != f64Ty_)
             codegenError(e.callee + "() requires float argument");
+
+        // Runtime check: reject NaN and values outside i64 range
+        llvm::Value *isNan = builder_.CreateFCmpUNO(x, x, "is_nan_chk");
+        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_chk");
+        // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
+        llvm::Value *limit = llvm::ConstantFP::get(f64Ty_, 9.223372036854776e+18);
+        llvm::Value *tooBig = builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
+        llvm::Value *invalid = builder_.CreateOr(isNan, tooBig, "invalid_chk");
+
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".fail", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".ok", fn_);
+        builder_.CreateCondBr(invalid, failBB, okBB);
+
+        builder_.SetInsertPoint(failBB);
+        static int mathErrCounter = 0;
+        emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
+                          ".math_err_" + std::to_string(mathErrCounter++));
+
+        builder_.SetInsertPoint(okBB);
         auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
         auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
