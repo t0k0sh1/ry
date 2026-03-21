@@ -1316,6 +1316,8 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *firstArg = emitExpr(*e.args[0]);
         if (isTcpStream(firstArg)) {
             llvm::Value *data = emitExpr(*e.args[1]);
+            if (!getListElementType(data) || getListElementType(data) != i8Ty_)
+                codegenError("send() with TcpStream requires List<byte> as second argument");
             auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
             auto fn = mod_->getOrInsertFunction("__ry_tcp_send", fnTy);
             return builder_.CreateCall(fn, {firstArg, data}, "tcp_send");

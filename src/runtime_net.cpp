@@ -20,31 +20,36 @@ struct TcpStreamHandle {
 };
 
 extern "C" void *__ry_bind(const char *host, int64_t port) {
-    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0)
+    if (port < 0 || port > 65535)
         return nullptr;
 
-    if (port < 0 || port > 65535) {
-        ::close(fd);
+    struct addrinfo hints{}, *result = nullptr;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
+
+    if (::getaddrinfo(host, port_str, &hints, &result) != 0)
+        return nullptr;
+
+    int fd = ::socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    if (fd < 0) {
+        ::freeaddrinfo(result);
         return nullptr;
     }
 
     int opt = 1;
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    struct sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(port));
-
-    if (::inet_pton(AF_INET, host, &addr.sin_addr) <= 0) {
+    if (::bind(fd, result->ai_addr, result->ai_addrlen) < 0) {
         ::close(fd);
+        ::freeaddrinfo(result);
         return nullptr;
     }
 
-    if (::bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        ::close(fd);
-        return nullptr;
-    }
+    ::freeaddrinfo(result);
 
     auto *handle = (TcpListenerHandle *)malloc(sizeof(TcpListenerHandle));
     handle->fd = fd;
