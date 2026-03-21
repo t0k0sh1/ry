@@ -1,6 +1,8 @@
 #include "ry/test_runtime.hpp"
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
+#include <random>
 #include <string>
 #include <unordered_map>
 
@@ -81,6 +83,48 @@ void __ry_mock_increment_call(const char *name) {
 
 void __ry_mock_clear_all() {
     g_mock_registry.clear();
+}
+
+// ===== Property-based test support =====
+
+static std::mt19937_64 &getRng() {
+    static std::mt19937_64 rng(std::random_device{}());
+    return rng;
+}
+
+void __ry_test_prop_init_rng() {
+    getRng(); // ensure initialization
+}
+
+int64_t __ry_test_rand_int() {
+    std::uniform_int_distribution<int64_t> dist(-1000, 1000);
+    return dist(getRng());
+}
+
+double __ry_test_rand_float() {
+    std::uniform_real_distribution<double> dist(-1000.0, 1000.0);
+    return dist(getRng());
+}
+
+int64_t __ry_test_rand_bool() {
+    std::uniform_int_distribution<int64_t> dist(0, 1);
+    return dist(getRng());
+}
+
+const char *__ry_test_rand_str() {
+    std::uniform_int_distribution<int> lenDist(0, 20);
+    std::uniform_int_distribution<int> charDist(32, 126); // printable ASCII
+    auto &rng = getRng();
+    int len = lenDist(rng);
+    char *buf = static_cast<char*>(std::malloc(len + 1));
+    for (int i = 0; i < len; ++i)
+        buf[i] = static_cast<char>(charDist(rng));
+    buf[len] = '\0';
+    return buf;
+}
+
+int64_t __ry_test_it_is_failed() {
+    return g_current_it_failed ? 1 : 0;
 }
 
 } // extern "C"

@@ -220,6 +220,11 @@ private:
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
+    void emitEachItCall(CallStmt &s);
+    void emitPropertyItCall(CallStmt &s);
+    std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
+    llvm::Function *emitTestFunction(const std::string &namePrefix,
+        const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;

@@ -22,6 +22,7 @@ Directives can be applied to the following declarations:
 - `let` / `var` - Variable declarations
 - Fields within a `record` definition
 - `for` - Counted loops only for `@parallel`
+- `it` - Test case definitions (for `@each` and `@property` only)
 
 ## Built-in Directives
 
@@ -163,6 +164,58 @@ for i in range(8):
 - Destructuring iteration is not supported.
 - Assigning to outer mutable variables is rejected.
 - `break`, `continue`, indexed assignment, and field assignment inside the loop body are rejected in v1.
+
+### `@each`
+
+Enables parameterized testing by running an `it` block multiple times with different parameters.
+
+**Syntax:**
+
+```
+@each([(arg1, arg2, ...), ...])
+it("description with {0} and {1}", fn(param1: type, param2: type):
+    # test body
+)
+```
+
+**Supported target:** `it` calls only
+
+**Constraints:**
+- The argument must be a list of tuples
+- Tuple arity must match the lambda parameter count
+- Placeholders `{0}`, `{1}`, ... in the description string are replaced with stringified values
+
+### `@property`
+
+Enables property-based testing by generating random inputs for an `it` block.
+
+**Syntax:**
+
+```
+@property(count=100)
+it("property name", fn(a: int, b: int):
+    # test body with random values
+)
+```
+
+**Supported target:** `it` calls only
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `count` | int | 100 | Number of random trials |
+
+**Supported parameter types:**
+
+| Type | Range |
+|------|-------|
+| `int` | -1000 to 1000 |
+| `float` | -1000.0 to 1000.0 |
+| `bool` | true or false |
+| `str` | Random ASCII, 0-20 characters |
+
+On failure, the counterexample (parameter values that caused the failure) is printed.
 
 ### Parameters (future extension)
 

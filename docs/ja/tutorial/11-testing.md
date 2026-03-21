@@ -115,6 +115,36 @@ describe("verify", fn():
 
 ---
 
+## パラメタライズドテスト
+
+`@each` を使って同じテストを複数の入力で実行できます:
+
+```python
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+各タプルが個別のテストケースになります。説明文の `{0}`, `{1}` は実際の値で置換されます。
+
+---
+
+## プロパティベーステスト
+
+`@property` を使ってランダム生成された入力でテストできます:
+
+```python
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+テストは `count` 回ランダム値で実行されます。失敗時は反例が表示されます。
+
+---
+
 ## 制限事項
 
 - `describe` のネストはサポートされていません

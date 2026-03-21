@@ -173,6 +173,46 @@ describe("verify", fn():
 
 ---
 
+## Parameterized Tests (@each)
+
+`@each` runs the same test with multiple sets of parameters. Attach it to an `it` block with a list of tuples:
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+- The list must contain tuples whose arity matches the lambda parameter count
+- Placeholders `{0}`, `{1}`, ... in the description are replaced with the parameter values
+- Each tuple generates an independent test case
+- Supported parameter types: `int`, `float`, `bool`, `str`
+
+---
+
+## Property-Based Tests (@property)
+
+`@property` generates random inputs and runs the test multiple times:
+
+```
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+- `count=N` specifies the number of random trials (default: 100)
+- On failure, the counterexample (failing inputs) is printed
+- The test stops at the first failure
+- Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
+
+---
+
 ## Limitations
 
 - Nesting of `describe` is not supported

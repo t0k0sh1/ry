@@ -124,6 +124,18 @@ static int runRyFile(const std::string &filepath, bool test_mode,
             {ExecutorAddr::fromPtr(&__ry_mock_increment_call), JITSymbolFlags::Exported};
         testSymbols[es.intern("__ry_mock_clear_all")] =
             {ExecutorAddr::fromPtr(&__ry_mock_clear_all), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_prop_init_rng")] =
+            {ExecutorAddr::fromPtr(&__ry_test_prop_init_rng), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_rand_int")] =
+            {ExecutorAddr::fromPtr(&__ry_test_rand_int), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_rand_float")] =
+            {ExecutorAddr::fromPtr(&__ry_test_rand_float), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_rand_bool")] =
+            {ExecutorAddr::fromPtr(&__ry_test_rand_bool), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_rand_str")] =
+            {ExecutorAddr::fromPtr(&__ry_test_rand_str), JITSymbolFlags::Exported};
+        testSymbols[es.intern("__ry_test_it_is_failed")] =
+            {ExecutorAddr::fromPtr(&__ry_test_it_is_failed), JITSymbolFlags::Exported};
         if (auto err = mainJD.define(absoluteSymbols(std::move(testSymbols)))) {
             errs() << "Failed to define test symbols: ";
             logAllUnhandledErrors(std::move(err), errs());

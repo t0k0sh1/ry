@@ -9,6 +9,10 @@
 #include <variant>
 #include <vector>
 
+// ===== Forward declarations =====
+struct ExprNode;
+using ExprPtr = std::unique_ptr<ExprNode>;
+
 // ===== Directive =====
 
 struct DirectiveParam {
@@ -19,7 +23,18 @@ struct DirectiveParam {
 struct Directive {
     std::string name;
     std::vector<DirectiveParam> params;
+    ExprPtr expr;           // @each のリスト式格納用
     SourceLocation loc;
+
+    Directive() = default;
+    Directive(Directive &&) = default;
+    Directive &operator=(Directive &&) = default;
+    Directive(const Directive &o)
+        : name(o.name), params(o.params), expr(nullptr), loc(o.loc) {}
+    Directive &operator=(const Directive &o) {
+        if (this != &o) { name = o.name; params = o.params; expr = nullptr; loc = o.loc; }
+        return *this;
+    }
 };
 
 inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
@@ -86,7 +101,6 @@ struct ExprNode {
                  std::unique_ptr<AwaitExpr>> data;
     SourceLocation loc;
 };
-using ExprPtr = std::unique_ptr<ExprNode>;
 
 struct BinaryExpr {
     std::string op;
@@ -133,7 +147,7 @@ struct SetExpr {
 struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // immutable
 struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // mutable
 struct AssignStmt { std::string name; ExprPtr value; SourceLocation loc; };
-struct CallStmt   { std::string callee; std::vector<ExprPtr> args; SourceLocation loc; };
+struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; std::string type; };

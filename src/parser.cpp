@@ -134,9 +134,16 @@ void Parser::skipNewlines() {
     while (lex_.peek().kind == TokenKind::Newline) lex_.next();
 }
 
+void Parser::skipStructuralTokens() {
+    while (lex_.peek().kind == TokenKind::Newline ||
+           lex_.peek().kind == TokenKind::Indent ||
+           lex_.peek().kind == TokenKind::Dedent)
+        lex_.next();
+}
+
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel"};
+static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property"};
 
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;
@@ -154,37 +161,48 @@ std::vector<Directive> Parser::parseDirectives() {
         d.name = nameTok.value;
         d.loc = {atTok.line, atTok.col, file_id_};
 
-        // Optional parameters: @name(key=value, ...)
+        // Optional parameters: @name(key=value, ...) or @each([ ... ])
         if (lex_.peek().kind == TokenKind::LParen) {
             lex_.next(); // consume '('
-            while (lex_.peek().kind != TokenKind::RParen) {
-                Token keyTok = lex_.peek();
-                if (keyTok.kind != TokenKind::Ident)
-                    parseError(keyTok.line, "expected parameter name in directive");
-                lex_.next(); // consume key
 
-                if (lex_.peek().kind != TokenKind::Equals)
-                    parseError("expected '=' after directive parameter name");
-                lex_.next(); // consume '='
+            if (nameTok.value == "each") {
+                // @each([ ... ]) — parse list expression
+                if (lex_.peek().kind != TokenKind::LBracket)
+                    parseError("expected '[' after '@each('");
+                d.expr = parsePrimary();
+                if (lex_.peek().kind != TokenKind::RParen)
+                    parseError("expected ')' after @each list");
+                lex_.next(); // consume ')'
+            } else {
+                while (lex_.peek().kind != TokenKind::RParen) {
+                    Token keyTok2 = lex_.peek();
+                    if (keyTok2.kind != TokenKind::Ident)
+                        parseError(keyTok2.line, "expected parameter name in directive");
+                    lex_.next(); // consume key
 
-                Token valTok = lex_.peek();
-                if (valTok.kind != TokenKind::Ident &&
-                    valTok.kind != TokenKind::Number &&
-                    valTok.kind != TokenKind::Float &&
-                    valTok.kind != TokenKind::String &&
-                    valTok.kind != TokenKind::True &&
-                    valTok.kind != TokenKind::False)
-                    parseError(valTok.line, "expected value after '=' in directive parameter");
-                lex_.next(); // consume value
+                    if (lex_.peek().kind != TokenKind::Equals)
+                        parseError("expected '=' after directive parameter name");
+                    lex_.next(); // consume '='
 
-                d.params.push_back({keyTok.value, valTok.value});
+                    Token valTok = lex_.peek();
+                    if (valTok.kind != TokenKind::Ident &&
+                        valTok.kind != TokenKind::Number &&
+                        valTok.kind != TokenKind::Float &&
+                        valTok.kind != TokenKind::String &&
+                        valTok.kind != TokenKind::True &&
+                        valTok.kind != TokenKind::False)
+                        parseError(valTok.line, "expected value after '=' in directive parameter");
+                    lex_.next(); // consume value
 
-                if (lex_.peek().kind == TokenKind::Comma)
-                    lex_.next(); // consume ','
+                    d.params.push_back({keyTok2.value, valTok.value});
+
+                    if (lex_.peek().kind == TokenKind::Comma)
+                        lex_.next(); // consume ','
+                }
+                if (lex_.peek().kind != TokenKind::RParen)
+                    parseError("expected ')' after directive parameters");
+                lex_.next(); // consume ')'
             }
-            if (lex_.peek().kind != TokenKind::RParen)
-                parseError("expected ')' after directive parameters");
-            lex_.next(); // consume ')'
         }
 
         directives.push_back(std::move(d));
@@ -292,9 +310,26 @@ StmtNode Parser::parseStatement() {
         return stmt;
     }
 
-    // All remaining statements do not accept directives
-    if (!directives.empty())
+    // @each / @property are only allowed on `it` calls
+    if (!directives.empty()) {
+        bool hasTestDirective = hasDirective(directives, "each") || hasDirective(directives, "property");
+        if (hasTestDirective) {
+            if (first.kind != TokenKind::Ident || first.value != "it")
+                parseError(first.line, "@each / @property can only be applied to 'it' calls");
+            // Parse the it(...) call and attach directives
+            lex_.next(); // consume 'it'
+            if (lex_.peek().kind != TokenKind::LParen)
+                parseError("expected '(' after 'it'");
+            lex_.next(); // consume '('
+            CallStmt s;
+            s.callee = "it";
+            s.args = parseArgList();
+            s.loc = locFromToken(first);
+            s.directives = std::move(directives);
+            return s;
+        }
         parseError(first.line, "directives are not supported on this statement");
+    }
 
     if (first.kind == TokenKind::Expect)
         return parseExpectStatement();
@@ -1146,13 +1181,18 @@ ExprPtr Parser::parsePrimary() {
     if (t.kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
         auto list = std::make_unique<ListExpr>();
+        skipStructuralTokens();
         if (lex_.peek().kind != TokenKind::RBracket) {
             list->elements.push_back(parseTernary());
+            skipStructuralTokens();
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                skipStructuralTokens();
                 list->elements.push_back(parseTernary());
+                skipStructuralTokens();
             }
         }
+        skipStructuralTokens();
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
         lex_.next(); // consume ']'

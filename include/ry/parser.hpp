@@ -26,6 +26,7 @@ private:
 
     std::vector<Directive> parseDirectives();
     void skipNewlines();
+    void skipStructuralTokens();
     StmtNode parseImportStatement();
     StmtNode parseStatement();
     StmtNode parseLetOrVar();
