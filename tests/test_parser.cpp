@@ -1319,7 +1319,7 @@ TEST(ParserTest, TrailingBlockWithArgs) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[2]->data));
 }
 
-TEST(ParserTest, TrailingBlockNested) {
+TEST(ParserTest, LambdaArgNested) {
     Program prog = parseStr("describe(\"calc\", fn():\n    it(\"adds\", fn():\n        expect(1 + 2).to_eq(3)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));

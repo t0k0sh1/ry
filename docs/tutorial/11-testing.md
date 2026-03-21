@@ -41,7 +41,7 @@ describe("Calculator", fn():
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `fn()` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
 - `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
 
 ---

@@ -38,14 +38,14 @@ describe("description", fn():
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `fn()` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
 - `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
 
 ### Trailing Block Syntax
 
-Any function call can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
+Any function call (except `describe`/`it`/`mock`) can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
 
 ```
 # These are equivalent:

@@ -41,7 +41,7 @@ describe("Calculator", fn():
 )
 ```
 
-- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn()` 作為第二個參數。
+- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數。
 - `describe` / `it` / `expect` / `mock` / `verify` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
 
 ---

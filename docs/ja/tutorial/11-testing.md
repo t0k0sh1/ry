@@ -41,7 +41,7 @@ describe("Calculator", fn():
 )
 ```
 
-- `describe` と `it` は説明文字列と**ラムダ引数** `fn()` を第二引数に取ります。
+- `describe` と `it` は説明文字列と**ラムダ引数** `fn():` を第二引数に取ります。
 - `describe` / `it` / `expect` / `mock` / `verify` は `ry test` でのみ使用できます（通常の `ry` 実行ではコンパイルエラー）。
 
 ---
