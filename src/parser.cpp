@@ -116,7 +116,7 @@ void Parser::skipNewlines() {
 
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated", "native"};
+static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel"};
 
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;
@@ -240,6 +240,16 @@ StmtNode Parser::parseStatement() {
         return stmt;
     }
 
+    if (first.kind == TokenKind::Async) {
+        lex_.next(); // consume 'async'
+        if (lex_.peek().kind != TokenKind::Fn)
+            parseError(first.line, "expected 'fn' after 'async'");
+        auto stmt = parseFnStatement(directives, true);
+        auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
+        fs->directives = std::move(directives);
+        return stmt;
+    }
+
     if (first.kind == TokenKind::Let || first.kind == TokenKind::Var) {
         auto stmt = parseLetOrVar();
         if (auto *ls = std::get_if<LetStmt>(&stmt))
@@ -248,6 +258,17 @@ StmtNode Parser::parseStatement() {
             vs->directives = std::move(directives);
         else if (auto *td = std::get_if<TupleDestructStmt>(&stmt))
             td->directives = std::move(directives);
+        return stmt;
+    }
+
+    if (first.kind == TokenKind::For) {
+        if (!directives.empty() && !hasDirective(directives, "parallel"))
+            parseError(first.line, "only @parallel is supported on for statements");
+        if (directives.size() > 1)
+            parseError(first.line, "for statements support only a single @parallel directive");
+        auto stmt = parseForStatement();
+        auto &fs = std::get<std::unique_ptr<ForStmt>>(stmt);
+        fs->directives = std::move(directives);
         return stmt;
     }
 
@@ -266,6 +287,9 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::Match)
         return parseMatchStatement();
+
+    if (first.kind == TokenKind::Select)
+        return parseSelectStatement();
 
     if (first.kind == TokenKind::If)
         return parseIfStatement();
@@ -291,9 +315,17 @@ StmtNode Parser::parseStatement() {
         return EllipsisStmt{locFromToken(first)};
     }
 
+    if (first.kind == TokenKind::Await) {
+        Token awaitTok = lex_.next(); // consume 'await'
+        AwaitStmt s;
+        s.operand = parseLogicalNot();
+        s.loc = locFromToken(awaitTok);
+        return s;
+    }
+
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'return', 'break', 'continue', '...', 'enum', 'match', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'select', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -756,7 +788,33 @@ ExprPtr Parser::parseLogicalNot() {
         node->loc = locFromToken(notTok);
         return node;
     }
+    if (lex_.peek().kind == TokenKind::Spawn)
+        return parseSpawnExpr();
+    if (lex_.peek().kind == TokenKind::Await)
+        return parseAwaitExpr();
     return parseComparison();
+}
+
+ExprPtr Parser::parseSpawnExpr() {
+    Token spawnTok = lex_.next(); // consume 'spawn'
+    ExprPtr operand = parseLogicalNot();
+    auto spawnExpr = std::make_unique<SpawnExpr>();
+    spawnExpr->operand = std::move(operand);
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(spawnExpr);
+    node->loc = locFromToken(spawnTok);
+    return node;
+}
+
+ExprPtr Parser::parseAwaitExpr() {
+    Token awaitTok = lex_.next(); // consume 'await'
+    ExprPtr operand = parseLogicalNot();
+    auto awaitExpr = std::make_unique<AwaitExpr>();
+    awaitExpr->operand = std::move(operand);
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(awaitExpr);
+    node->loc = locFromToken(awaitTok);
+    return node;
 }
 
 ExprPtr Parser::parsePrimary() {
@@ -884,6 +942,44 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
+        if (lex_.peek().kind == TokenKind::LBracket) {
+            auto savedState = lex_.saveState();
+            try {
+                lex_.next(); // consume '['
+                std::string typeArg;
+                int depth = 1;
+                while (depth > 0 && lex_.peek().kind != TokenKind::Eof) {
+                    Token tk = lex_.peek();
+                    if (tk.kind == TokenKind::LBracket) depth++;
+                    else if (tk.kind == TokenKind::RBracket) {
+                        depth--;
+                        if (depth == 0) {
+                            lex_.next(); // consume final ']'
+                            break;
+                        }
+                    }
+                    typeArg += tk.value;
+                    lex_.next();
+                    if (depth > 0 && lex_.peek().kind == TokenKind::Comma) {
+                        typeArg += ",";
+                        lex_.next();
+                    }
+                }
+                if (lex_.peek().kind == TokenKind::LParen) {
+                    lex_.next(); // consume '('
+                    auto call = std::make_unique<CallExpr>();
+                    call->callee = t.value + "<" + typeArg + ">";
+                    call->args = parseArgList();
+                    auto node = std::make_unique<ExprNode>();
+                    node->data = std::move(call);
+                    node->loc = locFromToken(t);
+                    return node;
+                }
+                lex_.restoreState(savedState);
+            } catch (...) {
+                lex_.restoreState(savedState);
+            }
+        }
         // Generic enum constructor: MyOption<int>::MySome(42)
         if (lex_.peek().kind == TokenKind::Less) {
             // Try to parse as generic type: Ident<Type>::Variant(...)
@@ -1080,11 +1176,12 @@ ExprPtr Parser::parsePrimary() {
     parseError(t.line, "unexpected token '" + t.value + "'");
 }
 
-StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives) {
+StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
     Token fnTok = lex_.next(); // consume 'fn'
 
     auto fnStmt = std::make_unique<FnStmt>();
     fnStmt->loc = locFromToken(fnTok);
+    fnStmt->is_async = is_async;
 
     if (lex_.peek().kind == TokenKind::Operator) {
         lex_.next(); // consume 'operator'
@@ -2024,4 +2121,143 @@ StmtNode Parser::parseMatchStatement() {
         lex_.next(); // consume Dedent
 
     return matchStmt;
+}
+
+StmtNode Parser::parseSelectStatement() {
+    Token selectTok = lex_.next(); // consume 'select'
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after select");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next(); // consume Newline
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next(); // consume Indent
+
+    auto selectStmt = std::make_unique<SelectStmt>();
+    selectStmt->loc = locFromToken(selectTok);
+    bool seenElse = false;
+    bool seenTimeout = false;
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        if (lex_.peek().kind == TokenKind::Else) {
+            if (seenElse)
+                parseError("select may have at most one else branch");
+            if (seenTimeout)
+                parseError("select cannot have both else and timeout branches");
+            lex_.next(); // consume else
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after else");
+            lex_.next(); // consume ':'
+            selectStmt->else_body = parseBlock();
+            seenElse = true;
+            skipNewlines();
+            if (lex_.peek().kind != TokenKind::Dedent)
+                parseError("select else branch must be last");
+            break;
+        }
+
+        if (lex_.peek().kind == TokenKind::Ident && lex_.peek().value == "timeout") {
+            if (seenTimeout)
+                parseError("select may have at most one timeout branch");
+            if (seenElse)
+                parseError("select cannot have both else and timeout branches");
+            Token timeoutTok = lex_.next(); // consume timeout
+            selectStmt->timeout_loc = locFromToken(timeoutTok);
+            selectStmt->timeout_ms = parseTernary();
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after select timeout");
+            lex_.next(); // consume ':'
+            selectStmt->timeout_body = parseBlock();
+            seenTimeout = true;
+            skipNewlines();
+            if (lex_.peek().kind != TokenKind::Dedent)
+                parseError("select timeout branch must be last");
+            break;
+        }
+
+        if (lex_.peek().kind != TokenKind::Case)
+            parseError(lex_.peek().line, "expected 'case', 'else', or 'timeout' in select block");
+        Token caseTok = lex_.next(); // consume case
+
+        if (lex_.peek().kind == TokenKind::Let) {
+            lex_.next(); // consume let
+            Token nameTok = lex_.peek();
+            if (nameTok.kind != TokenKind::Ident)
+                parseError(nameTok.line, "expected variable name after 'let' in select recv case");
+            if (!isSnakeCase(nameTok.value))
+                parseError(nameTok.line, "variable name '" + nameTok.value + "' must be snake_case");
+            lex_.next(); // consume name
+            if (lex_.peek().kind != TokenKind::Equals)
+                parseError("expected '=' after select recv binding");
+            lex_.next(); // consume '='
+
+            Token recvTok = lex_.peek();
+            if (recvTok.kind != TokenKind::Ident ||
+                (recvTok.value != "recv" && recvTok.value != "recv_opt"))
+                parseError("select case must be 'let name = recv(ch)', 'let name = recv_opt(ch)', or 'send(ch, value)'");
+            lex_.next(); // consume recv / recv_opt
+            if (lex_.peek().kind != TokenKind::LParen)
+                parseError("expected '(' after " + recvTok.value);
+            lex_.next(); // consume '('
+            ExprPtr channel = parseTernary();
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' after " + recvTok.value + " argument");
+            lex_.next(); // consume ')'
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after select case");
+            lex_.next(); // consume ':'
+
+            SelectRecvCase recvCase;
+            recvCase.name = nameTok.value;
+            recvCase.channel = std::move(channel);
+            recvCase.mode = recvTok.value == "recv_opt"
+                ? SelectRecvMode::Optional
+                : SelectRecvMode::Strict;
+            recvCase.loc = locFromToken(caseTok);
+            recvCase.body = parseBlock();
+            selectStmt->cases.push_back(std::move(recvCase));
+        } else {
+            Token sendTok = lex_.peek();
+            if (sendTok.kind != TokenKind::Ident || sendTok.value != "send")
+                parseError("select case must be 'let name = recv(ch)', 'let name = recv_opt(ch)', or 'send(ch, value)'");
+            lex_.next(); // consume send
+            if (lex_.peek().kind != TokenKind::LParen)
+                parseError("expected '(' after send");
+            lex_.next(); // consume '('
+            ExprPtr channel = parseTernary();
+            if (lex_.peek().kind != TokenKind::Comma)
+                parseError("expected ',' in send()");
+            lex_.next(); // consume ','
+            ExprPtr value = parseTernary();
+            if (lex_.peek().kind != TokenKind::RParen)
+                parseError("expected ')' after send arguments");
+            lex_.next(); // consume ')'
+            if (lex_.peek().kind != TokenKind::Colon)
+                parseError("expected ':' after select case");
+            lex_.next(); // consume ':'
+
+            SelectSendCase sendCase;
+            sendCase.channel = std::move(channel);
+            sendCase.value = std::move(value);
+            sendCase.loc = locFromToken(caseTok);
+            sendCase.body = parseBlock();
+            selectStmt->cases.push_back(std::move(sendCase));
+        }
+
+        skipNewlines();
+    }
+
+    if (selectStmt->cases.empty())
+        parseError("select requires at least one case");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next(); // consume Dedent
+
+    return selectStmt;
 }

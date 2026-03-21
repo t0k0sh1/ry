@@ -56,9 +56,14 @@ protected:
         }
 
         testing::internal::CaptureStdout();
-        symOrErr->toPtr<int(*)()>()();
-        fflush(stdout);
-        return testing::internal::GetCapturedStdout();
+        try {
+            symOrErr->toPtr<int(*)()>()();
+            fflush(stdout);
+            return testing::internal::GetCapturedStdout();
+        } catch (...) {
+            testing::internal::GetCapturedStdout();
+            throw;
+        }
     }
 
     static std::string runSource(const std::string &src) {

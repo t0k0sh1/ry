@@ -95,6 +95,34 @@ fn log_typed(msg: str) -> Unit:
 
 ---
 
+## Task と async 関数
+
+`Task<T>` は並行実行の組み込みハンドル型です。`async fn` は `Task<T>` を返し、`await` は `T` を取り出します。`join(task)` は `await task` と同じく完了待ちを行う関数形式です。
+
+```python
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+let t: Task<int> = add(20, 22)
+print(await t)          # 42
+await add(1, 2)         # 待機して結果を捨てる
+print(join(add(1, 2)))  # 3
+```
+
+### ルール
+
+- `async fn name(...) -> T:` の `T` は await 後の値型です。
+- `async fn` の呼び出し結果は常に `Task<T>` です。
+- `await expr` は `Task<T>` にのみ使用でき、結果は `T` です。
+- `await` は式位置に加えて `await expr` の文形式でも使えます。
+- `async fn ... -> Unit` をサポートします。値を返さない task の待機には `await task` を使うのが基本です。
+- task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
+- `async` ラムダと `async @native fn` は v1 では未対応です。
+
+`Channel<T>` は task 間のブロッキングなメッセージ受け渡しに使う組み込みハンドル型です。`channel[T]()` または `channel[T](capacity)` で生成し、`send(ch, value)`、non-blocking な `try_send(ch, value)`、strict な `recv(ch)`、close-aware な `recv_opt(ch)`、non-blocking な `try_recv(ch)`、`for x in ch:` による反復、`close(ch)` で操作します。
+
+---
+
 ## ラムダ関数
 
 無名関数をその場で定義できる。

@@ -21,6 +21,7 @@ Directives can be applied to the following declarations:
 - `record` - Struct definitions
 - `let` / `var` - Variable declarations
 - Fields within a `record` definition
+- `for` - Counted loops only for `@parallel`
 
 ## Built-in Directives
 
@@ -123,7 +124,7 @@ The `core/` directory contains `@native` declarations for all built-in functions
 
 | File | Contents |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
@@ -140,6 +141,28 @@ These files are automatically loaded as a prelude when the `core/` directory is 
 
 **Future extensions:**
 - `@native("libfoo.so")` — FFI binding to external shared libraries.
+
+### `@parallel`
+
+Marks a counted `for` loop for parallel execution.
+
+```
+@parallel
+for i in range(8):
+    work(i)
+```
+
+**Supported target:**
+
+- `for` statements only
+
+**Constraints:**
+
+- Only a single `@parallel` directive is allowed on a `for` statement.
+- The iterable must be `range(...)` or an integer `..` range.
+- Destructuring iteration is not supported.
+- Assigning to outer mutable variables is rejected.
+- `break`, `continue`, indexed assignment, and field assignment inside the loop body are rejected in v1.
 
 ### Parameters (future extension)
 
@@ -159,4 +182,4 @@ Currently, parameters are parsed but not used by the `@deprecated` directive.
 - Warnings are emitted at the point of use, not at the definition.
 - Defining a deprecated entity without using it produces no warnings.
 - Unknown directive names cause a parse error.
-- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error.
+- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error. `@parallel` is the only directive supported on `for`.

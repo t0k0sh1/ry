@@ -13,6 +13,16 @@
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
+| `available_parallelism()` | ランタイムの worker 数を `int` で返す |
+| `channel[T]()` | unbuffered な `Channel<T>` を作成 |
+| `channel[T](capacity)` | buffered な `Channel<T>` を作成 |
+| `send(ch, value)` | `Channel<T>` に値を送る |
+| `try_send(ch, value)` | `Channel<T>` への送信をブロックせず試みる |
+| `recv(ch)` | `Channel<T>` から値を受け取る |
+| `recv_opt(ch)` | `Channel<T>` から `Option<T>` として受け取り、`Channel<Unit>` では `bool` を返す |
+| `try_recv(ch)` | `Channel<T>` からの受信を `Option<T>`、`Channel<Unit>` では `bool` で即時に試みる |
+| `close(ch)` | `Channel<T>` を閉じる |
+| `join(task)` | `Task<T>` の完了を待ち、結果を返す |
 
 ### Option
 

@@ -89,6 +89,7 @@ enum class TokenKind {
     // --- match ---
     Match,          // match
     Case,           // case
+    Select,         // select
     // --- test ---
     Expect,         // expect
     // --- contract (Design by Contract) ---
@@ -109,6 +110,9 @@ enum class TokenKind {
     ErrorKw,        // Error
     BangBang,       // !!
     Question,       // ?
+    Spawn,          // spawn
+    Async,          // async
+    Await,          // await
 };
 
 struct Token {

@@ -1183,6 +1183,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
             if (list_element_types_.count(v)) return SemanticKind::List;
             if (map_key_types_.count(v)) return SemanticKind::Map;
             if (set_element_types_.count(v)) return SemanticKind::Set;
+            if (channel_element_types_.count(v)) return SemanticKind::Other;
+            if (task_result_types_.count(v)) return SemanticKind::Other;
             return SemanticKind::Str;
         };
         SemanticKind trueKind = classify(trueVal);
@@ -1213,6 +1215,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
     }
     if (set_element_types_.count(trueVal))
         set_element_types_[phi] = set_element_types_[trueVal];
+    if (task_result_types_.count(trueVal))
+        task_result_types_[phi] = task_result_types_[trueVal];
+    if (channel_element_types_.count(trueVal))
+        channel_element_types_[phi] = channel_element_types_[trueVal];
 
     return phi;
 }
@@ -1345,3 +1351,153 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     return builder_.CreateExtractValue(tuple, 0, "unwrapped");
 }
 
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
+    auto *callPtr = std::get_if<std::unique_ptr<CallExpr>>(&e->operand->data);
+    if (!callPtr)
+        codegenError("spawn requires a function call expression");
+
+    const CallExpr &callExpr = *(*callPtr);
+    llvm::Function *directFunc = nullptr;
+    llvm::Value *calleeVal = nullptr;
+    FnTypeInfo calleeInfo;
+    std::vector<llvm::Value*> argVals;
+
+    auto namedIt = functions_.find(callExpr.callee);
+    if (namedIt != functions_.end()) {
+        directFunc = resolveOverload(callExpr.callee, callExpr.args, argVals);
+        if (!directFunc)
+            codegenError("spawn requires a resolvable user function call");
+    } else if (llvm::AllocaInst *varPtr = findVar(callExpr.callee)) {
+        auto fnIt = fn_type_info_.find(varPtr);
+        if (fnIt == fn_type_info_.end())
+            codegenError("spawn requires a function or lambda call");
+        calleeInfo = fnIt->second;
+        for (auto &arg : callExpr.args)
+            argVals.push_back(emitExpr(*arg));
+        if (argVals.size() != calleeInfo.paramTypes.size())
+            codegenError("spawn call argument count mismatch");
+        for (size_t i = 0; i < argVals.size(); ++i) {
+            if (argVals[i]->getType() != calleeInfo.paramTypes[i])
+                codegenError("spawn call argument type mismatch");
+        }
+        calleeVal = builder_.CreateLoad(ptrTy_, varPtr, callExpr.callee + ".spawn_fn");
+    } else {
+        codegenError("spawn requires a user-defined function or lambda call");
+    }
+
+    llvm::Type *resultTy = directFunc ? directFunc->getReturnType() : calleeInfo.returnType;
+    if (resultTy->isVoidTy())
+        codegenError("spawn does not support Unit-returning calls");
+
+    std::vector<llvm::Type*> envFields;
+    if (!directFunc)
+        envFields.push_back(ptrTy_);
+    for (auto *argVal : argVals)
+        envFields.push_back(argVal->getType());
+    if (envFields.empty())
+        envFields.push_back(i8Ty_);
+    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
+
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    llvm::Value *envPtr = builder_.CreateCall(
+        mallocFn,
+        {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
+        "spawn_env");
+
+    unsigned fieldIndex = 0;
+    if (directFunc && argVals.empty()) {
+        llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "spawn_env_dummy");
+        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
+    } else if (!directFunc) {
+        llvm::Value *calleeField = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawn_env_fn");
+        builder_.CreateStore(calleeVal, calleeField);
+    }
+    for (size_t i = 0; i < argVals.size(); ++i) {
+        llvm::Value *argField = builder_.CreateStructGEP(
+            envTy, envPtr, fieldIndex++, "spawn_env_arg." + std::to_string(i));
+        builder_.CreateStore(argVals[i], argField);
+    }
+
+    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    llvm::Function *thunk = llvm::Function::Create(
+        thunkTy, llvm::Function::InternalLinkage,
+        "__ry_spawn." + std::to_string(lambda_counter_++), *mod_);
+
+    {
+        FnScope guard(*this);
+        fn_ = thunk;
+        pushScope();
+
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+        builder_.SetInsertPoint(entry);
+
+        auto argIt = thunk->arg_begin();
+        llvm::Value *envRaw = &*argIt++;
+        envRaw->setName("env_raw");
+        llvm::Value *outRaw = &*argIt;
+        outRaw->setName("out_raw");
+
+        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "spawn_env_typed");
+
+        std::vector<llvm::Value*> thunkArgs;
+        fieldIndex = 0;
+        llvm::Value *thunkCallee = nullptr;
+        if (!directFunc) {
+            llvm::Value *calleeField = builder_.CreateStructGEP(envTy, typedEnv, fieldIndex++, "spawn_fn_field");
+            thunkCallee = builder_.CreateLoad(ptrTy_, calleeField, "spawn_fn");
+        }
+        for (size_t i = 0; i < argVals.size(); ++i) {
+            llvm::Type *argTy = argVals[i]->getType();
+            llvm::Value *argField = builder_.CreateStructGEP(
+                envTy, typedEnv, fieldIndex++, "spawn_arg_field." + std::to_string(i));
+            thunkArgs.push_back(builder_.CreateLoad(argTy, argField, "spawn_arg." + std::to_string(i)));
+        }
+
+        llvm::Value *result = nullptr;
+        if (directFunc) {
+            result = builder_.CreateCall(directFunc, thunkArgs, "spawn_call");
+        } else {
+            result = emitLambdaCall(thunkCallee, calleeInfo, thunkArgs, "spawn_call");
+        }
+
+        llvm::Value *outTyped = builder_.CreateBitCast(outRaw, ptrTy_, "spawn_out_typed");
+        builder_.CreateStore(result, outTyped);
+        builder_.CreateRetVoid();
+    }
+
+    llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
+    llvm::Value *task = builder_.CreateCall(
+        spawnFn,
+        {
+            builder_.CreateBitCast(thunk, ptrTy_),
+            envPtr,
+            llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
+        },
+        "task");
+    task_result_types_[task] = resultTy;
+    return task;
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
+    llvm::Value *taskVal = emitExpr(*e->operand);
+    llvm::Type *resultTy = getTaskResultType(taskVal);
+    if (!resultTy)
+        codegenError("await requires a Task value");
+
+    llvm::FunctionType *joinTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee joinFn = mod_->getOrInsertFunction("__ry_task_join", joinTy);
+
+    if (resultTy->isVoidTy()) {
+        return builder_.CreateCall(joinFn, {taskVal, llvm::ConstantPointerNull::get(
+            llvm::cast<llvm::PointerType>(ptrTy_))});
+    }
+
+    llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, "await_result");
+    builder_.CreateCall(joinFn, {taskVal, resultSlot});
+    return builder_.CreateLoad(resultTy, resultSlot, "awaited");
+}
