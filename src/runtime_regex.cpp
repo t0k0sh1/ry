@@ -14,14 +14,15 @@
 namespace {
 
 enum class RegexNodeKind {
-    Literal,      // single character
-    Dot,          // .
-    CharClass,    // [abc], [a-z], [^0-9]
-    Anchor,       // ^ or $
-    Concat,       // AB
-    Alternation,  // A|B
-    Repeat,       // A*, A+, A?
-    Group,        // (A)
+    Literal,       // single character
+    Dot,           // .
+    CharClass,     // [abc], [a-z], [^0-9]
+    Anchor,        // ^ or $
+    WordBoundary,  // \b, \B
+    Concat,        // AB
+    Alternation,   // A|B
+    Repeat,        // A*, A+, A?
+    Group,         // (A)
 };
 
 struct RegexNode {
@@ -45,6 +46,10 @@ struct RegexNode {
 
 using RegexNodePtr = std::unique_ptr<RegexNode>;
 
+// Shared word-character ranges used by \w, \W, \b, \B
+static const std::vector<std::pair<char, char>> WORD_CHAR_RANGES =
+    {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}};
+
 // ============================================================
 // Regex Parser (recursive descent)
 // ============================================================
@@ -52,6 +57,8 @@ using RegexNodePtr = std::unique_ptr<RegexNode>;
 class RegexParser {
 public:
     explicit RegexParser(const char *pattern) : src_(pattern), len_(strlen(pattern)), pos_(0) {}
+
+    bool caseInsensitive() const { return caseInsensitive_; }
 
     RegexNodePtr parse() {
         auto node = parseAlternation();
@@ -67,6 +74,7 @@ private:
     const char *src_;
     size_t len_;
     size_t pos_;
+    bool caseInsensitive_ = false;
 
     char peek() const {
         if (pos_ >= len_) return '\0';
@@ -214,6 +222,19 @@ private:
         char c = peek();
         if (c == '(') {
             advance(); // consume '('
+            // Check for inline flags (?i)
+            if (peek() == '?' && pos_ + 1 < len_ && src_[pos_ + 1] == 'i') {
+                advance(); // consume '?'
+                advance(); // consume 'i'
+                if (peek() != ')') {
+                    fprintf(stderr, "regex error: expected ')' after '(?i' in pattern '%s'\n", src_);
+                    exit(1);
+                }
+                advance(); // consume ')'
+                caseInsensitive_ = true;
+                // Return next atom (flag is stateful, not a node)
+                return parseAtom();
+            }
             auto inner = parseAlternation();
             if (peek() != ')') {
                 fprintf(stderr, "regex error: unmatched '(' in pattern '%s'\n", src_);
@@ -248,6 +269,13 @@ private:
                 exit(1);
             }
             char escaped = advance();
+            // Handle word boundary
+            if (escaped == 'b' || escaped == 'B') {
+                auto node = std::make_unique<RegexNode>();
+                node->kind = RegexNodeKind::WordBoundary;
+                node->negated = (escaped == 'B');
+                return node;
+            }
             // Handle shorthand character classes
             if (escaped == 'd' || escaped == 'D' ||
                 escaped == 'w' || escaped == 'W' ||
@@ -281,8 +309,8 @@ private:
         switch (code) {
             case 'd': node->negated = false; node->ranges = {{'0','9'}}; break;
             case 'D': node->negated = true;  node->ranges = {{'0','9'}}; break;
-            case 'w': node->negated = false; node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
-            case 'W': node->negated = true;  node->ranges = {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}}; break;
+            case 'w': node->negated = false; node->ranges = WORD_CHAR_RANGES; break;
+            case 'W': node->negated = true;  node->ranges = WORD_CHAR_RANGES; break;
             case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
             case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
         }
@@ -340,7 +368,7 @@ private:
 // ============================================================
 
 struct NFAState {
-    enum Kind { Match, Split, Char, Dot, CharClass, Anchor };
+    enum Kind { Match, Split, Char, Dot, CharClass, Anchor, WordBoundary };
     Kind kind;
 
     // Char
@@ -411,6 +439,11 @@ public:
         case RegexNodeKind::Anchor: {
             auto *s = newState(NFAState::Anchor);
             s->ch = node.ch;
+            return {s, {&s->out1}};
+        }
+        case RegexNodeKind::WordBoundary: {
+            auto *s = newState(NFAState::WordBoundary);
+            s->negated = node.negated;
             return {s, {&s->out1}};
         }
         case RegexNodeKind::Concat: {
@@ -540,8 +573,8 @@ private:
 
 class NFASimulator {
 public:
-    NFASimulator(NFAState *start, NFAState *matchState)
-        : start_(start), matchState_(matchState), generation_(0) {}
+    NFASimulator(NFAState *start, NFAState *matchState, bool caseInsensitive = false)
+        : start_(start), matchState_(matchState), generation_(0), caseInsensitive_(caseInsensitive) {}
 
     // Try to match text[startPos..] returning the end position of the match,
     // or -1 if no match. fullMatch requires matching entire text.
@@ -576,13 +609,17 @@ public:
                 bool matches = false;
                 switch (s->kind) {
                 case NFAState::Char:
-                    matches = (s->ch == c);
+                    if (caseInsensitive_) {
+                        matches = (std::tolower((unsigned char)s->ch) == std::tolower((unsigned char)c));
+                    } else {
+                        matches = (s->ch == c);
+                    }
                     break;
                 case NFAState::Dot:
                     matches = (c != '\n');
                     break;
                 case NFAState::CharClass:
-                    matches = charClassMatches(s, c);
+                    matches = charClassMatches(s, c, caseInsensitive_);
                     break;
                 default:
                     break;
@@ -616,6 +653,7 @@ private:
     std::vector<NFAState *> current_;
     std::vector<NFAState *> next_;
     int generation_;
+    bool caseInsensitive_;
 
     void addState(std::vector<NFAState *> &stateSet, NFAState *s,
                   const char *text, size_t textLen, size_t pos) {
@@ -635,7 +673,23 @@ private:
             }
             return;
         }
+        if (s->kind == NFAState::WordBoundary) {
+            bool prevIsWord = (pos > 0) && isWordChar(text[pos - 1]);
+            bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
+            bool atBoundary = (prevIsWord != currIsWord);
+            if (atBoundary != s->negated) {
+                addState(stateSet, s->out1, text, textLen, pos);
+            }
+            return;
+        }
         stateSet.push_back(s);
+    }
+
+    static bool isWordChar(char c) {
+        for (auto &[lo, hi] : WORD_CHAR_RANGES) {
+            if (c >= lo && c <= hi) return true;
+        }
+        return false;
     }
 
     static bool stateSetContains(const std::vector<NFAState *> &stateSet, NFAState *target) {
@@ -645,10 +699,20 @@ private:
         return false;
     }
 
-    static bool charClassMatches(NFAState *s, char c) {
+    static bool charInRange(char c, char lo, char hi, bool caseInsensitive) {
+        if (c >= lo && c <= hi) return true;
+        if (caseInsensitive) {
+            char cl = std::tolower((unsigned char)c);
+            char cu = std::toupper((unsigned char)c);
+            return (cl >= lo && cl <= hi) || (cu >= lo && cu <= hi);
+        }
+        return false;
+    }
+
+    static bool charClassMatches(NFAState *s, char c, bool caseInsensitive = false) {
         bool inRange = false;
         for (auto &[lo, hi] : s->ranges) {
-            if (c >= lo && c <= hi) { inRange = true; break; }
+            if (charInRange(c, lo, hi, caseInsensitive)) { inRange = true; break; }
         }
         return s->negated ? !inRange : inRange;
     }
@@ -663,6 +727,7 @@ struct CompiledRegex {
     NFAState *matchState;
     NFAState *start;
     bool hasLazy_ = false;
+    bool caseInsensitive_ = false;
 
     static bool detectLazy(const RegexNode &node) {
         if (node.kind == RegexNodeKind::Repeat && !node.greedy) return true;
@@ -678,6 +743,7 @@ struct CompiledRegex {
 
         CompiledRegex cr;
         cr.hasLazy_ = detectLazy(*ast);
+        cr.caseInsensitive_ = parser.caseInsensitive();
         auto frag = cr.builder.build(*ast);
         cr.matchState = cr.builder.newState(NFAState::Match);
         cr.builder.patch(frag, cr.matchState);
@@ -688,14 +754,14 @@ struct CompiledRegex {
     // Full match
     bool fullMatch(const char *text) {
         size_t len = strlen(text);
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         return sim.simulate(text, len, 0, true) >= 0;
     }
 
     // Search: find first match, return {startPos, endPos} or {-1, -1}
     std::pair<int64_t, int64_t> search(const char *text) {
         size_t len = strlen(text);
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         for (size_t i = 0; i <= len; ++i) {
             int64_t endPos = sim.simulate(text, len, i, false, hasLazy_);
             if (endPos >= 0) {
@@ -709,7 +775,7 @@ struct CompiledRegex {
     std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
         size_t len = strlen(text);
         std::vector<std::pair<int64_t, int64_t>> results;
-        NFASimulator sim(start, matchState);
+        NFASimulator sim(start, matchState, caseInsensitive_);
         size_t pos = 0;
         while (pos <= len) {
             int64_t endPos = sim.simulate(text, len, pos, false, hasLazy_);

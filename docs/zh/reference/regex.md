@@ -45,6 +45,9 @@
 | `\W` | 非單字字元 | |
 | `\s` | 空白字元 | `"\s+"` 匹配空格與 Tab |
 | `\S` | 非空白字元 | |
+| `\b` | 單字邊界 | `"\bword\b"` 匹配完整單字 |
+| `\B` | 非單字邊界 | `"\Bword"` 匹配單字內部 |
+| `(?i)` | 忽略大小寫旗標 | `"(?i)hello"` 匹配 `"HELLO"` |
 | `\.` | 跳脫特殊字元 | `"\."` 匹配字面的 `.` |
 
 ## 使用範例
@@ -112,6 +115,39 @@ print(len(tags))  # 3
 ```
 
 > **注意：** 非貪婪匹配控制整體匹配長度。沒有使用括號分組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
+
+### 單字邊界
+
+```ry
+# 匹配完整單字
+let pos = regex_search("\\bworld\\b", "hello world")
+print(pos)  # 6
+
+# 取得所有單字
+let words = regex_find_all("\\b\\w+\\b", "hello world foo")
+print(len(words))  # 3
+
+# \B 匹配非邊界（單字內部）
+let pos2 = regex_search("\\Bworld", "helloworld")
+print(pos2)  # 5
+```
+
+### 忽略大小寫匹配
+
+```ry
+# (?i) 放在模式開頭即可忽略大小寫
+print(regex_match("(?i)hello", "HELLO"))  # true
+print(regex_match("(?i)hello", "Hello"))  # true
+
+# 字元類別也適用
+print(regex_match("(?i)[a-z]+", "ABC"))  # true
+
+# replace 和 find_all 也可使用
+let s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+print(s)  # X X X
+```
+
+> **注意：** `(?i)` 必須出現在模式的開頭，並適用於整個模式。不支援部分忽略大小寫（例如 `(?i:sub)pattern`）。
 
 ### UFCS 記法
 

@@ -45,6 +45,9 @@
 | `\W` | 単語文字以外 | |
 | `\s` | 空白文字 | `"\s+"` はスペースやタブにマッチ |
 | `\S` | 空白文字以外 | |
+| `\b` | 単語境界 | `"\bword\b"` は単語全体にマッチ |
+| `\B` | 非単語境界 | `"\Bword"` は単語の内部にマッチ |
+| `(?i)` | 大文字小文字無視フラグ | `"(?i)hello"` は `"HELLO"` にマッチ |
 | `\.` | エスケープされた特殊文字 | `"\."` はリテラルの `.` にマッチ |
 
 ## 使用例
@@ -112,6 +115,39 @@ print(len(tags))  # 3
 ```
 
 > **注意:** 非貪欲マッチはマッチ全体の長さを制御します。グループ（括弧で囲んだ部分式）がない場合、greedy/lazy の混在パターンは PCRE エンジンと異なる動作をする場合があります。
+
+### 単語境界
+
+```ry
+# 単語全体にマッチ
+let pos = regex_search("\\bworld\\b", "hello world")
+print(pos)  # 6
+
+# すべての単語を取得
+let words = regex_find_all("\\b\\w+\\b", "hello world foo")
+print(len(words))  # 3
+
+# \B は非境界（単語の内部）にマッチ
+let pos2 = regex_search("\\Bworld", "helloworld")
+print(pos2)  # 5
+```
+
+### 大文字小文字を無視したマッチ
+
+```ry
+# (?i) をパターンの先頭に置くと大文字小文字を無視
+print(regex_match("(?i)hello", "HELLO"))  # true
+print(regex_match("(?i)hello", "Hello"))  # true
+
+# 文字クラスでも動作
+print(regex_match("(?i)[a-z]+", "ABC"))  # true
+
+# replace や find_all でも使用可能
+let s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+print(s)  # X X X
+```
+
+> **注意:** `(?i)` はパターンの先頭に記述する必要があり、パターン全体に適用されます。部分的な大文字小文字無視（例: `(?i:sub)pattern`）はサポートされていません。
 
 ### UFCS 記法
 
