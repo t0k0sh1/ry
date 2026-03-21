@@ -347,4 +347,56 @@ let empty: Set<int> = {}
 
 ---
 
+## Iterators
+
+Iterators provide a **lazy** way to process collections. Instead of creating intermediate lists at each step, iterators process elements one at a time through a pipeline.
+
+### Creating and Consuming
+
+```python
+let xs = [1, 2, 3]
+let ys = xs.iter().to_list()   # [1, 2, 3]
+```
+
+### Chaining Operations
+
+You can chain `filter`, `map`, and `take` to build pipelines:
+
+```python
+let result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int): x > 2)
+    .map(fn(x: int): x * 2)
+    .take(2)
+    .to_list()
+print(result)   # [6, 8]
+```
+
+### Manual Iteration with next()
+
+```python
+let it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### For Loops
+
+Iterators work directly in `for` loops:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int): x > 1):
+    print(x)   # 2, 3
+```
+
+Maps produce tuple elements:
+
+```python
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```
+
+---
+
 [<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)

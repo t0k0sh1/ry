@@ -38,6 +38,10 @@ llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
     return lookupCollectionType(nested_list_element_types_, listVal);
 }
 
+llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
+    return lookupCollectionType(iterator_element_types_, iterVal);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)

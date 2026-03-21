@@ -289,6 +289,17 @@ void CodeGen::emitVarDecl(const std::string &name,
                 fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
         }
+
+        // --- Iterator tracking ---
+        {
+            llvm::Type *iterElemTy = getIteratorElementType(val);
+            if (!iterElemTy) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    iterElemTy = getIteratorElementType(load->getPointerOperand());
+            }
+            if (iterElemTy)
+                iterator_element_types_[ptr] = iterElemTy;
+        }
     }
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
@@ -410,6 +421,65 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     // Check if this is a list or set (ptr type with known element type)
     if (iterable->getType() != ptrTy_)
         codegenError("for loop requires list or set iterable");
+
+    // Check if iterable is an iterator
+    llvm::Type *iterElemTy = getIteratorElementType(iterable);
+    if (iterElemTy) {
+        llvm::Value *nextFnField = builder_.CreateStructGEP(iteratorHeaderTy_, iterable, 0, "for_iter_nf");
+        llvm::Value *nextFnPtr = builder_.CreateLoad(ptrTy_, nextFnField, "for_iter_next_fn");
+        llvm::Value *stateField = builder_.CreateStructGEP(iteratorHeaderTy_, iterable, 1, "for_iter_st");
+        llvm::Value *statePtr = builder_.CreateLoad(ptrTy_, stateField, "for_iter_state");
+
+        llvm::StructType *optTy = getOptionType(iterElemTy);
+        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "foriter.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "foriter.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "foriter.end", fn_);
+
+        builder_.CreateBr(condBB);
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "foriter_opt");
+        llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "foriter_has");
+        builder_.CreateCondBr(hasVal, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        loop_stack_.push_back({condBB, endBB});
+        pushScope();
+
+        llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
+
+        // Handle two-variable destructuring for map iterators (tuple elements)
+        if (s->var_name2.has_value()) {
+            auto *structTy = llvm::dyn_cast<llvm::StructType>(iterElemTy);
+            if (!structTy || structTy->getNumElements() != 2)
+                codegenError("for k, v over iterator requires tuple elements");
+            llvm::Value *first = builder_.CreateExtractValue(elem, 0, "foriter_first");
+            llvm::Value *second = builder_.CreateExtractValue(elem, 1, "foriter_second");
+            if (s->var_name != "_") {
+                llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, structTy->getElementType(0));
+                builder_.CreateStore(first, firstVar);
+            }
+            if (*s->var_name2 != "_") {
+                llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, structTy->getElementType(1));
+                builder_.CreateStore(second, secondVar);
+            }
+        } else {
+            llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, iterElemTy);
+            builder_.CreateStore(elem, loopVar);
+        }
+
+        for (auto &stmt : s->body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        popScope();
+        loop_stack_.pop_back();
+        if (!builder_.GetInsertBlock()->getTerminator())
+            builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return;
+    }
 
     // Two-variable iteration: for k, v in map  OR  for i, x in enumerate(xs)
     if (s->var_name2.has_value()) {
