@@ -29,6 +29,7 @@ private:
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
+    llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
@@ -55,6 +56,8 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
+    int iterator_fn_counter_ = 0;
 
     struct UnionTypeInfo {
         llvm::StructType *llvmType;
@@ -319,6 +322,8 @@ private:
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
+    llvm::Value *emitBuiltinIterator(const CallExpr &e);
+    llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                         int64_t initialBucketCount);
