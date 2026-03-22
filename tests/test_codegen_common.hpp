@@ -22,6 +22,7 @@ public:
         InitializeNativeTarget();
         InitializeNativeTargetAsmPrinter();
         InitializeNativeTargetAsmParser();
+        GTEST_FLAG_SET(death_test_style, "threadsafe");
     }
 
 protected:

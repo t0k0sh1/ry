@@ -23,8 +23,8 @@ from std.net import bind, listen, accept, connect
 |----------|-----------|-------------|
 | `bind` | `(host: str, port: int) -> Option<TcpListener>` | Creates a TCP server socket bound to the given address. Returns `None` on failure. |
 | `listen` | `(listener: TcpListener, backlog: int) -> Unit` | Starts listening for incoming connections. Runtime error on failure. |
-| `accept` | `(listener: TcpListener) -> Option<TcpStream>` | Accepts a new connection. Blocks until a client connects. Returns `None` on failure. |
-| `connect` | `(host: str, port: int) -> Option<TcpStream>` | Connects to a remote TCP server. Returns `None` on failure. |
+| `accept` | `(listener: TcpListener) -> Option<TcpStream>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `None` on timeout or failure. |
+| `connect` | `(host: str, port: int) -> Option<TcpStream>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `None` on timeout or failure. |
 
 ## Built-in Overloaded Functions
 

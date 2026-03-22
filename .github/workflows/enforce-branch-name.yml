@@ -13,8 +13,8 @@ jobs:
       - name: Validate source branch name
         run: |
           BRANCH="${{ github.head_ref }}"
-          if [[ ! "$BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Branch name '$BRANCH' does not match the required pattern vX.X.X (e.g., v0.0.3)"
+          if [[ ! "$BRANCH" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|fix/.+)$ ]]; then
+            echo "::error::Branch name '$BRANCH' does not match the required pattern vX.X.X or fix/* (e.g., v0.0.3, fix/some-bug)"
             exit 1
           fi
           echo "Branch name '$BRANCH' is valid."
