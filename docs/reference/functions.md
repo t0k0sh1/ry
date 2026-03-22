@@ -165,7 +165,7 @@ let abs = fn(x: int):
 Lambda functions **capture by value** the variables from the outer scope at the time of definition.
 
 ```python
-let base = 10
+var base = 10
 let add_base = fn(x: int): x + base   # Captures base by value
 
 base = 99          # Does not affect the captured value
@@ -212,7 +212,7 @@ Functions can accept functions as arguments or return them as values.
 
 ```python
 fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
-    let result: List<int> = []
+    var result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result

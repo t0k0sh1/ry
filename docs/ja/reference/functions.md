@@ -165,7 +165,7 @@ let abs = fn(x: int):
 ラムダ関数は定義された時点の外側スコープの変数を**値でキャプチャ**する。
 
 ```python
-let base = 10
+var base = 10
 let add_base = fn(x: int): x + base   # base を値でキャプチャ
 
 base = 99          # キャプチャ済みの値には影響しない
@@ -212,7 +212,7 @@ let result = apply(f, 5)   # 10
 
 ```python
 fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
-    let result: List<int> = []
+    var result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result

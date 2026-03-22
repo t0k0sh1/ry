@@ -13,12 +13,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export PATH="/Library/TeX/texbin:$PATH"
 
-CJK_HEADER=$(mktemp)
-trap 'rm -f "$CJK_HEADER"' EXIT
-cat > "$CJK_HEADER" <<'TEX'
+JA_HEADER=$(mktemp)
+ZH_HEADER=$(mktemp)
+trap 'rm -f "$JA_HEADER" "$ZH_HEADER"' EXIT
+
+cat > "$JA_HEADER" <<'TEX'
 \usepackage{luatexja-fontspec}
 \setmainjfont{HaranoAjiMincho}
 \setsansjfont{HaranoAjiGothic}
+TEX
+
+cat > "$ZH_HEADER" <<'TEX'
+\usepackage{luatexja-fontspec}
+\setmainjfont{Songti TC}
+\setsansjfont{Heiti TC}
 TEX
 
 PANDOC_COMMON=(
@@ -47,15 +55,15 @@ generate_pdf() {
 }
 
 # --- English ---
-generate_pdf "tutorial-en" "" "$SCRIPT_DIR"/tutorial/[0-9]*.md
-generate_pdf "reference-en" "" "$SCRIPT_DIR"/reference/*.md
+generate_pdf "tutorial-en" "$JA_HEADER" "$SCRIPT_DIR"/tutorial/[0-9]*.md
+generate_pdf "reference-en" "$JA_HEADER" "$SCRIPT_DIR"/reference/*.md
 
 # --- Japanese ---
-generate_pdf "tutorial-ja" "$CJK_HEADER" "$SCRIPT_DIR"/ja/tutorial/[0-9]*.md
-generate_pdf "reference-ja" "$CJK_HEADER" "$SCRIPT_DIR"/ja/reference/*.md
+generate_pdf "tutorial-ja" "$JA_HEADER" "$SCRIPT_DIR"/ja/tutorial/[0-9]*.md
+generate_pdf "reference-ja" "$JA_HEADER" "$SCRIPT_DIR"/ja/reference/*.md
 
 # --- Chinese ---
-generate_pdf "tutorial-zh" "$CJK_HEADER" "$SCRIPT_DIR"/zh/tutorial/[0-9]*.md
-generate_pdf "reference-zh" "$CJK_HEADER" "$SCRIPT_DIR"/zh/reference/*.md
+generate_pdf "tutorial-zh" "$ZH_HEADER" "$SCRIPT_DIR"/zh/tutorial/[0-9]*.md
+generate_pdf "reference-zh" "$ZH_HEADER" "$SCRIPT_DIR"/zh/reference/*.md
 
 echo "Done. Generated 6 PDFs in $SCRIPT_DIR/"
