@@ -137,7 +137,7 @@ let abs = fn(x: int):
 Lambda 函式會以**值捕獲**定義時外層作用域的變數。
 
 ```python
-let base = 10
+var base = 10
 let add_base = fn(x: int): x + base   # 以值捕獲 base
 
 base = 99          # 不影響已捕獲的值
@@ -184,7 +184,7 @@ let result = apply(f, 5)   # 10
 
 ```python
 fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
-    let result: List<int> = []
+    var result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result

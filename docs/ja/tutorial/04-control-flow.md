@@ -41,7 +41,7 @@ if a > 0:
 条件が真である間、ブロックを繰り返し実行します。
 
 ```python
-let i = 3
+var i = 3
 while i > 0:
     print(i)
     i = i - 1
@@ -125,7 +125,7 @@ for i in range(10):
 `while` でも同様に使用できます。
 
 ```python
-let n = 0
+var n = 0
 while true:
     n = n + 1
     if n % 2 == 0:
@@ -182,7 +182,7 @@ if true:
 ブロック内から外側の変数を参照・再代入できます。
 
 ```python
-let count = 0
+var count = 0
 for i in range(5):
     count = count + i
 print(count)   # 10

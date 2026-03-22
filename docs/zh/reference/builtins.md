@@ -343,7 +343,7 @@ let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 
 ```python
 let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+let ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 ```
@@ -358,7 +358,7 @@ print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 
 ```python
 let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+let ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -375,7 +375,7 @@ let xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-let desc = xs.sort((a: int, b: int) -> a > b)
+let desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 

@@ -41,7 +41,7 @@ if a > 0:
 當條件為真時，重複執行區塊。
 
 ```python
-let i = 3
+var i = 3
 while i > 0:
     print(i)
     i = i - 1
@@ -125,7 +125,7 @@ for i in range(10):
 在 `while` 中也可同樣使用。
 
 ```python
-let n = 0
+var n = 0
 while true:
     n = n + 1
     if n % 2 == 0:
@@ -182,7 +182,7 @@ if true:
 可以從區塊內參照和重新賦值外部的變數。
 
 ```python
-let count = 0
+var count = 0
 for i in range(5):
     count = count + i
 print(count)   # 10

@@ -129,7 +129,7 @@ Shorthand notation for updating the value of a variable.
 | `%=` | Modulo assignment | `x = x % n` |
 
 ```python
-let x = 10
+var x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24

@@ -64,7 +64,7 @@ while 条件式:
 ### 例
 
 ```python
-let i = 0
+var i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +73,7 @@ while i < 5:
 ### break / continue との組み合わせ
 
 ```python
-let i = 0
+var i = 0
 while true:
     if i >= 3:
         break

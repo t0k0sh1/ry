@@ -64,7 +64,7 @@ Repeats the loop body while the condition is `true`.
 ### Example
 
 ```python
-let i = 0
+var i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +73,7 @@ while i < 5:
 ### Combining with break / continue
 
 ```python
-let i = 0
+var i = 0
 while true:
     if i >= 3:
         break
