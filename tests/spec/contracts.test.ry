@@ -5,15 +5,15 @@ fn deposit(amount: int, balance: int) -> int:
     return balance + amount
 
 fn abs_val(x: int) -> int:
-    ensure:
-        result >= 0
+    ensure v:
+        v >= 0
     if x < 0:
         return -x
     return x
 
 fn increment(x: int) -> int:
-    ensure:
-        result == old(x) + 1
+    ensure v:
+        v == x + 1
     return x + 1
 
 record BankAccount:
@@ -36,8 +36,8 @@ describe("ensure", fn():
 
     )
 )
-describe("old expression", fn():
-    it("captures value at entry", fn():
+describe("ensure with arg reference", fn():
+    it("captures value correctly", fn():
         expect(increment(10)).to_eq(11)
         expect(increment(0)).to_eq(1)
 
@@ -48,5 +48,11 @@ describe("struct invariant", fn():
         a = BankAccount(100, 0)
         expect(a.balance).to_eq(100)
         expect(a.min_balance).to_eq(0)
+    )
+)
+describe("result as identifier", fn():
+    it("can be used as a variable name", fn():
+        result: int = 42
+        expect(result).to_eq(42)
     )
 )

@@ -917,29 +917,6 @@ ExprPtr Parser::parsePrimary() {
         node->loc = locFromToken(t);
         return node;
     }
-    if (t.kind == TokenKind::Result) {
-        lex_.next(); // consume 'result'
-        auto node = std::make_unique<ExprNode>();
-        node->data = ResultExpr{};
-        node->loc = locFromToken(t);
-        return node;
-    }
-    if (t.kind == TokenKind::Old) {
-        lex_.next(); // consume 'old'
-        if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after 'old'");
-        lex_.next(); // consume '('
-        ExprPtr expr = parseTernary();
-        if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' after old expression");
-        lex_.next(); // consume ')'
-        auto oldExpr = std::make_unique<OldExpr>();
-        oldExpr->expr = std::move(expr);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(oldExpr);
-        node->loc = locFromToken(t);
-        return node;
-    }
     // none keyword → NoneExpr
     if (t.kind == TokenKind::NoneKw) {
         lex_.next();
@@ -1336,10 +1313,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         parseContractClause("require", fnStmt->preconditions);
     }
 
-    // Parse optional ensure clause
+    // Parse optional ensure clause with variable binding
     if (lex_.peek().kind == TokenKind::Ensure) {
         lex_.next(); // consume 'ensure'
-        parseContractClause("ensure", fnStmt->postconditions);
+        parseEnsureClause(*fnStmt);
     }
 
     // Parse body statements
@@ -1396,6 +1373,19 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
     if (lex_.peek().kind == TokenKind::Newline)
         lex_.next();
     skipNewlines();
+}
+
+void Parser::parseEnsureClause(FnStmt &fn) {
+    if (lex_.peek().kind != TokenKind::Ident)
+        parseError("expected variable name after 'ensure'");
+    fn.ensure_bindings.push_back(lex_.next().value);
+    while (lex_.peek().kind == TokenKind::Comma) {
+        lex_.next(); // consume ','
+        if (lex_.peek().kind != TokenKind::Ident)
+            parseError("expected variable name in ensure binding");
+        fn.ensure_bindings.push_back(lex_.next().value);
+    }
+    parseContractClause("ensure", fn.postconditions);
 }
 
 StmtNode Parser::parseRecordStatement() {

@@ -50,6 +50,7 @@ private:
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
+    void parseEnsureClause(FnStmt &fn);
 
     // Desugar helper: x = x op rhs
     AssignStmt makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs);

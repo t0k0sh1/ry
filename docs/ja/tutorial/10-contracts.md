@@ -31,30 +31,34 @@ Contract violation: require failed in deposit()
 
 ## 事後条件（`ensure`）
 
-`ensure` を使って、関数が値を返す際に真でなければならない条件を指定します。
-
-### `result` キーワード
-
-`ensure` ブロック内では、`result` で戻り値を参照できます。
+`ensure` を使って、関数が値を返す際に真でなければならない条件を指定します。戻り値はユーザーが選んだ変数名にバインドされます。
 
 ```python
 fn abs(x: int) -> int:
-    ensure:
-        result >= 0
+    ensure v:
+        v >= 0
     if x < 0:
         return -x
     return x
 ```
 
-### `old()` 式
-
-`old(expr)` は関数開始時の式の値をキャプチャします。状態の変化前後を比較するのに便利です。
+Ry の関数引数はイミュータブルなので、`ensure` ブロック内で引数を直接参照できます：
 
 ```python
 fn increment(x: int) -> int:
-    ensure:
-        result == old(x) + 1
+    ensure v:
+        v == x + 1
     return x + 1
+```
+
+タプルを返す関数では、カンマ区切りで複数の変数名を指定できます：
+
+```python
+fn divide(a: int, b: int) -> (int, int):
+    ensure q, r:
+        q >= 0
+        r >= 0
+    return (a // b, a % b)
 ```
 
 ---
@@ -68,9 +72,9 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    ensure:
-        result >= 0
-        result == old(balance) + amount
+    ensure v:
+        v >= 0
+        v == balance + amount
     new_balance: int = balance + amount
     return new_balance
 ```
@@ -100,7 +104,8 @@ a = BankAccount(100, 0)   # OK: 100 >= 0
 
 - `require` と `ensure` ブロックは任意で、関数本体の前に記述します。
 - 両方を使う場合、`require` を `ensure` の前に記述する必要があります。
-- `result` と `old()` は `ensure` ブロック内でのみ使用できます。
+- `ensure` には戻り値をバインドする変数名が必要です（例：`ensure v:`）。
+- タプル戻り値の場合、複数のバインド変数を指定できます（例：`ensure q, r:`）。
 - `invariant` は `record` 定義の末尾、全フィールド宣言の後に記述します。
 - すべての契約違反は `exit(1)` でプログラムを終了します。
 

@@ -707,16 +707,18 @@ TEST(LexerTest, KeywordInvariant) {
     EXPECT_EQ(toks[0].kind, TokenKind::Invariant);
 }
 
-TEST(LexerTest, KeywordOld) {
+TEST(LexerTest, OldIsIdentifier) {
     auto toks = tokenize("old");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Old);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "old");
 }
 
-TEST(LexerTest, KeywordResult) {
+TEST(LexerTest, ResultIsIdentifier) {
     auto toks = tokenize("result");
     ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Result);
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "result");
 }
 
 // ===== f-string tokens =====

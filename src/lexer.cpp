@@ -441,8 +441,6 @@ Token Lexer::readToken() {
         if (id == "require")   return {TokenKind::Require,   "require",   line_, startCol};
         if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_, startCol};
         if (id == "invariant") return {TokenKind::Invariant, "invariant", line_, startCol};
-        if (id == "old")       return {TokenKind::Old,       "old",       line_, startCol};
-        if (id == "result")    return {TokenKind::Result,    "result",    line_, startCol};
         if (id == "none")      return {TokenKind::NoneKw,    "none",      line_, startCol};
         if (id == "as")        return {TokenKind::As,        "as",        line_, startCol};
         if (id == "Error")     return {TokenKind::ErrorKw,   "Error",     line_, startCol};
