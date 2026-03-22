@@ -37,8 +37,10 @@ record Rectangle:
 按照欄位定義順序傳遞引數。不支援具名引數。
 
 ```python
-let p = Point(10, 20)
-let r = Rectangle(3.0, 4.5)
+@const
+p = Point(10, 20)
+@const
+r = Rectangle(3.0, 4.5)
 ```
 
 ---
@@ -48,7 +50,8 @@ let r = Rectangle(3.0, 4.5)
 使用點記法讀取欄位。
 
 ```python
-let p = Point(10, 20)
+@const
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -59,15 +62,16 @@ print(p.y)   # 20
 
 | 變數宣告 | 欄位賦值 |
 |---------|--------------|
-| `var`   | 可以         |
-| `let`   | 編譯錯誤 |
+| 可變（無 `@const`） | 可以         |
+| `@const`   | 編譯錯誤 |
 
 ```python
-var p = Point(10, 20)
-p.x = 100    # OK: var 變數
+p = Point(10, 20)
+p.x = 100    # OK: 可變變數
 
-let q = Point(10, 20)
-q.x = 100    # 錯誤: let 變數的欄位不可變更
+@const
+q = Point(10, 20)
+q.x = 100    # 錯誤: @const 變數的欄位不可變更
 ```
 
 ---
@@ -97,7 +101,8 @@ record Circle:
     center: Point
     radius: float
 
-let c = Circle(Point(0, 0), 1.0)
+@const
+c = Circle(Point(0, 0), 1.0)
 print(c.center.x)   # 0
 ```
 
@@ -108,7 +113,7 @@ print(c.center.x)   # 0
 | 限制 | 詳細 |
 |------|------|
 | 相同欄位名重複 | 編譯錯誤 |
-| `let` 變數的欄位賦值 | 編譯錯誤 |
+| `@const` 變數的欄位賦值 | 編譯錯誤 |
 | 直接將結構體傳給 `print` | 編譯錯誤（print 不支援） |
 
 ```python
@@ -118,7 +123,8 @@ record Bad:
     x: int   # 錯誤
 
 # 錯誤範例：將結構體傳給 print
-let p = Point(1, 2)
+@const
+p = Point(1, 2)
 print(p)   # 錯誤
 ```
 
@@ -153,7 +159,8 @@ enum Color:
 使用 `::` 運算子存取變體。
 
 ```python
-let c = Color::Red
+@const
+c = Color::Red
 print(c)   # Red
 ```
 
@@ -169,7 +176,8 @@ print(Color::Red != Color::Green)  # true
 ### 在 if 陳述式中使用
 
 ```python
-let c = Color::Green
+@const
+c = Color::Green
 if c == Color::Red:
     print("red")
 elif c == Color::Green:
@@ -195,7 +203,8 @@ print(is_red(Color::Green))  # false
 使用 `print()` 會輸出變體名稱。
 
 ```python
-let c = Color::Blue
+@const
+c = Color::Blue
 print(c)   # Blue
 ```
 

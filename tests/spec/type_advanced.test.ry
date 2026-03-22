@@ -1,22 +1,22 @@
 describe("f-string", fn():
     it("int interpolation", fn():
-        let x = 42
+        x = 42
         expect(f"value: {x}").to_eq("value: 42")
 
     )
     it("float interpolation", fn():
-        let x = 3.14
+        x = 3.14
         expect(f"pi: {x}").to_eq("pi: 3.14")
 
     )
     it("bool interpolation", fn():
-        let x = true
+        x = true
         expect(f"flag: {x}").to_eq("flag: true")
 
     )
     it("expression interpolation", fn():
-        let a = 1
-        let b = 2
+        a = 1
+        b = 2
         expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
 
     )
@@ -44,12 +44,12 @@ describe("type cast as", fn():
 
     )
     it("byte to int", fn():
-        let b: byte = 200
+        b: byte = 200
         expect(b as int).to_eq(200)
 
     )
     it("int to byte to int", fn():
-        let b = 255 as byte
+        b = 255 as byte
         expect(b as int).to_eq(255)
 
     )
@@ -57,20 +57,20 @@ describe("type cast as", fn():
 describe("type alias", fn():
     it("basic alias", fn():
         type Meters = float
-        let d: Meters = 3.14
+        d: Meters = 3.14
         expect(d).to_eq(3.14)
 
     )
 )
 describe("Error type", fn():
     it("constructor with message", fn():
-        let e = Error("something went wrong")
+        e = Error("something went wrong")
         expect(e.message).to_eq("something went wrong")
         expect(e.code).to_eq(0)
 
     )
     it("constructor with code", fn():
-        let e = Error("not found", 404)
+        e = Error("not found", 404)
         expect(e.message).to_eq("not found")
         expect(e.code).to_eq(404)
 
@@ -83,21 +83,21 @@ describe("!! error propagation", fn():
         return (a // b, none)
 
     fn use_divide() -> (int, Error?):
-        let v = safe_divide(10, 2)!!
+        v = safe_divide(10, 2)!!
         return (v, none)
 
     fn use_divide_err() -> (int, Error?):
-        let v = safe_divide(10, 0)!!
+        v = safe_divide(10, 0)!!
         return (v, none)
 
     it("propagates success", fn():
-        let val, err = use_divide()
+        val, err = use_divide()
         expect(val).to_eq(5)
         expect(err).to_be_none()
 
     )
     it("propagates error", fn():
-        let val, err = use_divide_err()
+        val, err = use_divide_err()
         expect(err).to_be_some()
 
     )

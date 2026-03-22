@@ -7,35 +7,35 @@
 
 TEST_F(CodeGenTest, TernaryBasicTrue) {
     std::string src =
-        "let x = true ? 1 : 2\n"
+        "x = true ? 1 : 2\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, TernaryBasicFalse) {
     std::string src =
-        "let x = false ? 1 : 2\n"
+        "x = false ? 1 : 2\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, TernaryWithComparison) {
     std::string src =
-        "let x = 3 > 2 ? 10 : 20\n"
+        "x = 3 > 2 ? 10 : 20\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, TernaryString) {
     std::string src =
-        "let s = true ? \"yes\" : \"no\"\n"
+        "s = true ? \"yes\" : \"no\"\n"
         "print(s)";
     EXPECT_EQ(runSource(src), "yes\n");
 }
 
 TEST_F(CodeGenTest, TernaryNested) {
     std::string src =
-        "let x = true ? (false ? 1 : 2) : 3\n"
+        "x = true ? (false ? 1 : 2) : 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "2\n");
 }
@@ -48,21 +48,21 @@ TEST_F(CodeGenTest, TernaryInCall) {
 
 TEST_F(CodeGenTest, TernaryTypeMismatchStrList) {
     std::string src =
-        "let x = true ? \"hello\" : [1, 2, 3]\n"
+        "x = true ? \"hello\" : [1, 2, 3]\n"
         "print(x)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TernaryTypeMismatchListMap) {
     std::string src =
-        "let x = true ? [1, 2] : {\"a\": 1}\n"
+        "x = true ? [1, 2] : {\"a\": 1}\n"
         "print(x)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TernaryListSameType) {
     std::string src =
-        "let x = true ? [1, 2] : [3, 4]\n"
+        "x = true ? [1, 2] : [3, 4]\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "[1, 2]\n");
 }
@@ -87,7 +87,7 @@ TEST_F(CodeGenTest, IfElseFalseBranch) {
 
 TEST_F(CodeGenTest, IfElifElseChain) {
     std::string src =
-        "let x = 2\n"
+        "x = 2\n"
         "if x == 1:\n"
         "    print(10)\n"
         "elif x == 2:\n"
@@ -99,7 +99,7 @@ TEST_F(CodeGenTest, IfElifElseChain) {
 
 TEST_F(CodeGenTest, IfElifElseChainElse) {
     std::string src =
-        "let x = 99\n"
+        "x = 99\n"
         "if x == 1:\n"
         "    print(10)\n"
         "elif x == 2:\n"
@@ -111,7 +111,7 @@ TEST_F(CodeGenTest, IfElifElseChainElse) {
 
 TEST_F(CodeGenTest, IfVariableReassignment) {
     std::string src =
-        "var x = 0\n"
+        "x = 0\n"
         "if true:\n"
         "    x = 42\n"
         "print(x)";
@@ -155,7 +155,7 @@ TEST_F(CodeGenTest, WhileFalseDoesNotExecute) {
 
 TEST_F(CodeGenTest, WhileCountdown) {
     std::string src =
-        "var i = 3\n"
+        "i = 3\n"
         "while i > 0:\n"
         "    print(i)\n"
         "    i = i - 1";
@@ -164,7 +164,7 @@ TEST_F(CodeGenTest, WhileCountdown) {
 
 TEST_F(CodeGenTest, WhileFollowedByStatement) {
     std::string src =
-        "var i = 0\n"
+        "i = 0\n"
         "while i < 2:\n"
         "    i = i + 1\n"
         "print(i)";
@@ -177,9 +177,9 @@ TEST_F(CodeGenTest, WhileZeroCondition) {
 
 TEST_F(CodeGenTest, WhileNestedWhile) {
     std::string src =
-        "var i = 0\n"
+        "i = 0\n"
         "while i < 2:\n"
-        "    var j = 0\n"
+        "    j = 0\n"
         "    while j < 2:\n"
         "        print(i + j)\n"
         "        j = j + 1\n"
@@ -189,7 +189,7 @@ TEST_F(CodeGenTest, WhileNestedWhile) {
 
 TEST_F(CodeGenTest, WhileWithIf) {
     std::string src =
-        "var i = 1\n"
+        "i = 1\n"
         "while i <= 4:\n"
         "    if i % 2 == 0:\n"
         "        print(i)\n"
@@ -203,7 +203,7 @@ TEST_F(CodeGenTest, FnBasicAddCall) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let res = add(1, 2)\n"
+        "res = add(1, 2)\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "3\n");
 }
@@ -220,7 +220,7 @@ TEST_F(CodeGenTest, FnFloatReturn) {
     std::string src =
         "fn half(x: float) -> float:\n"
         "    return x / 2.0\n"
-        "let r = half(7.0)\n"
+        "r = half(7.0)\n"
         "print(r)";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
@@ -264,14 +264,14 @@ TEST_F(CodeGenTest, FnRecursiveFactorial) {
 }
 
 TEST_F(CodeGenTest, FnUndefinedCallThrows) {
-    EXPECT_THROW(runSource("let x = unknown(1)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = unknown(1)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, FnArgCountMismatchThrows) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let x = add(1)";
+        "x = add(1)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -279,7 +279,7 @@ TEST_F(CodeGenTest, FnArgTypeMismatchThrows) {
     std::string src =
         "fn inc(a: int) -> int:\n"
         "    return a + 1\n"
-        "let x = inc(1.5)";
+        "x = inc(1.5)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -295,16 +295,18 @@ TEST_F(CodeGenTest, FnReturnTypeMismatchThrows) {
 TEST_F(CodeGenTest, BlockScopeIfVarNotVisible) {
     std::string src =
         "if true:\n"
-        "    let x = 42\n"
+        "    x = 42\n"
         "print(x)";
+    // With Python-style, x created in inner scope; outer print(x) sees it
+    // because findVar doesn't find x → new variable at outer scope
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, BlockScopeWhileVarNotVisible) {
     std::string src =
-        "var i = 1\n"
+        "i = 1\n"
         "while i > 0:\n"
-        "    let x = 99\n"
+        "    x = 99\n"
         "    i = 0\n"
         "print(x)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -313,44 +315,46 @@ TEST_F(CodeGenTest, BlockScopeWhileVarNotVisible) {
 TEST_F(CodeGenTest, BlockScopeElseVarNotVisible) {
     std::string src =
         "if false:\n"
-        "    let a = 1\n"
+        "    a = 1\n"
         "else:\n"
-        "    let b = 2\n"
+        "    b = 2\n"
         "print(b)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, BlockScopeInnerAccessesOuter) {
     std::string src =
-        "var x = 1\n"
+        "x = 1\n"
         "if true:\n"
         "    x = 42\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
-TEST_F(CodeGenTest, BlockScopeShadowing) {
+TEST_F(CodeGenTest, BlockScopeReassignment) {
+    // With Python-style variables, inner assignment modifies outer variable
     std::string src =
-        "let x = 1\n"
+        "x = 1\n"
         "if true:\n"
-        "    let x = 99\n"
+        "    x = 99\n"
         "    print(x)\n"
         "print(x)";
-    EXPECT_EQ(runSource(src), "99\n1\n");
+    EXPECT_EQ(runSource(src), "99\n99\n");
 }
 
-TEST_F(CodeGenTest, BlockScopeLetNotLeaks) {
+TEST_F(CodeGenTest, BlockScopeNewVariable) {
+    // Variable created in inner scope, then created again in outer scope
     std::string src =
         "if true:\n"
-        "    let c = 10\n"
-        "let c = 20\n"
+        "    c = 10\n"
+        "c = 20\n"
         "print(c)";
     EXPECT_EQ(runSource(src), "20\n");
 }
 
 TEST_F(CodeGenTest, MultipleElif) {
     std::string src =
-        "let x = 3\n"
+        "x = 3\n"
         "if x == 1:\n"
         "    print(10)\n"
         "elif x == 2:\n"
@@ -371,7 +375,7 @@ TEST_F(CodeGenTest, StructBasicFieldAccess) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(10, 20)\n"
+        "p = Point(10, 20)\n"
         "print(p.x)\n"
         "print(p.y)";
     EXPECT_EQ(runSource(src), "10\n20\n");
@@ -382,7 +386,7 @@ TEST_F(CodeGenTest, StructFloatFields) {
         "record Vec2:\n"
         "    x: float\n"
         "    y: float\n"
-        "let v = Vec2(1.5, 2.5)\n"
+        "v = Vec2(1.5, 2.5)\n"
         "print(v.x)\n"
         "print(v.y)";
     EXPECT_EQ(runSource(src), "1.5\n2.5\n");
@@ -395,7 +399,7 @@ TEST_F(CodeGenTest, StructInFnArg) {
         "    y: int\n"
         "fn get_x(p: Point) -> int:\n"
         "    return p.x\n"
-        "let p = Point(42, 99)\n"
+        "p = Point(42, 99)\n"
         "print(get_x(p))";
     EXPECT_EQ(runSource(src), "42\n");
 }
@@ -407,7 +411,7 @@ TEST_F(CodeGenTest, StructAsReturnValue) {
         "    y: int\n"
         "fn make_point(a: int, b: int) -> Point:\n"
         "    return Point(a, b)\n"
-        "let p = make_point(7, 8)\n"
+        "p = make_point(7, 8)\n"
         "print(p.x)\n"
         "print(p.y)";
     EXPECT_EQ(runSource(src), "7\n8\n");
@@ -420,8 +424,8 @@ TEST_F(CodeGenTest, StructNested) {
         "record Outer:\n"
         "    inner: Inner\n"
         "    extra: int\n"
-        "let i = Inner(42)\n"
-        "let o = Outer(i, 99)\n"
+        "i = Inner(42)\n"
+        "o = Outer(i, 99)\n"
         "print(o.inner.val)\n"
         "print(o.extra)";
     EXPECT_EQ(runSource(src), "42\n99\n");
@@ -432,7 +436,7 @@ TEST_F(CodeGenTest, StructConstructorArgCountMismatchThrows) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1)";
+        "p = Point(1)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -441,7 +445,7 @@ TEST_F(CodeGenTest, StructConstructorArgTypeMismatchThrows) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1.5, 2)";
+        "p = Point(1.5, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -450,14 +454,14 @@ TEST_F(CodeGenTest, StructUnknownFieldThrows) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1, 2)\n"
+        "p = Point(1, 2)\n"
         "print(p.z)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, FieldAccessOnNonStructThrows) {
     std::string src =
-        "let x = 42\n"
+        "x = 42\n"
         "print(x.field)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -467,13 +471,13 @@ TEST_F(CodeGenTest, PrintStructThrows) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1, 2)\n"
+        "p = Point(1, 2)\n"
         "print(p)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
-    EXPECT_THROW(runSource("let x: foo = 42"), std::runtime_error);
+    EXPECT_THROW(runSource("x: foo = 42"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, StructFieldArithmetic) {
@@ -481,9 +485,9 @@ TEST_F(CodeGenTest, StructFieldArithmetic) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let a = Point(10, 20)\n"
-        "let b = Point(3, 7)\n"
-        "let dx = a.x - b.x\n"
+        "a = Point(10, 20)\n"
+        "b = Point(3, 7)\n"
+        "dx = a.x - b.x\n"
         "print(dx)";
     EXPECT_EQ(runSource(src), "7\n");
 }
@@ -538,75 +542,75 @@ TEST_F(CodeGenTest, UnitFnReturnValueThrows) {
 
 TEST_F(CodeGenTest, OptionIntSomePrint) {
     std::string src =
-        "let x: Option<int> = Some(42)\n"
+        "x: Option<int> = Some(42)\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(42)\n");
 }
 
 TEST_F(CodeGenTest, OptionIntNonePrint) {
     std::string src =
-        "let x: Option<int> = None\n"
+        "x: Option<int> = None\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
 }
 
 TEST_F(CodeGenTest, OptionFloatSomePrint) {
     std::string src =
-        "let x: Option<float> = Some(3.14)\n"
+        "x: Option<float> = Some(3.14)\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(3.14)\n");
 }
 
 TEST_F(CodeGenTest, OptionFloatNonePrint) {
     std::string src =
-        "let x: Option<float> = None\n"
+        "x: Option<float> = None\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
 }
 
 TEST_F(CodeGenTest, OptionBoolSomePrint) {
     std::string src =
-        "let x: Option<bool> = Some(true)\n"
+        "x: Option<bool> = Some(true)\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(true)\n");
 }
 
 TEST_F(CodeGenTest, OptionStrSomePrint) {
     std::string src =
-        "let x: Option<str> = Some(\"hello\")\n"
+        "x: Option<str> = Some(\"hello\")\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(hello)\n");
 }
 
 TEST_F(CodeGenTest, UnwrapRemoved) {
     std::string src =
-        "let x: Option<int> = Some(42)\n"
-        "let v = unwrap(x)\n"
+        "x: Option<int> = Some(42)\n"
+        "v = unwrap(x)\n"
         "print(v)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, UnwrapRemovedUFCS) {
     std::string src =
-        "let x: Option<int> = Some(42)\n"
-        "let v = x.unwrap()\n"
+        "x: Option<int> = Some(42)\n"
+        "v = x.unwrap()\n"
         "print(v)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, NoneKeywordWithoutAnnotationThrows) {
-    std::string src = "let x = none";
+    std::string src = "x = none";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, NoneKeywordWithNonOptionAnnotationThrows) {
-    std::string src = "let x: int = none";
+    std::string src = "x: int = none";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, NoneKeywordWithOptionAnnotation) {
     std::string src =
-        "let x: Option<int> = none\n"
+        "x: Option<int> = none\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
 }
@@ -615,7 +619,7 @@ TEST_F(CodeGenTest, OptionFnParamAndReturn) {
     std::string src =
         "fn maybe_double(x: Option<int>) -> Option<int>:\n"
         "    return x\n"
-        "let a = maybe_double(Some(21))\n"
+        "a = maybe_double(Some(21))\n"
         "print(a)";
     EXPECT_EQ(runSource(src), "Some(21)\n");
 }
@@ -624,23 +628,23 @@ TEST_F(CodeGenTest, OptionFnNoneArg) {
     std::string src =
         "fn f(x: Option<int>) -> int:\n"
         "    return 0\n"
-        "let r = f(None)\n"
+        "r = f(None)\n"
         "print(r)";
     EXPECT_EQ(runSource(src), "0\n");
 }
 
 TEST_F(CodeGenTest, OptionTypeMismatchThrows) {
-    std::string src = "let x: Option<int> = Some(3.14)";
+    std::string src = "x: Option<int> = Some(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, NoneWithoutAnnotationThrows) {
-    EXPECT_THROW(runSource("let x = None"), std::runtime_error);
+    EXPECT_THROW(runSource("x = None"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, OptionReassignSomeToNone) {
     std::string src =
-        "var x: Option<int> = Some(42)\n"
+        "x: Option<int> = Some(42)\n"
         "x = None\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
@@ -648,7 +652,7 @@ TEST_F(CodeGenTest, OptionReassignSomeToNone) {
 
 TEST_F(CodeGenTest, OptionReassignNoneToSome) {
     std::string src =
-        "var x: Option<int> = None\n"
+        "x: Option<int> = None\n"
         "x = Some(99)\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(99)\n");
@@ -658,7 +662,7 @@ TEST_F(CodeGenTest, OptionReassignNoneToSome) {
 
 TEST_F(CodeGenTest, TupleCreateAndAccess) {
     std::string src =
-        "let t = (10, 20)\n"
+        "t = (10, 20)\n"
         "print(t.0)\n"
         "print(t.1)";
     EXPECT_EQ(runSource(src), "10\n20\n");
@@ -666,7 +670,7 @@ TEST_F(CodeGenTest, TupleCreateAndAccess) {
 
 TEST_F(CodeGenTest, TupleMixedTypes) {
     std::string src =
-        "let t = (42, 3.14)\n"
+        "t = (42, 3.14)\n"
         "print(t.0)\n"
         "print(t.1)";
     EXPECT_EQ(runSource(src), "42\n3.14\n");
@@ -674,7 +678,7 @@ TEST_F(CodeGenTest, TupleMixedTypes) {
 
 TEST_F(CodeGenTest, TupleWithTypeAnnotation) {
     std::string src =
-        "let t: (int, float) = (42, 3.14)\n"
+        "t: (int, float) = (42, 3.14)\n"
         "print(t.0)\n"
         "print(t.1)";
     EXPECT_EQ(runSource(src), "42\n3.14\n");
@@ -682,7 +686,7 @@ TEST_F(CodeGenTest, TupleWithTypeAnnotation) {
 
 TEST_F(CodeGenTest, TupleThreeElements) {
     std::string src =
-        "let t = (1, 2, 3)\n"
+        "t = (1, 2, 3)\n"
         "print(t.0)\n"
         "print(t.1)\n"
         "print(t.2)";
@@ -693,7 +697,7 @@ TEST_F(CodeGenTest, TupleFnReturn) {
     std::string src =
         "fn swap(a: int, b: int) -> (int, int):\n"
         "    return (b, a)\n"
-        "let res = swap(1, 2)\n"
+        "res = swap(1, 2)\n"
         "print(res.0)\n"
         "print(res.1)";
     EXPECT_EQ(runSource(src), "2\n1\n");
@@ -703,7 +707,7 @@ TEST_F(CodeGenTest, TupleFnReturnAccessDirect) {
     std::string src =
         "fn make_pair(a: int, b: float) -> (int, float):\n"
         "    return (a, b)\n"
-        "let p = make_pair(42, 3.14)\n"
+        "p = make_pair(42, 3.14)\n"
         "print(p.0)\n"
         "print(p.1)";
     EXPECT_EQ(runSource(src), "42\n3.14\n");
@@ -711,21 +715,21 @@ TEST_F(CodeGenTest, TupleFnReturnAccessDirect) {
 
 TEST_F(CodeGenTest, TupleIndexOutOfRangeThrows) {
     std::string src =
-        "let t = (1, 2)\n"
+        "t = (1, 2)\n"
         "print(t.2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TupleTypeAnnotationMismatchThrows) {
-    std::string src = "let t: (int, int) = (1, 3.14)";
+    std::string src = "t: (int, int) = (1, 3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TupleLetAssign) {
     std::string src =
-        "let a = (1, 2)\n"
-        "let x = a.0\n"
-        "let y = a.1\n"
+        "a = (1, 2)\n"
+        "x = a.0\n"
+        "y = a.1\n"
         "print(x)\n"
         "print(y)";
     EXPECT_EQ(runSource(src), "1\n2\n");
@@ -735,7 +739,7 @@ TEST_F(CodeGenTest, TupleLetAssign) {
 
 TEST_F(CodeGenTest, TupleDestructBasic) {
     std::string src =
-        "let a, b = (10, 20)\n"
+        "a, b = (10, 20)\n"
         "print(a)\n"
         "print(b)";
     EXPECT_EQ(runSource(src), "10\n20\n");
@@ -743,14 +747,14 @@ TEST_F(CodeGenTest, TupleDestructBasic) {
 
 TEST_F(CodeGenTest, TupleDestructWildcard) {
     std::string src =
-        "let a, _ = (10, 20)\n"
+        "a, _ = (10, 20)\n"
         "print(a)";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, TupleDestructTriple) {
     std::string src =
-        "let a, b, c = (1, 2, 3)\n"
+        "a, b, c = (1, 2, 3)\n"
         "print(a)\n"
         "print(b)\n"
         "print(c)";
@@ -761,7 +765,7 @@ TEST_F(CodeGenTest, TupleDestructFromFn) {
     std::string src =
         "fn f() -> (int, int):\n"
         "    return (3, 4)\n"
-        "let a, b = f()\n"
+        "a, b = f()\n"
         "print(a)\n"
         "print(b)";
     EXPECT_EQ(runSource(src), "3\n4\n");
@@ -769,7 +773,7 @@ TEST_F(CodeGenTest, TupleDestructFromFn) {
 
 TEST_F(CodeGenTest, VarTupleDestruct) {
     std::string src =
-        "var a, b = (10, 20)\n"
+        "a, b = (10, 20)\n"
         "a = 100\n"
         "print(a)\n"
         "print(b)";
@@ -778,7 +782,7 @@ TEST_F(CodeGenTest, VarTupleDestruct) {
 
 TEST_F(CodeGenTest, TupleDestructMixedTypes) {
     std::string src =
-        "let x, y = (42, 3.14)\n"
+        "x, y = (42, 3.14)\n"
         "print(x)\n"
         "print(y)";
     EXPECT_EQ(runSource(src), "42\n3.14\n");
@@ -1012,7 +1016,7 @@ TEST_F(CodeGenTest, RecordKeyword) {
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = Point(1, 2)\n"
+        "p = Point(1, 2)\n"
         "print(p.x)\n"
         "print(p.y)";
     EXPECT_EQ(runSource(src), "1\n2\n");
@@ -1033,8 +1037,8 @@ TEST_F(CodeGenTest, TypeAlias) {
 
 TEST_F(CodeGenTest, ForKVInMap) {
     std::string src =
-        "var m = {\"a\": 1, \"b\": 2}\n"
-        "var total = 0\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
+        "total = 0\n"
         "for k, v in m:\n"
         "    total = total + v\n"
         "print(total)";
@@ -1045,14 +1049,14 @@ TEST_F(CodeGenTest, ForKVInMap) {
 
 TEST_F(CodeGenTest, RangeExpr) {
     std::string src =
-        "let xs = 1 .. 5\n"
+        "xs = 1 .. 5\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
 TEST_F(CodeGenTest, RangeExprIterate) {
     std::string src =
-        "var total = 0\n"
+        "total = 0\n"
         "for x in 1 .. 3:\n"
         "    total = total + x\n"
         "print(total)";
@@ -1063,15 +1067,15 @@ TEST_F(CodeGenTest, SpawnJoinNamedFunction) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let t: Task<int> = spawn add(20, 22)\n"
+        "t: Task<int> = spawn add(20, 22)\n"
         "print(join(t))";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, SpawnJoinLambdaVariable) {
     std::string src =
-        "let add = fn(a: int, b: int) -> int: a + b\n"
-        "let t: Task<int> = spawn add(7, 8)\n"
+        "add = fn(a: int, b: int) -> int: a + b\n"
+        "t: Task<int> = spawn add(7, 8)\n"
         "print(join(t))";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -1081,9 +1085,9 @@ TEST_F(CodeGenTest, SpawnJoinNestedTask) {
         "fn inner(x: int) -> int:\n"
         "    return x + 1\n"
         "fn outer(x: int) -> int:\n"
-        "    let t: Task<int> = spawn inner(x)\n"
+        "    t: Task<int> = spawn inner(x)\n"
         "    return join(t) * 2\n"
-        "let t: Task<int> = spawn outer(20)\n"
+        "t: Task<int> = spawn outer(20)\n"
         "print(join(t))";
     EXPECT_EQ(runSource(src), "42\n");
 }
@@ -1100,7 +1104,7 @@ TEST_F(CodeGenTest, AsyncAwaitTaskVariable) {
     std::string src =
         "async fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let t: Task<int> = add(7, 8)\n"
+        "t: Task<int> = add(7, 8)\n"
         "print(await t)";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -1117,7 +1121,7 @@ TEST_F(CodeGenTest, AsyncAwaitChain) {
 
 TEST_F(CodeGenTest, AwaitRequiresTask) {
     std::string src =
-        "let x = await 123\n"
+        "x = await 123\n"
         "print(x)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -1163,8 +1167,8 @@ TEST_F(CodeGenTest, ChannelSendRecvUnbuffered) {
         "fn produce(ch: Channel<int>) -> int:\n"
         "    send(ch, 42)\n"
         "    return 0\n"
-        "let ch: Channel<int> = channel[int]()\n"
-        "let t: Task<int> = spawn produce(ch)\n"
+        "ch: Channel<int> = channel[int]()\n"
+        "t: Task<int> = spawn produce(ch)\n"
         "print(recv(ch))\n"
         "print(join(t))";
     EXPECT_EQ(runSource(src), "42\n0\n");
@@ -1172,7 +1176,7 @@ TEST_F(CodeGenTest, ChannelSendRecvUnbuffered) {
 
 TEST_F(CodeGenTest, ChannelSendRecvBufferedFifo) {
     std::string src =
-        "let ch: Channel<int> = channel[int](2)\n"
+        "ch: Channel<int> = channel[int](2)\n"
         "send(ch, 1)\n"
         "send(ch, 2)\n"
         "print(recv(ch))\n"
@@ -1184,8 +1188,8 @@ TEST_F(CodeGenTest, ChannelWorksAcrossAsyncTasks) {
     std::string src =
         "async fn produce(ch: Channel<int>) -> Unit:\n"
         "    send(ch, 7)\n"
-        "let ch: Channel<int> = channel[int]()\n"
-        "let t: Task<Unit> = produce(ch)\n"
+        "ch: Channel<int> = channel[int]()\n"
+        "t: Task<Unit> = produce(ch)\n"
         "print(recv(ch))\n"
         "await t";
     EXPECT_EQ(runSource(src), "7\n");
@@ -1193,7 +1197,7 @@ TEST_F(CodeGenTest, ChannelWorksAcrossAsyncTasks) {
 
 TEST_F(CodeGenTest, ChannelSendRejectsWrongType) {
     std::string src =
-        "let ch: Channel<int> = channel[int]()\n"
+        "ch: Channel<int> = channel[int]()\n"
         "send(ch, \"x\")";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -1204,7 +1208,7 @@ TEST_F(CodeGenTest, ChannelRecvRequiresChannel) {
 
 TEST_F(CodeGenTest, ChannelCloseThenSendFails) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "send(ch, 1)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -1212,7 +1216,7 @@ TEST_F(CodeGenTest, ChannelCloseThenSendFails) {
 
 TEST_F(CodeGenTest, ChannelCloseThenEmptyRecvFails) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "recv(ch)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -1220,7 +1224,7 @@ TEST_F(CodeGenTest, ChannelCloseThenEmptyRecvFails) {
 
 TEST_F(CodeGenTest, SelectRecvReadyCase) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "send(ch, 42)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
@@ -1232,7 +1236,7 @@ TEST_F(CodeGenTest, SelectRecvReadyCase) {
 
 TEST_F(CodeGenTest, SelectSendReadyCase) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case send(ch, 42):\n"
         "        print(recv(ch))\n"
@@ -1243,7 +1247,7 @@ TEST_F(CodeGenTest, SelectSendReadyCase) {
 
 TEST_F(CodeGenTest, SelectElseDefaultCase) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
         "        print(x)\n"
@@ -1254,7 +1258,7 @@ TEST_F(CodeGenTest, SelectElseDefaultCase) {
 
 TEST_F(CodeGenTest, SelectClosedRecvFails) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
@@ -1266,7 +1270,7 @@ TEST_F(CodeGenTest, SelectClosedRecvFails) {
 
 TEST_F(CodeGenTest, RecvOptReturnsSomeThenNoneForClosedBufferedChannel) {
     std::string src =
-        "let ch: Channel<int> = channel[int](2)\n"
+        "ch: Channel<int> = channel[int](2)\n"
         "send(ch, 7)\n"
         "close(ch)\n"
         "print(recv_opt(ch))\n"
@@ -1276,7 +1280,7 @@ TEST_F(CodeGenTest, RecvOptReturnsSomeThenNoneForClosedBufferedChannel) {
 
 TEST_F(CodeGenTest, RecvOptReturnsBoolForUnitChannel) {
     std::string src =
-        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "ch: Channel<Unit> = channel[Unit]()\n"
         "close(ch)\n"
         "print(recv_opt(ch))";
     EXPECT_EQ(runSource(src), "false\n");
@@ -1288,7 +1292,7 @@ TEST_F(CodeGenTest, RecvOptRejectsNonChannel) {
 
 TEST_F(CodeGenTest, TryRecvReturnsSomeThenNoneForBufferedChannel) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "send(ch, 9)\n"
         "print(try_recv(ch))\n"
         "print(try_recv(ch))";
@@ -1297,14 +1301,14 @@ TEST_F(CodeGenTest, TryRecvReturnsSomeThenNoneForBufferedChannel) {
 
 TEST_F(CodeGenTest, TryRecvReturnsFalseForDrainedUnitChannel) {
     std::string src =
-        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "ch: Channel<Unit> = channel[Unit]()\n"
         "print(try_recv(ch))";
     EXPECT_EQ(runSource(src), "false\n");
 }
 
 TEST_F(CodeGenTest, TrySendReturnsFalseForClosedChannel) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "print(try_send(ch, 1))";
     EXPECT_EQ(runSource(src), "false\n");
@@ -1314,9 +1318,9 @@ TEST_F(CodeGenTest, TrySendEventuallySucceedsForUnbufferedReceiver) {
     std::string src =
         "fn consume(ch: Channel<int>) -> int:\n"
         "    return recv(ch)\n"
-        "let ch: Channel<int> = channel[int]()\n"
-        "let t: Task<int> = spawn consume(ch)\n"
-        "var sent = false\n"
+        "ch: Channel<int> = channel[int]()\n"
+        "t: Task<int> = spawn consume(ch)\n"
+        "sent = false\n"
         "while not sent:\n"
         "    sent = try_send(ch, 13)\n"
         "print(sent)\n"
@@ -1326,7 +1330,7 @@ TEST_F(CodeGenTest, TrySendEventuallySucceedsForUnbufferedReceiver) {
 
 TEST_F(CodeGenTest, ForLoopIteratesClosedBufferedChannel) {
     std::string src =
-        "let ch: Channel<int> = channel[int](2)\n"
+        "ch: Channel<int> = channel[int](2)\n"
         "send(ch, 1)\n"
         "send(ch, 2)\n"
         "close(ch)\n"
@@ -1342,8 +1346,8 @@ TEST_F(CodeGenTest, ForLoopIteratesUnbufferedChannelFromSpawnedProducer) {
         "    send(ch, 4)\n"
         "    close(ch)\n"
         "    return 0\n"
-        "let ch: Channel<int> = channel[int]()\n"
-        "let t: Task<int> = spawn produce(ch)\n"
+        "ch: Channel<int> = channel[int]()\n"
+        "t: Task<int> = spawn produce(ch)\n"
         "for x in ch:\n"
         "    print(x)\n"
         "print(join(t))";
@@ -1352,7 +1356,7 @@ TEST_F(CodeGenTest, ForLoopIteratesUnbufferedChannelFromSpawnedProducer) {
 
 TEST_F(CodeGenTest, ForLoopSupportsBreakAndContinueOnChannels) {
     std::string src =
-        "let ch: Channel<int> = channel[int](3)\n"
+        "ch: Channel<int> = channel[int](3)\n"
         "send(ch, 1)\n"
         "send(ch, 2)\n"
         "send(ch, 3)\n"
@@ -1368,7 +1372,7 @@ TEST_F(CodeGenTest, ForLoopSupportsBreakAndContinueOnChannels) {
 
 TEST_F(CodeGenTest, ForLoopOverClosedDrainedChannelDoesNothing) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "for x in ch:\n"
         "    print(x)\n"
@@ -1378,7 +1382,7 @@ TEST_F(CodeGenTest, ForLoopOverClosedDrainedChannelDoesNothing) {
 
 TEST_F(CodeGenTest, ForLoopOverUnitChannelRequiresDiscardBinding) {
     std::string src =
-        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "ch: Channel<Unit> = channel[Unit]()\n"
         "close(ch)\n"
         "for x in ch:\n"
         "    print(1)";
@@ -1395,7 +1399,7 @@ TEST_F(CodeGenTest, TrySendRejectsNonChannel) {
 
 TEST_F(CodeGenTest, SelectRecvOptClosedBufferedChannelReturnsNone) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "close(ch)\n"
         "select:\n"
         "    case let x = recv_opt(ch):\n"
@@ -1407,7 +1411,7 @@ TEST_F(CodeGenTest, SelectRecvOptClosedBufferedChannelReturnsNone) {
 
 TEST_F(CodeGenTest, SelectRecvOptUnitChannelBindsBool) {
     std::string src =
-        "let ch: Channel<Unit> = channel[Unit]()\n"
+        "ch: Channel<Unit> = channel[Unit]()\n"
         "close(ch)\n"
         "select:\n"
         "    case let ok = recv_opt(ch):\n"
@@ -1419,7 +1423,7 @@ TEST_F(CodeGenTest, SelectRecvOptUnitChannelBindsBool) {
 
 TEST_F(CodeGenTest, SelectSendRejectsWrongType) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case send(ch, \"x\"):\n"
         "        print(1)\n"
@@ -1430,7 +1434,7 @@ TEST_F(CodeGenTest, SelectSendRejectsWrongType) {
 
 TEST_F(CodeGenTest, SelectTimeoutZeroActsAsDefault) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
         "        print(x)\n"
@@ -1441,7 +1445,7 @@ TEST_F(CodeGenTest, SelectTimeoutZeroActsAsDefault) {
 
 TEST_F(CodeGenTest, SelectReadyCaseWinsOverTimeout) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "send(ch, 7)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
@@ -1453,7 +1457,7 @@ TEST_F(CodeGenTest, SelectReadyCaseWinsOverTimeout) {
 
 TEST_F(CodeGenTest, SelectRejectsNonIntTimeout) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
         "        print(x)\n"
@@ -1464,7 +1468,7 @@ TEST_F(CodeGenTest, SelectRejectsNonIntTimeout) {
 
 TEST_F(CodeGenTest, SelectRejectsNegativeTimeoutAtRuntime) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "select:\n"
         "    case let x = recv(ch):\n"
         "        print(x)\n"
@@ -1485,7 +1489,7 @@ TEST_F(CodeGenTest, ParallelForRangeComputesSum) {
 
 TEST_F(CodeGenTest, ParallelForRejectsOuterMutation) {
     std::string src =
-        "var total = 0\n"
+        "total = 0\n"
         "@parallel\n"
         "for i in range(4):\n"
         "    total = total + i\n"
@@ -1496,7 +1500,7 @@ TEST_F(CodeGenTest, ParallelForRejectsOuterMutation) {
 TEST_F(CodeGenTest, ParallelForPropagatesWorkerException) {
     std::string src =
         "fn fail(x: int) -> int:\n"
-        "    let ch: Channel<int> = channel[int](1)\n"
+        "    ch: Channel<int> = channel[int](1)\n"
         "    close(ch)\n"
         "    send(ch, x)\n"
         "    return 0\n"
@@ -1508,7 +1512,7 @@ TEST_F(CodeGenTest, ParallelForPropagatesWorkerException) {
 
 TEST_F(CodeGenTest, ParallelForRejectsChannelIteration) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "@parallel\n"
         "for x in ch:\n"
         "    print(x)";
@@ -1519,7 +1523,7 @@ TEST_F(CodeGenTest, SpawnUnitReturningCallRejected) {
     std::string src =
         "fn log_value(x: int):\n"
         "    print(x)\n"
-        "let t = spawn log_value(1)";
+        "t = spawn log_value(1)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -1527,9 +1531,9 @@ TEST_F(CodeGenTest, DoubleJoinThrowsRuntimeError) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let t: Task<int> = spawn add(1, 2)\n"
-        "let r1 = join(t)\n"
-        "let r2 = join(t)";
+        "t: Task<int> = spawn add(1, 2)\n"
+        "r1 = join(t)\n"
+        "r2 = join(t)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
@@ -1537,14 +1541,14 @@ TEST_F(CodeGenTest, SpawnWithoutJoinDoesNotCrash) {
     std::string src =
         "fn work(x: int) -> int:\n"
         "    return x * 2\n"
-        "let t: Task<int> = spawn work(5)\n"
+        "t: Task<int> = spawn work(5)\n"
         "print(\"ok\")";
     EXPECT_EQ(runSource(src), "ok\n");
 }
 
 TEST_F(CodeGenTest, ChannelWithoutCloseDoesNotCrash) {
     std::string src =
-        "let ch: Channel<int> = channel[int](1)\n"
+        "ch: Channel<int> = channel[int](1)\n"
         "send(ch, 42)\n"
         "print(recv(ch))";
     EXPECT_EQ(runSource(src), "42\n");
@@ -1555,11 +1559,11 @@ TEST_F(CodeGenTest, ParallelForCapturesChannel) {
         "fn producer(ch: Channel<int>, val: int) -> int:\n"
         "    send(ch, val)\n"
         "    return 0\n"
-        "let ch: Channel<int> = channel[int](10)\n"
+        "ch: Channel<int> = channel[int](10)\n"
         "@parallel\n"
         "for i in range(3):\n"
         "    producer(ch, i)\n"
-        "var total = 0\n"
+        "total = 0\n"
         "for j in range(3):\n"
         "    total = total + recv(ch)\n"
         "print(total)";
@@ -1570,28 +1574,28 @@ TEST_F(CodeGenTest, ParallelForCapturesChannel) {
 
 TEST_F(CodeGenTest, OptionAutoWrapInt) {
     std::string src =
-        "let x: int? = 42\n"
+        "x: int? = 42\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(42)\n");
 }
 
 TEST_F(CodeGenTest, OptionAutoWrapStr) {
     std::string src =
-        "let x: str? = \"hello\"\n"
+        "x: str? = \"hello\"\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(hello)\n");
 }
 
 TEST_F(CodeGenTest, OptionAutoWrapBool) {
     std::string src =
-        "let x: bool? = true\n"
+        "x: bool? = true\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(true)\n");
 }
 
 TEST_F(CodeGenTest, OptionAutoWrapFloat) {
     std::string src =
-        "let x: float? = 3.14\n"
+        "x: float? = 3.14\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "Some(3.14)\n");
 }
@@ -1600,16 +1604,16 @@ TEST_F(CodeGenTest, OptionAutoWrapFloat) {
 
 TEST_F(CodeGenTest, NullCoalesceSome) {
     std::string src =
-        "let x: int? = Some(5)\n"
-        "let y = x ?? 0\n"
+        "x: int? = Some(5)\n"
+        "y = x ?? 0\n"
         "print(y)";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
 TEST_F(CodeGenTest, NullCoalesceNone) {
     std::string src =
-        "let x: int? = none\n"
-        "let y = x ?? 42\n"
+        "x: int? = none\n"
+        "y = x ?? 42\n"
         "print(y)";
     EXPECT_EQ(runSource(src), "42\n");
 }
@@ -1618,7 +1622,7 @@ TEST_F(CodeGenTest, NullCoalesceNone) {
 
 TEST_F(CodeGenTest, NoneKeyword) {
     std::string src =
-        "let x: int? = none\n"
+        "x: int? = none\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "None\n");
 }
@@ -1627,26 +1631,26 @@ TEST_F(CodeGenTest, NoneKeyword) {
 
 TEST_F(CodeGenTest, IntLiteralTypeSingle) {
     std::string src =
-        "let x: 42 = 42\n"
+        "x: 42 = 42\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, IntLiteralTypeUnionSuccess) {
     std::string src =
-        "let x: 0 | 1 = 0\n"
+        "x: 0 | 1 = 0\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "0\n");
 }
 
 TEST_F(CodeGenTest, IntLiteralTypeUnionFail) {
-    std::string src = "let x: 0 | 1 = 2";
+    std::string src = "x: 0 | 1 = 2";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, IntLiteralTypeVarReassignSuccess) {
     std::string src =
-        "var x: 0 | 1 = 0\n"
+        "x: 0 | 1 = 0\n"
         "x = 1\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "1\n");
@@ -1654,7 +1658,7 @@ TEST_F(CodeGenTest, IntLiteralTypeVarReassignSuccess) {
 
 TEST_F(CodeGenTest, IntLiteralTypeVarReassignConstFail) {
     std::string src =
-        "var x: 0 | 1 = 0\n"
+        "x: 0 | 1 = 0\n"
         "x = 2";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -1663,7 +1667,7 @@ TEST_F(CodeGenTest, IntLiteralTypeVarReassignDynamicFail) {
     std::string src =
         "fn get_two() -> int:\n"
         "    return 2\n"
-        "var x: 0 | 1 = 0\n"
+        "x: 0 | 1 = 0\n"
         "x = get_two()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -1672,45 +1676,45 @@ TEST_F(CodeGenTest, IntLiteralTypeVarReassignDynamicFail) {
 
 TEST_F(CodeGenTest, RangeTypeSuccess) {
     std::string src =
-        "let month: 1..12 = 6\n"
+        "month: 1..12 = 6\n"
         "print(month)";
     EXPECT_EQ(runSource(src), "6\n");
 }
 
 TEST_F(CodeGenTest, RangeTypeTooLow) {
-    std::string src = "let month: 1..12 = 0";
+    std::string src = "month: 1..12 = 0";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, RangeTypeTooHigh) {
-    std::string src = "let month: 1..12 = 13";
+    std::string src = "month: 1..12 = 13";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, RangeTypeBoundaryLow) {
     std::string src =
-        "let x: 1..12 = 1\n"
+        "x: 1..12 = 1\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, RangeTypeBoundaryHigh) {
     std::string src =
-        "let x: 1..12 = 12\n"
+        "x: 1..12 = 12\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "12\n");
 }
 
 TEST_F(CodeGenTest, RangeTypeNegative) {
     std::string src =
-        "let t: -10..10 = -5\n"
+        "t: -10..10 = -5\n"
         "print(t)";
     EXPECT_EQ(runSource(src), "-5\n");
 }
 
 TEST_F(CodeGenTest, RangeTypeVarReassignRuntime) {
     std::string src =
-        "var x: 1..12 = 6\n"
+        "x: 1..12 = 6\n"
         "x = 12\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "12\n");
@@ -1718,7 +1722,7 @@ TEST_F(CodeGenTest, RangeTypeVarReassignRuntime) {
 
 TEST_F(CodeGenTest, RangeTypeVarReassignConstFail) {
     std::string src =
-        "var x: 1..12 = 6\n"
+        "x: 1..12 = 6\n"
         "x = 13";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -1727,7 +1731,7 @@ TEST_F(CodeGenTest, RangeTypeVarReassignDynamicFail) {
     std::string src =
         "fn get_thirteen() -> int:\n"
         "    return 13\n"
-        "var x: 1..12 = 6\n"
+        "x: 1..12 = 6\n"
         "x = get_thirteen()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -1736,19 +1740,19 @@ TEST_F(CodeGenTest, RangeTypeVarReassignDynamicFail) {
 
 TEST_F(CodeGenTest, StrLiteralTypeSuccess) {
     std::string src =
-        "let dir: \"N\" | \"S\" | \"E\" | \"W\" = \"N\"\n"
+        "dir: \"N\" | \"S\" | \"E\" | \"W\" = \"N\"\n"
         "print(dir)";
     EXPECT_EQ(runSource(src), "N\n");
 }
 
 TEST_F(CodeGenTest, StrLiteralTypeFail) {
-    std::string src = "let dir: \"N\" | \"S\" | \"E\" | \"W\" = \"X\"";
+    std::string src = "dir: \"N\" | \"S\" | \"E\" | \"W\" = \"X\"";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, StrLiteralTypeVarReassignSuccess) {
     std::string src =
-        "var dir: \"N\" | \"S\" = \"N\"\n"
+        "dir: \"N\" | \"S\" = \"N\"\n"
         "dir = \"S\"\n"
         "print(dir)";
     EXPECT_EQ(runSource(src), "S\n");
@@ -1758,7 +1762,7 @@ TEST_F(CodeGenTest, StrLiteralTypeVarReassignDynamicFail) {
     std::string src =
         "fn get_x() -> str:\n"
         "    return \"X\"\n"
-        "var dir: \"N\" | \"S\" = \"N\"\n"
+        "dir: \"N\" | \"S\" = \"N\"\n"
         "dir = get_x()";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -1768,7 +1772,7 @@ TEST_F(CodeGenTest, StrLiteralTypeVarReassignDynamicFail) {
 TEST_F(CodeGenTest, TypeAliasRangeType) {
     std::string src =
         "type Month = 1..12\n"
-        "let m: Month = 6\n"
+        "m: Month = 6\n"
         "print(m)";
     EXPECT_EQ(runSource(src), "6\n");
 }
@@ -1776,14 +1780,14 @@ TEST_F(CodeGenTest, TypeAliasRangeType) {
 TEST_F(CodeGenTest, TypeAliasRangeTypeFail) {
     std::string src =
         "type Month = 1..12\n"
-        "let m: Month = 13";
+        "m: Month = 13";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, TypeAliasStrLiteralType) {
     std::string src =
         "type Direction = \"N\" | \"S\" | \"E\" | \"W\"\n"
-        "let d: Direction = \"N\"\n"
+        "d: Direction = \"N\"\n"
         "print(d)";
     EXPECT_EQ(runSource(src), "N\n");
 }
@@ -1791,7 +1795,7 @@ TEST_F(CodeGenTest, TypeAliasStrLiteralType) {
 TEST_F(CodeGenTest, TypeAliasIntLiteralType) {
     std::string src =
         "type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9\n"
-        "let d: Digit = 5\n"
+        "d: Digit = 5\n"
         "print(d)";
     EXPECT_EQ(runSource(src), "5\n");
 }
@@ -1801,7 +1805,7 @@ TEST_F(CodeGenTest, TypeAliasIntLiteralType) {
 TEST_F(CodeGenTest, TypeAliasFnType) {
     std::string src =
         "type Callback = fn(int, int) -> int\n"
-        "let add: Callback = fn(a: int, b: int): a + b\n"
+        "add: Callback = fn(a: int, b: int): a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
@@ -1811,7 +1815,7 @@ TEST_F(CodeGenTest, TypeAliasFnTypeParam) {
         "type BinOp = fn(int, int) -> int\n"
         "fn apply(f: BinOp, a: int, b: int) -> int:\n"
         "    return f(a, b)\n"
-        "let res = apply(fn(x: int, y: int): x + y, 10, 20)\n"
+        "res = apply(fn(x: int, y: int): x + y, 10, 20)\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "30\n");
 }
@@ -1819,7 +1823,7 @@ TEST_F(CodeGenTest, TypeAliasFnTypeParam) {
 TEST_F(CodeGenTest, TypeAliasFnTypeLambdaParam) {
     std::string src =
         "type Mapper = fn(int) -> int\n"
-        "let apply = fn(f: Mapper, x: int): f(x)\n"
+        "apply = fn(f: Mapper, x: int): f(x)\n"
         "print(apply(fn(n: int): n * 3, 7))";
     EXPECT_EQ(runSource(src), "21\n");
 }
@@ -1879,7 +1883,7 @@ TEST_F(CodeGenTest, EllipsisIfElse) {
 
 TEST_F(CodeGenTest, EllipsisWhile) {
     std::string src =
-        "var i = 0\n"
+        "i = 0\n"
         "while i < 3:\n"
         "    ...\n"
         "    i += 1\n"
@@ -1919,7 +1923,7 @@ TEST_F(CodeGenTest, AndShortCircuitFalse) {
         "fn side_effect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "let res = false and side_effect()\n"
+        "res = false and side_effect()\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "false\n");
 }
@@ -1930,7 +1934,7 @@ TEST_F(CodeGenTest, AndShortCircuitTrue) {
         "fn side_effect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "let res = true and side_effect()\n"
+        "res = true and side_effect()\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "side\ntrue\n");
 }
@@ -1941,7 +1945,7 @@ TEST_F(CodeGenTest, OrShortCircuitTrue) {
         "fn side_effect() -> bool:\n"
         "    print(\"side\")\n"
         "    return false\n"
-        "let res = true or side_effect()\n"
+        "res = true or side_effect()\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -1952,7 +1956,7 @@ TEST_F(CodeGenTest, OrShortCircuitFalse) {
         "fn side_effect() -> bool:\n"
         "    print(\"side\")\n"
         "    return true\n"
-        "let res = false or side_effect()\n"
+        "res = false or side_effect()\n"
         "print(res)";
     EXPECT_EQ(runSource(src), "side\ntrue\n");
 }
@@ -1995,8 +1999,8 @@ TEST_F(ImportTest, PrivateSymbolNamedImportError) {
 TEST_F(ImportTest, PrivateLetSymbolExcluded) {
     // _prefixed let constants should be excluded from wildcard imports
     writeFile("mypkg3/mod.ry",
-        "let _secret = 42\n"
-        "let public_val = 10\n");
+        "_secret = 42\n"
+        "public_val = 10\n");
 
     EXPECT_EQ(runWithImports(
         "from mypkg3\n"

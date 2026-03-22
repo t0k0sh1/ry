@@ -41,10 +41,14 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+x` | Unary plus | `+5` (no sign change) |
 
 ```python
-let a = 10 // 3    # 3 (int)
-let b = 10 / 3     # 3.3333... (float)
-let c = 2 ** 8     # 256.0 (float)
-let s = "foo" + "bar"  # "foobar"
+@const
+a = 10 // 3    # 3 (int)
+@const
+b = 10 / 3     # 3.3333... (float)
+@const
+c = 2 ** 8     # 256.0 (float)
+@const
+s = "foo" + "bar"  # "foobar"
 ```
 
 ## Comparison Operators
@@ -67,15 +71,24 @@ All return `bool`.
 - For maps, `in` checks whether the key exists.
 
 ```python
-let x = 3 < 5       # true
-let y = "abc" < "abd"  # true (lexicographic)
-let s = {1, 2, 3}
-let z = 2 in s      # true
-let w = 4 not in s  # true
-let xs = [1, 2, 3]
-let a = 2 in xs     # true (list linear search)
-let m = {"a": 1}
-let b = "a" in m    # true (map key lookup)
+@const
+x = 3 < 5       # true
+@const
+y = "abc" < "abd"  # true (lexicographic)
+@const
+s = {1, 2, 3}
+@const
+z = 2 in s      # true
+@const
+w = 4 not in s  # true
+@const
+xs = [1, 2, 3]
+@const
+a = 2 in xs     # true (list linear search)
+@const
+m = {"a": 1}
+@const
+b = "a" in m    # true (map key lookup)
 ```
 
 ## Logical Operators
@@ -87,9 +100,12 @@ let b = "a" in m    # true (map key lookup)
 | `not` | Logical NOT | `bool` -> `bool` |
 
 ```python
-let a = true and false   # false
-let b = true or false    # true
-let c = not true         # false
+@const
+a = true and false   # false
+@const
+b = true or false    # true
+@const
+c = not true         # false
 ```
 
 ## Bitwise Operators
@@ -107,25 +123,32 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
-let flags = 0b0001 | 0b0010   # 3
-let masked = flags & 0b0011   # 3
-let shifted = 1 << 8          # 256
+@const
+flags = 0b0001 | 0b0010   # 3
+@const
+masked = flags & 0b0011   # 3
+@const
+shifted = 1 << 8          # 256
 ```
 
 ## Ternary Conditional Operator
 
 ```python
-let x = condition ? true_value : false_value
+@const
+x = condition ? true_value : false_value
 ```
 
 Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
 
 ```python
-let x = 3 > 2 ? 10 : 20     # 10
-let s = false ? "yes" : "no" # "no"
+@const
+x = 3 > 2 ? 10 : 20     # 10
+@const
+s = false ? "yes" : "no" # "no"
 
 # Nested (right-associative)
-let y = true ? (false ? 1 : 2) : 3   # 2
+@const
+y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
 ---
@@ -135,7 +158,8 @@ let y = true ? (false ? 1 : 2) : 3   # 2
 The `..` operator creates an inclusive integer range.
 
 ```python
-let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+@const
+xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
     print(i)       # 1 2 3
@@ -148,14 +172,17 @@ The result is a `List<int>` containing all integers from the left operand to the
 ## Null Coalescing Operator (`??`)
 
 ```python
-let x = option_val ?? default_val
+@const
+x = option_val ?? default_val
 ```
 
 If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
 
 ```python
-let a: int? = Some(10)
-let b: int? = none
+@const
+a: int? = Some(10)
+@const
+b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
@@ -183,7 +210,7 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x >>= y` | `x = x >> y` |
 
 ```python
-var x = 10
+x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
@@ -201,17 +228,17 @@ Postfix-only, statement-level operators for incrementing or decrementing a varia
 | `x--` | `x = x - 1` |
 
 ```python
-var count = 0
+count = 0
 count++       # count = 1
 count++       # count = 2
 count--       # count = 1
 
-var f = 1.5
+f = 1.5
 f++           # f = 2.5 (int 1 is promoted to float)
 ```
 
 > **Note**: `++` / `--` can only be used as statements, not as expressions.
-> `let` variables cannot be incremented/decremented (immutability is enforced).
+> `@const` variables cannot be incremented/decremented (immutability is enforced).
 
 ---
 

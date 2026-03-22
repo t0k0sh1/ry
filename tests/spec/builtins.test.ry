@@ -18,28 +18,28 @@ describe("len", fn():
 )
 describe("range", fn():
     it("1 arg", fn():
-        let xs = range(3)
+        xs = range(3)
         expect(xs).to_have_length(3)
         expect(xs[0]).to_eq(0)
         expect(xs[2]).to_eq(2)
 
     )
     it("2 args", fn():
-        let xs = range(2, 5)
+        xs = range(2, 5)
         expect(xs).to_have_length(3)
         expect(xs[0]).to_eq(2)
         expect(xs[2]).to_eq(4)
 
     )
     it("3 args", fn():
-        let xs = range(0, 10, 2)
+        xs = range(0, 10, 2)
         expect(xs).to_have_length(5)
         expect(xs[0]).to_eq(0)
         expect(xs[4]).to_eq(8)
 
     )
     it("negative step", fn():
-        let xs = range(10, 0, -3)
+        xs = range(10, 0, -3)
         expect(xs).to_have_length(4)
         expect(xs[0]).to_eq(10)
         expect(xs[1]).to_eq(7)
@@ -50,12 +50,12 @@ describe("range", fn():
 )
 describe("Some / Option", fn():
     it("Some wraps value", fn():
-        let x = Some(42)
+        x = Some(42)
         expect(x).to_be_some()
 
     )
     it("None is none", fn():
-        let x: Option<int> = None
+        x: Option<int> = None
         expect(x).to_be_none()
     )
 )

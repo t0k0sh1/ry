@@ -3,7 +3,7 @@
 
 TEST(DiagnosticTest, FormatWithSourceLocation) {
     SourceManager sm;
-    int fid = sm.addSource("main.ry", "let x = 42\nlet y = \nlet z = 0\n");
+    int fid = sm.addSource("main.ry", "x = 42\ny = \nz = 0\n");
 
     Diagnostic diag;
     diag.level = DiagLevel::Error;
@@ -15,7 +15,7 @@ TEST(DiagnosticTest, FormatWithSourceLocation) {
 
     EXPECT_NE(result.find("error: expected expression"), std::string::npos);
     EXPECT_NE(result.find("--> main.ry:2:9"), std::string::npos);
-    EXPECT_NE(result.find("2 | let y = "), std::string::npos);
+    EXPECT_NE(result.find("2 | y = "), std::string::npos);
     EXPECT_NE(result.find("^"), std::string::npos);
 }
 
@@ -47,7 +47,7 @@ TEST(DiagnosticTest, FormatWithoutValidLocation) {
 
 TEST(DiagnosticTest, DiagnosticErrorInheritsRuntimeError) {
     SourceManager sm;
-    sm.addSource("test.ry", "let x = \n");
+    sm.addSource("test.ry", "x = \n");
 
     Diagnostic diag;
     diag.level = DiagLevel::Error;

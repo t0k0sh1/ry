@@ -13,17 +13,20 @@
 ### 単一式ラムダ
 
 ```python
-let double = fn(x: int): x * 2
+@const
+double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = fn(a: int, b: int): a + b
+@const
+add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### 引数なしラムダ
 
 ```python
-let answer = fn(): 42
+@const
+answer = fn(): 42
 print(answer())  # 42
 ```
 
@@ -32,7 +35,8 @@ print(answer())  # 42
 `:` の後に改行してインデントすることで、複数の文を書けます。
 
 ```python
-let abs = fn(x: int):
+@const
+abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -48,8 +52,10 @@ print(abs(3))   # 3
 ラムダ関数は定義時のスコープにある変数をキャプチャできます。
 
 ```python
-let offset = 10
-let add_offset = fn(x: int): x + offset
+@const
+offset = 10
+@const
+add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,7 +69,8 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = fn(x: int): x * 2
+@const
+double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
 print(apply(fn(n: int): n + 1, 10))    # 11
 ```
@@ -85,7 +92,8 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 print(apply(square, 4))  # 16
 
 # 変数に束縛する
-let sq = square
+@const
+sq = square
 print(sq(5))  # 25
 ```
 
@@ -99,7 +107,8 @@ UFCS を使うと、`f(a, b)` の呼び出しを `a.f(b)` と書けます。メ�
 fn add(a: int, b: int) -> int:
     return a + b
 
-let x = 1
+@const
+x = 1
 print(x.add(2))   # add(x, 2) → 3
 ```
 
@@ -133,9 +142,12 @@ fn operator+(a: Vec2, b: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-let v1 = Vec2(1, 2)
-let v2 = Vec2(3, 4)
-let v3 = v1 + v2
+@const
+v1 = Vec2(1, 2)
+@const
+v2 = Vec2(3, 4)
+@const
+v3 = v1 + v2
 print(v3.x)       # 4
 print(v1 == v2)   # false
 ```
@@ -165,10 +177,12 @@ fn operator-(v: Vec2) -> Vec2:
 値が存在するかどうかを表す型です。`Some(値)` または `None` をとります。
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 
-let y: Option<int> = None
+@const
+y: Option<int> = None
 print(y)   # None
 ```
 
@@ -191,11 +205,14 @@ match x:
 `f"..."` を使って、文字列内に式を直接埋め込むことができます。式は `{}` 内に記述します。
 
 ```python
-let name = "Alice"
+@const
+name = "Alice"
 print(f"Hello {name}")   # Hello Alice
 
-let x = 3
-let y = 4
+@const
+x = 3
+@const
+y = 4
 print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
 ```
 
@@ -212,10 +229,14 @@ print(f"{{escaped}}")   # {escaped}
 `as` を使って型を明示的に変換できます。
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3（切り捨て）
-let s = 42 as str         # "42"
-let b = true as int       # 1
+@const
+x = 42 as float     # 42.0
+@const
+y = 3.14 as int      # 3（切り捨て）
+@const
+s = 42 as str         # "42"
+@const
+b = true as int       # 1
 ```
 
 ---
@@ -234,9 +255,12 @@ enum Shape:
 ### ADT バリアントの構築
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+@const
+c = Shape::Circle(3.14)
+@const
+r = Shape::Rectangle(4.0, 5.0)
+@const
+p = Shape::Point
 ```
 
 ### ADT バリアントのマッチング
@@ -272,8 +296,10 @@ enum MyOption<T>:
 ### 使用法
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b: MyOption<int> = MyOption<int>::MyNone
+@const
+a = MyOption<int>::MySome(42)
+@const
+b: MyOption<int> = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -298,7 +324,8 @@ fn divide(a: int, b: int) -> Result<int, str>:
 `match` を使って結果を処理します。
 
 ```python
-let r = divide(10, 0)
+@const
+r = divide(10, 0)
 match r:
     case Ok(v):
         print(v)

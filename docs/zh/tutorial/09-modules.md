@@ -59,8 +59,10 @@ from mypackage import add   # 僅匯入 add
 ```python
 # 這些函式無需匯入即可使用
 print("hello")
-let n = len("world")
-let xs = range(5)
+@const
+n = len("world")
+@const
+xs = range(5)
 ```
 
 也可以從 `std` 子套件中明確匯入特定定義：

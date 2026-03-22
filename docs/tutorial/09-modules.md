@@ -59,8 +59,10 @@ The `std` package is automatically imported into every program. You don't need t
 ```python
 # These functions are available without any import
 print("hello")
-let n = len("world")
-let xs = range(5)
+@const
+n = len("world")
+@const
+xs = range(5)
 ```
 
 You can also explicitly import specific definitions from `std` sub-packages:

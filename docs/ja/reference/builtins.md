@@ -128,7 +128,8 @@ print({1, 2, 3})   # {1, 2, 3}
 Option型の値ありバリアントを構築します。
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
 
@@ -157,7 +158,8 @@ print(len("あいう"))           # 3 (UTF-8 文字数)
 マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
 
 ```python
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
@@ -171,7 +173,8 @@ print(m.has_key("z"))     # false (UFCS)
 セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
 
 ```python
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 通常の呼び出し
 s.add(1)          # 既に存在するため無視
@@ -187,7 +190,8 @@ print(len(s))     # 5
 セットから要素を削除します。UFCS記法も使用可能です。
 
 ```python
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
 ```
@@ -246,7 +250,8 @@ exit(1)        # エラー終了
 
 ```python
 # 実行: ry script.ry hello world
-let a = args()
+@const
+a = args()
 print(len(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
@@ -264,7 +269,7 @@ for x in args():
 リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。UFCS記法も使用可能です。
 
 ```python
-var xs = [1, 2]
+xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
 ```
@@ -278,8 +283,9 @@ print(xs)   # [1, 2, 3]
 リストの末尾の要素を削除して `Option<T>` として返します。リストが空の場合は `None` を返します。UFCS記法も使用可能です。
 
 ```python
-var xs = [1, 2, 3]
-let v = xs.pop()
+xs = [1, 2, 3]
+@const
+v = xs.pop()
 print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
@@ -293,8 +299,10 @@ print(xs)   # [1, 2]
 要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます（[文字列操作関数リファレンス](builtins-string.md)を参照）。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3]
-let ys = reverse(xs)
+@const
+xs = [1, 2, 3]
+@const
+ys = reverse(xs)
 print(ys)   # [3, 2, 1]
 print(xs)   # [1, 2, 3]（変更なし）
 ```
@@ -308,7 +316,8 @@ print(xs)   # [1, 2, 3]（変更なし）
 `start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `len(list)` まで）にクランプされます。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+@const
+xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 ```
@@ -322,8 +331,10 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.take(3)
+@const
+xs = [1, 2, 3, 4, 5]
+@const
+ys = xs.take(3)
 print(ys)   # [1, 2, 3]
 print(xs.take(10))   # [1, 2, 3, 4, 5]（クランプされる）
 print(xs.take(0))    # []
@@ -338,8 +349,10 @@ print(xs.take(0))    # []
 各要素に対して関数を呼び出し（戻り値は無視）、元のリストをそのまま返します。メソッドチェーン中のデバッグや副作用の挿入に有用です。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+@const
+xs = [1, 2, 3]
+@const
+ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 # 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
@@ -352,8 +365,10 @@ let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 述語が `true` を返す要素のみを含む新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter(fn(x: int): x > 3)
+@const
+xs = [1, 2, 3, 4, 5]
+@const
+ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 ```
@@ -367,8 +382,10 @@ print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.map(fn(x: int): x * 2)
+@const
+xs = [1, 2, 3]
+@const
+ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -381,11 +398,13 @@ print(ys)   # [2, 4, 6]
 ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。UFCS記法も使用可能です。
 
 ```python
-let xs = [3, 1, 2]
+@const
+xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-let desc = xs.sort(fn(a: int, b: int): a > b)
+@const
+desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -398,7 +417,7 @@ print(desc)   # [3, 2, 1]
 リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS記法も使用可能です。
 
 ```python
-var xs = [3, 1, 2]
+xs = [3, 1, 2]
 xs.sort!()
 print(xs)   # [1, 2, 3]
 ```
@@ -412,7 +431,7 @@ print(xs)   # [1, 2, 3]
 リストをその場で逆順にします。UFCS記法も使用可能です。
 
 ```python
-var xs = [1, 2, 3]
+xs = [1, 2, 3]
 xs.reverse!()
 print(xs)   # [3, 2, 1]
 ```
@@ -426,8 +445,10 @@ print(xs)   # [3, 2, 1]
 要素を末尾に追加した新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
-let xs = [1, 2]
-let ys = xs.appended(3)
+@const
+xs = [1, 2]
+@const
+ys = xs.appended(3)
 print(xs)   # [1, 2]（変更なし）
 print(ys)   # [1, 2, 3]
 ```
@@ -473,7 +494,8 @@ print(last([10, 20, 30]))   # Some(30)
 2引数形式はキーの値を `Option<V>` として返します。3引数形式はキーの値またはデフォルト値を返します。
 
 ```python
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0

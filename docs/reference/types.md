@@ -7,7 +7,7 @@
 | Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64-bit signed integer |
-| `byte` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `let b: byte = 42` |
+| `byte` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: byte = 42` |
 | `float` | f64 | `3.14`, `0.5` | 64-bit floating-point number |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
@@ -31,18 +31,30 @@
 You can explicitly specify the type when declaring a variable. The annotation can be omitted when the type is inferrable.
 
 ```python
-let x: int = 42
-let b: byte = 255
-let f: float = 3.14
-let s: str = "hello"
-let b: bool = true
-let opt: Option<int> = Some(10)
-let t: (int, float) = (1, 3.14)
-let xs: List<int> = [1, 2, 3]
-let m: Map<str, int> = {"a": 1}
-let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = fn(x: int): x * 2
-let u: int | str = 42
+@const
+x: int = 42
+@const
+b: byte = 255
+@const
+f: float = 3.14
+@const
+s: str = "hello"
+@const
+b: bool = true
+@const
+opt: Option<int> = Some(10)
+@const
+t: (int, float) = (1, 3.14)
+@const
+xs: List<int> = [1, 2, 3]
+@const
+m: Map<str, int> = {"a": 1}
+@const
+s: Set<int> = {1, 2, 3}
+@const
+fn_val: fn(int) -> int = fn(x: int): x * 2
+@const
+u: int | str = 42
 ```
 
 ## Available Type Names
@@ -73,8 +85,10 @@ The `type` keyword creates a new name for an existing type. The alias is fully i
 type Meters = float
 type StringList = List<str>
 
-let d: Meters = 3.14
-let names: StringList = ["Alice", "Bob"]
+@const
+d: Meters = 3.14
+@const
+names: StringList = ["Alice", "Bob"]
 ```
 
 > **Naming convention**: Type alias names must use PascalCase (e.g., `Meters`, `StringList`). The compiler enforces this convention.
@@ -84,7 +98,8 @@ Type aliases also work with function types, literal types, and range types:
 ```python
 type Callback = fn(int, int) -> int
 
-let add: Callback = fn(a: int, b: int): a + b
+@const
+add: Callback = fn(a: int, b: int): a + b
 print(add(3, 4))    # 7
 ```
 
@@ -93,9 +108,12 @@ type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-let m: Month = 6
-let d: Direction = "N"
-let n: Digit = 5
+@const
+m: Month = 6
+@const
+d: Direction = "N"
+@const
+n: Digit = 5
 ```
 
 ---
@@ -107,9 +125,11 @@ A literal type restricts a variable to specific constant values. The compiler ch
 ### Int Literal Type
 
 ```python
-let x: 42 = 42           # single literal type
-let y: 0 | 1 = 0         # union of int literals
-var z: 0 | 1 = 0
+@const
+x: 42 = 42           # single literal type
+@const
+y: 0 | 1 = 0         # union of int literals
+z: 0 | 1 = 0
 z = 1                     # OK
 # z = 2                   # compile error (constant) or runtime error (dynamic)
 ```
@@ -117,8 +137,9 @@ z = 1                     # OK
 ### String Literal Type
 
 ```python
-let dir: "N" | "S" | "E" | "W" = "N"
-# let bad: "N" | "S" = "X"    # compile error
+@const
+dir: "N" | "S" | "E" | "W" = "N"
+# @const bad: "N" | "S" = "X"    # compile error
 ```
 
 ### Constraint Checking
@@ -133,17 +154,19 @@ let dir: "N" | "S" | "E" | "W" = "N"
 A range type constrains an integer variable to a contiguous range of values (inclusive on both ends).
 
 ```python
-let month: 1..12 = 6       # OK
-# let bad: 1..12 = 0       # compile error: out of range
-# let bad: 1..12 = 13      # compile error: out of range
+@const
+month: 1..12 = 6       # OK
+# @const bad: 1..12 = 0       # compile error: out of range
+# @const bad: 1..12 = 13      # compile error: out of range
 
-let t: -10..10 = -5        # negative ranges are supported
+@const
+t: -10..10 = -5        # negative ranges are supported
 ```
 
-### With `var` (Runtime Check)
+### With Mutable Variables (Runtime Check)
 
 ```python
-var x: 1..12 = 6
+x: 1..12 = 6
 x = 12                      # OK
 # x = dynamic_value()       # runtime check: exits if out of range
 ```
@@ -167,8 +190,10 @@ The `none` keyword represents the absence of a value for Option types, equivalen
 The `T?` syntax is a shorthand for `Option<T>`.
 
 ```python
-let x: int? = 42       # equivalent to Option<int>
-let y: int? = none      # equivalent to None
+@const
+x: int? = 42       # equivalent to Option<int>
+@const
+y: int? = none      # equivalent to None
 
 fn find(xs: List<int>, val: int) -> int?:
     for x in xs:
@@ -184,11 +209,14 @@ fn find(xs: List<int>, val: int) -> int?:
 String interpolation with the `f"..."` syntax. Expressions inside `{}` are evaluated and converted to strings.
 
 ```python
-let name = "world"
+@const
+name = "world"
 print(f"Hello {name}")     # Hello world
 
-let a = 1
-let b = 2
+@const
+a = 1
+@const
+b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
 
@@ -213,11 +241,16 @@ print(f"{{braces}}")   # {braces}
 Explicit type conversion using the `as` keyword.
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3
-let z = 1 as bool        # true
-let s = 42 as str         # "42"
-let b = 255 as byte       # byte value 255
+@const
+x = 42 as float     # 42.0
+@const
+y = 3.14 as int      # 3
+@const
+z = 1 as bool        # true
+@const
+s = 42 as str         # "42"
+@const
+b = 255 as byte       # byte value 255
 ```
 
 ### Supported Casts
@@ -250,9 +283,12 @@ enum Shape:
 Use the `EnumName::Variant(value)` syntax to construct a variant with data.
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+@const
+c = Shape::Circle(3.14)
+@const
+r = Shape::Rectangle(4.0, 5.0)
+@const
+p = Shape::Point
 ```
 
 ### Pattern Matching with Binding
@@ -291,8 +327,10 @@ enum MyOption<T>:
 Instantiate by providing a concrete type argument. The type argument is required when the compiler cannot infer it.
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b = MyOption<int>::MyNone
+@const
+a = MyOption<int>::MySome(42)
+@const
+b = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -308,8 +346,10 @@ match a:
 A built-in type for error handling. `Error` has two fields: `message` (str) and `code` (int).
 
 ```python
-let e = Error("something went wrong")       # code defaults to 0
-let e2 = Error("not found", 404)            # explicit code
+@const
+e = Error("something went wrong")       # code defaults to 0
+@const
+e2 = Error("not found", 404)            # explicit code
 
 print(e.message)   # something went wrong
 print(e2.code)     # 404
@@ -326,7 +366,8 @@ fn divide(a: int, b: int) -> (int, Error?):
         return (0, Some(Error("division by zero")))
     return (a // b, none)
 
-let val, err = divide(10, 2)
+@const
+val, err = divide(10, 2)
 match err:
     case Some(e):
         print(e.message)
@@ -345,7 +386,8 @@ fn read_file(path: str) -> (str, Error?):
     return ("content", none)
 
 fn process() -> (str, Error?):
-    let data = read_file("test.txt")!!   # propagates error if any
+    @const
+    data = read_file("test.txt")!!   # propagates error if any
     return (data, none)
 ```
 
@@ -360,7 +402,8 @@ The enclosing function must also return `(X, Error?)` for `!!` to work.
 You can declare a variable that may hold one of multiple types using `|`.
 
 ```python
-let x: int | str = 42
+@const
+x: int | str = 42
 x = "hello"     # Reassignment is allowed (any type in the union)
 print(x)        # hello
 ```
@@ -419,7 +462,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 
 ## Type Safety Constraints
 
-- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `byte` is automatically promoted to `int` during operations (ZExt). Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `let b: byte = 42`.
+- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `byte` is automatically promoted to `int` during operations (ZExt). Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `b: byte = 42`.
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.

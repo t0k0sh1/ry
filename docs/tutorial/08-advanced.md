@@ -13,17 +13,20 @@ Lambda functions are a syntax for writing functions as expressions. They use the
 ### Single-Expression Lambda
 
 ```python
-let double = fn(x: int): x * 2
+@const
+double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = fn(a: int, b: int): a + b
+@const
+add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-let answer = fn(): 42
+@const
+answer = fn(): 42
 print(answer())  # 42
 ```
 
@@ -32,7 +35,8 @@ print(answer())  # 42
 You can write multiple statements by adding a newline after `:` and indenting.
 
 ```python
-let abs = fn(x: int):
+@const
+abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -48,8 +52,10 @@ print(abs(3))   # 3
 Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
-let offset = 10
-let add_offset = fn(x: int): x + offset
+@const
+offset = 10
+@const
+add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,7 +69,8 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = fn(x: int): x * 2
+@const
+double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
 print(apply(fn(n: int): n + 1, 10))    # 11
 ```
@@ -85,7 +92,8 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 print(apply(square, 4))  # 16
 
 # Bind to a variable
-let sq = square
+@const
+sq = square
 print(sq(5))  # 25
 ```
 
@@ -99,7 +107,8 @@ With UFCS, you can write `f(a, b)` as `a.f(b)`. This enables method-chaining-sty
 fn add(a: int, b: int) -> int:
     return a + b
 
-let x = 1
+@const
+x = 1
 print(x.add(2))   # add(x, 2) -> 3
 ```
 
@@ -133,9 +142,12 @@ fn operator+(a: Vec2, b: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-let v1 = Vec2(1, 2)
-let v2 = Vec2(3, 4)
-let v3 = v1 + v2
+@const
+v1 = Vec2(1, 2)
+@const
+v2 = Vec2(3, 4)
+@const
+v3 = v1 + v2
 print(v3.x)       # 4
 print(v1 == v2)   # false
 ```
@@ -165,10 +177,12 @@ fn operator-(v: Vec2) -> Vec2:
 A type that represents whether a value exists or not. It takes either `Some(value)` or `None`.
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 
-let y: Option<int> = None
+@const
+y: Option<int> = None
 print(y)   # None
 ```
 
@@ -194,7 +208,8 @@ match x:
 fn square(x: int) -> int:
     return x * x
 
-let t: Task<int> = spawn square(12)
+@const
+t: Task<int> = spawn square(12)
 print(await t)   # 144
 
 async fn add(a: int, b: int) -> int:
@@ -232,7 +247,8 @@ fn echo_server(port: int) -> str:
             listen(server, 1)
             match accept(server):
                 case Some(conn):
-                    let data: List<byte> = recv(conn, 4096)
+                    @const
+                    data: List<byte> = recv(conn, 4096)
                     send(conn, data)
                     close(conn)
                 case None:
@@ -242,12 +258,14 @@ fn echo_server(port: int) -> str:
             ...
     return "done"
 
-let t: Task<str> = spawn echo_server(8080)
+@const
+t: Task<str> = spawn echo_server(8080)
 
 match connect("127.0.0.1", 8080):
     case Some(conn):
         send(conn, str_to_bytes("hello"))
-        let resp: List<byte> = recv(conn, 4096)
+        @const
+        resp: List<byte> = recv(conn, 4096)
         print(bytes_to_str(resp))   # hello
         close(conn)
     case None:
@@ -265,11 +283,14 @@ See [Network Reference](../reference/net.md) for the full API.
 Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.
 
 ```python
-let name = "Alice"
+@const
+name = "Alice"
 print(f"Hello {name}")   # Hello Alice
 
-let x = 3
-let y = 4
+@const
+x = 3
+@const
+y = 4
 print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
 ```
 
@@ -286,10 +307,14 @@ print(f"{{escaped}}")   # {escaped}
 Convert between types explicitly with `as`.
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3 (truncated)
-let s = 42 as str         # "42"
-let b = true as int       # 1
+@const
+x = 42 as float     # 42.0
+@const
+y = 3.14 as int      # 3 (truncated)
+@const
+s = 42 as str         # "42"
+@const
+b = true as int       # 1
 ```
 
 ---
@@ -308,9 +333,12 @@ enum Shape:
 ### Constructing ADT Variants
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+@const
+c = Shape::Circle(3.14)
+@const
+r = Shape::Rectangle(4.0, 5.0)
+@const
+p = Shape::Point
 ```
 
 ### Matching ADT Variants
@@ -346,8 +374,10 @@ enum MyOption<T>:
 ### Usage
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b: MyOption<int> = MyOption<int>::MyNone
+@const
+a = MyOption<int>::MySome(42)
+@const
+b: MyOption<int> = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -372,7 +402,8 @@ fn divide(a: int, b: int) -> Result<int, str>:
 Use `match` to handle the result.
 
 ```python
-let r = divide(10, 0)
+@const
+r = divide(10, 0)
 match r:
     case Ok(v):
         print(v)

@@ -45,17 +45,17 @@ describe("Numeric comparison matchers", fn():
 )
 describe("Length and empty matchers", fn():
     it("to_have_length with list", fn():
-        let xs = [1, 2, 3]
+        xs = [1, 2, 3]
         expect(xs).to_have_length(3)
 
     )
     it("to_have_length with set", fn():
-        let s = {1, 2, 3}
+        s = {1, 2, 3}
         expect(s).to_have_length(3)
 
     )
     it("to_have_length with map", fn():
-        let m = {"a": 1, "b": 2}
+        m = {"a": 1, "b": 2}
         expect(m).to_have_length(2)
 
     )
@@ -64,8 +64,8 @@ describe("Length and empty matchers", fn():
 
     )
     it("to_be_empty with empty list", fn():
-        let xs: List<int> = [1]
-        let ys = xs.filter(fn(x: int): x > 10)
+        xs: List<int> = [1]
+        ys = xs.filter(fn(x: int): x > 10)
         expect(ys).to_be_empty()
 
     )
@@ -76,12 +76,12 @@ describe("Length and empty matchers", fn():
 )
 describe("Containment matchers", fn():
     it("to_not_contain with list", fn():
-        let xs = [1, 2, 3]
+        xs = [1, 2, 3]
         expect(xs).to_not_contain(4)
 
     )
     it("to_not_contain with set", fn():
-        let s = {1, 2, 3}
+        s = {1, 2, 3}
         expect(s).to_not_contain(4)
 
     )
@@ -90,13 +90,13 @@ describe("Containment matchers", fn():
 
     )
     it("to_contain with map key", fn():
-        let m = {"a": 1, "b": 2}
+        m = {"a": 1, "b": 2}
         expect(m).to_contain("a")
         expect(m).to_contain("b")
 
     )
     it("to_not_contain with map key", fn():
-        let m = {"a": 1, "b": 2}
+        m = {"a": 1, "b": 2}
         expect(m).to_not_contain("c")
 
     )

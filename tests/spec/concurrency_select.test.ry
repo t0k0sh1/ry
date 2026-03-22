@@ -1,8 +1,8 @@
 describe("select", fn():
     it("receives from a ready channel", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         send(ch, 42)
-        var seen = 0
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x
@@ -12,8 +12,8 @@ describe("select", fn():
 
     )
     it("sends through a ready channel", fn():
-        let ch: Channel<int> = channel[int](1)
-        var seen = 0
+        ch: Channel<int> = channel[int](1)
+        seen = 0
         select:
             case send(ch, 7):
                 seen = recv(ch)
@@ -23,8 +23,8 @@ describe("select", fn():
 
     )
     it("uses else as a non-blocking default", fn():
-        let ch: Channel<int> = channel[int](1)
-        var seen = 0
+        ch: Channel<int> = channel[int](1)
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x
@@ -38,9 +38,9 @@ describe("select", fn():
             send(ch, 11)
             return 0
 
-        let ch: Channel<int> = channel[int]()
-        let t: Task<int> = spawn produce(ch)
-        var seen = 0
+        ch: Channel<int> = channel[int]()
+        t: Task<int> = spawn produce(ch)
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x
@@ -49,19 +49,19 @@ describe("select", fn():
 
     )
     it("can receive None from recv_opt on a closed drained channel", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         close(ch)
-        var seen: Option<int> = Some(0)
+        seen: Option<int> = Some(0)
         select:
             case let x = recv_opt(ch):
                 seen = x
-        let drained: Option<int> = None
+        drained: Option<int> = None
         expect(seen).to_eq(drained)
 
     )
     it("uses timeout 0 as a non-blocking fallback", fn():
-        let ch: Channel<int> = channel[int](1)
-        var seen = 0
+        ch: Channel<int> = channel[int](1)
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x
@@ -71,9 +71,9 @@ describe("select", fn():
 
     )
     it("prefers ready cases over timeout", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         send(ch, 5)
-        var seen = 0
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x
@@ -83,8 +83,8 @@ describe("select", fn():
 
     )
     it("runs timeout branch when no case becomes ready in time", fn():
-        let ch: Channel<int> = channel[int]()
-        var seen = 0
+        ch: Channel<int> = channel[int]()
+        seen = 0
         select:
             case let x = recv(ch):
                 seen = x

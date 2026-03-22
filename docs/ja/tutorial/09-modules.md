@@ -59,8 +59,10 @@ from mypackage import add   # add のみインポート
 ```python
 # これらの関数はインポートなしで利用可能
 print("hello")
-let n = len("world")
-let xs = range(5)
+@const
+n = len("world")
+@const
+xs = range(5)
 ```
 
 `std` のサブパッケージから特定の定義を明示的にインポートすることもできます。

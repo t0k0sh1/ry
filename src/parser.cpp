@@ -149,7 +149,7 @@ void Parser::skipStructuralTokens() {
 
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property"};
+static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property", "const"};
 
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;
@@ -294,17 +294,6 @@ StmtNode Parser::parseStatement() {
         return stmt;
     }
 
-    if (first.kind == TokenKind::Let || first.kind == TokenKind::Var) {
-        auto stmt = parseLetOrVar(directives);
-        if (auto *ls = std::get_if<LetStmt>(&stmt))
-            ls->directives = std::move(directives);
-        else if (auto *vs = std::get_if<VarStmt>(&stmt))
-            vs->directives = std::move(directives);
-        else if (auto *td = std::get_if<TupleDestructStmt>(&stmt))
-            td->directives = std::move(directives);
-        return stmt;
-    }
-
     if (first.kind == TokenKind::For) {
         if (!directives.empty() && !hasDirective(directives, "parallel"))
             parseError(first.line, "only @parallel is supported on for statements");
@@ -322,7 +311,6 @@ StmtNode Parser::parseStatement() {
         if (hasTestDirective) {
             if (first.kind != TokenKind::Ident || first.value != "it")
                 parseError(first.line, "@each / @property can only be applied to 'it' calls");
-            // Parse the it(...) call and attach directives
             lex_.next(); // consume 'it'
             if (lex_.peek().kind != TokenKind::LParen)
                 parseError("expected '(' after 'it'");
@@ -334,8 +322,11 @@ StmtNode Parser::parseStatement() {
             s.directives = std::move(directives);
             return s;
         }
-        parseError(first.line, "directives are not supported on this statement");
     }
+
+    // Non-identifier statements (except those already handled above) do not accept directives
+    if (!directives.empty() && first.kind != TokenKind::Ident)
+        parseError(first.line, "directives are not supported on this statement");
 
     if (first.kind == TokenKind::Expect)
         return parseExpectStatement();
@@ -386,13 +377,31 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'let', 'var', 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'select', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'select', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
     if (next.kind == TokenKind::Colon) {
-        parseError(next.line, "type annotation requires 'let' or 'var'");
+        // Type-annotated declaration: x: int = 42 or @native @const PI: float
+        lex_.next(); // consume ':'
+        std::string typeAnnotation = parseTypeName();
+        AssignStmt s;
+        s.name = first.value;
+        s.type_annotation = typeAnnotation;
+        s.directives = std::move(directives);
+        s.loc = locFromToken(first);
+        if (lex_.peek().kind == TokenKind::Equals) {
+            lex_.next(); // consume '='
+            s.value = parseTernary();
+        } else {
+            // Value-less declaration (e.g., @native @const PI: float)
+            if (!hasDirective(s.directives, "native"))
+                parseError("expected '=' after type annotation");
+        }
+        return s;
     } else if (next.kind == TokenKind::LBracket) {
+        if (!directives.empty())
+            parseError(first.line, "directives are not supported on index assignment");
         // index assignment: ident[expr] = value
         lex_.next(); // consume '['
         ExprPtr index = parseTernary();
@@ -413,6 +422,8 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::Dot) {
+        if (!directives.empty())
+            parseError(first.line, "directives are not supported on field assignment or method call");
         // field assignment: ident.field = value
         lex_.next(); // consume '.'
         Token fieldTok = lex_.peek();
@@ -450,11 +461,35 @@ StmtNode Parser::parseStatement() {
         s.value = std::move(val);
         s.loc = locFromToken(first);
         return s;
+    } else if (next.kind == TokenKind::Comma) {
+        // Tuple destructuring: a, b = (10, 20)
+        std::vector<std::string> names;
+        names.push_back(first.value);
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            Token n = lex_.peek();
+            if (n.kind != TokenKind::Ident && n.value != "_")
+                parseError("expected identifier or '_' in tuple destructuring");
+            lex_.next(); // consume ident
+            names.push_back(n.value);
+        }
+        if (lex_.peek().kind != TokenKind::Equals)
+            parseError("expected '=' in tuple destructuring");
+        lex_.next(); // consume '='
+        ExprPtr value = parseTernary();
+        TupleDestructStmt s;
+        s.names = std::move(names);
+        s.value = std::move(value);
+        s.is_immutable = hasDirective(directives, "const");
+        s.directives = std::move(directives);
+        s.loc = locFromToken(first);
+        return s;
     } else if (next.kind == TokenKind::Equals) {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
         s.value = parseTernary();
+        s.directives = std::move(directives);
         s.loc = locFromToken(first);
         return s;
     } else if (next.kind == TokenKind::PlusEq  || next.kind == TokenKind::MinusEq ||
@@ -464,6 +499,8 @@ StmtNode Parser::parseStatement() {
                next.kind == TokenKind::AmpEq  || next.kind == TokenKind::PipeEq ||
                next.kind == TokenKind::CaretEq ||
                next.kind == TokenKind::LessLessEq || next.kind == TokenKind::GreaterGreaterEq) {
+        if (!directives.empty())
+            parseError(first.line, "directives are not supported on compound assignment");
         // Compound assignment: desugar x += e → x = x + e
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
@@ -476,6 +513,8 @@ StmtNode Parser::parseStatement() {
         one->loc = locFromToken(first);
         return makeDesugarAssign(first, opTok, op, std::move(one));
     } else if (next.kind == TokenKind::LParen) {
+        if (!directives.empty())
+            parseError(first.line, "directives are not supported on function calls");
         lex_.next(); // consume '('
         CallStmt s;
         s.callee = first.value;
@@ -491,93 +530,8 @@ StmtNode Parser::parseStatement() {
     parseError(next.line, "expected '=', '+=', '-=', '*=', '/=', '%=', '//=', '**=', '&=', '|=', '^=', '<<=', '>>=', '++', '--', '.', '[', or '(' after identifier");
 }
 
-// ===== A4: parseLetOrVar =====
 
-StmtNode Parser::parseLetOrVar(const std::vector<Directive> &directives) {
-    Token first = lex_.next(); // consume let/var
-    bool isVar = (first.kind == TokenKind::Var);
-    bool isNative = hasDirective(directives, "native");
 
-    Token id = lex_.peek();
-    if (id.kind != TokenKind::Ident)
-        parseError(id.line, "expected identifier after '" + first.value + "'");
-    // @native let allows SCREAMING_SNAKE_CASE or PascalCase
-    if (isNative && !isVar) {
-        if (!isSnakeCase(id.value) && !isScreamingSnakeCase(id.value) && !isPascalCase(id.value))
-            parseError(id.line, "variable name '" + id.value + "' must be snake_case, SCREAMING_SNAKE_CASE, or PascalCase");
-    } else {
-        if (!isSnakeCase(id.value))
-            parseError(id.line, "variable name '" + id.value + "' must be snake_case");
-    }
-    lex_.next(); // consume ident
-
-    // Tuple destructuring: let a, b = (10, 20)
-    if (lex_.peek().kind == TokenKind::Comma) {
-        std::vector<std::string> names;
-        names.push_back(id.value);
-        while (lex_.peek().kind == TokenKind::Comma) {
-            lex_.next(); // consume ','
-            Token next = lex_.peek();
-            if (next.kind != TokenKind::Ident && next.value != "_")
-                parseError("expected identifier or '_' in tuple destructuring");
-            if (next.value != "_" && !isSnakeCase(next.value))
-                parseError(next.line, "variable name '" + next.value + "' must be snake_case");
-            lex_.next(); // consume ident
-            names.push_back(next.value);
-        }
-        if (lex_.peek().kind != TokenKind::Equals)
-            parseError("expected '=' in tuple destructuring");
-        lex_.next(); // consume '='
-        ExprPtr value = parseTernary();
-        TupleDestructStmt s;
-        s.names = std::move(names);
-        s.value = std::move(value);
-        s.is_immutable = !isVar;
-        s.loc = locFromToken(first);
-        return s;
-    }
-
-    std::optional<std::string> typeAnnotation;
-    if (lex_.peek().kind == TokenKind::Colon) {
-        lex_.next(); // consume ':'
-        typeAnnotation = parseTypeName();
-    }
-
-    // @native let allows omitting '= value' when followed by a statement terminator
-    if (isNative && !isVar && lex_.peek().kind != TokenKind::Equals) {
-        auto next = lex_.peek().kind;
-        if (next != TokenKind::Newline && next != TokenKind::Dedent && next != TokenKind::Eof)
-            parseError("expected '=' in " + first.value + " declaration");
-        LetStmt s;
-        s.name = id.value;
-        s.type_annotation = typeAnnotation;
-        s.value = nullptr;
-        s.loc = locFromToken(first);
-        return s;
-    }
-
-    if (lex_.peek().kind != TokenKind::Equals)
-        parseError("expected '=' in " + first.value + " declaration");
-    lex_.next(); // consume '='
-
-    ExprPtr value = parseTernary();
-
-    if (isVar) {
-        VarStmt s;
-        s.name = id.value;
-        s.type_annotation = typeAnnotation;
-        s.value = std::move(value);
-        s.loc = locFromToken(first);
-        return s;
-    } else {
-        LetStmt s;
-        s.name = id.value;
-        s.type_annotation = typeAnnotation;
-        s.value = std::move(value);
-        s.loc = locFromToken(first);
-        return s;
-    }
-}
 
 std::vector<StmtNode> Parser::parseBlock() {
     if (lex_.peek().kind != TokenKind::Newline)
@@ -2267,8 +2221,8 @@ StmtNode Parser::parseSelectStatement() {
             parseError(lex_.peek().line, "expected 'case', 'else', or 'timeout' in select block");
         Token caseTok = lex_.next(); // consume case
 
-        if (lex_.peek().kind == TokenKind::Let) {
-            lex_.next(); // consume let
+        if (lex_.peek().kind == TokenKind::Ident && lex_.peek().value == "let") {
+            lex_.next(); // consume 'let' identifier
             Token nameTok = lex_.peek();
             if (nameTok.kind != TokenKind::Ident)
                 parseError(nameTok.line, "expected variable name after 'let' in select recv case");

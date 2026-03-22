@@ -19,7 +19,7 @@ Directives can be applied to the following declarations:
 
 - `fn` - Function definitions
 - `record` - Struct definitions
-- `let` / `var` - Variable declarations
+- Variable declarations (with or without `@const`)
 - Fields within a `record` definition
 - `for` - Counted loops only for `@parallel`
 - `it` - Test case definitions (for `@each` and `@property` only)
@@ -48,14 +48,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **On variables:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -68,9 +70,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # no warning
+```
+
+### `@const`
+
+Marks a variable as immutable. Variables declared with `@const` cannot be reassigned after initialization. Without `@const`, variables are mutable by default.
+
+```
+@const
+x = 42
+# x = 10   # Error: cannot reassign @const variable
+```
+
+**With type annotation:**
+
+```
+@const
+name: str = "hello"
+```
+
+**Tuple destructuring:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`

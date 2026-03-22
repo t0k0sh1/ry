@@ -30,8 +30,6 @@ enum class TokenKind {
     GreaterGreater, // >>
     GreaterGreaterGreater, // >>>
     Colon,          // :
-    Let,            // let
-    Var,            // var
     // --- インデント ---
     Indent,         // インデントレベル増加
     Dedent,         // インデントレベル減少

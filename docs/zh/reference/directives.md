@@ -19,7 +19,7 @@
 
 - `fn` - 函式定義
 - `record` - 結構體定義
-- `let` / `var` - 變數宣告
+- 變數宣告（使用 `@const` 或一般賦值）
 - `record` 定義內的欄位
 - `it` - 測試案例定義（僅限 `@each` 和 `@property`）
 
@@ -47,14 +47,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **套用於變數:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -67,9 +69,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 無警告
+```
+
+### `@const`
+
+將變數標記為不可變。使用 `@const` 宣告的變數在初始化後無法重新賦值。未使用 `@const` 時，變數預設為可變。
+
+```
+@const
+x = 42
+# x = 10   # 錯誤：無法重新賦值 @const 變數
+```
+
+**搭配型別標註:**
+
+```
+@const
+name: str = "hello"
+```
+
+**元組解構:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`

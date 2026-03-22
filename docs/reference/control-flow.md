@@ -27,7 +27,8 @@ else:
 ### Example
 
 ```python
-let x = 10
+@const
+x = 10
 
 if x > 5:
     print("big")
@@ -44,7 +45,8 @@ else:
 
 ```python
 if true:
-    let y = 42
+    @const
+    y = 42
 # y is not accessible here
 ```
 
@@ -64,7 +66,7 @@ Repeats the loop body while the condition is `true`.
 ### Example
 
 ```python
-var i = 0
+i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +75,7 @@ while i < 5:
 ### Combining with break / continue
 
 ```python
-var i = 0
+i = 0
 while true:
     if i >= 3:
         break
@@ -116,7 +118,8 @@ for k, v in map_expr:
 When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
 
 ```python
-let xs = [10, 20, 30]
+@const
+xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
     print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
@@ -140,11 +143,13 @@ for i in 1 .. 5:
 ### Example
 
 ```python
-let xs = [10, 20, 30]
+@const
+xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 for x in s:
     print(x)
 
@@ -161,7 +166,8 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # Map iteration
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
     print(v)
@@ -181,9 +187,11 @@ for i in 1 .. 3:
 fn square(x: int) -> int:
     return x * x
 
-let t: Task<int> = spawn square(12)
+@const
+t: Task<int> = spawn square(12)
 print(await t)          # 144
-let u: Task<int> = spawn square(3)
+@const
+u: Task<int> = spawn square(3)
 print(join(u))          # 9, function-form equivalent of await
 ```
 
@@ -206,8 +214,10 @@ fn worker(ch: Channel<int>) -> int:
     close(ch)
     return 0
 
-let ch: Channel<int> = channel[int]()
-let t: Task<int> = spawn worker(ch)
+@const
+ch: Channel<int> = channel[int]()
+@const
+t: Task<int> = spawn worker(ch)
 for x in ch:
     print(x)
 print(join(t))
@@ -273,7 +283,7 @@ for i in range(8):
 
 - Only `range(...)` and integer `..` loops are supported.
 - Destructuring iteration is not supported.
-- Assigning to outer `var` bindings is rejected.
+- Assigning to outer mutable bindings is rejected.
 - `break` and `continue` are rejected.
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
 
@@ -409,7 +419,8 @@ match color:
         print("blue")
 
 # Option match
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -445,7 +456,8 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-let s = Shape::Circle(3.14)
+@const
+s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
         print(r)        # 3.14
@@ -474,11 +486,13 @@ Multi-field variants bind each field to a separate name in declaration order.
 
 ```python
 for i in range(3):
-    let tmp = i * 2
+    @const
+    tmp = i * 2
 # tmp is not accessible here
 
 if true:
-    let a = 1
+    @const
+    a = 1
 # a is not accessible here
 ```
 
@@ -488,9 +502,11 @@ if true:
 - After leaving the inner scope, the outer variable is accessible again.
 
 ```python
-let x = 10
+@const
+x = 10
 if true:
-    let x = 99   # Shadows the outer x
+    @const
+    x = 99   # Shadows the outer x
     print(x)     # 99
 print(x)         # 10
 ```

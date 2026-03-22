@@ -60,46 +60,46 @@ describe("str", fn():
 )
 describe("byte", fn():
     it("as int", fn():
-        let b: byte = 42
+        b: byte = 42
         expect(b as int).to_eq(42)
 
     )
     it("max value", fn():
-        let b: byte = 255
+        b: byte = 255
         expect(b as int).to_eq(255)
 
     )
 )
 describe("Option", fn():
     it("Some", fn():
-        let x: Option<int> = Some(42)
+        x: Option<int> = Some(42)
         expect(x).to_be_some()
 
     )
     it("None", fn():
-        let x: Option<int> = None
+        x: Option<int> = None
         expect(x).to_be_none()
 
     )
     it("none keyword", fn():
-        let x: int? = none
+        x: int? = none
         expect(x).to_be_none()
 
     )
     it("shorthand syntax", fn():
-        let x: int? = 42
+        x: int? = 42
         expect(x).to_be_some()
 
     )
 )
 describe("Tuple", fn():
     it("element access", fn():
-        let t = (10, 3.14)
+        t = (10, 3.14)
         expect(t.0).to_eq(10)
 
     )
     it("second element", fn():
-        let t = (10, 3.14)
+        t = (10, 3.14)
         expect(t.1).to_eq(3.14)
     )
 )

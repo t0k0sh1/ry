@@ -6,26 +6,35 @@
 
 ---
 
-## let による定数宣言
+## 変数宣言
 
-`let` キーワードで不変な変数（定数）を宣言します。型は右辺の値から自動的に推論されます。宣言後に値を変更することはできません。
+Ry では、シンプルな代入構文で変数を宣言します。デフォルトでは変数は可変です。
 
 ```python
-let x = 42        # int 型として推論
-let y = 3.14      # float 型として推論
-let flag = true   # bool 型として推論
-let name = "Ry"   # str 型として推論
+x = 42        # int 型として推論
+y = 3.14      # float 型として推論
+flag = true   # bool 型として推論
+name = "Ry"   # str 型として推論
 ```
 
 ---
 
-## var による変数宣言
+## @const による不変変数（定数）宣言
 
-`var` キーワードで可変な変数を宣言します。宣言後に同じ型の値を再代入できます。
+`@const` ディレクティブで不変な変数（定数）を宣言します。宣言後に値を変更することはできません。
 
 ```python
-var count = 0
-count = count + 1   # OK: 同じ型への再代入
+@const
+x = 42        # int 型として推論
+
+@const
+y = 3.14      # float 型として推論
+
+@const
+flag = true   # bool 型として推論
+
+@const
+name = "Ry"   # str 型として推論
 ```
 
 ---
@@ -35,10 +44,17 @@ count = count + 1   # OK: 同じ型への再代入
 変数の型を明示的に指定できます。
 
 ```python
-let x: int = 42
-let rate: float = 0.5
-let ok: bool = false
-let msg: str = "hello"
+@const
+x: int = 42
+
+@const
+rate: float = 0.5
+
+@const
+ok: bool = false
+
+@const
+msg: str = "hello"
 ```
 
 型アノテーションと実際の値の型が一致しない場合はコンパイルエラーになります。
@@ -50,7 +66,7 @@ let msg: str = "hello"
 | 型 | 説明 | リテラル例 |
 |----|------|-----------|
 | `int` | 64ビット整数 | `0`, `42`, `-10` |
-| `byte` | 符号なし8ビット整数（0-255） | `let b: byte = 42` |
+| `byte` | 符号なし8ビット整数（0-255） | `b: byte = 42` |
 | `float` | 64ビット浮動小数点数 | `0.0`, `3.14`, `-1.5` |
 | `bool` | 真偽値 | `true`, `false` |
 | `str` | 文字列 | `"hello"`, `""` |
@@ -62,11 +78,14 @@ let msg: str = "hello"
 文字列に対してさまざまな操作が使えます。
 
 ```python
-let a = "Hello"
-let b = "World"
+@const
+a = "Hello"
+@const
+b = "World"
 
 # 結合
-let c = a + ", " + b   # "Hello, World"
+@const
+c = a + ", " + b   # "Hello, World"
 
 # 比較（辞書順）
 print(a == b)   # false
@@ -77,7 +96,8 @@ print(a < b)    # true（"H" < "W"）
 print(len(a))   # 5
 
 # 部分文字列チェック
-let s = "Hello, World!"
+@const
+s = "Hello, World!"
 print(contains(s, "World"))      # true
 print(starts_with(s, "Hello"))   # true
 print(ends_with(s, "!"))         # true
@@ -108,36 +128,38 @@ print("say \"hi\"")     # ダブルクォートを含む文字列
 
 ## 再代入のルール
 
-`var` で宣言した変数は再代入できます。ただし、以下の制限があります。
+`@const` なしで宣言した変数は再代入できます。ただし、以下の制限があります。
 
 ```python
-var x = 10
+x = 10
 x = 20        # OK: 同じ型への再代入
 # x = "text" # エラー: 型を変更する再代入は禁止
 ```
 
-`let` は再代入できません。
+`@const` は再代入できません。
 
 ```python
-let N = 5
-# N = 6  # エラー: let変数への再代入は禁止
+@const
+N = 5
+# N = 6  # エラー: @const 変数への再代入は禁止
 ```
 
 同名の変数を再宣言することもできません。
 
 ```python
-let x = 1
-# let x = 2  # エラー: 同名の再宣言は禁止
+x = 1
+# 同一スコープでの同名の再宣言は禁止
 ```
 
 ---
 
 ## タプル分割代入
 
-`let` または `var` を使って、タプルを複数の変数に一度に展開できます。
+タプルを複数の変数に一度に展開できます。
 
 ```python
-let a, b = (10, 20)
+@const
+a, b = (10, 20)
 print(a)   # 10
 print(b)   # 20
 ```
@@ -147,16 +169,17 @@ print(b)   # 20
 `_` を使って特定の位置の値を無視できます。
 
 ```python
-let x, _ = (1, 2)   # x のみが束縛される；2 は破棄
+@const
+x, _ = (1, 2)   # x のみが束縛される；2 は破棄
 print(x)             # 1
 ```
 
 ### 可変変数での分割代入
 
-`var` を使うと可変変数として宣言できます。
+`@const` を省略すると可変変数として宣言できます。
 
 ```python
-var a, b = (10, 20)
+a, b = (10, 20)
 a = 99
 print(a)   # 99
 ```
@@ -164,7 +187,7 @@ print(a)   # 99
 ### ルール
 
 - 左辺の変数の数はタプルの要素数と一致させる必要があります。
-- 各変数は通常の `let`/`var` 宣言と同じルールに従います。
+- 各変数は通常の `@const`/可変宣言と同じルールに従います。
 - ネストされたタプルの分割代入はサポートされていません。
 
 ---

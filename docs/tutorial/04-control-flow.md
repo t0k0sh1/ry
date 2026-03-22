@@ -11,7 +11,8 @@
 Use `if` to branch execution based on conditions.
 
 ```python
-let x = 10
+@const
+x = 10
 
 if x > 0:
     print(x)
@@ -26,8 +27,10 @@ else:
 - `if` statements can be nested.
 
 ```python
-let a = 5
-let b = 3
+@const
+a = 5
+@const
+b = 3
 
 if a > 0:
     if b > 0:
@@ -41,7 +44,7 @@ if a > 0:
 Repeatedly executes a block as long as the condition is true.
 
 ```python
-var i = 3
+i = 3
 while i > 0:
     print(i)
     i = i - 1
@@ -99,7 +102,8 @@ for i in 1 .. 3:
 You can iterate over map key-value pairs with `for k, v in map`:
 
 ```python
-let m = {"x": 10, "y": 20}
+@const
+m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
     print(v)
@@ -125,7 +129,7 @@ for i in range(10):
 They can also be used with `while` loops.
 
 ```python
-var n = 0
+n = 0
 while true:
     n = n + 1
     if n % 2 == 0:
@@ -173,7 +177,8 @@ Variables declared inside a block cannot be referenced from outside the block.
 
 ```python
 if true:
-    let inner = 42
+    @const
+    inner = 42
 # Referencing inner here causes a compile error
 ```
 
@@ -182,7 +187,7 @@ if true:
 You can reference and reassign outer variables from within a block.
 
 ```python
-var count = 0
+count = 0
 for i in range(5):
     count = count + i
 print(count)   # 10
@@ -193,9 +198,11 @@ print(count)   # 10
 If you declare a variable with the same name as an outer variable inside a block, the new variable is used within that block (shadowing). The outer variable remains unchanged.
 
 ```python
-let x = 1
+@const
+x = 1
 if true:
-    let x = 99
+    @const
+    x = 99
     print(x)   # 99
 print(x)       # 1
 ```
@@ -212,7 +219,8 @@ enum Color:
     Green
     Blue
 
-let c = Color::Green
+@const
+c = Color::Green
 match c:
     case Color::Red:
         print("red")
@@ -228,7 +236,8 @@ match c:
 Use `match` to safely handle both the `Some` and `None` cases.
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -242,7 +251,8 @@ match x:
 `_` is a wildcard pattern that matches anything. You can also match against literal values (numbers, strings, booleans).
 
 ```python
-let n = 5
+@const
+n = 5
 match n:
     case 0:
         print("zero")

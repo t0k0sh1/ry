@@ -118,7 +118,8 @@ print({1, 2, 3})   # {1, 2, 3}
 建構 Option 型別的有值變體。
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
 
@@ -147,7 +148,8 @@ print(len("あいう"))           # 3 (UTF-8 字元數)
 回傳映射中是否存在指定的鍵。也可使用 UFCS 記法。
 
 ```python
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
@@ -161,7 +163,8 @@ print(m.has_key("z"))     # false (UFCS)
 向集合新增元素。若元素已存在則不做任何操作。也可使用 UFCS 記法。
 
 ```python
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 一般呼叫
 s.add(1)          # 已存在，因此忽略
@@ -177,7 +180,8 @@ print(len(s))     # 5
 從集合刪除元素。也可使用 UFCS 記法。
 
 ```python
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
 ```
@@ -236,7 +240,8 @@ exit(1)        # 錯誤終止
 
 ```python
 # 執行: ry script.ry hello world
-let a = args()
+@const
+a = args()
 print(len(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
@@ -254,7 +259,7 @@ for x in args():
 向串列末尾新增元素。此為就地修改操作——串列會被直接修改。也可使用 UFCS 記法。
 
 ```python
-var xs = [1, 2]
+xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
 ```
@@ -268,8 +273,9 @@ print(xs)   # [1, 2, 3]
 移除並回傳串列的最後一個元素（`Option<T>`）。串列為空時回傳 `None`。也可使用 UFCS 記法。
 
 ```python
-var xs = [1, 2, 3]
-let v = xs.pop()
+xs = [1, 2, 3]
+@const
+v = xs.pop()
 print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
@@ -283,8 +289,10 @@ print(xs)   # [1, 2]
 傳回元素順序反轉的新串列。原始串列不會被修改。也適用於字串（請參閱[字串操作](builtins-string.md)）。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3]
-let ys = reverse(xs)
+@const
+xs = [1, 2, 3]
+@const
+ys = reverse(xs)
 print(ys)   # [3, 2, 1]
 print(xs)   # [1, 2, 3]（未修改）
 ```
@@ -298,7 +306,8 @@ print(xs)   # [1, 2, 3]（未修改）
 傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `len(list)`）。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+@const
+xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 ```
@@ -312,8 +321,10 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 傳回包含前 `n` 個元素的新串列。若 `n` 超過串列長度，傳回整個串列的副本。若 `n <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.take(3)
+@const
+xs = [1, 2, 3, 4, 5]
+@const
+ys = xs.take(3)
 print(ys)   # [1, 2, 3]
 print(xs.take(10))   # [1, 2, 3, 4, 5]（鉗制）
 print(xs.take(0))    # []
@@ -328,8 +339,10 @@ print(xs.take(0))    # []
 對每個元素呼叫給定函式（忽略回傳值），然後傳回原始串列。適用於方法鏈中的除錯或插入副作用。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+@const
+xs = [1, 2, 3]
+@const
+ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 # 輸出 1, 2, 3，然後 ys = [2, 4, 6]
 ```
 
@@ -342,8 +355,10 @@ let ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 傳回僅包含述詞回傳 `true` 的元素的新串列。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter(fn(x: int): x > 3)
+@const
+xs = [1, 2, 3, 4, 5]
+@const
+ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 ```
@@ -357,8 +372,10 @@ print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 傳回將每個元素以給定函式轉換後的新串列。輸出元素型別可以與輸入不同。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.map(fn(x: int): x * 2)
+@const
+xs = [1, 2, 3]
+@const
+ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -371,11 +388,13 @@ print(ys)   # [2, 4, 6]
 傳回排序後的新串列。預設為升序。可提供自訂比較函式（第一引數應排在第二引數之前時回傳 `true`）。原始串列不會被修改。排序是**穩定的**（相等元素保持原始順序）。也可使用 UFCS 記法。
 
 ```python
-let xs = [3, 1, 2]
+@const
+xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-let desc = xs.sort(fn(a: int, b: int): a > b)
+@const
+desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -388,7 +407,7 @@ print(desc)   # [3, 2, 1]
 就地排序串列。排序演算法與 `sort()` 相同，但修改原始串列而非建立新串列。也可使用 UFCS 記法。
 
 ```python
-var xs = [3, 1, 2]
+xs = [3, 1, 2]
 xs.sort!()
 print(xs)   # [1, 2, 3]
 ```
@@ -402,7 +421,7 @@ print(xs)   # [1, 2, 3]
 就地反轉串列。也可使用 UFCS 記法。
 
 ```python
-var xs = [1, 2, 3]
+xs = [1, 2, 3]
 xs.reverse!()
 print(xs)   # [3, 2, 1]
 ```
@@ -416,8 +435,10 @@ print(xs)   # [3, 2, 1]
 傳回新增元素後的新串列。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2]
-let ys = xs.appended(3)
+@const
+xs = [1, 2]
+@const
+ys = xs.appended(3)
 print(xs)   # [1, 2]（未修改）
 print(ys)   # [1, 2, 3]
 ```
@@ -463,7 +484,8 @@ print(last([10, 20, 30]))   # Some(30)
 兩引數形式回傳鍵的值（`Option<V>`）。三引數形式回傳鍵的值，若不存在則回傳預設值。
 
 ```python
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0

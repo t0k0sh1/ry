@@ -91,7 +91,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
         "describe(\"mock expr\", fn():\n"
         "    it(\"tracks calls in expressions\", fn():\n"
         "        mock(get_value, fn(): 999)\n"
-        "        let x = get_value()\n"
+        "        x = get_value()\n"
         "        expect(x).to_eq(999)\n"
         "        expect(verify(get_value)).to_eq(1)\n"
         "    )\n"

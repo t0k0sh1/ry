@@ -4,14 +4,14 @@ describe("channels", fn():
             send(ch, 42)
             return 0
 
-        let ch: Channel<int> = channel[int]()
-        let t: Task<int> = spawn worker(ch)
+        ch: Channel<int> = channel[int]()
+        t: Task<int> = spawn worker(ch)
         expect(recv(ch)).to_eq(42)
         expect(join(t)).to_eq(0)
 
     )
     it("preserves fifo order for buffered channels", fn():
-        let ch: Channel<int> = channel[int](2)
+        ch: Channel<int> = channel[int](2)
         send(ch, 1)
         send(ch, 2)
         expect(recv(ch)).to_eq(1)
@@ -22,37 +22,37 @@ describe("channels", fn():
         async fn produce(ch: Channel<int>) -> Unit:
             send(ch, 7)
 
-        let ch: Channel<int> = channel[int]()
-        let t: Task<Unit> = produce(ch)
+        ch: Channel<int> = channel[int]()
+        t: Task<Unit> = produce(ch)
         expect(recv(ch)).to_eq(7)
         await t
 
     )
     it("returns Some while draining a closed buffered channel", fn():
-        let ch: Channel<int> = channel[int](2)
+        ch: Channel<int> = channel[int](2)
         send(ch, 5)
         close(ch)
         expect(recv_opt(ch)).to_eq(Some(5))
-        let drained: Option<int> = None
+        drained: Option<int> = None
         expect(recv_opt(ch)).to_eq(drained)
 
     )
     it("returns false for a drained closed Unit channel", fn():
-        let ch: Channel<Unit> = channel[Unit]()
+        ch: Channel<Unit> = channel[Unit]()
         close(ch)
         expect(recv_opt(ch)).to_eq(false)
 
     )
     it("try_recv returns Some then None for buffered channels", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         send(ch, 9)
         expect(try_recv(ch)).to_eq(Some(9))
-        let empty: Option<int> = None
+        empty: Option<int> = None
         expect(try_recv(ch)).to_eq(empty)
 
     )
     it("try_send returns false for closed channels", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         close(ch)
         expect(try_send(ch, 1)).to_eq(false)
 
@@ -61,9 +61,9 @@ describe("channels", fn():
         fn consume(ch: Channel<int>) -> int:
             return recv(ch)
 
-        let ch: Channel<int> = channel[int]()
-        let t: Task<int> = spawn consume(ch)
-        var sent = false
+        ch: Channel<int> = channel[int]()
+        t: Task<int> = spawn consume(ch)
+        sent = false
         while not sent:
             sent = try_send(ch, 13)
         expect(sent).to_eq(true)
@@ -71,11 +71,11 @@ describe("channels", fn():
 
     )
     it("iterates a closed buffered channel with for-in", fn():
-        let ch: Channel<int> = channel[int](2)
+        ch: Channel<int> = channel[int](2)
         send(ch, 1)
         send(ch, 2)
         close(ch)
-        var total = 0
+        total = 0
         for x in ch:
             total = total + x
         expect(total).to_eq(3)
@@ -88,9 +88,9 @@ describe("channels", fn():
             close(ch)
             return 0
 
-        let ch: Channel<int> = channel[int]()
-        let t: Task<int> = spawn produce_numbers(ch)
-        var total = 0
+        ch: Channel<int> = channel[int]()
+        t: Task<int> = spawn produce_numbers(ch)
+        total = 0
         for x in ch:
             total = total + x
         expect(total).to_eq(7)
@@ -98,9 +98,9 @@ describe("channels", fn():
 
     )
     it("stops cleanly on a closed drained channel", fn():
-        let ch: Channel<int> = channel[int](1)
+        ch: Channel<int> = channel[int](1)
         close(ch)
-        var count = 0
+        count = 0
         for x in ch:
             count = count + 1
         expect(count).to_eq(0)

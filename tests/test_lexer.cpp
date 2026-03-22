@@ -271,18 +271,14 @@ TEST(LexerTest, ConsecutiveCommentLines) {
     EXPECT_EQ(toks[5].kind, TokenKind::Eof);
 }
 
-TEST(LexerTest, KeywordLet) {
-    auto toks = tokenize("let");
-    ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Let);
-    EXPECT_EQ(toks[0].value, "let");
-}
-
-TEST(LexerTest, KeywordVar) {
-    auto toks = tokenize("var");
-    ASSERT_EQ(toks.size(), 2u);
-    EXPECT_EQ(toks[0].kind, TokenKind::Var);
-    EXPECT_EQ(toks[0].value, "var");
+TEST(LexerTest, LetVarAreIdentifiers) {
+    // let and var are no longer keywords — they tokenize as Ident
+    for (const auto &word : {"let", "var"}) {
+        auto toks = tokenize(word);
+        ASSERT_EQ(toks.size(), 2u) << "word: " << word;
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident) << "word: " << word;
+        EXPECT_EQ(toks[0].value, word) << "word: " << word;
+    }
 }
 
 TEST(LexerTest, LetterAndVariableAreIdent) {
@@ -548,15 +544,14 @@ TEST(LexerTest, UnterminatedStringNewlineThrows) {
 }
 
 TEST(LexerTest, StringInExpression) {
-    auto toks = tokenize("let s = \"world\"");
-    ASSERT_EQ(toks.size(), 5u); // Let Ident Equals String Eof
-    EXPECT_EQ(toks[0].kind, TokenKind::Let);
-    EXPECT_EQ(toks[1].kind, TokenKind::Ident);
-    EXPECT_EQ(toks[1].value, "s");
-    EXPECT_EQ(toks[2].kind, TokenKind::Equals);
-    EXPECT_EQ(toks[3].kind, TokenKind::String);
-    EXPECT_EQ(toks[3].value, "world");
-    EXPECT_EQ(toks[4].kind, TokenKind::Eof);
+    auto toks = tokenize("s = \"world\"");
+    ASSERT_EQ(toks.size(), 4u); // Ident Equals String Eof
+    EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+    EXPECT_EQ(toks[0].value, "s");
+    EXPECT_EQ(toks[1].kind, TokenKind::Equals);
+    EXPECT_EQ(toks[2].kind, TokenKind::String);
+    EXPECT_EQ(toks[2].value, "world");
+    EXPECT_EQ(toks[3].kind, TokenKind::Eof);
 }
 
 TEST(LexerTest, KeywordType) {
@@ -911,12 +906,11 @@ TEST(LexerTest, RawStringNotPrefix) {
 // ===== Column tracking tests =====
 
 TEST(LexerTest, ColumnSimple) {
-    auto toks = tokenize("let x = 42");
-    // let(col=1) x(col=5) =(col=7) 42(col=9) Eof
-    EXPECT_EQ(toks[0].col, 1);  // let
-    EXPECT_EQ(toks[1].col, 5);  // x
-    EXPECT_EQ(toks[2].col, 7);  // =
-    EXPECT_EQ(toks[3].col, 9);  // 42
+    auto toks = tokenize("x = 42");
+    // x(col=1) =(col=3) 42(col=5) Eof
+    EXPECT_EQ(toks[0].col, 1);  // x
+    EXPECT_EQ(toks[1].col, 3);  // =
+    EXPECT_EQ(toks[2].col, 5);  // 42
 }
 
 TEST(LexerTest, ColumnMultiLine) {
@@ -969,12 +963,11 @@ TEST(LexerTest, EllipsisDoesNotBreakDot) {
 }
 
 TEST(LexerTest, ColumnString) {
-    auto toks = tokenize("let s = \"hello\"");
-    // let(1) s(5) =(7) "hello"(9)
-    EXPECT_EQ(toks[0].col, 1);  // let
-    EXPECT_EQ(toks[1].col, 5);  // s
-    EXPECT_EQ(toks[2].col, 7);  // =
-    EXPECT_EQ(toks[3].col, 9);  // "hello"
+    auto toks = tokenize("s = \"hello\"");
+    // s(1) =(3) "hello"(5)
+    EXPECT_EQ(toks[0].col, 1);  // s
+    EXPECT_EQ(toks[1].col, 3);  // =
+    EXPECT_EQ(toks[2].col, 5);  // "hello"
 }
 
 TEST(LexerTest, ManyConsecutiveComments) {
