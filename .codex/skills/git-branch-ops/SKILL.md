@@ -19,11 +19,12 @@ Default target branch is `main` when the user does not specify one.
 ## Switching Branches
 
 1. Read the requested branch name from the user's prompt. If none is provided, default to `main`.
-2. Check available branches with `git branch -a`.
+2. Check available branches with `git branch -a` and determine whether the branch exists locally, only on `origin` as `origin/<branch>`, or not at all.
 3. If the branch does not exist locally or remotely, stop and report that it was not found.
-4. Run `git switch <branch>`.
-5. Run `git pull`.
-6. Summarize the branch switched to and whether pull succeeded.
+4. If the branch exists locally, run `git switch <branch>`.
+5. If the branch exists only on `origin`, run `git switch -c <branch> --track origin/<branch>`.
+6. After switching successfully, run `git pull`.
+7. Summarize the branch switched to and whether pull succeeded.
 
 ## Syncing the Current Branch
 

@@ -22,8 +22,8 @@ If no PR is found, stop and tell the user to specify a PR number or run the skil
 
 2. Fetch review data.
 Run `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` to resolve the repository.
-Fetch inline comments with `gh api repos/{owner}/{repo}/pulls/{number}/comments`.
-Fetch review summaries with `gh api repos/{owner}/{repo}/pulls/{number}/reviews`.
+Fetch inline comments with `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments`.
+Fetch review summaries with `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews`.
 If there are no actionable review comments, stop and report that none were found.
 
 3. Triage each comment into one of these categories.
