@@ -512,14 +512,14 @@ void CodeGen::emitStmt(RecordStmt &s) {
         fieldTypes.push_back(resolveType(f.type));
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
-    struct_types_[s.name] = {structTy, s.fields, std::move(s.invariants)};
-
     if (hasDirective(s.directives, "deprecated"))
         deprecated_types_.insert(s.name);
     for (auto &f : s.fields) {
         if (hasDirective(f.directives, "deprecated"))
             deprecated_fields_.insert(s.name + "." + f.name);
     }
+
+    struct_types_[s.name] = {structTy, std::move(s.fields), std::move(s.invariants)};
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,

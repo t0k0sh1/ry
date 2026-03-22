@@ -29,12 +29,8 @@ struct Directive {
     Directive() = default;
     Directive(Directive &&) = default;
     Directive &operator=(Directive &&) = default;
-    Directive(const Directive &o)
-        : name(o.name), params(o.params), expr(nullptr), loc(o.loc) {}
-    Directive &operator=(const Directive &o) {
-        if (this != &o) { name = o.name; params = o.params; expr = nullptr; loc = o.loc; }
-        return *this;
-    }
+    Directive(const Directive &) = delete;
+    Directive &operator=(const Directive &) = delete;
 };
 
 inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
