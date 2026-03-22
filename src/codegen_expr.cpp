@@ -981,27 +981,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     return builder_.CreateLoad(elemTy, elemPtr, "elem");
 }
 
-// ===== Contract expression variants =====
-
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<OldExpr> &e) {
-    if (!in_ensure_context_)
-        codegenError("old() can only be used in ensure clause");
-    auto it = old_value_map_.find(e.get());
-    if (it == old_value_map_.end())
-        codegenError("old() value not found (internal error)");
-    llvm::AllocaInst *alloca = it->second;
-    return builder_.CreateLoad(alloca->getAllocatedType(), alloca, "old_load");
-}
-
-llvm::Value *CodeGen::emitExprVariant(const ResultExpr &) {
-    if (!in_ensure_context_)
-        codegenError("result can only be used in ensure clause");
-    if (!result_alloca_)
-        codegenError("result used in void function");
-    llvm::Type *ty = result_alloca_->getAllocatedType();
-    return builder_.CreateLoad(ty, result_alloca_, "result_load");
-}
-
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     llvm::Type *ty = val->getType();
 

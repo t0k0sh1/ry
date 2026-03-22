@@ -1561,17 +1561,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         }
 
         // Emit ensure checks (postconditions) before return
-        if (current_postconditions_ && !current_postconditions_->empty()) {
-            if (result_alloca_)
-                builder_.CreateStore(val, result_alloca_);
-            in_ensure_context_ = true;
-            std::string fnName = fn_->getName().str();
-            for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
-                emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
-            in_ensure_context_ = false;
-            if (result_alloca_)
-                val = builder_.CreateLoad(retTy, result_alloca_, "ensure_result");
-        }
+        emitEnsureChecks(val);
 
         builder_.CreateRet(val);
     }
@@ -1702,31 +1692,13 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             ++idx;
         }
 
-        // Save old values for postconditions (before require checks)
-        old_value_map_.clear();
-        if (!s->postconditions.empty()) {
-            std::vector<OldExpr*> oldExprs;
-            for (auto &post : s->postconditions)
-                collectOldExprs(*post, oldExprs);
-            for (auto *oe : oldExprs) {
-                llvm::Value *val = emitExpr(*oe->expr);
-                llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, "old_val");
-                builder_.CreateStore(val, alloca);
-                old_value_map_[oe] = alloca;
-            }
-        }
-
         // Emit require checks (preconditions)
         for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
             emitContractCheck("require", s->name, s->preconditions[i]);
 
         // Set up postcondition context
         current_postconditions_ = s->postconditions.empty() ? nullptr : &s->postconditions;
-        if (!s->postconditions.empty() && !retTy->isVoidTy()) {
-            result_alloca_ = builder_.CreateAlloca(retTy, nullptr, "contract_result");
-        } else {
-            result_alloca_ = nullptr;
-        }
+        ensure_bindings_ = s->ensure_bindings.empty() ? nullptr : &s->ensure_bindings;
 
         for (auto &stmt : s->body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
@@ -1750,15 +1722,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
 
             // Emit ensure checks on implicit return path
-            if (defaultRet && current_postconditions_ && !current_postconditions_->empty()) {
-                if (result_alloca_)
-                    builder_.CreateStore(defaultRet, result_alloca_);
-                in_ensure_context_ = true;
-                std::string fnName = fn_->getName().str();
-                for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
-                    emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
-                in_ensure_context_ = false;
-            }
+            if (defaultRet)
+                emitEnsureChecks(defaultRet);
 
             if (retTy->isVoidTy())
                 builder_.CreateRetVoid();
@@ -1895,42 +1860,6 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
     builder_.SetInsertPoint(nextBB);
 }
 
-void CodeGen::collectOldExprs(const ExprNode &node, std::vector<OldExpr*> &out) {
-    std::visit([this, &out](const auto &e) {
-        using T = std::decay_t<decltype(e)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<OldExpr>>) {
-            out.push_back(e.get());
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
-            collectOldExprs(*e->lhs, out);
-            collectOldExprs(*e->rhs, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
-            collectOldExprs(*e->operand, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
-            for (auto &arg : e->args)
-                collectOldExprs(*arg, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
-            collectOldExprs(*e->object, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
-            collectOldExprs(*e->object, out);
-            collectOldExprs(*e->index, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
-            for (auto &k : e->keys)
-                collectOldExprs(*k, out);
-            for (auto &v : e->values)
-                collectOldExprs(*v, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        }
-    }, node.data);
-}
-
 void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
                                   llvm::Value *structVal) {
     if (info.invariants.empty()) return;
@@ -1945,6 +1874,36 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
     }
     for (int i = 0; i < static_cast<int>(info.invariants.size()); ++i)
         emitContractCheck("invariant", typeName, info.invariants[i]);
+    popScope();
+}
+
+void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
+    if (!current_postconditions_ || current_postconditions_->empty() || !ensure_bindings_)
+        return;
+    pushScope();
+    auto &bindings = *ensure_bindings_;
+    if (bindings.size() == 1) {
+        llvm::AllocaInst *alloca = builder_.CreateAlloca(retVal->getType(), nullptr, bindings[0]);
+        builder_.CreateStore(retVal, alloca);
+        scope_stack_.back()[bindings[0]] = alloca;
+        immutable_scope_stack_.back().insert(bindings[0]);
+    } else {
+        auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
+        if (!structTy || !structTy->isLiteral() || structTy->getNumElements() != bindings.size())
+            codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
+        for (unsigned i = 0; i < bindings.size(); ++i) {
+            llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
+            llvm::AllocaInst *alloca = builder_.CreateAlloca(elem->getType(), nullptr, bindings[i]);
+            builder_.CreateStore(elem, alloca);
+            scope_stack_.back()[bindings[i]] = alloca;
+            immutable_scope_stack_.back().insert(bindings[i]);
+        }
+    }
+    in_ensure_context_ = true;
+    std::string fnName = fn_->getName().str();
+    for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
+        emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
+    in_ensure_context_ = false;
     popScope();
 }
 

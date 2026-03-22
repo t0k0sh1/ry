@@ -97,8 +97,6 @@ enum class TokenKind {
     Require,        // require
     Ensure,         // ensure
     Invariant,      // invariant
-    Old,            // old
-    Result,         // result
     // --- directive ---
     At,             // @
     // --- f-string ---

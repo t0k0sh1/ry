@@ -44,13 +44,13 @@ TEST_F(CodeGenTest, RequireMultipleConditionsSecondFails) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-// ===== ensure (postcondition) + result tests =====
+// ===== ensure (postcondition) with variable binding =====
 
 TEST_F(CodeGenTest, EnsureSatisfied) {
     std::string src =
         "fn abs(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result >= 0\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
@@ -61,28 +61,28 @@ TEST_F(CodeGenTest, EnsureSatisfied) {
 TEST_F(CodeGenTest, EnsureViolation) {
     std::string src =
         "fn bad() -> int:\n"
-        "    ensure:\n"
-        "        result > 0\n"
+        "    ensure v:\n"
+        "        v > 0\n"
         "    return -1\n"
         "print(bad())";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
-TEST_F(CodeGenTest, EnsureWithOld) {
+TEST_F(CodeGenTest, EnsureWithArgReference) {
     std::string src =
         "fn inc(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result == old(x) + 1\n"
+        "    ensure v:\n"
+        "        v == x + 1\n"
         "    return x + 1\n"
         "print(inc(5))";
     EXPECT_EQ(runSource(src), "6\n");
 }
 
-TEST_F(CodeGenTest, EnsureWithOldViolation) {
+TEST_F(CodeGenTest, EnsureWithArgReferenceViolation) {
     std::string src =
         "fn inc(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result == old(x) + 1\n"
+        "    ensure v:\n"
+        "        v == x + 1\n"
         "    return x + 2\n"
         "print(inc(5))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
@@ -94,9 +94,9 @@ TEST_F(CodeGenTest, RequireAndEnsureCombined) {
         "    require:\n"
         "        amount > 0\n"
         "        balance >= 0\n"
-        "    ensure:\n"
-        "        result >= 0\n"
-        "        result == old(balance) + amount\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
+        "        v == balance + amount\n"
         "    new_balance: int = balance + amount\n"
         "    return new_balance\n"
         "print(deposit(100, 500))";
@@ -160,11 +160,11 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
 TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
     std::string src =
         "fn outer(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result >= 0\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
         "    fn inner(y: int) -> int:\n"
-        "        ensure:\n"
-        "            result > 0\n"
+        "        ensure w:\n"
+        "            w > 0\n"
         "        return y + 1\n"
         "    return inner(x)\n"
         "print(outer(5))";
@@ -174,13 +174,55 @@ TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
 TEST_F(CodeGenTest, NestedFnWithEnsureViolation) {
     std::string src =
         "fn outer(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result >= 0\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
         "    fn inner(y: int) -> int:\n"
-        "        ensure:\n"
-        "            result > 0\n"
+        "        ensure w:\n"
+        "            w > 0\n"
         "        return y + 1\n"
         "    return inner(x)\n"
         "print(outer(-1))";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+// ===== Tuple destructuring in ensure =====
+
+TEST_F(CodeGenTest, EnsureTupleDestructuring) {
+    std::string src =
+        "fn divide(a: int, b: int) -> (int, int):\n"
+        "    ensure q, r:\n"
+        "        q >= 0\n"
+        "        r >= 0\n"
+        "    return (a // b, a % b)\n"
+        "result = divide(10, 3)\n"
+        "print(result.0)\n"
+        "print(result.1)";
+    EXPECT_EQ(runSource(src), "3\n1\n");
+}
+
+// ===== ensure on Unit function is rejected =====
+
+TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
+    std::string src =
+        "fn greet():\n"
+        "    ensure v:\n"
+        "        v > 0\n"
+        "    print(\"hello\")";
+    EXPECT_THROW(runSource(src), std::exception);
+}
+
+// ===== result and old as normal identifiers =====
+
+TEST_F(CodeGenTest, ResultAsIdentifier) {
+    std::string src =
+        "result: int = 42\n"
+        "print(result)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, OldAsIdentifier) {
+    std::string src =
+        "old: int = 10\n"
+        "print(old)";
+    EXPECT_EQ(runSource(src), "10\n");
 }

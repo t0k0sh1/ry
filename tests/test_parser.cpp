@@ -932,8 +932,8 @@ TEST(ParserTest, FnWithRequire) {
 TEST(ParserTest, FnWithEnsure) {
     std::string src =
         "fn abs(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result >= 0\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x";
@@ -941,6 +941,8 @@ TEST(ParserTest, FnWithEnsure) {
     auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn->preconditions.size(), 0u);
     EXPECT_EQ(fn->postconditions.size(), 1u);
+    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
+    EXPECT_EQ(fn->ensure_bindings[0], "v");
 }
 
 TEST(ParserTest, FnWithRequireAndEnsure) {
@@ -949,14 +951,16 @@ TEST(ParserTest, FnWithRequireAndEnsure) {
         "    require:\n"
         "        a >= 0\n"
         "        b >= 0\n"
-        "    ensure:\n"
-        "        result >= 0\n"
+        "    ensure v:\n"
+        "        v >= 0\n"
         "    return a + b";
     Program prog = parseStr(src);
     auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn->preconditions.size(), 2u);
     EXPECT_EQ(fn->postconditions.size(), 1u);
     EXPECT_EQ(fn->body.size(), 1u);
+    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
+    EXPECT_EQ(fn->ensure_bindings[0], "v");
 }
 
 TEST(ParserTest, FnWithoutContract) {
@@ -994,42 +998,39 @@ TEST(ParserTest, TypeWithoutInvariant) {
     EXPECT_EQ(ts.invariants.size(), 0u);
 }
 
-TEST(ParserTest, OldExprParse) {
+TEST(ParserTest, EnsureVariableBinding) {
     std::string src =
         "fn inc(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result == old(x) + 1\n"
+        "    ensure v:\n"
+        "        v == x + 1\n"
         "    return x + 1";
     Program prog = parseStr(src);
     auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn->postconditions.size(), 1u);
-    // The postcondition expression should contain an OldExpr
+    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
+    EXPECT_EQ(fn->ensure_bindings[0], "v");
+    // The postcondition expression should be v == x + 1
     auto &postExpr = fn->postconditions[0];
     auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
     ASSERT_TRUE(bin != nullptr);
-    // lhs is ResultExpr
-    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
-    // rhs is BinaryExpr (old(x) + 1)
-    auto *rhsBin = std::get_if<std::unique_ptr<BinaryExpr>>(&(*bin)->rhs->data);
-    ASSERT_TRUE(rhsBin != nullptr);
-    // rhs.lhs is OldExpr
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<OldExpr>>((*rhsBin)->lhs->data));
+    // lhs is VariableExpr("v")
+    auto *lhsVar = std::get_if<VariableExpr>(&(*bin)->lhs->data);
+    ASSERT_TRUE(lhsVar != nullptr);
+    EXPECT_EQ(lhsVar->name, "v");
 }
 
-TEST(ParserTest, ResultExprParse) {
+TEST(ParserTest, EnsureTupleBinding) {
     std::string src =
-        "fn double(x: int) -> int:\n"
-        "    ensure:\n"
-        "        result >= 0\n"
-        "    return x * 2";
+        "fn divide(a: int, b: int) -> (int, int):\n"
+        "    ensure q, r:\n"
+        "        q >= 0\n"
+        "    return (a // b, a % b)";
     Program prog = parseStr(src);
     auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn->postconditions.size(), 1u);
-    // The postcondition should contain result >= 0
-    auto &postExpr = fn->postconditions[0];
-    auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
-    ASSERT_TRUE(bin != nullptr);
-    ASSERT_TRUE(std::holds_alternative<ResultExpr>((*bin)->lhs->data));
+    ASSERT_EQ(fn->ensure_bindings.size(), 2u);
+    EXPECT_EQ(fn->ensure_bindings[0], "q");
+    EXPECT_EQ(fn->ensure_bindings[1], "r");
 }
 
 // ===== record キーワード =====

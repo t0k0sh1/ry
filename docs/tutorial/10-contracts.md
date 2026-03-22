@@ -31,30 +31,34 @@ Contract violation: require failed in deposit()
 
 ## Postconditions (`ensure`)
 
-Use `ensure` to specify conditions that must be true when a function returns.
-
-### The `result` Keyword
-
-Inside an `ensure` block, `result` refers to the return value.
+Use `ensure` to specify conditions that must be true when a function returns. The return value is bound to a user-chosen variable name.
 
 ```python
 fn abs(x: int) -> int:
-    ensure:
-        result >= 0
+    ensure v:
+        v >= 0
     if x < 0:
         return -x
     return x
 ```
 
-### The `old()` Expression
-
-`old(expr)` captures the value of an expression at function entry. This is useful for comparing pre- and post-states.
+Since function arguments are immutable in Ry, you can reference them directly in `ensure` blocks:
 
 ```python
 fn increment(x: int) -> int:
-    ensure:
-        result == old(x) + 1
+    ensure v:
+        v == x + 1
     return x + 1
+```
+
+For tuple returns, use multiple variable names separated by commas:
+
+```python
+fn divide(a: int, b: int) -> (int, int):
+    ensure q, r:
+        q >= 0
+        r >= 0
+    return (a // b, a % b)
 ```
 
 ---
@@ -68,9 +72,9 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    ensure:
-        result >= 0
-        result == old(balance) + amount
+    ensure v:
+        v >= 0
+        v == balance + amount
     new_balance: int = balance + amount
     return new_balance
 ```
@@ -100,7 +104,8 @@ a = BankAccount(100, 0)   # OK: 100 >= 0
 
 - `require` and `ensure` blocks are optional and appear before the function body.
 - `require` must come before `ensure` when both are present.
-- `result` and `old()` can only be used inside `ensure` blocks.
+- `ensure` requires a variable binding (e.g., `ensure v:`) to name the return value.
+- For tuple returns, multiple bindings can be specified (e.g., `ensure q, r:`).
 - `invariant` appears at the end of a `record` definition, after all field declarations.
 - All contract violations terminate with `exit(1)`.
 

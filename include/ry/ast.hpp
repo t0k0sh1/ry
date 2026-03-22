@@ -61,8 +61,6 @@ struct EnumAccessExpr {
     std::string variant_name;
 };
 
-struct OldExpr;
-struct ResultExpr {};
 struct CastExpr;
 struct InterpolatedStringExpr;
 struct TernaryExpr;
@@ -85,8 +83,6 @@ struct ExprNode {
                  std::unique_ptr<SetExpr>,
                  EnumAccessExpr,
                  std::unique_ptr<LambdaExpr>,
-                 std::unique_ptr<OldExpr>,
-                 ResultExpr,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
                  std::unique_ptr<TernaryExpr>,
@@ -250,8 +246,6 @@ struct ForStmt {
     SourceLocation loc;
 };
 
-struct OldExpr { ExprPtr expr; };
-
 struct CastExpr {
     ExprPtr value;
     std::string target_type;
@@ -330,6 +324,7 @@ struct FnStmt {
     bool is_async = false;
     std::vector<ExprPtr> preconditions;
     std::vector<ExprPtr> postconditions;
+    std::vector<std::string> ensure_bindings;
     std::vector<Directive> directives;
     SourceLocation loc;
 };

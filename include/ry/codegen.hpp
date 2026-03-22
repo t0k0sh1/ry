@@ -114,10 +114,9 @@ private:
 
     // Contract (Design by Contract) support
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
-    llvm::AllocaInst *result_alloca_ = nullptr;
+    std::vector<std::string> *ensure_bindings_ = nullptr;
     bool in_ensure_context_ = false;
     int contract_err_counter_ = 0;
-    std::unordered_map<OldExpr*, llvm::AllocaInst*> old_value_map_;
 
     // Directive support
     std::unordered_set<std::string> deprecated_functions_;
@@ -182,9 +181,8 @@ private:
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;
-        llvm::AllocaInst *savedResultAlloca_;
+        std::vector<std::string> *savedEnsureBindings_;
         bool savedInEnsureContext_;
-        std::unordered_map<OldExpr*, llvm::AllocaInst*> savedOldValueMap_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
@@ -255,8 +253,6 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<SetExpr> &e);
     llvm::Value *emitExprVariant(const EnumAccessExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<OldExpr> &e);
-    llvm::Value *emitExprVariant(const ResultExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
@@ -299,7 +295,7 @@ private:
     void emitRuntimeError(const std::string &message, const std::string &globalName);
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
-    void collectOldExprs(const ExprNode &node, std::vector<OldExpr*> &out);
+    void emitEnsureChecks(llvm::Value *retVal);
     void emitInvariantCheck(const std::string &typeName, const StructInfo &info,
                             llvm::Value *structVal);
     void emitPrintValue(llvm::Value *val, llvm::Type *ty,

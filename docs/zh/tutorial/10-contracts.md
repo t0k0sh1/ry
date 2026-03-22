@@ -31,30 +31,34 @@ Contract violation: require failed in deposit()
 
 ## 後置條件（`ensure`）
 
-使用 `ensure` 指定函式回傳值時必須為真的條件。
-
-### `result` 關鍵字
-
-在 `ensure` 區塊內，`result` 代表回傳值。
+使用 `ensure` 指定函式回傳值時必須為真的條件。回傳值會綁定到使用者選擇的變數名。
 
 ```python
 fn abs(x: int) -> int:
-    ensure:
-        result >= 0
+    ensure v:
+        v >= 0
     if x < 0:
         return -x
     return x
 ```
 
-### `old()` 表達式
-
-`old(expr)` 捕獲函式開始時表達式的值。這對於比較狀態變化前後非常有用。
+由於 Ry 的函式參數是不可變的，可以在 `ensure` 區塊中直接引用參數：
 
 ```python
 fn increment(x: int) -> int:
-    ensure:
-        result == old(x) + 1
+    ensure v:
+        v == x + 1
     return x + 1
+```
+
+對於回傳元組的函式，可以用逗號分隔指定多個變數名：
+
+```python
+fn divide(a: int, b: int) -> (int, int):
+    ensure q, r:
+        q >= 0
+        r >= 0
+    return (a // b, a % b)
 ```
 
 ---
@@ -68,9 +72,9 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    ensure:
-        result >= 0
-        result == old(balance) + amount
+    ensure v:
+        v >= 0
+        v == balance + amount
     new_balance: int = balance + amount
     return new_balance
 ```
@@ -100,7 +104,8 @@ a = BankAccount(100, 0)   # OK: 100 >= 0
 
 - `require` 和 `ensure` 區塊為選用項，寫在函式主體之前。
 - 同時使用時，`require` 必須寫在 `ensure` 之前。
-- `result` 和 `old()` 只能在 `ensure` 區塊內使用。
+- `ensure` 需要變數綁定來命名回傳值（例：`ensure v:`）。
+- 對於元組回傳值，可指定多個綁定變數（例：`ensure q, r:`）。
 - `invariant` 寫在 `record` 定義的末尾，在所有欄位宣告之後。
 - 所有契約違反都會以 `exit(1)` 終止程式。
 
