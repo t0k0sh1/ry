@@ -1889,8 +1889,8 @@ void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
         immutable_scope_stack_.back().insert(bindings[0]);
     } else {
         auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
-        if (!structTy || structTy->getNumElements() != bindings.size())
-            codegenError("ensure binding count does not match tuple element count");
+        if (!structTy || !structTy->isLiteral() || structTy->getNumElements() != bindings.size())
+            codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
         for (unsigned i = 0; i < bindings.size(); ++i) {
             llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
             llvm::AllocaInst *alloca = builder_.CreateAlloca(elem->getType(), nullptr, bindings[i]);

@@ -1315,6 +1315,8 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 
     // Parse optional ensure clause with variable binding
     if (lex_.peek().kind == TokenKind::Ensure) {
+        if (fnStmt->return_type == "Unit")
+            parseError("'ensure' requires a non-Unit return type");
         lex_.next(); // consume 'ensure'
         parseEnsureClause(*fnStmt);
     }

@@ -200,6 +200,17 @@ TEST_F(CodeGenTest, EnsureTupleDestructuring) {
     EXPECT_EQ(runSource(src), "3\n1\n");
 }
 
+// ===== ensure on Unit function is rejected =====
+
+TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
+    std::string src =
+        "fn greet():\n"
+        "    ensure v:\n"
+        "        v > 0\n"
+        "    print(\"hello\")";
+    EXPECT_THROW(runSource(src), std::exception);
+}
+
 // ===== result and old as normal identifiers =====
 
 TEST_F(CodeGenTest, ResultAsIdentifier) {
