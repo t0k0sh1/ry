@@ -12,6 +12,7 @@ Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. 
 
 ```bash
 ry test                       # Auto-discover and run all *.test.ry files
+ry test tests/spec            # Run all *.test.ry files under a directory (recursive)
 ry test tests/my_test.test.ry # Run a specific test file
 ```
 

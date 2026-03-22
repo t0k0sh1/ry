@@ -10,6 +10,7 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 
 ```bash
 ry test              # プロジェクト内の *.test.ry を自動検出して実行
+ry test tests/spec   # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test test_file.ry # 特定のテストファイルを実行
 ```
 

@@ -189,6 +189,41 @@ static std::vector<std::string> findTestFiles(const std::string &root_dir) {
     return files;
 }
 
+// Run multiple test files and report results
+static int runTestFiles(const std::vector<std::string> &test_files,
+                        const char *argv0) {
+    int total_failed = 0;
+    int total_files = 0;
+    for (const auto &tf : test_files) {
+        ++total_files;
+        try {
+            int failed = runRyFile(tf, /*test_mode=*/true, argv0);
+            total_failed += failed;
+        } catch (const DiagnosticError &e) {
+            errs() << e.what();
+            ++total_failed;
+        } catch (const std::exception &e) {
+            errs() << "Error in " << tf << ": " << e.what() << "\n";
+            ++total_failed;
+        }
+    }
+    if (total_files > 1) {
+        std::printf("\n%d test files executed, %d total failures\n",
+                    total_files, total_failed);
+    }
+    return total_failed > 0 ? 1 : 0;
+}
+
+// Discover *.test.ry files in a directory and run them
+static int discoverAndRunTests(const std::string &dir, const char *argv0) {
+    auto test_files = findTestFiles(dir);
+    if (test_files.empty()) {
+        errs() << "No *.test.ry files found in " << dir << "\n";
+        return 1;
+    }
+    return runTestFiles(test_files, argv0);
+}
+
 int main(int argc, char *argv[]) {
     if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
         llvm::outs() << "ry " << RY_VERSION << "\n";
@@ -204,6 +239,9 @@ int main(int argc, char *argv[]) {
     }
 
     InitLLVM X(argc, argv);
+    InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
+    InitializeNativeTargetAsmParser();
 
     bool test_mode = false;
     const char *filename = nullptr;
@@ -212,62 +250,29 @@ int main(int argc, char *argv[]) {
         filename = argv[1];
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
+        std::string target = argv[2];
+        if (fs::is_directory(target)) {
+            return discoverAndRunTests(target, argv[0]);
+        }
         // ry test <file.ry> — single file test
         test_mode = true;
         filename = argv[2];
         __ry_args_init(0, nullptr);
     } else if (argc == 2 && std::strcmp(argv[1], "test") == 0) {
-        // ry test — auto-discover *.test.ry files
-        InitializeNativeTarget();
-        InitializeNativeTargetAsmPrinter();
-        InitializeNativeTargetAsmParser();
-
         auto root = findProjectRoot();
         if (!root) {
             errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
             return 1;
         }
-
-        auto test_files = findTestFiles(*root);
-        if (test_files.empty()) {
-            errs() << "No *.test.ry files found.\n";
-            return 1;
-        }
-
-        int total_failed = 0;
-        int total_files = 0;
-        for (const auto &tf : test_files) {
-            ++total_files;
-            try {
-                int failed = runRyFile(tf, /*test_mode=*/true, argv[0]);
-                total_failed += failed;
-            } catch (const DiagnosticError &e) {
-                errs() << e.what();
-                ++total_failed;
-            } catch (const std::exception &e) {
-                errs() << "Error in " << tf << ": " << e.what() << "\n";
-                ++total_failed;
-            }
-        }
-
-        if (total_files > 1) {
-            std::printf("\n%d test files executed, %d total failures\n",
-                        total_files, total_failed);
-        }
-        return total_failed > 0 ? 1 : 0;
+        return discoverAndRunTests(*root, argv[0]);
     } else {
         errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [<file.ry>]\n";
+        errs() << "       ry test [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";
         return 1;
     }
-
-    // Initialize native target
-    InitializeNativeTarget();
-    InitializeNativeTargetAsmPrinter();
-    InitializeNativeTargetAsmParser();
 
     try {
         return runRyFile(filename, test_mode, argv[0]);
