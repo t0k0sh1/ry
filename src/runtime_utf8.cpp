@@ -9,8 +9,8 @@ static int utf8_char_len_safe(const char *s) {
     unsigned char c = static_cast<unsigned char>(s[0]);
     if (c < 0x80) return 1;
     if ((c & 0xE0) == 0xC0 && is_cont(s[1])) return 2;
-    if ((c & 0xF0) == 0xE0 && is_cont(s[1]) && is_cont(s[2])) return 3;
-    if ((c & 0xF8) == 0xF0 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
+    if ((c & 0xF0) == 0xE0 && is_cont(s[1]) && s[2] && is_cont(s[2])) return 3;
+    if ((c & 0xF8) == 0xF0 && is_cont(s[1]) && s[2] && is_cont(s[2]) && s[3] && is_cont(s[3])) return 4;
     return 1; // invalid/truncated byte treated as 1
 }
 
