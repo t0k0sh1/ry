@@ -263,7 +263,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
-    // Directive-accepting statements: fn, record, let/var
+    // Directive-accepting statements (see branches below)
     if (first.kind == TokenKind::Record) {
         auto stmt = parseRecordStatement();
         auto &ts = std::get<RecordStmt>(stmt);
