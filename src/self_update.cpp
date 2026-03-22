@@ -344,30 +344,39 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
         return false;
     }
 
-    // Copy new files
+    // Copy new files (recursive)
     std::vector<std::string> new_files;
-    for (const auto &entry : fs::directory_iterator(src_std)) {
+    for (const auto &entry : fs::recursive_directory_iterator(src_std)) {
         if (!entry.is_regular_file()) continue;
-        auto filename = entry.path().filename().string();
-        fs::copy_file(entry.path(), dest_std / filename,
+        auto rel_path = fs::relative(entry.path(), src_std).string();
+        if (rel_path == "manifest.json") continue;
+
+        auto dest_path = dest_std / rel_path;
+        fs::create_directories(dest_path.parent_path(), ec);
+        fs::copy_file(entry.path(), dest_path,
                       fs::copy_options::overwrite_existing, ec);
-        if (!ec && filename != "manifest.json") {
-            new_files.push_back(filename);
+        if (!ec) {
+            new_files.push_back(rel_path);
         }
     }
 
-    // Delete files that were in old manifest but not in new
+    // Delete files that were in old manifest but not in new,
+    // then clean up empty parent directories
     std::sort(new_files.begin(), new_files.end());
     for (const auto &old_file : old_manifest.files) {
-        // Validate manifest entry is a simple filename (no path traversal)
-        if (old_file.empty() || old_file == "." || old_file == ".." ||
-            old_file.find('/') != std::string::npos ||
-            old_file.find('\\') != std::string::npos) {
+        if (old_file.empty() || old_file.find("..") != std::string::npos ||
+            old_file[0] == '/' || old_file[0] == '\\') {
             std::cerr << "Warning: Skipping invalid stdlib manifest entry: " << old_file << "\n";
             continue;
         }
         if (!std::binary_search(new_files.begin(), new_files.end(), old_file)) {
             fs::remove(dest_std / old_file, ec);
+            // Remove empty parent directories up to dest_std
+            auto parent = (dest_std / old_file).parent_path();
+            while (parent != dest_std && fs::is_directory(parent) && fs::is_empty(parent)) {
+                fs::remove(parent, ec);
+                parent = parent.parent_path();
+            }
         }
     }
 
