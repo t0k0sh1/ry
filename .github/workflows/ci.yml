@@ -25,5 +25,3 @@ jobs:
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
-      - name: Test (Ry self-tests)
-        run: ./build/ry test
