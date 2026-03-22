@@ -10,6 +10,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <errno.h>
 
 struct TcpListenerHandle {
     int fd;
@@ -66,6 +69,8 @@ extern "C" void __ry_listen(void *listener, int64_t backlog) {
 
 extern "C" void *__ry_accept(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
+    struct timeval tv = {1, 0};
+    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
     int client_fd = ::accept(handle->fd, (struct sockaddr *)&client_addr, &addr_len);
@@ -94,13 +99,36 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
         return nullptr;
     }
 
-    if (::connect(fd, result->ai_addr, result->ai_addrlen) < 0) {
+    // Non-blocking connect with 5-second timeout
+    int flags = ::fcntl(fd, F_GETFL, 0);
+    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    int conn_ret = ::connect(fd, result->ai_addr, result->ai_addrlen);
+    ::freeaddrinfo(result);
+
+    if (conn_ret < 0 && errno != EINPROGRESS) {
         ::close(fd);
-        ::freeaddrinfo(result);
         return nullptr;
     }
 
-    ::freeaddrinfo(result);
+    if (conn_ret < 0) {
+        struct pollfd pfd = {fd, POLLOUT, 0};
+        int poll_ret = ::poll(&pfd, 1, 5000);
+        if (poll_ret <= 0) {
+            ::close(fd);
+            return nullptr;
+        }
+        int so_error = 0;
+        socklen_t len = sizeof(so_error);
+        ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+        if (so_error != 0) {
+            ::close(fd);
+            return nullptr;
+        }
+    }
+
+    // Restore blocking mode
+    ::fcntl(fd, F_SETFL, flags);
 
     auto *stream = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     stream->fd = fd;
@@ -127,6 +155,8 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
         return header;
     }
     auto *handle = (TcpStreamHandle *)stream;
+    struct timeval tv = {30, 0};
+    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
     header->data = (int8_t *)malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);

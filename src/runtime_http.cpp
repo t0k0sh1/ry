@@ -60,6 +60,8 @@ static std::string recv_all(int fd, size_t max_bytes) {
 
 extern "C" void *__ry_http_read_request(void *stream) {
     auto *handle = (TcpStreamHandle *)stream;
+    struct timeval tv = {5, 0};
+    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     std::string raw = recv_all(handle->fd, 8192);
     if (raw.empty()) return nullptr;
 
