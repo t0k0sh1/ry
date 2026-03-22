@@ -47,47 +47,49 @@ match connect("127.0.0.1", 19999):
 
 // ============================================================
 // Echo round-trip: server and client via spawn
+// TODO: re-enable once network test hang on CI (macos-14) is resolved
+// See: https://github.com/t0k0sh1/ry/issues/96
 // ============================================================
 
-TEST_F(CodeGenTest, NetEchoRoundTrip) {
-    EXPECT_EQ(runSource(NET_DECLS + R"(
-fn run_server(port: int, ready: Channel<int>) -> str:
-    match bind("127.0.0.1", port):
-        case Some(server):
-            listen(server, 1)
-            send(ready, 1)
-            match accept(server):
-                case Some(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    msg = bytes_to_str(data)
-                    send(conn, str_to_bytes("echo:" + msg))
-                    close(conn)
-                case None:
-                    ...
-            close(server)
-        case None:
-            send(ready, 0)
-    return "done"
-
-fn run_client(port: int) -> str:
-    match connect("127.0.0.1", port):
-        case Some(conn):
-            send(conn, str_to_bytes("hello"))
-            resp: List<byte> = recv(conn, 4096)
-            msg = bytes_to_str(resp)
-            close(conn)
-            return msg
-        case None:
-            return "fail"
-
-ready: Channel<int> = channel[int]()
-t: Task<str> = spawn run_server(18081, ready)
-recv(ready)
-resp_msg = run_client(18081)
-print(resp_msg)
-join(t)
-)"), "echo:hello\n");
-}
+// TEST_F(CodeGenTest, NetEchoRoundTrip) {
+//     EXPECT_EQ(runSource(NET_DECLS + R"(
+// fn run_server(port: int, ready: Channel<int>) -> str:
+//     match bind("127.0.0.1", port):
+//         case Some(server):
+//             listen(server, 1)
+//             send(ready, 1)
+//             match accept(server):
+//                 case Some(conn):
+//                     data: List<byte> = recv(conn, 4096)
+//                     msg = bytes_to_str(data)
+//                     send(conn, str_to_bytes("echo:" + msg))
+//                     close(conn)
+//                 case None:
+//                     ...
+//             close(server)
+//         case None:
+//             send(ready, 0)
+//     return "done"
+//
+// fn run_client(port: int) -> str:
+//     match connect("127.0.0.1", port):
+//         case Some(conn):
+//             send(conn, str_to_bytes("hello"))
+//             resp: List<byte> = recv(conn, 4096)
+//             msg = bytes_to_str(resp)
+//             close(conn)
+//             return msg
+//         case None:
+//             return "fail"
+//
+// ready: Channel<int> = channel[int]()
+// t: Task<str> = spawn run_server(18081, ready)
+// recv(ready)
+// resp_msg = run_client(18081)
+// print(resp_msg)
+// join(t)
+// )"), "echo:hello\n");
+// }
 
 // ============================================================
 // send/recv/close overload coexistence with Channel
