@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
+#include <sys/time.h>
 
 struct TcpListenerHandle {
     int fd;
@@ -70,7 +71,8 @@ extern "C" void __ry_listen(void *listener, int64_t backlog) {
 extern "C" void *__ry_accept(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
     struct timeval tv = {1, 0};
-    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    if (::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+        return nullptr;
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
     int client_fd = ::accept(handle->fd, (struct sockaddr *)&client_addr, &addr_len);
@@ -101,7 +103,10 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
 
     // Non-blocking connect with 5-second timeout
     int flags = ::fcntl(fd, F_GETFL, 0);
-    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        ::close(fd);
+        return nullptr;
+    }
 
     int conn_ret = ::connect(fd, result->ai_addr, result->ai_addrlen);
     ::freeaddrinfo(result);
@@ -120,8 +125,7 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
         }
         int so_error = 0;
         socklen_t len = sizeof(so_error);
-        ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-        if (so_error != 0) {
+        if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len) < 0 || so_error != 0) {
             ::close(fd);
             return nullptr;
         }
