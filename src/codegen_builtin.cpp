@@ -1026,9 +1026,17 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
             ceArgs.push_back(valueToString(randVals[i]));
         builder_.CreateCall(printfFn, ceArgs);
     }
+    for (unsigned i = 0; i < paramTypes.size(); ++i) {
+        if (paramTypes[i] == ptrTy_)
+            builder_.CreateCall(getStdlibFree(), {randVals[i]});
+    }
     builder_.CreateBr(endBB);
 
     builder_.SetInsertPoint(contBB);
+    for (unsigned i = 0; i < paramTypes.size(); ++i) {
+        if (paramTypes[i] == ptrTy_)
+            builder_.CreateCall(getStdlibFree(), {randVals[i]});
+    }
     llvm::Value *nextI = builder_.CreateAdd(iVal, llvm::ConstantInt::get(i64Ty_, 1), "next_i");
     builder_.CreateStore(nextI, iAlloca);
     builder_.CreateBr(condBB);
