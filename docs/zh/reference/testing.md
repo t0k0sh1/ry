@@ -10,6 +10,7 @@ Ry 內建 RSpec 風格的測試語法。使用 `ry test` 子指令執行測試�
 
 ```bash
 ry test              # 自動探索並執行專案內所有 *.test.ry 檔案
+ry test tests/spec   # 遞迴執行指定目錄下所有 *.test.ry 檔案
 ry test test_file.ry # 執行指定的測試檔案
 ```
 

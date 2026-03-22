@@ -10,6 +10,7 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 
 ```bash
 ry test              # Auto-discover and run all *.test.ry files in the project
+ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
 ```
 
