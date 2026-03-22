@@ -66,6 +66,7 @@ print(p.y)   # 20
 p = Point(10, 20)
 p.x = 100    # OK: 可變變數
 
+@const
 q = Point(10, 20)
 q.x = 100    # 錯誤: @const 變數的欄位不可變更
 ```

@@ -47,6 +47,7 @@ error: cannot reassign @const variable: x
 
 ```python
 # 對 @const 變數重新賦值
+@const
 x = 10
 x = 20   # 錯誤
 

@@ -66,6 +66,7 @@ print(p.y)   # 20
 p = Point(10, 20)
 p.x = 100    # OK: 可変変数
 
+@const
 q = Point(10, 20)
 q.x = 100    # エラー: @const変数のフィールドは変更不可
 ```

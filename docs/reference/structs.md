@@ -66,6 +66,7 @@ print(p.y)   # 20
 p = Point(10, 20)
 p.x = 100    # OK: mutable variable
 
+@const
 q = Point(10, 20)
 q.x = 100    # Error: fields of @const variables cannot be modified
 ```

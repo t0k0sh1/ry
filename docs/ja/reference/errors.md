@@ -47,6 +47,7 @@ error: cannot reassign @const variable: x
 
 ```python
 # @const変数への再代入
+@const
 x = 10
 x = 20   # エラー
 
