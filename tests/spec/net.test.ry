@@ -2,21 +2,21 @@ from std.net import bind, listen, accept, connect
 from std.io import str_to_bytes, bytes_to_str
 
 describe("TCP socket API", fn():
-    it("bind returns Some on valid address", fn():
+    it("bind returns Ok on valid address", fn():
         match bind("127.0.0.1", 18090):
-            case Some(server):
+            case Ok(server):
                 close(server)
                 expect(true).to_eq(true)
-            case None:
+            case Err(e):
                 expect(true).to_eq(false)
 
     )
-    it("connect to closed port returns None", fn():
+    it("connect to closed port returns Err", fn():
         match connect("127.0.0.1", 19998):
-            case Some(conn):
+            case Ok(conn):
                 close(conn)
                 expect(true).to_eq(false)
-            case None:
+            case Err(e):
                 expect(true).to_eq(true)
 
     )

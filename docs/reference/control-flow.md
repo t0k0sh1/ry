@@ -358,6 +358,8 @@ match expression:
 | ADT enum variant | `Shape::Circle(r)` | Matches an enum variant with associated data and binds it |
 | `Some(x)` | `Some(v)` | When Option has a value, binds the inner value |
 | `None` | `None` | When Option has no value |
+| `Ok(x)` | `Ok(v)` | When Result is Ok, binds the inner value |
+| `Err(x)` | `Err(e)` | When Result is Err, binds the error value |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
 ### Guard Clause
@@ -416,6 +418,18 @@ match x:
     case None:
         print("nothing")
 
+# Result match
+fn divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+match divide(10, 2):
+    case Ok(v):
+        print(v)         # 5
+    case Err(e):
+        print(e.message)
+
 # Literal match
 match x:
     case 0:
@@ -461,7 +475,7 @@ Multi-field variants bind each field to a separate name in declaration order.
 ### Scope Rules
 
 - Each `case` arm has its own block scope.
-- Variables bound by variable binding patterns (`n`) or `Some(x)` are only valid within that arm.
+- Variables bound by variable binding patterns (`n`), `Some(x)`, `Ok(v)`, or `Err(e)` are only valid within that arm.
 
 ---
 

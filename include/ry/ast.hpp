@@ -349,6 +349,8 @@ struct VariablePattern { std::string name; };
 struct EnumPattern { std::string enum_name; std::string variant_name; };
 struct SomePattern { std::string binding; };
 struct NonePattern {};
+struct OkPattern { std::string binding; };
+struct ErrPattern { std::string binding; };
 struct EnumConstructorPattern {
     std::string enum_name;
     std::string variant_name;
@@ -360,6 +362,7 @@ struct OrPattern;
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
+    OkPattern, ErrPattern,
     EnumConstructorPattern,
     std::unique_ptr<OrPattern>
 >;

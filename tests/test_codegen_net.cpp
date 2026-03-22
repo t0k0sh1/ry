@@ -2,47 +2,47 @@
 
 static const std::string NET_DECLS = R"(
 @native
-fn bind(host: str, port: int) -> Option<TcpListener>
+fn bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
 fn listen(listener: TcpListener, backlog: int) -> Unit
 @native
-fn accept(listener: TcpListener) -> Option<TcpStream>
+fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
-fn connect(host: str, port: int) -> Option<TcpStream>
+fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
 fn str_to_bytes(s: str) -> List<byte>
 @native
-fn bytes_to_str(bs: List<byte>) -> str
+fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
 )";
 
 // ============================================================
-// bind returns Option<TcpListener>
+// bind returns Result<TcpListener, Error>
 // ============================================================
 
-TEST_F(CodeGenTest, NetBindReturnsOption) {
+TEST_F(CodeGenTest, NetBindReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 match bind("127.0.0.1", 18080):
-    case Some(server):
+    case Ok(server):
         print("ok")
         close(server)
-    case None:
+    case Err(e):
         print("fail")
 )"), "ok\n");
 }
 
 // ============================================================
-// connect to invalid address returns None
+// connect to invalid address returns Err
 // ============================================================
 
-TEST_F(CodeGenTest, NetConnectInvalidReturnsNone) {
+TEST_F(CodeGenTest, NetConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 match connect("127.0.0.1", 19999):
-    case Some(conn):
+    case Ok(conn):
         print("connected")
         close(conn)
-    case None:
-        print("none")
-)"), "none\n");
+    case Err(e):
+        print("err")
+)"), "err\n");
 }
 
 // ============================================================
@@ -55,31 +55,31 @@ match connect("127.0.0.1", 19999):
 //     EXPECT_EQ(runSource(NET_DECLS + R"(
 // fn run_server(port: int, ready: Channel<int>) -> str:
 //     match bind("127.0.0.1", port):
-//         case Some(server):
+//         case Ok(server):
 //             listen(server, 1)
 //             send(ready, 1)
 //             match accept(server):
-//                 case Some(conn):
+//                 case Ok(conn):
 //                     data: List<byte> = recv(conn, 4096)
 //                     msg = bytes_to_str(data)
 //                     send(conn, str_to_bytes("echo:" + msg))
 //                     close(conn)
-//                 case None:
+//                 case Err(e):
 //                     ...
 //             close(server)
-//         case None:
+//         case Err(e):
 //             send(ready, 0)
 //     return "done"
 //
 // fn run_client(port: int) -> str:
 //     match connect("127.0.0.1", port):
-//         case Some(conn):
+//         case Ok(conn):
 //             send(conn, str_to_bytes("hello"))
 //             resp: List<byte> = recv(conn, 4096)
 //             msg = bytes_to_str(resp)
 //             close(conn)
 //             return msg
-//         case None:
+//         case Err(e):
 //             return "fail"
 //
 // ready: Channel<int> = channel[int]()

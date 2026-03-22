@@ -9,6 +9,7 @@
 #include <llvm/IR/Module.h>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -51,6 +52,7 @@ private:
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
+    std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
@@ -288,6 +290,10 @@ private:
     bool isOptionType(llvm::Type *ty);
     llvm::Value *buildNoneValue(llvm::Type *optionTy);
     llvm::Value *buildSomeValue(llvm::Value *inner, llvm::Type *optionTy);
+    llvm::StructType *getResultType(llvm::Type *okTy, llvm::Type *errTy);
+    bool isResultType(llvm::Type *ty);
+    llvm::Value *buildOkValue(llvm::Value *inner, llvm::StructType *resultTy);
+    llvm::Value *buildErrValue(llvm::Value *inner, llvm::StructType *resultTy);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);

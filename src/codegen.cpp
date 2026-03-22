@@ -631,6 +631,32 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return getOptionType(innerTy);
     }
 
+    // Result<V, E> parsing
+    if (typeName.size() > 7 && typeName.substr(0, 7) == "Result<" && typeName.back() == '>') {
+        std::string inner = typeName.substr(7, typeName.size() - 8);
+        // Find comma separating V and E, respecting nested angle brackets
+        int depth = 0;
+        size_t commaPos = std::string::npos;
+        for (size_t i = 0; i < inner.size(); ++i) {
+            if (inner[i] == '<') ++depth;
+            else if (inner[i] == '>') --depth;
+            else if (inner[i] == ',' && depth == 0) {
+                commaPos = i;
+                break;
+            }
+        }
+        if (commaPos == std::string::npos)
+            codegenError("Result type requires two type parameters: Result<V, E>");
+        std::string okStr = inner.substr(0, commaPos);
+        std::string errStr = inner.substr(commaPos + 1);
+        // Trim whitespace
+        while (!okStr.empty() && okStr.back() == ' ') okStr.pop_back();
+        while (!errStr.empty() && errStr.front() == ' ') errStr.erase(errStr.begin());
+        llvm::Type *okTy = (okStr == "Unit") ? i8Ty_ : resolveType(okStr);
+        llvm::Type *errTy = resolveType(errStr);
+        return getResultType(okTy, errTy);
+    }
+
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
 
@@ -656,6 +682,41 @@ bool CodeGen::isOptionType(llvm::Type *ty) {
         if (pair.second == st) return true;
     }
     return false;
+}
+
+llvm::StructType *CodeGen::getResultType(llvm::Type *okTy, llvm::Type *errTy) {
+    auto key = std::make_pair(okTy, errTy);
+    auto it = result_types_.find(key);
+    if (it != result_types_.end()) return it->second;
+    llvm::StructType *resTy = llvm::StructType::create(
+        *ctx_, {i1Ty_, okTy, errTy}, "Result");
+    result_types_[key] = resTy;
+    return resTy;
+}
+
+bool CodeGen::isResultType(llvm::Type *ty) {
+    auto *st = llvm::dyn_cast<llvm::StructType>(ty);
+    if (!st) return false;
+    for (auto &pair : result_types_) {
+        if (pair.second == st) return true;
+    }
+    return false;
+}
+
+llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultTy) {
+    llvm::Value *val = llvm::UndefValue::get(resultTy);
+    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0, "res.ok");
+    val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
+    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(resultTy->getElementType(2)), 2);
+    return val;
+}
+
+llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *resultTy) {
+    llvm::Value *val = llvm::UndefValue::get(resultTy);
+    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0, "res.err");
+    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(resultTy->getElementType(1)), 1);
+    val = builder_.CreateInsertValue(val, inner, 2, "res.err_val");
+    return val;
 }
 
 std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {

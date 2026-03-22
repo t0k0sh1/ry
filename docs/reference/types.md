@@ -316,44 +316,53 @@ print(e2.code)     # 404
 print(e2)          # Error: not found (code: 404)
 ```
 
-### Error Handling Convention
+### Error Handling with Result
 
-Functions that can fail return a `(T, Error?)` tuple:
+Functions that can fail return `Result<V, E>`:
 
 ```python
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 2)
-match err:
-    case Some(e):
+match divide(10, 2):
+    case Ok(v):
+        print(v)            # 5
+    case Err(e):
         print(e.message)
-    case None:
-        print(val)          # 5
 ```
 
-### `!!` Operator (Error Propagation)
-
-The `!!` postfix operator extracts the value from a `(T, Error?)` tuple. If the error is present, it is propagated to the enclosing function.
+When the return value is not meaningful, use `Result<Unit, Error>`:
 
 ```python
-fn read_file(path: str) -> (str, Error?):
-    if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+fn save(path: str, data: str) -> Result<Unit, Error>:
+    return Ok(0 as byte)   # Unit placeholder
 
-fn process() -> (str, Error?):
-    data = read_file("test.txt")!!   # propagates error if any
-    return (data, none)
+match save("/tmp/test.txt", "hello"):
+    case Ok(_):
+        print("saved")
+    case Err(e):
+        print(e.message)
 ```
 
-The enclosing function must also return `(X, Error?)` for `!!` to work.
+### Result Type
+
+`Result<V, E>` is a built-in parameterized type with two constructors:
+
+- `Ok(value)` — success variant
+- `Err(error)` — error variant
+
+It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
+
+**Test matchers:**
+- `expect(x).to_be_ok()` — asserts the result is `Ok`
+- `expect(x).to_be_err()` — asserts the result is `Err`
 
 ### Internal Representation
 
 `Error` is represented as `{ ptr message, i64 code }`.
+`Result<V, E>` is represented as `{ i1 isOk, V okValue, E errValue }`.
 
 ## Union Type
 
