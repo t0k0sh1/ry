@@ -70,7 +70,7 @@ from std.http import http_listen, http_path, http_response
 fn start_server(port: int) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
         @const
-    path = http_path(req)
+        path = http_path(req)
         if path == "/api/health":
             return http_response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
         return http_response(404, {"Content-Type": "text/plain"}, "Not Found")

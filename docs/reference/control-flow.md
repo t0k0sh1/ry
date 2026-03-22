@@ -496,17 +496,16 @@ if true:
 # a is not accessible here
 ```
 
-### Shadowing
+### Inner Scope Reassignment
 
-- Declaring a variable with the same name as an outer variable in an inner scope causes the inner variable to be referenced within the inner scope.
-- After leaving the inner scope, the outer variable is accessible again.
+- Assigning to a variable inside an inner scope modifies the outer variable (Python-style scoping).
+- There is no shadowing — the inner assignment changes the same variable.
 
 ```python
 @const
 x = 10
 if true:
-    @const
-    x = 99   # Shadows the outer x
+    x = 99   # Modifies the outer x
     print(x)     # 99
-print(x)         # 10
+print(x)         # 99
 ```

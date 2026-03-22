@@ -355,6 +355,10 @@ void CodeGen::emitStmt(AssignStmt &s) {
         return;
     }
 
+    // Reject assignment to native constants
+    if (native_constants_.count(s.name))
+        codegenError("cannot reassign native constant: " + s.name);
+
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
         emitVarDecl(s.name, s.type_annotation, *s.value, is_const);

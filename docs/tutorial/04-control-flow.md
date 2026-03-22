@@ -193,18 +193,17 @@ for i in range(5):
 print(count)   # 10
 ```
 
-### Shadowing
+### Inner Scope Reassignment
 
-If you declare a variable with the same name as an outer variable inside a block, the new variable is used within that block (shadowing). The outer variable remains unchanged.
+Assigning to a variable inside a block modifies the outer variable (Python-style scoping). There is no shadowing — the inner assignment changes the same variable.
 
 ```python
 @const
 x = 1
 if true:
-    @const
     x = 99
     print(x)   # 99
-print(x)       # 1
+print(x)       # 99
 ```
 
 ---

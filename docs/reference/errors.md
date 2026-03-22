@@ -24,7 +24,7 @@ Each error message includes:
 
 | Error | Cause | Example |
 |-----------|------|-----|
-| Assignment to undeclared variable | Assigned to a variable that has not been declared | `x = 1` (`x` is undeclared) |
+| Use of undeclared variable | Referenced a variable that has not been declared | `print(x)` (`x` is undeclared) |
 | Reassignment to @const variable | Reassigned to a variable declared with `@const` | `@const x = 1` -> `x = 2` |
 | Redeclaration of same-named variable | Redeclared a variable with the same name in the same scope | `x = 1` -> another declaration of `x` |
 | Type-changing reassignment | Assigned a value of a different type to a variable | `x = 1` -> `x = 3.14` |

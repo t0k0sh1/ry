@@ -193,18 +193,17 @@ for i in range(5):
 print(count)   # 10
 ```
 
-### 遮蔽（Shadowing）
+### 內層作用域的重新賦值
 
-在區塊內宣告與外部同名的變數時，區塊內會使用新的變數（遮蔽）。外部的變數不受影響。
+在區塊內對變數賦值會修改外層的變數（Python 風格的作用域）。不會產生遮蔽——內層的賦值會修改同一個變數。
 
 ```python
 @const
 x = 1
 if true:
-    @const
     x = 99
     print(x)   # 99
-print(x)       # 1
+print(x)       # 99
 ```
 
 ---

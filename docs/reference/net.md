@@ -86,7 +86,7 @@ fn echo_server(port: int) -> str:
             match accept(server):
                 case Some(conn):
                     @const
-                data: List<byte> = recv(conn, 4096)
+                    data: List<byte> = recv(conn, 4096)
                     send(conn, data)
                     close(conn)
                 case None:
