@@ -27,7 +27,6 @@ else:
 ### Example
 
 ```python
-@const
 x = 10
 
 if x > 5:
@@ -45,7 +44,6 @@ else:
 
 ```python
 if true:
-    @const
     y = 42
 # y is not accessible here
 ```
@@ -118,7 +116,6 @@ for k, v in map_expr:
 When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
 
 ```python
-@const
 xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
@@ -143,12 +140,10 @@ for i in 1 .. 5:
 ### Example
 
 ```python
-@const
 xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-@const
 s = {1, 2, 3}
 for x in s:
     print(x)
@@ -166,7 +161,6 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # Map iteration
-@const
 m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
@@ -187,10 +181,8 @@ for i in 1 .. 3:
 fn square(x: int) -> int:
     return x * x
 
-@const
 t: Task<int> = spawn square(12)
 print(await t)          # 144
-@const
 u: Task<int> = spawn square(3)
 print(join(u))          # 9, function-form equivalent of await
 ```
@@ -214,9 +206,7 @@ fn worker(ch: Channel<int>) -> int:
     close(ch)
     return 0
 
-@const
 ch: Channel<int> = channel[int]()
-@const
 t: Task<int> = spawn worker(ch)
 for x in ch:
     print(x)
@@ -419,7 +409,6 @@ match color:
         print("blue")
 
 # Option match
-@const
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -456,7 +445,6 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-@const
 s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
@@ -486,12 +474,10 @@ Multi-field variants bind each field to a separate name in declaration order.
 
 ```python
 for i in range(3):
-    @const
     tmp = i * 2
 # tmp is not accessible here
 
 if true:
-    @const
     a = 1
 # a is not accessible here
 ```
@@ -502,7 +488,6 @@ if true:
 - There is no shadowing — the inner assignment changes the same variable.
 
 ```python
-@const
 x = 10
 if true:
     x = 99   # Modifies the outer x

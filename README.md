@@ -22,11 +22,8 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 
 ```python
 # Variables and types
-@const
 x: int = 42
-@const
 name: str = "hello"
-@const
 pi = 3.14159
 
 # Function definition
@@ -38,9 +35,7 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # Lambdas and closures
-@const
 offset = 10
-@const
 add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
@@ -52,16 +47,12 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-@const
 p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # Collections
-@const
 xs = [1, 2, 3]
-@const
 m = {"a": 1, "b": 2}
-@const
 s = {1, 2, 3}
 
 for x in xs:
@@ -71,7 +62,6 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-@const
 result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
@@ -81,7 +71,6 @@ enum Color:
     Green
     Blue
 
-@const
 c = Color::Red
 print(c)               # Red
 
@@ -101,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.

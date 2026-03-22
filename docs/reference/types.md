@@ -31,29 +31,17 @@
 You can explicitly specify the type when declaring a variable. The annotation can be omitted when the type is inferrable.
 
 ```python
-@const
 x: int = 42
-@const
 b: byte = 255
-@const
 f: float = 3.14
-@const
 s: str = "hello"
-@const
 b: bool = true
-@const
 opt: Option<int> = Some(10)
-@const
 t: (int, float) = (1, 3.14)
-@const
 xs: List<int> = [1, 2, 3]
-@const
 m: Map<str, int> = {"a": 1}
-@const
 s: Set<int> = {1, 2, 3}
-@const
 fn_val: fn(int) -> int = fn(x: int): x * 2
-@const
 u: int | str = 42
 ```
 
@@ -85,9 +73,7 @@ The `type` keyword creates a new name for an existing type. The alias is fully i
 type Meters = float
 type StringList = List<str>
 
-@const
 d: Meters = 3.14
-@const
 names: StringList = ["Alice", "Bob"]
 ```
 
@@ -98,7 +84,6 @@ Type aliases also work with function types, literal types, and range types:
 ```python
 type Callback = fn(int, int) -> int
 
-@const
 add: Callback = fn(a: int, b: int): a + b
 print(add(3, 4))    # 7
 ```
@@ -108,11 +93,8 @@ type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-@const
 m: Month = 6
-@const
 d: Direction = "N"
-@const
 n: Digit = 5
 ```
 
@@ -125,9 +107,7 @@ A literal type restricts a variable to specific constant values. The compiler ch
 ### Int Literal Type
 
 ```python
-@const
 x: 42 = 42           # single literal type
-@const
 y: 0 | 1 = 0         # union of int literals
 z: 0 | 1 = 0
 z = 1                     # OK
@@ -137,7 +117,6 @@ z = 1                     # OK
 ### String Literal Type
 
 ```python
-@const
 dir: "N" | "S" | "E" | "W" = "N"
 # @const bad: "N" | "S" = "X"    # compile error
 ```
@@ -154,12 +133,10 @@ dir: "N" | "S" | "E" | "W" = "N"
 A range type constrains an integer variable to a contiguous range of values (inclusive on both ends).
 
 ```python
-@const
 month: 1..12 = 6       # OK
 # @const bad: 1..12 = 0       # compile error: out of range
 # @const bad: 1..12 = 13      # compile error: out of range
 
-@const
 t: -10..10 = -5        # negative ranges are supported
 ```
 
@@ -190,9 +167,7 @@ The `none` keyword represents the absence of a value for Option types, equivalen
 The `T?` syntax is a shorthand for `Option<T>`.
 
 ```python
-@const
 x: int? = 42       # equivalent to Option<int>
-@const
 y: int? = none      # equivalent to None
 
 fn find(xs: List<int>, val: int) -> int?:
@@ -209,13 +184,10 @@ fn find(xs: List<int>, val: int) -> int?:
 String interpolation with the `f"..."` syntax. Expressions inside `{}` are evaluated and converted to strings.
 
 ```python
-@const
 name = "world"
 print(f"Hello {name}")     # Hello world
 
-@const
 a = 1
-@const
 b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
@@ -241,15 +213,10 @@ print(f"{{braces}}")   # {braces}
 Explicit type conversion using the `as` keyword.
 
 ```python
-@const
 x = 42 as float     # 42.0
-@const
 y = 3.14 as int      # 3
-@const
 z = 1 as bool        # true
-@const
 s = 42 as str         # "42"
-@const
 b = 255 as byte       # byte value 255
 ```
 
@@ -283,11 +250,8 @@ enum Shape:
 Use the `EnumName::Variant(value)` syntax to construct a variant with data.
 
 ```python
-@const
 c = Shape::Circle(3.14)
-@const
 r = Shape::Rectangle(4.0, 5.0)
-@const
 p = Shape::Point
 ```
 
@@ -327,9 +291,7 @@ enum MyOption<T>:
 Instantiate by providing a concrete type argument. The type argument is required when the compiler cannot infer it.
 
 ```python
-@const
 a = MyOption<int>::MySome(42)
-@const
 b = MyOption<int>::MyNone
 
 match a:
@@ -346,9 +308,7 @@ match a:
 A built-in type for error handling. `Error` has two fields: `message` (str) and `code` (int).
 
 ```python
-@const
 e = Error("something went wrong")       # code defaults to 0
-@const
 e2 = Error("not found", 404)            # explicit code
 
 print(e.message)   # something went wrong
@@ -366,7 +326,6 @@ fn divide(a: int, b: int) -> (int, Error?):
         return (0, Some(Error("division by zero")))
     return (a // b, none)
 
-@const
 val, err = divide(10, 2)
 match err:
     case Some(e):
@@ -386,7 +345,6 @@ fn read_file(path: str) -> (str, Error?):
     return ("content", none)
 
 fn process() -> (str, Error?):
-    @const
     data = read_file("test.txt")!!   # propagates error if any
     return (data, none)
 ```
@@ -402,7 +360,6 @@ The enclosing function must also return `(X, Error?)` for `!!` to work.
 You can declare a variable that may hold one of multiple types using `|`.
 
 ```python
-@const
 x: int | str = 42
 x = "hello"     # Reassignment is allowed (any type in the union)
 print(x)        # hello

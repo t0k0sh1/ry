@@ -48,14 +48,11 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    @const
     method = http_method(req)
-    @const
     path = http_path(req)
     if path == "/hello":
         return http_response(200, {"Content-Type": "text/plain"}, "Hello, World!")
     if path == "/echo":
-        @const
         body = http_body(req)
         return http_response(200, {"Content-Type": "text/plain"}, body)
     return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
@@ -69,7 +66,6 @@ from std.http import http_listen, http_path, http_response
 
 fn start_server(port: int) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        @const
         path = http_path(req)
         if path == "/api/health":
             return http_response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
@@ -77,7 +73,6 @@ fn start_server(port: int) -> str:
     )
     return "done"
 
-@const
 t: Task<str> = spawn start_server(8080)
 # Server runs in background thread
 ```

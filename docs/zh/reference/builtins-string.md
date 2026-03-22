@@ -271,7 +271,6 @@ print(len("あいう"))        # 3 (字元數)
 以分隔符號 `delim` 分割字串 `s`，回傳 `List<str>`。
 
 ```python
-@const
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
@@ -292,7 +291,6 @@ for word in "hello world".split(" "):
 以分隔符號 `sep` 連接字串串列的元素，回傳結合後的字串。
 
 ```python
-@const
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)

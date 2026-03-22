@@ -37,9 +37,7 @@ record Rectangle:
 Arguments are passed in the order of field definitions. Named arguments are not supported.
 
 ```python
-@const
 p = Point(10, 20)
-@const
 r = Rectangle(3.0, 4.5)
 ```
 
@@ -50,7 +48,6 @@ r = Rectangle(3.0, 4.5)
 Fields are read using dot notation.
 
 ```python
-@const
 p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
@@ -69,7 +66,6 @@ print(p.y)   # 20
 p = Point(10, 20)
 p.x = 100    # OK: mutable variable
 
-@const
 q = Point(10, 20)
 q.x = 100    # Error: fields of @const variables cannot be modified
 ```
@@ -101,7 +97,6 @@ record Circle:
     center: Point
     radius: float
 
-@const
 c = Circle(Point(0, 0), 1.0)
 print(c.center.x)   # 0
 ```
@@ -123,7 +118,6 @@ record Bad:
     x: int   # Error
 
 # Error example: Passing a struct to print
-@const
 p = Point(1, 2)
 print(p)   # Error
 ```
@@ -159,7 +153,6 @@ enum Color:
 Variants are accessed using the `::` operator.
 
 ```python
-@const
 c = Color::Red
 print(c)   # Red
 ```
@@ -176,7 +169,6 @@ print(Color::Red != Color::Green)  # true
 ### Usage in if Statements
 
 ```python
-@const
 c = Color::Green
 if c == Color::Red:
     print("red")
@@ -203,7 +195,6 @@ print(is_red(Color::Green))  # false
 `print()` outputs the variant name.
 
 ```python
-@const
 c = Color::Blue
 print(c)   # Blue
 ```

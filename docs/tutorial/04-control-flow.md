@@ -11,7 +11,6 @@
 Use `if` to branch execution based on conditions.
 
 ```python
-@const
 x = 10
 
 if x > 0:
@@ -27,9 +26,7 @@ else:
 - `if` statements can be nested.
 
 ```python
-@const
 a = 5
-@const
 b = 3
 
 if a > 0:
@@ -102,7 +99,6 @@ for i in 1 .. 3:
 You can iterate over map key-value pairs with `for k, v in map`:
 
 ```python
-@const
 m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
@@ -177,7 +173,6 @@ Variables declared inside a block cannot be referenced from outside the block.
 
 ```python
 if true:
-    @const
     inner = 42
 # Referencing inner here causes a compile error
 ```
@@ -198,7 +193,6 @@ print(count)   # 10
 Assigning to a variable inside a block modifies the outer variable (Python-style scoping). There is no shadowing — the inner assignment changes the same variable.
 
 ```python
-@const
 x = 1
 if true:
     x = 99
@@ -218,7 +212,6 @@ enum Color:
     Green
     Blue
 
-@const
 c = Color::Green
 match c:
     case Color::Red:
@@ -235,7 +228,6 @@ match c:
 Use `match` to safely handle both the `Some` and `None` cases.
 
 ```python
-@const
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -250,7 +242,6 @@ match x:
 `_` is a wildcard pattern that matches anything. You can also match against literal values (numbers, strings, booleans).
 
 ```python
-@const
 n = 5
 match n:
     case 0:

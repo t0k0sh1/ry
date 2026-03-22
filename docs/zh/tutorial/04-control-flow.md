@@ -11,7 +11,6 @@
 使用 `if` 根據條件進行分支處理。
 
 ```python
-@const
 x = 10
 
 if x > 0:
@@ -27,9 +26,7 @@ else:
 - `if` 可以巢狀使用。
 
 ```python
-@const
 a = 5
-@const
 b = 3
 
 if a > 0:
@@ -102,7 +99,6 @@ for i in 1 .. 3:
 使用 `for k, v in map` 可以走訪映射的鍵值對。
 
 ```python
-@const
 m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
@@ -177,7 +173,6 @@ for i in range(1, 4):
 
 ```python
 if true:
-    @const
     inner = 42
 # 在此處參照 inner 會產生編譯錯誤
 ```
@@ -198,7 +193,6 @@ print(count)   # 10
 在區塊內對變數賦值會修改外層的變數（Python 風格的作用域）。不會產生遮蔽——內層的賦值會修改同一個變數。
 
 ```python
-@const
 x = 1
 if true:
     x = 99
@@ -218,7 +212,6 @@ enum Color:
     Green
     Blue
 
-@const
 c = Color::Green
 match c:
     case Color::Red:
@@ -235,7 +228,6 @@ match c:
 使用 `match` 可以安全地處理 `None` 的情況。
 
 ```python
-@const
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -250,7 +242,6 @@ match x:
 `_` 是可匹配任何值的萬用字元模式。也可以使用字面值（數值、字串、布林值）進行匹配。
 
 ```python
-@const
 n = 5
 match n:
     case 0:

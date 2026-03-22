@@ -47,17 +47,14 @@ error: cannot reassign @const variable: x
 
 ```python
 # 對 @const 變數重新賦值
-@const
 x = 10
 x = 20   # 錯誤
 
 # 型別變更賦值
-@const
 n = 1
 n = "hello"   # 錯誤：對 int 型別賦值 str 型別
 
 # 空串列
-@const
 xs = []   # 錯誤：無法推論型別
 
 # 在迴圈外使用 break
@@ -90,12 +87,10 @@ record Bad:
 
 ```python
 # 串列超出範圍的存取
-@const
 xs = [1, 2, 3]
 print(xs[10])   # 執行時錯誤：exit(1)
 
 # 映射不存在的鍵存取
-@const
 m = {"a": 1}
 print(m["z"])   # 執行時錯誤：exit(1)
 ```

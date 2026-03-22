@@ -59,9 +59,7 @@ from mypackage import add   # add のみインポート
 ```python
 # これらの関数はインポートなしで利用可能
 print("hello")
-@const
 n = len("world")
-@const
 xs = range(5)
 ```
 

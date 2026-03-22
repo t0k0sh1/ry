@@ -15,14 +15,12 @@ A tuple is an immutable data structure that groups multiple values together. It 
 ### Creation
 
 ```python
-@const
 t = (1, 3.14)
 ```
 
 ### Type Annotation
 
 ```python
-@const
 t: (int, float) = (1, 3.14)
 ```
 
@@ -31,7 +29,6 @@ t: (int, float) = (1, 3.14)
 Elements are accessed by index using `.0`, `.1`, etc.
 
 ```python
-@const
 t = (1, 3.14)
 print(t.0)   # 1
 print(t.1)   # 3.14
@@ -45,7 +42,6 @@ Tuples are useful when you want to return multiple values.
 fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
-@const
 result = swap(1, 2)
 print(result.0)  # 2
 print(result.1)  # 1
@@ -65,14 +61,12 @@ A list is a variable-length data structure containing elements of the same type.
 ### Creation
 
 ```python
-@const
 xs = [1, 2, 3]
 ```
 
 ### Type Annotation
 
 ```python
-@const
 xs: List<int> = [1, 2, 3]
 ```
 
@@ -81,7 +75,6 @@ xs: List<int> = [1, 2, 3]
 ```python
 print(xs[0])   # 1
 
-@const
 i = 1
 print(xs[i])   # 2
 ```
@@ -123,26 +116,21 @@ fn first(xs: List<int>) -> int:
 Lists support `filter`, `map`, and `sort` operations. These return new lists without modifying the original.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-@const
 evens = xs.filter(fn(x: int): x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-@const
 doubled = xs.map(fn(x: int): x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
-@const
 sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # Chaining
-@const
 result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
@@ -152,16 +140,13 @@ print(result)   # [20, 30, 40, 50]
 `reduce` accumulates a list into a single value starting from the first element. `fold` does the same but with an explicit initial value.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 # reduce: start from first element
-@const
 total = reduce(xs, fn(a: int, b: int): a + b)
 print(total)   # 15
 
 # fold: provide an explicit initial value
-@const
 total2 = fold(xs, 0, fn(a: int, b: int): a + b)
 print(total2)   # 15
 ```
@@ -171,7 +156,6 @@ print(total2)   # 15
 `any` returns `true` if at least one element satisfies the predicate. `all` returns `true` if every element does.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 print(any(xs, fn(x: int): x > 4))   # true
@@ -184,7 +168,6 @@ print(all(xs, fn(x: int): x > 3))   # false
 ### sum, min, max
 
 ```python
-@const
 xs = [3, 1, 4, 1, 5]
 print(sum(xs))   # 14
 print(min(xs))   # 1
@@ -194,7 +177,6 @@ print(max(xs))   # 5
 ### first, last, is_empty
 
 ```python
-@const
 xs = [10, 20, 30]
 print(first(xs))      # 10
 print(last(xs))       # 30
@@ -206,18 +188,14 @@ print(is_empty(xs))   # false
 `enumerate` pairs each element with its index. `zip` combines two lists element-by-element.
 
 ```python
-@const
 xs = [10, 20, 30]
-@const
 indexed = enumerate(xs)
 # [(0, 10), (1, 20), (2, 30)]
 for p in indexed:
     print(p.0)
     print(p.1)
 
-@const
 ys = ["a", "b", "c"]
-@const
 zipped = zip(xs, ys)
 # [(10, "a"), (20, "b"), (30, "c")]
 ```
@@ -238,14 +216,12 @@ A map is an associative array that manages key-value pairs.
 ### Creation
 
 ```python
-@const
 m = {"a": 1, "b": 2}
 ```
 
 ### Type Annotation
 
 ```python
-@const
 m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
@@ -289,7 +265,6 @@ print(m.has_key("a"))   # true
 `keys` returns a list of all keys. `values` returns a list of all values.
 
 ```python
-@const
 m = {"a": 1, "b": 2, "c": 3}
 print(keys(m))     # ["a", "b", "c"]
 print(values(m))   # [1, 2, 3]
@@ -317,14 +292,12 @@ A set is a collection that holds elements of the same type without duplicates.
 ### Creation
 
 ```python
-@const
 s = {1, 2, 3}
 ```
 
 ### Type Annotation
 
 ```python
-@const
 s: Set<int> = {1, 2, 3}
 ```
 
@@ -364,7 +337,6 @@ for x in s:
 An empty set requires a type annotation.
 
 ```python
-@const
 empty: Set<int> = {}
 ```
 
@@ -382,9 +354,7 @@ Iterators provide a **lazy** way to process collections. Instead of creating int
 ### Creating and Consuming
 
 ```python
-@const
 xs = [1, 2, 3]
-@const
 ys = xs.iter().to_list()   # [1, 2, 3]
 ```
 
@@ -393,7 +363,6 @@ ys = xs.iter().to_list()   # [1, 2, 3]
 You can chain `filter`, `map`, and `take` to build pipelines:
 
 ```python
-@const
 result = [1, 2, 3, 4, 5]
     .iter()
     .filter(fn(x: int): x > 2)
@@ -406,7 +375,6 @@ print(result)   # [6, 8]
 ### Manual Iteration with next()
 
 ```python
-@const
 it = [10, 20].iter()
 print(it.next())   # Some(10)
 print(it.next())   # Some(20)

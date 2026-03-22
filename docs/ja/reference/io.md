@@ -44,7 +44,6 @@ from std.io import read_text, write_text, file_exists
 from std.io import read_text, write_text, append_text, file_exists, delete_file
 
 write_text("hello.txt", "Hello, World!")
-@const
 content = read_text("hello.txt")
 print(content)   # Hello, World!
 
@@ -63,14 +62,11 @@ print(file_exists("hello.txt"))   # false
 ```python
 from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
-@const
 bs = str_to_bytes("ABC")
 print(len(bs))    # 3
 
 write_bytes("data.bin", bs)
-@const
 rb = read_bytes("data.bin")
-@const
 s = bytes_to_str(rb)
 print(s)          # ABC
 ```
@@ -80,7 +76,6 @@ print(s)          # ABC
 ```python
 from std.io import read_line
 
-@const
 name = read_line()
 print(f"Hello, {name}!")
 ```

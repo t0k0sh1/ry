@@ -41,13 +41,9 @@
 | `+x` | 単項プラス | `+5`（符号変更なし） |
 
 ```python
-@const
 a = 10 // 3    # 3 (int)
-@const
 b = 10 / 3     # 3.3333... (float)
-@const
 c = 2 ** 8     # 256.0 (float)
-@const
 s = "foo" + "bar"  # "foobar"
 ```
 
@@ -71,23 +67,14 @@ s = "foo" + "bar"  # "foobar"
 - マップの場合、`in` はキーの存在を確認します。
 
 ```python
-@const
 x = 3 < 5       # true
-@const
 y = "abc" < "abd"  # true（辞書順）
-@const
 s = {1, 2, 3}
-@const
 z = 2 in s      # true
-@const
 w = 4 not in s  # true
-@const
 xs = [1, 2, 3]
-@const
 a = 2 in xs     # true（リスト線形探索）
-@const
 m = {"a": 1}
-@const
 b = "a" in m    # true（マップキー検索）
 ```
 
@@ -100,11 +87,8 @@ b = "a" in m    # true（マップキー検索）
 | `not` | 論理 NOT | `bool` → `bool` |
 
 ```python
-@const
 a = true and false   # false
-@const
 b = true or false    # true
-@const
 c = not true         # false
 ```
 
@@ -123,31 +107,24 @@ c = not true         # false
 | `>>>` | 論理右シフト | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-@const
 flags = 0b0001 | 0b0010   # 3
-@const
 masked = flags & 0b0011   # 3
-@const
 shifted = 1 << 8          # 256
 ```
 
 ## 三項条件演算子
 
 ```python
-@const
 x = condition ? true_value : false_value
 ```
 
 `condition` を評価し、真であれば `true_value` を、偽であれば `false_value` を返します。両方の分岐は同じ型でなければなりません。右結合なので、ネストされた三項演算子は右から左に結合されます。
 
 ```python
-@const
 x = 3 > 2 ? 10 : 20     # 10
-@const
 s = false ? "yes" : "no" # "no"
 
 # ネスト（右結合）
-@const
 y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
@@ -158,7 +135,6 @@ y = true ? (false ? 1 : 2) : 3   # 2
 `..` 演算子は両端を含む整数の範囲を生成します。
 
 ```python
-@const
 xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
@@ -172,16 +148,13 @@ for i in 1 .. 3:
 ## null 合体演算子（`??`）
 
 ```python
-@const
 x = option_val ?? default_val
 ```
 
 `option_val` が `Some(v)` の場合は `v` を返します。それ以外の場合は `default_val` を返します。右辺のオペランドは Option の内部型と同じ型でなければなりません。
 
 ```python
-@const
 a: int? = Some(10)
-@const
 b: int? = none
 
 print(a ?? 0)    # 10

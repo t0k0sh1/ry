@@ -271,7 +271,6 @@ print(len("あいう"))        # 3 (characters)
 Splits string `s` by delimiter `delim` and returns a `List<str>`.
 
 ```python
-@const
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
@@ -292,7 +291,6 @@ for word in "hello world".split(" "):
 Joins the elements of a string list with separator `sep` and returns a string.
 
 ```python
-@const
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)

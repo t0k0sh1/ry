@@ -47,17 +47,14 @@ Each error message includes:
 
 ```python
 # Reassignment to @const variable
-@const
 x = 10
 x = 20   # Error
 
 # Type-changing reassignment
-@const
 n = 1
 n = "hello"   # Error: assigning str to int variable
 
 # Empty list
-@const
 xs = []   # Error: type cannot be inferred
 
 # break outside loop
@@ -89,12 +86,10 @@ All runtime errors terminate the process with `exit(1)`.
 
 ```python
 # List out-of-range access
-@const
 xs = [1, 2, 3]
 print(xs[10])   # Runtime error: exit(1)
 
 # Map non-existent key access
-@const
 m = {"a": 1}
 print(m["z"])   # Runtime error: exit(1)
 ```

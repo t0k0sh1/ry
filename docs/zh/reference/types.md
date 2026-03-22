@@ -31,29 +31,17 @@
 宣告變數時可以明確指定型別。當型別可推論時可以省略。
 
 ```python
-@const
 x: int = 42
-@const
 b: byte = 255
-@const
 f: float = 3.14
-@const
 s: str = "hello"
-@const
 b: bool = true
-@const
 opt: Option<int> = Some(10)
-@const
 t: (int, float) = (1, 3.14)
-@const
 xs: List<int> = [1, 2, 3]
-@const
 m: Map<str, int> = {"a": 1}
-@const
 s: Set<int> = {1, 2, 3}
-@const
 fn_val: fn(int) -> int = fn(x: int): x * 2
-@const
 u: int | str = 42
 ```
 
@@ -88,9 +76,7 @@ u: int | str = 42
 type Meters = float
 type StringList = List<str>
 
-@const
 d: Meters = 3.14
-@const
 names: StringList = ["Alice", "Bob"]
 ```
 
@@ -101,7 +87,6 @@ names: StringList = ["Alice", "Bob"]
 ```python
 type Callback = fn(int, int) -> int
 
-@const
 add: Callback = fn(a: int, b: int): a + b
 print(add(3, 4))    # 7
 ```
@@ -111,11 +96,8 @@ type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-@const
 m: Month = 6
-@const
 d: Direction = "N"
-@const
 n: Digit = 5
 ```
 
@@ -128,9 +110,7 @@ n: Digit = 5
 ### int 字面量型別
 
 ```python
-@const
 x: 42 = 42           # 單一字面量型別
-@const
 y: 0 | 1 = 0         # int 字面量的 union
 z: 0 | 1 = 0
 z = 1                     # OK
@@ -140,7 +120,6 @@ z = 1                     # OK
 ### str 字面量型別
 
 ```python
-@const
 dir: "N" | "S" | "E" | "W" = "N"
 # @const bad: "N" | "S" = "X"    # 編譯錯誤
 ```
@@ -157,12 +136,10 @@ dir: "N" | "S" | "E" | "W" = "N"
 範圍型別將整數變數的值限制在連續的範圍內（包含兩端）。
 
 ```python
-@const
 month: 1..12 = 6       # OK
 # @const bad: 1..12 = 0       # 編譯錯誤：超出範圍
 # @const bad: 1..12 = 13      # 編譯錯誤：超出範圍
 
-@const
 t: -10..10 = -5        # 支援負數範圍
 ```
 
@@ -193,9 +170,7 @@ set_month(6)                # OK
 `T?` 語法是 `Option<T>` 的簡寫。
 
 ```python
-@const
 x: int? = 42       # 等同於 Option<int>
-@const
 y: int? = none      # 等同於 None
 
 fn find(xs: List<int>, val: int) -> int?:
@@ -212,13 +187,10 @@ fn find(xs: List<int>, val: int) -> int?:
 使用 `f"..."` 語法進行字串插值。`{}` 內的表達式會被求值並轉換為字串。
 
 ```python
-@const
 name = "world"
 print(f"Hello {name}")     # Hello world
 
-@const
 a = 1
-@const
 b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
@@ -244,15 +216,10 @@ print(f"{{braces}}")   # {braces}
 使用 `as` 關鍵字進行明確的型別轉換。
 
 ```python
-@const
 x = 42 as float     # 42.0
-@const
 y = 3.14 as int      # 3
-@const
 z = 1 as bool        # true
-@const
 s = 42 as str         # "42"
-@const
 b = 255 as byte       # byte 值 255
 ```
 
@@ -286,11 +253,8 @@ enum Shape:
 使用 `EnumName::Variant(value)` 語法建立帶有資料的變體。
 
 ```python
-@const
 c = Shape::Circle(3.14)
-@const
 r = Shape::Rectangle(4.0, 5.0)
-@const
 p = Shape::Point
 ```
 
@@ -330,9 +294,7 @@ enum MyOption<T>:
 當編譯器無法推論型別時，需提供具體的型別引數來實例化。
 
 ```python
-@const
 a = MyOption<int>::MySome(42)
-@const
 b = MyOption<int>::MyNone
 
 match a:
@@ -349,9 +311,7 @@ match a:
 用於錯誤處理的內建型別。`Error` 具有兩個欄位：`message`（str）和 `code`（int）。
 
 ```python
-@const
 e = Error("something went wrong")       # code 預設為 0
-@const
 e2 = Error("not found", 404)            # 明確指定 code
 
 print(e.message)   # something went wrong
@@ -369,7 +329,6 @@ fn divide(a: int, b: int) -> (int, Error?):
         return (0, Some(Error("division by zero")))
     return (a // b, none)
 
-@const
 val, err = divide(10, 2)
 match err:
     case Some(e):
@@ -389,7 +348,6 @@ fn read_file(path: str) -> (str, Error?):
     return ("content", none)
 
 fn process() -> (str, Error?):
-    @const
     data = read_file("test.txt")!!   # 如果有錯誤則傳播
     return (data, none)
 ```
@@ -405,7 +363,6 @@ fn process() -> (str, Error?):
 可以使用 `|` 宣告可能持有多種型別的變數。
 
 ```python
-@const
 x: int | str = 42
 x = "hello"     # 可重新賦值（union 中的任一型別）
 print(x)        # hello

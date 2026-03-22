@@ -271,7 +271,6 @@ print(len("あいう"))        # 3 (文字数)
 文字列 `s` をデリミタ `delim` で分割し、`List<str>` を返します。
 
 ```python
-@const
 parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
@@ -292,7 +291,6 @@ for word in "hello world".split(" "):
 文字列リストの要素をセパレータ `sep` で結合した文字列を返します。
 
 ```python
-@const
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)

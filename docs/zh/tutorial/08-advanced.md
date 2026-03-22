@@ -13,11 +13,9 @@ Lambda 函式是將函式以表達式形式撰寫的語法，以 `fn(參數): �
 ### 單一表達式 Lambda
 
 ```python
-@const
 double = fn(x: int): x * 2
 print(double(5))  # 10
 
-@const
 add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
@@ -25,7 +23,6 @@ print(add(3, 4))  # 7
 ### 無參數 Lambda
 
 ```python
-@const
 answer = fn(): 42
 print(answer())  # 42
 ```
@@ -35,7 +32,6 @@ print(answer())  # 42
 在 `:` 後換行並縮排，即可撰寫多個陳述式。
 
 ```python
-@const
 abs = fn(x: int):
     if x < 0:
         return -x
@@ -52,9 +48,7 @@ print(abs(3))   # 3
 Lambda 函式可以捕獲定義時作用域中的變數。
 
 ```python
-@const
 offset = 10
-@const
 add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
@@ -69,7 +63,6 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-@const
 double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
 print(apply(fn(n: int): n + 1, 10))    # 11
@@ -92,7 +85,6 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 print(apply(square, 4))  # 16
 
 # 繫結到變數
-@const
 sq = square
 print(sq(5))  # 25
 ```
@@ -107,7 +99,6 @@ print(sq(5))  # 25
 fn add(a: int, b: int) -> int:
     return a + b
 
-@const
 x = 1
 print(x.add(2))   # add(x, 2) → 3
 ```
@@ -142,11 +133,8 @@ fn operator+(a: Vec2, b: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-@const
 v1 = Vec2(1, 2)
-@const
 v2 = Vec2(3, 4)
-@const
 v3 = v1 + v2
 print(v3.x)       # 4
 print(v1 == v2)   # false
@@ -177,11 +165,9 @@ fn operator-(v: Vec2) -> Vec2:
 表示值是否存在的型別，可以是 `Some(值)` 或 `None`。
 
 ```python
-@const
 x: Option<int> = Some(42)
 print(x)   # Some(42)
 
-@const
 y: Option<int> = None
 print(y)   # None
 ```
@@ -205,13 +191,10 @@ match x:
 使用 `f"..."` 可以在字串中直接嵌入表達式。表達式放在 `{}` 內。
 
 ```python
-@const
 name = "Alice"
 print(f"Hello {name}")   # Hello Alice
 
-@const
 x = 3
-@const
 y = 4
 print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
 ```
@@ -229,13 +212,9 @@ print(f"{{escaped}}")   # {escaped}
 使用 `as` 在型別之間進行明確轉換。
 
 ```python
-@const
 x = 42 as float     # 42.0
-@const
 y = 3.14 as int      # 3（截斷）
-@const
 s = 42 as str         # "42"
-@const
 b = true as int       # 1
 ```
 
@@ -255,11 +234,8 @@ enum Shape:
 ### 建構 ADT 變體
 
 ```python
-@const
 c = Shape::Circle(3.14)
-@const
 r = Shape::Rectangle(4.0, 5.0)
-@const
 p = Shape::Point
 ```
 
@@ -296,9 +272,7 @@ enum MyOption<T>:
 ### 使用方式
 
 ```python
-@const
 a = MyOption<int>::MySome(42)
-@const
 b: MyOption<int> = MyOption<int>::MyNone
 
 match a:
@@ -324,7 +298,6 @@ fn divide(a: int, b: int) -> Result<int, str>:
 使用 `match` 來處理結果。
 
 ```python
-@const
 r = divide(10, 0)
 match r:
     case Ok(v):
