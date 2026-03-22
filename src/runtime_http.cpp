@@ -3,7 +3,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 #include <string>
+#include <vector>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -93,13 +95,17 @@ extern "C" void *__ry_http_read_request(void *stream) {
     // Parse headers
     size_t headers_start = line_end + 2;
     size_t headers_end = raw.find("\r\n\r\n", headers_start);
-    if (headers_end == std::string::npos)
-        headers_end = raw.size();
+    if (headers_end == std::string::npos) {
+        // Incomplete headers (no \r\n\r\n terminator) — treat as malformed
+        free(req->method);
+        free(req->path);
+        free(req);
+        return nullptr;
+    }
 
-    // Single-pass header parsing: collect into temporary vectors, then allocate
+    // Single-pass header parsing with dynamic storage
     struct HeaderPair { char *key; char *val; };
-    HeaderPair tmp_headers[64]; // stack-allocated for typical request sizes
-    int64_t count = 0;
+    std::vector<HeaderPair> parsed_headers;
 
     size_t pos = headers_start;
     while (pos < headers_end) {
@@ -107,25 +113,27 @@ extern "C" void *__ry_http_read_request(void *stream) {
         if (eol == std::string::npos || eol > headers_end) eol = headers_end;
         if (eol == pos) break;
         size_t colon = raw.find(':', pos);
-        if (colon != std::string::npos && colon < eol && count < 64) {
+        if (colon != std::string::npos && colon < eol) {
             // Trim leading whitespace from value
             size_t vstart = colon + 1;
             while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
                 vstart++;
-            tmp_headers[count].key = strndup(raw.c_str() + pos, colon - pos);
-            tmp_headers[count].val = strndup(raw.c_str() + vstart, eol - vstart);
-            count++;
+            parsed_headers.push_back({
+                strndup(raw.c_str() + pos, colon - pos),
+                strndup(raw.c_str() + vstart, eol - vstart)
+            });
         }
         pos = eol + 2;
     }
 
+    int64_t count = (int64_t)parsed_headers.size();
     req->header_count = count;
     if (count > 0) {
         req->header_keys = (char **)malloc(sizeof(char *) * (size_t)count);
         req->header_values = (char **)malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
-            req->header_keys[i] = tmp_headers[i].key;
-            req->header_values[i] = tmp_headers[i].val;
+            req->header_keys[i] = parsed_headers[(size_t)i].key;
+            req->header_values[i] = parsed_headers[(size_t)i].val;
         }
     } else {
         req->header_keys = nullptr;

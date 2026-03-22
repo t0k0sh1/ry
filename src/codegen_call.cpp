@@ -4488,6 +4488,13 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         if (!foundInfo)
             codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
 
+        // Validate handler signature: one ptr param, ptr return
+        if (handlerInfo.paramTypes.size() != 1 ||
+            handlerInfo.returnType != ptrTy_ ||
+            handlerInfo.paramTypes[0] != ptrTy_) {
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+        }
+
         // 1. bind(host, port)
         auto bindFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
@@ -4526,7 +4533,8 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
         llvm::Value *connNull = builder_.CreateICmpEQ(conn,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "conn_null");
-        builder_.CreateCondBr(connNull, loopEndBB, loopBodyBB);
+        // Retry accept on null (e.g., transient errors) instead of exiting the loop
+        builder_.CreateCondBr(connNull, loopBB, loopBodyBB);
 
         // Loop body: read request, call handler, send response, cleanup
         builder_.SetInsertPoint(loopBodyBB);
@@ -4572,9 +4580,8 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         builder_.CreateCall(closeFn, {conn});
         builder_.CreateBr(loopBB);
 
-        // Loop end (after accept returns null)
+        // Loop end (unreachable in practice — accept retries on null)
         builder_.SetInsertPoint(loopEndBB);
-        builder_.CreateCall(closeFn, {listener});
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }

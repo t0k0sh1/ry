@@ -202,7 +202,7 @@ Any expression that evaluates to `int`, `float`, `bool`, or `str` can be used in
 |---|---|
 | `{{` | `{` (literal brace) |
 | `}}` | `}` (literal brace) |
-| `\n` `\t` `\\` `\"` | Same as regular strings |
+| `\n` `\r` `\t` `\\` `\"` | Same as regular strings |
 
 ```python
 print(f"{{braces}}")   # {braces}
@@ -411,6 +411,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 | Sequence | Meaning |
 |---|---|
 | `\n` | Newline |
+| `\r` | Carriage return |
 | `\t` | Tab |
 | `\\` | Backslash |
 | `\"` | Double quote |
