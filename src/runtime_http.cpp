@@ -151,6 +151,11 @@ extern "C" void *__ry_http_read_request(void *stream) {
                 break;
             }
         }
+        // Cap Content-Length to prevent unbounded allocation (10 MB limit)
+        static const int64_t MAX_BODY_SIZE = 10 * 1024 * 1024;
+        if (content_length > MAX_BODY_SIZE)
+            content_length = MAX_BODY_SIZE;
+
         std::string body_data = raw.substr(body_start);
         if (content_length > 0 && (int64_t)body_data.size() < content_length) {
             // Need to read more body data
