@@ -1725,14 +1725,14 @@ std::string Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::string inner = parseTypeName();
-        if (name == "Map" && lex_.peek().kind == TokenKind::Comma) {
-            // Map<K, V> parsing
+        if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
+            // Two-parameter generic: Map<K, V> or Result<V, E>
             lex_.next(); // consume ','
-            std::string valueTy = parseTypeName();
+            std::string secondTy = parseTypeName();
             if (lex_.peek().kind != TokenKind::Greater)
                 parseError("expected '>' in " + name + " type");
             lex_.next(); // consume '>'
-            name += "<" + inner + ", " + valueTy + ">";
+            name += "<" + inner + ", " + secondTy + ">";
         } else {
             if (lex_.peek().kind != TokenKind::Greater)
                 parseError("expected '>' after generic type parameter");
@@ -1953,7 +1953,7 @@ StmtNode Parser::parseExpectStatement() {
         "to_have_length", "to_start_with", "to_end_with"
     };
     static const std::unordered_set<std::string> matchers_no_arg = {
-        "to_be_true", "to_be_false", "to_be_none", "to_be_some", "to_be_empty"
+        "to_be_true", "to_be_false", "to_be_none", "to_be_some", "to_be_ok", "to_be_err", "to_be_empty"
     };
 
     if (matchers_with_arg.count(matcher)) {
@@ -1986,21 +1986,28 @@ Pattern Parser::parsePattern() {
         return NonePattern{};
     }
 
-    // Some(binding) pattern
-    if (t.kind == TokenKind::Ident && t.value == "Some") {
-        lex_.next(); // consume 'Some'
+    // Helper: parse a binding pattern like Some(x), Ok(x), Err(x)
+    auto parseBindingPattern = [&](const std::string &name) -> std::string {
+        lex_.next(); // consume pattern name
         if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after 'Some'");
+            parseError("expected '(' after '" + name + "'");
         lex_.next(); // consume '('
         Token binding = lex_.peek();
         if (binding.kind != TokenKind::Ident)
-            parseError(binding.line, "expected variable name in Some pattern");
+            parseError(binding.line, "expected variable name in " + name + " pattern");
         lex_.next(); // consume binding name
         if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' after Some binding");
+            parseError("expected ')' after " + name + " binding");
         lex_.next(); // consume ')'
-        return SomePattern{binding.value};
-    }
+        return binding.value;
+    };
+
+    if (t.kind == TokenKind::Ident && t.value == "Some")
+        return SomePattern{parseBindingPattern("Some")};
+    if (t.kind == TokenKind::Ident && t.value == "Ok")
+        return OkPattern{parseBindingPattern("Ok")};
+    if (t.kind == TokenKind::Ident && t.value == "Err")
+        return ErrPattern{parseBindingPattern("Err")};
 
     // Literal patterns: number, float, string, true, false
     if (t.kind == TokenKind::Number) {

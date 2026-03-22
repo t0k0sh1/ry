@@ -76,29 +76,28 @@ describe("Error type", fn():
 
     )
 )
-describe("!! error propagation", fn():
-    fn safe_divide(a: int, b: int) -> (int, Error?):
+describe("Result type", fn():
+    fn safe_divide(a: int, b: int) -> Result<int, Error>:
         if b == 0:
-            return (0, Some(Error("division by zero")))
-        return (a // b, none)
+            return Err(Error("division by zero"))
+        return Ok(a // b)
 
-    fn use_divide() -> (int, Error?):
-        v = safe_divide(10, 2)!!
-        return (v, none)
-
-    fn use_divide_err() -> (int, Error?):
-        v = safe_divide(10, 0)!!
-        return (v, none)
-
-    it("propagates success", fn():
-        val, err = use_divide()
-        expect(val).to_eq(5)
-        expect(err).to_be_none()
+    it("returns Ok on success", fn():
+        res = safe_divide(10, 2)
+        match res:
+            case Ok(v):
+                expect(v).to_eq(5)
+            case Err(e):
+                expect(true).to_eq(false)
 
     )
-    it("propagates error", fn():
-        val, err = use_divide_err()
-        expect(err).to_be_some()
+    it("returns Err on failure", fn():
+        res = safe_divide(10, 0)
+        match res:
+            case Ok(v):
+                expect(true).to_eq(false)
+            case Err(e):
+                expect(e.message).to_eq("division by zero")
 
     )
 )

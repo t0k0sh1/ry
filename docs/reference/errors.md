@@ -39,9 +39,8 @@ Each error message includes:
 | Module import inside block | Used `from` statement inside a function or conditional block | `from math` inside a function |
 | Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
 | Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
-| Non-exhaustive match | match does not cover all patterns | Some enum variants uncovered, missing `None` for Option, no `_` for literals |
-| `!!` return type mismatch | `!!` used in function not returning `(T, Error?)` | Using `!!` in a function returning `int` |
-| `!!` operand type mismatch | `!!` applied to non `(T, Error?)` value | Applying `!!` to a plain `int` |
+| Non-exhaustive match | match does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
+| `!!` operator removed | `!!` operator has been removed | Use `match` with `Ok`/`Err` patterns instead |
 
 ### Compile Error Examples
 

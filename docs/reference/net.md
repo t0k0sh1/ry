@@ -21,10 +21,10 @@ from std.net import bind, listen, accept, connect
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `bind` | `(host: str, port: int) -> Option<TcpListener>` | Creates a TCP server socket bound to the given address. Returns `None` on failure. |
+| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. |
 | `listen` | `(listener: TcpListener, backlog: int) -> Unit` | Starts listening for incoming connections. Runtime error on failure. |
-| `accept` | `(listener: TcpListener) -> Option<TcpStream>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `None` on timeout or failure. |
-| `connect` | `(host: str, port: int) -> Option<TcpStream>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `None` on timeout or failure. |
+| `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
+| `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
 
 ## Built-in Overloaded Functions
 
@@ -47,17 +47,17 @@ from std.io import str_to_bytes, bytes_to_str
 
 # Server
 match bind("127.0.0.1", 8080):
-    case Some(server):
+    case Ok(server):
         listen(server, 128)
         match accept(server):
-            case Some(conn):
+            case Ok(conn):
                 data: List<byte> = recv(conn, 4096)
                 send(conn, data)
                 close(conn)
-            case None:
+            case Err(e):
                 ...
         close(server)
-    case None:
+    case Err(e):
         print("bind failed")
 ```
 
@@ -65,12 +65,16 @@ match bind("127.0.0.1", 8080):
 
 ```python
 match connect("127.0.0.1", 8080):
-    case Some(conn):
+    case Ok(conn):
         send(conn, str_to_bytes("hello"))
         resp: List<byte> = recv(conn, 4096)
-        print(bytes_to_str(resp))
+        match bytes_to_str(resp):
+            case Ok(s):
+                print(s)
+            case Err(e):
+                print(e.message)
         close(conn)
-    case None:
+    case Err(e):
         print("connect failed")
 ```
 
@@ -79,17 +83,17 @@ match connect("127.0.0.1", 8080):
 ```python
 fn echo_server(port: int) -> str:
     match bind("127.0.0.1", port):
-        case Some(server):
+        case Ok(server):
             listen(server, 1)
             match accept(server):
-                case Some(conn):
+                case Ok(conn):
                     data: List<byte> = recv(conn, 4096)
                     send(conn, data)
                     close(conn)
-                case None:
+                case Err(e):
                     ...
             close(server)
-        case None:
+        case Err(e):
             ...
     return "done"
 
@@ -100,7 +104,7 @@ join(t)
 
 ## Error Handling
 
-- `bind()` and `connect()` return `Option<T>` — use `match` to handle failure.
+- `bind()` and `connect()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
 - `listen()` raises a runtime error on failure.
 - `send()` raises a runtime error on failure.
 - `recv()` returns an empty `List<byte>` when the connection is closed or when a receive error occurs; unlike `listen()`/`send()`, it does not raise on failure.

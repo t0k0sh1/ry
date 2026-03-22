@@ -1204,6 +1204,17 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             codegenError("line " + std::to_string(s.loc.line) +
                                      ": to_be_some: expected Option type");
         cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_some");
+    } else if (s.matcher == "to_be_ok") {
+        if (!isResultType(actualTy))
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": to_be_ok: expected Result type");
+        cmpResult = builder_.CreateExtractValue(actualVal, {0}, "is_ok");
+    } else if (s.matcher == "to_be_err") {
+        if (!isResultType(actualTy))
+            codegenError("line " + std::to_string(s.loc.line) +
+                                     ": to_be_err: expected Result type");
+        llvm::Value *isOk = builder_.CreateExtractValue(actualVal, {0}, "is_ok");
+        cmpResult = builder_.CreateNot(isOk, "is_err");
     } else if (s.matcher == "to_contain" || s.matcher == "to_not_contain") {
         llvm::Value *expectedVal = emitExpr(*s.expected);
         savedExpectedVal = expectedVal;
@@ -1486,6 +1497,10 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         expectedStr = builder_.CreateGlobalString("false", ".exp_false");
     } else if (s.matcher == "to_be_some") {
         expectedStr = builder_.CreateGlobalString("Some(...)", ".exp_some");
+    } else if (s.matcher == "to_be_ok") {
+        expectedStr = builder_.CreateGlobalString("Ok(...)", ".exp_ok");
+    } else if (s.matcher == "to_be_err") {
+        expectedStr = builder_.CreateGlobalString("Err(...)", ".exp_err");
     } else if (s.matcher == "to_contain" || s.matcher == "to_not_contain") {
         if (s.matcher == "to_not_contain") {
             llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
@@ -1664,6 +1679,24 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
             codegenError("non-exhaustive match: Option requires both Some and None cases (or use '_')");
 
+        // Check Result exhaustiveness
+        bool hasOk = false, hasErr = false;
+        auto checkResultPattern = [&](const Pattern &p) {
+            if (std::holds_alternative<OkPattern>(p)) hasOk = true;
+            if (std::holds_alternative<ErrPattern>(p)) hasErr = true;
+        };
+        for (auto &arm : s->arms) {
+            if (!arm.guard) {
+                checkResultPattern(arm.pattern);
+                if (auto *op = std::get_if<std::unique_ptr<OrPattern>>(&arm.pattern)) {
+                    for (auto &alt : (*op)->alternatives)
+                        checkResultPattern(alt);
+                }
+            }
+        }
+        if ((hasOk && !hasErr) || (!hasOk && hasErr))
+            codegenError("non-exhaustive match: Result requires both Ok and Err cases (or use '_')");
+
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
         auto checkBoolPattern = [&](const Pattern &p) {
@@ -1687,7 +1720,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             codegenError("non-exhaustive match: bool requires both true and false cases (or use '_')");
 
         // For int/float/string literals without wildcard
-        if (enumName.empty() && !hasSome && !hasNone && !hasTrue && !hasFalse)
+        if (enumName.empty() && !hasSome && !hasNone && !hasOk && !hasErr && !hasTrue && !hasFalse)
             codegenError("non-exhaustive match: literal patterns require a wildcard '_' case");
     }
 
@@ -1718,6 +1751,14 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     if (isTcpStream(subject))   tcp_stream_values_.insert(subjectAlloca);
     if (isHttpRequest(subject))  http_request_values_.insert(subjectAlloca);
     if (isHttpResponse(subject)) http_response_values_.insert(subjectAlloca);
+
+    // Propagate collection metadata to subject alloca
+    if (auto it = list_element_types_.find(subject); it != list_element_types_.end())
+        list_element_types_[subjectAlloca] = it->second;
+    if (auto it = map_key_types_.find(subject); it != map_key_types_.end())
+        map_key_types_[subjectAlloca] = it->second;
+    if (auto it = map_value_types_.find(subject); it != map_value_types_.end())
+        map_value_types_[subjectAlloca] = it->second;
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -1803,6 +1844,16 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     codegenError("match: None pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
+            } else if constexpr (std::is_same_v<T, OkPattern>) {
+                if (!isResultType(subjectTy))
+                    codegenError("match: Ok pattern requires Result type");
+                llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
+                testResult = isOk;
+            } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                if (!isResultType(subjectTy))
+                    codegenError("match: Err pattern requires Result type");
+                llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
+                testResult = builder_.CreateNot(isOk, "is_err");
             } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
                 // OR pattern: test each alternative and combine with OR
                 testResult = llvm::ConstantInt::get(i1Ty_, 0);
@@ -1841,6 +1892,15 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                                 codegenError("match: None pattern requires Option type");
                             llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                             altResult = builder_.CreateNot(hasValue, "is_none");
+                        } else if constexpr (std::is_same_v<U, OkPattern>) {
+                            if (!isResultType(subjectTy))
+                                codegenError("match: Ok pattern requires Result type");
+                            altResult = builder_.CreateExtractValue(subjectVal, 0, "or.is_ok");
+                        } else if constexpr (std::is_same_v<U, ErrPattern>) {
+                            if (!isResultType(subjectTy))
+                                codegenError("match: Err pattern requires Result type");
+                            llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
+                            altResult = builder_.CreateNot(isOk, "or.is_err");
                         } else {
                             codegenError("match: unsupported pattern type in OR pattern");
                         }
@@ -1881,6 +1941,30 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         http_request_values_.insert(varAlloca);
                     if (http_response_values_.count(subjectAlloca))
                         http_response_values_.insert(varAlloca);
+                } else if constexpr (std::is_same_v<T, OkPattern>) {
+                    if (pat.binding != "_") {
+                        llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                        llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
+                        llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
+                        builder_.CreateStore(okVal, varAlloca);
+                        if (auto it = list_element_types_.find(subjectAlloca); it != list_element_types_.end())
+                            list_element_types_[varAlloca] = it->second;
+                        if (auto it = map_key_types_.find(subjectAlloca); it != map_key_types_.end())
+                            map_key_types_[varAlloca] = it->second;
+                        if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
+                            map_value_types_[varAlloca] = it->second;
+                        if (tcp_listener_values_.count(subjectAlloca))
+                            tcp_listener_values_.insert(varAlloca);
+                        if (tcp_stream_values_.count(subjectAlloca))
+                            tcp_stream_values_.insert(varAlloca);
+                    }
+                } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                    if (pat.binding != "_") {
+                        llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                        llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
+                        llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
+                        builder_.CreateStore(errVal, varAlloca);
+                    }
                 }
             }, arm.pattern);
 
@@ -1920,6 +2004,31 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     http_request_values_.insert(varAlloca);
                 if (http_response_values_.count(subjectAlloca))
                     http_response_values_.insert(varAlloca);
+            } else if constexpr (std::is_same_v<T, OkPattern>) {
+                if (pat.binding != "_") {
+                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                    llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
+                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
+                    builder_.CreateStore(okVal, varAlloca);
+                    // Propagate collection metadata from subject to extracted ok value
+                    if (auto it = list_element_types_.find(subjectAlloca); it != list_element_types_.end())
+                        list_element_types_[varAlloca] = it->second;
+                    if (auto it = map_key_types_.find(subjectAlloca); it != map_key_types_.end())
+                        map_key_types_[varAlloca] = it->second;
+                    if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
+                        map_value_types_[varAlloca] = it->second;
+                    if (tcp_listener_values_.count(subjectAlloca))
+                        tcp_listener_values_.insert(varAlloca);
+                    if (tcp_stream_values_.count(subjectAlloca))
+                        tcp_stream_values_.insert(varAlloca);
+                }
+            } else if constexpr (std::is_same_v<T, ErrPattern>) {
+                if (pat.binding != "_") {
+                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                    llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
+                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
+                    builder_.CreateStore(errVal, varAlloca);
+                }
             } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
                 std::string resolvedEnum = pat.enum_name;
                 if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {

@@ -1295,48 +1295,7 @@ llvm::Value *CodeGen::emitExprVariant(const NoneExpr &) {
 // ===== ErrorPropagateExpr (!!) =====
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e) {
-    llvm::Value *tuple = emitExpr(*e->operand);
-    llvm::Type *tupleTy = tuple->getType();
-
-    // Verify operand is a 2-element struct (tuple)
-    auto *structTy = llvm::dyn_cast<llvm::StructType>(tupleTy);
-    if (!structTy || structTy->getNumElements() != 2)
-        codegenError("!! operator requires a (T, Error?) tuple");
-
-    // Verify second element is Option<Error>
-    llvm::StructType *errOptTy = getOptionType(errorTy_);
-    if (structTy->getElementType(1) != errOptTy)
-        codegenError("!! operator requires second tuple element to be Error?");
-
-    // Verify current function returns (X, Error?)
-    if (!fn_)
-        codegenError("!! operator can only be used inside a function");
-    llvm::Type *retTy = fn_->getReturnType();
-    auto *retStructTy = llvm::dyn_cast<llvm::StructType>(retTy);
-    if (!retStructTy || retStructTy->getNumElements() != 2 ||
-        retStructTy->getElementType(1) != errOptTy)
-        codegenError("!! operator requires enclosing function to return (T, Error?)");
-
-    // Extract the error option (second element)
-    llvm::Value *errOpt = builder_.CreateExtractValue(tuple, 1, "err_opt");
-    llvm::Value *hasErr = builder_.CreateExtractValue(errOpt, 0, "has_err");
-
-    llvm::BasicBlock *propagateBB = llvm::BasicBlock::Create(*ctx_, "propagate", fn_);
-    llvm::BasicBlock *continueBB = llvm::BasicBlock::Create(*ctx_, "continue", fn_);
-
-    builder_.CreateCondBr(hasErr, propagateBB, continueBB);
-
-    // Propagate: build (zero_T, errOpt) and return
-    builder_.SetInsertPoint(propagateBB);
-    llvm::Value *retVal = llvm::UndefValue::get(retTy);
-    retVal = builder_.CreateInsertValue(retVal,
-        llvm::Constant::getNullValue(retStructTy->getElementType(0)), 0);
-    retVal = builder_.CreateInsertValue(retVal, errOpt, 1);
-    builder_.CreateRet(retVal);
-
-    // Continue: extract the value (first element)
-    builder_.SetInsertPoint(continueBB);
-    return builder_.CreateExtractValue(tuple, 0, "unwrapped");
+    codegenError("!! operator has been removed. Use match with Ok/Err patterns instead");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {

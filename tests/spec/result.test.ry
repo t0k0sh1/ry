@@ -1,0 +1,38 @@
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+describe("Result type", fn():
+    it("Ok wraps value", fn():
+        res = Ok(42)
+        expect(res).to_be_ok()
+    )
+    it("Err wraps error", fn():
+        res = Err(Error("fail"))
+        expect(res).to_be_err()
+    )
+    it("match Ok extracts value", fn():
+        match safe_divide(10, 2):
+            case Ok(v):
+                expect(v).to_eq(5)
+            case Err(e):
+                expect(true).to_eq(false)
+    )
+    it("match Err extracts error", fn():
+        match safe_divide(10, 0):
+            case Ok(v):
+                expect(true).to_eq(false)
+            case Err(e):
+                expect(e.message).to_eq("division by zero")
+    )
+    it("match Ok with wildcard for Unit result", fn():
+        fn unit_ok() -> Result<Unit, Error>:
+            return Ok(0 as byte)
+        match unit_ok():
+            case Ok(_):
+                expect(true).to_eq(true)
+            case Err(e):
+                expect(true).to_eq(false)
+    )
+)

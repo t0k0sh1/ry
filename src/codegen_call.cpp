@@ -1638,6 +1638,42 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return buildSomeValue(inner, optTy);
     }
 
+    // Ok(value) → Result<V, Error> constructor
+    if (e.callee == "Ok") {
+        if (e.args.size() != 1)
+            codegenError("Ok() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e.args[0]);
+        // Determine the error type from the enclosing function's return type
+        llvm::Type *errTy = errorTy_;
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isResultType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                errTy = retStructTy->getElementType(2);
+            }
+        }
+        llvm::StructType *resTy = getResultType(inner->getType(), errTy);
+        return buildOkValue(inner, resTy);
+    }
+
+    // Err(error) → Result<V, E> constructor
+    if (e.callee == "Err") {
+        if (e.args.size() != 1)
+            codegenError("Err() takes exactly 1 argument");
+        llvm::Value *inner = emitExpr(*e.args[0]);
+        // Determine the ok type from the enclosing function's return type
+        llvm::Type *okTy = i8Ty_; // default: Unit (i8 dummy)
+        if (fn_) {
+            llvm::Type *retTy = fn_->getReturnType();
+            if (isResultType(retTy)) {
+                auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
+                okTy = retStructTy->getElementType(1);
+            }
+        }
+        llvm::StructType *resTy = getResultType(okTy, inner->getType());
+        return buildErrValue(inner, resTy);
+    }
+
     // Error("msg") / Error("msg", code) → Error struct constructor
     if (e.callee == "Error") {
         if (e.args.empty() || e.args.size() > 2)
@@ -4282,37 +4318,121 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         }
         auto fnTy = llvm::FunctionType::get(retTy, argTys, false);
         auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
-        if (retTy->isVoidTy()) {
-            builder_.CreateCall(fn, args);
-            return llvm::ConstantInt::get(i64Ty_, 0);
-        }
         return builder_.CreateCall(fn, args, name);
     };
 
-    // 0-arg -> str
+    // Helper: emit conditional branch to build Result, deferring error construction to error path
+    auto emitResultBranch = [&](llvm::Value *isErr, llvm::StructType *resTy,
+                                 std::function<llvm::Value*()> buildOk,
+                                 std::function<llvm::Value*()> buildErr) -> llvm::Value * {
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "io.ok", fn_);
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "io.err", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "io.merge", fn_);
+        builder_.CreateCondBr(isErr, errBB, okBB);
+
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okVal = buildOk();
+        builder_.CreateBr(mergeBB);
+        okBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errVal = buildErr();
+        builder_.CreateBr(mergeBB);
+        errBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(resTy, 2, "io_result");
+        phi->addIncoming(okVal, okBB);
+        phi->addIncoming(errVal, errBB);
+        return phi;
+    };
+
+    // Helper: build Error struct from __ry_get_last_error()
+    auto buildErrorFromLastError = [&]() -> llvm::Value * {
+        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+        auto errFn = mod_->getOrInsertFunction("__ry_get_last_error", errFnTy);
+        llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
+        llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
+        errStruct = builder_.CreateInsertValue(errStruct, errMsg, 0, "err.msg");
+        errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+        return errStruct;
+    };
+
+    // Helper: wrap a nullable ptr result into Result<str, Error>
+    auto wrapPtrResult = [&](llvm::Value *ptr) -> llvm::Value * {
+        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
+        return emitResultBranch(isNull, resTy,
+            [&]() { return buildOkValue(ptr, resTy); },
+            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+    };
+
+    // Helper: wrap an int64 status (0=ok, non-zero=err) into Result<Unit, Error>
+    auto wrapStatusResult = [&](llvm::Value *status) -> llvm::Value * {
+        llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "is_err");
+        return emitResultBranch(isErr, resTy,
+            [&]() { return buildOkValue(llvm::ConstantInt::get(i8Ty_, 0), resTy); },
+            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+    };
+
+    // 0-arg -> str (stdin functions: no Result wrapping)
     if (e.callee == "read_line" || e.callee == "read_all")
         return emitIOCall(e.callee, 0, ptrTy_);
 
-    // 1-arg str -> str
-    if (e.callee == "read_text" || e.callee == "bytes_to_str")
-        return emitIOCall(e.callee, 1, ptrTy_);
+    // read_text(path) -> Result<str, Error>
+    if (e.callee == "read_text") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        return wrapPtrResult(ptr);
+    }
 
-    // 2-arg (str, str) -> Unit
-    if (e.callee == "write_text" || e.callee == "append_text" || e.callee == "write_bytes")
-        return emitIOCall(e.callee, 2, llvm::Type::getVoidTy(*ctx_));
+    // bytes_to_str(bytes) -> Result<str, Error>
+    if (e.callee == "bytes_to_str") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        return wrapPtrResult(ptr);
+    }
 
-    // 1-arg str -> Unit
-    if (e.callee == "delete_file")
-        return emitIOCall(e.callee, 1, llvm::Type::getVoidTy(*ctx_));
+    // write_text(path, content) -> Result<Unit, Error>
+    if (e.callee == "write_text" || e.callee == "append_text") {
+        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
+        return wrapStatusResult(status);
+    }
 
-    // file_exists(path) -> bool (i64 truncated to i1)
+    // write_bytes(path, bytes) -> Result<Unit, Error>
+    if (e.callee == "write_bytes") {
+        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
+        return wrapStatusResult(status);
+    }
+
+    // delete_file(path) -> Result<Unit, Error>
+    if (e.callee == "delete_file") {
+        llvm::Value *status = emitIOCall(e.callee, 1, i64Ty_);
+        return wrapStatusResult(status);
+    }
+
+    // file_exists(path) -> bool (i64 truncated to i1) — no Result wrapping
     if (e.callee == "file_exists") {
         llvm::Value *result = emitIOCall(e.callee, 1, i64Ty_);
         return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
     }
 
-    // 1-arg str -> List<byte>
-    if (e.callee == "read_bytes" || e.callee == "str_to_bytes") {
+    // read_bytes(path) -> Result<List<byte>, Error>
+    if (e.callee == "read_bytes") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
+        llvm::Value *result = emitResultBranch(isNull, resTy,
+            [&]() { return buildOkValue(ptr, resTy); },
+            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+        list_element_types_[result] = i8Ty_;
+        return result;
+    }
+
+    // str_to_bytes(str) -> List<byte> — always succeeds, no Result wrapping
+    if (e.callee == "str_to_bytes") {
         llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
         list_element_types_[result] = i8Ty_;
         return result;
@@ -4327,20 +4447,26 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
 
-    // Helper: wrap a nullable ptr result in Option<ptr> and register it in a tracking set
-    auto emitPtrToOption = [&](llvm::Value *ptr, const std::string &name,
+    // Helper: wrap a nullable ptr result in Result<ptr, Error> and register it in a tracking set
+    auto emitPtrToResult = [&](llvm::Value *ptr, const std::string &name,
+                               const std::string &errMsg,
                                std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
         llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
-        llvm::StructType *optTy = getOptionType(ptrTy_);
-        llvm::Value *someVal = buildSomeValue(ptr, optTy);
-        llvm::Value *noneVal = buildNoneValue(optTy);
-        llvm::Value *opt = builder_.CreateSelect(isNull, noneVal, someVal, name + "_opt");
-        trackingSet.insert(opt);
-        return opt;
+        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+        llvm::Value *okVal = buildOkValue(ptr, resTy);
+        // Build Error from static message
+        llvm::Value *errMsgStr = builder_.CreateGlobalString(errMsg, "." + name + "_err_msg");
+        llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
+        errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
+        errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+        llvm::Value *errVal = buildErrValue(errStruct, resTy);
+        llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
+        trackingSet.insert(res);
+        return res;
     };
 
-    // bind(host, port) -> Option<TcpListener>
+    // bind(host, port) -> Result<TcpListener, Error>
     if (e.callee == "bind") {
         if (e.args.size() != 2)
             codegenError("bind() takes exactly 2 arguments");
@@ -4349,7 +4475,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_bind", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "bind_result");
-        return emitPtrToOption(result, "bind", tcp_listener_values_);
+        return emitPtrToResult(result, "bind", "bind failed", tcp_listener_values_);
     }
 
     // listen(listener, backlog) -> Unit
@@ -4366,7 +4492,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
-    // accept(listener) -> Option<TcpStream>
+    // accept(listener) -> Result<TcpStream, Error>
     if (e.callee == "accept") {
         if (e.args.size() != 1)
             codegenError("accept() takes exactly 1 argument");
@@ -4376,10 +4502,10 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_accept", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {listener}, "accept_result");
-        return emitPtrToOption(result, "accept", tcp_stream_values_);
+        return emitPtrToResult(result, "accept", "accept failed", tcp_stream_values_);
     }
 
-    // connect(host, port) -> Option<TcpStream>
+    // connect(host, port) -> Result<TcpStream, Error>
     if (e.callee == "connect") {
         if (e.args.size() != 2)
             codegenError("connect() takes exactly 2 arguments");
@@ -4388,7 +4514,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
-        return emitPtrToOption(result, "connect", tcp_stream_values_);
+        return emitPtrToResult(result, "connect", "connection failed", tcp_stream_values_);
     }
 
     return nullptr;

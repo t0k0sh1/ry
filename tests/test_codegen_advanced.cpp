@@ -832,72 +832,70 @@ print(e)
     EXPECT_EQ(runSource(src), "Error: test error (code: 42)\n");
 }
 
-// ===== !! operator tests =====
+// ===== Result type tests =====
 
-TEST_F(CodeGenTest, BangBangPropagateSuccess) {
+TEST_F(CodeGenTest, ResultOkMatch) {
     std::string src = R"(
-fn read_file(path: str) -> (str, Error?):
+fn read_file(path: str) -> Result<str, Error>:
     if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+        return Err(Error("empty path"))
+    return Ok("content")
 
-fn process() -> (str, Error?):
-    data = read_file("test.txt")!!
-    return (data, none)
-
-val, err = process()
-print(val)
-print(err == none)
+res = read_file("test.txt")
+match res:
+    case Ok(data):
+        print(data)
+    case Err(e):
+        print(e.message)
 )";
-    EXPECT_EQ(runSource(src), "content\ntrue\n");
+    EXPECT_EQ(runSource(src), "content\n");
 }
 
-TEST_F(CodeGenTest, BangBangPropagateError) {
+TEST_F(CodeGenTest, ResultErrMatch) {
     std::string src = R"(
-fn read_file(path: str) -> (str, Error?):
+fn read_file(path: str) -> Result<str, Error>:
     if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+        return Err(Error("empty path"))
+    return Ok("content")
 
-fn process() -> (str, Error?):
-    data = read_file("")!!
-    return (data, none)
-
-val, err = process()
-print(err != none)
+res = read_file("")
+match res:
+    case Ok(data):
+        print(data)
+    case Err(e):
+        print(e.message)
 )";
-    EXPECT_EQ(runSource(src), "true\n");
+    EXPECT_EQ(runSource(src), "empty path\n");
 }
 
-TEST_F(CodeGenTest, ErrorTupleDestructure) {
+TEST_F(CodeGenTest, ResultDivideOk) {
     std::string src = R"(
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 2)
-if err != none:
-    print("error")
-else:
-    print(val)
+match divide(10, 2):
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e.message)
 )";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
-TEST_F(CodeGenTest, ErrorTupleDestructureWithError) {
+TEST_F(CodeGenTest, ResultDivideErr) {
     std::string src = R"(
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 0)
-match err:
-    case Some(e):
+match divide(10, 0):
+    case Ok(v):
+        print(v)
+    case Err(e):
         print(e.message)
-    case None:
-        print(val)
 )";
     EXPECT_EQ(runSource(src), "division by zero\n");
 }
