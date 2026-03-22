@@ -704,17 +704,17 @@ bool CodeGen::isResultType(llvm::Type *ty) {
 }
 
 llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultTy) {
-    llvm::Value *val = llvm::UndefValue::get(resultTy);
+    llvm::Value *val = llvm::ConstantAggregateZero::get(resultTy);
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0, "res.ok");
     val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
-    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(resultTy->getElementType(2)), 2);
+    val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(2)), 2);
     return val;
 }
 
 llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *resultTy) {
-    llvm::Value *val = llvm::UndefValue::get(resultTy);
+    llvm::Value *val = llvm::ConstantAggregateZero::get(resultTy);
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0, "res.err");
-    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(resultTy->getElementType(1)), 1);
+    val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(1)), 1);
     val = builder_.CreateInsertValue(val, inner, 2, "res.err_val");
     return val;
 }

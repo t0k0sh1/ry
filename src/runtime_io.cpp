@@ -106,8 +106,10 @@ extern "C" int64_t __ry_write_text(const char *path, const char *content) {
         setLastError("cannot open file '%s' for writing", path);
         return 1;
     }
-    fputs(content, f);
-    fclose(f);
+    if (fputs(content, f) == EOF || fclose(f) != 0) {
+        setLastError("failed to write to file '%s'", path);
+        return 1;
+    }
     return 0;
 }
 
@@ -117,8 +119,10 @@ extern "C" int64_t __ry_append_text(const char *path, const char *content) {
         setLastError("cannot open file '%s' for appending", path);
         return 1;
     }
-    fputs(content, f);
-    fclose(f);
+    if (fputs(content, f) == EOF || fclose(f) != 0) {
+        setLastError("failed to append to file '%s'", path);
+        return 1;
+    }
     return 0;
 }
 

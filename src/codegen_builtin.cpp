@@ -1959,10 +1959,12 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                             tcp_stream_values_.insert(varAlloca);
                     }
                 } else if constexpr (std::is_same_v<T, ErrPattern>) {
-                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
-                    llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
-                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
-                    builder_.CreateStore(errVal, varAlloca);
+                    if (pat.binding != "_") {
+                        llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                        llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
+                        llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
+                        builder_.CreateStore(errVal, varAlloca);
+                    }
                 }
             }, arm.pattern);
 
@@ -2021,10 +2023,12 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         tcp_stream_values_.insert(varAlloca);
                 }
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
-                llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
-                llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
-                llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
-                builder_.CreateStore(errVal, varAlloca);
+                if (pat.binding != "_") {
+                    llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
+                    llvm::Value *errVal = builder_.CreateExtractValue(sv, 2, "err_val");
+                    llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, errVal->getType());
+                    builder_.CreateStore(errVal, varAlloca);
+                }
             } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
                 std::string resolvedEnum = pat.enum_name;
                 if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {
