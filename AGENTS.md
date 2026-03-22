@@ -39,10 +39,3 @@ If you discover out-of-scope problems during the task, report them separately in
 
 If behavior, syntax, built-ins, or user-visible workflows change, review `docs/reference/`, `docs/tutorial/`, `docs/README.md`, and `README.md` for needed updates. If no docs change is needed, state why.
 
-If you modify files under `docs/`, regenerate PDFs with:
-
-```bash
-./docs/generate-pdf.sh
-```
-
-Treat PDF generation warnings, including missing glyph warnings, as issues to resolve before considering the task complete.
