@@ -199,8 +199,6 @@ private:
                      const std::optional<std::string> &type_annotation,
                      ExprNode &value, bool is_immutable);
 
-    void emitStmt(LetStmt &s);
-    void emitStmt(VarStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);

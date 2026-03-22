@@ -3,7 +3,7 @@ describe("spawn and join", fn():
         fn spawned_add(a: int, b: int) -> int:
             return a + b
 
-        let t: Task<int> = spawn spawned_add(20, 22)
+        t: Task<int> = spawn spawned_add(20, 22)
         expect(join(t)).to_eq(42)
 
     )
@@ -20,7 +20,7 @@ describe("async and await", fn():
         async fn async_add_task(a: int, b: int) -> int:
             return a + b
 
-        let t: Task<int> = async_add_task(7, 8)
+        t: Task<int> = async_add_task(7, 8)
         expect(await t).to_eq(15)
 
     )

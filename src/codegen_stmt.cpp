@@ -168,7 +168,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = buildNoneValue(annotTy);
                     newTy = annotTy;
                 } else if (isOptionType(annotTy) && !isOptionType(newTy)) {
-                    // Auto-wrap non-Option value in Some() (e.g., let x: int? = 42)
+                    // Auto-wrap non-Option value in Some() (e.g., x: int? = 42)
                     auto *optTy = llvm::cast<llvm::StructType>(annotTy);
                     llvm::Type *innerTy = optTy->getElementType(1);
                     if (val->getType() != innerTy)
@@ -192,7 +192,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
 
-    // Track type constraint for var reassignment checks
+    // Track type constraint for reassignment checks
     if (constraint)
         type_constraints_[ptr] = *constraint;
 
@@ -340,9 +340,13 @@ void CodeGen::emitVarDecl(const std::string &name,
         immutable_scope_stack_.back().insert(name);
 }
 
-void CodeGen::emitStmt(LetStmt &s) {
+void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
-    if (hasDirective(s.directives, "native") && !s.value) {
+    bool is_const = hasDirective(s.directives, "const");
+    bool is_native = hasDirective(s.directives, "native");
+
+    // @native @const declaration (e.g., PI, E, Inf, NaN)
+    if (is_native && !s.value) {
         if (s.name == "PI" || s.name == "E" || s.name == "Inf" || s.name == "NaN") {
             native_constants_.insert(s.name);
         } else {
@@ -350,25 +354,25 @@ void CodeGen::emitStmt(LetStmt &s) {
         }
         return;
     }
-    emitVarDecl(s.name, s.type_annotation, *s.value, true);
-    if (hasDirective(s.directives, "deprecated"))
-        deprecated_variables_.insert(s.name);
-}
-void CodeGen::emitStmt(VarStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    emitVarDecl(s.name, s.type_annotation, *s.value, false);
-    if (hasDirective(s.directives, "deprecated"))
-        deprecated_variables_.insert(s.name);
-}
 
-void CodeGen::emitStmt(AssignStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
+    // Reject assignment to native constants
+    if (native_constants_.count(s.name))
+        codegenError("cannot reassign native constant: " + s.name);
+
     llvm::AllocaInst *ptr = findVar(s.name);
-    if (!ptr)
-        codegenError("undeclared variable: " + s.name);
+    if (!ptr) {
+        emitVarDecl(s.name, s.type_annotation, *s.value, is_const);
+        if (hasDirective(s.directives, "deprecated"))
+            deprecated_variables_.insert(s.name);
+        return;
+    }
 
+    if (s.type_annotation)
+        codegenError("type annotation not allowed on reassignment: " + s.name);
+    if (is_const)
+        codegenError("@const not allowed on reassignment: " + s.name);
     if (isImmutable(s.name))
-        codegenError("cannot reassign let variable: " + s.name);
+        codegenError("cannot reassign @const variable: " + s.name);
 
     // Handle None literal in assignment
     if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
@@ -769,7 +773,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
         codegenError("undefined variable: " + varExpr->name);
 
     if (isImmutable(varExpr->name))
-        codegenError("cannot modify field of let variable: " + varExpr->name);
+        codegenError("cannot modify field of @const variable: " + varExpr->name);
 
     llvm::Type *varTy = ptr->getAllocatedType();
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(varTy);
@@ -1176,16 +1180,20 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
     scanStmt = [&](const StmtNode &stmt) {
         std::visit([&](const auto &node) {
             using T = std::decay_t<decltype(node)>;
-            if constexpr (std::is_same_v<T, LetStmt> || std::is_same_v<T, VarStmt>) {
-                localScopes.back().insert(node.name);
+            if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (!isLocal(node.name)) {
+                    // Check if this is a first assignment (new local) or outer mutation
+                    // If the variable already exists in the outer codegen scope, it's outer mutation
+                    if (findVar(node.name))
+                        codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
+                    // Otherwise it's a new local variable — register it
+                    localScopes.back().insert(node.name);
+                }
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
                 for (const auto &name : node.names) {
                     if (name != "_")
                         localScopes.back().insert(name);
                 }
-            } else if constexpr (std::is_same_v<T, AssignStmt>) {
-                if (!isLocal(node.name))
-                    codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
             } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
                 codegenError(node.loc, "parallel for does not allow indexed assignment");
             } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {

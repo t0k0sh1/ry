@@ -8,19 +8,19 @@ record Circle:
 
 describe("record", fn():
     it("constructor and field access", fn():
-        let p = Point(10, 20)
+        p = Point(10, 20)
         expect(p.x).to_eq(10)
         expect(p.y).to_eq(20)
 
     )
     it("var field assignment", fn():
-        var p = Point(10, 20)
+        p = Point(10, 20)
         p.x = 100
         expect(p.x).to_eq(100)
 
     )
     it("nested record", fn():
-        let c = Circle(Point(0, 0), 1.0)
+        c = Circle(Point(0, 0), 1.0)
         expect(c.center.x).to_eq(0)
         expect(c.center.y).to_eq(0)
         expect(c.radius).to_eq(1.0)
@@ -34,7 +34,7 @@ enum Color:
 
 describe("simple enum", fn():
     it("variant access", fn():
-        let c = Color::Red
+        c = Color::Red
         expect(c == Color::Red).to_be_true()
 
     )
@@ -44,8 +44,8 @@ describe("simple enum", fn():
 
     )
     it("match", fn():
-        var res = ""
-        let c = Color::Blue
+        res = ""
+        c = Color::Blue
         match c:
             case Color::Red:
                 res = "red"
@@ -64,8 +64,8 @@ enum Shape:
 
 describe("ADT enum", fn():
     it("associated data", fn():
-        let s = Shape::CircleS(3.14)
-        var res = 0.0
+        s = Shape::CircleS(3.14)
+        res = 0.0
         match s:
             case Shape::CircleS(r):
                 res = r
@@ -77,8 +77,8 @@ describe("ADT enum", fn():
 
     )
     it("multi-field pattern match", fn():
-        let s = Shape::RectS(4.0, 5.0)
-        var res = 0.0
+        s = Shape::RectS(4.0, 5.0)
+        res = 0.0
         match s:
             case Shape::CircleS(r):
                 res = r
@@ -96,8 +96,8 @@ enum MyOption<T>:
 
 describe("generic enum", fn():
     it("with type parameter", fn():
-        let a = MyOption<int>::MySome(42)
-        var res = 0
+        a = MyOption<int>::MySome(42)
+        res = 0
         match a:
             case MyOption::MySome(v):
                 res = v
@@ -107,8 +107,8 @@ describe("generic enum", fn():
 
     )
     it("none variant", fn():
-        let b = MyOption<int>::MyNone
-        var res = 0
+        b = MyOption<int>::MyNone
+        res = 0
         match b:
             case MyOption::MySome(v):
                 res = v

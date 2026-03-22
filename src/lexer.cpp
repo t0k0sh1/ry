@@ -417,8 +417,7 @@ Token Lexer::readToken() {
         if (id == "not")   return {TokenKind::Not,   "not",   line_, startCol};
         if (id == "true")  return {TokenKind::True,  "true",  line_, startCol};
         if (id == "false") return {TokenKind::False, "false", line_, startCol};
-        if (id == "let")   return {TokenKind::Let,   "let",   line_, startCol};
-        if (id == "var")   return {TokenKind::Var,   "var",   line_, startCol};
+
         if (id == "if")    return {TokenKind::If,    "if",    line_, startCol};
         if (id == "elif")  return {TokenKind::Elif,  "elif",  line_, startCol};
         if (id == "else")  return {TokenKind::Else,  "else",  line_, startCol};

@@ -6,26 +6,35 @@
 
 ---
 
-## Constant Declaration with let
+## Variable Declaration
 
-The `let` keyword declares an immutable variable (constant). The type is automatically inferred from the value on the right-hand side. The value cannot be changed after declaration.
+In Ry, variables are declared using simple assignment syntax. By default, variables are mutable.
 
 ```python
-let x = 42        # Inferred as int
-let y = 3.14      # Inferred as float
-let flag = true   # Inferred as bool
-let name = "Ry"   # Inferred as str
+x = 42        # Inferred as int
+y = 3.14      # Inferred as float
+flag = true   # Inferred as bool
+name = "Ry"   # Inferred as str
 ```
 
 ---
 
-## Variable Declaration with var
+## Immutable Variables with @const
 
-The `var` keyword declares a mutable variable. You can reassign a value of the same type after declaration.
+The `@const` directive marks a variable as immutable (constant). The value cannot be changed after declaration.
 
 ```python
-var count = 0
-count = count + 1   # OK: reassignment to the same type
+@const
+x = 42        # Inferred as int
+
+@const
+y = 3.14      # Inferred as float
+
+@const
+flag = true   # Inferred as bool
+
+@const
+name = "Ry"   # Inferred as str
 ```
 
 ---
@@ -35,10 +44,17 @@ count = count + 1   # OK: reassignment to the same type
 You can explicitly specify the type of a variable.
 
 ```python
-let x: int = 42
-let rate: float = 0.5
-let ok: bool = false
-let msg: str = "hello"
+@const
+x: int = 42
+
+@const
+rate: float = 0.5
+
+@const
+ok: bool = false
+
+@const
+msg: str = "hello"
 ```
 
 A compile error occurs if the type annotation does not match the actual type of the value.
@@ -50,7 +66,7 @@ A compile error occurs if the type annotation does not match the actual type of 
 | Type | Description | Literal Examples |
 |------|-------------|-----------------|
 | `int` | 64-bit integer | `0`, `42`, `-10` |
-| `byte` | Unsigned 8-bit integer (0-255) | `let b: byte = 42` |
+| `byte` | Unsigned 8-bit integer (0-255) | `b: byte = 42` |
 | `float` | 64-bit floating-point number | `0.0`, `3.14`, `-1.5` |
 | `bool` | Boolean | `true`, `false` |
 | `str` | String | `"hello"`, `""` |
@@ -62,11 +78,14 @@ A compile error occurs if the type annotation does not match the actual type of 
 Various operations are available for strings.
 
 ```python
-let a = "Hello"
-let b = "World"
+@const
+a = "Hello"
+@const
+b = "World"
 
 # Concatenation
-let c = a + ", " + b   # "Hello, World"
+@const
+c = a + ", " + b   # "Hello, World"
 
 # Comparison (lexicographic order)
 print(a == b)   # false
@@ -77,7 +96,8 @@ print(a < b)    # true ("H" < "W")
 print(len(a))   # 5
 
 # Substring checks
-let s = "Hello, World!"
+@const
+s = "Hello, World!"
 print(contains(s, "World"))      # true
 print(starts_with(s, "Hello"))   # true
 print(ends_with(s, "!"))         # true
@@ -108,36 +128,38 @@ print("say \"hi\"")     # String containing double quotes
 
 ## Reassignment Rules
 
-Variables declared with `var` can be reassigned. However, the following restrictions apply:
+Variables declared without `@const` can be reassigned. However, the following restrictions apply:
 
 ```python
-var x = 10
+x = 10
 x = 20        # OK: reassignment to the same type
 # x = "text" # Error: reassignment with a different type is not allowed
 ```
 
-`let` variables cannot be reassigned.
+`@const` variables cannot be reassigned.
 
 ```python
-let N = 5
-# N = 6  # Error: reassignment to a let variable is not allowed
+@const
+N = 5
+# N = 6  # Error: reassignment to a @const variable is not allowed
 ```
 
 Redeclaring a variable with the same name is also not allowed.
 
 ```python
-let x = 1
-# let x = 2  # Error: redeclaring the same name is not allowed
+x = 1
+# x = 2 with another declaration in the same scope is not allowed
 ```
 
 ---
 
 ## Tuple Destructuring
 
-You can unpack a tuple into multiple variables in a single declaration using `let` or `var`.
+You can unpack a tuple into multiple variables in a single declaration.
 
 ```python
-let a, b = (10, 20)
+@const
+a, b = (10, 20)
 print(a)   # 10
 print(b)   # 20
 ```
@@ -147,16 +169,17 @@ print(b)   # 20
 Use `_` to ignore a position.
 
 ```python
-let x, _ = (1, 2)   # only x is bound; 2 is discarded
+@const
+x, _ = (1, 2)   # only x is bound; 2 is discarded
 print(x)             # 1
 ```
 
 ### Mutable Destructuring
 
-Use `var` to declare mutable variables.
+Omit `@const` to declare mutable variables.
 
 ```python
-var a, b = (10, 20)
+a, b = (10, 20)
 a = 99
 print(a)   # 99
 ```
@@ -164,7 +187,7 @@ print(a)   # 99
 ### Rules
 
 - The number of variables on the left must match the number of elements in the tuple.
-- Each variable follows the same `let`/`var` rules as a regular declaration.
+- Each variable follows the same `@const`/mutable rules as a regular declaration.
 - Nested tuple destructuring is not supported.
 
 ---

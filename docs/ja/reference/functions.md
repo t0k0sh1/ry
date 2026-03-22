@@ -75,8 +75,10 @@ fn area(side: int) -> int:
 fn area(w: int, h: int) -> int:
     return w * h
 
-let a = area(5)       # 25
-let b = area(3, 4)    # 12
+@const
+a = area(5)       # 25
+@const
+b = area(3, 4)    # 12
 ```
 
 ---
@@ -103,7 +105,8 @@ fn log_typed(msg: str) -> Unit:
 async fn add(a: int, b: int) -> int:
     return a + b
 
-let t: Task<int> = add(20, 22)
+@const
+t: Task<int> = add(20, 22)
 print(await t)          # 42
 await add(1, 2)         # 待機して結果を捨てる
 print(join(add(1, 2)))  # 3
@@ -145,14 +148,19 @@ fn(引数名: 型, ...) -> 戻り値型: 式
 ### 例
 
 ```python
-let double = fn(x: int): x * 2
-let result = double(5)   # 10
+@const
+double = fn(x: int): x * 2
+@const
+result = double(5)   # 10
 
-let add = fn(a: int, b: int): a + b
-let sum = add(3, 4)      # 7
+@const
+add = fn(a: int, b: int): a + b
+@const
+sum = add(3, 4)      # 7
 
 # 複数行ラムダ
-let abs = fn(x: int):
+@const
+abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -165,11 +173,13 @@ let abs = fn(x: int):
 ラムダ関数は定義された時点の外側スコープの変数を**値でキャプチャ**する。
 
 ```python
-var base = 10
-let add_base = fn(x: int): x + base   # base を値でキャプチャ
+base = 10
+@const
+add_base = fn(x: int): x + base   # base を値でキャプチャ
 
 base = 99          # キャプチャ済みの値には影響しない
-let r = add_base(5)   # 15（キャプチャ時の base = 10 を使用）
+@const
+r = add_base(5)   # 15（キャプチャ時の base = 10 を使用）
 ```
 
 ### キャプチャルール
@@ -195,13 +205,16 @@ fn(引数型1, 引数型2, ...) -> 戻り値型
 ### 例
 
 ```python
-let f: fn(int) -> int = fn(x: int): x * 2
-let g: fn(int, int) -> int = fn(a: int, b: int): a + b
+@const
+f: fn(int) -> int = fn(x: int): x * 2
+@const
+g: fn(int, int) -> int = fn(a: int, b: int): a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
 
-let result = apply(f, 5)   # 10
+@const
+result = apply(f, 5)   # 10
 ```
 
 ---
@@ -212,12 +225,13 @@ let result = apply(f, 5)   # 10
 
 ```python
 fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
-    var result: List<int> = []
+    result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result
 
-let doubled = map_list([1, 2, 3], fn(x: int): x * 2)
+@const
+doubled = map_list([1, 2, 3], fn(x: int): x * 2)
 # [2, 4, 6]
 ```
 
@@ -246,7 +260,8 @@ fn double(x: int) -> int:
 fn add_one(x: int) -> int:
     return x + 1
 
-let result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
+@const
+result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
 ```
 
 ### フィールドアクセスとの混在
@@ -254,8 +269,10 @@ let result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
 フィールドアクセス（`.field`）と UFCS（`.method()`）は同じドット記法で書けるが、引数の有無で区別される。
 
 ```python
-let p = Point(3, 4)
-let len = p.x.to_float()   # フィールドアクセス + UFCS
+@const
+p = Point(3, 4)
+@const
+len = p.x.to_float()   # フィールドアクセス + UFCS
 ```
 
 ---
@@ -307,8 +324,12 @@ fn operator-(v: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-let v1 = Vec2(1.0, 2.0)
-let v2 = Vec2(3.0, 4.0)
-let v3 = v1 + v2    # Vec2(4.0, 6.0)
-let v4 = -v1        # Vec2(-1.0, -2.0)
+@const
+v1 = Vec2(1.0, 2.0)
+@const
+v2 = Vec2(3.0, 4.0)
+@const
+v3 = v1 + v2    # Vec2(4.0, 6.0)
+@const
+v4 = -v1        # Vec2(-1.0, -2.0)
 ```

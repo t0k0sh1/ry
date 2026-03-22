@@ -64,12 +64,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     scanStmt = [&](const StmtNode &stmt) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, LetStmt>) {
-                scanExpr(*s.value);
-            } else if constexpr (std::is_same_v<T, VarStmt>) {
-                scanExpr(*s.value);
-            } else if constexpr (std::is_same_v<T, AssignStmt>) {
-                scanExpr(*s.value);
+            if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 for (auto &arg : s.args) scanExpr(*arg);
             } else if constexpr (std::is_same_v<T, ReturnStmt>) {

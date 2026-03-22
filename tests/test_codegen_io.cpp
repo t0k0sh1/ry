@@ -44,7 +44,7 @@ TEST_F(CodeGenTest, IOWriteReadText) {
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
 write_text(")" + path + R"(", "hello world")
-let s = read_text(")" + path + R"(")
+s = read_text(")" + path + R"(")
 print(s)
 )"), "hello world\n");
     removeIfExists(path);
@@ -60,7 +60,7 @@ TEST_F(CodeGenTest, IOAppendText) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
 write_text(")" + path + R"(", "hello")
 append_text(")" + path + R"(", " world")
-let s = read_text(")" + path + R"(")
+s = read_text(")" + path + R"(")
 print(s)
 )"), "hello world\n");
     removeIfExists(path);
@@ -108,7 +108,7 @@ print(file_exists(")" + path + R"("))
 
 TEST_F(CodeGenTest, IOStrToBytes) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-let bs = str_to_bytes("ABC")
+bs = str_to_bytes("ABC")
 print(len(bs))
 print(bs[0])
 print(bs[1])
@@ -118,8 +118,8 @@ print(bs[2])
 
 TEST_F(CodeGenTest, IOBytesToStr) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
-let bs = str_to_bytes("hello")
-let s = bytes_to_str(bs)
+bs = str_to_bytes("hello")
+s = bytes_to_str(bs)
 print(s)
 )"), "hello\n");
 }
@@ -132,10 +132,10 @@ TEST_F(CodeGenTest, IOWriteReadBytes) {
     std::string path = tmpPath("bytes");
     removeIfExists(path);
     EXPECT_EQ(runSource(IO_DECLS + R"(
-let bs = str_to_bytes("binary data")
+bs = str_to_bytes("binary data")
 write_bytes(")" + path + R"(", bs)
-let rb = read_bytes(")" + path + R"(")
-let s = bytes_to_str(rb)
+rb = read_bytes(")" + path + R"(")
+s = bytes_to_str(rb)
 print(s)
 print(len(rb))
 )"), "binary data\n11\n");
@@ -149,7 +149,7 @@ print(len(rb))
 TEST_F(CodeGenTest, IOReadTextNotFound) {
     EXPECT_EXIT(
         runSource(IO_DECLS + R"(
-let s = read_text("/tmp/ry_io_test_no_such_file_ever.txt")
+s = read_text("/tmp/ry_io_test_no_such_file_ever.txt")
 print(s)
 )"),
         ::testing::ExitedWithCode(1),

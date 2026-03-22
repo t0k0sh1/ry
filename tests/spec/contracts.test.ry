@@ -24,7 +24,7 @@ record BankAccount:
 
 describe("require", fn():
     it("passes when precondition met", fn():
-        let res = deposit(100, 50)
+        res = deposit(100, 50)
         expect(res).to_eq(150)
 
     )
@@ -45,7 +45,7 @@ describe("old expression", fn():
 )
 describe("struct invariant", fn():
     it("passes when invariant holds", fn():
-        let a = BankAccount(100, 0)
+        a = BankAccount(100, 0)
         expect(a.balance).to_eq(100)
         expect(a.min_balance).to_eq(0)
     )

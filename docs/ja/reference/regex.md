@@ -62,21 +62,24 @@ print(regex_match("[0-9]+", "hello"))   # false
 ### regex_search
 
 ```ry
-let pos = regex_search("[0-9]+", "abc123def")
+@const
+pos = regex_search("[0-9]+", "abc123def")
 print(pos)  # 3
 ```
 
 ### regex_replace
 
 ```ry
-let s = regex_replace("[0-9]+", "a1b2c3", "X")
+@const
+s = regex_replace("[0-9]+", "a1b2c3", "X")
 print(s)  # aXbXcX
 ```
 
 ### regex_split
 
 ```ry
-let parts = regex_split("\\s+", "hello  world  foo")
+@const
+parts = regex_split("\\s+", "hello  world  foo")
 print(len(parts))  # 3
 print(parts[0])    # hello
 ```
@@ -84,7 +87,8 @@ print(parts[0])    # hello
 ### regex_find_all
 
 ```ry
-let matches = regex_find_all("[0-9]+", "a1b23c456")
+@const
+matches = regex_find_all("[0-9]+", "a1b23c456")
 print(len(matches))  # 3
 print(matches[0])    # 1
 print(matches[1])    # 23
@@ -102,15 +106,18 @@ print(regex_match("(ab){2,}", "ababab"))           # true
 
 ```ry
 # 貪欲: 最長マッチ
-let g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+@const
+g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
 print(g)  # X
 
 # 非貪欲: 最短マッチ
-let l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+@const
+l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
 print(l)  # X and X
 
 # 個別のHTMLタグを取得
-let tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+@const
+tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
 print(len(tags))  # 3
 ```
 
@@ -120,15 +127,18 @@ print(len(tags))  # 3
 
 ```ry
 # 単語全体にマッチ
-let pos = regex_search("\\bworld\\b", "hello world")
+@const
+pos = regex_search("\\bworld\\b", "hello world")
 print(pos)  # 6
 
 # すべての単語を取得
-let words = regex_find_all("\\b\\w+\\b", "hello world foo")
+@const
+words = regex_find_all("\\b\\w+\\b", "hello world foo")
 print(len(words))  # 3
 
 # \B は非境界（単語の内部）にマッチ
-let pos2 = regex_search("\\Bworld", "helloworld")
+@const
+pos2 = regex_search("\\Bworld", "helloworld")
 print(pos2)  # 5
 ```
 
@@ -143,7 +153,8 @@ print(regex_match("(?i)hello", "Hello"))  # true
 print(regex_match("(?i)[a-z]+", "ABC"))  # true
 
 # replace や find_all でも使用可能
-let s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+@const
+s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
 print(s)  # X X X
 ```
 
@@ -153,6 +164,7 @@ print(s)  # X X X
 
 ```ry
 # pattern.function(text, ...)
-let m = "[a-z]+".regex_match("hello")
+@const
+m = "[a-z]+".regex_match("hello")
 print(m)  # true
 ```

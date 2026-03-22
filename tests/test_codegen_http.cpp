@@ -39,7 +39,7 @@ TEST_F(CodeGenTest, HttpListenCallback) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 fn run_server(port: int, ready: Channel<int>) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        let path = http_path(req)
+        path = http_path(req)
         if path == "/hello":
             return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
         return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
@@ -52,8 +52,8 @@ fn run_client(port: int, ready: Channel<int>) -> str:
     match connect("127.0.0.1", port):
         case Some(conn):
             send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-            let resp: List<byte> = recv(conn, 4096)
-            let msg = bytes_to_str(resp)
+            resp: List<byte> = recv(conn, 4096)
+            msg = bytes_to_str(resp)
             close(conn)
             return msg
         case None:
@@ -67,10 +67,10 @@ fn manual_server(port: int, ready: Channel<int>) -> str:
             send(ready, 1)
             match accept(server):
                 case Some(conn):
-                    let data: List<byte> = recv(conn, 4096)
-                    let raw = bytes_to_str(data)
+                    data: List<byte> = recv(conn, 4096)
+                    raw = bytes_to_str(data)
                     # Respond with HTTP
-                    let response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
+                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
                     send(conn, str_to_bytes(response_str))
                     close(conn)
                 case None:
@@ -80,9 +80,9 @@ fn manual_server(port: int, ready: Channel<int>) -> str:
             send(ready, 0)
     return "done"
 
-let ready: Channel<int> = channel[int]()
-let t: Task<str> = spawn manual_server(18190, ready)
-let response = run_client(18190, ready)
+ready: Channel<int> = channel[int]()
+t: Task<str> = spawn manual_server(18190, ready)
+response = run_client(18190, ready)
 print(contains(response, "200 OK"))
 print(contains(response, "Hello!"))
 join(t)
@@ -97,23 +97,23 @@ TEST_F(CodeGenTest, HttpListenWithSpawn) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 fn run_server(port: int) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        let method = http_method(req)
-        let path = http_path(req)
+        method = http_method(req)
+        path = http_path(req)
         return http_response(200, {"Content-Type": "text/plain"}, method + ":" + path)
     )
     return "done"
 
-let t: Task<str> = spawn run_server(18194)
+t: Task<str> = spawn run_server(18194)
 
 # Retry connect loop inline
-var connected = false
-var response_msg = ""
-var attempt = 0
+connected = false
+response_msg = ""
+attempt = 0
 while attempt < 500 and not connected:
     match connect("127.0.0.1", 18194):
         case Some(conn):
             send(conn, str_to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-            let resp: List<byte> = recv(conn, 4096)
+            resp: List<byte> = recv(conn, 4096)
             response_msg = bytes_to_str(resp)
             close(conn)
             connected = true
@@ -140,16 +140,16 @@ fn run_server(port: int) -> str:
     )
     return "done"
 
-let t: Task<str> = spawn run_server(18195)
+t: Task<str> = spawn run_server(18195)
 
-var connected = false
-var response_msg = ""
-var attempt = 0
+connected = false
+response_msg = ""
+attempt = 0
 while attempt < 500 and not connected:
     match connect("127.0.0.1", 18195):
         case Some(conn):
             send(conn, str_to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n"))
-            let resp: List<byte> = recv(conn, 4096)
+            resp: List<byte> = recv(conn, 4096)
             response_msg = bytes_to_str(resp)
             close(conn)
             connected = true
@@ -172,16 +172,16 @@ fn run_server(port: int) -> str:
     )
     return "done"
 
-let t: Task<str> = spawn run_server(18196)
+t: Task<str> = spawn run_server(18196)
 
-var connected = false
-var response_msg = ""
-var attempt = 0
+connected = false
+response_msg = ""
+attempt = 0
 while attempt < 500 and not connected:
     match connect("127.0.0.1", 18196):
         case Some(conn):
             send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-            let resp: List<byte> = recv(conn, 4096)
+            resp: List<byte> = recv(conn, 4096)
             response_msg = bytes_to_str(resp)
             close(conn)
             connected = true

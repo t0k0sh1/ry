@@ -37,8 +37,10 @@ record Rectangle:
 フィールド定義順に引数を渡します。名前付き引数はサポートされていません。
 
 ```python
-let p = Point(10, 20)
-let r = Rectangle(3.0, 4.5)
+@const
+p = Point(10, 20)
+@const
+r = Rectangle(3.0, 4.5)
 ```
 
 ---
@@ -48,7 +50,8 @@ let r = Rectangle(3.0, 4.5)
 ドット記法でフィールドを読み取ります。
 
 ```python
-let p = Point(10, 20)
+@const
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -59,15 +62,16 @@ print(p.y)   # 20
 
 | 変数宣言 | フィールド代入 |
 |---------|--------------|
-| `var`   | 可能         |
-| `let`   | コンパイルエラー |
+| 可変（`@const` なし） | 可能         |
+| `@const`   | コンパイルエラー |
 
 ```python
-var p = Point(10, 20)
-p.x = 100    # OK: var変数
+p = Point(10, 20)
+p.x = 100    # OK: 可変変数
 
-let q = Point(10, 20)
-q.x = 100    # エラー: let変数のフィールドは変更不可
+@const
+q = Point(10, 20)
+q.x = 100    # エラー: @const変数のフィールドは変更不可
 ```
 
 ---
@@ -97,7 +101,8 @@ record Circle:
     center: Point
     radius: float
 
-let c = Circle(Point(0, 0), 1.0)
+@const
+c = Circle(Point(0, 0), 1.0)
 print(c.center.x)   # 0
 ```
 
@@ -108,7 +113,7 @@ print(c.center.x)   # 0
 | 制約 | 詳細 |
 |------|------|
 | 同一フィールド名の重複 | コンパイルエラー |
-| `let` 変数のフィールド代入 | コンパイルエラー |
+| `@const` 変数のフィールド代入 | コンパイルエラー |
 | `print` に構造体を直接渡す | コンパイルエラー（print非対応） |
 
 ```python
@@ -118,7 +123,8 @@ record Bad:
     x: int   # エラー
 
 # エラー例: printに構造体を渡す
-let p = Point(1, 2)
+@const
+p = Point(1, 2)
 print(p)   # エラー
 ```
 
@@ -153,7 +159,8 @@ enum Color:
 `::` 演算子でバリアントにアクセスします。
 
 ```python
-let c = Color::Red
+@const
+c = Color::Red
 print(c)   # Red
 ```
 
@@ -169,7 +176,8 @@ print(Color::Red != Color::Green)  # true
 ### if 文での使用
 
 ```python
-let c = Color::Green
+@const
+c = Color::Green
 if c == Color::Red:
     print("red")
 elif c == Color::Green:
@@ -195,7 +203,8 @@ print(is_red(Color::Green))  # false
 `print()` でバリアント名が出力されます。
 
 ```python
-let c = Color::Blue
+@const
+c = Color::Blue
 print(c)   # Blue
 ```
 

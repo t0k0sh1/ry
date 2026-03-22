@@ -97,7 +97,7 @@ TEST_F(CodeGenTest, RequireAndEnsureCombined) {
         "    ensure:\n"
         "        result >= 0\n"
         "        result == old(balance) + amount\n"
-        "    var new_balance: int = balance + amount\n"
+        "    new_balance: int = balance + amount\n"
         "    return new_balance\n"
         "print(deposit(100, 500))";
     EXPECT_EQ(runSource(src), "600\n");
@@ -112,7 +112,7 @@ TEST_F(CodeGenTest, InvariantSatisfiedOnConstruction) {
         "    min_balance: int\n"
         "    invariant:\n"
         "        balance >= min_balance\n"
-        "let a = Account(100, 0)\n"
+        "a = Account(100, 0)\n"
         "print(a.balance)";
     EXPECT_EQ(runSource(src), "100\n");
 }
@@ -124,7 +124,7 @@ TEST_F(CodeGenTest, InvariantViolatedOnConstruction) {
         "    min_balance: int\n"
         "    invariant:\n"
         "        balance >= min_balance\n"
-        "let a = Account(-1, 0)\n"
+        "a = Account(-1, 0)\n"
         "print(a.balance)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -136,7 +136,7 @@ TEST_F(CodeGenTest, InvariantSatisfiedAfterFieldAssign) {
         "    min_balance: int\n"
         "    invariant:\n"
         "        balance >= min_balance\n"
-        "var a = Account(100, 0)\n"
+        "a = Account(100, 0)\n"
         "a.balance = 50\n"
         "print(a.balance)";
     EXPECT_EQ(runSource(src), "50\n");
@@ -149,7 +149,7 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
         "    min_balance: int\n"
         "    invariant:\n"
         "        balance >= min_balance\n"
-        "var a = Account(100, 0)\n"
+        "a = Account(100, 0)\n"
         "a.balance = -1\n"
         "print(a.balance)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");

@@ -19,8 +19,10 @@
 | `**` | Exponentiation (always float) | `2 ** 10` | `1024.0` |
 
 ```python
-let a = 10
-let b = 3
+@const
+a = 10
+@const
+b = 3
 
 print(a + b)    # 13
 print(a - b)    # 7
@@ -47,8 +49,10 @@ All comparison operators return a `bool` value.
 | `>=` | Greater than or equal to | `a >= b` |
 
 ```python
-let x = 5
-let y = 10
+@const
+x = 5
+@const
+y = 10
 
 print(x == y)   # false
 print(x != y)   # true
@@ -77,8 +81,10 @@ print("b" > "a")        # true
 | `not` | Logical NOT | `not a` |
 
 ```python
-let t = true
-let f = false
+@const
+t = true
+@const
+f = false
 
 print(t and f)   # false
 print(t or f)    # true
@@ -103,8 +109,10 @@ Bitwise operators can only be used with the `int` type.
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
-let a = 0b1010   # 10
-let b = 0b1100   # 12
+@const
+a = 0b1010   # 10
+@const
+b = 0b1100   # 12
 
 print(a & b)    # 8  (0b1000)
 print(a | b)    # 14 (0b1110)
@@ -129,7 +137,7 @@ Shorthand notation for updating the value of a variable.
 | `%=` | Modulo assignment | `x = x % n` |
 
 ```python
-var x = 10
+x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24
@@ -148,7 +156,7 @@ Shorthand for incrementing or decrementing a variable by 1.
 | `x--` | Decrement by 1 | `x = x - 1` |
 
 ```python
-var count = 0
+count = 0
 count++       # count == 1
 count++       # count == 2
 count--       # count == 1
@@ -200,7 +208,8 @@ print(3 * "ab")        # "ababab"
 | `not in` | Negated membership test | `4 not in {1, 2, 3}` -> `true` |
 
 ```python
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 print(2 in s)        # true
 print(4 not in s)    # true
 ```

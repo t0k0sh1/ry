@@ -11,7 +11,8 @@
 使用 `if` 根據條件進行分支處理。
 
 ```python
-let x = 10
+@const
+x = 10
 
 if x > 0:
     print(x)
@@ -26,8 +27,10 @@ else:
 - `if` 可以巢狀使用。
 
 ```python
-let a = 5
-let b = 3
+@const
+a = 5
+@const
+b = 3
 
 if a > 0:
     if b > 0:
@@ -41,7 +44,7 @@ if a > 0:
 當條件為真時，重複執行區塊。
 
 ```python
-var i = 3
+i = 3
 while i > 0:
     print(i)
     i = i - 1
@@ -99,7 +102,8 @@ for i in 1 .. 3:
 使用 `for k, v in map` 可以走訪映射的鍵值對。
 
 ```python
-let m = {"x": 10, "y": 20}
+@const
+m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
     print(v)
@@ -125,7 +129,7 @@ for i in range(10):
 在 `while` 中也可同樣使用。
 
 ```python
-var n = 0
+n = 0
 while true:
     n = n + 1
     if n % 2 == 0:
@@ -173,7 +177,8 @@ for i in range(1, 4):
 
 ```python
 if true:
-    let inner = 42
+    @const
+    inner = 42
 # 在此處參照 inner 會產生編譯錯誤
 ```
 
@@ -182,22 +187,23 @@ if true:
 可以從區塊內參照和重新賦值外部的變數。
 
 ```python
-var count = 0
+count = 0
 for i in range(5):
     count = count + i
 print(count)   # 10
 ```
 
-### 遮蔽（Shadowing）
+### 內層作用域的重新賦值
 
-在區塊內宣告與外部同名的變數時，區塊內會使用新的變數（遮蔽）。外部的變數不受影響。
+在區塊內對變數賦值會修改外層的變數（Python 風格的作用域）。不會產生遮蔽——內層的賦值會修改同一個變數。
 
 ```python
-let x = 1
+@const
+x = 1
 if true:
-    let x = 99
+    x = 99
     print(x)   # 99
-print(x)       # 1
+print(x)       # 99
 ```
 
 ---
@@ -212,7 +218,8 @@ enum Color:
     Green
     Blue
 
-let c = Color::Green
+@const
+c = Color::Green
 match c:
     case Color::Red:
         print("red")
@@ -228,7 +235,8 @@ match c:
 使用 `match` 可以安全地處理 `None` 的情況。
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -242,7 +250,8 @@ match x:
 `_` 是可匹配任何值的萬用字元模式。也可以使用字面值（數值、字串、布林值）進行匹配。
 
 ```python
-let n = 5
+@const
+n = 5
 match n:
     case 0:
         print("zero")

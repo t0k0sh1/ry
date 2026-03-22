@@ -19,7 +19,7 @@
 
 - `fn` - 関数定義
 - `record` - 構造体定義
-- `let` / `var` - 変数宣言
+- 変数宣言（`@const` 付きまたは通常代入）
 - `record` 定義内のフィールド
 - `for` - `@parallel` のみ対応
 - `it` - テストケース定義（`@each` / `@property` のみ）
@@ -48,14 +48,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **変数に対して:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -68,9 +70,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 警告なし
+```
+
+### `@const`
+
+変数を不変としてマークします。`@const` で宣言された変数は初期化後に再代入できません。`@const` なしの場合、変数はデフォルトで可変です。
+
+```
+@const
+x = 42
+# x = 10   # エラー: @const 変数への再代入はできません
+```
+
+**型アノテーション付き:**
+
+```
+@const
+name: str = "hello"
+```
+
+**タプル分割代入:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`

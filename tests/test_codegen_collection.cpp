@@ -4,21 +4,21 @@
 
 TEST_F(CodeGenTest, ListCreateAndAccess) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(xs[0])";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, ListLen) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
 TEST_F(CodeGenTest, ListMixedAccess) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "print(xs[0])\n"
         "print(xs[1])\n"
         "print(xs[2])";
@@ -27,7 +27,7 @@ TEST_F(CodeGenTest, ListMixedAccess) {
 
 TEST_F(CodeGenTest, ListWithTypeAnnotation) {
     std::string src =
-        "let xs: List<int> = [1, 2, 3]\n"
+        "xs: List<int> = [1, 2, 3]\n"
         "print(xs[0])\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "1\n3\n");
@@ -35,22 +35,22 @@ TEST_F(CodeGenTest, ListWithTypeAnnotation) {
 
 TEST_F(CodeGenTest, ListIndexOutOfRange) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(xs[5])";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, ListTypeMismatch) {
-    EXPECT_THROW(runSource("let xs = [1, 3.14]"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = [1, 3.14]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ListEmpty) {
-    EXPECT_THROW(runSource("let xs = []"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = []"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ListPrint) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
@@ -59,7 +59,7 @@ TEST_F(CodeGenTest, ListInFunction) {
     std::string src =
         "fn head(xs: List<int>) -> int:\n"
         "    return xs[0]\n"
-        "let xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "print(head(xs))";
     EXPECT_EQ(runSource(src), "10\n");
 }
@@ -68,43 +68,43 @@ TEST_F(CodeGenTest, ListLenInFunction) {
     std::string src =
         "fn size(xs: List<int>) -> int:\n"
         "    return len(xs)\n"
-        "let xs = [1, 2, 3, 4, 5]\n"
+        "xs = [1, 2, 3, 4, 5]\n"
         "print(size(xs))";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
 TEST_F(CodeGenTest, ListFloatElements) {
     std::string src =
-        "let xs = [1.5, 2.5, 3.5]\n"
+        "xs = [1.5, 2.5, 3.5]\n"
         "print(xs[1])";
     EXPECT_EQ(runSource(src), "2.5\n");
 }
 
 TEST_F(CodeGenTest, ListPrintFloat) {
     std::string src =
-        "let xs = [1.5, 2.5]\n"
+        "xs = [1.5, 2.5]\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
 }
 
 TEST_F(CodeGenTest, ListNegativeIndex) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(xs[-1])";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, ListIndexWithExpression) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
-        "let i = 1\n"
+        "xs = [10, 20, 30]\n"
+        "i = 1\n"
         "print(xs[i])";
     EXPECT_EQ(runSource(src), "20\n");
 }
 
 TEST_F(CodeGenTest, ListStringElements) {
     std::string src =
-        "let xs = [\"hello\", \"world\"]\n"
+        "xs = [\"hello\", \"world\"]\n"
         "print(xs[0])\n"
         "print(xs[1])";
     EXPECT_EQ(runSource(src), "hello\nworld\n");
@@ -124,7 +124,7 @@ TEST_F(CodeGenTest, UFCSBasicCall) {
     std::string src =
         "fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "let x = 1\n"
+        "x = 1\n"
         "print(x.add(2))";
     EXPECT_EQ(runSource(src), "3\n");
 }
@@ -135,7 +135,7 @@ TEST_F(CodeGenTest, UFCSChainedCall) {
         "    return a + b\n"
         "fn mul(a: int, b: int) -> int:\n"
         "    return a * b\n"
-        "let x = 2\n"
+        "x = 2\n"
         "print(x.add(3).mul(4))";
     EXPECT_EQ(runSource(src), "20\n");
 }
@@ -147,7 +147,7 @@ TEST_F(CodeGenTest, UFCSWithStruct) {
         "    y: int\n"
         "fn get_x(p: Point) -> int:\n"
         "    return p.x\n"
-        "let p = Point(42, 99)\n"
+        "p = Point(42, 99)\n"
         "print(p.get_x())";
     EXPECT_EQ(runSource(src), "42\n");
 }
@@ -156,35 +156,35 @@ TEST_F(CodeGenTest, UFCSWithStruct) {
 
 TEST_F(CodeGenTest, MapCreateAndAccess) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "print(m[\"a\"])";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, MapAccessSecondKey) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "print(m[\"b\"])";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, MapLen) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "print(len(m))";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, MapPrint) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "print(m)";
     EXPECT_EQ(runSource(src), "{a: 1, b: 2}\n");
 }
 
 TEST_F(CodeGenTest, MapKeyAssign) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "m[\"c\"] = 3\n"
         "print(m[\"c\"])\n"
         "print(len(m))";
@@ -193,7 +193,7 @@ TEST_F(CodeGenTest, MapKeyAssign) {
 
 TEST_F(CodeGenTest, MapKeyUpdate) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "m[\"a\"] = 99\n"
         "print(m[\"a\"])";
     EXPECT_EQ(runSource(src), "99\n");
@@ -201,21 +201,21 @@ TEST_F(CodeGenTest, MapKeyUpdate) {
 
 TEST_F(CodeGenTest, MapKeyNotFound) {
     std::string src =
-        "let m = {\"a\": 1}\n"
+        "m = {\"a\": 1}\n"
         "print(m[\"z\"])";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, MapWithTypeAnnotation) {
     std::string src =
-        "let m: Map<str, int> = {\"x\": 42}\n"
+        "m: Map<str, int> = {\"x\": 42}\n"
         "print(m[\"x\"])";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, MapIntKeys) {
     std::string src =
-        "let m = {1: \"hello\", 2: \"world\"}\n"
+        "m = {1: \"hello\", 2: \"world\"}\n"
         "print(m[1])";
     EXPECT_EQ(runSource(src), "hello\n");
 }
@@ -224,14 +224,14 @@ TEST_F(CodeGenTest, MapInFunction) {
     std::string src =
         "fn get_val(m: Map<str, int>, k: str) -> int:\n"
         "    return m[k]\n"
-        "let m = {\"a\": 10, \"b\": 20}\n"
+        "m = {\"a\": 10, \"b\": 20}\n"
         "print(get_val(m, \"b\"))";
     EXPECT_EQ(runSource(src), "20\n");
 }
 
 TEST_F(CodeGenTest, MapHasKey) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "print(m.has_key(\"a\"))\n"
         "print(m.has_key(\"z\"))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -248,21 +248,21 @@ TEST_F(CodeGenTest, StringLenEmpty) {
 }
 
 TEST_F(CodeGenTest, StringLenUFCS) {
-    EXPECT_EQ(runSource("let s = \"hello\"\nprint(s.len())"), "5\n");
+    EXPECT_EQ(runSource("s = \"hello\"\nprint(s.len())"), "5\n");
 }
 
 TEST_F(CodeGenTest, StringEqual) {
     std::string src =
-        "let a = \"hello\"\n"
-        "let b = \"hello\"\n"
+        "a = \"hello\"\n"
+        "b = \"hello\"\n"
         "print(a == b)";
     EXPECT_EQ(runSource(src), "true\n");
 }
 
 TEST_F(CodeGenTest, StringNotEqual) {
     std::string src =
-        "let a = \"hello\"\n"
-        "let b = \"world\"\n"
+        "a = \"hello\"\n"
+        "b = \"world\"\n"
         "print(a != b)";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -277,8 +277,8 @@ TEST_F(CodeGenTest, StringNotEqualFalse) {
 
 TEST_F(CodeGenTest, StringConcat) {
     std::string src =
-        "let a = \"hello\"\n"
-        "let b = \" world\"\n"
+        "a = \"hello\"\n"
+        "b = \" world\"\n"
         "print(a + b)";
     EXPECT_EQ(runSource(src), "hello world\n");
 }
@@ -293,7 +293,7 @@ TEST_F(CodeGenTest, StringConcatEmpty) {
 
 TEST_F(CodeGenTest, StringContains) {
     std::string src =
-        "let s = \"hello world\"\n"
+        "s = \"hello world\"\n"
         "print(contains(s, \"world\"))";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -304,7 +304,7 @@ TEST_F(CodeGenTest, StringContainsFalse) {
 
 TEST_F(CodeGenTest, StringContainsUFCS) {
     std::string src =
-        "let s = \"hello world\"\n"
+        "s = \"hello world\"\n"
         "print(s.contains(\"hello\"))";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -319,7 +319,7 @@ TEST_F(CodeGenTest, StringStartsWithFalse) {
 
 TEST_F(CodeGenTest, StringStartsWithUFCS) {
     std::string src =
-        "let s = \"hello\"\n"
+        "s = \"hello\"\n"
         "print(s.starts_with(\"hel\"))";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -338,13 +338,13 @@ TEST_F(CodeGenTest, StringEndsWithSuffixTooLong) {
 
 TEST_F(CodeGenTest, StringEndsWithUFCS) {
     std::string src =
-        "let s = \"hello\"\n"
+        "s = \"hello\"\n"
         "print(s.ends_with(\"llo\"))";
     EXPECT_EQ(runSource(src), "true\n");
 }
 
 TEST_F(CodeGenTest, MapTypeMismatch) {
-    EXPECT_THROW(runSource("let m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
+    EXPECT_THROW(runSource("m = {\"a\": 1, \"b\": 3.14}"), std::runtime_error);
 }
 
 // ===== 関数オーバーロードテスト =====
@@ -406,7 +406,7 @@ TEST_F(CodeGenTest, OverloadWithUFCS) {
         "    return x * 2\n"
         "fn process(x: int, y: int) -> int:\n"
         "    return x + y\n"
-        "let a = 5\n"
+        "a = 5\n"
         "print(a.process())\n"
         "print(a.process(3))";
     EXPECT_EQ(runSource(src), "10\n8\n");
@@ -455,9 +455,9 @@ TEST_F(CodeGenTest, OperatorOverloadStructPlus) {
         "    y: int\n"
         "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return Vec2(a.x + b.x, a.y + b.y)\n"
-        "let v1 = Vec2(1, 2)\n"
-        "let v2 = Vec2(3, 4)\n"
-        "let v3 = v1 + v2\n"
+        "v1 = Vec2(1, 2)\n"
+        "v2 = Vec2(3, 4)\n"
+        "v3 = v1 + v2\n"
         "print(v3.x)\n"
         "print(v3.y)";
     EXPECT_EQ(runSource(src), "4\n6\n");
@@ -470,9 +470,9 @@ TEST_F(CodeGenTest, OperatorOverloadStructMinus) {
         "    y: int\n"
         "fn operator-(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return Vec2(a.x - b.x, a.y - b.y)\n"
-        "let v1 = Vec2(5, 8)\n"
-        "let v2 = Vec2(2, 3)\n"
-        "let v3 = v1 - v2\n"
+        "v1 = Vec2(5, 8)\n"
+        "v2 = Vec2(2, 3)\n"
+        "v3 = v1 - v2\n"
         "print(v3.x)\n"
         "print(v3.y)";
     EXPECT_EQ(runSource(src), "3\n5\n");
@@ -485,9 +485,9 @@ TEST_F(CodeGenTest, OperatorOverloadStructEq) {
         "    y: int\n"
         "fn operator==(a: Point, b: Point) -> bool:\n"
         "    return a.x == b.x and a.y == b.y\n"
-        "let p1 = Point(1, 2)\n"
-        "let p2 = Point(1, 2)\n"
-        "let p3 = Point(3, 4)\n"
+        "p1 = Point(1, 2)\n"
+        "p2 = Point(1, 2)\n"
+        "p3 = Point(3, 4)\n"
         "print(p1 == p2)\n"
         "print(p1 == p3)";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -500,8 +500,8 @@ TEST_F(CodeGenTest, OperatorOverloadUnaryMinus) {
         "    y: int\n"
         "fn operator-(a: Vec2) -> Vec2:\n"
         "    return Vec2(0 - a.x, 0 - a.y)\n"
-        "let v = Vec2(3, 5)\n"
-        "let neg = -v\n"
+        "v = Vec2(3, 5)\n"
+        "neg = -v\n"
         "print(neg.x)\n"
         "print(neg.y)";
     EXPECT_EQ(runSource(src), "-3\n-5\n");
@@ -523,9 +523,9 @@ TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
         "    return Vec2(a.x + b.x, a.y + b.y)\n"
         "fn operator*(a: Vec2, s: int) -> Vec2:\n"
         "    return Vec2(a.x * s, a.y * s)\n"
-        "let v = Vec2(1, 2)\n"
-        "let v2 = v * 3\n"
-        "let v3 = v + v2\n"
+        "v = Vec2(1, 2)\n"
+        "v2 = v * 3\n"
+        "v3 = v + v2\n"
         "print(v3.x)\n"
         "print(v3.y)";
     EXPECT_EQ(runSource(src), "4\n8\n");
@@ -535,7 +535,7 @@ TEST_F(CodeGenTest, OperatorOverloadMultipleOps) {
 
 TEST_F(CodeGenTest, ListIndexAssignInt) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "xs[0] = 99\n"
         "xs[1] = 88\n"
         "xs[2] = 77\n"
@@ -547,7 +547,7 @@ TEST_F(CodeGenTest, ListIndexAssignInt) {
 
 TEST_F(CodeGenTest, ListIndexAssignFloat) {
     std::string src =
-        "let xs = [1.0, 2.0, 3.0]\n"
+        "xs = [1.0, 2.0, 3.0]\n"
         "xs[1] = 9.5\n"
         "print(xs[1])";
     EXPECT_EQ(runSource(src), "9.5\n");
@@ -555,7 +555,7 @@ TEST_F(CodeGenTest, ListIndexAssignFloat) {
 
 TEST_F(CodeGenTest, ListIndexAssignBool) {
     std::string src =
-        "let xs = [true, false, true]\n"
+        "xs = [true, false, true]\n"
         "xs[0] = false\n"
         "print(xs[0])";
     EXPECT_EQ(runSource(src), "false\n");
@@ -563,7 +563,7 @@ TEST_F(CodeGenTest, ListIndexAssignBool) {
 
 TEST_F(CodeGenTest, ListIndexAssignStr) {
     std::string src =
-        "let xs = [\"hello\", \"world\"]\n"
+        "xs = [\"hello\", \"world\"]\n"
         "xs[0] = \"goodbye\"\n"
         "print(xs[0])";
     EXPECT_EQ(runSource(src), "goodbye\n");
@@ -571,14 +571,14 @@ TEST_F(CodeGenTest, ListIndexAssignStr) {
 
 TEST_F(CodeGenTest, ListIndexAssignOutOfRange) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "xs[5] = 99";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
 TEST_F(CodeGenTest, ListIndexAssignNegative) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "xs[-1] = 99";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
@@ -626,7 +626,7 @@ TEST_F(CodeGenTest, StringLessThanFalse) {
 
 TEST_F(CodeGenTest, ForLoopBasic) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "for x in xs:\n"
         "    print(x)";
     EXPECT_EQ(runSource(src), "10\n20\n30\n");
@@ -648,8 +648,8 @@ TEST_F(CodeGenTest, ForLoopRangeStartEnd) {
 
 TEST_F(CodeGenTest, ForLoopAccumulate) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "var sum = 0\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "sum = 0\n"
         "for x in xs:\n"
         "    sum = sum + x\n"
         "print(sum)";
@@ -666,7 +666,7 @@ TEST_F(CodeGenTest, ForLoopNested) {
 
 TEST_F(CodeGenTest, ForLoopStringList) {
     std::string src =
-        "let words = [\"hello\", \"world\"]\n"
+        "words = [\"hello\", \"world\"]\n"
         "for w in words:\n"
         "    print(w)";
     EXPECT_EQ(runSource(src), "hello\nworld\n");
@@ -676,7 +676,7 @@ TEST_F(CodeGenTest, ForLoopStringList) {
 
 TEST_F(CodeGenTest, CompoundAssignPlus) {
     std::string src =
-        "var x = 10\n"
+        "x = 10\n"
         "x += 5\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "15\n");
@@ -684,7 +684,7 @@ TEST_F(CodeGenTest, CompoundAssignPlus) {
 
 TEST_F(CodeGenTest, CompoundAssignMinus) {
     std::string src =
-        "var x = 10\n"
+        "x = 10\n"
         "x -= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "7\n");
@@ -692,7 +692,7 @@ TEST_F(CodeGenTest, CompoundAssignMinus) {
 
 TEST_F(CodeGenTest, CompoundAssignStar) {
     std::string src =
-        "var x = 4\n"
+        "x = 4\n"
         "x *= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "12\n");
@@ -700,7 +700,7 @@ TEST_F(CodeGenTest, CompoundAssignStar) {
 
 TEST_F(CodeGenTest, CompoundAssignSlash) {
     std::string src =
-        "var x = 10.0\n"
+        "x = 10.0\n"
         "x /= 4.0\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "2.5\n");
@@ -708,7 +708,7 @@ TEST_F(CodeGenTest, CompoundAssignSlash) {
 
 TEST_F(CodeGenTest, CompoundAssignPercent) {
     std::string src =
-        "var x = 10\n"
+        "x = 10\n"
         "x %= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "1\n");
@@ -716,7 +716,7 @@ TEST_F(CodeGenTest, CompoundAssignPercent) {
 
 TEST_F(CodeGenTest, CompoundAssignInLoop) {
     std::string src =
-        "var sum = 0\n"
+        "sum = 0\n"
         "for i in range(1, 6):\n"
         "    sum += i\n"
         "print(sum)";
@@ -738,7 +738,7 @@ TEST_F(CodeGenTest, ToIntZero) {
 }
 
 TEST_F(CodeGenTest, ToIntUFCS) {
-    EXPECT_EQ(runSource("let s = \"123\"\nprint(s.to_int())"), "123\n");
+    EXPECT_EQ(runSource("s = \"123\"\nprint(s.to_int())"), "123\n");
 }
 
 TEST_F(CodeGenTest, ToFloatBasic) {
@@ -750,7 +750,7 @@ TEST_F(CodeGenTest, ToFloatInteger) {
 }
 
 TEST_F(CodeGenTest, ToFloatUFCS) {
-    EXPECT_EQ(runSource("let s = \"2.5\"\nprint(s.to_float())"), "2.5\n");
+    EXPECT_EQ(runSource("s = \"2.5\"\nprint(s.to_float())"), "2.5\n");
 }
 
 TEST_F(CodeGenTest, ToStrInt) {
@@ -778,7 +778,7 @@ TEST_F(CodeGenTest, ToStrStr) {
 }
 
 TEST_F(CodeGenTest, ToStrUFCS) {
-    EXPECT_EQ(runSource("let x = 99\nprint(x.to_str())"), "99\n");
+    EXPECT_EQ(runSource("x = 99\nprint(x.to_str())"), "99\n");
 }
 
 TEST_F(CodeGenTest, FindBasic) {
@@ -798,7 +798,7 @@ TEST_F(CodeGenTest, FindEmpty) {
 }
 
 TEST_F(CodeGenTest, FindUFCS) {
-    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.find(\"cd\"))"), "Some(2)\n");
+    EXPECT_EQ(runSource("s = \"abcdef\"\nprint(s.find(\"cd\"))"), "Some(2)\n");
 }
 
 TEST_F(CodeGenTest, SubstringBasic) {
@@ -814,7 +814,7 @@ TEST_F(CodeGenTest, SubstringEmpty) {
 }
 
 TEST_F(CodeGenTest, SubstringUFCS) {
-    EXPECT_EQ(runSource("let s = \"abcdef\"\nprint(s.substring(1, 4))"), "bcd\n");
+    EXPECT_EQ(runSource("s = \"abcdef\"\nprint(s.substring(1, 4))"), "bcd\n");
 }
 
 TEST_F(CodeGenTest, CharAtBasic) {
@@ -826,7 +826,7 @@ TEST_F(CodeGenTest, CharAtMiddle) {
 }
 
 TEST_F(CodeGenTest, CharAtUFCS) {
-    EXPECT_EQ(runSource("let s = \"abc\"\nprint(s.char_at(1))"), "b\n");
+    EXPECT_EQ(runSource("s = \"abc\"\nprint(s.char_at(1))"), "b\n");
 }
 
 TEST_F(CodeGenTest, ReplaceBasic) {
@@ -846,7 +846,7 @@ TEST_F(CodeGenTest, ReplaceEmpty) {
 }
 
 TEST_F(CodeGenTest, ReplaceUFCS) {
-    EXPECT_EQ(runSource("let s = \"foo bar foo\"\nprint(s.replace(\"foo\", \"baz\"))"), "baz bar baz\n");
+    EXPECT_EQ(runSource("s = \"foo bar foo\"\nprint(s.replace(\"foo\", \"baz\"))"), "baz bar baz\n");
 }
 
 // ===== Phase 2: テキスト変換テスト =====
@@ -868,7 +868,7 @@ TEST_F(CodeGenTest, ToUpperEmpty) {
 }
 
 TEST_F(CodeGenTest, ToUpperUFCS) {
-    EXPECT_EQ(runSource("let s = \"hi\"\nprint(s.to_upper())"), "HI\n");
+    EXPECT_EQ(runSource("s = \"hi\"\nprint(s.to_upper())"), "HI\n");
 }
 
 TEST_F(CodeGenTest, ToLowerBasic) {
@@ -888,7 +888,7 @@ TEST_F(CodeGenTest, ToLowerEmpty) {
 }
 
 TEST_F(CodeGenTest, ToLowerUFCS) {
-    EXPECT_EQ(runSource("let s = \"HI\"\nprint(s.to_lower())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"HI\"\nprint(s.to_lower())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, TrimBasic) {
@@ -912,7 +912,7 @@ TEST_F(CodeGenTest, TrimEmpty) {
 }
 
 TEST_F(CodeGenTest, TrimUFCS) {
-    EXPECT_EQ(runSource("let s = \"  hi  \"\nprint(s.trim())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"  hi  \"\nprint(s.trim())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, TrimStartBasic) {
@@ -924,7 +924,7 @@ TEST_F(CodeGenTest, TrimStartNoWhitespace) {
 }
 
 TEST_F(CodeGenTest, TrimStartUFCS) {
-    EXPECT_EQ(runSource("let s = \"  hi\"\nprint(s.trim_start())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"  hi\"\nprint(s.trim_start())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, TrimEndBasic) {
@@ -936,7 +936,7 @@ TEST_F(CodeGenTest, TrimEndNoWhitespace) {
 }
 
 TEST_F(CodeGenTest, TrimEndUFCS) {
-    EXPECT_EQ(runSource("let s = \"hi  \"\nprint(s.trim_end())"), "hi\n");
+    EXPECT_EQ(runSource("s = \"hi  \"\nprint(s.trim_end())"), "hi\n");
 }
 
 TEST_F(CodeGenTest, RepeatBasic) {
@@ -952,7 +952,7 @@ TEST_F(CodeGenTest, RepeatZero) {
 }
 
 TEST_F(CodeGenTest, RepeatUFCS) {
-    EXPECT_EQ(runSource("let s = \"ha\"\nprint(s.repeat(3))"), "hahaha\n");
+    EXPECT_EQ(runSource("s = \"ha\"\nprint(s.repeat(3))"), "hahaha\n");
 }
 
 TEST_F(CodeGenTest, ReverseBasic) {
@@ -972,14 +972,14 @@ TEST_F(CodeGenTest, ReversePalindrome) {
 }
 
 TEST_F(CodeGenTest, ReverseUFCS) {
-    EXPECT_EQ(runSource("let s = \"abc\"\nprint(s.reverse())"), "cba\n");
+    EXPECT_EQ(runSource("s = \"abc\"\nprint(s.reverse())"), "cba\n");
 }
 
 // ===== Phase 3: List<str> 連携テスト =====
 
 TEST_F(CodeGenTest, SplitBasic) {
     std::string src =
-        "let parts = split(\"a,b,c\", \",\")\n"
+        "parts = split(\"a,b,c\", \",\")\n"
         "print(parts[0])\n"
         "print(parts[1])\n"
         "print(parts[2])";
@@ -988,7 +988,7 @@ TEST_F(CodeGenTest, SplitBasic) {
 
 TEST_F(CodeGenTest, SplitNoDelimiter) {
     std::string src =
-        "let parts = split(\"hello\", \",\")\n"
+        "parts = split(\"hello\", \",\")\n"
         "print(len(parts))\n"
         "print(parts[0])";
     EXPECT_EQ(runSource(src), "1\nhello\n");
@@ -996,7 +996,7 @@ TEST_F(CodeGenTest, SplitNoDelimiter) {
 
 TEST_F(CodeGenTest, SplitMultiCharDelim) {
     std::string src =
-        "let parts = split(\"a::b::c\", \"::\")\n"
+        "parts = split(\"a::b::c\", \"::\")\n"
         "print(parts[0])\n"
         "print(parts[1])\n"
         "print(parts[2])";
@@ -1009,8 +1009,8 @@ TEST_F(CodeGenTest, SplitLen) {
 
 TEST_F(CodeGenTest, SplitUFCS) {
     std::string src =
-        "let s = \"hello world\"\n"
-        "let parts = s.split(\" \")\n"
+        "s = \"hello world\"\n"
+        "parts = s.split(\" \")\n"
         "print(parts[0])\n"
         "print(parts[1])";
     EXPECT_EQ(runSource(src), "hello\nworld\n");
@@ -1025,35 +1025,35 @@ TEST_F(CodeGenTest, SplitForLoop) {
 
 TEST_F(CodeGenTest, JoinBasic) {
     std::string src =
-        "let parts = [\"a\", \"b\", \"c\"]\n"
+        "parts = [\"a\", \"b\", \"c\"]\n"
         "print(join(parts, \",\"))";
     EXPECT_EQ(runSource(src), "a,b,c\n");
 }
 
 TEST_F(CodeGenTest, JoinSingleElement) {
     std::string src =
-        "let parts = [\"hello\"]\n"
+        "parts = [\"hello\"]\n"
         "print(join(parts, \",\"))";
     EXPECT_EQ(runSource(src), "hello\n");
 }
 
 TEST_F(CodeGenTest, JoinWithSpace) {
     std::string src =
-        "let words = [\"hello\", \"world\"]\n"
+        "words = [\"hello\", \"world\"]\n"
         "print(join(words, \" \"))";
     EXPECT_EQ(runSource(src), "hello world\n");
 }
 
 TEST_F(CodeGenTest, JoinUFCS) {
     std::string src =
-        "let parts = [\"x\", \"y\", \"z\"]\n"
+        "parts = [\"x\", \"y\", \"z\"]\n"
         "print(parts.join(\"-\"))";
     EXPECT_EQ(runSource(src), "x-y-z\n");
 }
 
 TEST_F(CodeGenTest, SplitJoinRoundTrip) {
     std::string src =
-        "let s = \"hello,world,ry\"\n"
+        "s = \"hello,world,ry\"\n"
         "print(join(split(s, \",\"), \",\"))";
     EXPECT_EQ(runSource(src), "hello,world,ry\n");
 }
@@ -1062,57 +1062,57 @@ TEST_F(CodeGenTest, SplitJoinRoundTrip) {
 
 TEST_F(CodeGenTest, FilterIntBasic) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = filter(xs, fn(x: int): x > 3)\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = filter(xs, fn(x: int): x > 3)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
 
 TEST_F(CodeGenTest, FilterIntEmpty) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = filter(xs, fn(x: int): x > 10)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = filter(xs, fn(x: int): x > 10)\n"
         "print(len(ys))";
     EXPECT_EQ(runSource(src), "0\n");
 }
 
 TEST_F(CodeGenTest, FilterAllMatch) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = filter(xs, fn(x: int): x > 0)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = filter(xs, fn(x: int): x > 0)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, FilterFloat) {
     std::string src =
-        "let xs = [1.5, 2.5, 0.5]\n"
-        "let ys = filter(xs, fn(x: float): x > 1.0)\n"
+        "xs = [1.5, 2.5, 0.5]\n"
+        "ys = filter(xs, fn(x: float): x > 1.0)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
 }
 
 TEST_F(CodeGenTest, FilterString) {
     std::string src =
-        "let xs = [\"hello\", \"hi\", \"hey\"]\n"
-        "let ys = filter(xs, fn(s: str): s.starts_with(\"he\"))\n"
+        "xs = [\"hello\", \"hi\", \"hey\"]\n"
+        "ys = filter(xs, fn(s: str): s.starts_with(\"he\"))\n"
         "print(len(ys))";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, FilterWithClosure) {
     std::string src =
-        "let threshold = 3\n"
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = filter(xs, fn(x: int): x > threshold)\n"
+        "threshold = 3\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = filter(xs, fn(x: int): x > threshold)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
 
 TEST_F(CodeGenTest, FilterUFCS) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter(fn(x: int): x > 3)\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = xs.filter(fn(x: int): x > 3)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
@@ -1121,49 +1121,49 @@ TEST_F(CodeGenTest, FilterUFCS) {
 
 TEST_F(CodeGenTest, MapIntToInt) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, fn(x: int): x * 2)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = map(xs, fn(x: int): x * 2)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
 }
 
 TEST_F(CodeGenTest, MapIntToFloat) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, fn(x: int): x * 1.5)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = map(xs, fn(x: int): x * 1.5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 3, 4.5]\n");
 }
 
 TEST_F(CodeGenTest, MapStrToInt) {
     std::string src =
-        "let xs = [\"hello\", \"hi\"]\n"
-        "let ys = map(xs, fn(s: str): len(s))\n"
+        "xs = [\"hello\", \"hi\"]\n"
+        "ys = map(xs, fn(s: str): len(s))\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[5, 2]\n");
 }
 
 TEST_F(CodeGenTest, MapFloat) {
     std::string src =
-        "let xs = [1.0, 2.0]\n"
-        "let ys = map(xs, fn(x: float): x + 0.5)\n"
+        "xs = [1.0, 2.0]\n"
+        "ys = map(xs, fn(x: float): x + 0.5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
 }
 
 TEST_F(CodeGenTest, MapWithClosure) {
     std::string src =
-        "let factor = 10\n"
-        "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, fn(x: int): x * factor)\n"
+        "factor = 10\n"
+        "xs = [1, 2, 3]\n"
+        "ys = map(xs, fn(x: int): x * factor)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
 }
 
 TEST_F(CodeGenTest, MapPreservesOriginal) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = map(xs, fn(x: int): x * 2)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = map(xs, fn(x: int): x * 2)\n"
         "print(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n[2, 4, 6]\n");
@@ -1173,24 +1173,24 @@ TEST_F(CodeGenTest, MapPreservesOriginal) {
 
 TEST_F(CodeGenTest, FilterThenMap) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter(fn(x: int): x > 2).map(fn(x: int): x * 10)\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = xs.filter(fn(x: int): x > 2).map(fn(x: int): x * 10)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[30, 40, 50]\n");
 }
 
 TEST_F(CodeGenTest, MapThenFilter) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = xs.map(fn(x: int): x * 2).filter(fn(x: int): x > 4)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = xs.map(fn(x: int): x * 2).filter(fn(x: int): x > 4)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[6]\n");
 }
 
 TEST_F(CodeGenTest, FilterThenFilter) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
-        "let ys = xs.filter(fn(x: int): x > 1).filter(fn(x: int): x < 5)\n"
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = xs.filter(fn(x: int): x > 1).filter(fn(x: int): x < 5)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 3, 4]\n");
 }
@@ -1199,24 +1199,24 @@ TEST_F(CodeGenTest, FilterThenFilter) {
 
 TEST_F(CodeGenTest, SortIntAsc) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = sort(xs)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = sort(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, SortFloatAsc) {
     std::string src =
-        "let xs = [3.0, 1.0, 2.0]\n"
-        "let ys = sort(xs)\n"
+        "xs = [3.0, 1.0, 2.0]\n"
+        "ys = sort(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, SortStrAsc) {
     std::string src =
-        "let xs = [\"banana\", \"apple\", \"cherry\"]\n"
-        "let ys = sort(xs)\n"
+        "xs = [\"banana\", \"apple\", \"cherry\"]\n"
+        "ys = sort(xs)\n"
         "print(ys[0])\n"
         "print(ys[1])\n"
         "print(ys[2])";
@@ -1225,24 +1225,24 @@ TEST_F(CodeGenTest, SortStrAsc) {
 
 TEST_F(CodeGenTest, SortSingleElement) {
     std::string src =
-        "let xs = [42]\n"
-        "let ys = sort(xs)\n"
+        "xs = [42]\n"
+        "ys = sort(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[42]\n");
 }
 
 TEST_F(CodeGenTest, SortWithComparator) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = sort(xs, fn(a: int, b: int): a > b)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = sort(xs, fn(a: int, b: int): a > b)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
 }
 
 TEST_F(CodeGenTest, SortPreservesOriginal) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = sort(xs)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = sort(xs)\n"
         "print(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[3, 1, 2]\n[1, 2, 3]\n");
@@ -1250,16 +1250,16 @@ TEST_F(CodeGenTest, SortPreservesOriginal) {
 
 TEST_F(CodeGenTest, SortUFCS) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort()\n"
+        "xs = [3, 1, 2]\n"
+        "ys = xs.sort()\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, SortWithComparatorUFCS) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort(fn(a: int, b: int): a > b)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = xs.sort(fn(a: int, b: int): a > b)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
 }
@@ -1268,60 +1268,60 @@ TEST_F(CodeGenTest, SortWithComparatorUFCS) {
 
 TEST_F(CodeGenTest, FilterMapSort) {
     std::string src =
-        "let xs = [5, 3, 1, 4, 2]\n"
-        "let ys = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()\n"
+        "xs = [5, 3, 1, 4, 2]\n"
+        "ys = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[20, 30, 40, 50]\n");
 }
 
 TEST_F(CodeGenTest, SortThenFilter) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort().filter(fn(x: int): x > 1)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = xs.sort().filter(fn(x: int): x > 1)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 3]\n");
 }
 
 TEST_F(CodeGenTest, SortThenMap) {
     std::string src =
-        "let xs = [3, 1, 2]\n"
-        "let ys = xs.sort().map(fn(x: int): x * 2)\n"
+        "xs = [3, 1, 2]\n"
+        "ys = xs.sort().map(fn(x: int): x * 2)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
 }
 
 TEST_F(CodeGenTest, SortAlreadySorted) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
+        "xs = [1, 2, 3, 4, 5]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
 }
 
 TEST_F(CodeGenTest, SortReverseSorted) {
     std::string src =
-        "let xs = [5, 4, 3, 2, 1]\n"
+        "xs = [5, 4, 3, 2, 1]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5]\n");
 }
 
 TEST_F(CodeGenTest, SortDuplicates) {
     std::string src =
-        "let xs = [3, 1, 2, 1, 3]\n"
+        "xs = [3, 1, 2, 1, 3]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 1, 2, 3, 3]\n");
 }
 
 TEST_F(CodeGenTest, SortEmpty) {
     std::string src =
-        "let xs: List<int> = [1]\n"
-        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "xs: List<int> = [1]\n"
+        "ys = xs.filter(fn(x: int): x > 10)\n"
         "print(sort(ys))";
     EXPECT_EQ(runSource(src), "[]\n");
 }
 
 TEST_F(CodeGenTest, SortLargerList) {
     std::string src =
-        "let xs = [15, 3, 9, 1, 14, 7, 20, 5, 18, 2, 12, 8, 16, 4, 11, 6, 19, 10, 17, 13]\n"
+        "xs = [15, 3, 9, 1, 14, 7, 20, 5, 18, 2, 12, 8, 16, 4, 11, 6, 19, 10, 17, 13]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]\n");
 }
@@ -1330,7 +1330,7 @@ TEST_F(CodeGenTest, SortLargerList) {
 
 TEST_F(CodeGenTest, CompoundAssignFloorDiv) {
     std::string src =
-        "var x = 7\n"
+        "x = 7\n"
         "x //= 2\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "3\n");
@@ -1338,7 +1338,7 @@ TEST_F(CodeGenTest, CompoundAssignFloorDiv) {
 
 TEST_F(CodeGenTest, CompoundAssignPower) {
     std::string src =
-        "var x = 2.0\n"
+        "x = 2.0\n"
         "x **= 3.0\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "8\n");
@@ -1346,7 +1346,7 @@ TEST_F(CodeGenTest, CompoundAssignPower) {
 
 TEST_F(CodeGenTest, CompoundAssignBitAnd) {
     std::string src =
-        "var x = 12\n"
+        "x = 12\n"
         "x &= 10\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "8\n");
@@ -1354,7 +1354,7 @@ TEST_F(CodeGenTest, CompoundAssignBitAnd) {
 
 TEST_F(CodeGenTest, CompoundAssignBitOr) {
     std::string src =
-        "var x = 12\n"
+        "x = 12\n"
         "x |= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "15\n");
@@ -1362,7 +1362,7 @@ TEST_F(CodeGenTest, CompoundAssignBitOr) {
 
 TEST_F(CodeGenTest, CompoundAssignBitXor) {
     std::string src =
-        "var x = 12\n"
+        "x = 12\n"
         "x ^= 10\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "6\n");
@@ -1370,7 +1370,7 @@ TEST_F(CodeGenTest, CompoundAssignBitXor) {
 
 TEST_F(CodeGenTest, CompoundAssignLeftShift) {
     std::string src =
-        "var x = 1\n"
+        "x = 1\n"
         "x <<= 3\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "8\n");
@@ -1378,7 +1378,7 @@ TEST_F(CodeGenTest, CompoundAssignLeftShift) {
 
 TEST_F(CodeGenTest, CompoundAssignRightShift) {
     std::string src =
-        "var x = 16\n"
+        "x = 16\n"
         "x >>= 2\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "4\n");
@@ -1418,7 +1418,7 @@ TEST_F(CodeGenTest, NotInMapKey) {
 
 TEST_F(CodeGenTest, ListAppend) {
     std::string src =
-        "var xs = [1, 2]\n"
+        "xs = [1, 2]\n"
         "xs.append(3)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
@@ -1426,7 +1426,7 @@ TEST_F(CodeGenTest, ListAppend) {
 
 TEST_F(CodeGenTest, ListAppendString) {
     std::string src =
-        "var xs = [\"a\"]\n"
+        "xs = [\"a\"]\n"
         "xs.append(\"b\")\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[a, b]\n");
@@ -1434,8 +1434,8 @@ TEST_F(CodeGenTest, ListAppendString) {
 
 TEST_F(CodeGenTest, ListPop) {
     std::string src =
-        "var xs = [1, 2, 3]\n"
-        "let v = xs.pop()\n"
+        "xs = [1, 2, 3]\n"
+        "v = xs.pop()\n"
         "print(v)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "Some(3)\n[1, 2]\n");
@@ -1443,8 +1443,8 @@ TEST_F(CodeGenTest, ListPop) {
 
 TEST_F(CodeGenTest, ListPopEmpty) {
     std::string src =
-        "var xs: List<int> = [1]\n"
-        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "xs: List<int> = [1]\n"
+        "ys = xs.filter(fn(x: int): x > 10)\n"
         "print(ys.pop())";
     EXPECT_EQ(runSource(src), "None\n");
 }
@@ -1457,8 +1457,8 @@ TEST_F(CodeGenTest, ListReverse) {
 
 TEST_F(CodeGenTest, ListReverseOriginal) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = reverse(xs)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = reverse(xs)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
@@ -1518,7 +1518,7 @@ TEST_F(CodeGenTest, RangeStepEmpty) {
 
 TEST_F(CodeGenTest, RangeStepList) {
     std::string src =
-        "let xs = range(0, 10, 3)\n"
+        "xs = range(0, 10, 3)\n"
         "print(len(xs))";
     EXPECT_EQ(runSource(src), "4\n");
 }
@@ -1527,30 +1527,30 @@ TEST_F(CodeGenTest, RangeStepList) {
 
 TEST_F(CodeGenTest, ReduceBasic) {
     std::string src =
-        "let xs = [1, 2, 3, 4]\n"
-        "let sum = reduce(xs, fn(a: int, b: int): a + b)\n"
+        "xs = [1, 2, 3, 4]\n"
+        "sum = reduce(xs, fn(a: int, b: int): a + b)\n"
         "print(sum)";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, ReduceUFCS) {
     std::string src =
-        "let xs = [1, 2, 3, 4]\n"
+        "xs = [1, 2, 3, 4]\n"
         "print(xs.reduce(fn(a: int, b: int): a + b))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, FoldBasic) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let sum = fold(xs, 10, fn(a: int, b: int): a + b)\n"
+        "xs = [1, 2, 3]\n"
+        "sum = fold(xs, 10, fn(a: int, b: int): a + b)\n"
         "print(sum)";
     EXPECT_EQ(runSource(src), "16\n");
 }
 
 TEST_F(CodeGenTest, FoldUFCS) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(xs.fold(0, fn(a: int, b: int): a + b))";
     EXPECT_EQ(runSource(src), "6\n");
 }
@@ -1559,16 +1559,16 @@ TEST_F(CodeGenTest, FoldUFCS) {
 
 TEST_F(CodeGenTest, MapKeys) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
-        "let ks = keys(m)\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
+        "ks = keys(m)\n"
         "print(len(ks))";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, MapValues) {
     std::string src =
-        "let m = {\"a\": 1, \"b\": 2}\n"
-        "let vs = values(m)\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
+        "vs = values(m)\n"
         "print(len(vs))";
     EXPECT_EQ(runSource(src), "2\n");
 }
@@ -1577,28 +1577,28 @@ TEST_F(CodeGenTest, MapValues) {
 
 TEST_F(CodeGenTest, AnyTrue) {
     std::string src =
-        "let xs = [1, 2, 3, 4]\n"
+        "xs = [1, 2, 3, 4]\n"
         "print(any(xs, fn(x: int): x > 3))";
     EXPECT_EQ(runSource(src), "true\n");
 }
 
 TEST_F(CodeGenTest, AnyFalse) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(any(xs, fn(x: int): x > 10))";
     EXPECT_EQ(runSource(src), "false\n");
 }
 
 TEST_F(CodeGenTest, AllTrue) {
     std::string src =
-        "let xs = [2, 4, 6]\n"
+        "xs = [2, 4, 6]\n"
         "print(all(xs, fn(x: int): x > 0))";
     EXPECT_EQ(runSource(src), "true\n");
 }
 
 TEST_F(CodeGenTest, AllFalse) {
     std::string src =
-        "let xs = [2, 4, 6]\n"
+        "xs = [2, 4, 6]\n"
         "print(all(xs, fn(x: int): x > 3))";
     EXPECT_EQ(runSource(src), "false\n");
 }
@@ -1607,21 +1607,21 @@ TEST_F(CodeGenTest, AllFalse) {
 
 TEST_F(CodeGenTest, SumInt) {
     std::string src =
-        "let xs = [1, 2, 3, 4, 5]\n"
+        "xs = [1, 2, 3, 4, 5]\n"
         "print(sum(xs))";
     EXPECT_EQ(runSource(src), "15\n");
 }
 
 TEST_F(CodeGenTest, MinInt) {
     std::string src =
-        "let xs = [3, 1, 4, 1, 5]\n"
+        "xs = [3, 1, 4, 1, 5]\n"
         "print(min(xs))";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, MaxInt) {
     std::string src =
-        "let xs = [3, 1, 4, 1, 5]\n"
+        "xs = [3, 1, 4, 1, 5]\n"
         "print(max(xs))";
     EXPECT_EQ(runSource(src), "5\n");
 }
@@ -1630,17 +1630,17 @@ TEST_F(CodeGenTest, MaxInt) {
 
 TEST_F(CodeGenTest, EnumerateBasic) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
-        "let es = enumerate(xs)\n"
+        "xs = [10, 20, 30]\n"
+        "es = enumerate(xs)\n"
         "print(len(es))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
 TEST_F(CodeGenTest, ZipBasic) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = [\"a\", \"b\", \"c\"]\n"
-        "let zs = zip(xs, ys)\n"
+        "xs = [1, 2, 3]\n"
+        "ys = [\"a\", \"b\", \"c\"]\n"
+        "zs = zip(xs, ys)\n"
         "print(len(zs))";
     EXPECT_EQ(runSource(src), "3\n");
 }
@@ -1661,8 +1661,8 @@ TEST_F(CodeGenTest, IsEmptyFalse) {
 
 TEST_F(CodeGenTest, IsEmptyTrue) {
     std::string src =
-        "let xs: List<int> = [1]\n"
-        "let ys = xs.filter(fn(x: int): x > 10)\n"
+        "xs: List<int> = [1]\n"
+        "ys = xs.filter(fn(x: int): x > 10)\n"
         "print(is_empty(ys))";
     EXPECT_EQ(runSource(src), "true\n");
 }
@@ -1671,7 +1671,7 @@ TEST_F(CodeGenTest, IsEmptyTrue) {
 
 TEST_F(CodeGenTest, ListInsert) {
     std::string src =
-        "var xs = [1, 3, 4]\n"
+        "xs = [1, 3, 4]\n"
         "insert(xs, 1, 2)\n"
         "print(xs[0])\n"
         "print(xs[1])\n"
@@ -1684,8 +1684,8 @@ TEST_F(CodeGenTest, ListInsert) {
 
 TEST_F(CodeGenTest, ListRemoveAt) {
     std::string src =
-        "var xs = [10, 20, 30]\n"
-        "let removed = remove_at(xs, 1)\n"
+        "xs = [10, 20, 30]\n"
+        "removed = remove_at(xs, 1)\n"
         "print(removed)\n"
         "print(len(xs))\n"
         "print(xs[0])\n"
@@ -1697,8 +1697,8 @@ TEST_F(CodeGenTest, ListRemoveAt) {
 
 TEST_F(CodeGenTest, MapItems) {
     std::string src =
-        "let m = {\"a\": 1}\n"
-        "let pairs = items(m)\n"
+        "m = {\"a\": 1}\n"
+        "pairs = items(m)\n"
         "print(len(pairs))";
     EXPECT_EQ(runSource(src), "1\n");
 }
@@ -1707,7 +1707,7 @@ TEST_F(CodeGenTest, MapItems) {
 
 TEST_F(CodeGenTest, MapGetWithDefault) {
     std::string src =
-        "let m = {\"a\": 10}\n"
+        "m = {\"a\": 10}\n"
         "print(get(m, \"a\", 0))\n"
         "print(get(m, \"b\", 99))";
     EXPECT_EQ(runSource(src), "10\n99\n");
@@ -1717,7 +1717,7 @@ TEST_F(CodeGenTest, MapGetWithDefault) {
 
 TEST_F(CodeGenTest, MapRemove) {
     std::string src =
-        "var m = {\"a\": 1, \"b\": 2}\n"
+        "m = {\"a\": 1, \"b\": 2}\n"
         "remove(m, \"a\")\n"
         "print(len(m))";
     EXPECT_EQ(runSource(src), "1\n");
@@ -1727,44 +1727,44 @@ TEST_F(CodeGenTest, MapRemove) {
 
 TEST_F(CodeGenTest, SetUnion) {
     std::string src =
-        "let a: Set<int> = {1, 2, 3}\n"
-        "let b: Set<int> = {3, 4, 5}\n"
-        "let c = union(a, b)\n"
+        "a: Set<int> = {1, 2, 3}\n"
+        "b: Set<int> = {3, 4, 5}\n"
+        "c = union(a, b)\n"
         "print(len(c))";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
 TEST_F(CodeGenTest, SetIntersection) {
     std::string src =
-        "let a: Set<int> = {1, 2, 3}\n"
-        "let b: Set<int> = {2, 3, 4}\n"
-        "let c = intersection(a, b)\n"
+        "a: Set<int> = {1, 2, 3}\n"
+        "b: Set<int> = {2, 3, 4}\n"
+        "c = intersection(a, b)\n"
         "print(len(c))";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, SetDifference) {
     std::string src =
-        "let a: Set<int> = {1, 2, 3}\n"
-        "let b: Set<int> = {2, 3, 4}\n"
-        "let c = difference(a, b)\n"
+        "a: Set<int> = {1, 2, 3}\n"
+        "b: Set<int> = {2, 3, 4}\n"
+        "c = difference(a, b)\n"
         "print(len(c))";
     EXPECT_EQ(runSource(src), "1\n");
 }
 
 TEST_F(CodeGenTest, SetSymmetricDifference) {
     std::string src =
-        "let a: Set<int> = {1, 2, 3}\n"
-        "let b: Set<int> = {2, 3, 4}\n"
-        "let c = symmetric_difference(a, b)\n"
+        "a: Set<int> = {1, 2, 3}\n"
+        "b: Set<int> = {2, 3, 4}\n"
+        "c = symmetric_difference(a, b)\n"
         "print(len(c))";
     EXPECT_EQ(runSource(src), "2\n");
 }
 
 TEST_F(CodeGenTest, SetIsSubset) {
     std::string src =
-        "let a: Set<int> = {1, 2}\n"
-        "let b: Set<int> = {1, 2, 3}\n"
+        "a: Set<int> = {1, 2}\n"
+        "b: Set<int> = {1, 2, 3}\n"
         "print(is_subset(a, b))\n"
         "print(is_subset(b, a))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -1772,8 +1772,8 @@ TEST_F(CodeGenTest, SetIsSubset) {
 
 TEST_F(CodeGenTest, SetIsSuperset) {
     std::string src =
-        "let a: Set<int> = {1, 2, 3}\n"
-        "let b: Set<int> = {1, 2}\n"
+        "a: Set<int> = {1, 2, 3}\n"
+        "b: Set<int> = {1, 2}\n"
         "print(is_superset(a, b))\n"
         "print(is_superset(b, a))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -1783,7 +1783,7 @@ TEST_F(CodeGenTest, SetIsSuperset) {
 
 TEST_F(CodeGenTest, ListRemoveInt) {
     std::string src =
-        "var xs = [1, 2, 3, 4]\n"
+        "xs = [1, 2, 3, 4]\n"
         "remove(xs, 3)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 2, 4]\n");
@@ -1791,7 +1791,7 @@ TEST_F(CodeGenTest, ListRemoveInt) {
 
 TEST_F(CodeGenTest, ListRemoveStr) {
     std::string src =
-        "var xs = [\"a\", \"b\", \"c\"]\n"
+        "xs = [\"a\", \"b\", \"c\"]\n"
         "remove(xs, \"b\")\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[a, c]\n");
@@ -1799,7 +1799,7 @@ TEST_F(CodeGenTest, ListRemoveStr) {
 
 TEST_F(CodeGenTest, ListRemoveFloat) {
     std::string src =
-        "var xs = [1.0, 2.5, 3.0]\n"
+        "xs = [1.0, 2.5, 3.0]\n"
         "remove(xs, 2.5)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 3]\n");
@@ -1807,7 +1807,7 @@ TEST_F(CodeGenTest, ListRemoveFloat) {
 
 TEST_F(CodeGenTest, ListRemoveNotFound) {
     std::string src =
-        "var xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "remove(xs, 99)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
@@ -1815,7 +1815,7 @@ TEST_F(CodeGenTest, ListRemoveNotFound) {
 
 TEST_F(CodeGenTest, ListRemoveFirst) {
     std::string src =
-        "var xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "remove(xs, 10)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[20, 30]\n");
@@ -1823,7 +1823,7 @@ TEST_F(CodeGenTest, ListRemoveFirst) {
 
 TEST_F(CodeGenTest, ListRemoveLast) {
     std::string src =
-        "var xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "remove(xs, 30)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[10, 20]\n");
@@ -1831,7 +1831,7 @@ TEST_F(CodeGenTest, ListRemoveLast) {
 
 TEST_F(CodeGenTest, ListRemoveDuplicate) {
     std::string src =
-        "var xs = [1, 2, 3, 2, 4]\n"
+        "xs = [1, 2, 3, 2, 4]\n"
         "remove(xs, 2)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[1, 3, 2, 4]\n");
@@ -1839,7 +1839,7 @@ TEST_F(CodeGenTest, ListRemoveDuplicate) {
 
 TEST_F(CodeGenTest, ListRemoveSingleElement) {
     std::string src =
-        "var xs = [42]\n"
+        "xs = [42]\n"
         "remove(xs, 42)\n"
         "print(xs)";
     EXPECT_EQ(runSource(src), "[]\n");
@@ -1849,50 +1849,50 @@ TEST_F(CodeGenTest, ListRemoveSingleElement) {
 
 TEST_F(CodeGenTest, DistinctInt) {
     std::string src =
-        "let xs = [1, 2, 3, 2, 1, 4]\n"
+        "xs = [1, 2, 3, 2, 1, 4]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
 }
 
 TEST_F(CodeGenTest, DistinctStr) {
     std::string src =
-        "let xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\n"
+        "xs = [\"a\", \"b\", \"a\", \"c\", \"b\"]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[a, b, c]\n");
 }
 
 TEST_F(CodeGenTest, DistinctFloat) {
     std::string src =
-        "let xs = [1.0, 2.0, 1.0, 3.0]\n"
+        "xs = [1.0, 2.0, 1.0, 3.0]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, DistinctAlreadyUnique) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
 }
 
 TEST_F(CodeGenTest, DistinctAllSame) {
     std::string src =
-        "let xs = [5, 5, 5, 5]\n"
+        "xs = [5, 5, 5, 5]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[5]\n");
 }
 
 TEST_F(CodeGenTest, DistinctPreservesOrder) {
     std::string src =
-        "let xs = [3, 1, 2, 1, 3]\n"
+        "xs = [3, 1, 2, 1, 3]\n"
         "print(distinct(xs))";
     EXPECT_EQ(runSource(src), "[3, 1, 2]\n");
 }
 
 TEST_F(CodeGenTest, DistinctNonDestructive) {
     std::string src =
-        "let xs = [1, 2, 1, 3]\n"
-        "let ys = distinct(xs)\n"
+        "xs = [1, 2, 1, 3]\n"
+        "ys = distinct(xs)\n"
         "print(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 1, 3]\n[1, 2, 3]\n");
@@ -1902,9 +1902,9 @@ TEST_F(CodeGenTest, DistinctNonDestructive) {
 
 TEST_F(CodeGenTest, MergeNoOverlap) {
     std::string src =
-        "let m1 = {\"a\": 1, \"b\": 2}\n"
-        "let m2 = {\"c\": 3, \"d\": 4}\n"
-        "let m3 = merge(m1, m2)\n"
+        "m1 = {\"a\": 1, \"b\": 2}\n"
+        "m2 = {\"c\": 3, \"d\": 4}\n"
+        "m3 = merge(m1, m2)\n"
         "print(len(m3))\n"
         "print(m3[\"a\"])\n"
         "print(m3[\"b\"])\n"
@@ -1915,9 +1915,9 @@ TEST_F(CodeGenTest, MergeNoOverlap) {
 
 TEST_F(CodeGenTest, MergeOverlap) {
     std::string src =
-        "let m1 = {\"a\": 1, \"b\": 2}\n"
-        "let m2 = {\"b\": 99, \"c\": 3}\n"
-        "let m3 = merge(m1, m2)\n"
+        "m1 = {\"a\": 1, \"b\": 2}\n"
+        "m2 = {\"b\": 99, \"c\": 3}\n"
+        "m3 = merge(m1, m2)\n"
         "print(len(m3))\n"
         "print(m3[\"a\"])\n"
         "print(m3[\"b\"])\n"
@@ -1927,9 +1927,9 @@ TEST_F(CodeGenTest, MergeOverlap) {
 
 TEST_F(CodeGenTest, MergeIntKeys) {
     std::string src =
-        "let m1 = {1: \"a\", 2: \"b\"}\n"
-        "let m2 = {2: \"x\", 3: \"c\"}\n"
-        "let m3 = merge(m1, m2)\n"
+        "m1 = {1: \"a\", 2: \"b\"}\n"
+        "m2 = {2: \"x\", 3: \"c\"}\n"
+        "m3 = merge(m1, m2)\n"
         "print(len(m3))\n"
         "print(m3[1])\n"
         "print(m3[2])\n"
@@ -1939,9 +1939,9 @@ TEST_F(CodeGenTest, MergeIntKeys) {
 
 TEST_F(CodeGenTest, MergeNonDestructive) {
     std::string src =
-        "let m1 = {\"a\": 1}\n"
-        "let m2 = {\"b\": 2}\n"
-        "let m3 = merge(m1, m2)\n"
+        "m1 = {\"a\": 1}\n"
+        "m2 = {\"b\": 2}\n"
+        "m3 = merge(m1, m2)\n"
         "print(len(m1))\n"
         "print(len(m2))\n"
         "print(len(m3))";
@@ -1952,37 +1952,37 @@ TEST_F(CodeGenTest, MergeNonDestructive) {
 
 TEST_F(CodeGenTest, FlattenIntLists) {
     std::string src =
-        "let xs = [[1, 2], [3, 4]]\n"
+        "xs = [[1, 2], [3, 4]]\n"
         "print(flatten(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4]\n");
 }
 
 TEST_F(CodeGenTest, FlattenStrLists) {
     std::string src =
-        "let xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\n"
+        "xs = [[\"a\", \"b\"], [\"c\", \"d\"]]\n"
         "print(flatten(xs))";
     EXPECT_EQ(runSource(src), "[a, b, c, d]\n");
 }
 
 TEST_F(CodeGenTest, FlattenUnevenInner) {
     std::string src =
-        "let xs = [[1], [2, 3, 4], [5, 6]]\n"
-        "let ys = flatten(xs)\n"
+        "xs = [[1], [2, 3, 4], [5, 6]]\n"
+        "ys = flatten(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6]\n");
 }
 
 TEST_F(CodeGenTest, FlattenSingleInner) {
     std::string src =
-        "let xs = [[10, 20, 30]]\n"
+        "xs = [[10, 20, 30]]\n"
         "print(flatten(xs))";
     EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
 }
 
 TEST_F(CodeGenTest, FlattenNonDestructive) {
     std::string src =
-        "let xs = [[1, 2], [3, 4]]\n"
-        "let ys = flatten(xs)\n"
+        "xs = [[1, 2], [3, 4]]\n"
+        "ys = flatten(xs)\n"
         "print(len(xs))\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "2\n[1, 2, 3, 4]\n");
@@ -1992,8 +1992,8 @@ TEST_F(CodeGenTest, FlattenNonDestructive) {
 
 TEST_F(CodeGenTest, ForEnumerateDestructure) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
-        "var total = 0\n"
+        "xs = [10, 20, 30]\n"
+        "total = 0\n"
         "for i, x in enumerate(xs):\n"
         "    total = total + i + x\n"
         "print(total)";
@@ -2002,9 +2002,9 @@ TEST_F(CodeGenTest, ForEnumerateDestructure) {
 
 TEST_F(CodeGenTest, ForZipDestructure) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
-        "let ys = [10, 20, 30]\n"
-        "var total = 0\n"
+        "xs = [1, 2, 3]\n"
+        "ys = [10, 20, 30]\n"
+        "total = 0\n"
         "for a, b in zip(xs, ys):\n"
         "    total = total + a + b\n"
         "print(total)";
@@ -2013,8 +2013,8 @@ TEST_F(CodeGenTest, ForZipDestructure) {
 
 TEST_F(CodeGenTest, ForEnumerateWildcardFirst) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
-        "var total = 0\n"
+        "xs = [10, 20, 30]\n"
+        "total = 0\n"
         "for _, x in enumerate(xs):\n"
         "    total = total + x\n"
         "print(total)";
@@ -2023,8 +2023,8 @@ TEST_F(CodeGenTest, ForEnumerateWildcardFirst) {
 
 TEST_F(CodeGenTest, ForEnumerateWildcardSecond) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
-        "var total = 0\n"
+        "xs = [10, 20, 30]\n"
+        "total = 0\n"
         "for i, _ in enumerate(xs):\n"
         "    total = total + i\n"
         "print(total)";
@@ -2033,7 +2033,7 @@ TEST_F(CodeGenTest, ForEnumerateWildcardSecond) {
 
 TEST_F(CodeGenTest, ForEnumerateWithPrint) {
     std::string src =
-        "let xs = [10, 20, 30]\n"
+        "xs = [10, 20, 30]\n"
         "for i, x in enumerate(xs):\n"
         "    print(f\"{i}: {x}\")";
     EXPECT_EQ(runSource(src), "0: 10\n1: 20\n2: 30\n");
@@ -2041,7 +2041,7 @@ TEST_F(CodeGenTest, ForEnumerateWithPrint) {
 
 TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
     std::string src =
-        "let xs = [1, 2, 3]\n"
+        "xs = [1, 2, 3]\n"
         "for a, b in xs:\n"
         "    print(a)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -2051,7 +2051,7 @@ TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
 
 TEST_F(CodeGenTest, SortExactly2Elements) {
     std::string src =
-        "let xs = [2, 1]\n"
+        "xs = [2, 1]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2]\n");
 }
@@ -2059,7 +2059,7 @@ TEST_F(CodeGenTest, SortExactly2Elements) {
 TEST_F(CodeGenTest, SortExactly32Elements) {
     // MIN_MERGE threshold: 32 elements
     std::string src =
-        "let xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
+        "xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
         "16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, "
@@ -2069,7 +2069,7 @@ TEST_F(CodeGenTest, SortExactly32Elements) {
 TEST_F(CodeGenTest, SortExactly33Elements) {
     // minRun+1: enters TimSort merge path
     std::string src =
-        "let xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
+        "xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, "
         "16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]\n"
         "print(sort(xs))";
     EXPECT_EQ(runSource(src), "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, "
@@ -2079,12 +2079,12 @@ TEST_F(CodeGenTest, SortExactly33Elements) {
 TEST_F(CodeGenTest, SortLargeListWithDuplicates) {
     // 50 elements with many duplicates
     std::string src =
-        "let xs = [5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
+        "xs = [5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
         "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
         "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
         "5, 3, 8, 1, 9, 2, 7, 4, 6, 10, "
         "5, 3, 8, 1, 9, 2, 7, 4, 6, 10]\n"
-        "let ys = sort(xs)\n"
+        "ys = sort(xs)\n"
         "print(len(ys))\n"
         "print(ys[0])\n"
         "print(ys[49])";
@@ -2096,8 +2096,8 @@ TEST_F(CodeGenTest, SortStability) {
     // Use pairs represented as values: encode (key, order) as key*100+order
     // Sort by key (value / 100), check order preservation for equal keys
     std::string src =
-        "let xs = [201, 102, 303, 104, 205]\n"
-        "let ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)\n"
+        "xs = [201, 102, 303, 104, 205]\n"
+        "ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)\n"
         "print(ys)";
     // key=1: 102, 104 (original order preserved)
     // key=2: 201, 205 (original order preserved)
@@ -2108,12 +2108,12 @@ TEST_F(CodeGenTest, SortStability) {
 TEST_F(CodeGenTest, SortStabilityLarger) {
     // Larger stability test crossing TimSort merge boundary
     std::string src =
-        "let xs = range(40).map(fn(i: int): (i % 5) * 1000 + i)\n"
-        "let ys = sort(xs, fn(a: int, b: int): a / 1000 < b / 1000)\n"
-        "var stable = true\n"
+        "xs = range(40).map(fn(i: int): (i % 5) * 1000 + i)\n"
+        "ys = sort(xs, fn(a: int, b: int): a / 1000 < b / 1000)\n"
+        "stable = true\n"
         "for i in range(1, 40):\n"
-        "    let ka = ys[i - 1] / 1000\n"
-        "    let kb = ys[i] / 1000\n"
+        "    ka = ys[i - 1] / 1000\n"
+        "    kb = ys[i] / 1000\n"
         "    if ka == kb:\n"
         "        if ys[i - 1] % 1000 > ys[i] % 1000:\n"
         "            stable = false\n"

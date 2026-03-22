@@ -27,7 +27,8 @@ else:
 ### 例
 
 ```python
-let x = 10
+@const
+x = 10
 
 if x > 5:
     print("big")
@@ -44,7 +45,8 @@ else:
 
 ```python
 if true:
-    let y = 42
+    @const
+    y = 42
 # y はここではアクセス不可
 ```
 
@@ -64,7 +66,7 @@ while 条件式:
 ### 例
 
 ```python
-var i = 0
+i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +75,7 @@ while i < 5:
 ### break / continue との組み合わせ
 
 ```python
-var i = 0
+i = 0
 while true:
     if i >= 3:
         break
@@ -116,7 +118,8 @@ for k, v in map_expr:
 2要素タプルのリスト（`enumerate()` や `zip()` の戻り値など）を走査する際、2つの変数に分解できます。`_` で値を破棄できます。
 
 ```python
-let xs = [10, 20, 30]
+@const
+xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
     print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
@@ -140,11 +143,13 @@ for i in 1 .. 5:
 ### 例
 
 ```python
-let xs = [10, 20, 30]
+@const
+xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-let s = {1, 2, 3}
+@const
+s = {1, 2, 3}
 for x in s:
     print(x)
 
@@ -161,7 +166,8 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # マップの走査
-let m = {"a": 1, "b": 2}
+@const
+m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
     print(v)
@@ -181,9 +187,11 @@ for i in 1 .. 3:
 fn square(x: int) -> int:
     return x * x
 
-let t: Task<int> = spawn square(12)
+@const
+t: Task<int> = spawn square(12)
 print(await t)          # 144
-let u: Task<int> = spawn square(3)
+@const
+u: Task<int> = spawn square(3)
 print(join(u))          # 9, await の関数形式
 ```
 
@@ -206,8 +214,10 @@ fn worker(ch: Channel<int>) -> int:
     close(ch)
     return 0
 
-let ch: Channel<int> = channel[int]()
-let t: Task<int> = spawn worker(ch)
+@const
+ch: Channel<int> = channel[int]()
+@const
+t: Task<int> = spawn worker(ch)
 for x in ch:
     print(x)
 print(join(t))
@@ -273,7 +283,7 @@ for i in range(8):
 
 - 対応するのは `range(...)` と整数 `..` のみです。
 - 分解代入付きの反復は未対応です。
-- 外側スコープの `var` への代入は拒否されます。
+- 外側スコープのミュータブル変数への代入は拒否されます。
 - `break` と `continue` は使えません。
 - v1 ではループ本体内のインデックス代入とフィールド代入も拒否されます。
 
@@ -409,7 +419,8 @@ match color:
         print("blue")
 
 # Option マッチ
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -445,7 +456,8 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-let s = Shape::Circle(3.14)
+@const
+s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
         print(r)        # 3.14
@@ -474,23 +486,26 @@ match s:
 
 ```python
 for i in range(3):
-    let tmp = i * 2
+    @const
+    tmp = i * 2
 # tmp はここではアクセス不可
 
 if true:
-    let a = 1
+    @const
+    a = 1
 # a はここではアクセス不可
 ```
 
-### シャドーイング
+### 内側スコープでの再代入
 
-- 内側のスコープで外側と同名の変数を宣言すると、内側のスコープ内では内側の変数が参照される。
-- 内側スコープを抜けると外側の変数に戻る。
+- 内側のスコープで変数に代入すると、外側の変数が変更される（Python スタイルのスコーピング）。
+- シャドーイングは行われず、内側の代入は同じ変数を変更する。
 
 ```python
-let x = 10
+@const
+x = 10
 if true:
-    let x = 99   # 外側の x をシャドーイング
+    x = 99   # 外側の x を変更
     print(x)     # 99
-print(x)         # 10
+print(x)         # 99
 ```

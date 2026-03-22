@@ -144,9 +144,7 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct LetStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // immutable
-struct VarStmt    { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };  // mutable
-struct AssignStmt { std::string name; ExprPtr value; SourceLocation loc; };
+struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
@@ -217,7 +215,7 @@ struct ExpectStmt {
     SourceLocation loc;
 };
 
-using StmtNode = std::variant<LetStmt, VarStmt, AssignStmt, CallStmt,
+using StmtNode = std::variant<AssignStmt, CallStmt,
                               ReturnStmt, ImportStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,

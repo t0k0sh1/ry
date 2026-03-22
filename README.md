@@ -16,15 +16,18 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
-- **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
+- **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code
 
 ```python
 # Variables and types
-let x: int = 42
-let name: str = "hello"
-let pi = 3.14159
+@const
+x: int = 42
+@const
+name: str = "hello"
+@const
+pi = 3.14159
 
 # Function definition
 fn factorial(n: int) -> int:
@@ -35,8 +38,10 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # Lambdas and closures
-let offset = 10
-let add_offset = (x: int): int => x + offset
+@const
+offset = 10
+@const
+add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
 # Structs
@@ -47,13 +52,17 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-let p = Point(1, 2) + Point(3, 4)
+@const
+p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # Collections
-let xs = [1, 2, 3]
-let m = {"a": 1, "b": 2}
-let s = {1, 2, 3}
+@const
+xs = [1, 2, 3]
+@const
+m = {"a": 1, "b": 2}
+@const
+s = {1, 2, 3}
 
 for x in xs:
     print(x)
@@ -62,7 +71,8 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+@const
+result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums
@@ -71,7 +81,8 @@ enum Color:
     Green
     Blue
 
-let c = Color::Red
+@const
+c = Color::Red
 print(c)               # Red
 
 # Package import

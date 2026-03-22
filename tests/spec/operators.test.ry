@@ -106,14 +106,14 @@ fn side_effect_flag() -> bool:
 describe("short-circuit evaluation", fn():
     it("and short-circuits on false", fn():
         mock(side_effect_flag, fn(): true)
-        let r = false and side_effect_flag()
+        r = false and side_effect_flag()
         expect(r).to_be_false()
         expect(verify(side_effect_flag)).to_eq(0)
 
     )
     it("or short-circuits on true", fn():
         mock(side_effect_flag, fn(): false)
-        let r = true or side_effect_flag()
+        r = true or side_effect_flag()
         expect(r).to_be_true()
         expect(verify(side_effect_flag)).to_eq(0)
 
@@ -161,73 +161,73 @@ describe("ternary", fn():
 )
 describe("null coalescing", fn():
     it("Some value", fn():
-        let a: int? = Some(10)
+        a: int? = Some(10)
         expect(a ?? 0).to_eq(10)
 
     )
     it("None value", fn():
-        let b: int? = none
+        b: int? = none
         expect(b ?? 0).to_eq(0)
 
     )
 )
 describe("compound assignment", fn():
     it("+=", fn():
-        var x = 10
+        x = 10
         x += 5
         expect(x).to_eq(15)
 
     )
     it("-=", fn():
-        var x = 10
+        x = 10
         x -= 3
         expect(x).to_eq(7)
 
     )
     it("*=", fn():
-        var x = 4
+        x = 4
         x *= 3
         expect(x).to_eq(12)
 
     )
     it("//=", fn():
-        var x = 10
+        x = 10
         x //= 3
         expect(x).to_eq(3)
 
     )
     it("%=", fn():
-        var x = 10
+        x = 10
         x %= 3
         expect(x).to_eq(1)
 
     )
     it("&=", fn():
-        var x = 0b1100
+        x = 0b1100
         x &= 0b1010
         expect(x).to_eq(0b1000)
 
     )
     it("|=", fn():
-        var x = 0b1100
+        x = 0b1100
         x |= 0b0011
         expect(x).to_eq(0b1111)
 
     )
     it("^=", fn():
-        var x = 0b1100
+        x = 0b1100
         x ^= 0b1010
         expect(x).to_eq(0b0110)
 
     )
     it("<<=", fn():
-        var x = 1
+        x = 1
         x <<= 4
         expect(x).to_eq(16)
 
     )
     it(">>=", fn():
-        var x = 16
+        x = 16
         x >>= 2
         expect(x).to_eq(4)
 
@@ -235,51 +235,51 @@ describe("compound assignment", fn():
 )
 describe("membership", fn():
     it("in Set", fn():
-        let s = {1, 2, 3}
+        s = {1, 2, 3}
         expect(s).to_contain(2)
 
     )
     it("not in Set", fn():
-        let s = {1, 2, 3}
+        s = {1, 2, 3}
         expect(s).to_not_contain(4)
 
     )
     it("in List", fn():
-        let xs = [1, 2, 3]
+        xs = [1, 2, 3]
         expect(xs).to_contain(2)
 
     )
     it("not in List", fn():
-        let xs = [1, 2, 3]
+        xs = [1, 2, 3]
         expect(xs).to_not_contain(4)
 
     )
     it("in Map", fn():
-        let m = {"a": 1}
+        m = {"a": 1}
         expect(m).to_contain("a")
 
     )
     it("not in Map", fn():
-        let m = {"a": 1}
+        m = {"a": 1}
         expect(m).to_not_contain("b")
 
     )
 )
 describe("increment/decrement", fn():
     it("x++ increments int", fn():
-        var x = 10
+        x = 10
         x++
         expect(x).to_eq(11)
 
     )
     it("x-- decrements int", fn():
-        var x = 10
+        x = 10
         x--
         expect(x).to_eq(9)
 
     )
     it("multiple increments", fn():
-        var x = 0
+        x = 0
         x++
         x++
         x++
@@ -287,20 +287,20 @@ describe("increment/decrement", fn():
 
     )
     it("decrement to negative", fn():
-        var x = 1
+        x = 1
         x--
         x--
         expect(x).to_eq(-1)
 
     )
     it("f++ increments float", fn():
-        var f = 1.5
+        f = 1.5
         f++
         expect(f).to_eq(2.5)
 
     )
     it("f-- decrements float", fn():
-        var f = 3.5
+        f = 3.5
         f--
         expect(f).to_eq(2.5)
 
@@ -308,7 +308,7 @@ describe("increment/decrement", fn():
 )
 describe("range operator", fn():
     it("creates inclusive range", fn():
-        let xs = 1 .. 5
+        xs = 1 .. 5
         expect(xs).to_have_length(5)
         expect(xs[0]).to_eq(1)
         expect(xs[4]).to_eq(5)

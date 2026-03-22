@@ -36,7 +36,7 @@ describe("non-greedy match", fn():
 
     )
     it("lazy find_all", fn():
-        let tags = regex_find_all("<.*?>", "<x> <yy> <zzz>")
+        tags = regex_find_all("<.*?>", "<x> <yy> <zzz>")
         expect(len(tags)).to_eq(3)
         expect(tags[0]).to_eq("<x>")
         expect(tags[1]).to_eq("<yy>")

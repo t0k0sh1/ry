@@ -11,7 +11,8 @@
 条件に応じて処理を分岐させるには `if` を使います。
 
 ```python
-let x = 10
+@const
+x = 10
 
 if x > 0:
     print(x)
@@ -26,8 +27,10 @@ else:
 - `if` はネストできます。
 
 ```python
-let a = 5
-let b = 3
+@const
+a = 5
+@const
+b = 3
 
 if a > 0:
     if b > 0:
@@ -41,7 +44,7 @@ if a > 0:
 条件が真である間、ブロックを繰り返し実行します。
 
 ```python
-var i = 3
+i = 3
 while i > 0:
     print(i)
     i = i - 1
@@ -99,7 +102,8 @@ for i in 1 .. 3:
 `for k, v in map` でマップのキーと値を走査できます。
 
 ```python
-let m = {"x": 10, "y": 20}
+@const
+m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
     print(v)
@@ -125,7 +129,7 @@ for i in range(10):
 `while` でも同様に使用できます。
 
 ```python
-var n = 0
+n = 0
 while true:
     n = n + 1
     if n % 2 == 0:
@@ -173,7 +177,8 @@ for i in range(1, 4):
 
 ```python
 if true:
-    let inner = 42
+    @const
+    inner = 42
 # ここで inner を参照するとコンパイルエラー
 ```
 
@@ -182,22 +187,23 @@ if true:
 ブロック内から外側の変数を参照・再代入できます。
 
 ```python
-var count = 0
+count = 0
 for i in range(5):
     count = count + i
 print(count)   # 10
 ```
 
-### シャドーイング
+### 内側スコープでの再代入
 
-外側と同名の変数をブロック内で宣言すると、ブロック内ではその新しい変数が使われます（シャドーイング）。外側の変数は変化しません。
+ブロック内で変数に代入すると、外側の変数が変更されます（Python スタイルのスコーピング）。シャドーイングは行われず、内側の代入は同じ変数を変更します。
 
 ```python
-let x = 1
+@const
+x = 1
 if true:
-    let x = 99
+    x = 99
     print(x)   # 99
-print(x)       # 1
+print(x)       # 99
 ```
 
 ---
@@ -212,7 +218,8 @@ enum Color:
     Green
     Blue
 
-let c = Color::Green
+@const
+c = Color::Green
 match c:
     case Color::Red:
         print("red")
@@ -228,7 +235,8 @@ match c:
 `match` を使うことで、`None` の場合も安全に処理できます。
 
 ```python
-let x: Option<int> = Some(42)
+@const
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -242,7 +250,8 @@ match x:
 `_` は何にでもマッチするワイルドカードパターンです。リテラル値（数値・文字列・真偽値）でもマッチできます。
 
 ```python
-let n = 5
+@const
+n = 5
 match n:
     case 0:
         print("zero")

@@ -1,16 +1,20 @@
 # Math constants and functions
 
 @native
-let PI: float
+@const
+PI: float
 
 @native
-let E: float
+@const
+E: float
 
 @native
-let Inf: float
+@const
+Inf: float
 
 @native
-let NaN: float
+@const
+NaN: float
 
 @native
 fn abs(x: int) -> int

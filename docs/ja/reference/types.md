@@ -7,7 +7,7 @@
 | 型 | 内部表現 | リテラル例 | 説明 |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64ビット符号付き整数 |
-| `byte` | i8 | （専用リテラルなし） | 符号なし8ビット整数（0-255）。型アノテーション `let b: byte = 42` で使用 |
+| `byte` | i8 | （専用リテラルなし） | 符号なし8ビット整数（0-255）。型アノテーション `b: byte = 42` で使用 |
 | `float` | f64 | `3.14`, `0.5` | 64ビット浮動小数点数 |
 | `bool` | i1 | `true`, `false` | 真偽値 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 文字列（ヒープ上の不変バイト列） |
@@ -31,18 +31,30 @@
 変数宣言時に型を明示できます。型が推論可能な場合は省略可能です。
 
 ```python
-let x: int = 42
-let b: byte = 255
-let f: float = 3.14
-let s: str = "hello"
-let b: bool = true
-let opt: Option<int> = Some(10)
-let t: (int, float) = (1, 3.14)
-let xs: List<int> = [1, 2, 3]
-let m: Map<str, int> = {"a": 1}
-let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = fn(x: int): x * 2
-let u: int | str = 42
+@const
+x: int = 42
+@const
+b: byte = 255
+@const
+f: float = 3.14
+@const
+s: str = "hello"
+@const
+b: bool = true
+@const
+opt: Option<int> = Some(10)
+@const
+t: (int, float) = (1, 3.14)
+@const
+xs: List<int> = [1, 2, 3]
+@const
+m: Map<str, int> = {"a": 1}
+@const
+s: Set<int> = {1, 2, 3}
+@const
+fn_val: fn(int) -> int = fn(x: int): x * 2
+@const
+u: int | str = 42
 ```
 
 ## 使用可能な型名一覧
@@ -76,8 +88,10 @@ let u: int | str = 42
 type Meters = float
 type StringList = List<str>
 
-let d: Meters = 3.14
-let names: StringList = ["Alice", "Bob"]
+@const
+d: Meters = 3.14
+@const
+names: StringList = ["Alice", "Bob"]
 ```
 
 > **命名規則**: 型エイリアス名は PascalCase（例: `Meters`、`StringList`）を使用する必要があります。コンパイラがこの規則を強制します。
@@ -87,7 +101,8 @@ let names: StringList = ["Alice", "Bob"]
 ```python
 type Callback = fn(int, int) -> int
 
-let add: Callback = fn(a: int, b: int): a + b
+@const
+add: Callback = fn(a: int, b: int): a + b
 print(add(3, 4))    # 7
 ```
 
@@ -96,9 +111,12 @@ type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-let m: Month = 6
-let d: Direction = "N"
-let n: Digit = 5
+@const
+m: Month = 6
+@const
+d: Direction = "N"
+@const
+n: Digit = 5
 ```
 
 ---
@@ -110,9 +128,11 @@ let n: Digit = 5
 ### int リテラル型
 
 ```python
-let x: 42 = 42           # 単一リテラル型
-let y: 0 | 1 = 0         # int リテラルの union
-var z: 0 | 1 = 0
+@const
+x: 42 = 42           # 単一リテラル型
+@const
+y: 0 | 1 = 0         # int リテラルの union
+z: 0 | 1 = 0
 z = 1                     # OK
 # z = 2                   # コンパイルエラー（定数）または実行時エラー（動的値）
 ```
@@ -120,8 +140,9 @@ z = 1                     # OK
 ### str リテラル型
 
 ```python
-let dir: "N" | "S" | "E" | "W" = "N"
-# let bad: "N" | "S" = "X"    # コンパイルエラー
+@const
+dir: "N" | "S" | "E" | "W" = "N"
+# @const bad: "N" | "S" = "X"    # コンパイルエラー
 ```
 
 ### 制約チェック
@@ -136,17 +157,19 @@ let dir: "N" | "S" | "E" | "W" = "N"
 範囲型は、整数変数の値を連続した範囲（両端を含む）に制限します。
 
 ```python
-let month: 1..12 = 6       # OK
-# let bad: 1..12 = 0       # コンパイルエラー: 範囲外
-# let bad: 1..12 = 13      # コンパイルエラー: 範囲外
+@const
+month: 1..12 = 6       # OK
+# @const bad: 1..12 = 0       # コンパイルエラー: 範囲外
+# @const bad: 1..12 = 13      # コンパイルエラー: 範囲外
 
-let t: -10..10 = -5        # 負の範囲もサポート
+@const
+t: -10..10 = -5        # 負の範囲もサポート
 ```
 
-### `var` での再代入（実行時チェック）
+### 可変変数での再代入（実行時チェック）
 
 ```python
-var x: 1..12 = 6
+x: 1..12 = 6
 x = 12                      # OK
 # x = dynamic_value()       # 実行時チェック: 範囲外ならエラー終了
 ```
@@ -170,8 +193,10 @@ set_month(6)                # OK
 `T?` 構文は `Option<T>` の省略記法です。
 
 ```python
-let x: int? = 42       # Option<int> と同等
-let y: int? = none      # None と同等
+@const
+x: int? = 42       # Option<int> と同等
+@const
+y: int? = none      # None と同等
 
 fn find(xs: List<int>, val: int) -> int?:
     for x in xs:
@@ -187,11 +212,14 @@ fn find(xs: List<int>, val: int) -> int?:
 `f"..."` 構文による文字列補間です。`{}` 内の式が評価され、文字列に変換されます。
 
 ```python
-let name = "world"
+@const
+name = "world"
 print(f"Hello {name}")     # Hello world
 
-let a = 1
-let b = 2
+@const
+a = 1
+@const
+b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
 
@@ -216,11 +244,16 @@ print(f"{{braces}}")   # {braces}
 `as` キーワードによる明示的な型変換です。
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3
-let z = 1 as bool        # true
-let s = 42 as str         # "42"
-let b = 255 as byte       # byte 値 255
+@const
+x = 42 as float     # 42.0
+@const
+y = 3.14 as int      # 3
+@const
+z = 1 as bool        # true
+@const
+s = 42 as str         # "42"
+@const
+b = 255 as byte       # byte 値 255
 ```
 
 ### サポートされるキャスト
@@ -253,9 +286,12 @@ enum Shape:
 `EnumName::Variant(value)` の構文でデータ付きバリアントを構築します。
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+@const
+c = Shape::Circle(3.14)
+@const
+r = Shape::Rectangle(4.0, 5.0)
+@const
+p = Shape::Point
 ```
 
 ### バインディング付きパターンマッチング
@@ -294,8 +330,10 @@ enum MyOption<T>:
 コンパイラが型を推論できない場合は、具体的な型引数を指定してインスタンス化します。
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b = MyOption<int>::MyNone
+@const
+a = MyOption<int>::MySome(42)
+@const
+b = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -311,8 +349,10 @@ match a:
 エラーハンドリング用の組み込み型です。`Error` は `message`（str）と `code`（int）の2つのフィールドを持ちます。
 
 ```python
-let e = Error("something went wrong")       # code のデフォルトは 0
-let e2 = Error("not found", 404)            # 明示的な code
+@const
+e = Error("something went wrong")       # code のデフォルトは 0
+@const
+e2 = Error("not found", 404)            # 明示的な code
 
 print(e.message)   # something went wrong
 print(e2.code)     # 404
@@ -329,7 +369,8 @@ fn divide(a: int, b: int) -> (int, Error?):
         return (0, Some(Error("division by zero")))
     return (a // b, none)
 
-let val, err = divide(10, 2)
+@const
+val, err = divide(10, 2)
 match err:
     case Some(e):
         print(e.message)
@@ -348,7 +389,8 @@ fn read_file(path: str) -> (str, Error?):
     return ("content", none)
 
 fn process() -> (str, Error?):
-    let data = read_file("test.txt")!!   # エラーがあれば伝播
+    @const
+    data = read_file("test.txt")!!   # エラーがあれば伝播
     return (data, none)
 ```
 
@@ -363,7 +405,8 @@ fn process() -> (str, Error?):
 `|` を使って複数の型を持ちうる変数を宣言できます。
 
 ```python
-let x: int | str = 42
+@const
+x: int | str = 42
 x = "hello"     # 再代入可能（union のいずれかの型）
 print(x)        # hello
 ```
@@ -422,7 +465,7 @@ union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` �
 
 ## 型安全性の制約
 
-- **暗黙の型変換はない** — `int` と `float` を混在させると float への昇格が発生するが、それ以外の暗黙変換は存在しない。`byte` は演算時に `int` へ自動昇格する（ZExt）。型アノテーション `let b: byte = 42` でのみ `int` リテラルから `byte` への縮小変換が許可される。
+- **暗黙の型変換はない** — `int` と `float` を混在させると float への昇格が発生するが、それ以外の暗黙変換は存在しない。`byte` は演算時に `int` へ自動昇格する（ZExt）。型アノテーション `b: byte = 42` でのみ `int` リテラルから `byte` への縮小変換が許可される。
 - **変数の型は宣言時に固定される** — 一度 `int` として宣言した変数に `float` を再代入することはできない。
 - **ビット演算は `int` のみ** — `float` や `bool` に対してビット演算を適用するとコンパイルエラー。
 - **`bool` 以外の型も条件式に使える** — `if` の条件式には `int`（0 = false、非0 = true）など `bool` 以外も使用可能。

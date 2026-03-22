@@ -8,10 +8,10 @@ static Program parseStr(const std::string &src) {
 }
 
 TEST(ParserTest, LetSimpleInt) {
-    Program prog = parseStr("let x = 42");
+    Program prog = parseStr("x = 42");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<LetStmt>(prog[0]));
-    const auto &s = std::get<LetStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     EXPECT_FALSE(s.type_annotation.has_value());
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
@@ -19,10 +19,10 @@ TEST(ParserTest, LetSimpleInt) {
 }
 
 TEST(ParserTest, VarSimpleInt) {
-    Program prog = parseStr("var x = 42");
+    Program prog = parseStr("x = 42");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<VarStmt>(prog[0]));
-    const auto &s = std::get<VarStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     EXPECT_FALSE(s.type_annotation.has_value());
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
@@ -30,9 +30,9 @@ TEST(ParserTest, VarSimpleInt) {
 }
 
 TEST(ParserTest, LetWithTypeAnnotation) {
-    Program prog = parseStr("let x: int = 42");
+    Program prog = parseStr("x: int = 42");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int");
@@ -41,8 +41,8 @@ TEST(ParserTest, LetWithTypeAnnotation) {
 }
 
 TEST(ParserTest, VarWithTypeAnnotation) {
-    Program prog = parseStr("var y: float = 3.14");
-    const auto &s = std::get<VarStmt>(prog[0]);
+    Program prog = parseStr("y: float = 3.14");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "y");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "float");
@@ -50,17 +50,17 @@ TEST(ParserTest, VarWithTypeAnnotation) {
 }
 
 TEST(ParserTest, LetFloat) {
-    Program prog = parseStr("let x = 3.14");
+    Program prog = parseStr("x = 3.14");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
     EXPECT_DOUBLE_EQ(std::get<FloatExpr>(s.value->data).value, 3.14);
 }
 
 TEST(ParserTest, AssignStmt) {
-    Program prog = parseStr("var x = 1\nx = 2");
+    Program prog = parseStr("x = 1\nx = 2");
     ASSERT_EQ(prog.size(), 2u);
-    ASSERT_TRUE(std::holds_alternative<VarStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
     const auto &assign = std::get<AssignStmt>(prog[1]);
     EXPECT_EQ(assign.name, "x");
@@ -69,8 +69,8 @@ TEST(ParserTest, AssignStmt) {
 }
 
 TEST(ParserTest, VariableRHS) {
-    Program prog = parseStr("let y = x");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("y = x");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.value->data));
     EXPECT_EQ(std::get<VariableExpr>(s.value->data).name, "x");
 }
@@ -87,9 +87,9 @@ TEST(ParserTest, PrintCall) {
 }
 
 TEST(ParserTest, MulOverAdd) {
-    // "let x = 1 + 2 * 3" → +(1, *(2, 3))
-    Program prog = parseStr("let x = 1 + 2 * 3");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = 1 + 2 * 3" → +(1, *(2, 3))
+    Program prog = parseStr("x = 1 + 2 * 3");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "+");
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(outer->lhs->data));
@@ -101,9 +101,9 @@ TEST(ParserTest, MulOverAdd) {
 }
 
 TEST(ParserTest, PowerRightAssociative) {
-    // "let x = 2 ** 3 ** 2" → **(2, **(3, 2))
-    Program prog = parseStr("let x = 2 ** 3 ** 2");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = 2 ** 3 ** 2" → **(2, **(3, 2))
+    Program prog = parseStr("x = 2 ** 3 ** 2");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "**");
     EXPECT_EQ(std::get<NumberExpr>(outer->lhs->data).value, 2);
@@ -114,9 +114,9 @@ TEST(ParserTest, PowerRightAssociative) {
 }
 
 TEST(ParserTest, NotRightAssociative) {
-    // "let x = not not true" → not(not(true))
-    Program prog = parseStr("let x = not not true");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = not not true" → not(not(true))
+    Program prog = parseStr("x = not not true");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "not");
     const auto &inner = std::get<std::unique_ptr<UnaryExpr>>(outer->operand->data);
@@ -126,23 +126,23 @@ TEST(ParserTest, NotRightAssociative) {
 }
 
 TEST(ParserTest, BoolTrueAssign) {
-    Program prog = parseStr("let x = true");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = true");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<BoolExpr>(s.value->data));
     EXPECT_TRUE(std::get<BoolExpr>(s.value->data).value);
 }
 
 TEST(ParserTest, BoolFalseAssign) {
-    Program prog = parseStr("let x = false");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = false");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<BoolExpr>(s.value->data));
     EXPECT_FALSE(std::get<BoolExpr>(s.value->data).value);
 }
 
 TEST(ParserTest, ComparisonOverAdd) {
-    // "let x = 1 + 2 == 3" → ==(+(1,2), 3)
-    Program prog = parseStr("let x = 1 + 2 == 3");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = 1 + 2 == 3" → ==(+(1,2), 3)
+    Program prog = parseStr("x = 1 + 2 == 3");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "==");
     const auto &lhs = std::get<std::unique_ptr<BinaryExpr>>(outer->lhs->data);
@@ -151,9 +151,9 @@ TEST(ParserTest, ComparisonOverAdd) {
 }
 
 TEST(ParserTest, LogicalPrecedence) {
-    // "let x = a or b and not c" → or(a, and(b, not(c)))
-    Program prog = parseStr("let x = a or b and not c");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = a or b and not c" → or(a, and(b, not(c)))
+    Program prog = parseStr("x = a or b and not c");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "or");
     EXPECT_EQ(std::get<VariableExpr>(outer->lhs->data).name, "a");
@@ -166,8 +166,8 @@ TEST(ParserTest, LogicalPrecedence) {
 }
 
 TEST(ParserTest, UnaryMinus) {
-    Program prog = parseStr("let x = -42");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = -42");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &unary = std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
     EXPECT_EQ(unary->op, "-");
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(unary->operand->data));
@@ -175,17 +175,17 @@ TEST(ParserTest, UnaryMinus) {
 }
 
 TEST(ParserTest, UnaryPlus) {
-    Program prog = parseStr("let x = +5");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = +5");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &unary = std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
     EXPECT_EQ(unary->op, "+");
     EXPECT_EQ(std::get<NumberExpr>(unary->operand->data).value, 5);
 }
 
 TEST(ParserTest, Parentheses) {
-    // "let x = (1 + 2) * 3" → *(+(1,2), 3)
-    Program prog = parseStr("let x = (1 + 2) * 3");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    // "x = (1 + 2) * 3" → *(+(1,2), 3)
+    Program prog = parseStr("x = (1 + 2) * 3");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     const auto &outer = std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer->op, "*");
     const auto &lhs = std::get<std::unique_ptr<BinaryExpr>>(outer->lhs->data);
@@ -194,10 +194,10 @@ TEST(ParserTest, Parentheses) {
 }
 
 TEST(ParserTest, MultipleStatements) {
-    Program prog = parseStr("let x = 1\nlet y = 2");
+    Program prog = parseStr("x = 1\ny = 2");
     ASSERT_EQ(prog.size(), 2u);
-    EXPECT_EQ(std::get<LetStmt>(prog[0]).name, "x");
-    EXPECT_EQ(std::get<LetStmt>(prog[1]).name, "y");
+    EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "x");
+    EXPECT_EQ(std::get<AssignStmt>(prog[1]).name, "y");
 }
 
 TEST(ParserTest, InvalidSyntaxThrows) {
@@ -206,9 +206,9 @@ TEST(ParserTest, InvalidSyntaxThrows) {
 }
 
 TEST(ParserTest, TypeAnnotationInt) {
-    Program prog = parseStr("let x: int = 42");
+    Program prog = parseStr("x: int = 42");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int");
@@ -217,8 +217,8 @@ TEST(ParserTest, TypeAnnotationInt) {
 }
 
 TEST(ParserTest, TypeAnnotationFloat) {
-    Program prog = parseStr("let y: float = 3.14");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("y: float = 3.14");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "y");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "float");
@@ -226,8 +226,8 @@ TEST(ParserTest, TypeAnnotationFloat) {
 }
 
 TEST(ParserTest, TypeAnnotationBool) {
-    Program prog = parseStr("let z: bool = true");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("z: bool = true");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "z");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "bool");
@@ -235,9 +235,9 @@ TEST(ParserTest, TypeAnnotationBool) {
 }
 
 TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
-    Program prog = parseStr("let x: Point = p");
+    Program prog = parseStr("x: Point = p");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "Point");
 }
@@ -258,9 +258,9 @@ TEST(ParserTest, TypeDefinition) {
 }
 
 TEST(ParserTest, FieldAccessSimple) {
-    Program prog = parseStr("let x = p.x");
+    Program prog = parseStr("x = p.x");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
     const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
     EXPECT_EQ(fa.field, "x");
@@ -269,9 +269,9 @@ TEST(ParserTest, FieldAccessSimple) {
 }
 
 TEST(ParserTest, FieldAccessChained) {
-    Program prog = parseStr("let x = a.b.c");
+    Program prog = parseStr("x = a.b.c");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     // a.b.c → FieldAccess(FieldAccess(a, b), c)
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
     const auto &outer = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
@@ -284,18 +284,18 @@ TEST(ParserTest, FieldAccessChained) {
 }
 
 TEST(ParserTest, LetStringLiteral) {
-    Program prog = parseStr("let s = \"hello\"");
+    Program prog = parseStr("s = \"hello\"");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "s");
     ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
     EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "hello");
 }
 
 TEST(ParserTest, LetStringWithTypeAnnotation) {
-    Program prog = parseStr("let s: str = \"world\"");
+    Program prog = parseStr("s: str = \"world\"");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "s");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "str");
@@ -304,14 +304,14 @@ TEST(ParserTest, LetStringWithTypeAnnotation) {
 }
 
 TEST(ParserTest, TypeAnnotationMissingEqualsThrows) {
-    EXPECT_THROW(parseStr("let x: int 42"), std::runtime_error);
+    EXPECT_THROW(parseStr("x: int 42"), std::runtime_error);
 }
 
 TEST(ParserTest, TypeAnnotationMixedWithInference) {
-    Program prog = parseStr("let a: int = 1\nlet b = 2");
+    Program prog = parseStr("a: int = 1\nb = 2");
     ASSERT_EQ(prog.size(), 2u);
-    EXPECT_TRUE(std::get<LetStmt>(prog[0]).type_annotation.has_value());
-    EXPECT_FALSE(std::get<LetStmt>(prog[1]).type_annotation.has_value());
+    EXPECT_TRUE(std::get<AssignStmt>(prog[0]).type_annotation.has_value());
+    EXPECT_FALSE(std::get<AssignStmt>(prog[1]).type_annotation.has_value());
 }
 
 TEST(ParserTest, BareAssignmentWithoutDeclaration) {
@@ -322,9 +322,14 @@ TEST(ParserTest, BareAssignmentWithoutDeclaration) {
     EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "x");
 }
 
-TEST(ParserTest, TypeAnnotationWithoutLetOrVarThrows) {
-    // x: int = 10 はエラー（let/var が必要）
-    EXPECT_THROW(parseStr("x: int = 10"), std::runtime_error);
+TEST(ParserTest, TypeAnnotationWithoutValue) {
+    // x: int = 10 is now valid (typed variable declaration)
+    Program prog = parseStr("x: int = 10");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.type_annotation.has_value());
+    EXPECT_EQ(*s.type_annotation, "int");
 }
 
 // ===== if/elif/else パーサーテスト =====
@@ -357,10 +362,10 @@ TEST(ParserTest, IfElifElse) {
 }
 
 TEST(ParserTest, IfBlockMultipleStatements) {
-    Program prog = parseStr("if true:\n    let x = 1\n    print(x)");
+    Program prog = parseStr("if true:\n    x = 1\n    print(x)");
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
     ASSERT_EQ(ifStmt.branches[0].body.size(), 2u);
-    EXPECT_TRUE(std::holds_alternative<LetStmt>(ifStmt.branches[0].body[0]));
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(ifStmt.branches[0].body[0]));
     EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branches[0].body[1]));
 }
 
@@ -385,10 +390,10 @@ TEST(ParserTest, WhileSimple) {
 }
 
 TEST(ParserTest, WhileBlockMultipleStatements) {
-    Program prog = parseStr("while true:\n    let x = 1\n    print(x)");
+    Program prog = parseStr("while true:\n    x = 1\n    print(x)");
     const auto &ws = *std::get<std::unique_ptr<WhileStmt>>(prog[0]);
     ASSERT_EQ(ws.body.size(), 2u);
-    EXPECT_TRUE(std::holds_alternative<LetStmt>(ws.body[0]));
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(ws.body[0]));
     EXPECT_TRUE(std::holds_alternative<CallStmt>(ws.body[1]));
 }
 
@@ -425,9 +430,9 @@ TEST(ParserTest, ReturnStatement) {
 }
 
 TEST(ParserTest, CallExprInLet) {
-    Program prog = parseStr("let x = add(1, 2)");
+    Program prog = parseStr("x = add(1, 2)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
     const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
     EXPECT_EQ(call.callee, "add");
@@ -463,9 +468,9 @@ TEST(ParserTest, FnExplicitUnitReturn) {
 }
 
 TEST(ParserTest, TypeAnnotationOptionInt) {
-    Program prog = parseStr("let x: Option<int> = None");
+    Program prog = parseStr("x: Option<int> = None");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "Option<int>");
 }
@@ -535,9 +540,9 @@ TEST(ParserTest, DuplicateFieldNameThrows) {
 // ===== タプル パーサーテスト =====
 
 TEST(ParserTest, TupleLiteral) {
-    Program prog = parseStr("let t = (1, 2)");
+    Program prog = parseStr("t = (1, 2)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
     const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
     ASSERT_EQ(tuple.elements.size(), 2u);
@@ -546,9 +551,9 @@ TEST(ParserTest, TupleLiteral) {
 }
 
 TEST(ParserTest, TupleMixedTypes) {
-    Program prog = parseStr("let t = (1, 3.14)");
+    Program prog = parseStr("t = (1, 3.14)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
     const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
     ASSERT_EQ(tuple.elements.size(), 2u);
@@ -557,24 +562,24 @@ TEST(ParserTest, TupleMixedTypes) {
 }
 
 TEST(ParserTest, TupleThreeElements) {
-    Program prog = parseStr("let t = (1, 2, 3)");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("t = (1, 2, 3)");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
     const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
     ASSERT_EQ(tuple.elements.size(), 3u);
 }
 
 TEST(ParserTest, TupleTypeAnnotation) {
-    Program prog = parseStr("let t: (int, float) = (1, 3.14)");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("t: (int, float) = (1, 3.14)");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "(int, float)");
 }
 
 TEST(ParserTest, TupleIndexAccess) {
     // t.0 → FieldAccessExpr with field "0"
-    Program prog = parseStr("let x = t.0");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = t.0");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FieldAccessExpr>>(s.value->data));
     const auto &fa = *std::get<std::unique_ptr<FieldAccessExpr>>(s.value->data);
     EXPECT_EQ(fa.field, "0");
@@ -590,8 +595,8 @@ TEST(ParserTest, FnReturnTupleType) {
 
 TEST(ParserTest, ParenGroupingStillWorks) {
     // Single expression in parens is still grouping, not tuple
-    Program prog = parseStr("let x = (1 + 2) * 3");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x = (1 + 2) * 3");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
     const auto &outer = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(outer.op, "*");
@@ -601,9 +606,9 @@ TEST(ParserTest, ParenGroupingStillWorks) {
 
 TEST(ParserTest, UFCSBasic) {
     // a.f(b) → CallExpr{f, [a, b]}
-    Program prog = parseStr("let x = a.f(b)");
+    Program prog = parseStr("x = a.f(b)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
     const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
     EXPECT_EQ(call.callee, "f");
@@ -616,9 +621,9 @@ TEST(ParserTest, UFCSBasic) {
 
 TEST(ParserTest, UFCSNoArgs) {
     // a.f() → CallExpr{f, [a]}
-    Program prog = parseStr("let x = a.f()");
+    Program prog = parseStr("x = a.f()");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
     const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
     EXPECT_EQ(call.callee, "f");
@@ -629,9 +634,9 @@ TEST(ParserTest, UFCSNoArgs) {
 
 TEST(ParserTest, UFCSChained) {
     // a.f(b).g(c) → CallExpr{g, [CallExpr{f, [a, b]}, c]}
-    Program prog = parseStr("let x = a.f(b).g(c)");
+    Program prog = parseStr("x = a.f(b).g(c)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
     const auto &outer = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
     EXPECT_EQ(outer.callee, "g");
@@ -649,9 +654,9 @@ TEST(ParserTest, UFCSChained) {
 
 TEST(ParserTest, UFCSWithFieldAccess) {
     // p.x.f() → CallExpr{f, [FieldAccessExpr{p, x}]}
-    Program prog = parseStr("let r = p.x.f()");
+    Program prog = parseStr("r = p.x.f()");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CallExpr>>(s.value->data));
     const auto &call = *std::get<std::unique_ptr<CallExpr>>(s.value->data);
     EXPECT_EQ(call.callee, "f");
@@ -666,9 +671,9 @@ TEST(ParserTest, UFCSWithFieldAccess) {
 // ===== Map パーステスト =====
 
 TEST(ParserTest, MapLiteral) {
-    Program prog = parseStr("let m = {\"a\": 1, \"b\": 2}");
+    Program prog = parseStr("m = {\"a\": 1, \"b\": 2}");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "m");
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MapExpr>>(s.value->data));
     const auto &map = *std::get<std::unique_ptr<MapExpr>>(s.value->data);
@@ -681,7 +686,7 @@ TEST(ParserTest, MapLiteral) {
 }
 
 TEST(ParserTest, IndexAssignStmt) {
-    Program prog = parseStr("let m = {\"a\": 1}\nm[\"b\"] = 2");
+    Program prog = parseStr("m = {\"a\": 1}\nm[\"b\"] = 2");
     ASSERT_EQ(prog.size(), 2u);
     ASSERT_TRUE(std::holds_alternative<IndexAssignStmt>(prog[1]));
     const auto &s = std::get<IndexAssignStmt>(prog[1]);
@@ -694,9 +699,9 @@ TEST(ParserTest, IndexAssignStmt) {
 }
 
 TEST(ParserTest, MapTypeAnnotation) {
-    Program prog = parseStr("let m: Map<str, int> = {\"a\": 1}");
+    Program prog = parseStr("m: Map<str, int> = {\"a\": 1}");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "Map<str, int>");
 }
@@ -762,9 +767,9 @@ TEST(ParserTest, OperatorFnInvalidParamCount) {
 // ===== Set パーサーテスト =====
 
 TEST(ParserTest, SetLiteral) {
-    Program prog = parseStr("let s = {1, 2, 3}");
+    Program prog = parseStr("s = {1, 2, 3}");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SetExpr>>(s.value->data));
     const auto &set = *std::get<std::unique_ptr<SetExpr>>(s.value->data);
     ASSERT_EQ(set.elements.size(), 3u);
@@ -774,9 +779,9 @@ TEST(ParserTest, SetLiteral) {
 }
 
 TEST(ParserTest, SetSingleElement) {
-    Program prog = parseStr("let s = {42}");
+    Program prog = parseStr("s = {42}");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SetExpr>>(s.value->data));
     const auto &set = *std::get<std::unique_ptr<SetExpr>>(s.value->data);
     ASSERT_EQ(set.elements.size(), 1u);
@@ -784,17 +789,17 @@ TEST(ParserTest, SetSingleElement) {
 }
 
 TEST(ParserTest, SetTypeAnnotation) {
-    Program prog = parseStr("let s: Set<int> = {1}");
+    Program prog = parseStr("s: Set<int> = {1}");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "Set<int>");
 }
 
 TEST(ParserTest, InOperator) {
-    Program prog = parseStr("let r = x in s");
+    Program prog = parseStr("r = x in s");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
     const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(bin.op, "in");
@@ -817,9 +822,9 @@ TEST(ParserTest, EnumDefinition) {
 }
 
 TEST(ParserTest, EnumAccess) {
-    Program prog = parseStr("let c = Color::Red");
+    Program prog = parseStr("c = Color::Red");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<EnumAccessExpr>(s.value->data));
     const auto &ea = std::get<EnumAccessExpr>(s.value->data);
     EXPECT_EQ(ea.enum_name, "Color");
@@ -827,9 +832,9 @@ TEST(ParserTest, EnumAccess) {
 }
 
 TEST(ParserTest, EnumComparison) {
-    Program prog = parseStr("let r = c == Color::Green");
+    Program prog = parseStr("r = c == Color::Green");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
     const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(bin.op, "==");
@@ -843,9 +848,9 @@ TEST(ParserTest, EnumComparison) {
 // ===== Union 型パーサーテスト =====
 
 TEST(ParserTest, LetUnionTypeAnnotation) {
-    Program prog = parseStr("let x: int | str = 42");
+    Program prog = parseStr("x: int | str = 42");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int | str");
@@ -867,9 +872,9 @@ TEST(ParserTest, FnUnionReturn) {
 // ===== >>> パーサーテスト =====
 
 TEST(ParserTest, LogicalRightShift) {
-    Program prog = parseStr("let x = a >>> b");
+    Program prog = parseStr("x = a >>> b");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
     const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(bin.op, ">>>");
@@ -880,9 +885,9 @@ TEST(ParserTest, LogicalRightShift) {
 // ===== not in パーサーテスト =====
 
 TEST(ParserTest, NotInOperator) {
-    Program prog = parseStr("let r = x not in s");
+    Program prog = parseStr("r = x not in s");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
     const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
     EXPECT_EQ(bin.op, "not in");
@@ -892,17 +897,17 @@ TEST(ParserTest, NotInOperator) {
 
 TEST(ParserTest, NotStillWorksAfterNotIn) {
     // "not x" should still parse as UnaryExpr
-    Program prog = parseStr("let r = not x");
+    Program prog = parseStr("r = not x");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &s = std::get<LetStmt>(prog[0]);
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<UnaryExpr>>(s.value->data));
     const auto &unary = *std::get<std::unique_ptr<UnaryExpr>>(s.value->data);
     EXPECT_EQ(unary.op, "not");
 }
 
 TEST(ParserTest, UnionThreeTypes) {
-    Program prog = parseStr("let x: int | float | str = 42");
-    const auto &s = std::get<LetStmt>(prog[0]);
+    Program prog = parseStr("x: int | float | str = 42");
+    const auto &s = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(s.type_annotation.has_value());
     EXPECT_EQ(*s.type_annotation, "int | float | str");
 }
@@ -1080,9 +1085,9 @@ TEST(ParserTest, ParallelForDirectiveParsing) {
 }
 
 TEST(ParserTest, SpawnExprParsing) {
-    Program prog = parseStr("let t = spawn add(1, 2)");
+    Program prog = parseStr("t = spawn add(1, 2)");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     auto *spawn = std::get_if<std::unique_ptr<SpawnExpr>>(&let.value->data);
     ASSERT_NE(spawn, nullptr);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*spawn)->operand->data);
@@ -1091,9 +1096,9 @@ TEST(ParserTest, SpawnExprParsing) {
 }
 
 TEST(ParserTest, GenericChannelBuiltinParsing) {
-    Program prog = parseStr("let ch: Channel<int> = channel[int](4)");
+    Program prog = parseStr("ch: Channel<int> = channel[int](4)");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(let.type_annotation.has_value());
     EXPECT_EQ(*let.type_annotation, "Channel<int>");
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&let.value->data);
@@ -1112,9 +1117,9 @@ TEST(ParserTest, AsyncFnParsing) {
 }
 
 TEST(ParserTest, AwaitExprParsing) {
-    Program prog = parseStr("let x = await fetch()");
+    Program prog = parseStr("x = await fetch()");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     auto *await = std::get_if<std::unique_ptr<AwaitExpr>>(&let.value->data);
     ASSERT_NE(await, nullptr);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*await)->operand->data);
@@ -1210,9 +1215,9 @@ TEST(ParserTest, AsyncWithoutFnRejected) {
 // ===== .. 演算子 =====
 
 TEST(ParserTest, RangeExpr) {
-    Program prog = parseStr("let xs = 1 .. 5");
+    Program prog = parseStr("xs = 1 .. 5");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     auto *range = std::get_if<std::unique_ptr<RangeExpr>>(&let.value->data);
     ASSERT_TRUE(range != nullptr);
 }
@@ -1220,9 +1225,9 @@ TEST(ParserTest, RangeExpr) {
 // ===== ?? 演算子 =====
 
 TEST(ParserTest, NullCoalesceExpr) {
-    Program prog = parseStr("let x = a ?? 0");
+    Program prog = parseStr("x = a ?? 0");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&let.value->data);
     ASSERT_TRUE(bin != nullptr);
     EXPECT_EQ((*bin)->op, "??");
@@ -1231,16 +1236,19 @@ TEST(ParserTest, NullCoalesceExpr) {
 // ===== none キーワード =====
 
 TEST(ParserTest, NoneExpr) {
-    Program prog = parseStr("let x = none");
+    Program prog = parseStr("x = none");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<LetStmt>(prog[0]);
+    auto &let = std::get<AssignStmt>(prog[0]);
     ASSERT_TRUE(std::holds_alternative<NoneExpr>(let.value->data));
 }
 
 // ===== 命名規約チェック =====
 
-TEST(ParserTest, SnakeCaseVariableRequired) {
-    EXPECT_THROW(parseStr("let myVar = 1"), std::runtime_error);
+TEST(ParserTest, VariableAssignmentAcceptsCamelCase) {
+    // Variable names are no longer checked for snake_case at parser level
+    Program prog = parseStr("myVar = 1");
+    ASSERT_EQ(prog.size(), 1u);
+    EXPECT_EQ(std::get<AssignStmt>(prog[0]).name, "myVar");
 }
 
 TEST(ParserTest, SnakeCaseFunctionRequired) {

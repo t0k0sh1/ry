@@ -6,23 +6,23 @@ describe("HTTP Server API", fn():
     it("responds with 200 OK for matching path", fn():
         fn server_200(port: int) -> str:
             http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-                let path = http_path(req)
+                path = http_path(req)
                 if path == "/hello":
                     return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
                 return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
             )
             return "done"
 
-        let t: Task<str> = spawn server_200(18200)
+        t: Task<str> = spawn server_200(18200)
 
-        var connected = false
-        var response_msg = ""
-        var attempt = 0
+        connected = false
+        response_msg = ""
+        attempt = 0
         while attempt < 500 and not connected:
             match connect("127.0.0.1", 18200):
                 case Some(conn):
                     send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-                    let resp: List<byte> = recv(conn, 4096)
+                    resp: List<byte> = recv(conn, 4096)
                     response_msg = bytes_to_str(resp)
                     close(conn)
                     connected = true
@@ -36,22 +36,22 @@ describe("HTTP Server API", fn():
     it("returns method and path in response body", fn():
         fn server_method(port: int) -> str:
             http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-                let method = http_method(req)
-                let path = http_path(req)
+                method = http_method(req)
+                path = http_path(req)
                 return http_response(200, {"Content-Type": "text/plain"}, method + ":" + path)
             )
             return "done"
 
-        let t: Task<str> = spawn server_method(18201)
+        t: Task<str> = spawn server_method(18201)
 
-        var connected = false
-        var response_msg = ""
-        var attempt = 0
+        connected = false
+        response_msg = ""
+        attempt = 0
         while attempt < 500 and not connected:
             match connect("127.0.0.1", 18201):
                 case Some(conn):
                     send(conn, str_to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-                    let resp: List<byte> = recv(conn, 4096)
+                    resp: List<byte> = recv(conn, 4096)
                     response_msg = bytes_to_str(resp)
                     close(conn)
                     connected = true
@@ -72,16 +72,16 @@ describe("HTTP Server API", fn():
             )
             return "done"
 
-        let t: Task<str> = spawn server_header(18202)
+        t: Task<str> = spawn server_header(18202)
 
-        var connected = false
-        var response_msg = ""
-        var attempt = 0
+        connected = false
+        response_msg = ""
+        attempt = 0
         while attempt < 500 and not connected:
             match connect("127.0.0.1", 18202):
                 case Some(conn):
                     send(conn, str_to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n"))
-                    let resp: List<byte> = recv(conn, 4096)
+                    resp: List<byte> = recv(conn, 4096)
                     response_msg = bytes_to_str(resp)
                     close(conn)
                     connected = true
@@ -98,16 +98,16 @@ describe("HTTP Server API", fn():
             )
             return "done"
 
-        let t: Task<str> = spawn server_404(18203)
+        t: Task<str> = spawn server_404(18203)
 
-        var connected = false
-        var response_msg = ""
-        var attempt = 0
+        connected = false
+        response_msg = ""
+        attempt = 0
         while attempt < 500 and not connected:
             match connect("127.0.0.1", 18203):
                 case Some(conn):
                     send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-                    let resp: List<byte> = recv(conn, 4096)
+                    resp: List<byte> = recv(conn, 4096)
                     response_msg = bytes_to_str(resp)
                     close(conn)
                     connected = true

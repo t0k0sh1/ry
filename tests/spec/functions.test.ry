@@ -55,12 +55,12 @@ describe("overloading", fn():
 )
 describe("lambda", fn():
     it("single expression", fn():
-        let double = fn(x: int): x * 2
+        double = fn(x: int): x * 2
         expect(double(5)).to_eq(10)
 
     )
     it("multi-line", fn():
-        let abs_val = fn(x: int):
+        abs_val = fn(x: int):
             if x < 0:
                 return -x
             return x
@@ -70,8 +70,8 @@ describe("lambda", fn():
 )
 describe("closure", fn():
     it("captures by value", fn():
-        var base = 10
-        let add_base = fn(x: int): x + base
+        base = 10
+        add_base = fn(x: int): x + base
         base = 99
         expect(add_base(5)).to_eq(15)
 
@@ -79,7 +79,7 @@ describe("closure", fn():
 )
 describe("higher-order function", fn():
     it("function as argument", fn():
-        let res = apply(fn(x: int): x * 3, 5)
+        res = apply(fn(x: int): x * 3, 5)
         expect(res).to_eq(15)
 
     )
@@ -96,16 +96,16 @@ describe("UFCS", fn():
 )
 describe("operator overloading", fn():
     it("binary +", fn():
-        let v1 = Vec2(1.0, 2.0)
-        let v2 = Vec2(3.0, 4.0)
-        let v3 = v1 + v2
+        v1 = Vec2(1.0, 2.0)
+        v2 = Vec2(3.0, 4.0)
+        v3 = v1 + v2
         expect(v3.x).to_eq(4.0)
         expect(v3.y).to_eq(6.0)
 
     )
     it("== comparison", fn():
-        let v1 = Vec2(1.0, 2.0)
-        let v2 = Vec2(1.0, 2.0)
+        v1 = Vec2(1.0, 2.0)
+        v2 = Vec2(1.0, 2.0)
         expect(v1 == v2).to_be_true()
     )
 )

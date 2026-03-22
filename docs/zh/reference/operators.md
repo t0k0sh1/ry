@@ -41,10 +41,14 @@
 | `+x` | 一元正號 | `+5`（不改變正負號） |
 
 ```python
-let a = 10 // 3    # 3 (int)
-let b = 10 / 3     # 3.3333... (float)
-let c = 2 ** 8     # 256.0 (float)
-let s = "foo" + "bar"  # "foobar"
+@const
+a = 10 // 3    # 3 (int)
+@const
+b = 10 / 3     # 3.3333... (float)
+@const
+c = 2 ** 8     # 256.0 (float)
+@const
+s = "foo" + "bar"  # "foobar"
 ```
 
 ## 比較運算子
@@ -67,15 +71,24 @@ let s = "foo" + "bar"  # "foobar"
 - 對於映射，`in` 檢查鍵是否存在。
 
 ```python
-let x = 3 < 5       # true
-let y = "abc" < "abd"  # true（字典序）
-let s = {1, 2, 3}
-let z = 2 in s      # true
-let w = 4 not in s  # true
-let xs = [1, 2, 3]
-let a = 2 in xs     # true（串列線性搜尋）
-let m = {"a": 1}
-let b = "a" in m    # true（映射鍵搜尋）
+@const
+x = 3 < 5       # true
+@const
+y = "abc" < "abd"  # true（字典序）
+@const
+s = {1, 2, 3}
+@const
+z = 2 in s      # true
+@const
+w = 4 not in s  # true
+@const
+xs = [1, 2, 3]
+@const
+a = 2 in xs     # true（串列線性搜尋）
+@const
+m = {"a": 1}
+@const
+b = "a" in m    # true（映射鍵搜尋）
 ```
 
 ## 邏輯運算子
@@ -87,9 +100,12 @@ let b = "a" in m    # true（映射鍵搜尋）
 | `not` | 邏輯 NOT | `bool` → `bool` |
 
 ```python
-let a = true and false   # false
-let b = true or false    # true
-let c = not true         # false
+@const
+a = true and false   # false
+@const
+b = true or false    # true
+@const
+c = not true         # false
 ```
 
 ## 位元運算子
@@ -107,25 +123,32 @@ let c = not true         # false
 | `>>>` | 邏輯右移 | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-let flags = 0b0001 | 0b0010   # 3
-let masked = flags & 0b0011   # 3
-let shifted = 1 << 8          # 256
+@const
+flags = 0b0001 | 0b0010   # 3
+@const
+masked = flags & 0b0011   # 3
+@const
+shifted = 1 << 8          # 256
 ```
 
 ## 三元條件運算子
 
 ```python
-let x = condition ? true_value : false_value
+@const
+x = condition ? true_value : false_value
 ```
 
 對 `condition` 進行求值。若為真，回傳 `true_value`；否則回傳 `false_value`。兩個分支必須具有相同的型別。右結合，因此巢狀三元運算子從右向左結合。
 
 ```python
-let x = 3 > 2 ? 10 : 20     # 10
-let s = false ? "yes" : "no" # "no"
+@const
+x = 3 > 2 ? 10 : 20     # 10
+@const
+s = false ? "yes" : "no" # "no"
 
 # 巢狀（右結合）
-let y = true ? (false ? 1 : 2) : 3   # 2
+@const
+y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
 ---
@@ -135,7 +158,8 @@ let y = true ? (false ? 1 : 2) : 3   # 2
 `..` 運算子建立包含兩端的整數範圍。
 
 ```python
-let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+@const
+xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
     print(i)       # 1 2 3
@@ -148,14 +172,17 @@ for i in 1 .. 3:
 ## 空值合併運算子（`??`）
 
 ```python
-let x = option_val ?? default_val
+@const
+x = option_val ?? default_val
 ```
 
 如果 `option_val` 為 `Some(v)`，則回傳 `v`。否則回傳 `default_val`。右運算元必須與 Option 的內部型別相同。
 
 ```python
-let a: int? = Some(10)
-let b: int? = none
+@const
+a: int? = Some(10)
+@const
+b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
@@ -183,7 +210,7 @@ print(b ?? 0)    # 0
 | `x >>= y` | `x = x >> y` |
 
 ```python
-var x = 10
+x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
@@ -201,17 +228,17 @@ x &= 6   # x = 0
 | `x--` | `x = x - 1` |
 
 ```python
-var count = 0
+count = 0
 count++       # count = 1
 count++       # count = 2
 count--       # count = 1
 
-var f = 1.5
+f = 1.5
 f++           # f = 2.5（int 1 會提升為 float）
 ```
 
 > **注意**：`++` / `--` 只能作為陳述式使用，不能在運算式中使用。
-> `let` 變數不能使用遞增／遞減（不可變性會被強制執行）。
+> `@const` 變數不能使用遞增／遞減（不可變性會被強制執行）。
 
 ---
 
