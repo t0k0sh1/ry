@@ -22,11 +22,8 @@
 
 ```python
 # 變數與型別
-@const
 x: int = 42
-@const
 name: str = "hello"
-@const
 pi = 3.14159
 
 # 函式定義
@@ -38,9 +35,7 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # Lambda 與閉包
-@const
 offset = 10
-@const
 add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
@@ -52,16 +47,12 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-@const
 p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # 集合型別
-@const
 xs = [1, 2, 3]
-@const
 m = {"a": 1, "b": 2}
-@const
 s = {1, 2, 3}
 
 for x in xs:
@@ -71,7 +62,6 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # 串流操作 (filter, map, sort)
-@const
 result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
@@ -81,7 +71,6 @@ enum Color:
     Green
     Blue
 
-@const
 c = Color::Red
 print(c)               # Red
 
@@ -101,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 指定特定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
 預設安裝至 `~/.local/bin`。可透過 `RY_INSTALL_DIR` 環境變數變更安裝位置。

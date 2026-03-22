@@ -44,16 +44,12 @@ name = "Ry"   # 推論為 str 型別
 可以明確指定變數的型別。
 
 ```python
-@const
 x: int = 42
 
-@const
 rate: float = 0.5
 
-@const
 ok: bool = false
 
-@const
 msg: str = "hello"
 ```
 
@@ -78,13 +74,10 @@ msg: str = "hello"
 字串支援多種操作。
 
 ```python
-@const
 a = "Hello"
-@const
 b = "World"
 
 # 串接
-@const
 c = a + ", " + b   # "Hello, World"
 
 # 比較（字典序）
@@ -96,7 +89,6 @@ print(a < b)    # true（"H" < "W"）
 print(len(a))   # 5
 
 # 子字串檢查
-@const
 s = "Hello, World!"
 print(contains(s, "World"))      # true
 print(starts_with(s, "Hello"))   # true

@@ -29,7 +29,6 @@ fn add(a: int, b: int) -> int:
 fn multiply(x: int, y: int) -> int:
     return x * y
 
-@const
 result = multiply(3, 4)
 print(result)   # 12
 ```

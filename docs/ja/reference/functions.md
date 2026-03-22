@@ -75,9 +75,7 @@ fn area(side: int) -> int:
 fn area(w: int, h: int) -> int:
     return w * h
 
-@const
 a = area(5)       # 25
-@const
 b = area(3, 4)    # 12
 ```
 
@@ -105,7 +103,6 @@ fn log_typed(msg: str) -> Unit:
 async fn add(a: int, b: int) -> int:
     return a + b
 
-@const
 t: Task<int> = add(20, 22)
 print(await t)          # 42
 await add(1, 2)         # 待機して結果を捨てる
@@ -148,18 +145,13 @@ fn(引数名: 型, ...) -> 戻り値型: 式
 ### 例
 
 ```python
-@const
 double = fn(x: int): x * 2
-@const
 result = double(5)   # 10
 
-@const
 add = fn(a: int, b: int): a + b
-@const
 sum = add(3, 4)      # 7
 
 # 複数行ラムダ
-@const
 abs = fn(x: int):
     if x < 0:
         return -x
@@ -174,11 +166,9 @@ abs = fn(x: int):
 
 ```python
 base = 10
-@const
 add_base = fn(x: int): x + base   # base を値でキャプチャ
 
 base = 99          # キャプチャ済みの値には影響しない
-@const
 r = add_base(5)   # 15（キャプチャ時の base = 10 を使用）
 ```
 
@@ -205,15 +195,12 @@ fn(引数型1, 引数型2, ...) -> 戻り値型
 ### 例
 
 ```python
-@const
 f: fn(int) -> int = fn(x: int): x * 2
-@const
 g: fn(int, int) -> int = fn(a: int, b: int): a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
 
-@const
 result = apply(f, 5)   # 10
 ```
 
@@ -230,7 +217,6 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-@const
 doubled = map_list([1, 2, 3], fn(x: int): x * 2)
 # [2, 4, 6]
 ```
@@ -260,7 +246,6 @@ fn double(x: int) -> int:
 fn add_one(x: int) -> int:
     return x + 1
 
-@const
 result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
 ```
 
@@ -269,9 +254,7 @@ result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
 フィールドアクセス（`.field`）と UFCS（`.method()`）は同じドット記法で書けるが、引数の有無で区別される。
 
 ```python
-@const
 p = Point(3, 4)
-@const
 len = p.x.to_float()   # フィールドアクセス + UFCS
 ```
 
@@ -324,12 +307,8 @@ fn operator-(v: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-@const
 v1 = Vec2(1.0, 2.0)
-@const
 v2 = Vec2(3.0, 4.0)
-@const
 v3 = v1 + v2    # Vec2(4.0, 6.0)
-@const
 v4 = -v1        # Vec2(-1.0, -2.0)
 ```

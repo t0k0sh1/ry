@@ -51,7 +51,6 @@ match bind("127.0.0.1", 8080):
         listen(server, 128)
         match accept(server):
             case Some(conn):
-                @const
                 data: List<byte> = recv(conn, 4096)
                 send(conn, data)
                 close(conn)
@@ -68,7 +67,6 @@ match bind("127.0.0.1", 8080):
 match connect("127.0.0.1", 8080):
     case Some(conn):
         send(conn, str_to_bytes("hello"))
-        @const
         resp: List<byte> = recv(conn, 4096)
         print(bytes_to_str(resp))
         close(conn)
@@ -85,7 +83,6 @@ fn echo_server(port: int) -> str:
             listen(server, 1)
             match accept(server):
                 case Some(conn):
-                    @const
                     data: List<byte> = recv(conn, 4096)
                     send(conn, data)
                     close(conn)
@@ -96,7 +93,6 @@ fn echo_server(port: int) -> str:
             ...
     return "done"
 
-@const
 t: Task<str> = spawn echo_server(8080)
 # ... client code ...
 join(t)

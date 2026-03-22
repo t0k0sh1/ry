@@ -25,7 +25,6 @@ record Point:
 像呼叫函式一樣使用結構體名稱來產生實例。參數按照欄位的定義順序指定。
 
 ```python
-@const
 p = Point(10, 20)
 ```
 
@@ -36,7 +35,6 @@ p = Point(10, 20)
 使用點記法存取欄位。
 
 ```python
-@const
 p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
@@ -72,9 +70,7 @@ record Point:
 fn distance_x(a: Point, b: Point) -> int:
     return a.x - b.x
 
-@const
 p1 = Point(10, 3)
-@const
 p2 = Point(4, 7)
 print(distance_x(p1, p2))   # 6
 ```
@@ -94,7 +90,6 @@ record Line:
     start: Point
     end: Point
 
-@const
 line = Line(Point(0, 0), Point(10, 5))
 print(line.start.x)   # 0
 print(line.end.x)     # 10
@@ -122,7 +117,6 @@ enum Color:
 使用 `::` 存取變體。
 
 ```python
-@const
 c = Color::Red
 print(c)   # Red
 ```

@@ -29,7 +29,6 @@ Call a defined function by its name with arguments.
 fn multiply(x: int, y: int) -> int:
     return x * y
 
-@const
 result = multiply(3, 4)
 print(result)   # 12
 ```

@@ -62,7 +62,6 @@ print(regex_match("[0-9]+", "hello"))   # false
 ### regex_search
 
 ```ry
-@const
 pos = regex_search("[0-9]+", "abc123def")
 print(pos)  # 3
 ```
@@ -70,7 +69,6 @@ print(pos)  # 3
 ### regex_replace
 
 ```ry
-@const
 s = regex_replace("[0-9]+", "a1b2c3", "X")
 print(s)  # aXbXcX
 ```
@@ -78,7 +76,6 @@ print(s)  # aXbXcX
 ### regex_split
 
 ```ry
-@const
 parts = regex_split("\\s+", "hello  world  foo")
 print(len(parts))  # 3
 print(parts[0])    # hello
@@ -87,7 +84,6 @@ print(parts[0])    # hello
 ### regex_find_all
 
 ```ry
-@const
 matches = regex_find_all("[0-9]+", "a1b23c456")
 print(len(matches))  # 3
 print(matches[0])    # 1
@@ -106,17 +102,14 @@ print(regex_match("(ab){2,}", "ababab"))           # true
 
 ```ry
 # 貪婪: 匹配最長
-@const
 g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
 print(g)  # X
 
 # 非貪婪: 匹配最短
-@const
 l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
 print(l)  # X and X
 
 # 取得個別 HTML 標籤
-@const
 tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
 print(len(tags))  # 3
 ```
@@ -127,17 +120,14 @@ print(len(tags))  # 3
 
 ```ry
 # 匹配完整單字
-@const
 pos = regex_search("\\bworld\\b", "hello world")
 print(pos)  # 6
 
 # 取得所有單字
-@const
 words = regex_find_all("\\b\\w+\\b", "hello world foo")
 print(len(words))  # 3
 
 # \B 匹配非邊界（單字內部）
-@const
 pos2 = regex_search("\\Bworld", "helloworld")
 print(pos2)  # 5
 ```
@@ -153,7 +143,6 @@ print(regex_match("(?i)hello", "Hello"))  # true
 print(regex_match("(?i)[a-z]+", "ABC"))  # true
 
 # replace 和 find_all 也可使用
-@const
 s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
 print(s)  # X X X
 ```
@@ -164,7 +153,6 @@ print(s)  # X X X
 
 ```ry
 # pattern.function(text, ...)
-@const
 m = "[a-z]+".regex_match("hello")
 print(m)  # true
 ```

@@ -41,13 +41,9 @@
 | `+x` | 一元正號 | `+5`（不改變正負號） |
 
 ```python
-@const
 a = 10 // 3    # 3 (int)
-@const
 b = 10 / 3     # 3.3333... (float)
-@const
 c = 2 ** 8     # 256.0 (float)
-@const
 s = "foo" + "bar"  # "foobar"
 ```
 
@@ -71,23 +67,14 @@ s = "foo" + "bar"  # "foobar"
 - 對於映射，`in` 檢查鍵是否存在。
 
 ```python
-@const
 x = 3 < 5       # true
-@const
 y = "abc" < "abd"  # true（字典序）
-@const
 s = {1, 2, 3}
-@const
 z = 2 in s      # true
-@const
 w = 4 not in s  # true
-@const
 xs = [1, 2, 3]
-@const
 a = 2 in xs     # true（串列線性搜尋）
-@const
 m = {"a": 1}
-@const
 b = "a" in m    # true（映射鍵搜尋）
 ```
 
@@ -100,11 +87,8 @@ b = "a" in m    # true（映射鍵搜尋）
 | `not` | 邏輯 NOT | `bool` → `bool` |
 
 ```python
-@const
 a = true and false   # false
-@const
 b = true or false    # true
-@const
 c = not true         # false
 ```
 
@@ -123,31 +107,24 @@ c = not true         # false
 | `>>>` | 邏輯右移 | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-@const
 flags = 0b0001 | 0b0010   # 3
-@const
 masked = flags & 0b0011   # 3
-@const
 shifted = 1 << 8          # 256
 ```
 
 ## 三元條件運算子
 
 ```python
-@const
 x = condition ? true_value : false_value
 ```
 
 對 `condition` 進行求值。若為真，回傳 `true_value`；否則回傳 `false_value`。兩個分支必須具有相同的型別。右結合，因此巢狀三元運算子從右向左結合。
 
 ```python
-@const
 x = 3 > 2 ? 10 : 20     # 10
-@const
 s = false ? "yes" : "no" # "no"
 
 # 巢狀（右結合）
-@const
 y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
@@ -158,7 +135,6 @@ y = true ? (false ? 1 : 2) : 3   # 2
 `..` 運算子建立包含兩端的整數範圍。
 
 ```python
-@const
 xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
@@ -172,16 +148,13 @@ for i in 1 .. 3:
 ## 空值合併運算子（`??`）
 
 ```python
-@const
 x = option_val ?? default_val
 ```
 
 如果 `option_val` 為 `Some(v)`，則回傳 `v`。否則回傳 `default_val`。右運算元必須與 Option 的內部型別相同。
 
 ```python
-@const
 a: int? = Some(10)
-@const
 b: int? = none
 
 print(a ?? 0)    # 10

@@ -15,14 +15,12 @@ Ry 有四種集合型別：**元組**、**列表**、**映射**、**集合**。
 ### 建立
 
 ```python
-@const
 t = (1, 3.14)
 ```
 
 ### 型別標註
 
 ```python
-@const
 t: (int, float) = (1, 3.14)
 ```
 
@@ -31,7 +29,6 @@ t: (int, float) = (1, 3.14)
 使用 `.0`、`.1`、... 等索引來存取。
 
 ```python
-@const
 t = (1, 3.14)
 print(t.0)   # 1
 print(t.1)   # 3.14
@@ -45,7 +42,6 @@ print(t.1)   # 3.14
 fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
-@const
 result = swap(1, 2)
 print(result.0)  # 2
 print(result.1)  # 1
@@ -65,14 +61,12 @@ print(result.1)  # 1
 ### 建立
 
 ```python
-@const
 xs = [1, 2, 3]
 ```
 
 ### 型別標註
 
 ```python
-@const
 xs: List<int> = [1, 2, 3]
 ```
 
@@ -81,7 +75,6 @@ xs: List<int> = [1, 2, 3]
 ```python
 print(xs[0])   # 1
 
-@const
 i = 1
 print(xs[i])   # 2
 ```
@@ -123,26 +116,21 @@ fn first(xs: List<int>) -> int:
 串列支援 `filter`、`map`、`sort` 操作。這些操作會傳回新串列，不會修改原始串列。
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 # filter: 保留符合條件的元素
-@const
 evens = xs.filter(fn(x: int): x > 3)
 print(evens)   # [4, 5]
 
 # map: 轉換每個元素
-@const
 doubled = xs.map(fn(x: int): x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: 升序排序（預設）
-@const
 sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # 鏈接
-@const
 result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
@@ -152,16 +140,13 @@ print(result)   # [20, 30, 40, 50]
 `reduce` 從第一個元素開始將串列歸約為單一值。`fold` 則可提供明確的初始值。
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 # reduce: 從第一個元素開始
-@const
 total = reduce(xs, fn(a: int, b: int): a + b)
 print(total)   # 15
 
 # fold: 提供明確的初始值
-@const
 total2 = fold(xs, 0, fn(a: int, b: int): a + b)
 print(total2)   # 15
 ```
@@ -171,7 +156,6 @@ print(total2)   # 15
 `any` 如果至少有一個元素滿足述詞則傳回 `true`。`all` 如果所有元素都滿足則傳回 `true`。
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 
 print(any(xs, fn(x: int): x > 4))   # true
@@ -184,7 +168,6 @@ print(all(xs, fn(x: int): x > 3))   # false
 ### sum、min、max
 
 ```python
-@const
 xs = [3, 1, 4, 1, 5]
 print(sum(xs))   # 14
 print(min(xs))   # 1
@@ -194,7 +177,6 @@ print(max(xs))   # 5
 ### first、last、is_empty
 
 ```python
-@const
 xs = [10, 20, 30]
 print(first(xs))      # 10
 print(last(xs))       # 30
@@ -206,18 +188,14 @@ print(is_empty(xs))   # false
 `enumerate` 為每個元素附上索引。`zip` 將兩個串列逐元素合併。
 
 ```python
-@const
 xs = [10, 20, 30]
-@const
 indexed = enumerate(xs)
 # [(0, 10), (1, 20), (2, 30)]
 for p in indexed:
     print(p.0)
     print(p.1)
 
-@const
 ys = ["a", "b", "c"]
-@const
 zipped = zip(xs, ys)
 # [(10, "a"), (20, "b"), (30, "c")]
 ```
@@ -238,14 +216,12 @@ zipped = zip(xs, ys)
 ### 建立
 
 ```python
-@const
 m = {"a": 1, "b": 2}
 ```
 
 ### 型別標註
 
 ```python
-@const
 m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
@@ -289,7 +265,6 @@ print(m.has_key("a"))   # true
 `keys` 傳回所有鍵的串列。`values` 傳回所有值的串列。
 
 ```python
-@const
 m = {"a": 1, "b": 2, "c": 3}
 print(keys(m))     # ["a", "b", "c"]
 print(values(m))   # [1, 2, 3]
@@ -317,14 +292,12 @@ fn get_val(m: Map<str, int>, k: str) -> int:
 ### 建立
 
 ```python
-@const
 s = {1, 2, 3}
 ```
 
 ### 型別標註
 
 ```python
-@const
 s: Set<int> = {1, 2, 3}
 ```
 
@@ -364,7 +337,6 @@ for x in s:
 空集合需要型別標註。
 
 ```python
-@const
 empty: Set<int> = {}
 ```
 

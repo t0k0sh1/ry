@@ -11,7 +11,6 @@
 条件に応じて処理を分岐させるには `if` を使います。
 
 ```python
-@const
 x = 10
 
 if x > 0:
@@ -27,9 +26,7 @@ else:
 - `if` はネストできます。
 
 ```python
-@const
 a = 5
-@const
 b = 3
 
 if a > 0:
@@ -102,7 +99,6 @@ for i in 1 .. 3:
 `for k, v in map` でマップのキーと値を走査できます。
 
 ```python
-@const
 m = {"x": 10, "y": 20}
 for k, v in m:
     print(k)
@@ -177,7 +173,6 @@ for i in range(1, 4):
 
 ```python
 if true:
-    @const
     inner = 42
 # ここで inner を参照するとコンパイルエラー
 ```
@@ -198,7 +193,6 @@ print(count)   # 10
 ブロック内で変数に代入すると、外側の変数が変更されます（Python スタイルのスコーピング）。シャドーイングは行われず、内側の代入は同じ変数を変更します。
 
 ```python
-@const
 x = 1
 if true:
     x = 99
@@ -218,7 +212,6 @@ enum Color:
     Green
     Blue
 
-@const
 c = Color::Green
 match c:
     case Color::Red:
@@ -235,7 +228,6 @@ match c:
 `match` を使うことで、`None` の場合も安全に処理できます。
 
 ```python
-@const
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -250,7 +242,6 @@ match x:
 `_` は何にでもマッチするワイルドカードパターンです。リテラル値（数値・文字列・真偽値）でもマッチできます。
 
 ```python
-@const
 n = 5
 match n:
     case 0:

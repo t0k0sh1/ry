@@ -27,7 +27,6 @@ else:
 ### 例
 
 ```python
-@const
 x = 10
 
 if x > 5:
@@ -45,7 +44,6 @@ else:
 
 ```python
 if true:
-    @const
     y = 42
 # y はここではアクセス不可
 ```
@@ -118,7 +116,6 @@ for k, v in map_expr:
 2要素タプルのリスト（`enumerate()` や `zip()` の戻り値など）を走査する際、2つの変数に分解できます。`_` で値を破棄できます。
 
 ```python
-@const
 xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
@@ -143,12 +140,10 @@ for i in 1 .. 5:
 ### 例
 
 ```python
-@const
 xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-@const
 s = {1, 2, 3}
 for x in s:
     print(x)
@@ -166,7 +161,6 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # マップの走査
-@const
 m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
@@ -187,10 +181,8 @@ for i in 1 .. 3:
 fn square(x: int) -> int:
     return x * x
 
-@const
 t: Task<int> = spawn square(12)
 print(await t)          # 144
-@const
 u: Task<int> = spawn square(3)
 print(join(u))          # 9, await の関数形式
 ```
@@ -214,9 +206,7 @@ fn worker(ch: Channel<int>) -> int:
     close(ch)
     return 0
 
-@const
 ch: Channel<int> = channel[int]()
-@const
 t: Task<int> = spawn worker(ch)
 for x in ch:
     print(x)
@@ -419,7 +409,6 @@ match color:
         print("blue")
 
 # Option マッチ
-@const
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -456,7 +445,6 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-@const
 s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
@@ -486,12 +474,10 @@ match s:
 
 ```python
 for i in range(3):
-    @const
     tmp = i * 2
 # tmp はここではアクセス不可
 
 if true:
-    @const
     a = 1
 # a はここではアクセス不可
 ```
@@ -502,7 +488,6 @@ if true:
 - シャドーイングは行われず、内側の代入は同じ変数を変更する。
 
 ```python
-@const
 x = 10
 if true:
     x = 99   # 外側の x を変更

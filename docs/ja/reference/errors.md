@@ -52,12 +52,10 @@ x = 10
 x = 20   # エラー
 
 # 型変更再代入
-@const
 n = 1
 n = "hello"   # エラー: int型にstr型を代入
 
 # 空リスト
-@const
 xs = []   # エラー: 型推論不可
 
 # ループ外でのbreak
@@ -89,12 +87,10 @@ record Bad:
 
 ```python
 # リスト範囲外アクセス
-@const
 xs = [1, 2, 3]
 print(xs[10])   # ランタイムエラー: exit(1)
 
 # マップ存在しないキーアクセス
-@const
 m = {"a": 1}
 print(m["z"])   # ランタイムエラー: exit(1)
 

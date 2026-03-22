@@ -90,7 +90,6 @@ record BankAccount:
 ```
 
 ```python
-@const
 a = BankAccount(100, 0)   # OK: 100 >= 0
 # a.balance = -1              # Contract violation: invariant failed
 ```

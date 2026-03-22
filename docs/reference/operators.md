@@ -41,13 +41,9 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+x` | Unary plus | `+5` (no sign change) |
 
 ```python
-@const
 a = 10 // 3    # 3 (int)
-@const
 b = 10 / 3     # 3.3333... (float)
-@const
 c = 2 ** 8     # 256.0 (float)
-@const
 s = "foo" + "bar"  # "foobar"
 ```
 
@@ -71,23 +67,14 @@ All return `bool`.
 - For maps, `in` checks whether the key exists.
 
 ```python
-@const
 x = 3 < 5       # true
-@const
 y = "abc" < "abd"  # true (lexicographic)
-@const
 s = {1, 2, 3}
-@const
 z = 2 in s      # true
-@const
 w = 4 not in s  # true
-@const
 xs = [1, 2, 3]
-@const
 a = 2 in xs     # true (list linear search)
-@const
 m = {"a": 1}
-@const
 b = "a" in m    # true (map key lookup)
 ```
 
@@ -100,11 +87,8 @@ b = "a" in m    # true (map key lookup)
 | `not` | Logical NOT | `bool` -> `bool` |
 
 ```python
-@const
 a = true and false   # false
-@const
 b = true or false    # true
-@const
 c = not true         # false
 ```
 
@@ -123,31 +107,24 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
-@const
 flags = 0b0001 | 0b0010   # 3
-@const
 masked = flags & 0b0011   # 3
-@const
 shifted = 1 << 8          # 256
 ```
 
 ## Ternary Conditional Operator
 
 ```python
-@const
 x = condition ? true_value : false_value
 ```
 
 Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
 
 ```python
-@const
 x = 3 > 2 ? 10 : 20     # 10
-@const
 s = false ? "yes" : "no" # "no"
 
 # Nested (right-associative)
-@const
 y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
@@ -158,7 +135,6 @@ y = true ? (false ? 1 : 2) : 3   # 2
 The `..` operator creates an inclusive integer range.
 
 ```python
-@const
 xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
@@ -172,16 +148,13 @@ The result is a `List<int>` containing all integers from the left operand to the
 ## Null Coalescing Operator (`??`)
 
 ```python
-@const
 x = option_val ?? default_val
 ```
 
 If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
 
 ```python
-@const
 a: int? = Some(10)
-@const
 b: int? = none
 
 print(a ?? 0)    # 10

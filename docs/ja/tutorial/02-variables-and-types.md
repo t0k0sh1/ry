@@ -44,16 +44,12 @@ name = "Ry"   # str 型として推論
 変数の型を明示的に指定できます。
 
 ```python
-@const
 x: int = 42
 
-@const
 rate: float = 0.5
 
-@const
 ok: bool = false
 
-@const
 msg: str = "hello"
 ```
 
@@ -78,13 +74,10 @@ msg: str = "hello"
 文字列に対してさまざまな操作が使えます。
 
 ```python
-@const
 a = "Hello"
-@const
 b = "World"
 
 # 結合
-@const
 c = a + ", " + b   # "Hello, World"
 
 # 比較（辞書順）
@@ -96,7 +89,6 @@ print(a < b)    # true（"H" < "W"）
 print(len(a))   # 5
 
 # 部分文字列チェック
-@const
 s = "Hello, World!"
 print(contains(s, "World"))      # true
 print(starts_with(s, "Hello"))   # true

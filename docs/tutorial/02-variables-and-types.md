@@ -44,16 +44,12 @@ name = "Ry"   # Inferred as str
 You can explicitly specify the type of a variable.
 
 ```python
-@const
 x: int = 42
 
-@const
 rate: float = 0.5
 
-@const
 ok: bool = false
 
-@const
 msg: str = "hello"
 ```
 
@@ -78,13 +74,10 @@ A compile error occurs if the type annotation does not match the actual type of 
 Various operations are available for strings.
 
 ```python
-@const
 a = "Hello"
-@const
 b = "World"
 
 # Concatenation
-@const
 c = a + ", " + b   # "Hello, World"
 
 # Comparison (lexicographic order)
@@ -96,7 +89,6 @@ print(a < b)    # true ("H" < "W")
 print(len(a))   # 5
 
 # Substring checks
-@const
 s = "Hello, World!"
 print(contains(s, "World"))      # true
 print(starts_with(s, "Hello"))   # true

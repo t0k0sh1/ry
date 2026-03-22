@@ -142,7 +142,6 @@ print({1, 2, 3})   # {1, 2, 3}
 Constructs the value-present variant of an Option type.
 
 ```python
-@const
 x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
@@ -172,7 +171,6 @@ print(len("あいう"))           # 3 (UTF-8 characters)
 Returns whether a specified key exists in the map. UFCS notation is also available.
 
 ```python
-@const
 m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
@@ -187,7 +185,6 @@ print(m.has_key("z"))     # false (UFCS)
 Adds an element to a set. Does nothing if the element already exists. UFCS notation is also available.
 
 ```python
-@const
 s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
@@ -204,7 +201,6 @@ print(len(s))     # 5
 Removes an element from a set. UFCS notation is also available.
 
 ```python
-@const
 s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
@@ -265,7 +261,6 @@ Returns the command-line arguments passed to the script as a list of strings. Do
 
 ```python
 # Run: ry script.ry hello world
-@const
 a = args()
 print(len(a))    # 2
 print(a[0])      # hello
@@ -299,7 +294,6 @@ Removes and returns the last element of a list as `Option<T>`. Returns `None` if
 
 ```python
 xs = [1, 2, 3]
-@const
 v = xs.pop()
 print(v)    # Some(3)
 print(xs)   # [1, 2]
@@ -314,9 +308,7 @@ print(xs)   # [1, 2]
 Returns a new list with elements in reverse order. The original list is not modified. Also works on strings (see [String Operations](builtins-string.md)). UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3]
-@const
 ys = reverse(xs)
 print(ys)   # [3, 2, 1]
 print(xs)   # [1, 2, 3] (unchanged)
@@ -331,7 +323,6 @@ print(xs)   # [1, 2, 3] (unchanged)
 Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
@@ -346,9 +337,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
-@const
 ys = xs.take(3)
 print(ys)   # [1, 2, 3]
 print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
@@ -364,9 +353,7 @@ print(xs.take(0))    # []
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3]
-@const
 ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
@@ -380,9 +367,7 @@ ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
-@const
 ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
@@ -397,9 +382,7 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3]
-@const
 ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
@@ -413,12 +396,10 @@ print(ys)   # [2, 4, 6]
 Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
 ```python
-@const
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order
-@const
 desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
@@ -460,9 +441,7 @@ print(xs)   # [3, 2, 1]
 Returns a new list with the element added at the end. The original list is not modified. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2]
-@const
 ys = xs.appended(3)
 print(xs)   # [1, 2] (unchanged)
 print(ys)   # [1, 2, 3]
@@ -509,7 +488,6 @@ print(last([10, 20, 30]))   # Some(30)
 Two-argument form returns the value for key as `Option<V>`. Three-argument form returns the value or the default.
 
 ```python
-@const
 m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
@@ -528,14 +506,10 @@ Creates a lazy iterator from a collection. The iterator does not copy data; it r
 - For `Map<K, V>`, the element type is the tuple `(K, V)`.
 
 ```python
-@const
 xs = [1, 2, 3]
-@const
 it = xs.iter()           # Iterator<int>
-@const
 ys = it.to_list()        # [1, 2, 3]
 
-@const
 m = {"a": 1, "b": 2}
 for k, v in m.iter():        # Iterator<(str, int)>
     print(k)
@@ -550,7 +524,6 @@ for k, v in m.iter():        # Iterator<(str, int)>
 Returns the next element from the iterator as `Option<T>`. Returns `None` when the iterator is exhausted. The iterator advances its internal state on each call. UFCS notation is also available.
 
 ```python
-@const
 it = [10, 20].iter()
 print(it.next())   # Some(10)
 print(it.next())   # Some(20)
@@ -566,9 +539,7 @@ print(it.next())   # None
 Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
 
 ```python
-@const
 xs = [1, 2, 3, 4, 5]
-@const
 ys = xs.iter().filter(fn(x: int): x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```

@@ -24,7 +24,6 @@ from std.math import sqrt, PI, sin
 ```python
 from std.math import PI, E, Inf, NaN
 
-@const
 circumference = 2.0 * PI * radius
 ```
 

@@ -19,9 +19,7 @@
 | `**` | 累乗（常に float） | `2 ** 10` | `1024.0` |
 
 ```python
-@const
 a = 10
-@const
 b = 3
 
 print(a + b)    # 13
@@ -49,9 +47,7 @@ print(2 ** 8)   # 256.0（float）
 | `>=` | 以上 | `a >= b` |
 
 ```python
-@const
 x = 5
-@const
 y = 10
 
 print(x == y)   # false
@@ -81,9 +77,7 @@ print("b" > "a")        # true
 | `not` | 論理NOT | `not a` |
 
 ```python
-@const
 t = true
-@const
 f = false
 
 print(t and f)   # false
@@ -109,9 +103,7 @@ print(not f)     # true
 | `>>>` | 論理右シフト | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-@const
 a = 0b1010   # 10
-@const
 b = 0b1100   # 12
 
 print(a & b)    # 8  (0b1000)
@@ -208,7 +200,6 @@ print(3 * "ab")        # "ababab"
 | `not in` | 否定の所属チェック | `4 not in {1, 2, 3}` → `true` |
 
 ```python
-@const
 s = {1, 2, 3}
 print(2 in s)        # true
 print(4 not in s)    # true

@@ -37,9 +37,7 @@ record Rectangle:
 フィールド定義順に引数を渡します。名前付き引数はサポートされていません。
 
 ```python
-@const
 p = Point(10, 20)
-@const
 r = Rectangle(3.0, 4.5)
 ```
 
@@ -50,7 +48,6 @@ r = Rectangle(3.0, 4.5)
 ドット記法でフィールドを読み取ります。
 
 ```python
-@const
 p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
@@ -101,7 +98,6 @@ record Circle:
     center: Point
     radius: float
 
-@const
 c = Circle(Point(0, 0), 1.0)
 print(c.center.x)   # 0
 ```
@@ -123,7 +119,6 @@ record Bad:
     x: int   # エラー
 
 # エラー例: printに構造体を渡す
-@const
 p = Point(1, 2)
 print(p)   # エラー
 ```
@@ -159,7 +154,6 @@ enum Color:
 `::` 演算子でバリアントにアクセスします。
 
 ```python
-@const
 c = Color::Red
 print(c)   # Red
 ```
@@ -176,7 +170,6 @@ print(Color::Red != Color::Green)  # true
 ### if 文での使用
 
 ```python
-@const
 c = Color::Green
 if c == Color::Red:
     print("red")
@@ -203,7 +196,6 @@ print(is_red(Color::Green))  # false
 `print()` でバリアント名が出力されます。
 
 ```python
-@const
 c = Color::Blue
 print(c)   # Blue
 ```
