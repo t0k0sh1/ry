@@ -65,6 +65,14 @@ bool CodeGen::isTcpStream(llvm::Value *val) {
     return lookupValueSet(tcp_stream_values_, val);
 }
 
+bool CodeGen::isHttpRequest(llvm::Value *val) {
+    return lookupValueSet(http_request_values_, val);
+}
+
+bool CodeGen::isHttpResponse(llvm::Value *val) {
+    return lookupValueSet(http_response_values_, val);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
@@ -1700,6 +1708,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     // Track TCP types for subject alloca
     if (isTcpListener(subject)) tcp_listener_values_.insert(subjectAlloca);
     if (isTcpStream(subject))   tcp_stream_values_.insert(subjectAlloca);
+    if (isHttpRequest(subject))  http_request_values_.insert(subjectAlloca);
+    if (isHttpResponse(subject)) http_response_values_.insert(subjectAlloca);
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -1859,6 +1869,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         tcp_listener_values_.insert(varAlloca);
                     if (tcp_stream_values_.count(subjectAlloca))
                         tcp_stream_values_.insert(varAlloca);
+                    if (http_request_values_.count(subjectAlloca))
+                        http_request_values_.insert(varAlloca);
+                    if (http_response_values_.count(subjectAlloca))
+                        http_response_values_.insert(varAlloca);
                 }
             }, arm.pattern);
 
@@ -1894,6 +1908,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     tcp_listener_values_.insert(varAlloca);
                 if (tcp_stream_values_.count(subjectAlloca))
                     tcp_stream_values_.insert(varAlloca);
+                if (http_request_values_.count(subjectAlloca))
+                    http_request_values_.insert(varAlloca);
+                if (http_response_values_.count(subjectAlloca))
+                    http_response_values_.insert(varAlloca);
             } else if constexpr (std::is_same_v<T, EnumConstructorPattern>) {
                 std::string resolvedEnum = pat.enum_name;
                 if (!enum_types_.count(resolvedEnum) && !subjectEnumType.empty()) {

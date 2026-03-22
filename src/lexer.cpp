@@ -350,6 +350,7 @@ Token Lexer::readToken() {
                                              ": unterminated escape sequence");
                 switch (src_[pos_]) {
                     case 'n':  str += '\n'; break;
+                    case 'r':  str += '\r'; break;
                     case 't':  str += '\t'; break;
                     case '\\': str += '\\'; break;
                     case '"':  str += '"';  break;
@@ -492,6 +493,7 @@ Token Lexer::readFStringSegment(bool isStart) {
                                          ": unterminated escape sequence in f-string");
             switch (src_[pos_]) {
                 case 'n':  str += '\n'; break;
+                case 'r':  str += '\r'; break;
                 case 't':  str += '\t'; break;
                 case '\\': str += '\\'; break;
                 case '"':  str += '"';  break;

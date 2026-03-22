@@ -1,0 +1,19 @@
+# HTTP server operations
+
+@native
+fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit
+
+@native
+fn http_method(req: HttpRequest) -> str
+
+@native
+fn http_path(req: HttpRequest) -> str
+
+@native
+fn http_header(req: HttpRequest, key: str) -> Option<str>
+
+@native
+fn http_body(req: HttpRequest) -> str
+
+@native
+fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse

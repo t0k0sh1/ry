@@ -92,6 +92,7 @@ The following escape sequences can be used within strings.
 | Sequence | Meaning |
 |----------|---------|
 | `\n` | Newline |
+| `\r` | Carriage return |
 | `\t` | Tab |
 | `\\` | Backslash |
 | `\"` | Double quote |
