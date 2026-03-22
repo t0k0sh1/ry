@@ -251,8 +251,14 @@ int main(int argc, char *argv[]) {
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
         std::string target = argv[2];
-        if (fs::is_directory(target)) {
+        std::error_code ec;
+        if (fs::is_directory(target, ec)) {
             return discoverAndRunTests(target, argv[0]);
+        }
+        if (ec) {
+            errs() << "Error: cannot access " << target << ": "
+                   << ec.message() << "\n";
+            return 1;
         }
         // ry test <file.ry> — single file test
         test_mode = true;
