@@ -25,7 +25,7 @@ record Point:
 像呼叫函式一樣使用結構體名稱來產生實例。參數按照欄位的定義順序指定。
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 ```
 
 ---
@@ -35,7 +35,7 @@ let p = Point(10, 20)
 使用點記法存取欄位。
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -46,15 +46,15 @@ print(p.y)   # 20
 
 ## 欄位賦值
 
-使用 `var` 宣告的變數的欄位可以重新賦值。
+未使用 `@const` 宣告的可變變數的欄位可以重新賦值。
 
 ```python
-var p = Point(10, 20)
+p = Point(10, 20)
 p.x = 100
 print(p.x)   # 100
 ```
 
-> **注意**：對 `let` 宣告的變數的欄位賦值會產生編譯錯誤。
+> **注意**：對 `@const` 宣告的變數的欄位賦值會產生編譯錯誤。
 
 ---
 
@@ -70,8 +70,8 @@ record Point:
 fn distance_x(a: Point, b: Point) -> int:
     return a.x - b.x
 
-let p1 = Point(10, 3)
-let p2 = Point(4, 7)
+p1 = Point(10, 3)
+p2 = Point(4, 7)
 print(distance_x(p1, p2))   # 6
 ```
 
@@ -90,7 +90,7 @@ record Line:
     start: Point
     end: Point
 
-let line = Line(Point(0, 0), Point(10, 5))
+line = Line(Point(0, 0), Point(10, 5))
 print(line.start.x)   # 0
 print(line.end.x)     # 10
 ```
@@ -117,7 +117,7 @@ enum Color:
 使用 `::` 存取變體。
 
 ```python
-let c = Color::Red
+c = Color::Red
 print(c)   # Red
 ```
 

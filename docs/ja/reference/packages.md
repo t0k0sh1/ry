@@ -62,6 +62,21 @@ from math import add, sub
 - 特別なエントリファイル（`__init__.py` のようなもの）は不要
 - ディレクトリ内のファイルで定義されたすべての関数・型がエクスポートされる
 
+### プライベートシンボル
+
+名前が `_`（アンダースコア）で始まる定義はパッケージ内部のプライベートシンボルとして扱われ、インポートできません:
+
+- ワイルドカードインポート（`from pkg`）では `_` プレフィックスのシンボルが自動的に除外される
+- 名前指定インポート（`from pkg import _helper`）はコンパイルエラーになる
+
+```python
+# mylib/internal.ry
+fn _helper() -> int:     # プライベート — インポート不可
+    return 42
+fn public_api() -> int:  # パブリック — インポート可能
+    return _helper()
+```
+
 ```
 mypackage/
   math.ry      # fn add(), fn sub()
@@ -83,7 +98,20 @@ from mypackage import add   # add のみインポート
 - 型変換関数（`to_int`, `to_float`, `to_str`）
 - コレクション関数（`map`, `filter`, `sort` など）
 
-特定の定義を明示的にインポートすることもできます:
+### サブパッケージ
+
+以下のサブパッケージは明示的なインポートが必要です:
+
+| パッケージ | 説明 |
+|-----------|------|
+| [`std.math`](math.md) | 数学定数・関数 |
+| [`std.io`](io.md) | ファイル I/O・標準入力・バイト変換 |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+特定の定義を `std` から明示的にインポートすることもできます:
 
 ```python
 from std.str import contains

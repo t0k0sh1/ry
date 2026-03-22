@@ -10,12 +10,18 @@
 
 namespace fs = std::filesystem;
 
+// Check if a name is private (starts with '_')
+static bool isPrivateName(const std::string &name) {
+    return !name.empty() && name[0] == '_';
+}
+
 // Check if a statement is an exportable definition
 static bool isExportable(const StmtNode &stmt) {
     return std::holds_alternative<std::unique_ptr<FnStmt>>(stmt) ||
            std::holds_alternative<RecordStmt>(stmt) ||
            std::holds_alternative<EnumStmt>(stmt) ||
-           std::holds_alternative<TypeAliasStmt>(stmt);
+           std::holds_alternative<TypeAliasStmt>(stmt) ||
+           std::holds_alternative<AssignStmt>(stmt);
 }
 
 // Get the name of an exportable definition
@@ -28,15 +34,21 @@ static std::string getExportName(const StmtNode &stmt) {
         return std::get<EnumStmt>(stmt).name;
     if (std::holds_alternative<TypeAliasStmt>(stmt))
         return std::get<TypeAliasStmt>(stmt).name;
+    if (std::holds_alternative<AssignStmt>(stmt))
+        return std::get<AssignStmt>(stmt).name;
     return "";
 }
 
 // Collect exported names from a program
+// Collect all exported names (including private) for cache/validation purposes
 static std::unordered_set<std::string> collectExportedNames(const Program &prog) {
     std::unordered_set<std::string> names;
     for (const auto &stmt : prog) {
-        if (isExportable(stmt))
-            names.insert(getExportName(stmt));
+        if (isExportable(stmt)) {
+            std::string name = getExportName(stmt);
+            if (!name.empty())
+                names.insert(name);
+        }
     }
     return names;
 }
@@ -46,11 +58,22 @@ static void extractDefinitions(Program &source, Program &dest,
                                 const std::vector<std::string> &requested_names,
                                 const std::string &import_path, int line) {
     if (requested_names.empty()) {
+        // Wildcard import: skip private names
         for (auto &stmt : source) {
-            if (isExportable(stmt))
+            std::string name = getExportName(stmt);
+            if (!name.empty() && !isPrivateName(name))
                 dest.push_back(std::move(stmt));
         }
         return;
+    }
+
+    // Named import: error on private names
+    for (const auto &name : requested_names) {
+        if (isPrivateName(name))
+            throw std::runtime_error("line " + std::to_string(line) +
+                                     ": cannot import private symbol '" +
+                                     name + "' from package '" +
+                                     import_path + "'");
     }
 
     std::unordered_set<std::string> requested(requested_names.begin(), requested_names.end());
@@ -159,7 +182,8 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
         fn_cache_[file_path] = collectExportedNames(sub_prog);
 
         for (auto &stmt : sub_prog) {
-            if (isExportable(stmt))
+            std::string name = getExportName(stmt);
+            if (!name.empty() && !isPrivateName(name))
                 collected.push_back(std::move(stmt));
         }
     }
@@ -186,6 +210,11 @@ Program ModuleLoader::resolveImports(Program &prog, const std::string &referrer_
             if (!imp.names.empty()) {
                 auto &fns = fn_cache_[abs_path];
                 for (const auto &name : imp.names) {
+                    if (isPrivateName(name))
+                        throw std::runtime_error("line " + std::to_string(imp.loc.line) +
+                                                 ": cannot import private symbol '" +
+                                                 name + "' from package '" +
+                                                 imp.module_path + "'");
                     if (!fns.count(name))
                         throw std::runtime_error("line " + std::to_string(imp.loc.line) +
                                                  ": '" + name +

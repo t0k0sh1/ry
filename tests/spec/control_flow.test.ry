@@ -1,21 +1,23 @@
-describe("if/elif/else"):
-    it("if true"):
-        var res = 0
+describe("if/elif/else", fn():
+    it("if true", fn():
+        res = 0
         if true:
             res = 1
         expect(res).to_eq(1)
 
-    it("if false goes to else"):
-        var res = 0
+    )
+    it("if false goes to else", fn():
+        res = 0
         if false:
             res = 1
         else:
             res = 2
         expect(res).to_eq(2)
 
-    it("elif"):
-        var res = 0
-        let x = 5
+    )
+    it("elif", fn():
+        res = 0
+        x = 5
         if x > 10:
             res = 1
         elif x == 5:
@@ -24,26 +26,30 @@ describe("if/elif/else"):
             res = 3
         expect(res).to_eq(2)
 
-describe("while"):
-    it("basic loop"):
-        var i = 0
-        var sum = 0
+    )
+)
+describe("while", fn():
+    it("basic loop", fn():
+        i = 0
+        sum = 0
         while i < 5:
             sum += i
             i += 1
         expect(sum).to_eq(10)
 
-    it("break"):
-        var i = 0
+    )
+    it("break", fn():
+        i = 0
         while true:
             if i >= 3:
                 break
             i += 1
         expect(i).to_eq(3)
 
-    it("continue"):
-        var sum = 0
-        var i = 0
+    )
+    it("continue", fn():
+        sum = 0
+        i = 0
         while i < 5:
             i += 1
             if i == 3:
@@ -51,71 +57,83 @@ describe("while"):
             sum += i
         expect(sum).to_eq(12)
 
-describe("for"):
-    it("list iteration"):
-        var sum = 0
-        let xs = [10, 20, 30]
+    )
+)
+describe("for", fn():
+    it("list iteration", fn():
+        sum = 0
+        xs = [10, 20, 30]
         for x in xs:
             sum += x
         expect(sum).to_eq(60)
 
-    it("range 1 arg"):
-        var sum = 0
+    )
+    it("range 1 arg", fn():
+        sum = 0
         for i in range(5):
             sum += i
         expect(sum).to_eq(10)
 
-    it("range 2 args"):
-        var sum = 0
+    )
+    it("range 2 args", fn():
+        sum = 0
         for i in range(2, 5):
             sum += i
         expect(sum).to_eq(9)
 
-    it("range 3 args"):
-        var sum = 0
+    )
+    it("range 3 args", fn():
+        sum = 0
         for i in range(0, 10, 3):
             sum += i
         expect(sum).to_eq(18)
 
-    it("range negative step"):
-        var sum = 0
+    )
+    it("range negative step", fn():
+        sum = 0
         for i in range(10, 0, -3):
             sum += i
         expect(sum).to_eq(22)
 
-    it(".. range"):
-        var sum = 0
+    )
+    it(".. range", fn():
+        sum = 0
         for i in 1 .. 3:
             sum += i
         expect(sum).to_eq(6)
 
-    it("map key-value"):
-        let m = {"a": 1, "b": 2}
-        var total = 0
+    )
+    it("map key-value", fn():
+        m = {"a": 1, "b": 2}
+        total = 0
         for k, v in m:
             total += v
         expect(total).to_eq(3)
 
-    it("enumerate destructuring"):
-        let xs = [10, 20, 30]
-        var idx_sum = 0
-        var val_sum = 0
+    )
+    it("enumerate destructuring", fn():
+        xs = [10, 20, 30]
+        idx_sum = 0
+        val_sum = 0
         for i, x in enumerate(xs):
             idx_sum += i
             val_sum += x
         expect(idx_sum).to_eq(3)
         expect(val_sum).to_eq(60)
 
-    it("zip destructuring"):
-        var sum = 0
+    )
+    it("zip destructuring", fn():
+        sum = 0
         for a, b in zip([1, 2], [10, 20]):
             sum += a + b
         expect(sum).to_eq(33)
 
-describe("match"):
-    it("literal pattern"):
-        var res = 0
-        let x = 2
+    )
+)
+describe("match", fn():
+    it("literal pattern", fn():
+        res = 0
+        x = 2
         match x:
             case 1:
                 res = 10
@@ -125,9 +143,10 @@ describe("match"):
                 res = 30
         expect(res).to_eq(20)
 
-    it("variable binding"):
-        var res = 0
-        let x = 42
+    )
+    it("variable binding", fn():
+        res = 0
+        x = 42
         match x:
             case n if n > 0:
                 res = n
@@ -135,9 +154,10 @@ describe("match"):
                 res = 0
         expect(res).to_eq(42)
 
-    it("guard"):
-        var res = ""
-        let x = -5
+    )
+    it("guard", fn():
+        res = ""
+        x = -5
         match x:
             case n if n > 0:
                 res = "positive"
@@ -147,9 +167,10 @@ describe("match"):
                 res = "zero"
         expect(res).to_eq("negative")
 
-    it("OR pattern"):
-        var res = ""
-        let x = 2
+    )
+    it("OR pattern", fn():
+        res = ""
+        x = 2
         match x:
             case 1 | 2 | 3:
                 res = "small"
@@ -157,9 +178,10 @@ describe("match"):
                 res = "other"
         expect(res).to_eq("small")
 
-    it("wildcard"):
-        var res = ""
-        let x = 999
+    )
+    it("wildcard", fn():
+        res = ""
+        x = 999
         match x:
             case 0:
                 res = "zero"
@@ -167,10 +189,12 @@ describe("match"):
                 res = "other"
         expect(res).to_eq("other")
 
-describe("match Option"):
-    it("Some"):
-        var res = 0
-        let x: Option<int> = Some(42)
+    )
+)
+describe("match Option", fn():
+    it("Some", fn():
+        res = 0
+        x: Option<int> = Some(42)
         match x:
             case Some(v):
                 res = v
@@ -178,9 +202,10 @@ describe("match Option"):
                 res = -1
         expect(res).to_eq(42)
 
-    it("None"):
-        var res = 0
-        let x: Option<int> = None
+    )
+    it("None", fn():
+        res = 0
+        x: Option<int> = None
         match x:
             case Some(v):
                 res = v
@@ -188,16 +213,18 @@ describe("match Option"):
                 res = -1
         expect(res).to_eq(-1)
 
+    )
+)
 enum Direction:
     North
     South
     East
     West
 
-describe("match enum"):
-    it("simple enum"):
-        var res = ""
-        let d = Direction::North
+describe("match enum", fn():
+    it("simple enum", fn():
+        res = ""
+        d = Direction::North
         match d:
             case Direction::North:
                 res = "north"
@@ -209,15 +236,17 @@ describe("match enum"):
                 res = "west"
         expect(res).to_eq("north")
 
+    )
+)
 enum Shape:
     Circle(float)
     Rect(float, float)
     Point
 
-describe("match ADT enum"):
-    it("with associated data"):
-        var res = 0.0
-        let s = Shape::Circle(3.14)
+describe("match ADT enum", fn():
+    it("with associated data", fn():
+        res = 0.0
+        s = Shape::Circle(3.14)
         match s:
             case Shape::Circle(r):
                 res = r
@@ -227,9 +256,10 @@ describe("match ADT enum"):
                 res = 0.0
         expect(res).to_eq(3.14)
 
-    it("multi-field variant"):
-        var res = 0.0
-        let s = Shape::Rect(4.0, 5.0)
+    )
+    it("multi-field variant", fn():
+        res = 0.0
+        s = Shape::Rect(4.0, 5.0)
         match s:
             case Shape::Circle(r):
                 res = r
@@ -239,12 +269,16 @@ describe("match ADT enum"):
                 res = 0.0
         expect(res).to_eq(20.0)
 
-describe("scope and shadowing"):
-    it("block scope"):
-        let x = 10
-        var res = 0
+    )
+)
+describe("scope and shadowing", fn():
+    it("block scope", fn():
+        x = 10
+        res = 0
         if true:
-            let x = 99
+            x = 99
             res = x
         expect(res).to_eq(99)
-        expect(x).to_eq(10)
+        expect(x).to_eq(99)
+    )
+)

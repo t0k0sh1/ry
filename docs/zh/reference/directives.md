@@ -19,8 +19,9 @@
 
 - `fn` - 函式定義
 - `record` - 結構體定義
-- `let` / `var` - 變數宣告
+- 變數宣告（使用 `@const` 或一般賦值）
 - `record` 定義內的欄位
+- `it` - 測試案例定義（僅限 `@each` 和 `@property`）
 
 ## 內建指令
 
@@ -46,14 +47,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **套用於變數:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -66,9 +69,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 無警告
+```
+
+### `@const`
+
+將變數標記為不可變。使用 `@const` 宣告的變數在初始化後無法重新賦值。未使用 `@const` 時，變數預設為可變。
+
+```
+@const
+x = 42
+# x = 10   # 錯誤：無法重新賦值 @const 變數
+```
+
+**搭配型別標註:**
+
+```
+@const
+name: str = "hello"
+```
+
+**元組解構:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`
@@ -129,6 +157,58 @@ print("hello".to_upper())  # HELLO
 
 **未來擴充方向:**
 - `@native("libfoo.so")` — 綁定外部共享函式庫的 FFI。
+
+### `@each`
+
+啟用參數化測試，以不同參數多次執行 `it` 區塊。
+
+**語法:**
+
+```
+@each([(引數1, 引數2, ...), ...])
+it("描述 {0} 和 {1}", fn(param1: 型別, param2: 型別):
+    # 測試主體
+)
+```
+
+**支援的目標:** 僅限 `it` 呼叫
+
+**限制事項:**
+- 引數必須是元組列表
+- 元組的元素數量必須與 lambda 參數數量匹配
+- 描述字串中的 `{0}`, `{1}`, ... 會被替換為參數的字串表示
+
+### `@property`
+
+啟用基於屬性的測試，為 `it` 區塊生成隨機輸入。
+
+**語法:**
+
+```
+@property(count=100)
+it("屬性名稱", fn(a: int, b: int):
+    # 使用隨機值的測試主體
+)
+```
+
+**支援的目標:** 僅限 `it` 呼叫
+
+**參數:**
+
+| 參數 | 型別 | 預設值 | 說明 |
+|-----------|------|---------|-------------|
+| `count` | int | 100 | 隨機試驗次數 |
+
+**支援的參數型別:**
+
+| 型別 | 範圍 |
+|------|-------|
+| `int` | -1000 到 1000 |
+| `float` | -1000.0 到 1000.0 |
+| `bool` | true 或 false |
+| `str` | 隨機 ASCII、0-20 字元 |
+
+失敗時會顯示反例（導致失敗的參數值）。
 
 ### 參數（未來擴充）
 

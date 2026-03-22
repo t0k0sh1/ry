@@ -14,16 +14,17 @@
 - **指令** — `@deprecated` 編譯時元資料標註
 - **函式** — `fn` 定義、遞迴、多載、Lambda（閉包）、高階函式、UFCS
 - **控制流程** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
+- **檔案 I/O** — 檔案讀寫、位元組操作、標準輸入（`std.io`）
 - **套件** — 基於目錄的套件、自動匯入的 `std` 函式庫、`from ... import ...`
-- **型別安全** — 型別推論、型別標註、禁止變更型別的重新賦值、let/var
+- **型別安全** — 型別推論、型別標註、禁止變更型別的重新賦值、`@const` 指令
 
 ## 範例程式碼
 
 ```python
 # 變數與型別
-let x: int = 42
-let name: str = "hello"
-let pi = 3.14159
+x: int = 42
+name: str = "hello"
+pi = 3.14159
 
 # 函式定義
 fn factorial(n: int) -> int:
@@ -34,8 +35,8 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # Lambda 與閉包
-let offset = 10
-let add_offset = (x: int): int => x + offset
+offset = 10
+add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
 # 結構體
@@ -46,13 +47,13 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-let p = Point(1, 2) + Point(3, 4)
+p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # 集合型別
-let xs = [1, 2, 3]
-let m = {"a": 1, "b": 2}
-let s = {1, 2, 3}
+xs = [1, 2, 3]
+m = {"a": 1, "b": 2}
+s = {1, 2, 3}
 
 for x in xs:
     print(x)
@@ -61,7 +62,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # 串流操作 (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 列舉型別
@@ -70,7 +71,7 @@ enum Color:
     Green
     Blue
 
-let c = Color::Red
+c = Color::Red
 print(c)               # Red
 
 # 套件匯入
@@ -89,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 指定特定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
 預設安裝至 `~/.local/bin`。可透過 `RY_INSTALL_DIR` 環境變數變更安裝位置。

@@ -62,6 +62,21 @@ When a package resolves to a directory:
 - No special entry file (like `__init__.py`) is needed
 - All functions and types defined in the directory's files are exported
 
+### Private Symbols
+
+Definitions whose names start with `_` (underscore) are private to the package and cannot be imported:
+
+- Wildcard imports (`from pkg`) automatically exclude `_`-prefixed symbols
+- Named imports (`from pkg import _helper`) produce a compile error
+
+```python
+# mylib/internal.ry
+fn _helper() -> int:     # private — not importable
+    return 42
+fn public_api() -> int:  # public — importable
+    return _helper()
+```
+
 ```
 mypackage/
   math.ry      # fn add(), fn sub()
@@ -83,7 +98,20 @@ The `std` package is automatically imported into every program. It provides:
 - Type conversion functions (`to_int`, `to_float`, `to_str`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
 
-You can also explicitly import specific definitions:
+### Sub-packages
+
+The following sub-packages require explicit import:
+
+| Package | Description |
+|---------|-------------|
+| [`std.math`](math.md) | Mathematical constants and functions |
+| [`std.io`](io.md) | File I/O, standard input, and byte conversions |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+You can also explicitly import specific definitions from `std`:
 
 ```python
 from std.str import contains

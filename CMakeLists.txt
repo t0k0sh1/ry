@@ -12,6 +12,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
+find_package(Threads REQUIRED)
 
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
@@ -59,16 +60,22 @@ add_library(ry_lib STATIC
     src/test_runtime.cpp
     src/runtime_hash.cpp
     src/runtime_regex.cpp
+    src/runtime_utf8.cpp
+    src/runtime_sort.cpp
     src/project_config.cpp
     src/self_update.cpp
     src/args_runtime.cpp
     src/paths.cpp
+    src/runtime_parallel.cpp
+    src/runtime_io.cpp
+    src/runtime_net.cpp
+    src/runtime_http.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
 )
-target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS})
+target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads)
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
@@ -88,6 +95,9 @@ add_executable(ry_tests
     tests/test_parser.cpp
     tests/test_codegen.cpp
     tests/test_codegen_stmt.cpp
+    tests/test_spec_concurrency.cpp
+    tests/test_spec_concurrency_channels.cpp
+    tests/test_spec_concurrency_select.cpp
     tests/test_codegen_collection.cpp
     tests/test_codegen_advanced.cpp
     tests/test_codegen_contract.cpp
@@ -99,6 +109,12 @@ add_executable(ry_tests
     tests/test_regex_runtime.cpp
     tests/test_codegen_regex.cpp
     tests/test_codegen_mock.cpp
+    tests/test_codegen_iterator.cpp
+    tests/test_codegen_parameterized.cpp
+    tests/test_runtime_utf8.cpp
+    tests/test_codegen_io.cpp
+    tests/test_codegen_net.cpp
+    tests/test_codegen_http.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

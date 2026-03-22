@@ -62,6 +62,21 @@ from math import add, sub
 - 不需要特殊的入口檔案（如 `__init__.py`）
 - 目錄內檔案中定義的所有函式與型別都會被匯出
 
+### 私有符號
+
+名稱以 `_`（底線）開頭的定義為套件內部的私有符號，無法被匯入：
+
+- 萬用匯入（`from pkg`）會自動排除 `_` 前綴的符號
+- 具名匯入（`from pkg import _helper`）會產生編譯錯誤
+
+```python
+# mylib/internal.ry
+fn _helper() -> int:     # 私有 — 無法匯入
+    return 42
+fn public_api() -> int:  # 公開 — 可匯入
+    return _helper()
+```
+
 ```
 mypackage/
   math.ry      # fn add(), fn sub()
@@ -83,7 +98,20 @@ from mypackage import add   # 僅匯入 add
 - 型別轉換函式（`to_int`, `to_float`, `to_str`）
 - 集合函式（`map`, `filter`, `sort` 等）
 
-也可以明確匯入特定的定義：
+### 子套件
+
+以下子套件需要明確匯入：
+
+| 套件 | 說明 |
+|------|------|
+| [`std.math`](math.md) | 數學常數與函式 |
+| [`std.io`](io.md) | 檔案 I/O、標準輸入、位元組轉換 |
+
+```python
+from std.math import sqrt, PI, sin
+```
+
+也可以從 `std` 明確匯入特定的定義：
 
 ```python
 from std.str import contains

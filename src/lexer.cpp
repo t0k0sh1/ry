@@ -119,6 +119,15 @@ Token Lexer::readToken() {
     }
     if (c == '+') {
         ++pos_; ++col_;
+        if (pos_ < src_.size() && src_[pos_] == '+') {
+            // Emit PlusPlus only when followed by a statement terminator
+            // (whitespace, newline, EOF, comment) to avoid breaking `x + +1`
+            size_t after = pos_ + 1;
+            if (after >= src_.size() || src_[after] == ' ' || src_[after] == '\t' ||
+                src_[after] == '\n' || src_[after] == '\r' || src_[after] == '#') {
+                ++pos_; ++col_; return {TokenKind::PlusPlus, "++", line_, startCol};
+            }
+        }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::PlusEq, "+=", line_, startCol};
         }
@@ -128,6 +137,14 @@ Token Lexer::readToken() {
         ++pos_; ++col_;
         if (pos_ < src_.size() && src_[pos_] == '>') {
             ++pos_; ++col_; return {TokenKind::Arrow, "->", line_, startCol};
+        }
+        if (pos_ < src_.size() && src_[pos_] == '-') {
+            // Emit MinusMinus only when followed by a statement terminator
+            size_t after = pos_ + 1;
+            if (after >= src_.size() || src_[after] == ' ' || src_[after] == '\t' ||
+                src_[after] == '\n' || src_[after] == '\r' || src_[after] == '#') {
+                ++pos_; ++col_; return {TokenKind::MinusMinus, "--", line_, startCol};
+            }
         }
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::MinusEq, "-=", line_, startCol};
@@ -333,6 +350,7 @@ Token Lexer::readToken() {
                                              ": unterminated escape sequence");
                 switch (src_[pos_]) {
                     case 'n':  str += '\n'; break;
+                    case 'r':  str += '\r'; break;
                     case 't':  str += '\t'; break;
                     case '\\': str += '\\'; break;
                     case '"':  str += '"';  break;
@@ -387,14 +405,19 @@ Token Lexer::readToken() {
     if (std::isalpha(c) || c == '_') {
         size_t start = pos_;
         while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_')) { ++pos_; ++col_; }
+        // Allow trailing '!' for mutating method names (e.g., sort!, reverse!)
+        // but not '!=' which is the not-equal operator
+        if (pos_ < src_.size() && src_[pos_] == '!' &&
+            (pos_ + 1 >= src_.size() || src_[pos_ + 1] != '=')) {
+            ++pos_; ++col_;
+        }
         std::string id(src_, start, pos_ - start);
         if (id == "and")   return {TokenKind::And,   "and",   line_, startCol};
         if (id == "or")    return {TokenKind::Or,    "or",    line_, startCol};
         if (id == "not")   return {TokenKind::Not,   "not",   line_, startCol};
         if (id == "true")  return {TokenKind::True,  "true",  line_, startCol};
         if (id == "false") return {TokenKind::False, "false", line_, startCol};
-        if (id == "let")   return {TokenKind::Let,   "let",   line_, startCol};
-        if (id == "var")   return {TokenKind::Var,   "var",   line_, startCol};
+
         if (id == "if")    return {TokenKind::If,    "if",    line_, startCol};
         if (id == "elif")  return {TokenKind::Elif,  "elif",  line_, startCol};
         if (id == "else")  return {TokenKind::Else,  "else",  line_, startCol};
@@ -413,6 +436,7 @@ Token Lexer::readToken() {
         if (id == "enum")     return {TokenKind::Enum,     "enum",     line_, startCol};
         if (id == "match")    return {TokenKind::Match,    "match",    line_, startCol};
         if (id == "case")     return {TokenKind::Case,     "case",     line_, startCol};
+        if (id == "select")   return {TokenKind::Select,   "select",   line_, startCol};
         if (id == "expect")   return {TokenKind::Expect,   "expect",   line_, startCol};
         if (id == "require")   return {TokenKind::Require,   "require",   line_, startCol};
         if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_, startCol};
@@ -422,6 +446,9 @@ Token Lexer::readToken() {
         if (id == "none")      return {TokenKind::NoneKw,    "none",      line_, startCol};
         if (id == "as")        return {TokenKind::As,        "as",        line_, startCol};
         if (id == "Error")     return {TokenKind::ErrorKw,   "Error",     line_, startCol};
+        if (id == "spawn")     return {TokenKind::Spawn,     "spawn",     line_, startCol};
+        if (id == "async")     return {TokenKind::Async,     "async",     line_, startCol};
+        if (id == "await")     return {TokenKind::Await,     "await",     line_, startCol};
         return {TokenKind::Ident, std::move(id), line_, startCol};
     }
 
@@ -465,6 +492,7 @@ Token Lexer::readFStringSegment(bool isStart) {
                                          ": unterminated escape sequence in f-string");
             switch (src_[pos_]) {
                 case 'n':  str += '\n'; break;
+                case 'r':  str += '\r'; break;
                 case 't':  str += '\t'; break;
                 case '\\': str += '\\'; break;
                 case '"':  str += '"';  break;

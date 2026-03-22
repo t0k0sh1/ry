@@ -26,6 +26,13 @@
 | `*` | 零次或多次重複 | `"a*"` 匹配 `""`、`"a"`、`"aaa"` |
 | `+` | 一次或多次重複 | `"a+"` 匹配 `"a"`、`"aaa"` |
 | `?` | 零次或一次 | `"a?"` 匹配 `""` 或 `"a"` |
+| `{n}` | 恰好 n 次 | `"a{3}"` 匹配 `"aaa"` |
+| `{n,m}` | n 到 m 次 | `"a{2,4}"` 匹配 `"aa"` 到 `"aaaa"` |
+| `{n,}` | 至少 n 次 | `"a{2,}"` 匹配 `"aa"`、`"aaa"`、... |
+| `*?` | 零次或多次（非貪婪） | `".*?"` 匹配最短 |
+| `+?` | 一次或多次（非貪婪） | `".+?"` 匹配最短 |
+| `??` | 零次或一次（非貪婪） | `"a??"` 優先零次 |
+| `{n,m}?` | 範圍（非貪婪） | `"a{2,4}?"` 優先 n 次 |
 | `(...)` | 群組 | `"(ab)+"` 匹配 `"abab"` |
 | `[abc]` | 字元類別 | `"[aeiou]"` 匹配母音 |
 | `[a-z]` | 字元範圍 | `"[a-z]+"` 匹配小寫單字 |
@@ -38,6 +45,9 @@
 | `\W` | 非單字字元 | |
 | `\s` | 空白字元 | `"\s+"` 匹配空格與 Tab |
 | `\S` | 非空白字元 | |
+| `\b` | 單字邊界 | `"\bword\b"` 匹配完整單字 |
+| `\B` | 非單字邊界 | `"\Bword"` 匹配單字內部 |
+| `(?i)` | 忽略大小寫旗標 | `"(?i)hello"` 匹配 `"HELLO"` |
 | `\.` | 跳脫特殊字元 | `"\."` 匹配字面的 `.` |
 
 ## 使用範例
@@ -52,21 +62,21 @@ print(regex_match("[0-9]+", "hello"))   # false
 ### regex_search
 
 ```ry
-let pos = regex_search("[0-9]+", "abc123def")
+pos = regex_search("[0-9]+", "abc123def")
 print(pos)  # 3
 ```
 
 ### regex_replace
 
 ```ry
-let s = regex_replace("[0-9]+", "a1b2c3", "X")
+s = regex_replace("[0-9]+", "a1b2c3", "X")
 print(s)  # aXbXcX
 ```
 
 ### regex_split
 
 ```ry
-let parts = regex_split("\\s+", "hello  world  foo")
+parts = regex_split("\\s+", "hello  world  foo")
 print(len(parts))  # 3
 print(parts[0])    # hello
 ```
@@ -74,16 +84,75 @@ print(parts[0])    # hello
 ### regex_find_all
 
 ```ry
-let matches = regex_find_all("[0-9]+", "a1b23c456")
+matches = regex_find_all("[0-9]+", "a1b23c456")
 print(len(matches))  # 3
 print(matches[0])    # 1
 print(matches[1])    # 23
 ```
 
+### 範圍量詞
+
+```ry
+print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
+print(regex_match("a{2,4}", "aaa"))               # true
+print(regex_match("(ab){2,}", "ababab"))           # true
+```
+
+### 非貪婪（最短）匹配
+
+```ry
+# 貪婪: 匹配最長
+g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+print(g)  # X
+
+# 非貪婪: 匹配最短
+l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+print(l)  # X and X
+
+# 取得個別 HTML 標籤
+tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+print(len(tags))  # 3
+```
+
+> **注意：** 非貪婪匹配控制整體匹配長度。沒有使用括號分組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
+
+### 單字邊界
+
+```ry
+# 匹配完整單字
+pos = regex_search("\\bworld\\b", "hello world")
+print(pos)  # 6
+
+# 取得所有單字
+words = regex_find_all("\\b\\w+\\b", "hello world foo")
+print(len(words))  # 3
+
+# \B 匹配非邊界（單字內部）
+pos2 = regex_search("\\Bworld", "helloworld")
+print(pos2)  # 5
+```
+
+### 忽略大小寫匹配
+
+```ry
+# (?i) 放在模式開頭即可忽略大小寫
+print(regex_match("(?i)hello", "HELLO"))  # true
+print(regex_match("(?i)hello", "Hello"))  # true
+
+# 字元類別也適用
+print(regex_match("(?i)[a-z]+", "ABC"))  # true
+
+# replace 和 find_all 也可使用
+s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
+print(s)  # X X X
+```
+
+> **注意：** `(?i)` 必須出現在模式的開頭，並適用於整個模式。不支援部分忽略大小寫（例如 `(?i:sub)pattern`）。
+
 ### UFCS 記法
 
 ```ry
 # pattern.function(text, ...)
-let m = "[a-z]+".regex_match("hello")
+m = "[a-z]+".regex_match("hello")
 print(m)  # true
 ```

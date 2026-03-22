@@ -7,7 +7,7 @@
 | 型別 | 內部表示 | 字面值範例 | 說明 |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64 位元有號整數 |
-| `byte` | i8 | （無專用字面值） | 無號 8 位元整數（0-255）。透過型別標註 `let b: byte = 42` 使用 |
+| `byte` | i8 | （無專用字面值） | 無號 8 位元整數（0-255）。透過型別標註 `b: byte = 42` 使用 |
 | `float` | f64 | `3.14`, `0.5` | 64 位元浮點數 |
 | `bool` | i1 | `true`, `false` | 布林值 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 字串（堆積上的不可變位元組序列） |
@@ -31,18 +31,18 @@
 宣告變數時可以明確指定型別。當型別可推論時可以省略。
 
 ```python
-let x: int = 42
-let b: byte = 255
-let f: float = 3.14
-let s: str = "hello"
-let b: bool = true
-let opt: Option<int> = Some(10)
-let t: (int, float) = (1, 3.14)
-let xs: List<int> = [1, 2, 3]
-let m: Map<str, int> = {"a": 1}
-let s: Set<int> = {1, 2, 3}
-let fn_val: fn(int) -> int = fn(x: int): x * 2
-let u: int | str = 42
+x: int = 42
+b: byte = 255
+f: float = 3.14
+s: str = "hello"
+b: bool = true
+opt: Option<int> = Some(10)
+t: (int, float) = (1, 3.14)
+xs: List<int> = [1, 2, 3]
+m: Map<str, int> = {"a": 1}
+s: Set<int> = {1, 2, 3}
+fn_val: fn(int) -> int = fn(x: int): x * 2
+u: int | str = 42
 ```
 
 ## 可用型別名稱一覽
@@ -76,8 +76,8 @@ let u: int | str = 42
 type Meters = float
 type StringList = List<str>
 
-let d: Meters = 3.14
-let names: StringList = ["Alice", "Bob"]
+d: Meters = 3.14
+names: StringList = ["Alice", "Bob"]
 ```
 
 > **命名慣例**：型別別名名稱必須使用 PascalCase（如 `Meters`、`StringList`）。編譯器會強制執行此慣例。
@@ -87,7 +87,7 @@ let names: StringList = ["Alice", "Bob"]
 ```python
 type Callback = fn(int, int) -> int
 
-let add: Callback = fn(a: int, b: int): a + b
+add: Callback = fn(a: int, b: int): a + b
 print(add(3, 4))    # 7
 ```
 
@@ -96,9 +96,9 @@ type Month = 1..12
 type Direction = "N" | "S" | "E" | "W"
 type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 
-let m: Month = 6
-let d: Direction = "N"
-let n: Digit = 5
+m: Month = 6
+d: Direction = "N"
+n: Digit = 5
 ```
 
 ---
@@ -110,9 +110,9 @@ let n: Digit = 5
 ### int 字面量型別
 
 ```python
-let x: 42 = 42           # 單一字面量型別
-let y: 0 | 1 = 0         # int 字面量的 union
-var z: 0 | 1 = 0
+x: 42 = 42           # 單一字面量型別
+y: 0 | 1 = 0         # int 字面量的 union
+z: 0 | 1 = 0
 z = 1                     # OK
 # z = 2                   # 編譯錯誤（常數）或執行時錯誤（動態值）
 ```
@@ -120,8 +120,8 @@ z = 1                     # OK
 ### str 字面量型別
 
 ```python
-let dir: "N" | "S" | "E" | "W" = "N"
-# let bad: "N" | "S" = "X"    # 編譯錯誤
+dir: "N" | "S" | "E" | "W" = "N"
+# @const bad: "N" | "S" = "X"    # 編譯錯誤
 ```
 
 ### 約束檢查
@@ -136,17 +136,17 @@ let dir: "N" | "S" | "E" | "W" = "N"
 範圍型別將整數變數的值限制在連續的範圍內（包含兩端）。
 
 ```python
-let month: 1..12 = 6       # OK
-# let bad: 1..12 = 0       # 編譯錯誤：超出範圍
-# let bad: 1..12 = 13      # 編譯錯誤：超出範圍
+month: 1..12 = 6       # OK
+# @const bad: 1..12 = 0       # 編譯錯誤：超出範圍
+# @const bad: 1..12 = 13      # 編譯錯誤：超出範圍
 
-let t: -10..10 = -5        # 支援負數範圍
+t: -10..10 = -5        # 支援負數範圍
 ```
 
-### 使用 `var` 重新賦值（執行時檢查）
+### 使用可變變數重新賦值（執行時檢查）
 
 ```python
-var x: 1..12 = 6
+x: 1..12 = 6
 x = 12                      # OK
 # x = dynamic_value()       # 執行時檢查：超出範圍則錯誤退出
 ```
@@ -170,8 +170,8 @@ set_month(6)                # OK
 `T?` 語法是 `Option<T>` 的簡寫。
 
 ```python
-let x: int? = 42       # 等同於 Option<int>
-let y: int? = none      # 等同於 None
+x: int? = 42       # 等同於 Option<int>
+y: int? = none      # 等同於 None
 
 fn find(xs: List<int>, val: int) -> int?:
     for x in xs:
@@ -187,11 +187,11 @@ fn find(xs: List<int>, val: int) -> int?:
 使用 `f"..."` 語法進行字串插值。`{}` 內的表達式會被求值並轉換為字串。
 
 ```python
-let name = "world"
+name = "world"
 print(f"Hello {name}")     # Hello world
 
-let a = 1
-let b = 2
+a = 1
+b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
 
@@ -205,7 +205,7 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 |---|---|
 | `{{` | `{`（字面大括號） |
 | `}}` | `}`（字面大括號） |
-| `\n` `\t` `\\` `\"` | 與普通字串相同 |
+| `\n` `\r` `\t` `\\` `\"` | 與普通字串相同 |
 
 ```python
 print(f"{{braces}}")   # {braces}
@@ -216,11 +216,11 @@ print(f"{{braces}}")   # {braces}
 使用 `as` 關鍵字進行明確的型別轉換。
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3
-let z = 1 as bool        # true
-let s = 42 as str         # "42"
-let b = 255 as byte       # byte 值 255
+x = 42 as float     # 42.0
+y = 3.14 as int      # 3
+z = 1 as bool        # true
+s = 42 as str         # "42"
+b = 255 as byte       # byte 值 255
 ```
 
 ### 支援的轉換
@@ -253,9 +253,9 @@ enum Shape:
 使用 `EnumName::Variant(value)` 語法建立帶有資料的變體。
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+c = Shape::Circle(3.14)
+r = Shape::Rectangle(4.0, 5.0)
+p = Shape::Point
 ```
 
 ### 帶綁定的模式匹配
@@ -294,8 +294,8 @@ enum MyOption<T>:
 當編譯器無法推論型別時，需提供具體的型別引數來實例化。
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b = MyOption<int>::MyNone
+a = MyOption<int>::MySome(42)
+b = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -311,8 +311,8 @@ match a:
 用於錯誤處理的內建型別。`Error` 具有兩個欄位：`message`（str）和 `code`（int）。
 
 ```python
-let e = Error("something went wrong")       # code 預設為 0
-let e2 = Error("not found", 404)            # 明確指定 code
+e = Error("something went wrong")       # code 預設為 0
+e2 = Error("not found", 404)            # 明確指定 code
 
 print(e.message)   # something went wrong
 print(e2.code)     # 404
@@ -329,7 +329,7 @@ fn divide(a: int, b: int) -> (int, Error?):
         return (0, Some(Error("division by zero")))
     return (a // b, none)
 
-let val, err = divide(10, 2)
+val, err = divide(10, 2)
 match err:
     case Some(e):
         print(e.message)
@@ -348,7 +348,7 @@ fn read_file(path: str) -> (str, Error?):
     return ("content", none)
 
 fn process() -> (str, Error?):
-    let data = read_file("test.txt")!!   # 如果有錯誤則傳播
+    data = read_file("test.txt")!!   # 如果有錯誤則傳播
     return (data, none)
 ```
 
@@ -363,7 +363,7 @@ fn process() -> (str, Error?):
 可以使用 `|` 宣告可能持有多種型別的變數。
 
 ```python
-let x: int | str = 42
+x: int | str = 42
 x = "hello"     # 可重新賦值（union 中的任一型別）
 print(x)        # hello
 ```
@@ -414,6 +414,7 @@ union 型別以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各組成型�
 | 序列 | 意義 |
 |---|---|
 | `\n` | 換行 |
+| `\r` | 回車 |
 | `\t` | 定位字元 |
 | `\\` | 反斜線 |
 | `\"` | 雙引號 |
@@ -421,7 +422,7 @@ union 型別以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各組成型�
 
 ## 型別安全性限制
 
-- **沒有隱式型別轉換** — 混合使用 `int` 和 `float` 時會發生 float 提升，但除此之外不存在隱式轉換。`byte` 在運算時會自動提升為 `int`（ZExt）。僅在型別標註 `let b: byte = 42` 時允許從 `int` 字面值到 `byte` 的窄化轉換。
+- **沒有隱式型別轉換** — 混合使用 `int` 和 `float` 時會發生 float 提升，但除此之外不存在隱式轉換。`byte` 在運算時會自動提升為 `int`（ZExt）。僅在型別標註 `b: byte = 42` 時允許從 `int` 字面值到 `byte` 的窄化轉換。
 - **變數型別在宣告時固定** — 一旦以 `int` 宣告的變數，就無法重新賦值為 `float`。
 - **位元運算僅限 `int`** — 對 `float` 或 `bool` 使用位元運算會產生編譯錯誤。
 - **`bool` 以外的型別也可用於條件式** — `if` 的條件式可使用 `int`（0 = false、非 0 = true）等 `bool` 以外的型別。

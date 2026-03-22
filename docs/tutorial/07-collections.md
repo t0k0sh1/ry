@@ -15,13 +15,13 @@ A tuple is an immutable data structure that groups multiple values together. It 
 ### Creation
 
 ```python
-let t = (1, 3.14)
+t = (1, 3.14)
 ```
 
 ### Type Annotation
 
 ```python
-let t: (int, float) = (1, 3.14)
+t: (int, float) = (1, 3.14)
 ```
 
 ### Element Access
@@ -29,7 +29,7 @@ let t: (int, float) = (1, 3.14)
 Elements are accessed by index using `.0`, `.1`, etc.
 
 ```python
-let t = (1, 3.14)
+t = (1, 3.14)
 print(t.0)   # 1
 print(t.1)   # 3.14
 ```
@@ -42,7 +42,7 @@ Tuples are useful when you want to return multiple values.
 fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
-let result = swap(1, 2)
+result = swap(1, 2)
 print(result.0)  # 2
 print(result.1)  # 1
 ```
@@ -61,13 +61,13 @@ A list is a variable-length data structure containing elements of the same type.
 ### Creation
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 ```
 
 ### Type Annotation
 
 ```python
-let xs: List<int> = [1, 2, 3]
+xs: List<int> = [1, 2, 3]
 ```
 
 ### Index Access
@@ -75,7 +75,7 @@ let xs: List<int> = [1, 2, 3]
 ```python
 print(xs[0])   # 1
 
-let i = 1
+i = 1
 print(xs[i])   # 2
 ```
 
@@ -116,22 +116,22 @@ fn first(xs: List<int>) -> int:
 Lists support `filter`, `map`, and `sort` operations. These return new lists without modifying the original.
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-let evens = xs.filter(fn(x: int): x > 3)
+evens = xs.filter(fn(x: int): x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-let doubled = xs.map(fn(x: int): x * 2)
+doubled = xs.map(fn(x: int): x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
-let sorted = [3, 1, 2].sort()
+sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # Chaining
-let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -140,14 +140,14 @@ print(result)   # [20, 30, 40, 50]
 `reduce` accumulates a list into a single value starting from the first element. `fold` does the same but with an explicit initial value.
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 
 # reduce: start from first element
-let total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int): a + b)
 print(total)   # 15
 
 # fold: provide an explicit initial value
-let total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+total2 = fold(xs, 0, fn(a: int, b: int): a + b)
 print(total2)   # 15
 ```
 
@@ -156,7 +156,7 @@ print(total2)   # 15
 `any` returns `true` if at least one element satisfies the predicate. `all` returns `true` if every element does.
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 
 print(any(xs, fn(x: int): x > 4))   # true
 print(any(xs, fn(x: int): x > 9))   # false
@@ -168,7 +168,7 @@ print(all(xs, fn(x: int): x > 3))   # false
 ### sum, min, max
 
 ```python
-let xs = [3, 1, 4, 1, 5]
+xs = [3, 1, 4, 1, 5]
 print(sum(xs))   # 14
 print(min(xs))   # 1
 print(max(xs))   # 5
@@ -177,7 +177,7 @@ print(max(xs))   # 5
 ### first, last, is_empty
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 print(first(xs))      # 10
 print(last(xs))       # 30
 print(is_empty(xs))   # false
@@ -188,15 +188,15 @@ print(is_empty(xs))   # false
 `enumerate` pairs each element with its index. `zip` combines two lists element-by-element.
 
 ```python
-let xs = [10, 20, 30]
-let indexed = enumerate(xs)
+xs = [10, 20, 30]
+indexed = enumerate(xs)
 # [(0, 10), (1, 20), (2, 30)]
 for p in indexed:
     print(p.0)
     print(p.1)
 
-let ys = ["a", "b", "c"]
-let zipped = zip(xs, ys)
+ys = ["a", "b", "c"]
+zipped = zip(xs, ys)
 # [(10, "a"), (20, "b"), (30, "c")]
 ```
 
@@ -216,13 +216,13 @@ A map is an associative array that manages key-value pairs.
 ### Creation
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 ```
 
 ### Type Annotation
 
 ```python
-let m: Map<str, int> = {"a": 1, "b": 2}
+m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
 ### Key Access
@@ -265,7 +265,7 @@ print(m.has_key("a"))   # true
 `keys` returns a list of all keys. `values` returns a list of all values.
 
 ```python
-let m = {"a": 1, "b": 2, "c": 3}
+m = {"a": 1, "b": 2, "c": 3}
 print(keys(m))     # ["a", "b", "c"]
 print(values(m))   # [1, 2, 3]
 ```
@@ -292,13 +292,13 @@ A set is a collection that holds elements of the same type without duplicates.
 ### Creation
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 ```
 
 ### Type Annotation
 
 ```python
-let s: Set<int> = {1, 2, 3}
+s: Set<int> = {1, 2, 3}
 ```
 
 ### in Operator
@@ -337,13 +337,65 @@ for x in s:
 An empty set requires a type annotation.
 
 ```python
-let empty: Set<int> = {}
+empty: Set<int> = {}
 ```
 
 ### Limitations
 
 - All elements must be of the same type.
 - Supported element types are `int`, `float`, `bool`, and `str`.
+
+---
+
+## Iterators
+
+Iterators provide a **lazy** way to process collections. Instead of creating intermediate lists at each step, iterators process elements one at a time through a pipeline.
+
+### Creating and Consuming
+
+```python
+xs = [1, 2, 3]
+ys = xs.iter().to_list()   # [1, 2, 3]
+```
+
+### Chaining Operations
+
+You can chain `filter`, `map`, and `take` to build pipelines:
+
+```python
+result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int): x > 2)
+    .map(fn(x: int): x * 2)
+    .take(2)
+    .to_list()
+print(result)   # [6, 8]
+```
+
+### Manual Iteration with next()
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### For Loops
+
+Iterators work directly in `for` loops:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int): x > 1):
+    print(x)   # 2, 3
+```
+
+Maps produce tuple elements:
+
+```python
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```
 
 ---
 

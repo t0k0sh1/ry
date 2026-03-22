@@ -29,6 +29,7 @@ private:
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
+    llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
@@ -55,6 +56,10 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> task_result_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> channel_element_types_;
+    std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
+    int iterator_fn_counter_ = 0;
 
     struct UnionTypeInfo {
         llvm::StructType *llvmType;
@@ -121,6 +126,10 @@ private:
 
     void emitDeprecationWarning(const std::string &name);
 
+    // @native let constants
+    std::unordered_set<std::string> native_constants_;
+    llvm::Value *emitNativeConstant(const std::string &name);
+
     // @native fn signature registry (argument count per overload)
     std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
     void validateNativeCallArgs(const std::string &callee, const std::vector<ExprPtr> &args);
@@ -152,6 +161,9 @@ private:
     void emitIndexedForLoop(llvm::Value *length,
                             std::vector<StmtNode> &body,
                             std::function<void(llvm::Value *iCur)> bindVars);
+    void emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy);
+    void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
+    void validateParallelFor(const ForStmt &s);
 
     // RAII scope for function emission (B5)
     class FnScope {
@@ -187,8 +199,6 @@ private:
                      const std::optional<std::string> &type_annotation,
                      ExprNode &value, bool is_immutable);
 
-    void emitStmt(LetStmt &s);
-    void emitStmt(VarStmt &s);
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
     void emitStmt(ReturnStmt &s);
@@ -202,7 +212,9 @@ private:
     void emitStmt(FieldAssignStmt &s);
     void emitStmt(EnumStmt &s);
     void emitStmt(ExpectStmt &s);
+    void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
+    void emitStmt(std::unique_ptr<SelectStmt> &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
@@ -210,6 +222,11 @@ private:
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
+    void emitEachItCall(CallStmt &s);
+    void emitPropertyItCall(CallStmt &s);
+    std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
+    llvm::Function *emitTestFunction(const std::string &namePrefix,
+        const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
@@ -244,6 +261,8 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<SpawnExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
 
     // Operator overload helpers
@@ -283,9 +302,29 @@ private:
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
     llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
+    llvm::Value *emitIsWhitespace(llvm::Value *ch);
+
+    // C stdlib function helpers
+    llvm::FunctionCallee getStdlibMalloc();
+    llvm::FunctionCallee getStdlibRealloc();
+    llvm::FunctionCallee getStdlibFree();
+    llvm::FunctionCallee getStdlibStrlen();
+    llvm::FunctionCallee getStdlibMemcpy();
+    llvm::FunctionCallee getStdlibMemmove();
+    llvm::FunctionCallee getStdlibMemset();
+    llvm::FunctionCallee getStdlibStrcmp();
+    llvm::FunctionCallee getStdlibStrncmp();
+    llvm::FunctionCallee getStdlibStrstr();
+    llvm::FunctionCallee getStdlibStrcpy();
+    llvm::FunctionCallee getStdlibStrcat();
+    llvm::FunctionCallee getStdlibSnprintf();
+    llvm::FunctionCallee getStdlibPrintf();
+    llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
+    llvm::Type *getTaskResultType(llvm::Value *taskVal);
+    llvm::Type *getChannelElementType(llvm::Value *channelVal);
 
     // Hash function resolution helper (Step 1)
     struct HashFnInfo {
@@ -319,6 +358,20 @@ private:
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
+    llvm::Value *emitBuiltinMath(const CallExpr &e);
+    llvm::Value *emitBuiltinIO(const CallExpr &e);
+    llvm::Value *emitBuiltinNet(const CallExpr &e);
+    llvm::Value *emitBuiltinHttp(const CallExpr &e);
+    bool isTcpListener(llvm::Value *val);
+    bool isTcpStream(llvm::Value *val);
+    bool isHttpRequest(llvm::Value *val);
+    bool isHttpResponse(llvm::Value *val);
+    std::unordered_set<llvm::Value*> tcp_listener_values_;
+    std::unordered_set<llvm::Value*> tcp_stream_values_;
+    std::unordered_set<llvm::Value*> http_request_values_;
+    std::unordered_set<llvm::Value*> http_response_values_;
+    llvm::Value *emitBuiltinIterator(const CallExpr &e);
+    llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                         int64_t initialBucketCount);

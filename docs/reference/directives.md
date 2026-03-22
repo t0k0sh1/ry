@@ -19,8 +19,10 @@ Directives can be applied to the following declarations:
 
 - `fn` - Function definitions
 - `record` - Struct definitions
-- `let` / `var` - Variable declarations
+- Variable declarations (with or without `@const`)
 - Fields within a `record` definition
+- `for` - Counted loops only for `@parallel`
+- `it` - Test case definitions (for `@each` and `@property` only)
 
 ## Built-in Directives
 
@@ -46,14 +48,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **On variables:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -66,9 +70,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # no warning
+```
+
+### `@const`
+
+Marks a variable as immutable. Variables declared with `@const` cannot be reassigned after initialization. Without `@const`, variables are mutable by default.
+
+```
+@const
+x = 42
+# x = 10   # Error: cannot reassign @const variable
+```
+
+**With type annotation:**
+
+```
+@const
+name: str = "hello"
+```
+
+**Tuple destructuring:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`
@@ -123,7 +152,7 @@ The `core/` directory contains `@native` declarations for all built-in functions
 
 | File | Contents |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
@@ -140,6 +169,80 @@ These files are automatically loaded as a prelude when the `core/` directory is 
 
 **Future extensions:**
 - `@native("libfoo.so")` — FFI binding to external shared libraries.
+
+### `@parallel`
+
+Marks a counted `for` loop for parallel execution.
+
+```
+@parallel
+for i in range(8):
+    work(i)
+```
+
+**Supported target:**
+
+- `for` statements only
+
+**Constraints:**
+
+- Only a single `@parallel` directive is allowed on a `for` statement.
+- The iterable must be `range(...)` or an integer `..` range.
+- Destructuring iteration is not supported.
+- Assigning to outer mutable variables is rejected.
+- `break`, `continue`, indexed assignment, and field assignment inside the loop body are rejected in v1.
+
+### `@each`
+
+Enables parameterized testing by running an `it` block multiple times with different parameters.
+
+**Syntax:**
+
+```
+@each([(arg1, arg2, ...), ...])
+it("description with {0} and {1}", fn(param1: type, param2: type):
+    # test body
+)
+```
+
+**Supported target:** `it` calls only
+
+**Constraints:**
+- The argument must be a list of tuples
+- Tuple arity must match the lambda parameter count
+- Placeholders `{0}`, `{1}`, ... in the description string are replaced with stringified values
+
+### `@property`
+
+Enables property-based testing by generating random inputs for an `it` block.
+
+**Syntax:**
+
+```
+@property(count=100)
+it("property name", fn(a: int, b: int):
+    # test body with random values
+)
+```
+
+**Supported target:** `it` calls only
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `count` | int | 100 | Number of random trials |
+
+**Supported parameter types:**
+
+| Type | Range |
+|------|-------|
+| `int` | -1000 to 1000 |
+| `float` | -1000.0 to 1000.0 |
+| `bool` | true or false |
+| `str` | Random ASCII, 0-20 characters |
+
+On failure, the counterexample (parameter values that caused the failure) is printed.
 
 ### Parameters (future extension)
 
@@ -159,4 +262,4 @@ Currently, parameters are parsed but not used by the `@deprecated` directive.
 - Warnings are emitted at the point of use, not at the definition.
 - Defining a deprecated entity without using it produces no warnings.
 - Unknown directive names cause a parse error.
-- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error.
+- Directives on unsupported targets (e.g., `if`, `while`) cause a parse error. `@parallel` is the only directive supported on `for`.

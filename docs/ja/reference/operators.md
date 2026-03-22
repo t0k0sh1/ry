@@ -41,10 +41,10 @@
 | `+x` | 単項プラス | `+5`（符号変更なし） |
 
 ```python
-let a = 10 // 3    # 3 (int)
-let b = 10 / 3     # 3.3333... (float)
-let c = 2 ** 8     # 256.0 (float)
-let s = "foo" + "bar"  # "foobar"
+a = 10 // 3    # 3 (int)
+b = 10 / 3     # 3.3333... (float)
+c = 2 ** 8     # 256.0 (float)
+s = "foo" + "bar"  # "foobar"
 ```
 
 ## 比較演算子
@@ -67,15 +67,15 @@ let s = "foo" + "bar"  # "foobar"
 - マップの場合、`in` はキーの存在を確認します。
 
 ```python
-let x = 3 < 5       # true
-let y = "abc" < "abd"  # true（辞書順）
-let s = {1, 2, 3}
-let z = 2 in s      # true
-let w = 4 not in s  # true
-let xs = [1, 2, 3]
-let a = 2 in xs     # true（リスト線形探索）
-let m = {"a": 1}
-let b = "a" in m    # true（マップキー検索）
+x = 3 < 5       # true
+y = "abc" < "abd"  # true（辞書順）
+s = {1, 2, 3}
+z = 2 in s      # true
+w = 4 not in s  # true
+xs = [1, 2, 3]
+a = 2 in xs     # true（リスト線形探索）
+m = {"a": 1}
+b = "a" in m    # true（マップキー検索）
 ```
 
 ## 論理演算子
@@ -87,9 +87,9 @@ let b = "a" in m    # true（マップキー検索）
 | `not` | 論理 NOT | `bool` → `bool` |
 
 ```python
-let a = true and false   # false
-let b = true or false    # true
-let c = not true         # false
+a = true and false   # false
+b = true or false    # true
+c = not true         # false
 ```
 
 ## ビット演算子
@@ -107,25 +107,25 @@ let c = not true         # false
 | `>>>` | 論理右シフト | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-let flags = 0b0001 | 0b0010   # 3
-let masked = flags & 0b0011   # 3
-let shifted = 1 << 8          # 256
+flags = 0b0001 | 0b0010   # 3
+masked = flags & 0b0011   # 3
+shifted = 1 << 8          # 256
 ```
 
 ## 三項条件演算子
 
 ```python
-let x = condition ? true_value : false_value
+x = condition ? true_value : false_value
 ```
 
 `condition` を評価し、真であれば `true_value` を、偽であれば `false_value` を返します。両方の分岐は同じ型でなければなりません。右結合なので、ネストされた三項演算子は右から左に結合されます。
 
 ```python
-let x = 3 > 2 ? 10 : 20     # 10
-let s = false ? "yes" : "no" # "no"
+x = 3 > 2 ? 10 : 20     # 10
+s = false ? "yes" : "no" # "no"
 
 # ネスト（右結合）
-let y = true ? (false ? 1 : 2) : 3   # 2
+y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
 ---
@@ -135,7 +135,7 @@ let y = true ? (false ? 1 : 2) : 3   # 2
 `..` 演算子は両端を含む整数の範囲を生成します。
 
 ```python
-let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
     print(i)       # 1 2 3
@@ -148,14 +148,14 @@ for i in 1 .. 3:
 ## null 合体演算子（`??`）
 
 ```python
-let x = option_val ?? default_val
+x = option_val ?? default_val
 ```
 
 `option_val` が `Some(v)` の場合は `v` を返します。それ以外の場合は `default_val` を返します。右辺のオペランドは Option の内部型と同じ型でなければなりません。
 
 ```python
-let a: int? = Some(10)
-let b: int? = none
+a: int? = Some(10)
+b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
@@ -183,11 +183,35 @@ print(b ?? 0)    # 0
 | `x >>= y` | `x = x >> y` |
 
 ```python
-var x = 10
+x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
 ```
+
+## インクリメント・デクリメント演算子
+
+変数を 1 増減させるポストフィックス演算子。ステートメントとしてのみ使用可能。内部的にはそれぞれ `x = x + 1`、`x = x - 1` にデシュガーされる。
+
+| 演算子 | 等価な式 |
+|---|---|
+| `x++` | `x = x + 1` |
+| `x--` | `x = x - 1` |
+
+```python
+count = 0
+count++       # count = 1
+count++       # count = 2
+count--       # count = 1
+
+f = 1.5
+f++           # f = 2.5（int 1 が float に型昇格）
+```
+
+> **注意**: `++` / `--` はステートメントとしてのみ使用でき、式の中では使えません。
+> `@const` 変数にはインクリメント・デクリメントを適用できません（不変性が強制されます）。
+
+---
 
 ## 演算の型規則
 

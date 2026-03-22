@@ -41,10 +41,10 @@ Lower numbers indicate higher precedence (evaluated first).
 | `+x` | Unary plus | `+5` (no sign change) |
 
 ```python
-let a = 10 // 3    # 3 (int)
-let b = 10 / 3     # 3.3333... (float)
-let c = 2 ** 8     # 256.0 (float)
-let s = "foo" + "bar"  # "foobar"
+a = 10 // 3    # 3 (int)
+b = 10 / 3     # 3.3333... (float)
+c = 2 ** 8     # 256.0 (float)
+s = "foo" + "bar"  # "foobar"
 ```
 
 ## Comparison Operators
@@ -67,15 +67,15 @@ All return `bool`.
 - For maps, `in` checks whether the key exists.
 
 ```python
-let x = 3 < 5       # true
-let y = "abc" < "abd"  # true (lexicographic)
-let s = {1, 2, 3}
-let z = 2 in s      # true
-let w = 4 not in s  # true
-let xs = [1, 2, 3]
-let a = 2 in xs     # true (list linear search)
-let m = {"a": 1}
-let b = "a" in m    # true (map key lookup)
+x = 3 < 5       # true
+y = "abc" < "abd"  # true (lexicographic)
+s = {1, 2, 3}
+z = 2 in s      # true
+w = 4 not in s  # true
+xs = [1, 2, 3]
+a = 2 in xs     # true (list linear search)
+m = {"a": 1}
+b = "a" in m    # true (map key lookup)
 ```
 
 ## Logical Operators
@@ -87,9 +87,9 @@ let b = "a" in m    # true (map key lookup)
 | `not` | Logical NOT | `bool` -> `bool` |
 
 ```python
-let a = true and false   # false
-let b = true or false    # true
-let c = not true         # false
+a = true and false   # false
+b = true or false    # true
+c = not true         # false
 ```
 
 ## Bitwise Operators
@@ -107,25 +107,25 @@ Only available for `int` type. Applying to `float` or `bool` causes a compile er
 | `>>>` | Logical right shift | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
-let flags = 0b0001 | 0b0010   # 3
-let masked = flags & 0b0011   # 3
-let shifted = 1 << 8          # 256
+flags = 0b0001 | 0b0010   # 3
+masked = flags & 0b0011   # 3
+shifted = 1 << 8          # 256
 ```
 
 ## Ternary Conditional Operator
 
 ```python
-let x = condition ? true_value : false_value
+x = condition ? true_value : false_value
 ```
 
 Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
 
 ```python
-let x = 3 > 2 ? 10 : 20     # 10
-let s = false ? "yes" : "no" # "no"
+x = 3 > 2 ? 10 : 20     # 10
+s = false ? "yes" : "no" # "no"
 
 # Nested (right-associative)
-let y = true ? (false ? 1 : 2) : 3   # 2
+y = true ? (false ? 1 : 2) : 3   # 2
 ```
 
 ---
@@ -135,7 +135,7 @@ let y = true ? (false ? 1 : 2) : 3   # 2
 The `..` operator creates an inclusive integer range.
 
 ```python
-let xs = 1 .. 5    # [1, 2, 3, 4, 5]
+xs = 1 .. 5    # [1, 2, 3, 4, 5]
 
 for i in 1 .. 3:
     print(i)       # 1 2 3
@@ -148,14 +148,14 @@ The result is a `List<int>` containing all integers from the left operand to the
 ## Null Coalescing Operator (`??`)
 
 ```python
-let x = option_val ?? default_val
+x = option_val ?? default_val
 ```
 
 If `option_val` is `Some(v)`, returns `v`. Otherwise returns `default_val`. The right-hand operand must have the same type as the inner type of the Option.
 
 ```python
-let a: int? = Some(10)
-let b: int? = none
+a: int? = Some(10)
+b: int? = none
 
 print(a ?? 0)    # 10
 print(b ?? 0)    # 0
@@ -183,13 +183,37 @@ Shorthand for updating a variable. `x op= y` is equivalent to `x = x op y`.
 | `x >>= y` | `x = x >> y` |
 
 ```python
-var x = 10
+x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
 x //= 3  # x = 8
 x &= 6   # x = 0
 ```
+
+## Increment / Decrement Operators
+
+Postfix-only, statement-level operators for incrementing or decrementing a variable by 1. These are desugared to `x = x + 1` and `x = x - 1` respectively.
+
+| Operator | Equivalent Expression |
+|---|---|
+| `x++` | `x = x + 1` |
+| `x--` | `x = x - 1` |
+
+```python
+count = 0
+count++       # count = 1
+count++       # count = 2
+count--       # count = 1
+
+f = 1.5
+f++           # f = 2.5 (int 1 is promoted to float)
+```
+
+> **Note**: `++` / `--` can only be used as statements, not as expressions.
+> `@const` variables cannot be incremented/decremented (immutability is enforced).
+
+---
 
 ## Type Rules for Operations
 

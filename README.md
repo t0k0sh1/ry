@@ -14,16 +14,17 @@ A simple programming language based on LLVM JIT. It reads source code, compiles 
 - **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
+- **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
-- **Type Safety** — Type inference, type annotations, immutable type bindings, let/var
+- **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code
 
 ```python
 # Variables and types
-let x: int = 42
-let name: str = "hello"
-let pi = 3.14159
+x: int = 42
+name: str = "hello"
+pi = 3.14159
 
 # Function definition
 fn factorial(n: int) -> int:
@@ -34,8 +35,8 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # Lambdas and closures
-let offset = 10
-let add_offset = (x: int): int => x + offset
+offset = 10
+add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
 # Structs
@@ -46,13 +47,13 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-let p = Point(1, 2) + Point(3, 4)
+p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # Collections
-let xs = [1, 2, 3]
-let m = {"a": 1, "b": 2}
-let s = {1, 2, 3}
+xs = [1, 2, 3]
+m = {"a": 1, "b": 2}
+s = {1, 2, 3}
 
 for x in xs:
     print(x)
@@ -61,7 +62,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums
@@ -70,7 +71,7 @@ enum Color:
     Green
     Blue
 
-let c = Color::Red
+c = Color::Red
 print(c)               # Red
 
 # Package import
@@ -89,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 To specify a particular version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
 By default, it installs to `~/.local/bin`. You can change this with the `RY_INSTALL_DIR` environment variable.

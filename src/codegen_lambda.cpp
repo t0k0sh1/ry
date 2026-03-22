@@ -3,7 +3,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
-#include <stdexcept>
 
 // ===== LambdaExpr =====
 
@@ -65,12 +64,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     scanStmt = [&](const StmtNode &stmt) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, LetStmt>) {
-                scanExpr(*s.value);
-            } else if constexpr (std::is_same_v<T, VarStmt>) {
-                scanExpr(*s.value);
-            } else if constexpr (std::is_same_v<T, AssignStmt>) {
-                scanExpr(*s.value);
+            if constexpr (std::is_same_v<T, AssignStmt>) {
+                if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 for (auto &arg : s.args) scanExpr(*arg);
             } else if constexpr (std::is_same_v<T, ReturnStmt>) {
@@ -166,6 +161,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
+                // Track opaque handle types
+                if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
+                if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
+                if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
+                if (ptype == "HttpResponse") http_response_values_.insert(alloca);
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
@@ -226,8 +226,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         closureFields.push_back(t);
     llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t closureSize = dl.getTypeAllocSize(closureTy);
     llvm::Value *closurePtr = builder_.CreateCall(

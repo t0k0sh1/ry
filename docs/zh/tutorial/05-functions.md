@@ -29,7 +29,7 @@ fn add(a: int, b: int) -> int:
 fn multiply(x: int, y: int) -> int:
     return x * y
 
-let result = multiply(3, 4)
+result = multiply(3, 4)
 print(result)   # 12
 ```
 

@@ -30,8 +30,6 @@ enum class TokenKind {
     GreaterGreater, // >>
     GreaterGreaterGreater, // >>>
     Colon,          // :
-    Let,            // let
-    Var,            // var
     // --- インデント ---
     Indent,         // インデントレベル増加
     Dedent,         // インデントレベル減少
@@ -83,12 +81,16 @@ enum class TokenKind {
     CaretEq,        // ^=
     LessLessEq,     // <<=
     GreaterGreaterEq, // >>=
+    // --- increment/decrement ---
+    PlusPlus,         // ++
+    MinusMinus,       // --
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::
     // --- match ---
     Match,          // match
     Case,           // case
+    Select,         // select
     // --- test ---
     Expect,         // expect
     // --- contract (Design by Contract) ---
@@ -109,6 +111,9 @@ enum class TokenKind {
     ErrorKw,        // Error
     BangBang,       // !!
     Question,       // ?
+    Spawn,          // spawn
+    Async,          // async
+    Await,          // await
 };
 
 struct Token {

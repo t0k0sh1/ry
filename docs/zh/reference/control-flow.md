@@ -27,7 +27,7 @@ else:
 ### 範例
 
 ```python
-let x = 10
+x = 10
 
 if x > 5:
     print("big")
@@ -44,7 +44,7 @@ else:
 
 ```python
 if true:
-    let y = 42
+    y = 42
 # y 在此處無法存取
 ```
 
@@ -64,7 +64,7 @@ while 條件式:
 ### 範例
 
 ```python
-let i = 0
+i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +73,7 @@ while i < 5:
 ### 搭配 break / continue
 
 ```python
-let i = 0
+i = 0
 while true:
     if i >= 3:
         break
@@ -116,7 +116,7 @@ for k, v in map_expr:
 走訪 2 元素元組的列表（例如 `enumerate()` 或 `zip()` 的回傳值）時，可以解構為兩個變數。使用 `_` 捨棄值。
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
     print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
@@ -140,11 +140,11 @@ for i in 1 .. 5:
 ### 範例
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-let s = {1, 2, 3}
+s = {1, 2, 3}
 for x in s:
     print(x)
 
@@ -161,7 +161,7 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # 映射走訪
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
     print(v)
@@ -301,7 +301,7 @@ match color:
         print("blue")
 
 # Option 匹配
-let x: Option<int> = Some(42)
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -337,7 +337,7 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-let s = Shape::Circle(3.14)
+s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
         print(r)        # 3.14
@@ -366,23 +366,23 @@ match s:
 
 ```python
 for i in range(3):
-    let tmp = i * 2
+    tmp = i * 2
 # tmp 在此處無法存取
 
 if true:
-    let a = 1
+    a = 1
 # a 在此處無法存取
 ```
 
-### 遮蔽
+### 內層作用域的重新賦值
 
-- 在內層作用域中宣告與外層同名的變數時，在內層作用域內會參照內層的變數。
-- 離開內層作用域後會恢復為外層的變數。
+- 在內層作用域中對變數賦值會修改外層的變數（Python 風格的作用域）。
+- 不會產生遮蔽——內層的賦值會修改同一個變數。
 
 ```python
-let x = 10
+x = 10
 if true:
-    let x = 99   # 遮蔽外層的 x
+    x = 99   # 修改外層的 x
     print(x)     # 99
-print(x)         # 10
+print(x)         # 99
 ```

@@ -10,6 +10,7 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 
 ```bash
 ry test              # Auto-discover and run all *.test.ry files in the project
+ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
 ```
 
@@ -30,20 +31,22 @@ When `ry test` is run without arguments, it:
 ### describe / it
 
 ```
-describe("description"):
-    it("test case name"):
+describe("description", fn():
+    it("test case name", fn():
         # test body
         expect(actual_value).to_eq(expected_value)
+    )
+)
 ```
 
-- `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda passed as the last argument
+- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
 - `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
 
 ### Trailing Block Syntax
 
-Any function call can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
+Any function call (except `describe`/`it`/`mock`) can use trailing block syntax. A colon after `()` causes the indented block to be passed as a no-argument lambda in the last argument position:
 
 ```
 # These are equivalent:
@@ -65,7 +68,16 @@ foo("arg", fn():
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
 | `to_be_some()` | Asserts Option is `Some` | Option |
-| `to_contain(val)` | Asserts container includes value | List, Set, str |
+| `to_contain(val)` | Asserts container includes value | List, Set, Map, str |
+| `to_not_contain(val)` | Asserts container does not include value | List, Set, Map, str |
+| `to_be_greater_than(v)` | Asserts `actual > v` | int, float |
+| `to_be_less_than(v)` | Asserts `actual < v` | int, float |
+| `to_be_greater_than_or_eq(v)` | Asserts `actual >= v` | int, float |
+| `to_be_less_than_or_eq(v)` | Asserts `actual <= v` | int, float |
+| `to_have_length(n)` | Asserts length equals `n` | List, Set, Map, str |
+| `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
+| `to_start_with(prefix)` | Asserts string starts with prefix | str |
+| `to_end_with(suffix)` | Asserts string ends with suffix | str |
 
 ---
 
@@ -89,19 +101,25 @@ Calculator
 ## Example
 
 ```
-describe("Arithmetic"):
-    it("adds integers"):
+describe("Arithmetic", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("compares strings"):
+    )
+    it("compares strings", fn():
         expect("hello").to_eq("hello")
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
 
-describe("Booleans"):
-    it("false check"):
+    )
+)
+describe("Booleans", fn():
+    it("false check", fn():
         expect(1 > 2).to_be_false()
+    )
+)
 ```
 
 ---
@@ -116,13 +134,16 @@ Replaces a function with a mock implementation for the current `it` block. The m
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 - The first argument is the function name (identifier, not a string)
@@ -135,12 +156,14 @@ describe("mocking"):
 Returns the number of times a mocked function was called (as `int`).
 
 ```
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ### Limitations
@@ -148,6 +171,46 @@ describe("verify"):
 - Overloaded functions cannot be mocked
 - Capture-based closures cannot be used as replacements (use plain lambdas)
 - `@native fn` functions cannot be mocked
+
+---
+
+## Parameterized Tests (@each)
+
+`@each` runs the same test with multiple sets of parameters. Attach it to an `it` block with a list of tuples:
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+- The list must contain tuples whose arity matches the lambda parameter count
+- Placeholders `{0}`, `{1}`, ... in the description are replaced with the parameter values
+- Each tuple generates an independent test case
+- Supported parameter types: `int`, `float`, `bool`, `str`
+
+---
+
+## Property-Based Tests (@property)
+
+`@property` generates random inputs and runs the test multiple times:
+
+```
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+- `count=N` specifies the number of random trials (default: 100)
+- On failure, the counterexample (failing inputs) is printed
+- The test stops at the first failure
+- Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
 
 ---
 

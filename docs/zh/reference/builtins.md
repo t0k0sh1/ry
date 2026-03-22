@@ -9,7 +9,7 @@
 | 函式 | 說明 |
 |------|------|
 | `print(expr)` | 將值輸出到標準輸出 |
-| `len(x)` | 回傳串列、映射、集合的元素數量，或字串的長度 |
+| `len(x)` | 回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數 |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
 | `exit(code)` | 以指定的結束碼終止程序 |
 | `args()` | 以 `List<str>` 回傳命令列引數 |
@@ -27,17 +27,23 @@
 | `has_key(map, key)` | 回傳映射中是否存在該鍵 |
 | `add(set, value)` | 向集合新增元素（重複則忽略） |
 | `remove(set, value)` | 從集合刪除元素 |
-| `append(list, value)` | 向串列末尾新增元素（就地修改） |
-| `pop(list)` | 移除並回傳串列的最後一個元素 |
+| `append(list, value)` / `append!(list, value)` | 向串列末尾新增元素（就地修改） |
+| `appended(list, value)` | 傳回新增元素後的新串列（非破壞性） |
+| `pop(list)` | 移除並回傳串列的最後一個元素（`Option<T>`） |
 | `reverse(list)` | 傳回反轉後的新串列（也適用於字串） |
+| `reverse!(list)` | 就地反轉串列（破壞性） |
 | `slice(list, start, end)` | 傳回從 start 到 end 的新子串列 |
+| `take(list, n)` | 傳回包含前 n 個元素的新串列 |
+| `tap(list, fn)` | 對每個元素呼叫 fn 以執行副作用，傳回原始串列 |
 | `filter(list, pred)` | 傳回僅包含滿足述詞的元素的新串列 |
 | `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
 | `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
+| `sort!(list)` / `sort!(list, comp)` | 就地排序串列（破壞性） |
 | `insert(list, i, val)` | 在索引 i 處插入元素 |
 | `remove_at(list, i)` | 移除並回傳索引 i 處的元素 |
 | `items(map)` | 回傳 (鍵, 值) 元組的串列 |
 | `remove(map, key)` | 刪除指定鍵的條目 |
+| `get(map, key)` | 回傳鍵的值（`Option<V>`） |
 | `get(map, key, default)` | 回傳鍵的值，若不存在則回傳預設值 |
 | `union(set, set)` | 回傳兩個集合的聯集 |
 | `intersection(set, set)` | 回傳兩個集合的交集 |
@@ -53,7 +59,8 @@
 | `contains(s, sub)` | 是否包含子字串 |
 | `starts_with(s, prefix)` | 是否以前綴開頭 |
 | `ends_with(s, suffix)` | 是否以後綴結尾 |
-| `find(s, sub)` | 子字串的位置（未找到為 -1） |
+| `find(s, sub)` | 子字串的字元位置（`Option<int>`） |
+| `byte_len(s)` | 回傳字串的位元組長度 |
 | `substring(s, start, end)` | 取得子字串 |
 | `char_at(s, i)` | 取得指定位置的字元 |
 | `replace(s, old, new)` | 全部取代子字串 |
@@ -111,7 +118,7 @@ print({1, 2, 3})   # {1, 2, 3}
 建構 Option 型別的有值變體。
 
 ```python
-let x: Option<int> = Some(42)
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
 
@@ -121,13 +128,14 @@ print(x)   # Some(42)
 
 **簽名：** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-回傳串列、映射、集合的元素數量，或字串的位元組長度。
+回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數。如需取得位元組長度，請使用 `byte_len()`。
 
 ```python
 print(len([1, 2, 3]))         # 3
 print(len({"a": 1, "b": 2})) # 2
 print(len({1, 2, 3}))         # 3
 print(len("hello"))           # 5
+print(len("あいう"))           # 3 (UTF-8 字元數)
 ```
 
 ---
@@ -139,7 +147,7 @@ print(len("hello"))           # 5
 回傳映射中是否存在指定的鍵。也可使用 UFCS 記法。
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
@@ -153,7 +161,7 @@ print(m.has_key("z"))     # false (UFCS)
 向集合新增元素。若元素已存在則不做任何操作。也可使用 UFCS 記法。
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 一般呼叫
 s.add(1)          # 已存在，因此忽略
@@ -169,7 +177,7 @@ print(len(s))     # 5
 從集合刪除元素。也可使用 UFCS 記法。
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
 ```
@@ -228,7 +236,7 @@ exit(1)        # 錯誤終止
 
 ```python
 # 執行: ry script.ry hello world
-let a = args()
+a = args()
 print(len(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
@@ -246,7 +254,7 @@ for x in args():
 向串列末尾新增元素。此為就地修改操作——串列會被直接修改。也可使用 UFCS 記法。
 
 ```python
-var xs = [1, 2]
+xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
 ```
@@ -255,18 +263,16 @@ print(xs)   # [1, 2, 3]
 
 ## pop
 
-**簽名：** `pop(list: List<T>) -> T`
+**簽名：** `pop(list: List<T>) -> Option<T>`
 
-移除並回傳串列的最後一個元素。也可使用 UFCS 記法。
+移除並回傳串列的最後一個元素（`Option<T>`）。串列為空時回傳 `None`。也可使用 UFCS 記法。
 
 ```python
-var xs = [1, 2, 3]
-let v = xs.pop()
-print(v)    # 3
+xs = [1, 2, 3]
+v = xs.pop()
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
-
-**錯誤條件：** 對空串列呼叫 `pop()` 會產生執行時錯誤（exit(1)）。
 
 ---
 
@@ -277,8 +283,8 @@ print(xs)   # [1, 2]
 傳回元素順序反轉的新串列。原始串列不會被修改。也適用於字串（請參閱[字串操作](builtins-string.md)）。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3]
-let ys = reverse(xs)
+xs = [1, 2, 3]
+ys = reverse(xs)
 print(ys)   # [3, 2, 1]
 print(xs)   # [1, 2, 3]（未修改）
 ```
@@ -292,9 +298,39 @@ print(xs)   # [1, 2, 3]（未修改）
 傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `len(list)`）。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
+```
+
+---
+
+## take
+
+**簽名：** `take(list: List<T>, n: int) -> List<T>`
+
+傳回包含前 `n` 個元素的新串列。若 `n` 超過串列長度，傳回整個串列的副本。若 `n <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5]（鉗制）
+print(xs.take(0))    # []
+```
+
+---
+
+## tap
+
+**簽名：** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+
+對每個元素呼叫給定函式（忽略回傳值），然後傳回原始串列。適用於方法鏈中的除錯或插入副作用。也可使用 UFCS 記法。
+
+```python
+xs = [1, 2, 3]
+ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# 輸出 1, 2, 3，然後 ys = [2, 4, 6]
 ```
 
 ---
@@ -306,8 +342,8 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 傳回僅包含述詞回傳 `true` 的元素的新串列。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+xs = [1, 2, 3, 4, 5]
+ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 ```
@@ -321,8 +357,8 @@ print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 傳回將每個元素以給定函式轉換後的新串列。輸出元素型別可以與輸入不同。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+xs = [1, 2, 3]
+ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -332,13 +368,103 @@ print(ys)   # [2, 4, 6]
 
 **簽名:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
-傳回排序後的新串列。預設為升序。可提供自訂比較函式（第一引數應排在第二引數之前時回傳 `true`）。原始串列不會被修改。也可使用 UFCS 記法。
+傳回排序後的新串列。預設為升序。可提供自訂比較函式（第一引數應排在第二引數之前時回傳 `true`）。原始串列不會被修改。排序是**穩定的**（相等元素保持原始順序）。也可使用 UFCS 記法。
 
 ```python
-let xs = [3, 1, 2]
+xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-let desc = xs.sort((a: int, b: int) -> a > b)
+desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
+```
+
+---
+
+## sort!
+
+**簽名:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+
+就地排序串列。排序演算法與 `sort()` 相同，但修改原始串列而非建立新串列。也可使用 UFCS 記法。
+
+```python
+xs = [3, 1, 2]
+xs.sort!()
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## reverse!
+
+**簽名：** `reverse!(list: List<T>)`
+
+就地反轉串列。也可使用 UFCS 記法。
+
+```python
+xs = [1, 2, 3]
+xs.reverse!()
+print(xs)   # [3, 2, 1]
+```
+
+---
+
+## appended
+
+**簽名：** `appended(list: List<T>, value: T) -> List<T>`
+
+傳回新增元素後的新串列。原始串列不會被修改。也可使用 UFCS 記法。
+
+```python
+xs = [1, 2]
+ys = xs.appended(3)
+print(xs)   # [1, 2]（未修改）
+print(ys)   # [1, 2, 3]
+```
+
+---
+
+## append!
+
+**簽名：** `append!(list: List<T>, value: T)`
+
+`append()` 的別名。就地向串列末尾新增元素。為配合 `!` 命名慣例而提供。
+
+---
+
+## first
+
+**簽名：** `first(list: List<T>) -> Option<T>`
+
+傳回串列的第一個元素（`Option<T>`）。串列為空時回傳 `None`。
+
+```python
+print(first([10, 20, 30]))   # Some(10)
+```
+
+---
+
+## last
+
+**簽名：** `last(list: List<T>) -> Option<T>`
+
+傳回串列的最後一個元素（`Option<T>`）。串列為空時回傳 `None`。
+
+```python
+print(last([10, 20, 30]))   # Some(30)
+```
+
+---
+
+## get（映射）
+
+**簽名：** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+
+兩引數形式回傳鍵的值（`Option<V>`）。三引數形式回傳鍵的值，若不存在則回傳預設值。
+
+```python
+m = {"a": 1, "b": 2}
+print(get(m, "a"))       # Some(1)
+print(get(m, "z"))       # None
+print(get(m, "z", 0))   # 0
 ```

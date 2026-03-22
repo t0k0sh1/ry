@@ -12,6 +12,7 @@ Ry 內建了使用 `describe`、`it`、`expect` 的 RSpec 風格測試語法。�
 
 ```bash
 ry test                       # 自動探索並執行所有 *.test.ry 檔案
+ry test tests/spec            # 遞迴執行指定目錄下所有 *.test.ry 檔案
 ry test tests/my_test.test.ry # 執行特定的測試檔案
 ```
 
@@ -26,18 +27,22 @@ ry test tests/my_test.test.ry # 執行特定的測試檔案
 使用 `describe` 將相關測試分組，使用 `it` 定義各個測試案例。
 
 ```python
-describe("Calculator"):
-    it("adds integers"):
+describe("Calculator", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("subtracts integers"):
+    )
+    it("subtracts integers", fn():
         expect(5 - 3).to_eq(2)
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
+    )
+)
 ```
 
-- `describe` 和 `it` 使用**尾隨區塊語法**：在函式呼叫後加上 `:` 會將縮排區塊作為 Lambda 傳入。
+- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數。
 - `describe` / `it` / `expect` / `mock` / `verify` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
 
 ---
@@ -82,13 +87,16 @@ Calculator
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 ### `verify(fn_name)`
@@ -96,13 +104,45 @@ describe("mocking"):
 傳回模擬函式被呼叫的次數。
 
 ```python
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
+
+---
+
+## 參數化測試
+
+使用 `@each` 以多組輸入執行同一個測試:
+
+```python
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+每個元組成為一個獨立的測試案例。描述中的 `{0}`, `{1}` 會被替換為實際值。
+
+---
+
+## 基於屬性的測試
+
+使用 `@property` 以隨機生成的輸入進行測試:
+
+```python
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+測試以隨機值執行 `count` 次。失敗時會顯示反例。
 
 ---
 

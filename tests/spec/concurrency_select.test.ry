@@ -1,0 +1,95 @@
+describe("select", fn():
+    it("receives from a ready channel", fn():
+        ch: Channel<int> = channel[int](1)
+        send(ch, 42)
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+            else:
+                seen = -1
+        expect(seen).to_eq(42)
+
+    )
+    it("sends through a ready channel", fn():
+        ch: Channel<int> = channel[int](1)
+        seen = 0
+        select:
+            case send(ch, 7):
+                seen = recv(ch)
+            else:
+                seen = -1
+        expect(seen).to_eq(7)
+
+    )
+    it("uses else as a non-blocking default", fn():
+        ch: Channel<int> = channel[int](1)
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+            else:
+                seen = 99
+        expect(seen).to_eq(99)
+
+    )
+    it("works with spawned producers", fn():
+        fn produce(ch: Channel<int>) -> int:
+            send(ch, 11)
+            return 0
+
+        ch: Channel<int> = channel[int]()
+        t: Task<int> = spawn produce(ch)
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+        expect(seen).to_eq(11)
+        expect(join(t)).to_eq(0)
+
+    )
+    it("can receive None from recv_opt on a closed drained channel", fn():
+        ch: Channel<int> = channel[int](1)
+        close(ch)
+        seen: Option<int> = Some(0)
+        select:
+            case let x = recv_opt(ch):
+                seen = x
+        drained: Option<int> = None
+        expect(seen).to_eq(drained)
+
+    )
+    it("uses timeout 0 as a non-blocking fallback", fn():
+        ch: Channel<int> = channel[int](1)
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+            timeout 0:
+                seen = 77
+        expect(seen).to_eq(77)
+
+    )
+    it("prefers ready cases over timeout", fn():
+        ch: Channel<int> = channel[int](1)
+        send(ch, 5)
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+            timeout 0:
+                seen = -1
+        expect(seen).to_eq(5)
+
+    )
+    it("runs timeout branch when no case becomes ready in time", fn():
+        ch: Channel<int> = channel[int]()
+        seen = 0
+        select:
+            case let x = recv(ch):
+                seen = x
+            timeout 5:
+                seen = 12
+        expect(seen).to_eq(12)
+    )
+)

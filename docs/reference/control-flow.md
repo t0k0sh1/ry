@@ -27,7 +27,7 @@ else:
 ### Example
 
 ```python
-let x = 10
+x = 10
 
 if x > 5:
     print("big")
@@ -44,7 +44,7 @@ else:
 
 ```python
 if true:
-    let y = 42
+    y = 42
 # y is not accessible here
 ```
 
@@ -64,7 +64,7 @@ Repeats the loop body while the condition is `true`.
 ### Example
 
 ```python
-let i = 0
+i = 0
 while i < 5:
     print(i)
     i += 1
@@ -73,7 +73,7 @@ while i < 5:
 ### Combining with break / continue
 
 ```python
-let i = 0
+i = 0
 while true:
     if i >= 3:
         break
@@ -116,7 +116,7 @@ for k, v in map_expr:
 When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 
 for i, x in enumerate(xs):
     print(f"{i}: {x}")    # 0: 10, 1: 20, 2: 30
@@ -140,11 +140,11 @@ for i in 1 .. 5:
 ### Example
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 for x in xs:
     print(x)
 
-let s = {1, 2, 3}
+s = {1, 2, 3}
 for x in s:
     print(x)
 
@@ -161,7 +161,7 @@ for i in range(10, 0, -3):
     print(i)     # 10 7 4 1
 
 # Map iteration
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 for k, v in m:
     print(k)
     print(v)
@@ -170,6 +170,114 @@ for k, v in m:
 for i in 1 .. 3:
     print(i)     # 1 2 3
 ```
+
+---
+
+## spawn / await
+
+`spawn` starts a user-defined function or lambda call on the runtime worker pool and returns `Task<T>`. `await` and `join(task)` both wait for a task to complete.
+
+```python
+fn square(x: int) -> int:
+    return x * x
+
+t: Task<int> = spawn square(12)
+print(await t)          # 144
+u: Task<int> = spawn square(3)
+print(join(u))          # 9, function-form equivalent of await
+```
+
+### Constraints
+
+- `spawn` only accepts a function-call expression.
+- The callee must be a user-defined function or lambda.
+- `spawn` does not support `Unit`-returning calls in v1.
+- Spawned work runs as lightweight runtime jobs rather than one OS thread per task.
+- `await` requires a `Task<T>` value.
+- `await expr` can be used as either an expression or a statement.
+
+## channels
+
+`Channel<T>` is the built-in blocking communication primitive for passing values between tasks.
+
+```python
+fn worker(ch: Channel<int>) -> int:
+    send(ch, 42)
+    close(ch)
+    return 0
+
+ch: Channel<int> = channel[int]()
+t: Task<int> = spawn worker(ch)
+for x in ch:
+    print(x)
+print(join(t))
+```
+
+### Rules
+
+- `channel[T]()` creates an unbuffered channel.
+- `channel[T](n)` creates a buffered channel with capacity `n`.
+- `send(ch, value)` blocks until the value is accepted.
+- `try_send(ch, value)` attempts an immediate send and returns `bool`.
+- `recv(ch)` blocks until a value is available and remains the strict receive API.
+- `recv_opt(ch)` blocks until a value is available or the channel is closed and drained.
+- `try_recv(ch)` attempts an immediate receive and returns `Option<T>` or `bool` for `Channel<Unit>`.
+- `for x in ch:` iterates values until the channel is closed and drained.
+- `close(ch)` closes the channel.
+- In v1, `send` on a closed channel and `recv` on an empty closed channel raise a runtime error.
+- `recv_opt(ch: Channel<T>) -> Option<T>` returns `Some(v)` for received values and `None` once the channel is closed and drained.
+- `recv_opt(ch: Channel<Unit>) -> bool` returns `true` for a received `Unit` value and `false` once the channel is closed and drained.
+- `try_recv(ch: Channel<T>) -> Option<T>` returns `Some(v)` if a value is immediately available and `None` otherwise, including closed-and-drained channels.
+- `try_recv(ch: Channel<Unit>) -> bool` returns `true` if a `Unit` value is immediately available and `false` otherwise.
+- `for _ in ch:` can be used to consume `Channel<Unit>`.
+
+## select
+
+`select` waits on multiple channel operations and executes exactly one ready branch.
+
+```python
+select:
+    case let x = recv(inbox):
+        print(x)
+    case send(outbox, 42):
+        print("sent")
+    else:
+        print("idle")
+```
+
+### Rules
+
+- `select` is a statement, not an expression.
+- Cases must be `case let name = recv(ch):`, `case let name = recv_opt(ch):`, or `case send(ch, value):`.
+- Use `let _ = recv(ch)` to discard a received value.
+- `recv_opt` cases bind `Option<T>` or `bool` for `Channel<Unit>`.
+- `else:` is optional, and if present it must be the last branch.
+- `timeout n:` is an optional last branch that waits up to `n` milliseconds for the whole `select`.
+- `else` and `timeout` cannot be used together.
+- Without `else`, `select` blocks until one case becomes ready.
+- In v1, closed-channel errors are preserved inside `select`: `send` on a closed channel and `recv` on an empty closed channel still raise runtime errors.
+
+---
+
+## `@parallel for`
+
+`@parallel` can be attached only to counted `for` loops over `range(...)` or integer `..` ranges. The loop body runs in parallel chunks on the runtime worker pool.
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+### Constraints
+
+- Only `range(...)` and integer `..` loops are supported.
+- Destructuring iteration is not supported.
+- Assigning to outer mutable bindings is rejected.
+- `break` and `continue` are rejected.
+- Indexed assignment and field assignment inside the loop body are rejected in v1.
+
+Use `available_parallelism()` to inspect the runtime worker count.
 
 ---
 
@@ -301,7 +409,7 @@ match color:
         print("blue")
 
 # Option match
-let x: Option<int> = Some(42)
+x: Option<int> = Some(42)
 match x:
     case Some(v):
         print(v)
@@ -337,7 +445,7 @@ enum Shape:
     Rectangle(float, float)
     Point
 
-let s = Shape::Circle(3.14)
+s = Shape::Circle(3.14)
 match s:
     case Shape::Circle(r):
         print(r)        # 3.14
@@ -366,23 +474,23 @@ Multi-field variants bind each field to a separate name in declaration order.
 
 ```python
 for i in range(3):
-    let tmp = i * 2
+    tmp = i * 2
 # tmp is not accessible here
 
 if true:
-    let a = 1
+    a = 1
 # a is not accessible here
 ```
 
-### Shadowing
+### Inner Scope Reassignment
 
-- Declaring a variable with the same name as an outer variable in an inner scope causes the inner variable to be referenced within the inner scope.
-- After leaving the inner scope, the outer variable is accessible again.
+- Assigning to a variable inside an inner scope modifies the outer variable (Python-style scoping).
+- There is no shadowing — the inner assignment changes the same variable.
 
 ```python
-let x = 10
+x = 10
 if true:
-    let x = 99   # Shadows the outer x
+    x = 99   # Modifies the outer x
     print(x)     # 99
-print(x)         # 10
+print(x)         # 99
 ```

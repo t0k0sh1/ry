@@ -1,6 +1,25 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
-#include <stdexcept>
+
+namespace {
+// RAII guard to restore moved-out args after proxy CallExpr delegation
+struct ArgsRestoreGuard {
+    std::vector<ExprPtr> &dst;
+    std::vector<ExprPtr> &src;
+    ~ArgsRestoreGuard() { dst = std::move(src); }
+};
+} // namespace
+
+// ===== Whitespace helper =====
+
+llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
+    llvm::Value *isSp  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' '));
+    llvm::Value *isTab = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'));
+    llvm::Value *isNl  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n'));
+    llvm::Value *isCr  = builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'));
+    return builder_.CreateOr(builder_.CreateOr(isSp, isTab),
+                             builder_.CreateOr(isNl, isCr));
+}
 
 // ===== Builtin String =====
 
@@ -13,8 +32,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
             codegenError("contains() requires str arguments");
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+        auto strstrFn = getStdlibStrstr();
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         return builder_.CreateICmpNE(result, null, "contains");
@@ -28,10 +46,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *prefix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
             codegenError("starts_with() requires str arguments");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
         llvm::Value *cmp = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
         return builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
@@ -45,10 +61,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *suffix = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
             codegenError("ends_with() requires str arguments");
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strncmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto strncmpFn = mod_->getOrInsertFunction("strncmp", strncmpTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strncmpFn = getStdlibStrncmp();
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
         llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
 
@@ -74,7 +88,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         return phi;
     }
 
-    // find(s, sub) → int (-1 if not found)
+    // find(s, sub) → Option<int>
     if (e.callee == "find") {
         if (e.args.size() != 2)
             codegenError("find() takes exactly 2 arguments");
@@ -82,20 +96,43 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *sub = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
             codegenError("find() requires str arguments");
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
+
+        llvm::StructType *optTy = getOptionType(i64Ty_);
+        auto strstrFn = getStdlibStrstr();
         llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "find_ptr");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *isNull = builder_.CreateICmpEQ(result, null, "find_null");
 
+        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "find.found", fn_);
+        llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "find.notfound", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "find.merge", fn_);
+        builder_.CreateCondBr(isNull, notFoundBB, foundBB);
+
+        builder_.SetInsertPoint(foundBB);
         llvm::Value *sInt = builder_.CreatePtrToInt(s, i64Ty_, "s_int");
         llvm::Value *rInt = builder_.CreatePtrToInt(result, i64Ty_, "r_int");
-        llvm::Value *offset = builder_.CreateSub(rInt, sInt, "find_offset");
+        llvm::Value *byteOffset = builder_.CreateSub(rInt, sInt, "find_byte_offset");
+        // Convert byte offset to character index
+        auto charIdxTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
+        auto charIdxFn = mod_->getOrInsertFunction("__ry_utf8_char_index", charIdxTy);
+        llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, byteOffset}, "find_char_idx");
+        llvm::Value *someVal = buildSomeValue(charIdx, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
 
-        return builder_.CreateSelect(isNull, llvm::ConstantInt::get(i64Ty_, -1), offset, "find_result");
+        builder_.SetInsertPoint(notFoundBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "find_result");
+        phi->addIncoming(someVal, foundEndBB);
+        phi->addIncoming(noneVal, notFoundEndBB);
+        return phi;
     }
 
-    // substring(s, start, end) → str
+    // substring(s, start, end) → str (UTF-8 character indices)
     if (e.callee == "substring") {
         if (e.args.size() != 3)
             codegenError("substring() takes exactly 3 arguments");
@@ -105,22 +142,12 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("substring() requires str as first argument");
 
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-
-        llvm::Value *len = builder_.CreateSub(end, start, "sub_len");
-        llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "sub_buf_size");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "sub_buf");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, start, "sub_src");
-        builder_.CreateCall(memcpyFn, {buf, srcPtr, len});
-        llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "sub_end");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), endPtr);
-        return buf;
+        auto substrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
+        auto substrFn = mod_->getOrInsertFunction("__ry_utf8_substring", substrTy);
+        return builder_.CreateCall(substrFn, {s, start, end}, "substring");
     }
 
-    // char_at(s, i) → str (single character as string)
+    // char_at(s, i) → str (single UTF-8 character as string)
     if (e.callee == "char_at") {
         if (e.args.size() != 2)
             codegenError("char_at() takes exactly 2 arguments");
@@ -129,16 +156,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         if (s->getType() != ptrTy_)
             codegenError("char_at() requires str as first argument");
 
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 2)}, "char_buf");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "char_src");
-        llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "char_val");
-        builder_.CreateStore(ch, buf);
-        llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, llvm::ConstantInt::get(i64Ty_, 1), "char_end");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), endPtr);
-        return buf;
+        auto charAtTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto charAtFn = mod_->getOrInsertFunction("__ry_utf8_char_at", charAtTy);
+        return builder_.CreateCall(charAtFn, {s, idx}, "char_at");
     }
 
     // replace(s, old, new) → str
@@ -150,15 +170,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *newStr = emitExpr(*e.args[2]);
         if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
             codegenError("replace() requires str arguments");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strstrFn = getStdlibStrstr();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "repl_s_len");
         llvm::Value *oldLen = builder_.CreateCall(strlenFn, {oldStr}, "repl_old_len");
@@ -247,11 +262,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_upper() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "upper_len");
         llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "upper_buf_size");
@@ -296,11 +308,8 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_lower() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "lower_len");
         llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "lower_buf_size");
@@ -345,13 +354,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "trim_len");
 
@@ -373,11 +378,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         builder_.SetInsertPoint(startCheckBB);
         llvm::Value *startPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, startIdx, "start_ptr");
         llvm::Value *startCh = builder_.CreateLoad(i8Ty_, startPtr, "start_ch");
-        llvm::Value *isSp = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, ' '), "is_sp");
-        llvm::Value *isTab = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\t'), "is_tab");
-        llvm::Value *isNl = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\n'), "is_nl");
-        llvm::Value *isCr = builder_.CreateICmpEQ(startCh, llvm::ConstantInt::get(i8Ty_, '\r'), "is_cr");
-        llvm::Value *isWs = builder_.CreateOr(builder_.CreateOr(isSp, isTab), builder_.CreateOr(isNl, isCr), "is_ws");
+        llvm::Value *isWs = emitIsWhitespace(startCh);
         builder_.CreateCondBr(isWs, startBodyBB, startEndBB);
 
         builder_.SetInsertPoint(startBodyBB);
@@ -407,11 +408,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *endPrev = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "end_prev");
         llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, endPrev, "end_ptr");
         llvm::Value *endCh = builder_.CreateLoad(i8Ty_, endPtr, "end_ch");
-        llvm::Value *isSp2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, ' '), "is_sp2");
-        llvm::Value *isTab2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\t'), "is_tab2");
-        llvm::Value *isNl2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\n'), "is_nl2");
-        llvm::Value *isCr2 = builder_.CreateICmpEQ(endCh, llvm::ConstantInt::get(i8Ty_, '\r'), "is_cr2");
-        llvm::Value *isWs2 = builder_.CreateOr(builder_.CreateOr(isSp2, isTab2), builder_.CreateOr(isNl2, isCr2), "is_ws2");
+        llvm::Value *isWs2 = emitIsWhitespace(endCh);
         builder_.CreateCondBr(isWs2, endBodyBB, endEndBB);
 
         builder_.SetInsertPoint(endBodyBB);
@@ -441,13 +438,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim_start() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tstart_len");
 
@@ -467,14 +460,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         builder_.SetInsertPoint(checkBB);
         llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, idx, "tstart_ptr");
         llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tstart_ch");
-        llvm::Value *isWs = builder_.CreateOr(
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' ')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'))),
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'))),
-            "tstart_ws");
+        llvm::Value *isWs = emitIsWhitespace(ch);
         builder_.CreateCondBr(isWs, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
@@ -500,13 +486,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("trim_end() requires str argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "tend_len");
 
@@ -528,14 +510,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *prevIdx = builder_.CreateSub(endIdx, llvm::ConstantInt::get(i64Ty_, 1), "tend_prev");
         llvm::Value *ptr = builder_.CreateGEP(builder_.getInt8Ty(), s, prevIdx, "tend_ptr");
         llvm::Value *ch = builder_.CreateLoad(i8Ty_, ptr, "tend_ch");
-        llvm::Value *isWs = builder_.CreateOr(
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, ' ')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\t'))),
-            builder_.CreateOr(
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\n')),
-                builder_.CreateICmpEQ(ch, llvm::ConstantInt::get(i8Ty_, '\r'))),
-            "tend_ws");
+        llvm::Value *isWs = emitIsWhitespace(ch);
         builder_.CreateCondBr(isWs, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
@@ -560,13 +535,9 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *n = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_)
             codegenError("repeat() requires str as first argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "repeat_slen");
         llvm::Value *totalLen = builder_.CreateMul(sLen, n, "repeat_total");
@@ -608,8 +579,7 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         // List reverse
         llvm::Type *elemTy = getListElementType(arg);
         if (elemTy) {
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -656,48 +626,56 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
             return newHeader;
         }
 
-        // String reverse
+        // String reverse (UTF-8 aware)
         llvm::Value *s = arg;
         if (s->getType() != ptrTy_)
             codegenError("reverse() requires list or str argument");
 
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto revTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto revFn = mod_->getOrInsertFunction("__ry_utf8_reverse", revTy);
+        return builder_.CreateCall(revFn, {s}, "str_rev");
+    }
 
-        llvm::Value *len = builder_.CreateCall(strlenFn, {s}, "rev_len");
-        llvm::Value *bufSize = builder_.CreateAdd(len, llvm::ConstantInt::get(i64Ty_, 1), "rev_bsize");
-        llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rev_buf");
+    // reverse!(list) → in-place reverse
+    if (e.callee == "reverse!") {
+        if (e.args.size() != 1)
+            codegenError("reverse!() takes exactly 1 argument");
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (!elemTy) codegenError("reverse!() requires a list");
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "rev_i");
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "revm_len_ptr");
+        llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "revm_len");
+        llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "revm_data");
+
+        // Swap elements: i from 0 to len/2
+        llvm::Value *half = builder_.CreateSDiv(len, llvm::ConstantInt::get(i64Ty_, 2), "revm_half");
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "revm_i");
         builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
 
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "rev.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "rev.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "rev.end", fn_);
-
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "revm.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "revm.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "revm.end", fn_);
         builder_.CreateBr(condBB);
+
         builder_.SetInsertPoint(condBB);
-        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "rev_idx");
-        builder_.CreateCondBr(builder_.CreateICmpSLT(i, len, "rev_cond"), bodyBB, endBB);
+        llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "revm_idx");
+        builder_.CreateCondBr(builder_.CreateICmpSLT(i, half, "revm_cond"), bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "rev_i_cur");
-        llvm::Value *srcIdx = builder_.CreateSub(
-            builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1), "len_m1"),
-            iCur, "rev_src_idx");
-        llvm::Value *srcPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, srcIdx, "rev_src");
-        llvm::Value *ch = builder_.CreateLoad(i8Ty_, srcPtr, "rev_ch");
-        llvm::Value *dstPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, iCur, "rev_dst");
-        builder_.CreateStore(ch, dstPtr);
-        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "rev_next"), iVar);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "revm_cur");
+        llvm::Value *j = builder_.CreateSub(builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1)), iCur, "revm_j");
+        llvm::Value *ptrI = builder_.CreateGEP(elemTy, dataPtr, iCur, "revm_pi");
+        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, dataPtr, j, "revm_pj");
+        llvm::Value *vi = builder_.CreateLoad(elemTy, ptrI, "revm_vi");
+        llvm::Value *vj = builder_.CreateLoad(elemTy, ptrJ, "revm_vj");
+        builder_.CreateStore(vj, ptrI);
+        builder_.CreateStore(vi, ptrJ);
+        builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
-        llvm::Value *nullPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, len, "rev_null");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullPtr);
-        return buf;
+        return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
     // split(s, delim) → List<str>
@@ -708,15 +686,10 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
         llvm::Value *delim = emitExpr(*e.args[1]);
         if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
             codegenError("split() requires str arguments");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto strstrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto strstrFn = mod_->getOrInsertFunction("strstr", strstrTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto strstrFn = getStdlibStrstr();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
         llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
@@ -811,21 +784,20 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 
     // join(list, sep) → str
     if (e.callee == "join") {
-        if (e.args.size() != 2)
-            codegenError("join() takes exactly 2 arguments");
+        if (e.args.size() != 2) {
+            if (e.args.size() != 1)
+                codegenError("join() expects 1 argument (Task<T>) or 2 arguments (List<str>, str)");
+            return nullptr;
+        }
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Value *sep = emitExpr(*e.args[1]);
         if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
             codegenError("join() requires List<str> and str arguments");
         if (getListElementType(listPtr) != ptrTy_)
             codegenError("join() requires List<str> as first argument");
-
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto strlenFn = getStdlibStrlen();
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *listLen = builder_.CreateLoad(i64Ty_,
             builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "join_len_ptr"), "join_len");
@@ -968,17 +940,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "keys_len");
         llvm::Value *keysData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2), "keys_data");
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "keys_header");
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
-
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
         builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
@@ -999,17 +968,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "vals_len");
         llvm::Value *valsData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3), "vals_data");
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "vals_header");
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
-
-        auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
         builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
@@ -1019,48 +985,76 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         return newHeader;
     }
 
-    // ===== first(list) =====
+    // ===== first(list) → Option<T> =====
     if (e.callee == "first") {
         if (e.args.size() != 1)
             codegenError("first() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("first() requires a list");
+        llvm::StructType *optTy = getOptionType(elemTy);
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
 
         llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
-        llvm::BasicBlock *errBBF = llvm::BasicBlock::Create(*ctx_, "first.err", fn_);
-        llvm::BasicBlock *okBBF = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
-        builder_.CreateCondBr(isEmptyF, errBBF, okBBF);
-        builder_.SetInsertPoint(errBBF);
-        emitRuntimeError("runtime error: first() on empty list\n", ".first_empty_err");
-        builder_.SetInsertPoint(okBBF);
+        llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "first.empty", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "first.ok", fn_);
+        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "first.merge", fn_);
+        builder_.CreateCondBr(isEmptyF, emptyBB, okBB);
 
-        return builder_.CreateLoad(elemTy, srcData, "first_val");
+        builder_.SetInsertPoint(emptyBB);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *firstVal = builder_.CreateLoad(elemTy, srcData, "first_val");
+        llvm::Value *someVal = buildSomeValue(firstVal, optTy);
+        builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "first_result");
+        phi->addIncoming(noneVal, emptyEndBB);
+        phi->addIncoming(someVal, okEndBB);
+        return phi;
     }
 
-    // ===== last(list) =====
+    // ===== last(list) → Option<T> =====
     if (e.callee == "last") {
         if (e.args.size() != 1)
             codegenError("last() takes exactly 1 argument");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("last() requires a list");
+        llvm::StructType *optTy = getOptionType(elemTy);
         llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
 
         llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
-        llvm::BasicBlock *errBBL = llvm::BasicBlock::Create(*ctx_, "last.err", fn_);
+        llvm::BasicBlock *emptyBBL = llvm::BasicBlock::Create(*ctx_, "last.empty", fn_);
         llvm::BasicBlock *okBBL = llvm::BasicBlock::Create(*ctx_, "last.ok", fn_);
-        builder_.CreateCondBr(isEmptyL, errBBL, okBBL);
-        builder_.SetInsertPoint(errBBL);
-        emitRuntimeError("runtime error: last() on empty list\n", ".last_empty_err");
-        builder_.SetInsertPoint(okBBL);
+        llvm::BasicBlock *mergeBBL = llvm::BasicBlock::Create(*ctx_, "last.merge", fn_);
+        builder_.CreateCondBr(isEmptyL, emptyBBL, okBBL);
 
+        builder_.SetInsertPoint(emptyBBL);
+        llvm::Value *noneValL = buildNoneValue(optTy);
+        builder_.CreateBr(mergeBBL);
+        llvm::BasicBlock *emptyEndBBL = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(okBBL);
         llvm::Value *lastIdx = builder_.CreateSub(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {lastIdx}, "last_ep");
-        return builder_.CreateLoad(elemTy, elemPtr, "last_val");
+        llvm::Value *lastVal = builder_.CreateLoad(elemTy, elemPtr, "last_val");
+        llvm::Value *someValL = buildSomeValue(lastVal, optTy);
+        builder_.CreateBr(mergeBBL);
+        llvm::BasicBlock *okEndBBL = builder_.GetInsertBlock();
+
+        builder_.SetInsertPoint(mergeBBL);
+        llvm::PHINode *phiL = builder_.CreatePHI(optTy, 2, "last_result");
+        phiL->addIncoming(noneValL, emptyEndBBL);
+        phiL->addIncoming(someValL, okEndBBL);
+        return phiL;
     }
 
     // ===== is_empty(list/map/set) =====
@@ -1090,8 +1084,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "enum_data");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "enum_header");
@@ -1145,8 +1138,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::Value *minLen = builder_.CreateSelect(builder_.CreateICmpSLT(len1, len2), len1, len2, "zip_minlen");
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "zip_header");
@@ -1190,6 +1182,31 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 // ===== Builtin Core =====
 
 llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
+    if (e.callee.size() > 8 && e.callee.substr(0, 8) == "channel<" && e.callee.back() == '>') {
+        if (e.args.size() > 1)
+            codegenError("channel[T]() takes 0 or 1 arguments");
+
+        std::string inner = e.callee.substr(8, e.callee.size() - 9);
+        llvm::Type *elemTy = resolveType(inner);
+        llvm::Value *capacity = llvm::ConstantInt::get(i64Ty_, 0);
+        if (e.args.size() == 1) {
+            capacity = emitExpr(*e.args[0]);
+            if (capacity->getType() != i64Ty_)
+                codegenError("channel[T](capacity) requires int capacity");
+        }
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        int64_t elemSize = elemTy->isVoidTy() ? 0 : static_cast<int64_t>(dl.getTypeAllocSize(elemTy));
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_, i64Ty_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_new", fnTy);
+        llvm::Value *result = builder_.CreateCall(
+            fn,
+            {llvm::ConstantInt::get(i64Ty_, elemSize), capacity},
+            "channel");
+        channel_element_types_[result] = elemTy;
+        return result;
+    }
+
     // exit(code) as expression — emit exit, then create dead block for subsequent IR
     if (e.callee == "exit") {
         emitExit(e.args);
@@ -1210,8 +1227,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *count = builder_.CreateSExt(count32, i64Ty_, "argc64");
 
         // Allocate list header
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *headerPtr = builder_.CreateCall(
@@ -1265,6 +1281,205 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
         list_element_types_[headerPtr] = ptrTy_;
         return headerPtr;
+    }
+
+    // available_parallelism() -> int
+    if (e.callee == "available_parallelism") {
+        if (!e.args.empty())
+            codegenError("available_parallelism() takes no arguments");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(i64Ty_, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_available_parallelism", fnTy);
+        return builder_.CreateCall(fn, {}, "available_parallelism");
+    }
+
+    if (e.callee == "join" && e.args.size() == 1) {
+        llvm::Value *taskVal = emitExpr(*e.args[0]);
+        llvm::Type *resultTy = getTaskResultType(taskVal);
+        if (!resultTy)
+            codegenError("join() requires Task<T>");
+
+        llvm::FunctionType *joinTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee joinFn = mod_->getOrInsertFunction("__ry_task_join", joinTy);
+        if (resultTy->isVoidTy())
+            return builder_.CreateCall(joinFn, {taskVal, llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_))});
+        llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, "join_result");
+        builder_.CreateCall(joinFn, {taskVal, resultSlot});
+        return builder_.CreateLoad(resultTy, resultSlot, "joined");
+    }
+
+    if (e.callee == "send") {
+        if (e.args.size() != 2)
+            codegenError("send() takes exactly 2 arguments");
+        llvm::Value *firstArg = emitExpr(*e.args[0]);
+        if (isTcpStream(firstArg)) {
+            llvm::Value *data = emitExpr(*e.args[1]);
+            if (!getListElementType(data) || getListElementType(data) != i8Ty_)
+                codegenError("send() with TcpStream requires List<byte> as second argument");
+            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_send", fnTy);
+            return builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
+        }
+        llvm::Value *channelVal = firstArg;
+        llvm::Type *elemTy = getChannelElementType(channelVal);
+        if (!elemTy)
+            codegenError("send() requires Channel<T> or TcpStream as first argument");
+        llvm::Value *valueVal = emitExpr(*e.args[1]);
+        if (valueVal->getType() != elemTy)
+            codegenError("send() value type does not match channel element type");
+
+        llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        if (!elemTy->isVoidTy()) {
+            llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "send_value");
+            builder_.CreateStore(valueVal, valueSlot);
+            valuePtr = valueSlot;
+        }
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_send", fnTy);
+        return builder_.CreateCall(fn, {channelVal, valuePtr});
+    }
+
+    if (e.callee == "try_send") {
+        if (e.args.size() != 2)
+            codegenError("try_send() takes exactly 2 arguments");
+        llvm::Value *channelVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getChannelElementType(channelVal);
+        if (!elemTy)
+            codegenError("try_send() requires Channel<T> as first argument");
+        llvm::Value *valueVal = emitExpr(*e.args[1]);
+        if (valueVal->getType() != elemTy)
+            codegenError("try_send() value type does not match channel element type");
+
+        llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        if (!elemTy->isVoidTy()) {
+            llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "try_send_value");
+            builder_.CreateStore(valueVal, valueSlot);
+            valuePtr = valueSlot;
+        }
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_try_send", fnTy);
+        return builder_.CreateCall(fn, {channelVal, valuePtr}, "try_send_ok");
+    }
+
+    if (e.callee == "recv") {
+        if (e.args.size() == 2) {
+            // TCP recv(stream, max_bytes)
+            llvm::Value *streamVal = emitExpr(*e.args[0]);
+            if (!isTcpStream(streamVal))
+                codegenError("recv() with 2 arguments requires TcpStream as first argument");
+            llvm::Value *maxBytes = emitExpr(*e.args[1]);
+            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_recv", fnTy);
+            llvm::Value *result = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+            list_element_types_[result] = i8Ty_;
+            return result;
+        }
+        if (e.args.size() != 1)
+            codegenError("recv() takes 1 or 2 arguments");
+        llvm::Value *channelVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getChannelElementType(channelVal);
+        if (!elemTy)
+            codegenError("recv() requires Channel<T> argument");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_recv", fnTy);
+        if (elemTy->isVoidTy()) {
+            return builder_.CreateCall(fn, {
+                channelVal,
+                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_))
+            });
+        }
+
+        llvm::AllocaInst *resultSlot = builder_.CreateAlloca(elemTy, nullptr, "recv_result");
+        builder_.CreateCall(fn, {channelVal, resultSlot});
+        return builder_.CreateLoad(elemTy, resultSlot, "received");
+    }
+
+    if (e.callee == "recv_opt") {
+        if (e.args.size() != 1)
+            codegenError("recv_opt() takes exactly 1 argument");
+        llvm::Value *channelVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getChannelElementType(channelVal);
+        if (!elemTy)
+            codegenError("recv_opt() requires Channel<T> argument");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_recv_opt", fnTy);
+        llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        llvm::AllocaInst *resultSlot = nullptr;
+        if (!elemTy->isVoidTy()) {
+            resultSlot = builder_.CreateAlloca(elemTy, nullptr, "recv_opt_result");
+            builder_.CreateStore(llvm::Constant::getNullValue(elemTy), resultSlot);
+            outPtr = resultSlot;
+        }
+
+        llvm::Value *hasValue = builder_.CreateCall(fn, {channelVal, outPtr}, "recv_opt_has_value");
+        if (elemTy->isVoidTy())
+            return hasValue;
+
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::Value *inner = builder_.CreateLoad(elemTy, resultSlot, "recv_opt_loaded");
+        llvm::Value *optInner = builder_.CreateSelect(hasValue, inner, llvm::UndefValue::get(elemTy), "recv_opt_inner");
+        llvm::Value *opt = llvm::UndefValue::get(optTy);
+        opt = builder_.CreateInsertValue(opt, hasValue, 0, "recv_opt_has");
+        opt = builder_.CreateInsertValue(opt, optInner, 1, "recv_opt_value");
+        return opt;
+    }
+
+    if (e.callee == "try_recv") {
+        if (e.args.size() != 1)
+            codegenError("try_recv() takes exactly 1 argument");
+        llvm::Value *channelVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getChannelElementType(channelVal);
+        if (!elemTy)
+            codegenError("try_recv() requires Channel<T> argument");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_try_recv", fnTy);
+        llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+        llvm::AllocaInst *resultSlot = nullptr;
+        if (!elemTy->isVoidTy()) {
+            resultSlot = builder_.CreateAlloca(elemTy, nullptr, "try_recv_result");
+            builder_.CreateStore(llvm::Constant::getNullValue(elemTy), resultSlot);
+            outPtr = resultSlot;
+        }
+
+        llvm::Value *hasValue = builder_.CreateCall(fn, {channelVal, outPtr}, "try_recv_has_value");
+        if (elemTy->isVoidTy())
+            return hasValue;
+
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::Value *inner = builder_.CreateLoad(elemTy, resultSlot, "try_recv_loaded");
+        llvm::Value *optInner = builder_.CreateSelect(hasValue, inner, llvm::UndefValue::get(elemTy), "try_recv_inner");
+        llvm::Value *opt = llvm::UndefValue::get(optTy);
+        opt = builder_.CreateInsertValue(opt, hasValue, 0, "try_recv_has");
+        opt = builder_.CreateInsertValue(opt, optInner, 1, "try_recv_value");
+        return opt;
+    }
+
+    if (e.callee == "close") {
+        if (e.args.size() != 1)
+            codegenError("close() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e.args[0]);
+        if (isTcpStream(val) || isTcpListener(val)) {
+            llvm::FunctionType *fnTy = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+            llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_tcp_close", fnTy);
+            return builder_.CreateCall(fn, {val});
+        }
+        if (!getChannelElementType(val))
+            codegenError("close() requires Channel<T>, TcpStream, or TcpListener argument");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_close", fnTy);
+        return builder_.CreateCall(fn, {val});
     }
 
     // range(n), range(start, end), or range(start, end, step) → List<int>
@@ -1324,8 +1539,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::Value *count = builder_.CreateSelect(stepPos, countPosClamped, countNegClamped, "range_count");
 
         // Allocate list header
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *headerPtr = builder_.CreateCall(
@@ -1398,10 +1612,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
             return builder_.CreateLoad(i64Ty_, lenPtr, "len");
         }
-        // String: call strlen
-        auto strlenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto strlenFn = mod_->getOrInsertFunction("strlen", strlenTy);
-        return builder_.CreateCall(strlenFn, {ptr}, "str_len");
+        // String: call __ry_utf8_len (character count)
+        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
+        return builder_.CreateCall(utf8LenFn, {ptr}, "str_len");
+    }
+
+    // byte_len(str) → int (byte length)
+    if (e.callee == "byte_len") {
+        if (e.args.size() != 1)
+            codegenError("byte_len() takes exactly 1 argument");
+        llvm::Value *ptr = emitExpr(*e.args[0]);
+        if (ptr->getType() != ptrTy_)
+            codegenError("byte_len() requires str argument");
+        auto strlenFn = getStdlibStrlen();
+        return builder_.CreateCall(strlenFn, {ptr}, "byte_len");
     }
 
     // Some(x) → Option<T> constructor
@@ -1495,8 +1720,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "filter_src_data");
 
         // Allocate new list header + data (capacity = source length)
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1599,8 +1823,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "map_src_data");
 
         // Allocate new list
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1683,8 +1906,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "sort_src_data");
 
         // Allocate new list and copy data
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         llvm::Value *newHeader = builder_.CreateCall(
@@ -1695,8 +1917,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sort_data");
 
         // memcpy source data to new data
-        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
 
         // Set header
@@ -1707,266 +1928,104 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sort_data_field");
         builder_.CreateStore(newData, newDataField);
 
-        // Iterative Quick Sort with Hoare partition and median-of-three pivot
-        // Helper lambda: emit less-than comparison IR (reused in 3 places)
-        auto emitLessThan = [&](llvm::Value *a, llvm::Value *b) -> llvm::Value* {
+        // Generate trampoline function for TimSort comparator
+        std::string trampName = "__sort_trampoline_" + std::to_string(lambda_counter_++);
+        llvm::FunctionType *trampTy = llvm::FunctionType::get(
+            i1Ty_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        llvm::Function *trampFn = llvm::Function::Create(
+            trampTy, llvm::Function::ExternalLinkage, trampName, mod_.get());
+        trampFn->setCallingConv(llvm::CallingConv::C);
+
+        auto trampArgs = trampFn->arg_begin();
+        llvm::Argument *argA = &*trampArgs++;
+        llvm::Argument *argB = &*trampArgs++;
+        llvm::Argument *argCtx = &*trampArgs++;
+        argA->setName("a_ptr");
+        argB->setName("b_ptr");
+        argCtx->setName("ctx");
+
+        {
+            FnScope guard(*this);
+            fn_ = trampFn;
+            llvm::BasicBlock *trampBB = llvm::BasicBlock::Create(*ctx_, "entry", trampFn);
+            builder_.SetInsertPoint(trampBB);
+
+            llvm::Value *valA = builder_.CreateLoad(elemTy, argA, "val_a");
+            llvm::Value *valB = builder_.CreateLoad(elemTy, argB, "val_b");
+
+            llvm::Value *result;
             if (hasComparator) {
-                return emitLambdaCall(compVal, compInfo, {a, b}, "sort_comp");
+                // ctx is the closure struct pointer (or raw fn ptr for non-closures)
+                result = emitLambdaCall(argCtx, compInfo, {valA, valB}, "sort_comp");
             } else if (elemTy == i64Ty_) {
-                return builder_.CreateICmpSLT(a, b, "sort_lt");
+                result = builder_.CreateICmpSLT(valA, valB, "sort_lt");
             } else if (elemTy == f64Ty_) {
-                return builder_.CreateFCmpOLT(a, b, "sort_lt");
+                result = builder_.CreateFCmpOLT(valA, valB, "sort_lt");
             } else if (elemTy == ptrTy_) {
-                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
-                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {a, b}, "sort_strcmp");
-                return builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
+                auto strcmpFn = getStdlibStrcmp();
+                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
+                result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
             } else {
                 codegenError("sort() does not support this element type");
             }
-        };
 
-        auto emitSwap = [&](llvm::Value *idxA, llvm::Value *idxB) {
-            llvm::Value *pA = builder_.CreateGEP(elemTy, newData, {idxA}, "swap_ptr_a");
-            llvm::Value *pB = builder_.CreateGEP(elemTy, newData, {idxB}, "swap_ptr_b");
-            llvm::Value *vA = builder_.CreateLoad(elemTy, pA, "swap_val_a");
-            llvm::Value *vB = builder_.CreateLoad(elemTy, pB, "swap_val_b");
-            builder_.CreateStore(vB, pA);
-            builder_.CreateStore(vA, pB);
-        };
-
-        llvm::Value *one = llvm::ConstantInt::get(i64Ty_, 1);
-        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
-        llvm::Value *two = llvm::ConstantInt::get(i64Ty_, 2);
-
-        // BasicBlocks
-        llvm::BasicBlock *qsCheckLenBB = llvm::BasicBlock::Create(*ctx_, "qs.check.len", fn_);
-        llvm::BasicBlock *qsInitBB = llvm::BasicBlock::Create(*ctx_, "qs.init", fn_);
-        llvm::BasicBlock *qsLoopCondBB = llvm::BasicBlock::Create(*ctx_, "qs.loop.cond", fn_);
-        llvm::BasicBlock *qsPopBB = llvm::BasicBlock::Create(*ctx_, "qs.pop", fn_);
-        llvm::BasicBlock *qsCheckTrivialBB = llvm::BasicBlock::Create(*ctx_, "qs.check.trivial", fn_);
-        llvm::BasicBlock *qsPivotBB = llvm::BasicBlock::Create(*ctx_, "qs.pivot", fn_);
-        llvm::BasicBlock *qsPartInitBB = llvm::BasicBlock::Create(*ctx_, "qs.part.init", fn_);
-        llvm::BasicBlock *qsAdvIBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.i", fn_);
-        llvm::BasicBlock *qsAdvJBB = llvm::BasicBlock::Create(*ctx_, "qs.adv.j", fn_);
-        llvm::BasicBlock *qsPartCheckBB = llvm::BasicBlock::Create(*ctx_, "qs.part.check", fn_);
-        llvm::BasicBlock *qsPartSwapBB = llvm::BasicBlock::Create(*ctx_, "qs.part.swap", fn_);
-        llvm::BasicBlock *qsPushBB = llvm::BasicBlock::Create(*ctx_, "qs.push", fn_);
-        llvm::BasicBlock *qsEndBB = llvm::BasicBlock::Create(*ctx_, "qs.end", fn_);
-        llvm::BasicBlock *qsDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.done", fn_);
-
-        builder_.CreateBr(qsCheckLenBB);
-
-        // qs.check.len: if len <= 1, skip sort
-        builder_.SetInsertPoint(qsCheckLenBB);
-        llvm::Value *lenLE1 = builder_.CreateICmpSLE(srcLen, one, "len_le_1");
-        builder_.CreateCondBr(lenLE1, qsDoneBB, qsInitBB);
-
-        // qs.init: allocate explicit stack, push (0, len-1)
-        builder_.SetInsertPoint(qsInitBB);
-        // Stack: array of i64 pairs, max 128 levels deep (push-smaller-first bounds depth to O(log n))
-        llvm::Value *stackSize = llvm::ConstantInt::get(i64Ty_, 128 * 2 * 8);
-        llvm::Value *stack = builder_.CreateCall(mallocFn, {stackSize}, "qs_stack");
-        llvm::AllocaInst *stackTopVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_stack_top");
-        builder_.CreateStore(zero, stackTopVar);
-        // Alloca for partition indices (hoisted out of loop to avoid stack growth)
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_i");
-        llvm::AllocaInst *jVar = builder_.CreateAlloca(i64Ty_, nullptr, "qs_j");
-        // Push initial range (0, len-1)
-        llvm::Value *lenM1 = builder_.CreateSub(srcLen, one, "len_m1");
-        // stack[0] = 0 (lo)
-        llvm::Value *stackSlot0 = builder_.CreateGEP(i64Ty_, stack, {zero}, "stack_slot0");
-        builder_.CreateStore(zero, stackSlot0);
-        // stack[1] = len-1 (hi)
-        llvm::Value *stackSlot1 = builder_.CreateGEP(i64Ty_, stack, {one}, "stack_slot1");
-        builder_.CreateStore(lenM1, stackSlot1);
-        builder_.CreateStore(two, stackTopVar); // stackTop = 2
-        builder_.CreateBr(qsLoopCondBB);
-
-        // qs.loop.cond: while stackTop > 0
-        builder_.SetInsertPoint(qsLoopCondBB);
-        llvm::Value *stackTop = builder_.CreateLoad(i64Ty_, stackTopVar, "stack_top");
-        llvm::Value *stackNotEmpty = builder_.CreateICmpSGT(stackTop, zero, "stack_not_empty");
-        builder_.CreateCondBr(stackNotEmpty, qsPopBB, qsEndBB);
-
-        // qs.pop: pop (lo, hi) from stack
-        builder_.SetInsertPoint(qsPopBB);
-        llvm::Value *st1 = builder_.CreateLoad(i64Ty_, stackTopVar, "st1");
-        llvm::Value *hiIdx = builder_.CreateSub(st1, one, "hi_idx");
-        llvm::Value *loIdx = builder_.CreateSub(st1, two, "lo_idx");
-        llvm::Value *loSlot = builder_.CreateGEP(i64Ty_, stack, {loIdx}, "lo_slot");
-        llvm::Value *hiSlot = builder_.CreateGEP(i64Ty_, stack, {hiIdx}, "hi_slot");
-        llvm::Value *lo = builder_.CreateLoad(i64Ty_, loSlot, "lo");
-        llvm::Value *hi = builder_.CreateLoad(i64Ty_, hiSlot, "hi");
-        llvm::Value *newST = builder_.CreateSub(st1, two, "new_st");
-        builder_.CreateStore(newST, stackTopVar);
-        builder_.CreateBr(qsCheckTrivialBB);
-
-        // qs.check.trivial: if lo >= hi, skip
-        builder_.SetInsertPoint(qsCheckTrivialBB);
-        llvm::Value *loGeHi = builder_.CreateICmpSGE(lo, hi, "lo_ge_hi");
-        builder_.CreateCondBr(loGeHi, qsLoopCondBB, qsPivotBB);
-
-        // qs.pivot: median-of-three pivot selection
-        builder_.SetInsertPoint(qsPivotBB);
-        llvm::Value *mid = builder_.CreateAdd(lo, builder_.CreateSDiv(builder_.CreateSub(hi, lo), two), "mid");
-        // Load arr[lo], arr[mid], arr[hi]
-        llvm::Value *ptrLo = builder_.CreateGEP(elemTy, newData, {lo}, "ptr_lo");
-        llvm::Value *ptrMid = builder_.CreateGEP(elemTy, newData, {mid}, "ptr_mid");
-        llvm::Value *ptrHi = builder_.CreateGEP(elemTy, newData, {hi}, "ptr_hi");
-        llvm::Value *valLo = builder_.CreateLoad(elemTy, ptrLo, "val_lo");
-        llvm::Value *valMid = builder_.CreateLoad(elemTy, ptrMid, "val_mid");
-        llvm::Value *valHi = builder_.CreateLoad(elemTy, ptrHi, "val_hi");
-        // Sort the three: if arr[lo] > arr[mid], swap
-        llvm::BasicBlock *qsMot1BB = llvm::BasicBlock::Create(*ctx_, "qs.mot1", fn_);
-        llvm::BasicBlock *qsMot2BB = llvm::BasicBlock::Create(*ctx_, "qs.mot2", fn_);
-        llvm::BasicBlock *qsMot3BB = llvm::BasicBlock::Create(*ctx_, "qs.mot3", fn_);
-        llvm::BasicBlock *qsMotDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.mot.done", fn_);
-        llvm::Value *loGtMid = emitLessThan(valMid, valLo); // mid < lo => lo > mid
-        builder_.CreateCondBr(loGtMid, qsMot1BB, qsMot2BB);
-
-        builder_.SetInsertPoint(qsMot1BB);
-        emitSwap(lo, mid);
-        builder_.CreateBr(qsMot2BB);
-
-        // if arr[lo] > arr[hi], swap
-        builder_.SetInsertPoint(qsMot2BB);
-        llvm::Value *valLo2 = builder_.CreateLoad(elemTy, ptrLo, "val_lo2");
-        llvm::Value *valHi2 = builder_.CreateLoad(elemTy, ptrHi, "val_hi2");
-        llvm::Value *loGtHi = emitLessThan(valHi2, valLo2);
-        builder_.CreateCondBr(loGtHi, qsMot3BB, qsMotDoneBB);
-
-        builder_.SetInsertPoint(qsMot3BB);
-        emitSwap(lo, hi);
-        builder_.CreateBr(qsMotDoneBB);
-
-        // if arr[mid] > arr[hi], swap
-        builder_.SetInsertPoint(qsMotDoneBB);
-        llvm::BasicBlock *qsMot4BB = llvm::BasicBlock::Create(*ctx_, "qs.mot4", fn_);
-        llvm::BasicBlock *qsMot5BB = llvm::BasicBlock::Create(*ctx_, "qs.mot5", fn_);
-        llvm::Value *valMid3 = builder_.CreateLoad(elemTy, ptrMid, "val_mid3");
-        llvm::Value *valHi3 = builder_.CreateLoad(elemTy, ptrHi, "val_hi3");
-        llvm::Value *midGtHi = emitLessThan(valHi3, valMid3);
-        builder_.CreateCondBr(midGtHi, qsMot4BB, qsMot5BB);
-
-        builder_.SetInsertPoint(qsMot4BB);
-        emitSwap(mid, hi);
-        builder_.CreateBr(qsMot5BB);
-
-        // Pivot = arr[mid], swap mid to lo+1 position for Hoare partition
-        builder_.SetInsertPoint(qsMot5BB);
-        // Use arr[mid] as pivot value
-        llvm::Value *pivotVal = builder_.CreateLoad(elemTy, ptrMid, "pivot_val");
-        builder_.CreateBr(qsPartInitBB);
-
-        // qs.part.init: i = lo - 1, j = hi + 1
-        builder_.SetInsertPoint(qsPartInitBB);
-        builder_.CreateStore(builder_.CreateSub(lo, one, "lo_m1"), iVar);
-        builder_.CreateStore(builder_.CreateAdd(hi, one, "hi_p1"), jVar);
-        builder_.CreateBr(qsAdvIBB);
-
-        // qs.adv.i: do { i++ } while arr[i] < pivot
-        builder_.SetInsertPoint(qsAdvIBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-        llvm::Value *iNext = builder_.CreateAdd(iCur, one, "i_next");
-        builder_.CreateStore(iNext, iVar);
-        llvm::Value *ptrI = builder_.CreateGEP(elemTy, newData, {iNext}, "ptr_i");
-        llvm::Value *valI = builder_.CreateLoad(elemTy, ptrI, "val_i");
-        llvm::Value *iLtPivot = emitLessThan(valI, pivotVal);
-        builder_.CreateCondBr(iLtPivot, qsAdvIBB, qsAdvJBB);
-
-        // qs.adv.j: do { j-- } while arr[j] > pivot (i.e., pivot < arr[j])
-        builder_.SetInsertPoint(qsAdvJBB);
-        llvm::Value *jCur = builder_.CreateLoad(i64Ty_, jVar, "j_cur");
-        llvm::Value *jNext = builder_.CreateSub(jCur, one, "j_next");
-        builder_.CreateStore(jNext, jVar);
-        llvm::Value *ptrJ = builder_.CreateGEP(elemTy, newData, {jNext}, "ptr_j");
-        llvm::Value *valJ = builder_.CreateLoad(elemTy, ptrJ, "val_j");
-        llvm::Value *pivotLtJ = emitLessThan(pivotVal, valJ);
-        builder_.CreateCondBr(pivotLtJ, qsAdvJBB, qsPartCheckBB);
-
-        // qs.part.check: if i >= j, partition done
-        builder_.SetInsertPoint(qsPartCheckBB);
-        llvm::Value *iFinal = builder_.CreateLoad(i64Ty_, iVar, "i_final");
-        llvm::Value *jFinal = builder_.CreateLoad(i64Ty_, jVar, "j_final");
-        llvm::Value *iGeJ = builder_.CreateICmpSGE(iFinal, jFinal, "i_ge_j");
-        builder_.CreateCondBr(iGeJ, qsPushBB, qsPartSwapBB);
-
-        // qs.part.swap: swap arr[i] and arr[j], continue partitioning
-        builder_.SetInsertPoint(qsPartSwapBB);
-        llvm::Value *iSwap = builder_.CreateLoad(i64Ty_, iVar, "i_swap");
-        llvm::Value *jSwap = builder_.CreateLoad(i64Ty_, jVar, "j_swap");
-        emitSwap(iSwap, jSwap);
-        builder_.CreateBr(qsAdvIBB);
-
-        // qs.push: push larger sub-range first (bounds stack depth to O(log n))
-        builder_.SetInsertPoint(qsPushBB);
-        llvm::Value *partJ = builder_.CreateLoad(i64Ty_, jVar, "part_j");
-        llvm::Value *partJp1 = builder_.CreateAdd(partJ, one, "part_j_p1");
-        // Compute sizes: leftSize = partJ - lo, rightSize = hi - partJp1
-        llvm::Value *leftSize = builder_.CreateSub(partJ, lo, "left_size");
-        llvm::Value *rightSize = builder_.CreateSub(hi, partJp1, "right_size");
-        // Push larger sub-range first (processed last), smaller second (processed next)
-        llvm::BasicBlock *qsPushLeftFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.left_first", fn_);
-        llvm::BasicBlock *qsPushRightFirstBB = llvm::BasicBlock::Create(*ctx_, "qs.push.right_first", fn_);
-        llvm::BasicBlock *qsPushDoneBB = llvm::BasicBlock::Create(*ctx_, "qs.push.done", fn_);
-        llvm::Value *leftGtRight = builder_.CreateICmpSGT(leftSize, rightSize, "left_gt_right");
-        builder_.CreateCondBr(leftGtRight, qsPushLeftFirstBB, qsPushRightFirstBB);
-
-        // Left is larger: push (lo, partJ) first, then (partJp1, hi)
-        builder_.SetInsertPoint(qsPushLeftFirstBB);
-        {
-            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_lf");
-            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_lf");
-            builder_.CreateStore(lo, s0);
-            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_lf");
-            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_lf");
-            builder_.CreateStore(partJ, s1);
-            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_lf");
-            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_lf");
-            builder_.CreateStore(partJp1, s2);
-            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_lf");
-            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_lf");
-            builder_.CreateStore(hi, s3);
-            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_lf");
-            builder_.CreateStore(st4, stackTopVar);
+            builder_.CreateRet(result);
         }
-        builder_.CreateBr(qsPushDoneBB);
 
-        // Right is larger: push (partJp1, hi) first, then (lo, partJ)
-        builder_.SetInsertPoint(qsPushRightFirstBB);
-        {
-            llvm::Value *st = builder_.CreateLoad(i64Ty_, stackTopVar, "st_rf");
-            llvm::Value *s0 = builder_.CreateGEP(i64Ty_, stack, {st}, "s0_rf");
-            builder_.CreateStore(partJp1, s0);
-            llvm::Value *st1 = builder_.CreateAdd(st, one, "st1_rf");
-            llvm::Value *s1 = builder_.CreateGEP(i64Ty_, stack, {st1}, "s1_rf");
-            builder_.CreateStore(hi, s1);
-            llvm::Value *st2 = builder_.CreateAdd(st, two, "st2_rf");
-            llvm::Value *s2 = builder_.CreateGEP(i64Ty_, stack, {st2}, "s2_rf");
-            builder_.CreateStore(lo, s2);
-            llvm::Value *st3 = builder_.CreateAdd(st2, one, "st3_rf");
-            llvm::Value *s3 = builder_.CreateGEP(i64Ty_, stack, {st3}, "s3_rf");
-            builder_.CreateStore(partJ, s3);
-            llvm::Value *st4 = builder_.CreateAdd(st2, two, "st4_rf");
-            builder_.CreateStore(st4, stackTopVar);
-        }
-        builder_.CreateBr(qsPushDoneBB);
+        // Call __ry_timsort(newData, srcLen, elemSize, trampoline, cmpCtx)
+        llvm::Value *elemSizeConst = llvm::ConstantInt::get(i64Ty_, elemSz);
+        llvm::Value *cmpCtx = hasComparator
+            ? compVal
+            : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
-        builder_.SetInsertPoint(qsPushDoneBB);
-        builder_.CreateBr(qsLoopCondBB);
+        auto timsortTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
+        auto timsortFn = mod_->getOrInsertFunction("__ry_timsort", timsortTy);
+        builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
 
-        // qs.end: free stack
-        builder_.SetInsertPoint(qsEndBB);
-        llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
-        builder_.CreateCall(freeFn, {stack});
-        builder_.CreateBr(qsDoneBB);
-
-        // qs.done: return sorted list
-        builder_.SetInsertPoint(qsDoneBB);
+        // Return sorted list
         list_element_types_[newHeader] = elemTy;
         return newHeader;
+    }
+
+    // sort!(list) / sort!(list, comparator) → in-place sort
+    if (e.callee == "sort!") {
+        if (e.args.size() < 1 || e.args.size() > 2)
+            codegenError("sort!() takes 1 or 2 arguments");
+
+        // Evaluate list arg once before sort() re-evaluates it
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (!elemTy) codegenError("sort!() requires a list");
+
+        // Reuse sort() via a proxy CallExpr with scope guard for exception safety
+        auto &mutArgs = const_cast<CallExpr &>(e).args;
+        CallExpr sortProxy;
+        sortProxy.callee = "sort";
+        sortProxy.args = std::move(mutArgs);
+        ArgsRestoreGuard guard{mutArgs, sortProxy.args};
+        llvm::Value *sorted = emitBuiltinHigherOrder(sortProxy);
+
+        if (!sorted)
+            codegenError("sort!() internal error");
+
+        // Copy sorted data back into original list
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+        auto memcpyFn = getStdlibMemcpy();
+
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "sortm_len");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "sortm_data");
+        llvm::Value *sortedData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, sorted, 2), "sortm_sorted");
+        llvm::Value *copySize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
+        builder_.CreateCall(memcpyFn, {srcData, sortedData, copySize});
+
+        // Free the temporary sorted list
+        auto freeFn = getStdlibFree();
+        builder_.CreateCall(freeFn, {sortedData});
+        builder_.CreateCall(freeFn, {sorted});
+
+        return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
     // ===== reduce(list, fn(a, b) -> a op b) =====
@@ -2274,6 +2333,64 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     }
 
 
+    // tap(list, fn) → call fn on each element, return original list
+    if (e.callee == "tap") {
+        if (e.args.size() != 2)
+            codegenError("tap() takes exactly 2 arguments");
+
+        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+
+        llvm::Type *elemTy = getListElementType(listVal);
+        if (!elemTy)
+            codegenError("tap() requires a list as first argument");
+
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("tap() requires a function as second argument");
+        auto &info = fnIt->second;
+
+        if (info.paramTypes.size() != 1)
+            codegenError("tap() function must take exactly 1 argument");
+
+        // Read source list
+        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "tap_src_len_ptr");
+        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "tap_src_len");
+        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "tap_src_data_field");
+        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "tap_src_data");
+
+        // Loop: call fn on each element
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "tap_i");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tap.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tap.body", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tap.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "tap_iv");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "tap_cond");
+        builder_.CreateCondBr(cond, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "tap_elem_ptr");
+        llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
+        emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
+        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
+        builder_.CreateStore(iNext, iVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        return listVal;
+    }
+
     return nullptr;
 }
 
@@ -2312,20 +2429,17 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
             llvm::Value *newCap = builder_.CreateMul(cap, llvm::ConstantInt::get(i64Ty_, 2), "new_cap");
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
             llvm::Value *newSize = builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "new_size");
             llvm::Value *newElemsPtr = builder_.CreateCall(mallocFn, {newSize}, "new_elems");
 
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto memcpyFn = getStdlibMemcpy();
             llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, setPtr, 2, "elems_field");
             llvm::Value *oldElemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "old_elems");
             llvm::Value *oldSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "old_size");
             builder_.CreateCall(memcpyFn, {newElemsPtr, oldElemsPtr, oldSize});
 
-            llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
+            auto freeFn = getStdlibFree();
             builder_.CreateCall(freeFn, {oldElemsPtr});
 
             builder_.CreateStore(newElemsPtr, elemsPtrField);
@@ -2487,8 +2601,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             if (listElemTy == ptrTy_) {
                 if (getNestedListElementType(containerPtr))
                     codegenError("remove() is not supported for lists of non-string pointer elements");
-                auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-                auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+                auto strcmpFn = getStdlibStrcmp();
                 llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
                 match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
             } else if (listElemTy->isDoubleTy()) {
@@ -2520,8 +2633,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             builder_.CreateCondBr(wasFound, removeBB, doneBB);
 
             builder_.SetInsertPoint(removeBB);
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto memmoveFn = getStdlibMemmove();
             llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, dataPtr, {idx}, "lrem_dst");
             llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, dataPtr,
                 {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
@@ -2629,13 +2741,9 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-            auto freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            auto freeFn = mod_->getOrInsertFunction("free", freeTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+            auto freeFn = getStdlibFree();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "app_len_ptr");
             llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 1, "app_cap_ptr");
@@ -2679,32 +2787,90 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         }
     }
 
-    // pop(list) → remove and return last element
+    // appended(list, elem) → new list with element added
+    if (e.callee == "appended" && e.args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *val = emitExpr(*e.args[1]);
+            if (val->getType() != elemTy)
+                codegenError("appended() element type mismatch");
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+
+            llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "apd_len");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "apd_data");
+            llvm::Value *newLen = builder_.CreateAdd(srcLen, llvm::ConstantInt::get(i64Ty_, 1), "apd_new_len");
+
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "apd_header");
+            llvm::Value *newDataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ds");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {newDataSize}, "apd_nd");
+
+            llvm::Value *oldDataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ods");
+            builder_.CreateCall(memcpyFn, {newData, srcData, oldDataSize});
+
+            llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, srcLen, "apd_new_ep");
+            builder_.CreateStore(val, newElemPtr);
+
+            builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+            builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+            builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
+
+    // append!(list, elem) → alias for append
+    if (e.callee == "append!" && e.args.size() == 2) {
+        auto &mutArgs = const_cast<CallExpr &>(e).args;
+        CallExpr appendProxy;
+        appendProxy.callee = "append";
+        appendProxy.args = std::move(mutArgs);
+        ArgsRestoreGuard guard{mutArgs, appendProxy.args};
+        return emitBuiltinCollection(appendProxy);
+    }
+
+    // pop(list) → Option<T>: remove and return last element
     if (e.callee == "pop" && e.args.size() == 1) {
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (elemTy) {
+            llvm::StructType *optTy = getOptionType(elemTy);
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "pop_len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "pop_len");
             llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "pop_data_field");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataField, "pop_data");
 
-            // Check empty
             llvm::Value *isEmpty = builder_.CreateICmpEQ(len, llvm::ConstantInt::get(i64Ty_, 0), "pop_empty");
-            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "pop.err", fn_);
+            llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "pop.empty", fn_);
             llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "pop.ok", fn_);
-            builder_.CreateCondBr(isEmpty, errBB, okBB);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "pop.merge", fn_);
+            builder_.CreateCondBr(isEmpty, emptyBB, okBB);
 
-            builder_.SetInsertPoint(errBB);
-            emitRuntimeError("runtime error: pop() on empty list\n", ".pop_empty_err");
+            builder_.SetInsertPoint(emptyBB);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *emptyEndBB = builder_.GetInsertBlock();
 
             builder_.SetInsertPoint(okBB);
             llvm::Value *lastIdx = builder_.CreateSub(len, llvm::ConstantInt::get(i64Ty_, 1), "pop_last_idx");
             llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, lastIdx, "pop_elem_ptr");
             llvm::Value *val = builder_.CreateLoad(elemTy, elemPtr, "pop_val");
-            builder_.CreateStore(lastIdx, lenPtr); // len - 1
+            builder_.CreateStore(lastIdx, lenPtr);
+            llvm::Value *someVal = buildSomeValue(val, optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *okEndBB = builder_.GetInsertBlock();
 
-            return val;
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "pop_result");
+            phi->addIncoming(noneVal, emptyEndBB);
+            phi->addIncoming(someVal, okEndBB);
+            return phi;
         }
     }
 
@@ -2719,11 +2885,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-
-            auto mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            auto mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            auto memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            auto memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "sl_len_ptr");
             llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "sl_len");
@@ -2767,6 +2930,52 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             return newHeader;
         }
     }
+
+    // take(list, n) → new list with first n elements
+    if (e.callee == "take" && e.args.size() == 2) {
+        llvm::Value *listPtr = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getListElementType(listPtr);
+        if (elemTy) {
+            llvm::Value *nVal = emitExpr(*e.args[1]);
+
+            const llvm::DataLayout &dl = mod_->getDataLayout();
+            uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+            uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+
+            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "tk_len_ptr");
+            llvm::Value *len = builder_.CreateLoad(i64Ty_, lenPtr, "tk_len");
+            llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "tk_data_field");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_, dataField, "tk_src_data");
+
+            // Clamp n: max(0, min(n, len))
+            llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+            llvm::Value *clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSLT(nVal, zero), zero, nVal, "tk_cn");
+            clampedN = builder_.CreateSelect(
+                builder_.CreateICmpSGT(clampedN, len), len, clampedN, "tk_cn2");
+
+            // Allocate new list
+            llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tk_header");
+            llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
+            llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
+
+            // Copy elements
+            builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
+
+            // Set header fields
+            llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "tk_new_len");
+            builder_.CreateStore(clampedN, newLenPtr);
+            llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "tk_new_cap");
+            builder_.CreateStore(clampedN, newCapPtr);
+            llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "tk_new_data");
+            builder_.CreateStore(newData, newDataField);
+
+            list_element_types_[newHeader] = elemTy;
+            return newHeader;
+        }
+    }
     // ===== insert(list, index, value) =====
     if (e.callee == "insert" && e.args.size() == 3) {
         llvm::Value *listPtr = emitExpr(*e.args[0]);
@@ -2782,14 +2991,10 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
-            llvm::FunctionType *freeTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            llvm::FunctionCallee freeFn = mod_->getOrInsertFunction("free", freeTy);
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
+            auto freeFn = getStdlibFree();
+            auto memmoveFn = getStdlibMemmove();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "ins_len_ptr");
             llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 1, "ins_cap_ptr");
@@ -2861,8 +3066,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-            llvm::FunctionType *memmoveTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memmoveFn = mod_->getOrInsertFunction("memmove", memmoveTy);
+            auto memmoveFn = getStdlibMemmove();
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, listPtr, 0, "rmat_len_ptr");
             llvm::Value *dataField = builder_.CreateStructGEP(listHeaderTy_, listPtr, 2, "rmat_data_field");
@@ -2915,8 +3119,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "dist_src_data");
 
         // Allocate new list (capacity = source length)
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -2977,8 +3180,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
 
         llvm::Value *match;
         if (elemTy == ptrTy_) {
-            auto strcmpTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
-            auto strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+            auto strcmpFn = getStdlibStrcmp();
             llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {srcElem, outElem}, "dist_strcmp");
             match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "dist_match");
         } else if (elemTy->isDoubleTy()) {
@@ -3043,10 +3245,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
 
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+        auto mallocFn = getStdlibMalloc();
+        auto memcpyFn = getStdlibMemcpy();
 
         llvm::Value *outerLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "flat_olen_ptr");
         llvm::Value *outerLen = builder_.CreateLoad(i64Ty_, outerLenPtr, "flat_olen");
@@ -3142,8 +3342,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
             uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "items_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, tupleSize), "items_ds");
@@ -3178,6 +3377,46 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
             list_element_types_[newHeader] = tupleTy;
             return newHeader;
+        }
+    }
+
+    // ===== get(map, key) — 2-arg → Option<V> =====
+    if (e.callee == "get" && e.args.size() == 2) {
+        llvm::Value *mapPtr = emitExpr(*e.args[0]);
+        llvm::Type *keyTy = getMapKeyType(mapPtr);
+        llvm::Type *valTy = getMapValueType(mapPtr);
+        if (keyTy && valTy) {
+            llvm::Value *key = emitExpr(*e.args[1]);
+            if (key->getType() != keyTy)
+                codegenError("get() key type mismatch");
+            llvm::StructType *optTy = getOptionType(valTy);
+            llvm::Value *idx = emitMapKeyLookup(mapPtr, key, keyTy);
+            llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "get2_found");
+
+            llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "get2.found", fn_);
+            llvm::BasicBlock *notFoundBB = llvm::BasicBlock::Create(*ctx_, "get2.notfound", fn_);
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "get2.merge", fn_);
+            builder_.CreateCondBr(found, foundBB, notFoundBB);
+
+            builder_.SetInsertPoint(foundBB);
+            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, mapPtr, 3, "get2_vals_field");
+            llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "get2_vals");
+            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {idx}, "get2_val_ptr");
+            llvm::Value *foundVal = builder_.CreateLoad(valTy, valPtr, "get2_val");
+            llvm::Value *someVal = buildSomeValue(foundVal, optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *foundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(notFoundBB);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            builder_.CreateBr(mergeBB);
+            llvm::BasicBlock *notFoundEndBB = builder_.GetInsertBlock();
+
+            builder_.SetInsertPoint(mergeBB);
+            llvm::PHINode *phi = builder_.CreatePHI(optTy, 2, "get2_result");
+            phi->addIncoming(someVal, foundEndBB);
+            phi->addIncoming(noneVal, notFoundEndBB);
+            return phi;
         }
     }
 
@@ -3240,10 +3479,8 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
             uint64_t valSize = dl.getTypeAllocSize(valTy);
 
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto mallocFn = getStdlibMalloc();
+            auto memcpyFn = getStdlibMemcpy();
 
             llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map1, 0), "mg_len1");
             llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, map2, 0), "mg_len2");
@@ -3383,8 +3620,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             // Allocate max possible size (len1 + len2)
             llvm::Value *maxLen = builder_.CreateAdd(len1, len2, "u_max_len");
@@ -3393,8 +3629,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "u_data");
 
             // Copy all of set1
-            llvm::FunctionType *memcpyTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-            llvm::FunctionCallee memcpyFn = mod_->getOrInsertFunction("memcpy", memcpyTy);
+            auto memcpyFn = getStdlibMemcpy();
             llvm::Value *copy1Size = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "u_copy1_size");
             builder_.CreateCall(memcpyFn, {newData, data1, copy1Size});
 
@@ -3483,8 +3718,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "is_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "is_ds");
@@ -3548,8 +3782,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "df_hdr");
             llvm::Value *dataSize = builder_.CreateMul(len1, llvm::ConstantInt::get(i64Ty_, elemSize), "df_ds");
@@ -3615,8 +3848,7 @@ llvm::Value *CodeGen::emitBuiltinSetOps(const CallExpr &e) {
             const llvm::DataLayout &dl = mod_->getDataLayout();
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-            llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-            llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+            auto mallocFn = getStdlibMalloc();
 
             llvm::Value *maxLen = builder_.CreateAdd(len1, len2, "sd_max_len");
             llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sd_hdr");
@@ -3860,6 +4092,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     validateNativeCallArgs(e->callee, e->args);
 
     // Dispatch to category helpers
+    if (auto *v = emitBuiltinIterator(*e))   return v;
     if (auto *v = emitBuiltinString(*e))     return v;
     if (auto *v = emitBuiltinConversion(*e)) return v;
     if (auto *v = emitBuiltinQuery(*e))      return v;
@@ -3868,6 +4101,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinCollection(*e)) return v;
     if (auto *v = emitBuiltinSetOps(*e))     return v;
     if (auto *v = emitBuiltinRegex(*e))     return v;
+    if (auto *v = emitBuiltinMath(*e))      return v;
+    if (auto *v = emitBuiltinIO(*e))       return v;
+    if (auto *v = emitBuiltinNet(*e))     return v;
+    if (auto *v = emitBuiltinHttp(*e))    return v;
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -4024,6 +4261,465 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== Builtin IO =====
+
+llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: emit a call to __ry_<name> with ptr args, validate count and types
+    auto emitIOCall = [&](const std::string &name, size_t nargs,
+                          llvm::Type *retTy) -> llvm::Value * {
+        if (e.args.size() != nargs)
+            codegenError(name + "() takes exactly " + std::to_string(nargs) + " argument(s)");
+        std::vector<llvm::Value *> args;
+        std::vector<llvm::Type *> argTys;
+        for (size_t i = 0; i < nargs; ++i) {
+            args.push_back(emitExpr(*e.args[i]));
+            if (args.back()->getType() != ptrTy_)
+                codegenError(name + "() requires str/ptr arguments");
+            argTys.push_back(ptrTy_);
+        }
+        auto fnTy = llvm::FunctionType::get(retTy, argTys, false);
+        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
+        if (retTy->isVoidTy()) {
+            builder_.CreateCall(fn, args);
+            return llvm::ConstantInt::get(i64Ty_, 0);
+        }
+        return builder_.CreateCall(fn, args, name);
+    };
+
+    // 0-arg -> str
+    if (e.callee == "read_line" || e.callee == "read_all")
+        return emitIOCall(e.callee, 0, ptrTy_);
+
+    // 1-arg str -> str
+    if (e.callee == "read_text" || e.callee == "bytes_to_str")
+        return emitIOCall(e.callee, 1, ptrTy_);
+
+    // 2-arg (str, str) -> Unit
+    if (e.callee == "write_text" || e.callee == "append_text" || e.callee == "write_bytes")
+        return emitIOCall(e.callee, 2, llvm::Type::getVoidTy(*ctx_));
+
+    // 1-arg str -> Unit
+    if (e.callee == "delete_file")
+        return emitIOCall(e.callee, 1, llvm::Type::getVoidTy(*ctx_));
+
+    // file_exists(path) -> bool (i64 truncated to i1)
+    if (e.callee == "file_exists") {
+        llvm::Value *result = emitIOCall(e.callee, 1, i64Ty_);
+        return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
+    }
+
+    // 1-arg str -> List<byte>
+    if (e.callee == "read_bytes" || e.callee == "str_to_bytes") {
+        llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
+        list_element_types_[result] = i8Ty_;
+        return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin Net =====
+
+llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: wrap a nullable ptr result in Option<ptr> and register it in a tracking set
+    auto emitPtrToOption = [&](llvm::Value *ptr, const std::string &name,
+                               std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(ptr, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        llvm::Value *opt = builder_.CreateSelect(isNull, noneVal, someVal, name + "_opt");
+        trackingSet.insert(opt);
+        return opt;
+    };
+
+    // bind(host, port) -> Option<TcpListener>
+    if (e.callee == "bind") {
+        if (e.args.size() != 2)
+            codegenError("bind() takes exactly 2 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_bind", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "bind_result");
+        return emitPtrToOption(result, "bind", tcp_listener_values_);
+    }
+
+    // listen(listener, backlog) -> Unit
+    if (e.callee == "listen") {
+        if (e.args.size() != 2)
+            codegenError("listen() takes exactly 2 arguments");
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("listen() requires TcpListener as first argument");
+        llvm::Value *backlog = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_listen", fnTy);
+        builder_.CreateCall(fn, {listener, backlog});
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    // accept(listener) -> Option<TcpStream>
+    if (e.callee == "accept") {
+        if (e.args.size() != 1)
+            codegenError("accept() takes exactly 1 argument");
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("accept() requires TcpListener argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_accept", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {listener}, "accept_result");
+        return emitPtrToOption(result, "accept", tcp_stream_values_);
+    }
+
+    // connect(host, port) -> Option<TcpStream>
+    if (e.callee == "connect") {
+        if (e.args.size() != 2)
+            codegenError("connect() takes exactly 2 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
+        return emitPtrToOption(result, "connect", tcp_stream_values_);
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin HTTP =====
+
+llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // http_response(status, headers, body) -> HttpResponse
+    if (e.callee == "http_response") {
+        if (e.args.size() != 3)
+            codegenError("http_response() takes exactly 3 arguments");
+        llvm::Value *status = emitExpr(*e.args[0]);
+        llvm::Value *headers = emitExpr(*e.args[1]);
+        llvm::Value *body = emitExpr(*e.args[2]);
+        if (status->getType() != i64Ty_)
+            codegenError("http_response() status must be int");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_response() headers must be Map<str, str>");
+        if (body->getType() != ptrTy_)
+            codegenError("http_response() body must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_, ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_response_create", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {status, headers, body}, "http_resp");
+        http_response_values_.insert(result);
+        return result;
+    }
+
+    // http_method/http_path/http_body: single-arg HttpRequest accessors returning str
+    if (e.callee == "http_method" || e.callee == "http_path" || e.callee == "http_body") {
+        if (e.args.size() != 1)
+            codegenError(e.callee + "() takes exactly 1 argument");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError(e.callee + "() requires HttpRequest argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        return builder_.CreateCall(fn, {req}, e.callee);
+    }
+
+    // http_header(req, key) -> Option<str>
+    if (e.callee == "http_header") {
+        if (e.args.size() != 2)
+            codegenError("http_header() takes exactly 2 arguments");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_header() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_header() key must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_header", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_hdr");
+        // Convert nullable ptr to Option<str>
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_hdr_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(result, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        return builder_.CreateSelect(isNull, noneVal, someVal, "http_hdr_opt");
+    }
+
+    // http_listen(host, port, handler) -> Unit
+    if (e.callee == "http_listen") {
+        if (e.args.size() != 3)
+            codegenError("http_listen() takes exactly 3 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        llvm::Value *handler = emitExpr(*e.args[2]);
+        if (host->getType() != ptrTy_)
+            codegenError("http_listen() host must be str");
+        if (port->getType() != i64Ty_)
+            codegenError("http_listen() port must be int");
+
+        // Get handler FnTypeInfo
+        FnTypeInfo handlerInfo;
+        bool foundInfo = false;
+        // Try fn_type_info_ lookup on handler value directly
+        auto fnIt = fn_type_info_.find(handler);
+        if (fnIt != fn_type_info_.end()) {
+            handlerInfo = fnIt->second;
+            foundInfo = true;
+        }
+        if (!foundInfo) {
+            // Check if handler is a LoadInst, look up the alloca
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(handler)) {
+                auto fnIt2 = fn_type_info_.find(load->getPointerOperand());
+                if (fnIt2 != fn_type_info_.end()) {
+                    handlerInfo = fnIt2->second;
+                    foundInfo = true;
+                }
+            }
+        }
+        if (!foundInfo)
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+
+        // Validate handler signature: one ptr param, ptr return
+        if (handlerInfo.paramTypes.size() != 1 ||
+            handlerInfo.returnType != ptrTy_ ||
+            handlerInfo.paramTypes[0] != ptrTy_) {
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+        }
+
+        // 1. bind(host, port)
+        auto bindFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
+        llvm::Value *listener = builder_.CreateCall(bindFn, {host, port}, "http_listener");
+
+        // null check
+        llvm::Value *isNull = builder_.CreateICmpEQ(listener,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "bind_null");
+        llvm::BasicBlock *bindFailBB = llvm::BasicBlock::Create(*ctx_, "http.bind_fail", fn_);
+        llvm::BasicBlock *bindOkBB = llvm::BasicBlock::Create(*ctx_, "http.bind_ok", fn_);
+        builder_.CreateCondBr(isNull, bindFailBB, bindOkBB);
+
+        builder_.SetInsertPoint(bindFailBB);
+        static int httpErrCounter = 0;
+        emitRuntimeError("runtime error: http_listen() bind failed\n",
+                          ".http_err_" + std::to_string(httpErrCounter++));
+
+        // 2. listen(listener, 128)
+        builder_.SetInsertPoint(bindOkBB);
+        auto listenFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto listenFn = mod_->getOrInsertFunction("__ry_listen", listenFnTy);
+        builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(i64Ty_, 128)});
+
+        // 3. accept loop
+        llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "http.loop", fn_);
+        llvm::BasicBlock *loopBodyBB = llvm::BasicBlock::Create(*ctx_, "http.loop_body", fn_);
+        llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*ctx_, "http.loop_end", fn_);
+
+        builder_.CreateBr(loopBB);
+        builder_.SetInsertPoint(loopBB);
+
+        // accept(listener) -> conn
+        auto acceptFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto acceptFn = mod_->getOrInsertFunction("__ry_accept", acceptFnTy);
+        llvm::Value *conn = builder_.CreateCall(acceptFn, {listener}, "http_conn");
+
+        llvm::Value *connNull = builder_.CreateICmpEQ(conn,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "conn_null");
+        // Retry accept on null (e.g., transient errors) instead of exiting the loop
+        builder_.CreateCondBr(connNull, loopBB, loopBodyBB);
+
+        // Loop body: read request, call handler, send response, cleanup
+        builder_.SetInsertPoint(loopBodyBB);
+
+        // __ry_http_read_request(conn) -> req
+        auto readReqFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto readReqFn = mod_->getOrInsertFunction("__ry_http_read_request", readReqFnTy);
+        llvm::Value *req = builder_.CreateCall(readReqFn, {conn}, "http_req");
+        http_request_values_.insert(req);
+
+        // Check if req is null (malformed request)
+        llvm::Value *reqNull = builder_.CreateICmpEQ(req,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "req_null");
+        llvm::BasicBlock *reqOkBB = llvm::BasicBlock::Create(*ctx_, "http.req_ok", fn_);
+        llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*ctx_, "http.req_bad", fn_);
+        builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
+
+        // Shared function types for cleanup calls
+        auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
+        auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
+        auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
+
+        // Bad request: close conn and continue loop
+        builder_.SetInsertPoint(reqBadBB);
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        builder_.SetInsertPoint(reqOkBB);
+
+        // Call handler(req) -> resp
+        llvm::Value *resp = emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
+        http_response_values_.insert(resp);
+
+        // __ry_http_send_response(conn, resp)
+        auto sendRespFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        auto sendRespFn = mod_->getOrInsertFunction("__ry_http_send_response", sendRespFnTy);
+        builder_.CreateCall(sendRespFn, {conn, resp});
+
+        // Cleanup
+        builder_.CreateCall(freeReqFn, {req});
+        builder_.CreateCall(freeRespFn, {resp});
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        // Loop end (unreachable in practice — accept retries on null)
+        builder_.SetInsertPoint(loopEndBB);
+
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    return nullptr;
+}
+
+// ===== Native constant emission =====
+
+llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
+    if (name == "PI")  return llvm::ConstantFP::get(f64Ty_, 3.141592653589793);
+    if (name == "E")   return llvm::ConstantFP::get(f64Ty_, 2.718281828459045);
+    if (name == "Inf") return llvm::ConstantFP::getInfinity(f64Ty_);
+    if (name == "NaN") return llvm::ConstantFP::getNaN(f64Ty_);
+    codegenError("unknown native constant: " + name);
+}
+
+// ===== Builtin Math =====
+
+llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
+    // Only dispatch if the callee was declared via @native (i.e., explicitly imported)
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: get fabs C function
+    auto getFabs = [&]() {
+        auto ty = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+        return mod_->getOrInsertFunction("fabs", ty);
+    };
+
+    // abs(int) -> int, abs(float) -> float
+    if (e.callee == "abs") {
+        if (e.args.size() != 1)
+            codegenError("abs() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() == f64Ty_)
+            return builder_.CreateCall(getFabs(), {x}, "abs");
+        if (x->getType()->isIntegerTy(64)) {
+            llvm::Value *neg = builder_.CreateNeg(x, "neg");
+            llvm::Value *isNeg = builder_.CreateICmpSLT(x, llvm::ConstantInt::get(i64Ty_, 0), "is_neg");
+            return builder_.CreateSelect(isNeg, neg, x, "abs");
+        }
+        codegenError("abs() requires int or float argument");
+    }
+
+    // floor/ceil/round(float) -> int
+    if (e.callee == "floor" || e.callee == "ceil" || e.callee == "round") {
+        if (e.args.size() != 1)
+            codegenError(e.callee + "() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError(e.callee + "() requires float argument");
+
+        // Runtime check: reject NaN and values outside i64 range
+        llvm::Value *isNan = builder_.CreateFCmpUNO(x, x, "is_nan_chk");
+        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_chk");
+        // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
+        llvm::Value *limit = llvm::ConstantFP::get(f64Ty_, 9.223372036854776e+18);
+        llvm::Value *tooBig = builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
+        llvm::Value *invalid = builder_.CreateOr(isNan, tooBig, "invalid_chk");
+
+        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".fail", fn_);
+        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".ok", fn_);
+        builder_.CreateCondBr(invalid, failBB, okBB);
+
+        builder_.SetInsertPoint(failBB);
+        static int mathErrCounter = 0;
+        emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
+                          ".math_err_" + std::to_string(mathErrCounter++));
+
+        builder_.SetInsertPoint(okBB);
+        auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
+        return builder_.CreateFPToSI(result, i64Ty_, e.callee + "_i");
+    }
+
+    // 1-arg float -> float: sqrt, log, log2, log10, exp, sin, cos, tan, asin, acos, atan
+    {
+        static const std::unordered_set<std::string> oneArgFloat = {
+            "sqrt", "log", "log2", "log10", "exp",
+            "sin", "cos", "tan", "asin", "acos", "atan"
+        };
+        if (oneArgFloat.count(e.callee)) {
+            if (e.args.size() != 1)
+                codegenError(e.callee + "() takes exactly 1 argument");
+            llvm::Value *x = emitExpr(*e.args[0]);
+            if (x->getType() != f64Ty_)
+                codegenError(e.callee + "() requires float argument");
+            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+            return builder_.CreateCall(fn, {x}, e.callee);
+        }
+    }
+
+    // 2-arg float -> float: pow, atan2, hypot
+    {
+        static const std::unordered_set<std::string> twoArgFloat = {
+            "pow", "atan2", "hypot"
+        };
+        if (twoArgFloat.count(e.callee)) {
+            if (e.args.size() != 2)
+                codegenError(e.callee + "() takes exactly 2 arguments");
+            llvm::Value *x = emitExpr(*e.args[0]);
+            llvm::Value *y = emitExpr(*e.args[1]);
+            if (x->getType() != f64Ty_ || y->getType() != f64Ty_)
+                codegenError(e.callee + "() requires float arguments");
+            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
+            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+            return builder_.CreateCall(fn, {x, y}, e.callee);
+        }
+    }
+
+    // is_nan(float) -> bool
+    if (e.callee == "is_nan") {
+        if (e.args.size() != 1)
+            codegenError("is_nan() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError("is_nan() requires float argument");
+        return builder_.CreateFCmpUNO(x, x, "is_nan");
+    }
+
+    // is_inf(float) -> bool
+    if (e.callee == "is_inf") {
+        if (e.args.size() != 1)
+            codegenError("is_inf() takes exactly 1 argument");
+        llvm::Value *x = emitExpr(*e.args[0]);
+        if (x->getType() != f64Ty_)
+            codegenError("is_inf() requires float argument");
+        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_for_inf");
+        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
+        return builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
+    }
+
+    return nullptr;
+}
+
 void CodeGen::validateNativeCallArgs(const std::string &callee,
                                       const std::vector<ExprPtr> &args) {
     auto it = native_fn_arg_counts_.find(callee);
@@ -4048,4 +4744,511 @@ void CodeGen::validateNativeCallArgs(const std::string &callee,
     }
     codegenError(callee + "() expects " + expected +
         " argument(s), but got " + std::to_string(args.size()));
+}
+
+// ===== Builtin Iterator =====
+
+// Helper: allocate IteratorHeader {next_fn, state} and track element type
+static llvm::Value *emitIteratorHeaderAlloc(
+    CodeGen &cg, llvm::IRBuilder<> &builder, llvm::Module &mod,
+    llvm::StructType *iterHeaderTy, llvm::Type *i64Ty, llvm::Type *ptrTy,
+    llvm::Function *nextFn, llvm::Value *stateAlloc, llvm::Type *elemTy,
+    std::unordered_map<llvm::Value*, llvm::Type*> &elemTypes,
+    const std::string &name) {
+    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
+    llvm::FunctionCallee mallocFn = mod.getOrInsertFunction("malloc", mallocTy);
+    uint64_t headerSize = mod.getDataLayout().getTypeAllocSize(iterHeaderTy);
+    llvm::Value *header = builder.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty, headerSize)}, name);
+    builder.CreateStore(nextFn, builder.CreateStructGEP(iterHeaderTy, header, 0));
+    builder.CreateStore(stateAlloc, builder.CreateStructGEP(iterHeaderTy, header, 1));
+    elemTypes[header] = elemTy;
+    return header;
+}
+
+// Helper: load {next_fn, state} from an IteratorHeader
+static std::pair<llvm::Value*, llvm::Value*> loadIteratorFields(
+    llvm::IRBuilder<> &builder, llvm::StructType *iterHeaderTy,
+    llvm::Type *ptrTy, llvm::Value *iterVal, const std::string &prefix) {
+    llvm::Value *nfField = builder.CreateStructGEP(iterHeaderTy, iterVal, 0, prefix + "_nf");
+    llvm::Value *nf = builder.CreateLoad(ptrTy, nfField, prefix + "_next_fn");
+    llvm::Value *stField = builder.CreateStructGEP(iterHeaderTy, iterVal, 1, prefix + "_st");
+    llvm::Value *st = builder.CreateLoad(ptrTy, stField, prefix + "_state");
+    return {nf, st};
+}
+
+llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
+    // iter(collection) → Iterator
+    if (e.callee == "iter" && e.args.size() == 1) {
+        llvm::Value *collVal = emitExpr(*e.args[0]);
+        if (collVal->getType() != ptrTy_)
+            return nullptr;
+
+        auto mallocFn = getStdlibMalloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        // Helper lambda: generate a dense-array next function for List/Set
+        // State: { ptr data, i64 length, i64 index }
+        auto emitDenseIterator = [&](llvm::Type *elemTy, llvm::StructType *collHeaderTy,
+                                     unsigned dataPtrIdx, unsigned lenIdx,
+                                     const std::string &kind) -> llvm::Value* {
+            llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, i64Ty_, i64Ty_});
+            uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+            std::string fnName = "__iter_" + kind + "_next." + std::to_string(iterator_fn_counter_++);
+            llvm::StructType *optTy = getOptionType(elemTy);
+            llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::Function *nextFn = llvm::Function::Create(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+            {
+                FnScope guard(*this);
+                fn_ = nextFn;
+                pushScope();
+                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                builder_.SetInsertPoint(entry);
+
+                llvm::Value *statePtr = nextFn->getArg(0);
+                llvm::Value *data = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 0), "data");
+                llvm::Value *len = builder_.CreateLoad(i64Ty_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 1), "len");
+                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 2, "idx_field");
+                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+
+                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
+                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+
+                builder_.SetInsertPoint(someBB);
+                llvm::Value *elem = builder_.CreateLoad(elemTy,
+                    builder_.CreateGEP(elemTy, data, {idx}, "elem_ptr"), "elem");
+                builder_.CreateStore(
+                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
+                builder_.CreateRet(buildSomeValue(elem, optTy));
+
+                builder_.SetInsertPoint(noneBB);
+                builder_.CreateRet(buildNoneValue(optTy));
+                popScope();
+            }
+
+            // Allocate and fill state
+            llvm::Value *stateAlloc = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "iter_state");
+            llvm::Value *srcData = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(collHeaderTy, collVal, dataPtrIdx), "src_data");
+            llvm::Value *srcLen = builder_.CreateLoad(i64Ty_,
+                builder_.CreateStructGEP(collHeaderTy, collVal, lenIdx), "src_len");
+            builder_.CreateStore(srcData, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+            builder_.CreateStore(srcLen, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, ptrTy_, nextFn, stateAlloc, elemTy, iterator_element_types_, "iter_header");
+        };
+
+        // Try List (data at index 2, len at index 0)
+        if (llvm::Type *elemTy = getListElementType(collVal))
+            return emitDenseIterator(elemTy, listHeaderTy_, 2, 0, "list");
+
+        // Try Set (data at index 2, len at index 0)
+        if (llvm::Type *setElemTy = getSetElementType(collVal))
+            return emitDenseIterator(setElemTy, setHeaderTy_, 2, 0, "set");
+
+        // Try Map → Iterator over (K, V) tuples
+        llvm::Type *keyTy = getMapKeyType(collVal);
+        llvm::Type *valTy = getMapValueType(collVal);
+        if (keyTy && valTy) {
+            llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
+            llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_, i64Ty_});
+            uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+
+            std::string fnName = "__iter_map_next." + std::to_string(iterator_fn_counter_++);
+            llvm::StructType *optTy = getOptionType(tupleTy);
+            llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::Function *nextFn = llvm::Function::Create(
+                nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+            {
+                FnScope guard(*this);
+                fn_ = nextFn;
+                pushScope();
+                llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", nextFn);
+                builder_.SetInsertPoint(entry);
+
+                llvm::Value *statePtr = nextFn->getArg(0);
+                llvm::Value *keys = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 0), "keys");
+                llvm::Value *vals = builder_.CreateLoad(ptrTy_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 1), "vals");
+                llvm::Value *len = builder_.CreateLoad(i64Ty_,
+                    builder_.CreateStructGEP(stateTy, statePtr, 2), "len");
+                llvm::Value *idxField = builder_.CreateStructGEP(stateTy, statePtr, 3, "idx_field");
+                llvm::Value *idx = builder_.CreateLoad(i64Ty_, idxField, "idx");
+
+                llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", nextFn);
+                llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", nextFn);
+                builder_.CreateCondBr(builder_.CreateICmpSLT(idx, len, "in_bounds"), someBB, noneBB);
+
+                builder_.SetInsertPoint(someBB);
+                llvm::Value *key = builder_.CreateLoad(keyTy,
+                    builder_.CreateGEP(keyTy, keys, {idx}, "key_ptr"), "key");
+                llvm::Value *val = builder_.CreateLoad(valTy,
+                    builder_.CreateGEP(valTy, vals, {idx}, "val_ptr"), "val");
+                llvm::Value *tuple = llvm::UndefValue::get(tupleTy);
+                tuple = builder_.CreateInsertValue(tuple, key, 0, "tuple_k");
+                tuple = builder_.CreateInsertValue(tuple, val, 1, "tuple_kv");
+                builder_.CreateStore(
+                    builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1), "next_idx"), idxField);
+                builder_.CreateRet(buildSomeValue(tuple, optTy));
+
+                builder_.SetInsertPoint(noneBB);
+                builder_.CreateRet(buildNoneValue(optTy));
+                popScope();
+            }
+
+            llvm::Value *stateAlloc = builder_.CreateCall(
+                mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "iter_state");
+            builder_.CreateStore(
+                builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 2)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+            builder_.CreateStore(
+                builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 3)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+            builder_.CreateStore(
+                builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, collVal, 0)),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0),
+                builder_.CreateStructGEP(stateTy, stateAlloc, 3));
+
+            return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+                i64Ty_, ptrTy_, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
+        }
+
+        codegenError("iter() argument must be a List, Set, or Map");
+    }
+
+    // to_list() → collect Iterator into List
+    if (e.callee == "to_list" && e.args.size() == 1) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        auto mallocFn = getStdlibMalloc();
+        auto reallocFn = getStdlibRealloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+
+        auto [nextFnPtr, statePtr] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "tl");
+
+        // Allocate list header
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        llvm::Value *headerPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tl_header");
+
+        // Initial capacity = 8
+        llvm::AllocaInst *capVar = builder_.CreateAlloca(i64Ty_, nullptr, "tl_cap");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 8), capVar);
+        llvm::AllocaInst *lenVar = builder_.CreateAlloca(i64Ty_, nullptr, "tl_len");
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenVar);
+        llvm::AllocaInst *dataVar = builder_.CreateAlloca(ptrTy_, nullptr, "tl_data_var");
+        llvm::Value *initData = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 8)}, "tl_init_data");
+        builder_.CreateStore(initData, dataVar);
+
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+
+        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "tl.cond", fn_);
+        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "tl.body", fn_);
+        llvm::BasicBlock *growBB = llvm::BasicBlock::Create(*ctx_, "tl.grow", fn_);
+        llvm::BasicBlock *storeBB = llvm::BasicBlock::Create(*ctx_, "tl.store", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "tl.end", fn_);
+
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(condBB);
+        llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "tl_opt");
+        llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "tl_has");
+        builder_.CreateCondBr(hasVal, bodyBB, endBB);
+
+        builder_.SetInsertPoint(bodyBB);
+        llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "tl_elem");
+        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_cur_len");
+        llvm::Value *curCap = builder_.CreateLoad(i64Ty_, capVar, "tl_cur_cap");
+        builder_.CreateCondBr(builder_.CreateICmpEQ(curLen, curCap, "tl_need_grow"), growBB, storeBB);
+
+        builder_.SetInsertPoint(growBB);
+        llvm::Value *newCap = builder_.CreateMul(curCap, llvm::ConstantInt::get(i64Ty_, 2), "tl_new_cap");
+        builder_.CreateStore(newCap, capVar);
+        llvm::Value *newData = builder_.CreateCall(reallocFn, {
+            builder_.CreateLoad(ptrTy_, dataVar, "tl_old_data"),
+            builder_.CreateMul(newCap, llvm::ConstantInt::get(i64Ty_, elemSize), "tl_new_size")
+        }, "tl_new_data");
+        builder_.CreateStore(newData, dataVar);
+        builder_.CreateBr(storeBB);
+
+        builder_.SetInsertPoint(storeBB);
+        llvm::Value *storeLen = builder_.CreateLoad(i64Ty_, lenVar, "tl_store_len");
+        llvm::Value *storeData = builder_.CreateLoad(ptrTy_, dataVar, "tl_store_data");
+        builder_.CreateStore(elem, builder_.CreateGEP(elemTy, storeData, {storeLen}, "tl_dst_ptr"));
+        builder_.CreateStore(
+            builder_.CreateAdd(storeLen, llvm::ConstantInt::get(i64Ty_, 1), "tl_new_len"), lenVar);
+        builder_.CreateBr(condBB);
+
+        builder_.SetInsertPoint(endBB);
+        builder_.CreateStore(builder_.CreateLoad(i64Ty_, lenVar, "tl_final_len"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+        builder_.CreateStore(builder_.CreateLoad(i64Ty_, capVar, "tl_final_cap"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+        builder_.CreateStore(builder_.CreateLoad(ptrTy_, dataVar, "tl_final_data"),
+            builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+
+        list_element_types_[headerPtr] = elemTy;
+
+        // Propagate nested list metadata for flatten() support
+        {
+            llvm::Type *nestedTy = getNestedListElementType(iterVal);
+            if (nestedTy)
+                nested_list_element_types_[headerPtr] = nestedTy;
+        }
+
+        return headerPtr;
+    }
+
+    // next() → call next_fn(state) on Iterator
+    if (e.callee == "next" && e.args.size() == 1) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        auto [nextFnPtr, statePtr] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "next");
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        return builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "next_result");
+    }
+
+    // filter(iter, predicate) → new Iterator
+    if (e.callee == "filter" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("filter() on iterator requires a predicate function");
+        auto &info = fnIt->second;
+
+        auto mallocFn = getStdlibMalloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        // State: { ptr src_next_fn, ptr src_state, ptr predicate }
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+
+        std::string fnName = "__iter_filter_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        llvm::Function *filterNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = filterNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", filterNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = filterNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *predPtr = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 2), "pred_ptr");
+
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "loop", filterNextFn);
+            builder_.CreateBr(loopBB);
+
+            builder_.SetInsertPoint(loopBB);
+            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+            llvm::BasicBlock *checkBB = llvm::BasicBlock::Create(*ctx_, "check", filterNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", filterNextFn);
+            builder_.CreateCondBr(hasVal, checkBB, noneBB);
+
+            builder_.SetInsertPoint(checkBB);
+            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
+            llvm::Value *predResult = emitLambdaCall(predPtr, info, {elem}, "pred_result");
+            llvm::BasicBlock *matchBB = llvm::BasicBlock::Create(*ctx_, "match", filterNextFn);
+            builder_.CreateCondBr(predResult, matchBB, loopBB);
+
+            builder_.SetInsertPoint(matchBB);
+            builder_.CreateRet(buildSomeValue(elem, optTy));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(optTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "filter");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "filter_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, filterNextFn, stateAlloc, elemTy, iterator_element_types_, "filter_iter");
+    }
+
+    // map(iter, transform) → new Iterator with transformed element type
+    if (e.callee == "map" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *lambdaVal = emitExpr(*e.args[1]);
+        auto fnIt = fn_type_info_.find(lambdaVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("map() on iterator requires a transform function");
+        auto &info = fnIt->second;
+        llvm::Type *outElemTy = info.returnType;
+
+        auto mallocFn = getStdlibMalloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, ptrTy_});
+
+        std::string fnName = "__iter_map_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *srcOptTy = getOptionType(elemTy);
+        llvm::StructType *outOptTy = getOptionType(outElemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(outOptTy, {ptrTy_}, false);
+        llvm::Function *mapNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = mapNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", mapNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = mapNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *transPtr = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 2), "trans_ptr");
+
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(srcOptTy, {ptrTy_}, false);
+            llvm::Value *opt = builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt");
+            llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "has_val");
+
+            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "some", mapNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", mapNextFn);
+            builder_.CreateCondBr(hasVal, someBB, noneBB);
+
+            builder_.SetInsertPoint(someBB);
+            llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "elem");
+            builder_.CreateRet(buildSomeValue(emitLambdaCall(transPtr, info, {elem}, "mapped"), outOptTy));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(outOptTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "map");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "map_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, mapNextFn, stateAlloc, outElemTy, iterator_element_types_, "map_iter");
+    }
+
+    // take(iter, n) → new Iterator that yields at most n elements
+    if (e.callee == "take" && e.args.size() == 2) {
+        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Type *elemTy = getIteratorElementType(iterVal);
+        if (!elemTy) return nullptr;
+
+        llvm::Value *n = emitExpr(*e.args[1]);
+
+        auto mallocFn = getStdlibMalloc();
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        llvm::StructType *stateTy = llvm::StructType::get(*ctx_, {ptrTy_, ptrTy_, i64Ty_});
+
+        std::string fnName = "__iter_take_next." + std::to_string(iterator_fn_counter_++);
+        llvm::StructType *optTy = getOptionType(elemTy);
+        llvm::FunctionType *nextFnTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+        llvm::Function *takeNextFn = llvm::Function::Create(
+            nextFnTy, llvm::Function::ExternalLinkage, fnName, *mod_);
+
+        {
+            FnScope guard(*this);
+            fn_ = takeNextFn;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", takeNextFn);
+            builder_.SetInsertPoint(entry);
+
+            llvm::Value *statePtr = takeNextFn->getArg(0);
+            llvm::Value *srcNextFn = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 0), "src_next_fn");
+            llvm::Value *srcState = builder_.CreateLoad(ptrTy_,
+                builder_.CreateStructGEP(stateTy, statePtr, 1), "src_state");
+            llvm::Value *remField = builder_.CreateStructGEP(stateTy, statePtr, 2, "rem_f");
+            llvm::Value *remaining = builder_.CreateLoad(i64Ty_, remField, "remaining");
+
+            llvm::BasicBlock *callBB = llvm::BasicBlock::Create(*ctx_, "call", takeNextFn);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "none", takeNextFn);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(remaining, llvm::ConstantInt::get(i64Ty_, 0), "has_rem"),
+                callBB, noneBB);
+
+            builder_.SetInsertPoint(callBB);
+            builder_.CreateStore(
+                builder_.CreateSub(remaining, llvm::ConstantInt::get(i64Ty_, 1), "new_rem"), remField);
+            llvm::FunctionType *srcNextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
+            builder_.CreateRet(builder_.CreateCall(srcNextCallTy, srcNextFn, {srcState}, "src_opt"));
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateRet(buildNoneValue(optTy));
+            popScope();
+        }
+
+        auto [srcNf, srcSt] = loadIteratorFields(
+            builder_, iteratorHeaderTy_, ptrTy_, iterVal, "take");
+        uint64_t stateSize = dl.getTypeAllocSize(stateTy);
+        llvm::Value *stateAlloc = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, stateSize)}, "take_state");
+        builder_.CreateStore(srcNf, builder_.CreateStructGEP(stateTy, stateAlloc, 0));
+        builder_.CreateStore(srcSt, builder_.CreateStructGEP(stateTy, stateAlloc, 1));
+        builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
+
+        return emitIteratorHeaderAlloc(*this, builder_, *mod_, iteratorHeaderTy_,
+            i64Ty_, ptrTy_, takeNextFn, stateAlloc, elemTy, iterator_element_types_, "take_iter");
+    }
+
+    return nullptr;
 }

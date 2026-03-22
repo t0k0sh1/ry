@@ -14,16 +14,17 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 - **ディレクティブ** — `@deprecated` コンパイル時メタデータ
 - **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
 - **制御構文** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
+- **ファイル I/O** — ファイル読み書き・バイト操作・標準入力（`std.io`）
 - **パッケージ** — ディレクトリベースのパッケージ、自動インポートされる `std` ライブラリ、`from ... import ...`
-- **型安全** — 型推論・型アノテーション・型変更再代入禁止・let/var
+- **型安全** — 型推論・型アノテーション・型変更再代入禁止・`@const` ディレクティブ
 
 ## サンプルコード
 
 ```python
 # 変数と型
-let x: int = 42
-let name: str = "hello"
-let pi = 3.14159
+x: int = 42
+name: str = "hello"
+pi = 3.14159
 
 # 関数定義
 fn factorial(n: int) -> int:
@@ -34,8 +35,8 @@ fn factorial(n: int) -> int:
 print(factorial(5))    # 120
 
 # ラムダとクロージャ
-let offset = 10
-let add_offset = (x: int): int => x + offset
+offset = 10
+add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
 # 構造体
@@ -46,13 +47,13 @@ type Point:
 fn operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
-let p = Point(1, 2) + Point(3, 4)
+p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
 # コレクション
-let xs = [1, 2, 3]
-let m = {"a": 1, "b": 2}
-let s = {1, 2, 3}
+xs = [1, 2, 3]
+m = {"a": 1, "b": 2}
+s = {1, 2, 3}
 
 for x in xs:
     print(x)
@@ -61,7 +62,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # ストリーム操作 (filter, map, sort)
-let result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 列挙型
@@ -70,7 +71,7 @@ enum Color:
     Green
     Blue
 
-let c = Color::Red
+c = Color::Red
 print(c)               # Red
 
 # パッケージインポート
@@ -89,7 +90,7 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 特定バージョンを指定する場合:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.3
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
 デフォルトでは `~/.local/bin` にインストールされます。`RY_INSTALL_DIR` 環境変数で変更可能です。

@@ -19,8 +19,8 @@
 | `**` | 次方（始終為 float） | `2 ** 10` | `1024.0` |
 
 ```python
-let a = 10
-let b = 3
+a = 10
+b = 3
 
 print(a + b)    # 13
 print(a - b)    # 7
@@ -47,8 +47,8 @@ print(2 ** 8)   # 256.0（float）
 | `>=` | 大於等於 | `a >= b` |
 
 ```python
-let x = 5
-let y = 10
+x = 5
+y = 10
 
 print(x == y)   # false
 print(x != y)   # true
@@ -77,8 +77,8 @@ print("b" > "a")        # true
 | `not` | 邏輯 NOT | `not a` |
 
 ```python
-let t = true
-let f = false
+t = true
+f = false
 
 print(t and f)   # false
 print(t or f)    # true
@@ -103,8 +103,8 @@ print(not f)     # true
 | `>>>` | 邏輯右移 | `-1 >>> 1` → `9223372036854775807` |
 
 ```python
-let a = 0b1010   # 10
-let b = 0b1100   # 12
+a = 0b1010   # 10
+b = 0b1100   # 12
 
 print(a & b)    # 8  (0b1000)
 print(a | b)    # 14 (0b1110)
@@ -129,12 +129,32 @@ print(32 >> 2)  # 8
 | `%=` | 取餘賦值 | `x = x % n` |
 
 ```python
-let x = 10
+x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24
 x /= 4    # x == 6.0（會變為 float）
 ```
+
+---
+
+## 遞增／遞減運算子
+
+將變數增減 1 的簡寫語法。
+
+| 運算子 | 說明 | 等同的表達式 |
+|--------|------|---------|
+| `x++` | 加 1 | `x = x + 1` |
+| `x--` | 減 1 | `x = x - 1` |
+
+```python
+count = 0
+count++       # count == 1
+count++       # count == 2
+count--       # count == 1
+```
+
+> **注意**：僅可作為陳述式使用，不能在運算式中使用。
 
 ---
 
@@ -180,7 +200,7 @@ print(3 * "ab")        # "ababab"
 | `not in` | 否定歸屬檢查 | `4 not in {1, 2, 3}` → `true` |
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 print(2 in s)        # true
 print(4 not in s)    # true
 ```

@@ -19,8 +19,10 @@
 
 - `fn` - 関数定義
 - `record` - 構造体定義
-- `let` / `var` - 変数宣言
+- 変数宣言（`@const` 付きまたは通常代入）
 - `record` 定義内のフィールド
+- `for` - `@parallel` のみ対応
+- `it` - テストケース定義（`@each` / `@property` のみ）
 
 ## 組み込みディレクティブ
 
@@ -46,14 +48,16 @@ record OldPoint:
     x: int
     y: int
 
-let p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
+@const
+p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
 **変数に対して:**
 
 ```
 @deprecated
-let old_value = 99
+@const
+old_value = 99
 
 print(old_value)         # warning: 'old_value' is deprecated
 ```
@@ -66,9 +70,34 @@ record Config:
     old_setting: int
     new_setting: int
 
-let c = Config(1, 2)
+@const
+c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
 print(c.new_setting)     # 警告なし
+```
+
+### `@const`
+
+変数を不変としてマークします。`@const` で宣言された変数は初期化後に再代入できません。`@const` なしの場合、変数はデフォルトで可変です。
+
+```
+@const
+x = 42
+# x = 10   # エラー: @const 変数への再代入はできません
+```
+
+**型アノテーション付き:**
+
+```
+@const
+name: str = "hello"
+```
+
+**タプル分割代入:**
+
+```
+@const
+a, b = (1, 2)
 ```
 
 ### `@native`
@@ -112,7 +141,7 @@ print("hello".to_upper())  # HELLO
 
 | ファイル | 内容 |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args` |
+| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
@@ -129,6 +158,80 @@ print("hello".to_upper())  # HELLO
 
 **将来の拡張方向:**
 - `@native("libfoo.so")` — 外部共有ライブラリへの FFI バインディング。
+
+### `@parallel`
+
+counted `for` ループを並列実行対象としてマークします。
+
+```
+@parallel
+for i in range(8):
+    work(i)
+```
+
+**対応対象:**
+
+- `for` 文のみ
+
+**制約事項:**
+
+- `for` 文には 1 つの `@parallel` だけ指定できます。
+- 反復対象は `range(...)` または整数 `..` に限られます。
+- 分解代入付きの反復は未対応です。
+- 外側の可変変数への代入は拒否されます。
+- v1 ではループ本体内の `break`、`continue`、インデックス代入、フィールド代入は拒否されます。
+
+### `@each`
+
+パラメタライズドテストを有効にし、`it` ブロックを異なるパラメータで複数回実行します。
+
+**構文:**
+
+```
+@each([(引数1, 引数2, ...), ...])
+it("{0} と {1} の説明", fn(param1: 型, param2: 型):
+    # テスト本体
+)
+```
+
+**対応対象:** `it` 呼び出しのみ
+
+**制約事項:**
+- 引数はタプルのリストである必要がある
+- タプルのアリティはラムダのパラメータ数と一致する必要がある
+- 説明文の `{0}`, `{1}`, ... はパラメータ値の文字列表現で置換される
+
+### `@property`
+
+プロパティベーステストを有効にし、`it` ブロックにランダム入力を生成します。
+
+**構文:**
+
+```
+@property(count=100)
+it("プロパティ名", fn(a: int, b: int):
+    # ランダム値によるテスト本体
+)
+```
+
+**対応対象:** `it` 呼び出しのみ
+
+**パラメータ:**
+
+| パラメータ | 型 | デフォルト | 説明 |
+|-----------|------|---------|-------------|
+| `count` | int | 100 | ランダム試行回数 |
+
+**対応するパラメータ型:**
+
+| 型 | 範囲 |
+|------|-------|
+| `int` | -1000 〜 1000 |
+| `float` | -1000.0 〜 1000.0 |
+| `bool` | true または false |
+| `str` | ランダム ASCII、0-20文字 |
+
+失敗時は反例（失敗を引き起こしたパラメータ値）が表示されます。
 
 ### パラメータ（将来拡張）
 
@@ -148,4 +251,4 @@ fn old_api() -> int:
 - 警告は使用箇所で出力され、定義箇所では出力されません。
 - 非推奨のエンティティを定義しても、使用しなければ警告は出力されません。
 - 未知のディレクティブ名はパースエラーになります。
-- サポートされない対象（`if`、`while` 等）にディレクティブを付与するとパースエラーになります。
+- サポートされない対象（`if`、`while` 等）にディレクティブを付与するとパースエラーになります。`for` に使えるのは `@parallel` のみです。

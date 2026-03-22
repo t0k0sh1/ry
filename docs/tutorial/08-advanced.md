@@ -13,17 +13,17 @@ Lambda functions are a syntax for writing functions as expressions. They use the
 ### Single-Expression Lambda
 
 ```python
-let double = fn(x: int): x * 2
+double = fn(x: int): x * 2
 print(double(5))  # 10
 
-let add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-let answer = fn(): 42
+answer = fn(): 42
 print(answer())  # 42
 ```
 
@@ -32,7 +32,7 @@ print(answer())  # 42
 You can write multiple statements by adding a newline after `:` and indenting.
 
 ```python
-let abs = fn(x: int):
+abs = fn(x: int):
     if x < 0:
         return -x
     return x
@@ -48,8 +48,8 @@ print(abs(3))   # 3
 Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
-let offset = 10
-let add_offset = fn(x: int): x + offset
+offset = 10
+add_offset = fn(x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,7 +63,7 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-let double = fn(x: int): x * 2
+double = fn(x: int): x * 2
 print(apply(double, 3))                # 6
 print(apply(fn(n: int): n + 1, 10))    # 11
 ```
@@ -85,7 +85,7 @@ fn apply(f: fn(int) -> int, x: int) -> int:
 print(apply(square, 4))  # 16
 
 # Bind to a variable
-let sq = square
+sq = square
 print(sq(5))  # 25
 ```
 
@@ -99,7 +99,7 @@ With UFCS, you can write `f(a, b)` as `a.f(b)`. This enables method-chaining-sty
 fn add(a: int, b: int) -> int:
     return a + b
 
-let x = 1
+x = 1
 print(x.add(2))   # add(x, 2) -> 3
 ```
 
@@ -133,9 +133,9 @@ fn operator+(a: Vec2, b: Vec2) -> Vec2:
 fn operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
-let v1 = Vec2(1, 2)
-let v2 = Vec2(3, 4)
-let v3 = v1 + v2
+v1 = Vec2(1, 2)
+v2 = Vec2(3, 4)
+v3 = v1 + v2
 print(v3.x)       # 4
 print(v1 == v2)   # false
 ```
@@ -165,10 +165,10 @@ fn operator-(v: Vec2) -> Vec2:
 A type that represents whether a value exists or not. It takes either `Some(value)` or `None`.
 
 ```python
-let x: Option<int> = Some(42)
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 
-let y: Option<int> = None
+y: Option<int> = None
 print(y)   # None
 ```
 
@@ -186,16 +186,90 @@ match x:
 
 ---
 
+## Concurrency Basics
+
+`Task<T>` is the runtime handle for concurrent work. Use `spawn` for explicit task creation, `async fn` for task-returning functions, and `await` or `join(task)` to wait for completion.
+
+```python
+fn square(x: int) -> int:
+    return x * x
+
+t: Task<int> = spawn square(12)
+print(await t)   # 144
+
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+print(await add(20, 22))   # 42
+await add(1, 2)            # statement form also works
+```
+
+`@parallel` can be applied to counted `for` loops over `range(...)` or integer `..` ranges:
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+In v1, `spawn` does not support `Unit`-returning calls, and `@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
+
+For channels, `recv(ch)` is the strict form and raises on a closed drained channel, while `recv_opt(ch)` returns `Some(value)` or `None` instead. `for x in ch:` is the close-aware consumer form and ends normally once the channel is closed and drained. For `Channel<Unit>`, `recv_opt(ch)` returns `bool` and `for _ in ch:` can be used to consume values.
+
+---
+
+## Networking (TCP Sockets)
+
+Ry provides TCP socket support through the `std.net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
+
+```python
+from std.net import bind, listen, accept, connect
+from std.io import str_to_bytes, bytes_to_str
+
+fn echo_server(port: int) -> str:
+    match bind("127.0.0.1", port):
+        case Some(server):
+            listen(server, 1)
+            match accept(server):
+                case Some(conn):
+                    data: List<byte> = recv(conn, 4096)
+                    send(conn, data)
+                    close(conn)
+                case None:
+                    ...
+            close(server)
+        case None:
+            ...
+    return "done"
+
+t: Task<str> = spawn echo_server(8080)
+
+match connect("127.0.0.1", 8080):
+    case Some(conn):
+        send(conn, str_to_bytes("hello"))
+        resp: List<byte> = recv(conn, 4096)
+        print(bytes_to_str(resp))   # hello
+        close(conn)
+    case None:
+        print("connect failed")
+
+join(t)
+```
+
+See [Network Reference](../reference/net.md) for the full API.
+
+---
+
 ## F-String (String Interpolation)
 
 Use `f"..."` to embed expressions directly inside strings. Expressions are placed in `{}`.
 
 ```python
-let name = "Alice"
+name = "Alice"
 print(f"Hello {name}")   # Hello Alice
 
-let x = 3
-let y = 4
+x = 3
+y = 4
 print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
 ```
 
@@ -212,10 +286,10 @@ print(f"{{escaped}}")   # {escaped}
 Convert between types explicitly with `as`.
 
 ```python
-let x = 42 as float     # 42.0
-let y = 3.14 as int      # 3 (truncated)
-let s = 42 as str         # "42"
-let b = true as int       # 1
+x = 42 as float     # 42.0
+y = 3.14 as int      # 3 (truncated)
+s = 42 as str         # "42"
+b = true as int       # 1
 ```
 
 ---
@@ -234,9 +308,9 @@ enum Shape:
 ### Constructing ADT Variants
 
 ```python
-let c = Shape::Circle(3.14)
-let r = Shape::Rectangle(4.0, 5.0)
-let p = Shape::Point
+c = Shape::Circle(3.14)
+r = Shape::Rectangle(4.0, 5.0)
+p = Shape::Point
 ```
 
 ### Matching ADT Variants
@@ -272,8 +346,8 @@ enum MyOption<T>:
 ### Usage
 
 ```python
-let a = MyOption<int>::MySome(42)
-let b: MyOption<int> = MyOption<int>::MyNone
+a = MyOption<int>::MySome(42)
+b: MyOption<int> = MyOption<int>::MyNone
 
 match a:
     case MyOption::MySome(v):
@@ -298,7 +372,7 @@ fn divide(a: int, b: int) -> Result<int, str>:
 Use `match` to handle the result.
 
 ```python
-let r = divide(10, 0)
+r = divide(10, 0)
 match r:
     case Ok(v):
         print(v)

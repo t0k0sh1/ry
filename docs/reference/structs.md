@@ -37,8 +37,8 @@ record Rectangle:
 Arguments are passed in the order of field definitions. Named arguments are not supported.
 
 ```python
-let p = Point(10, 20)
-let r = Rectangle(3.0, 4.5)
+p = Point(10, 20)
+r = Rectangle(3.0, 4.5)
 ```
 
 ---
@@ -48,7 +48,7 @@ let r = Rectangle(3.0, 4.5)
 Fields are read using dot notation.
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -59,15 +59,16 @@ print(p.y)   # 20
 
 | Variable Declaration | Field Assignment |
 |---------|--------------|
-| `var`   | Allowed      |
-| `let`   | Compile error |
+| Mutable (no `@const`) | Allowed      |
+| `@const`   | Compile error |
 
 ```python
-var p = Point(10, 20)
-p.x = 100    # OK: var variable
+p = Point(10, 20)
+p.x = 100    # OK: mutable variable
 
-let q = Point(10, 20)
-q.x = 100    # Error: fields of let variables cannot be modified
+@const
+q = Point(10, 20)
+q.x = 100    # Error: fields of @const variables cannot be modified
 ```
 
 ---
@@ -97,7 +98,7 @@ record Circle:
     center: Point
     radius: float
 
-let c = Circle(Point(0, 0), 1.0)
+c = Circle(Point(0, 0), 1.0)
 print(c.center.x)   # 0
 ```
 
@@ -108,7 +109,7 @@ print(c.center.x)   # 0
 | Constraint | Details |
 |------|------|
 | Duplicate field names | Compile error |
-| Field assignment on `let` variables | Compile error |
+| Field assignment on `@const` variables | Compile error |
 | Passing a struct directly to `print` | Compile error (not supported by print) |
 
 ```python
@@ -118,7 +119,7 @@ record Bad:
     x: int   # Error
 
 # Error example: Passing a struct to print
-let p = Point(1, 2)
+p = Point(1, 2)
 print(p)   # Error
 ```
 
@@ -153,7 +154,7 @@ enum Color:
 Variants are accessed using the `::` operator.
 
 ```python
-let c = Color::Red
+c = Color::Red
 print(c)   # Red
 ```
 
@@ -169,7 +170,7 @@ print(Color::Red != Color::Green)  # true
 ### Usage in if Statements
 
 ```python
-let c = Color::Green
+c = Color::Green
 if c == Color::Red:
     print("red")
 elif c == Color::Green:
@@ -195,7 +196,7 @@ print(is_red(Color::Green))  # false
 `print()` outputs the variant name.
 
 ```python
-let c = Color::Blue
+c = Color::Blue
 print(c)   # Blue
 ```
 

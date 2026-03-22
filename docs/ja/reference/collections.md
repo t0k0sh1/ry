@@ -11,15 +11,15 @@
 ### 構文
 
 ```python
-let t = (1, 3.14)
-let t: (int, float) = (1, 3.14)
+t = (1, 3.14)
+t: (int, float) = (1, 3.14)
 ```
 
 ### 型アノテーション
 
 ```python
-let pair: (int, str) = (42, "hello")
-let triple: (int, float, bool) = (1, 2.0, true)
+pair: (int, str) = (42, "hello")
+triple: (int, float, bool) = (1, 2.0, true)
 ```
 
 ### 要素アクセス
@@ -27,7 +27,7 @@ let triple: (int, float, bool) = (1, 2.0, true)
 `.0`, `.1`, ... の数値インデックスでアクセスします。
 
 ```python
-let t = (10, 3.14)
+t = (10, 3.14)
 print(t.0)   # 10
 print(t.1)   # 3.14
 ```
@@ -38,7 +38,7 @@ print(t.1)   # 3.14
 fn swap(a: int, b: int) -> (int, int):
     return (b, a)
 
-let result = swap(1, 2)
+result = swap(1, 2)
 print(result.0)   # 2
 print(result.1)   # 1
 ```
@@ -61,8 +61,8 @@ print(result.1)   # 1
 ### 構文
 
 ```python
-let xs = [1, 2, 3]
-let xs: List<int> = [1, 2, 3]
+xs = [1, 2, 3]
+xs: List<int> = [1, 2, 3]
 ```
 
 ### 対応する要素型
@@ -72,7 +72,7 @@ let xs: List<int> = [1, 2, 3]
 ### インデックスアクセス
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 print(xs[0])   # 1
 print(xs[2])   # 3
 ```
@@ -80,7 +80,7 @@ print(xs[2])   # 3
 ### インデックス代入
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
 ```
@@ -88,21 +88,21 @@ print(xs[0])   # 99
 ### len
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 print(len(xs))   # 3
 ```
 
 ### print
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 print(xs)   # [1, 2, 3]
 ```
 
 ### for 走査
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 for x in xs:
     print(x)
 # 10
@@ -115,7 +115,7 @@ for x in xs:
 リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。
 
 ```python
-var xs = [1, 2]
+xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
 ```
@@ -125,8 +125,8 @@ print(xs)   # [1, 2, 3]
 リストの末尾の要素を削除して返します。空のリストに対して呼び出すとランタイムエラーになります。
 
 ```python
-var xs = [1, 2, 3]
-let v = xs.pop()
+xs = [1, 2, 3]
+v = xs.pop()
 print(v)    # 3
 print(xs)   # [1, 2]
 ```
@@ -136,7 +136,7 @@ print(xs)   # [1, 2]
 要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます。
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 print(reverse(xs))   # [3, 2, 1]
 print(xs)            # [1, 2, 3]（変更なし）
 ```
@@ -146,9 +146,31 @@ print(xs)            # [1, 2, 3]（変更なし）
 `start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲にクランプされます。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
+```
+
+### take
+
+先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5]（クランプされる）
+print(xs.take(0))    # []
+```
+
+### tap
+
+各要素に対して関数を呼び出し（戻り値は無視）、元のリストをそのまま返します。メソッドチェーン中のデバッグや副作用の挿入に有用です。
+
+```python
+xs = [1, 2, 3]
+ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
 ### filter
@@ -156,8 +178,8 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 述語を満たす要素だけを含む新しいリストを返します。元のリストは変更されません。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter(fn(x: int): x > 3)
+xs = [1, 2, 3, 4, 5]
+ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -166,21 +188,21 @@ print(ys)   # [4, 5]
 各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.map(fn(x: int): x * 2)
+xs = [1, 2, 3]
+ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
 ### sort
 
-ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます。元のリストは変更されません。
+ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。内部的にTimSortを使用しています。
 
 ```python
-let xs = [3, 1, 2]
+xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-let desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -189,8 +211,8 @@ print(desc)   # [3, 2, 1]
 これらの関数は新しいリストを返すため、UFCS で連鎖できます。
 
 ```python
-let xs = [5, 3, 1, 4, 2]
-let result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+xs = [5, 3, 1, 4, 2]
+result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -199,8 +221,8 @@ print(result)   # [20, 30, 40, 50]
 アキュムレータ関数を使ってリストを単一の値に畳み込みます。最初の要素を初期値として使用します。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let total = reduce(xs, fn(a: int, b: int): a + b)
+xs = [1, 2, 3, 4, 5]
+total = reduce(xs, fn(a: int, b: int): a + b)
 print(total)   # 15
 ```
 
@@ -209,8 +231,8 @@ print(total)   # 15
 明示的な初期値とアキュムレータ関数を使ってリストを単一の値に畳み込みます。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let total = fold(xs, 0, fn(a: int, b: int): a + b)
+xs = [1, 2, 3, 4, 5]
+total = fold(xs, 0, fn(a: int, b: int): a + b)
 print(total)   # 15
 ```
 
@@ -219,7 +241,7 @@ print(total)   # 15
 述語を満たす要素が1つ以上あれば `true` を返します。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 print(any(xs, fn(x: int): x > 4))   # true
 print(any(xs, fn(x: int): x > 9))   # false
 ```
@@ -229,7 +251,7 @@ print(any(xs, fn(x: int): x > 9))   # false
 すべての要素が述語を満たす場合に `true` を返します。
 
 ```python
-let xs = [2, 4, 6]
+xs = [2, 4, 6]
 print(all(xs, fn(x: int): x > 0))   # true
 print(all(xs, fn(x: int): x > 3))   # false
 ```
@@ -239,7 +261,7 @@ print(all(xs, fn(x: int): x > 3))   # false
 全要素の合計を返します。
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 print(sum(xs))   # 15
 ```
 
@@ -248,7 +270,7 @@ print(sum(xs))   # 15
 最小の要素を返します。
 
 ```python
-let xs = [3, 1, 4, 1, 5]
+xs = [3, 1, 4, 1, 5]
 print(min(xs))   # 1
 ```
 
@@ -257,7 +279,7 @@ print(min(xs))   # 1
 最大の要素を返します。
 
 ```python
-let xs = [3, 1, 4, 1, 5]
+xs = [3, 1, 4, 1, 5]
 print(max(xs))   # 5
 ```
 
@@ -266,7 +288,7 @@ print(max(xs))   # 5
 最初の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 print(first(xs))   # 10
 ```
 
@@ -275,7 +297,7 @@ print(first(xs))   # 10
 最後の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
 
 ```python
-let xs = [10, 20, 30]
+xs = [10, 20, 30]
 print(last(xs))   # 30
 ```
 
@@ -284,7 +306,7 @@ print(last(xs))   # 30
 リストが空であれば `true` を返します。
 
 ```python
-let xs = [1, 2, 3]
+xs = [1, 2, 3]
 print(is_empty(xs))   # false
 ```
 
@@ -293,8 +315,8 @@ print(is_empty(xs))   # false
 `(インデックス, 要素)` のタプルのリストを返します。
 
 ```python
-let xs = [10, 20, 30]
-let pairs = enumerate(xs)
+xs = [10, 20, 30]
+pairs = enumerate(xs)
 # pairs = [(0, 10), (1, 20), (2, 30)]
 
 # for ループでのタプル分解
@@ -307,9 +329,9 @@ for i, x in enumerate(xs):
 2つのリストを `(要素1, 要素2)` のタプルのリストに結合します。結果の長さは短い方のリストと同じになります。
 
 ```python
-let xs = [1, 2, 3]
-let ys = ["a", "b", "c"]
-let pairs = zip(xs, ys)
+xs = [1, 2, 3]
+ys = ["a", "b", "c"]
+pairs = zip(xs, ys)
 # pairs = [(1, "a"), (2, "b"), (3, "c")]
 
 # for ループでのタプル分解
@@ -322,7 +344,7 @@ for a, b in zip(xs, ys):
 指定したインデックスに要素を挿入します。そのインデックス以降の要素は右にシフトされます。
 
 ```python
-var xs = [1, 2, 3]
+xs = [1, 2, 3]
 insert(xs, 1, 99)
 print(xs)   # [1, 99, 2, 3]
 ```
@@ -332,8 +354,8 @@ print(xs)   # [1, 99, 2, 3]
 指定したインデックスの要素を削除して返します。そのインデックス以降の要素は左にシフトされます。
 
 ```python
-var xs = [1, 2, 3, 4]
-let v = remove_at(xs, 1)
+xs = [1, 2, 3, 4]
+v = remove_at(xs, 1)
 print(v)    # 2
 print(xs)   # [1, 3, 4]
 ```
@@ -343,7 +365,7 @@ print(xs)   # [1, 3, 4]
 リストから指定した値の最初の出現を削除します。値が見つからない場合は何もしません。破壊的操作です。
 
 ```python
-var xs = [1, 2, 3, 2, 4]
+xs = [1, 2, 3, 2, 4]
 remove(xs, 2)
 print(xs)   # [1, 3, 2, 4]
 ```
@@ -353,7 +375,7 @@ print(xs)   # [1, 3, 2, 4]
 重複を排除した新しいリストを返します。元の順序は保持されます（最初の出現を残します）。元のリストは変更されません。
 
 ```python
-let xs = [1, 2, 3, 2, 1, 4]
+xs = [1, 2, 3, 2, 1, 4]
 print(distinct(xs))   # [1, 2, 3, 4]
 print(xs)             # [1, 2, 3, 2, 1, 4]（変更なし）
 ```
@@ -363,10 +385,27 @@ print(xs)             # [1, 2, 3, 2, 1, 4]（変更なし）
 ネストされたリスト（リストのリスト）を1段階フラット化します。新しいリストを返します。元のリストは変更されません。
 
 ```python
-let xs = [[1, 2], [3, 4]]
+xs = [[1, 2], [3, 4]]
 print(flatten(xs))   # [1, 2, 3, 4]
 print(xs)            # [[1, 2], [3, 4]]（変更なし）
 ```
+
+### 操作の計算量
+
+| 操作 | 計算量 |
+|------|--------|
+| `xs[i]` インデックスアクセス | O(1) |
+| `append` / `append!` | O(1)（均償） |
+| `pop` | O(1) |
+| `first`, `last` | O(1) |
+| `insert`, `remove_at` | O(n) |
+| `sort` / `sort!` | O(n log n) |
+| `take` | O(n) |
+| `tap` | O(n) |
+| `filter`, `map`, `reduce`, `fold` | O(n) |
+| `reverse` / `reverse!` | O(n) |
+| `distinct` | O(n) |
+| `len` | O(1) |
 
 ### 制約とエラー
 
@@ -387,21 +426,21 @@ print(xs)            # [[1, 2], [3, 4]]（変更なし）
 ### 構文
 
 ```python
-let m = {"a": 1, "b": 2}
-let m: Map<str, int> = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
+m: Map<str, int> = {"a": 1, "b": 2}
 ```
 
 ### キーアクセス
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(m["a"])   # 1
 ```
 
 ### 挿入・更新
 
 ```python
-let m = {"a": 1}
+m = {"a": 1}
 m["b"] = 2     # 新規追加
 m["a"] = 99    # 更新
 ```
@@ -409,21 +448,21 @@ m["a"] = 99    # 更新
 ### len
 
 ```python
-let m = {"a": 1, "b": 2, "c": 3}
+m = {"a": 1, "b": 2, "c": 3}
 print(len(m))   # 3
 ```
 
 ### print
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(m)   # {a: 1, b: 2}
 ```
 
 ### has_key
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(m.has_key("a"))   # true
 print(m.has_key("z"))   # false
 ```
@@ -433,7 +472,7 @@ print(m.has_key("z"))   # false
 マップの全キーのリストを返します。
 
 ```python
-let m = {"a": 1, "b": 2, "c": 3}
+m = {"a": 1, "b": 2, "c": 3}
 print(keys(m))   # ["a", "b", "c"]
 ```
 
@@ -442,7 +481,7 @@ print(keys(m))   # ["a", "b", "c"]
 マップの全値のリストを返します。
 
 ```python
-let m = {"a": 1, "b": 2, "c": 3}
+m = {"a": 1, "b": 2, "c": 3}
 print(values(m))   # [1, 2, 3]
 ```
 
@@ -451,8 +490,8 @@ print(values(m))   # [1, 2, 3]
 マップの全エントリの `(キー, 値)` タプルのリストを返します。
 
 ```python
-let m = {"a": 1, "b": 2}
-let pairs = items(m)
+m = {"a": 1, "b": 2}
+pairs = items(m)
 # pairs = [("a", 1), ("b", 2)]
 ```
 
@@ -461,7 +500,7 @@ let pairs = items(m)
 指定したキーのエントリをマップから削除します。キーが存在しない場合は何もしません。
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 remove(m, "a")
 print(m)   # {b: 2}
 ```
@@ -471,7 +510,7 @@ print(m)   # {b: 2}
 指定したキーの値を返します。キーが存在しない場合はデフォルト値を返します。
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(get(m, "a", 0))   # 1
 print(get(m, "z", 0))   # 0
 ```
@@ -481,9 +520,9 @@ print(get(m, "z", 0))   # 0
 2つのマップを結合した新しいマップを返します。キーが重複する場合は第2マップの値が優先されます。元のマップは変更されません。
 
 ```python
-let m1 = {"a": 1, "b": 2}
-let m2 = {"b": 99, "c": 3}
-let m3 = merge(m1, m2)
+m1 = {"a": 1, "b": 2}
+m2 = {"b": 99, "c": 3}
+m3 = merge(m1, m2)
 print(m3["a"])   # 1
 print(m3["b"])   # 99
 print(m3["c"])   # 3
@@ -495,9 +534,9 @@ print(m3["c"])   # 3
 |------|------|
 | 全キーは同一型 | 異なる型のキーが混在するとコンパイルエラー |
 | 全値は同一型 | 異なる型の値が混在するとコンパイルエラー |
-| 空マップ | 型注釈が必要（`let m: Map<str, int> = {"a": 1}` など） |
+| 空マップ | 型注釈が必要（`m: Map<str, int> = {"a": 1}` など） |
 | 存在しないキーアクセス | ランタイムエラー（exit(1)） |
-| キー検索 | 線形スキャン |
+| キー検索 | ハッシュテーブル（平均 O(1)） |
 | 容量超過時 | 自動で2倍に拡張 |
 
 ---
@@ -511,8 +550,8 @@ print(m3["c"])   # 3
 ### 構文
 
 ```python
-let s = {1, 2, 3}
-let s: Set<int> = {1, 2, 3}
+s = {1, 2, 3}
+s: Set<int> = {1, 2, 3}
 ```
 
 ### 対応する要素型
@@ -522,7 +561,7 @@ let s: Set<int> = {1, 2, 3}
 ### in 演算子（所属チェック）
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 print(2 in s)   # true
 print(5 in s)   # false
 ```
@@ -530,14 +569,14 @@ print(5 in s)   # false
 ### len
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 print(len(s))   # 3
 ```
 
 ### print
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 print(s)   # {1, 2, 3}
 ```
 
@@ -546,7 +585,7 @@ print(s)   # {1, 2, 3}
 重複する要素を追加した場合は無視されます。
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.add(4)         # 追加
 s.add(1)         # 既に存在するため無視
 print(len(s))    # 4
@@ -555,7 +594,7 @@ print(len(s))    # 4
 ### remove（要素削除）
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.remove(2)
 print(2 in s)   # false
 ```
@@ -563,7 +602,7 @@ print(2 in s)   # false
 ### for 走査
 
 ```python
-let s = {10, 20, 30}
+s = {10, 20, 30}
 for x in s:
     print(x)
 ```
@@ -573,7 +612,7 @@ for x in s:
 空セットは型注釈が必要です。
 
 ```python
-let s: Set<int> = {}
+s: Set<int> = {}
 ```
 
 ### 関数引数
@@ -588,8 +627,8 @@ fn has_value(s: Set<int>, v: int) -> bool:
 両方のセットの全要素を含む新しいセットを返します。
 
 ```python
-let a = {1, 2, 3}
-let b = {3, 4, 5}
+a = {1, 2, 3}
+b = {3, 4, 5}
 print(union(a, b))   # {1, 2, 3, 4, 5}
 ```
 
@@ -598,8 +637,8 @@ print(union(a, b))   # {1, 2, 3, 4, 5}
 両方のセットに存在する要素のみを含む新しいセットを返します。
 
 ```python
-let a = {1, 2, 3}
-let b = {2, 3, 4}
+a = {1, 2, 3}
+b = {2, 3, 4}
 print(intersection(a, b))   # {2, 3}
 ```
 
@@ -608,8 +647,8 @@ print(intersection(a, b))   # {2, 3}
 最初のセットにはあるが、2番目のセットにはない要素を含む新しいセットを返します。
 
 ```python
-let a = {1, 2, 3}
-let b = {2, 3, 4}
+a = {1, 2, 3}
+b = {2, 3, 4}
 print(difference(a, b))   # {1}
 ```
 
@@ -618,8 +657,8 @@ print(difference(a, b))   # {1}
 いずれかのセットにあるが、両方にはない要素を含む新しいセットを返します。
 
 ```python
-let a = {1, 2, 3}
-let b = {2, 3, 4}
+a = {1, 2, 3}
+b = {2, 3, 4}
 print(symmetric_difference(a, b))   # {1, 4}
 ```
 
@@ -628,8 +667,8 @@ print(symmetric_difference(a, b))   # {1, 4}
 最初のセットの全要素が2番目のセットに含まれている場合に `true` を返します。
 
 ```python
-let a = {1, 2}
-let b = {1, 2, 3}
+a = {1, 2}
+b = {1, 2, 3}
 print(is_subset(a, b))   # true
 print(is_subset(b, a))   # false
 ```
@@ -639,8 +678,8 @@ print(is_subset(b, a))   # false
 最初のセットが2番目のセットの全要素を含んでいる場合に `true` を返します。
 
 ```python
-let a = {1, 2, 3}
-let b = {1, 2}
+a = {1, 2, 3}
+b = {1, 2}
 print(is_superset(a, b))   # true
 print(is_superset(b, a))   # false
 ```
@@ -651,5 +690,5 @@ print(is_superset(b, a))   # false
 |------|------|
 | 全要素は同一型 | 異なる型が混在するとコンパイルエラー |
 | 空セット `{}` | 型注釈が必要 |
-| 要素検索 | 線形スキャン |
+| 要素検索 | ハッシュテーブル（平均 O(1)） |
 | 容量超過時 | 自動で2倍に拡張 |

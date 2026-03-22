@@ -9,10 +9,23 @@
 | Function | Description |
 |------|------|
 | `print(expr)` | Prints a value to standard output |
-| `len(x)` | Returns the number of elements in a list, map, or set, or the length of a string |
+| `len(x)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
+| `available_parallelism()` | Returns the runtime worker count as `int` |
+| `channel[T]()` | Creates an unbuffered `Channel<T>` |
+| `channel[T](capacity)` | Creates a buffered `Channel<T>` |
+| `send(ch, value)` | Sends a value through `Channel<T>` |
+| `send(stream, data)` | Sends `List<byte>` through `TcpStream`, returns bytes sent |
+| `try_send(ch, value)` | Attempts to send through `Channel<T>` without blocking |
+| `recv(ch)` | Receives a value from `Channel<T>` |
+| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<byte>` |
+| `recv_opt(ch)` | Receives from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
+| `try_recv(ch)` | Attempts to receive from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
+| `close(ch)` | Closes a `Channel<T>` |
+| `close(handle)` | Closes a `TcpStream` or `TcpListener` |
+| `join(task)` | Waits for a `Task<T>` to complete and returns its result |
 
 ### Option
 
@@ -27,17 +40,23 @@
 | `has_key(map, key)` | Returns whether a key exists in the map |
 | `add(set, value)` | Adds an element to a set (duplicates are ignored) |
 | `remove(set, value)` | Removes an element from a set |
-| `append(list, value)` | Adds an element to the end of a list (mutating) |
-| `pop(list)` | Removes and returns the last element of a list |
+| `append(list, value)` / `append!(list, value)` | Adds an element to the end of a list (mutating) |
+| `appended(list, value)` | Returns a new list with the element added (non-mutating) |
+| `pop(list)` | Removes and returns the last element as `Option<T>` |
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
+| `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
+| `take(list, n)` | Returns a new list with the first n elements |
+| `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
+| `sort!(list)` / `sort!(list, comp)` | Sorts a list in place (mutating) |
 | `insert(list, i, val)` | Inserts an element at index i |
 | `remove_at(list, i)` | Removes and returns the element at index i |
 | `items(map)` | Returns a list of (key, value) tuples |
 | `remove(map, key)` | Removes the entry with the specified key |
+| `get(map, key)` | Returns the value for key as `Option<V>` |
 | `get(map, key, default)` | Returns the value for key, or default if not found |
 | `union(set, set)` | Returns the union of two sets |
 | `intersection(set, set)` | Returns the intersection of two sets |
@@ -46,6 +65,17 @@
 | `is_subset(set, set)` | Returns whether the first set is a subset of the second |
 | `is_superset(set, set)` | Returns whether the first set is a superset of the second |
 
+### Iterator
+
+| Function | Description |
+|------|------|
+| `iter(collection)` | Creates a lazy iterator from a List, Set, or Map |
+| `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
+| `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
+| `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
+| `map(iter, fn)` | Returns a lazy iterator that transforms each element |
+| `take(iter, n)` | Returns a lazy iterator that yields at most n elements |
+
 ### [String Operations](builtins-string.md)
 
 | Function | Description |
@@ -53,7 +83,8 @@
 | `contains(s, sub)` | Whether a substring is contained |
 | `starts_with(s, prefix)` | Whether it starts with a prefix |
 | `ends_with(s, suffix)` | Whether it ends with a suffix |
-| `find(s, sub)` | Position of a substring (-1 if not found) |
+| `find(s, sub)` | Character position of a substring (`Option<int>`) |
+| `byte_len(s)` | Returns the byte length of a string |
 | `substring(s, start, end)` | Extract a substring |
 | `char_at(s, i)` | Get the character at a specified position |
 | `replace(s, old, new)` | Replace all occurrences of a substring |
@@ -111,7 +142,7 @@ print({1, 2, 3})   # {1, 2, 3}
 Constructs the value-present variant of an Option type.
 
 ```python
-let x: Option<int> = Some(42)
+x: Option<int> = Some(42)
 print(x)   # Some(42)
 ```
 
@@ -121,13 +152,14 @@ print(x)   # Some(42)
 
 **Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-Returns the number of elements in a list, map, or set, or the byte length of a string.
+Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
 ```python
 print(len([1, 2, 3]))         # 3
 print(len({"a": 1, "b": 2})) # 2
 print(len({1, 2, 3}))         # 3
 print(len("hello"))           # 5
+print(len("あいう"))           # 3 (UTF-8 characters)
 ```
 
 ---
@@ -139,7 +171,7 @@ print(len("hello"))           # 5
 Returns whether a specified key exists in the map. UFCS notation is also available.
 
 ```python
-let m = {"a": 1, "b": 2}
+m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
 print(m.has_key("z"))     # false (UFCS)
 ```
@@ -153,7 +185,7 @@ print(m.has_key("z"))     # false (UFCS)
 Adds an element to a set. Does nothing if the element already exists. UFCS notation is also available.
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
 s.add(1)          # Ignored because it already exists
@@ -169,7 +201,7 @@ print(len(s))     # 5
 Removes an element from a set. UFCS notation is also available.
 
 ```python
-let s = {1, 2, 3}
+s = {1, 2, 3}
 s.remove(2)       # UFCS
 print(2 in s)     # false
 ```
@@ -229,7 +261,7 @@ Returns the command-line arguments passed to the script as a list of strings. Do
 
 ```python
 # Run: ry script.ry hello world
-let a = args()
+a = args()
 print(len(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
@@ -247,7 +279,7 @@ for x in args():
 Adds an element to the end of a list. This is a mutating operation — the list is modified in place. UFCS notation is also available.
 
 ```python
-var xs = [1, 2]
+xs = [1, 2]
 xs.append(3)
 print(xs)   # [1, 2, 3]
 ```
@@ -256,18 +288,16 @@ print(xs)   # [1, 2, 3]
 
 ## pop
 
-**Signature:** `pop(list: List<T>) -> T`
+**Signature:** `pop(list: List<T>) -> Option<T>`
 
-Removes and returns the last element of a list. UFCS notation is also available.
+Removes and returns the last element of a list as `Option<T>`. Returns `None` if the list is empty. UFCS notation is also available.
 
 ```python
-var xs = [1, 2, 3]
-let v = xs.pop()
-print(v)    # 3
+xs = [1, 2, 3]
+v = xs.pop()
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
-
-**Error condition:** Calling `pop()` on an empty list causes a runtime error (exit(1)).
 
 ---
 
@@ -278,8 +308,8 @@ print(xs)   # [1, 2]
 Returns a new list with elements in reverse order. The original list is not modified. Also works on strings (see [String Operations](builtins-string.md)). UFCS notation is also available.
 
 ```python
-let xs = [1, 2, 3]
-let ys = reverse(xs)
+xs = [1, 2, 3]
+ys = reverse(xs)
 print(ys)   # [3, 2, 1]
 print(xs)   # [1, 2, 3] (unchanged)
 ```
@@ -293,9 +323,39 @@ print(xs)   # [1, 2, 3] (unchanged)
 Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
 
 ```python
-let xs = [1, 2, 3, 4, 5]
+xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
 print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
+```
+
+---
+
+## take
+
+**Signature:** `take(list: List<T>, n: int) -> List<T>`
+
+Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.take(3)
+print(ys)   # [1, 2, 3]
+print(xs.take(10))   # [1, 2, 3, 4, 5] (clamped)
+print(xs.take(0))    # []
+```
+
+---
+
+## tap
+
+**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+
+Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
+
+```python
+xs = [1, 2, 3]
+ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+# prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
 ---
@@ -307,8 +367,8 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
 
 ```python
-let xs = [1, 2, 3, 4, 5]
-let ys = xs.filter((x: int) -> x > 3)
+xs = [1, 2, 3, 4, 5]
+ys = xs.filter(fn(x: int): x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 ```
@@ -322,8 +382,8 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
 
 ```python
-let xs = [1, 2, 3]
-let ys = xs.map((x: int) -> x * 2)
+xs = [1, 2, 3]
+ys = xs.map(fn(x: int): x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -333,13 +393,153 @@ print(ys)   # [2, 4, 6]
 
 **Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
-Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. UFCS notation is also available.
+Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
 ```python
-let xs = [3, 1, 2]
+xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order
-let desc = xs.sort((a: int, b: int) -> a > b)
+desc = xs.sort(fn(a: int, b: int): a > b)
 print(desc)   # [3, 2, 1]
+```
+
+---
+
+## sort!
+
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+
+Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
+
+```python
+xs = [3, 1, 2]
+xs.sort!()
+print(xs)   # [1, 2, 3]
+```
+
+---
+
+## reverse!
+
+**Signature:** `reverse!(list: List<T>)`
+
+Reverses a list in place. UFCS notation is also available.
+
+```python
+xs = [1, 2, 3]
+xs.reverse!()
+print(xs)   # [3, 2, 1]
+```
+
+---
+
+## appended
+
+**Signature:** `appended(list: List<T>, value: T) -> List<T>`
+
+Returns a new list with the element added at the end. The original list is not modified. UFCS notation is also available.
+
+```python
+xs = [1, 2]
+ys = xs.appended(3)
+print(xs)   # [1, 2] (unchanged)
+print(ys)   # [1, 2, 3]
+```
+
+---
+
+## append!
+
+**Signature:** `append!(list: List<T>, value: T)`
+
+Alias for `append()`. Adds an element to the end of a list in place. Provided for naming consistency with the `!` convention.
+
+---
+
+## first
+
+**Signature:** `first(list: List<T>) -> Option<T>`
+
+Returns the first element of a list as `Option<T>`. Returns `None` if the list is empty.
+
+```python
+print(first([10, 20, 30]))   # Some(10)
+```
+
+---
+
+## last
+
+**Signature:** `last(list: List<T>) -> Option<T>`
+
+Returns the last element of a list as `Option<T>`. Returns `None` if the list is empty.
+
+```python
+print(last([10, 20, 30]))   # Some(30)
+```
+
+---
+
+## get (Map)
+
+**Signature:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+
+Two-argument form returns the value for key as `Option<V>`. Three-argument form returns the value or the default.
+
+```python
+m = {"a": 1, "b": 2}
+print(get(m, "a"))       # Some(1)
+print(get(m, "z"))       # None
+print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**Signature:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+Creates a lazy iterator from a collection. The iterator does not copy data; it references the original collection. UFCS notation is also available.
+
+- For `List<T>` and `Set<T>`, the element type is `T`.
+- For `Map<K, V>`, the element type is the tuple `(K, V)`.
+
+```python
+xs = [1, 2, 3]
+it = xs.iter()           # Iterator<int>
+ys = it.to_list()        # [1, 2, 3]
+
+m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**Signature:** `next(iter: Iterator<T>) -> Option<T>`
+
+Returns the next element from the iterator as `Option<T>`. Returns `None` when the iterator is exhausted. The iterator advances its internal state on each call. UFCS notation is also available.
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**Signature:** `to_list(iter: Iterator<T>) -> List<T>`
+
+Collects all remaining elements from the iterator into a new list. UFCS notation is also available.
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.iter().filter(fn(x: int): x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```

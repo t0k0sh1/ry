@@ -25,7 +25,7 @@ record Point:
 構造体名を関数のように呼び出してインスタンスを生成します。引数はフィールドの定義順に指定します。
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 ```
 
 ---
@@ -35,7 +35,7 @@ let p = Point(10, 20)
 フィールドにはドット記法でアクセスします。
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -46,15 +46,15 @@ print(p.y)   # 20
 
 ## フィールドへの代入
 
-`var` で宣言した変数のフィールドは再代入できます。
+`@const` なしで宣言した可変変数のフィールドは再代入できます。
 
 ```python
-var p = Point(10, 20)
+p = Point(10, 20)
 p.x = 100
 print(p.x)   # 100
 ```
 
-> **注意**: `let` で宣言した変数のフィールドへの代入はコンパイルエラーになります。
+> **注意**: `@const` で宣言した変数のフィールドへの代入はコンパイルエラーになります。
 
 ---
 
@@ -70,8 +70,8 @@ record Point:
 fn distance_x(a: Point, b: Point) -> int:
     return a.x - b.x
 
-let p1 = Point(10, 3)
-let p2 = Point(4, 7)
+p1 = Point(10, 3)
+p2 = Point(4, 7)
 print(distance_x(p1, p2))   # 6
 ```
 
@@ -90,7 +90,7 @@ record Line:
     start: Point
     end: Point
 
-let line = Line(Point(0, 0), Point(10, 5))
+line = Line(Point(0, 0), Point(10, 5))
 print(line.start.x)   # 0
 print(line.end.x)     # 10
 ```
@@ -117,7 +117,7 @@ enum Color:
 バリアントには `::` でアクセスします。
 
 ```python
-let c = Color::Red
+c = Color::Red
 print(c)   # Red
 ```
 

@@ -4,7 +4,7 @@
 
 A list of operation functions for strings (`str`). All functions support UFCS notation.
 
-> **Note:** All string operations are byte-level. They may not work correctly with multi-byte characters (e.g., CJK characters).
+> **Note:** All string operations are UTF-8 aware. `len()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 
 ## Function List
 
@@ -15,14 +15,14 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | `contains` | `(str, str) -> bool` | Returns whether a substring is contained |
 | `starts_with` | `(str, str) -> bool` | Returns whether it starts with a prefix |
 | `ends_with` | `(str, str) -> bool` | Returns whether it ends with a suffix |
-| `find` | `(str, str) -> int` | Returns the position of a substring (-1 if not found) |
+| `find` | `(str, str) -> Option<int>` | Returns the character position of a substring (`None` if not found) |
 
 ### Extraction and Transformation
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `substring` | `(str, int, int) -> str` | Extract a substring |
-| `char_at` | `(str, int) -> str` | Get the character at a specified position |
+| `substring` | `(str, int, int) -> str` | Extract a substring (character indices) |
+| `char_at` | `(str, int) -> str` | Get the UTF-8 character at a specified position |
 | `replace` | `(str, str, str) -> str` | Replace all occurrences of a substring |
 
 ### Case Conversion
@@ -45,7 +45,8 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 | Function | Signature | Description |
 |------|-----------|------|
 | `repeat` | `(str, int) -> str` | Repeat a string n times |
-| `reverse` | `str -> str` | Reverse a string |
+| `reverse` | `str -> str` | Reverse a string (UTF-8 aware) |
+| `byte_len` | `str -> int` | Returns the byte length of a string |
 
 ### Split and Join
 
@@ -105,14 +106,14 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**Signature:** `find(s: str, sub: str) -> int`
+**Signature:** `find(s: str, sub: str) -> Option<int>`
 
-Returns the position (byte offset) of the first occurrence of substring `sub` in string `s`. Returns `-1` if not found.
+Returns the character position of the first occurrence of substring `sub` in string `s`. Returns `None` if not found.
 
 ```python
-print(find("hello world", "world"))   # 6
-print(find("hello", "xyz"))           # -1
-print("abcdef".find("cd"))            # 2 (UFCS)
+print(find("hello world", "world"))   # Some(6)
+print(find("hello", "xyz"))           # None
+print("abcdef".find("cd"))            # Some(2) (UFCS)
 ```
 
 ---
@@ -121,7 +122,7 @@ print("abcdef".find("cd"))            # 2 (UFCS)
 
 **Signature:** `substring(s: str, start: int, end: int) -> str`
 
-Returns the substring of `s` from `start` to `end` (exclusive).
+Returns the substring of `s` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -135,7 +136,7 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **Signature:** `char_at(s: str, i: int) -> str`
 
-Returns the byte at position `i` in string `s` as a single-character string.
+Returns the UTF-8 character at position `i` in string `s` as a string.
 
 ```python
 print(char_at("hello", 0))   # h
@@ -240,11 +241,25 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 **Signature:** `reverse(s: str) -> str`
 
-Returns a new string with the bytes reversed.
+Returns a new string with the characters reversed (UTF-8 aware).
 
 ```python
 print(reverse("hello"))    # olleh
 print("abc".reverse())     # cba (UFCS)
+```
+
+---
+
+## byte_len
+
+**Signature:** `byte_len(s: str) -> int`
+
+Returns the byte length of string `s`. Unlike `len()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
+
+```python
+print(byte_len("hello"))   # 5
+print(byte_len("あいう"))   # 9
+print(len("あいう"))        # 3 (characters)
 ```
 
 ---
@@ -256,7 +271,7 @@ print("abc".reverse())     # cba (UFCS)
 Splits string `s` by delimiter `delim` and returns a `List<str>`.
 
 ```python
-let parts = split("a,b,c", ",")
+parts = split("a,b,c", ",")
 print(parts[0])   # a
 print(parts[1])   # b
 print(parts[2])   # c
@@ -276,7 +291,7 @@ for word in "hello world".split(" "):
 Joins the elements of a string list with separator `sep` and returns a string.
 
 ```python
-let parts = ["a", "b", "c"]
+parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
 ```

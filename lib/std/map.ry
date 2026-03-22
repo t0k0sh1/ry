@@ -13,6 +13,9 @@ fn items(m: Map<str, int>) -> List<int>
 fn has_key(m: Map<str, int>, key: str) -> bool
 
 @native
+fn get(m: Map<str, int>, key: str) -> Option<int>
+
+@native
 fn get(m: Map<str, int>, key: str, default: int) -> int
 
 @native

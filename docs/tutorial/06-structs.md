@@ -25,7 +25,7 @@ Structs are value types allocated on the stack.
 Create an instance by calling the struct name as a function. Arguments are specified in the order the fields are defined.
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 ```
 
 ---
@@ -35,7 +35,7 @@ let p = Point(10, 20)
 Fields are accessed using dot notation.
 
 ```python
-let p = Point(10, 20)
+p = Point(10, 20)
 print(p.x)   # 10
 print(p.y)   # 20
 ```
@@ -46,15 +46,15 @@ print(p.y)   # 20
 
 ## Field Assignment
 
-Fields of variables declared with `var` can be reassigned.
+Fields of mutable variables (declared without `@const`) can be reassigned.
 
 ```python
-var p = Point(10, 20)
+p = Point(10, 20)
 p.x = 100
 print(p.x)   # 100
 ```
 
-> **Note**: Assigning to fields of a `let` variable causes a compile error.
+> **Note**: Assigning to fields of a `@const` variable causes a compile error.
 
 ---
 
@@ -70,8 +70,8 @@ record Point:
 fn distance_x(a: Point, b: Point) -> int:
     return a.x - b.x
 
-let p1 = Point(10, 3)
-let p2 = Point(4, 7)
+p1 = Point(10, 3)
+p2 = Point(4, 7)
 print(distance_x(p1, p2))   # 6
 ```
 
@@ -90,7 +90,7 @@ record Line:
     start: Point
     end: Point
 
-let line = Line(Point(0, 0), Point(10, 5))
+line = Line(Point(0, 0), Point(10, 5))
 print(line.start.x)   # 0
 print(line.end.x)     # 10
 ```
@@ -117,7 +117,7 @@ enum Color:
 Variants are accessed with `::`.
 
 ```python
-let c = Color::Red
+c = Color::Red
 print(c)   # Red
 ```
 

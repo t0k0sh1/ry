@@ -10,7 +10,10 @@ fn starts_with(s: str, prefix: str) -> bool
 fn ends_with(s: str, suffix: str) -> bool
 
 @native
-fn find(s: str, sub: str) -> int
+fn find(s: str, sub: str) -> Option<int>
+
+@native
+fn byte_len(s: str) -> int
 
 @native
 fn substring(s: str, start: int, end: int) -> str

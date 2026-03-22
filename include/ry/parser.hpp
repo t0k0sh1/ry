@@ -26,13 +26,15 @@ private:
 
     std::vector<Directive> parseDirectives();
     void skipNewlines();
+    void skipStructuralTokens();
     StmtNode parseImportStatement();
     StmtNode parseStatement();
-    StmtNode parseLetOrVar();
+
+
     StmtNode parseIfStatement();
     StmtNode parseWhileStatement();
     StmtNode parseForStatement();
-    StmtNode parseFnStatement(const std::vector<Directive> &directives);
+    StmtNode parseFnStatement(const std::vector<Directive> &directives, bool is_async = false);
     StmtNode parseRecordStatement();
     StmtNode parseTypeAliasStatement();
     StmtNode parseEnumStatement();
@@ -41,12 +43,16 @@ private:
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
+    StmtNode parseSelectStatement();
     Pattern parsePattern();
     std::string parseTypeName();
     std::string parseTypeNameSingle();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
+
+    // Desugar helper: x = x op rhs
+    AssignStmt makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs);
 
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();
@@ -70,4 +76,6 @@ private:
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
     ExprPtr parseLambdaExpr();
+    ExprPtr parseSpawnExpr();
+    ExprPtr parseAwaitExpr();
 };

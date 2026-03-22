@@ -10,6 +10,7 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 
 ```bash
 ry test              # プロジェクト内の *.test.ry を自動検出して実行
+ry test tests/spec   # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test test_file.ry # 特定のテストファイルを実行
 ```
 
@@ -30,20 +31,22 @@ ry test test_file.ry # 特定のテストファイルを実行
 ### describe / it
 
 ```
-describe("説明文"):
-    it("テストケース名"):
+describe("説明文", fn():
+    it("テストケース名", fn():
         # テスト本体
         expect(実際の値).to_eq(期待値)
+    )
+)
 ```
 
-- `describe` と `it` は**トレイリングブロック構文**を使用: 関数呼び出しの後に `:` を付けるとインデントブロックがラムダとして最後の引数に渡される
+- `describe` と `it` は説明文字列と**ラムダ引数** `fn():` を第二引数に取る
 - `describe` ブロック内には `it` ブロックやその他の文（変数宣言など）を記述可能
 - 各 `it` ブロックは独立したテストケース
 - `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
 
 ### トレイリングブロック構文
 
-任意の関数呼び出しにトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
+任意の関数呼び出し（`describe`/`it`/`mock` を除く）にトレイリングブロック構文が使えます。`()` の後に `:` を付けると、インデントブロックが引数なしラムダとして最後の引数に渡されます:
 
 ```
 # 以下は等価:
@@ -65,7 +68,16 @@ foo("arg", fn():
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
 | `to_be_some()` | Option が `Some` であること | Option |
-| `to_contain(val)` | コンテナが値を含むこと | List, Set, str |
+| `to_contain(val)` | コンテナが値を含むこと | List, Set, Map, str |
+| `to_not_contain(val)` | コンテナが値を含まないこと | List, Set, Map, str |
+| `to_be_greater_than(v)` | `actual > v` であること | int, float |
+| `to_be_less_than(v)` | `actual < v` であること | int, float |
+| `to_be_greater_than_or_eq(v)` | `actual >= v` であること | int, float |
+| `to_be_less_than_or_eq(v)` | `actual <= v` であること | int, float |
+| `to_have_length(n)` | 長さが `n` であること | List, Set, Map, str |
+| `to_be_empty()` | 長さが 0 であること | List, Set, Map, str |
+| `to_start_with(prefix)` | 文字列が prefix で始まること | str |
+| `to_end_with(suffix)` | 文字列が suffix で終わること | str |
 
 ---
 
@@ -89,19 +101,25 @@ Calculator
 ## 例
 
 ```
-describe("Arithmetic"):
-    it("adds integers"):
+describe("Arithmetic", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("compares strings"):
+    )
+    it("compares strings", fn():
         expect("hello").to_eq("hello")
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
 
-describe("Booleans"):
-    it("false check"):
+    )
+)
+describe("Booleans", fn():
+    it("false check", fn():
         expect(1 > 2).to_be_false()
+    )
+)
 ```
 
 ---
@@ -116,13 +134,16 @@ describe("Booleans"):
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 - 第1引数は関数名（識別子、文字列ではない）
@@ -135,12 +156,14 @@ describe("mocking"):
 モック済み関数の呼び出し回数を `int` で返します。
 
 ```
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
 
 ### モックの制限事項
@@ -148,6 +171,46 @@ describe("verify"):
 - オーバーロードされた関数のモックは非対応
 - キャプチャ付きクロージャでのモックは非対応（プレーンラムダのみ）
 - `@native fn` のモックは非対応
+
+---
+
+## パラメタライズドテスト (@each)
+
+`@each` は同じテストを複数のパラメータセットで実行します。タプルのリストを指定して `it` ブロックに適用します:
+
+```
+@each([
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0)
+])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+- リストにはラムダのパラメータ数と同じアリティのタプルを含める
+- 説明文の `{0}`, `{1}`, ... はパラメータ値で置換される
+- 各タプルは独立したテストケースとして実行される
+- 対応するパラメータ型: `int`, `float`, `bool`, `str`
+
+---
+
+## プロパティベーステスト (@property)
+
+`@property` はランダムな入力を生成し、テストを複数回実行します:
+
+```
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+- `count=N` でランダム試行回数を指定（デフォルト: 100）
+- 失敗時は反例（失敗した入力値）が表示される
+- 最初の失敗でテストを停止
+- 対応するパラメータ型: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (ランダム ASCII、0-20文字)
 
 ---
 

@@ -12,6 +12,7 @@ Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. 
 
 ```bash
 ry test                       # Auto-discover and run all *.test.ry files
+ry test tests/spec            # Run all *.test.ry files under a directory (recursive)
 ry test tests/my_test.test.ry # Run a specific test file
 ```
 
@@ -26,18 +27,22 @@ When run without arguments, `ry test` searches for `ry.toml` to find the project
 Use `describe` to group related tests and `it` to define individual test cases.
 
 ```python
-describe("Calculator"):
-    it("adds integers"):
+describe("Calculator", fn():
+    it("adds integers", fn():
         expect(1 + 2).to_eq(3)
 
-    it("subtracts integers"):
+    )
+    it("subtracts integers", fn():
         expect(5 - 3).to_eq(2)
 
-    it("checks booleans"):
+    )
+    it("checks booleans", fn():
         expect(3 > 1).to_be_true()
+    )
+)
 ```
 
-- `describe` and `it` use **trailing block syntax**: a function call followed by `:` turns the indented block into a lambda
+- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
 - `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
 
 ---
@@ -82,13 +87,16 @@ Replaces a function with a mock implementation for the current `it` block. The m
 fn fetch_data() -> str:
     return "real data"
 
-describe("mocking"):
-    it("replaces function"):
+describe("mocking", fn():
+    it("replaces function", fn():
         mock(fetch_data, fn(): "fake")
         expect(fetch_data()).to_eq("fake")
 
-    it("auto-restores"):
+    )
+    it("auto-restores", fn():
         expect(fetch_data()).to_eq("real data")
+    )
+)
 ```
 
 ### `verify(fn_name)`
@@ -96,13 +104,45 @@ describe("mocking"):
 Returns the number of times a mocked function was called.
 
 ```python
-describe("verify"):
-    it("counts calls"):
+describe("verify", fn():
+    it("counts calls", fn():
         mock(fetch_data, fn(): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
+    )
+)
 ```
+
+---
+
+## Parameterized Tests
+
+Use `@each` to run the same test with multiple inputs:
+
+```python
+@each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+)
+```
+
+Each tuple becomes a separate test case. `{0}`, `{1}`, etc. in the description are replaced with actual values.
+
+---
+
+## Property-Based Tests
+
+Use `@property` to test with randomly generated inputs:
+
+```python
+@property(count=100)
+it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+)
+```
+
+The test runs `count` times with random values. On failure, the counterexample is printed.
 
 ---
 

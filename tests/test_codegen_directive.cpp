@@ -22,7 +22,7 @@ TEST_F(DirectiveTest, DeprecatedTypeWarning) {
         "record OldPoint:\n"
         "    x: int\n"
         "    y: int\n"
-        "let p = OldPoint(1, 2)\n"
+        "p = OldPoint(1, 2)\n"
         "print(p.x)\n"
     );
     EXPECT_EQ(output, "1\n");
@@ -34,7 +34,7 @@ TEST_F(DirectiveTest, DeprecatedTypeWarning) {
 TEST_F(DirectiveTest, DeprecatedVariableWarning) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "let old_val = 99\n"
+        "old_val = 99\n"
         "print(old_val)\n"
     );
     EXPECT_EQ(output, "99\n");
@@ -49,7 +49,7 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
         "    @deprecated\n"
         "    old_field: int\n"
         "    new_field: int\n"
-        "let m = MyType(1, 2)\n"
+        "m = MyType(1, 2)\n"
         "print(m.old_field)\n"
         "print(m.new_field)\n"
     );
@@ -65,7 +65,7 @@ TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
         "fn unused_func() -> int:\n"
         "    return 1\n"
         "@deprecated\n"
-        "let unused_val = 42\n"
+        "unused_val = 42\n"
         "print(0)\n"
     );
     EXPECT_EQ(output, "0\n");
@@ -77,7 +77,7 @@ TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
     auto [output, warnings] = runSourceWithWarnings(
         "fn good_func() -> int:\n"
         "    return 10\n"
-        "let good_val = 20\n"
+        "good_val = 20\n"
         "print(good_func())\n"
         "print(good_val)\n"
     );

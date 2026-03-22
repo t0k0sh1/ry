@@ -2,7 +2,6 @@
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
-#include <stdexcept>
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_unique<llvm::LLVMContext>()),
                      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
@@ -24,6 +23,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_uniqu
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
+    iteratorHeaderTy_ = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "IteratorHeader");
 }
 
 // ===== B5: FnScope RAII =====
@@ -120,6 +120,14 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) {
+                for (auto &selectCase : s->cases) {
+                    std::visit([&](const auto &c) {
+                        collectMockedFunctions(c.body, out);
+                    }, selectCase);
+                }
+                collectMockedFunctions(s->else_body, out);
+                collectMockedFunctions(s->timeout_body, out);
             }
         }, stmt);
         // Also scan lambda args (e.g., describe/it trailing blocks)
@@ -376,6 +384,20 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
+    if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
+        matchedEntry->returnTypeName.substr(0, 5) == "Task<" &&
+        matchedEntry->returnTypeName.back() == '>') {
+        std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
+        task_result_types_[callResult] = resolveType(inner);
+    }
+
+    if (matchedEntry && matchedEntry->returnTypeName.size() > 8 &&
+        matchedEntry->returnTypeName.substr(0, 8) == "Channel<" &&
+        matchedEntry->returnTypeName.back() == '>') {
+        std::string inner = matchedEntry->returnTypeName.substr(8, matchedEntry->returnTypeName.size() - 9);
+        channel_element_types_[callResult] = resolveType(inner);
+    }
+
     return callResult;
 }
 
@@ -402,6 +424,20 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
+    if (s.callee == "join" || s.callee == "available_parallelism" || s.callee == "args" ||
+        s.callee == "range" || s.callee == "send" || s.callee == "try_send" ||
+        s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
+        s.callee == "close" ||
+        s.callee == "write_text" || s.callee == "append_text" ||
+        s.callee == "delete_file" || s.callee == "write_bytes" ||
+        s.callee == "listen" ||
+        s.callee == "http_listen") {
+        auto ce = std::make_unique<CallExpr>();
+        ce->callee = s.callee;
+        ce->args = std::move(s.args);
+        emitExprVariant(ce);
+        return;
+    }
     // Intercept collection operations and route through CallExpr emitter
     if (!s.args.empty()) {
         bool intercept = false;
@@ -415,10 +451,13 @@ void CodeGen::emitStmt(CallStmt &s) {
 
                 if (isList &&
                     ((s.callee == "append" && nargs == 2) ||
+                     (s.callee == "append!" && nargs == 2) ||
                      (s.callee == "pop" && nargs == 1) ||
                      (s.callee == "insert" && nargs == 3) ||
                      (s.callee == "remove_at" && nargs == 2) ||
-                     (s.callee == "remove" && nargs == 2))) {
+                     (s.callee == "remove" && nargs == 2) ||
+                     (s.callee == "sort!" && (nargs == 1 || nargs == 2)) ||
+                     (s.callee == "reverse!" && nargs == 1))) {
                     intercept = true;
                 } else if (isSet &&
                     ((s.callee == "add" && nargs == 2) ||
@@ -433,7 +472,7 @@ void CodeGen::emitStmt(CallStmt &s) {
                 } else if (isMap &&
                     ((s.callee == "remove" && nargs == 2) ||
                      (s.callee == "items" && nargs == 1) ||
-                     (s.callee == "get" && nargs == 3))) {
+                     (s.callee == "get" && (nargs == 2 || nargs == 3)))) {
                     intercept = true;
                 }
             }
@@ -567,6 +606,24 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
+    // Task<T> parsing
+    if (typeName.size() > 5 && typeName.substr(0, 5) == "Task<" && typeName.back() == '>') {
+        return ptrTy_;
+    }
+
+    // Channel<T> parsing
+    if (typeName.size() > 8 && typeName.substr(0, 8) == "Channel<" && typeName.back() == '>') {
+        return ptrTy_;
+    }
+
+    // TCP socket opaque handle types
+    if (typeName == "TcpListener") return ptrTy_;
+    if (typeName == "TcpStream")   return ptrTy_;
+
+    // HTTP opaque handle types
+    if (typeName == "HttpRequest")  return ptrTy_;
+    if (typeName == "HttpResponse") return ptrTy_;
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
@@ -616,6 +673,18 @@ std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::s
         }
     }
     return {nullptr, nullptr};
+}
+
+llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
+    auto it = task_result_types_.find(taskVal);
+    if (it != task_result_types_.end())
+        return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(taskVal)) {
+        auto ptrIt = task_result_types_.find(load->getPointerOperand());
+        if (ptrIt != task_result_types_.end())
+            return ptrIt->second;
+    }
+    return nullptr;
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
@@ -678,14 +747,88 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     return val;
 }
 
+// ===== C stdlib function helpers =====
+
+llvm::FunctionCallee CodeGen::getStdlibMalloc() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+    return mod_->getOrInsertFunction("malloc", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibRealloc() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("realloc", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibFree() {
+    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    return mod_->getOrInsertFunction("free", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrlen() {
+    auto ty = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    return mod_->getOrInsertFunction("strlen", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemcpy() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memcpy", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemmove() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memmove", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibMemset() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, i32Ty_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("memset", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcmp", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrncmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("strncmp", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrstr() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strstr", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcpy() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcpy", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrcat() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcat", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibSnprintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, i64Ty_, ptrTy_}, true);
+    return mod_->getOrInsertFunction("snprintf", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("printf", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibExit() {
+    auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
+    return mod_->getOrInsertFunction("exit", ty);
+}
+
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    llvm::FunctionType *printfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
-    llvm::FunctionCallee printfFn = mod_->getOrInsertFunction("printf", printfTy);
+    auto printfFn = getStdlibPrintf();
     llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
     builder_.CreateCall(printfFn, {errMsg});
-    llvm::FunctionType *exitTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
-    llvm::FunctionCallee exitFn = mod_->getOrInsertFunction("exit", exitTy);
+    auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
 }
@@ -914,9 +1057,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
             // Can't easily extract string from ConstantExpr, fall through to runtime
         }
         // For string literals, we need runtime strcmp checks
-        llvm::FunctionType *strcmpTy = llvm::FunctionType::get(
-            i32Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee strcmpFn = mod_->getOrInsertFunction("strcmp", strcmpTy);
+        auto strcmpFn = getStdlibStrcmp();
 
         llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
         for (const auto &allowed : constraint.str_values) {
@@ -936,4 +1077,3 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
         builder_.SetInsertPoint(okBB);
     }
 }
-

@@ -17,7 +17,7 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    var new_balance: int = balance + amount
+    new_balance: int = balance + amount
     return new_balance
 ```
 
@@ -71,7 +71,7 @@ fn deposit(amount: int, balance: int) -> int:
     ensure:
         result >= 0
         result == old(balance) + amount
-    var new_balance: int = balance + amount
+    new_balance: int = balance + amount
     return new_balance
 ```
 
@@ -90,7 +90,7 @@ record BankAccount:
 ```
 
 ```python
-let a = BankAccount(100, 0)   # OK: 100 >= 0
+a = BankAccount(100, 0)   # OK: 100 >= 0
 # a.balance = -1              # Contract violation: invariant failed
 ```
 

@@ -229,3 +229,221 @@ TEST(RegexRuntime, FindAllNoMatch) {
     ASSERT_EQ(list->len, 0);
     freeStringList(list);
 }
+
+// ============================================================
+// Range quantifier tests {n}, {n,m}, {n,}
+// ============================================================
+
+TEST(RegexRuntime, QuantifierExact) {
+    EXPECT_EQ(__ry_regex_match("a{3}", "aaa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{3}", "aa"), 0);
+    EXPECT_EQ(__ry_regex_match("a{3}", "aaaa"), 0);
+}
+
+TEST(RegexRuntime, QuantifierRange) {
+    EXPECT_EQ(__ry_regex_match("a{2,4}", "a"), 0);
+    EXPECT_EQ(__ry_regex_match("a{2,4}", "aa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{2,4}", "aaa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{2,4}", "aaaa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{2,4}", "aaaaa"), 0);
+}
+
+TEST(RegexRuntime, QuantifierMinOnly) {
+    EXPECT_EQ(__ry_regex_match("a{2,}", "a"), 0);
+    EXPECT_EQ(__ry_regex_match("a{2,}", "aa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{2,}", "aaaaaaa"), 1);
+}
+
+TEST(RegexRuntime, QuantifierWithGroup) {
+    EXPECT_EQ(__ry_regex_match("(ab){2}", "abab"), 1);
+    EXPECT_EQ(__ry_regex_match("(ab){2}", "ab"), 0);
+    EXPECT_EQ(__ry_regex_match("(ab){2,3}", "ababab"), 1);
+}
+
+TEST(RegexRuntime, QuantifierWithCharClass) {
+    // Phone number pattern: \d{3}-\d{4}
+    EXPECT_EQ(__ry_regex_match("\\d{3}-\\d{4}", "123-4567"), 1);
+    EXPECT_EQ(__ry_regex_match("\\d{3}-\\d{4}", "12-4567"), 0);
+}
+
+TEST(RegexRuntime, QuantifierEdgeCases) {
+    EXPECT_EQ(__ry_regex_match("a{0}", ""), 1);
+    EXPECT_EQ(__ry_regex_match("a{1}", "a"), 1);
+    EXPECT_EQ(__ry_regex_match("a{1}", ""), 0);
+    EXPECT_EQ(__ry_regex_match("a{0,}", ""), 1);   // same as a*
+    EXPECT_EQ(__ry_regex_match("a{0,}", "aaa"), 1); // same as a*
+    EXPECT_EQ(__ry_regex_match("a{1,}", ""), 0);    // same as a+
+    EXPECT_EQ(__ry_regex_match("a{0,1}", ""), 1);   // same as a?
+    EXPECT_EQ(__ry_regex_match("a{0,1}", "a"), 1);  // same as a?
+}
+
+TEST(RegexRuntime, QuantifierBraceLiteralFallback) {
+    // Explicitly escaped literal brace
+    EXPECT_EQ(__ry_regex_match("\\{abc\\}", "{abc}"), 1);
+
+    // Invalid brace pattern should be treated as literal '{'
+    EXPECT_EQ(__ry_regex_match("a{,}b", "a{,}b"), 1);
+}
+
+TEST(RegexRuntime, QuantifierFindAll) {
+    auto *list = (ListHeader *)__ry_regex_find_all("\\d{2,3}", "1 23 456 7890");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "23");
+    EXPECT_STREQ(list->data[1], "456");
+    EXPECT_STREQ(list->data[2], "789");
+    freeStringList(list);
+}
+
+// ============================================================
+// Non-greedy (lazy) match tests
+// ============================================================
+
+TEST(RegexRuntime, LazyStarReplace) {
+    // Greedy: ".*" matches the longest string between first and last quote
+    const char *greedy = __ry_regex_replace("\".*\"", "\"a\" and \"b\"", "X");
+    EXPECT_STREQ(greedy, "X");
+    free((void *)greedy);
+
+    // Lazy: ".*?" matches the shortest string between quotes
+    const char *lazy = __ry_regex_replace("\".*?\"", "\"a\" and \"b\"", "X");
+    EXPECT_STREQ(lazy, "X and X");
+    free((void *)lazy);
+}
+
+TEST(RegexRuntime, LazyPlusSearch) {
+    // a+? should match single 'a' (shortest)
+    EXPECT_EQ(__ry_regex_search("a+?", "aaa"), 0);
+    // Verify it matched just 1 character by using replace
+    const char *result = __ry_regex_replace("a+?", "aaa", "X");
+    EXPECT_STREQ(result, "XXX");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, LazyQuestion) {
+    // a?? prefers matching 0 'a's (non-greedy)
+    const char *result = __ry_regex_replace("a??", "aaa", "X");
+    // a?? matches empty string before each char and after last
+    EXPECT_STREQ(result, "XaXaXaX");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, LazyQuantifierBrace) {
+    // a{2,4}? prefers matching 2 'a's (minimum)
+    const char *result = __ry_regex_replace("a{2,4}?", "aaaa", "X");
+    EXPECT_STREQ(result, "XX");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, LazyFullMatch) {
+    // fullMatch always matches entire string regardless of greedy/lazy
+    EXPECT_EQ(__ry_regex_match("a+?", "aaa"), 1);
+    EXPECT_EQ(__ry_regex_match("a*?", "aaa"), 1);
+    EXPECT_EQ(__ry_regex_match("a{2,4}?", "aaa"), 1);
+}
+
+TEST(RegexRuntime, LazyPracticalExample) {
+    // Replace individual quoted strings
+    const char *result = __ry_regex_replace("\"[^\"]*\"", "say \"hello\" and \"world\"", "X");
+    EXPECT_STREQ(result, "say X and X");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, LazyFindAll) {
+    // .*? in findAll should find shortest matches
+    auto *list = (ListHeader *)__ry_regex_find_all("<.*?>", "<a> <bb> <ccc>");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "<a>");
+    EXPECT_STREQ(list->data[1], "<bb>");
+    EXPECT_STREQ(list->data[2], "<ccc>");
+    freeStringList(list);
+}
+
+// ============================================================
+// Word boundary \b / \B tests
+// ============================================================
+
+TEST(RegexRuntime, WordBoundarySearch) {
+    // \bworld\b matches "world" in "hello world"
+    EXPECT_EQ(__ry_regex_search("\\bworld\\b", "hello world"), 6);
+    // \bword\b does NOT match in "helloworld" (no boundary)
+    EXPECT_EQ(__ry_regex_search("\\bword\\b", "helloworld"), -1);
+}
+
+TEST(RegexRuntime, WordBoundaryNonBoundary) {
+    // \Bword matches in "helloworld" (non-boundary before 'w')
+    EXPECT_EQ(__ry_regex_search("\\Bworld", "helloworld"), 5);
+    // \Bworld should NOT match at start of "world test"
+    EXPECT_EQ(__ry_regex_search("\\Bworld", "world test"), -1);
+}
+
+TEST(RegexRuntime, WordBoundaryStartEnd) {
+    // \b at start of string
+    EXPECT_EQ(__ry_regex_search("\\bhello", "hello world"), 0);
+    // \b at end of string
+    EXPECT_EQ(__ry_regex_search("world\\b", "hello world"), 6);
+}
+
+TEST(RegexRuntime, WordBoundaryDigitUnderscore) {
+    // digits and underscores are word characters
+    EXPECT_EQ(__ry_regex_match("\\b\\w+\\b", "hello_123"), 1);
+    EXPECT_EQ(__ry_regex_search("\\b123\\b", "abc 123 def"), 4);
+    EXPECT_EQ(__ry_regex_search("\\b_foo\\b", "x _foo y"), 2);
+}
+
+TEST(RegexRuntime, WordBoundaryFullMatch) {
+    EXPECT_EQ(__ry_regex_match("\\btest\\b", "test"), 1);
+    EXPECT_EQ(__ry_regex_match("\\btest\\b", "testing"), 0);
+}
+
+TEST(RegexRuntime, WordBoundaryFindAll) {
+    auto *list = (ListHeader *)__ry_regex_find_all("\\b\\w+\\b", "hello world foo");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "hello");
+    EXPECT_STREQ(list->data[1], "world");
+    EXPECT_STREQ(list->data[2], "foo");
+    freeStringList(list);
+}
+
+// ============================================================
+// Case-insensitive (?i) tests
+// ============================================================
+
+TEST(RegexRuntime, CaseInsensitiveMatch) {
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "HELLO"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "Hello"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "hello"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)hello", "hElLo"), 1);
+}
+
+TEST(RegexRuntime, CaseInsensitiveCharClass) {
+    EXPECT_EQ(__ry_regex_match("(?i)[a-z]+", "ABC"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-z]+", "AbCdE"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-f]+", "ABCDEF"), 1);
+    EXPECT_EQ(__ry_regex_match("(?i)[a-f]+", "abcdef"), 1);
+}
+
+TEST(RegexRuntime, CaseSensitiveDefault) {
+    // Without (?i), should be case-sensitive
+    EXPECT_EQ(__ry_regex_match("hello", "HELLO"), 0);
+    EXPECT_EQ(__ry_regex_match("[a-z]+", "ABC"), 0);
+}
+
+TEST(RegexRuntime, CaseInsensitiveSearch) {
+    EXPECT_EQ(__ry_regex_search("(?i)world", "Hello WORLD"), 6);
+    EXPECT_EQ(__ry_regex_search("(?i)\\bworld\\b", "Hello WORLD"), 6);
+}
+
+TEST(RegexRuntime, CaseInsensitiveReplace) {
+    const char *result = __ry_regex_replace("(?i)hello", "Hello HELLO hello", "X");
+    EXPECT_STREQ(result, "X X X");
+    free((void *)result);
+}
+
+TEST(RegexRuntime, CaseInsensitiveFindAll) {
+    auto *list = (ListHeader *)__ry_regex_find_all("(?i)hello", "Hello HELLO hello");
+    ASSERT_EQ(list->len, 3);
+    EXPECT_STREQ(list->data[0], "Hello");
+    EXPECT_STREQ(list->data[1], "HELLO");
+    EXPECT_STREQ(list->data[2], "hello");
+    freeStringList(list);
+}
