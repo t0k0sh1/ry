@@ -81,17 +81,29 @@ extern "C" int64_t __ry_listen(void *listener, int64_t backlog) {
 
 extern "C" void *__ry_accept(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
-    if (handle->shutdown.load(std::memory_order_relaxed))
+    if (handle->shutdown.load(std::memory_order_relaxed)) {
+        errno = ECANCELED;
         return nullptr;
+    }
 
     // Use poll() for cross-platform timeout (SO_RCVTIMEO doesn't work
     // for accept() on macOS).
     struct pollfd pfd = {handle->fd, POLLIN, 0};
     int poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
-    if (poll_ret <= 0)
+    if (poll_ret == 0) {
+        errno = 0;
+        return nullptr;
+    }
+    if (poll_ret < 0)
         return nullptr;
     if (pfd.revents & (POLLERR | POLLNVAL | POLLHUP))
         return nullptr;
+
+    // Shutdown may have been requested while poll() was blocking.
+    if (handle->shutdown.load(std::memory_order_relaxed)) {
+        errno = ECANCELED;
+        return nullptr;
+    }
 
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);

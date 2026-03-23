@@ -1497,19 +1497,6 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {val});
     }
 
-    // shutdown(listener) -> Unit
-    if (e.callee == "shutdown") {
-        if (e.args.size() != 1)
-            codegenError("shutdown() takes exactly 1 argument");
-        llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isTcpListener(val))
-            codegenError("shutdown() requires TcpListener argument");
-        auto *voidPtrFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", voidPtrFnTy);
-        return builder_.CreateCall(fn, {val});
-    }
-
     // range(n), range(start, end), or range(start, end, step) → List<int>
     if (e.callee == "range") {
         if (e.args.size() < 1 || e.args.size() > 3)
@@ -4531,6 +4518,19 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_listener_port", fnTy);
         return builder_.CreateCall(fn, {listener}, "listener_port");
+    }
+
+    // shutdown(listener) -> Unit
+    if (e.callee == "shutdown") {
+        if (e.args.size() != 1)
+            codegenError("shutdown() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e.args[0]);
+        if (!isTcpListener(val))
+            codegenError("shutdown() requires TcpListener argument");
+        auto *voidPtrFnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", voidPtrFnTy);
+        return builder_.CreateCall(fn, {val});
     }
 
     // accept(listener) -> Result<TcpStream, Error>

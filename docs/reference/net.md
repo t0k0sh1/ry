@@ -26,7 +26,7 @@ from std.net import bind, listen, accept, connect, listener_port, shutdown
 | `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
 | `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
 | `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). |
-| `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return immediately. |
+| `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return within at most 1 second. |
 
 ## Built-in Overloaded Functions
 

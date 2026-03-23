@@ -22,7 +22,7 @@ fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
 // Uses dynamic port allocation and Channel synchronization.
 // ============================================================
 
-TEST_F(CodeGenTest, HttpListenCallback) {
+TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 fn manual_server(ready: Channel<int>) -> str:
     match bind("127.0.0.1", 0):
@@ -87,7 +87,7 @@ join(t)
 // Uses dynamic port allocation.
 // ============================================================
 
-TEST_F(CodeGenTest, HttpListenWithSpawn) {
+TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 fn run_server(ready: Channel<int>) -> str:
     match bind("127.0.0.1", 0):
@@ -197,6 +197,69 @@ match connect("127.0.0.1", port):
                 match bytes_to_str(resp):
                     case Ok(response_msg):
                         print(contains(response_msg, "404 Not Found"))
+                    case Err(e):
+                        print("false")
+            case Err(e):
+                print("false")
+        close(conn)
+    case Err(e):
+        print("false")
+join(t)
+)"), "true\n");
+}
+
+// ============================================================
+// HttpHeader: server echoes a custom request header value
+// ============================================================
+
+TEST_F(CodeGenTest, ManualHttpServerHeader) {
+    EXPECT_EQ(runSource(HTTP_DECLS + R"(
+fn manual_server(ready: Channel<int>) -> str:
+    match bind("127.0.0.1", 0):
+        case Ok(server):
+            match listen(server, 1):
+                case Ok(_):
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            match recv(conn, 4096):
+                                case Ok(data):
+                                    body = "header:test-value"
+                                    content_length = len(body)
+                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_str(content_length) + "\r\n\r\n" + body
+                                    match send(conn, str_to_bytes(response_str)):
+                                        case Ok(_):
+                                            ...
+                                        case Err(e):
+                                            ...
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
+                case Err(e):
+                    send(ready, 0)
+            close(server)
+        case Err(e):
+            send(ready, 0)
+    return "done"
+
+ready: Channel<int> = channel[int]()
+t: Task<str> = spawn manual_server(ready)
+port = recv(ready)
+match connect("127.0.0.1", port):
+    case Ok(conn):
+        match send(conn, str_to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "header:test-value"))
                     case Err(e):
                         print("false")
             case Err(e):
