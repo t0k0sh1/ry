@@ -1,5 +1,6 @@
 #include "test_codegen_common.hpp"
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_io.hpp"
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>
@@ -190,6 +191,43 @@ TEST(SendAll, ZeroLengthSucceeds) {
     ssize_t sent = __ry_send_all(fds[0], "", 0);
     EXPECT_EQ(sent, 0);
 
+    ::close(fds[0]);
+    ::close(fds[1]);
+}
+
+// ============================================================
+// __ry_tcp_recv: peer close returns empty IOListHeader
+// ============================================================
+
+TEST(TcpRecv, PeerCloseReturnsEmptyList) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // Close the peer end so recv() returns 0
+    ::close(fds[1]);
+
+    // TcpStreamHandle has fd as its first field
+    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->len, 0);
+    EXPECT_EQ(result->cap, 0);
+    EXPECT_EQ(result->data, nullptr);
+
+    free(result);
+    ::close(fds[0]);
+}
+
+TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 0);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(result->len, 0);
+    EXPECT_EQ(result->cap, 0);
+    EXPECT_EQ(result->data, nullptr);
+
+    free(result);
     ::close(fds[0]);
     ::close(fds[1]);
 }
