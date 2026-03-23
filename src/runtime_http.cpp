@@ -669,9 +669,9 @@ static ParsedUrl *parse_url(const char *url) {
     const char *authority = url + 7;
     if (!*authority || *authority == '/' || *authority == ':') return nullptr;
 
-    // Find end of host: ':' (port), '/' (path), '?' (query), or end of string
+    // Find end of host: ':' (port), '/' (path), '?' (query), '#' (fragment), or end
     const char *p = authority;
-    while (*p && *p != ':' && *p != '/' && *p != '?') p++;
+    while (*p && *p != ':' && *p != '/' && *p != '?' && *p != '#') p++;
 
     std::string host(authority, p);
     if (host.empty()) return nullptr;
@@ -692,14 +692,18 @@ static ParsedUrl *parse_url(const char *url) {
     if (*p == '/') {
         path = p;
     } else if (*p == '?') {
-        // Query without explicit path: normalize to "/?..."
         path = "/";
         path += p;
-    } else if (*p == '\0') {
+    } else if (*p == '#' || *p == '\0') {
         path = "/";
     } else {
-        return nullptr; // unexpected character after port
+        return nullptr;
     }
+
+    // Strip fragment — fragments must not be sent on the wire
+    size_t frag = path.find('#');
+    if (frag != std::string::npos)
+        path.resize(frag);
 
     auto *result = (ParsedUrl *)malloc(sizeof(ParsedUrl));
     result->host = strdup(host.c_str());
@@ -795,7 +799,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
         body_data = raw.substr(body_start);
 
     int64_t content_length = __ry_http_parse_content_length(cl_value);
-    if (content_length == -3) {
+    if (content_length == -2 || content_length == -3) {
         for (auto &h : parsed_headers) { free(h.key); free(h.val); }
         return nullptr;
     }
@@ -811,6 +815,10 @@ static HttpClientResponseHandle *read_http_response(int fd) {
             }
             body_data.append(extra, got);
             free(extra);
+        }
+        if ((int64_t)body_data.size() < content_length) {
+            for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+            return nullptr;
         }
         if ((int64_t)body_data.size() > content_length)
             body_data.resize((size_t)content_length);
@@ -866,7 +874,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
     ParsedUrl *parsed = parse_url(url);
     if (!parsed) return nullptr;
 
-    if (has_crlf(parsed->path)) {
+    if (has_crlf(parsed->host) || has_crlf(parsed->path)) {
         __ry_http_parsed_url_free(parsed);
         return nullptr;
     }
@@ -901,21 +909,19 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
         auto *map = (MapHeader *)headers_map;
         for (int64_t i = 0; i < map->len; i++) {
             if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
+            // Skip user-provided Content-Length; we always compute the correct value
+            if (strcasecmp(map->keys[i], "Content-Length") == 0) continue;
             request += map->keys[i];
             request += ": ";
             request += map->vals[i];
             request += "\r\n";
-            if (strcasecmp(map->keys[i], "Content-Length") == 0)
-                has_content_length = true;
         }
     }
 
     size_t body_len = (body && *body) ? strlen(body) : 0;
-    if (!has_content_length) {
-        request += "Content-Length: ";
-        request += std::to_string(body_len);
-        request += "\r\n";
-    }
+    request += "Content-Length: ";
+    request += std::to_string(body_len);
+    request += "\r\n";
 
     request += "Connection: close\r\n";
     request += "\r\n";

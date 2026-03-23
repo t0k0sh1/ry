@@ -237,7 +237,7 @@ match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 - Only `http://` URLs are supported. `https://` returns `Err` (TLS support is planned).
 - The `Host` header is automatically added based on the URL.
 - `Connection: close` is always sent; each request uses a separate TCP connection.
-- `Content-Length` is automatically added for non-empty request bodies.
+- `Content-Length` is always added automatically (including `0` for empty bodies). User-provided `Content-Length` headers are overridden with the correct value.
 - Response body reading supports `Content-Length` or read-until-close.
 - Response header lookup is case-insensitive.
 - Connection timeout is 5 seconds; receive timeout is 30 seconds.

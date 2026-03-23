@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <cassert>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -670,15 +669,15 @@ static std::string mock_http_server_capture(int fd, const std::string &response)
 
 static int start_mock_server() {
     int srv = ::socket(AF_INET, SOCK_STREAM, 0);
-    assert(srv >= 0);
+    if (srv < 0) return -1;
     int opt = 1;
     ::setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
-    assert(::bind(srv, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-    assert(::listen(srv, 1) == 0);
+    if (::bind(srv, (struct sockaddr *)&addr, sizeof(addr)) != 0) { ::close(srv); return -1; }
+    if (::listen(srv, 1) != 0) { ::close(srv); return -1; }
     return srv;
 }
 

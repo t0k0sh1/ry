@@ -46,6 +46,7 @@ describe("HTTP Client", fn():
                         expect(v).to_eq("text/plain")
                     case None:
                         expect(true).to_eq(false)
+                ...
             case Err(e):
                 expect(true).to_eq(false)
         join(t)
@@ -90,6 +91,7 @@ describe("HTTP Client", fn():
             case Ok(resp):
                 expect(http_client_status(resp)).to_eq(201)
                 expect(http_client_body(resp)).to_eq("ok")
+                ...
             case Err(e):
                 expect(true).to_eq(false)
         join(t)
