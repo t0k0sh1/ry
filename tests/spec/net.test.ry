@@ -1,9 +1,9 @@
-from std.net import bind, listen, accept, connect
+from std.net import bind, listen, accept, connect, listener_port
 from std.io import str_to_bytes, bytes_to_str
 
 describe("TCP socket API", fn():
     it("bind returns Ok on valid address", fn():
-        match bind("127.0.0.1", 18090):
+        match bind("127.0.0.1", 0):
             case Ok(server):
                 close(server)
                 expect(true).to_eq(true)
@@ -20,8 +20,49 @@ describe("TCP socket API", fn():
                 expect(true).to_eq(true)
 
     )
-    # TODO: re-enable once network test hang on CI (macos-14) is resolved
-    # it("echo round-trip with spawn", fn():
-    #     ...
-    # )
+    it("echo round-trip with spawn", fn():
+        fn run_server(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(server):
+                    listen(server, 1)
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            data: List<byte> = recv(conn, 4096)
+                            match bytes_to_str(data):
+                                case Ok(msg):
+                                    send(conn, str_to_bytes("echo:" + msg))
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
+                    close(server)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        fn run_client(port: int) -> str:
+            match connect("127.0.0.1", port):
+                case Ok(conn):
+                    send(conn, str_to_bytes("hello"))
+                    resp: List<byte> = recv(conn, 4096)
+                    match bytes_to_str(resp):
+                        case Ok(msg):
+                            close(conn)
+                            return msg
+                        case Err(e):
+                            close(conn)
+                            return "fail"
+                case Err(e):
+                    return "fail"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn run_server(ready)
+        port = recv(ready)
+        resp_msg = run_client(port)
+        expect(resp_msg).to_eq("echo:hello")
+        join(t)
+    )
 )

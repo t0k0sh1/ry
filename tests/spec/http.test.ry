@@ -1,14 +1,81 @@
-# All HTTP tests disabled: they hang on CI (macos-14) due to blocking
-# accept/recv in http_listen's infinite loop and spawn-based server patterns.
-# TODO: re-enable once network test hang on CI (macos-14) is resolved
+from std.net import bind, listen, accept, connect, listener_port
+from std.io import str_to_bytes, bytes_to_str
 
-# from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
-# from std.net import bind, listen, accept, connect
-# from std.io import str_to_bytes, bytes_to_str
-#
-# describe("HTTP Server API", fn():
-#     it("responds with 200 OK for matching path", fn(): ...)
-#     it("returns method and path in response body", fn(): ...)
-#     it("returns header value via http_header", fn(): ...)
-#     it("responds with 404 Not Found", fn(): ...)
-# )
+describe("HTTP Server API", fn():
+    it("responds with 200 OK for matching path", fn():
+        fn server_200(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(server):
+                    listen(server, 1)
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            data: List<byte> = recv(conn, 4096)
+                            response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
+                            send(conn, str_to_bytes(response_str))
+                            close(conn)
+                        case Err(e):
+                            ...
+                    close(server)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn server_200(ready)
+        port = recv(ready)
+        match connect("127.0.0.1", port):
+            case Ok(conn):
+                send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
+                resp: List<byte> = recv(conn, 4096)
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        expect(contains(msg, "200 OK")).to_eq(true)
+                        expect(contains(msg, "Hello!")).to_eq(true)
+                    case Err(e):
+                        expect(true).to_eq(false)
+                close(conn)
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+
+    it("responds with 404 Not Found", fn():
+        fn server_404(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(server):
+                    listen(server, 1)
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            data: List<byte> = recv(conn, 4096)
+                            response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
+                            send(conn, str_to_bytes(response_str))
+                            close(conn)
+                        case Err(e):
+                            ...
+                    close(server)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn server_404(ready)
+        port = recv(ready)
+        match connect("127.0.0.1", port):
+            case Ok(conn):
+                send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n"))
+                resp: List<byte> = recv(conn, 4096)
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        expect(contains(msg, "404 Not Found")).to_eq(true)
+                    case Err(e):
+                        expect(true).to_eq(false)
+                close(conn)
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+)

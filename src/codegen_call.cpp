@@ -1467,18 +1467,32 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() != 1)
             codegenError("close() takes exactly 1 argument");
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (isTcpStream(val) || isTcpListener(val)) {
-            llvm::FunctionType *fnTy = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-            llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_tcp_close", fnTy);
+        auto *voidPtrFnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        if (isTcpListener(val)) {
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
+            return builder_.CreateCall(fn, {val});
+        }
+        if (isTcpStream(val)) {
+            auto fn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
             return builder_.CreateCall(fn, {val});
         }
         if (!getChannelElementType(val))
             codegenError("close() requires Channel<T>, TcpStream, or TcpListener argument");
+        auto fn = mod_->getOrInsertFunction("__ry_channel_close", voidPtrFnTy);
+        return builder_.CreateCall(fn, {val});
+    }
 
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+    // shutdown(listener) -> Unit
+    if (e.callee == "shutdown") {
+        if (e.args.size() != 1)
+            codegenError("shutdown() takes exactly 1 argument");
+        llvm::Value *val = emitExpr(*e.args[0]);
+        if (!isTcpListener(val))
+            codegenError("shutdown() requires TcpListener argument");
+        auto *voidPtrFnTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_close", fnTy);
+        auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", voidPtrFnTy);
         return builder_.CreateCall(fn, {val});
     }
 
@@ -4490,6 +4504,18 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         auto fn = mod_->getOrInsertFunction("__ry_listen", fnTy);
         builder_.CreateCall(fn, {listener, backlog});
         return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    // listener_port(listener) -> int
+    if (e.callee == "listener_port") {
+        if (e.args.size() != 1)
+            codegenError("listener_port() takes exactly 1 argument");
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("listener_port() requires TcpListener argument");
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_listener_port", fnTy);
+        return builder_.CreateCall(fn, {listener}, "listener_port");
     }
 
     // accept(listener) -> Result<TcpStream, Error>
