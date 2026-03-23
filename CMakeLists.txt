@@ -112,6 +112,7 @@ add_executable(ry_tests
     tests/test_codegen_iterator.cpp
     tests/test_codegen_parameterized.cpp
     tests/test_runtime_utf8.cpp
+    tests/test_runtime_http.cpp
     tests/test_codegen_io.cpp
     tests/test_codegen_net.cpp
     tests/test_codegen_http.cpp
