@@ -353,3 +353,18 @@ TEST_F(TarValidationTest, Symlink) {
 
     EXPECT_FALSE(validate_tar_entries(archive.string()));
 }
+
+TEST_F(TarValidationTest, Hardlink) {
+    auto archive = tmp_root / "hardlink.tar.gz";
+    std::string script =
+        "import tarfile\n"
+        "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+        "    info = tarfile.TarInfo(name='evil')\n"
+        "    info.type = tarfile.LNKTYPE\n"
+        "    info.linkname = 'some_other_file'\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n";
+    run_command({"python3", "-c", script});
+
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}

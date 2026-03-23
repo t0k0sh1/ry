@@ -352,9 +352,10 @@ bool validate_tar_entries(const std::string &archive_path) {
     while (std::getline(stream, line)) {
         if (line.empty()) continue;
 
-        // Symlink detection: verbose tar output starts with 'l' for symlinks
-        if (line[0] == 'l') {
-            std::cerr << "Error: Archive contains symlink entry: " << line << "\n";
+        // Reject symlinks and hardlinks to prevent link-based file overwrites
+        if (line[0] == 'l' || line[0] == 'h') {
+            std::string type = (line[0] == 'l') ? "symlink" : "hardlink";
+            std::cerr << "Error: Archive contains " << type << " entry: " << line << "\n";
             return false;
         }
 
@@ -418,19 +419,23 @@ std::string download_and_extract(const std::string &download_url, const std::str
 
         std::string expected_hash = parse_checksum_for_file(checksums_content, expected_filename);
         if (expected_hash.empty()) {
-            std::cerr << "Warning: Could not find checksum for " << expected_filename << " in checksums.txt. Skipping verification.\n";
-        } else {
-            std::cerr << "Verifying checksum..." << std::flush;
-            if (!verify_checksum(archive_path, expected_hash)) {
-                std::cerr << " failed.\n";
-                std::cerr << "Error: Checksum verification failed. The downloaded file may be corrupted or tampered with.\n";
-                run_command({"rm", "-rf", tmp_dir_str});
-                return "";
-            }
-            std::cerr << " ok.\n";
+            std::cerr << "Error: Could not find checksum for " << expected_filename << " in checksums.txt.\n";
+            run_command({"rm", "-rf", tmp_dir_str});
+            return "";
         }
+
+        std::cerr << "Verifying checksum..." << std::flush;
+        if (!verify_checksum(archive_path, expected_hash)) {
+            std::cerr << " failed.\n";
+            std::cerr << "Error: Checksum verification failed. The downloaded file may be corrupted or tampered with.\n";
+            run_command({"rm", "-rf", tmp_dir_str});
+            return "";
+        }
+        std::cerr << " ok.\n";
     } else {
-        std::cerr << "Warning: checksums.txt not available. Skipping checksum verification.\n";
+        std::cerr << "Error: checksums.txt not available. Cannot verify archive integrity.\n";
+        run_command({"rm", "-rf", tmp_dir_str});
+        return "";
     }
 
     // Validate tar entries before extraction
