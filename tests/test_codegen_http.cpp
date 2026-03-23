@@ -4,7 +4,7 @@ static const std::string HTTP_DECLS = R"(
 @native
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-fn listen(listener: TcpListener, backlog: int) -> Unit
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
 fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
@@ -27,17 +27,27 @@ TEST_F(CodeGenTest, HttpListenCallback) {
 fn manual_server(ready: Channel<int>) -> str:
     match bind("127.0.0.1", 0):
         case Ok(server):
-            listen(server, 1)
-            port = listener_port(server)
-            send(ready, port)
-            match accept(server):
-                case Ok(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-                    send(conn, str_to_bytes(response_str))
-                    close(conn)
+            match listen(server, 1):
+                case Ok(_):
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            match recv(conn, 4096):
+                                case Ok(data):
+                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
+                                    match send(conn, str_to_bytes(response_str)):
+                                        case Ok(_):
+                                            ...
+                                        case Err(e):
+                                            ...
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
                 case Err(e):
-                    ...
+                    send(ready, 0)
             close(server)
         case Err(e):
             send(ready, 0)
@@ -48,12 +58,20 @@ t: Task<str> = spawn manual_server(ready)
 port = recv(ready)
 match connect("127.0.0.1", port):
     case Ok(conn):
-        send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-        resp: List<byte> = recv(conn, 4096)
-        match bytes_to_str(resp):
-            case Ok(msg):
-                print(contains(msg, "200 OK"))
-                print(contains(msg, "Hello!"))
+        match send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "200 OK"))
+                        print(contains(msg, "Hello!"))
+                    case Err(e):
+                        print("false")
+                        print("false")
             case Err(e):
                 print("false")
                 print("false")
@@ -74,19 +92,29 @@ TEST_F(CodeGenTest, HttpListenWithSpawn) {
 fn run_server(ready: Channel<int>) -> str:
     match bind("127.0.0.1", 0):
         case Ok(server):
-            listen(server, 1)
-            port = listener_port(server)
-            send(ready, port)
-            match accept(server):
-                case Ok(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    body = "POST:/api/data"
-                    content_length = len(body)
-                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_str(content_length) + "\r\n\r\n" + body
-                    send(conn, str_to_bytes(response_str))
-                    close(conn)
+            match listen(server, 1):
+                case Ok(_):
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            match recv(conn, 4096):
+                                case Ok(data):
+                                    body = "POST:/api/data"
+                                    content_length = len(body)
+                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_str(content_length) + "\r\n\r\n" + body
+                                    match send(conn, str_to_bytes(response_str)):
+                                        case Ok(_):
+                                            ...
+                                        case Err(e):
+                                            ...
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
                 case Err(e):
-                    ...
+                    send(ready, 0)
             close(server)
         case Err(e):
             send(ready, 0)
@@ -98,11 +126,18 @@ port = recv(ready)
 
 match connect("127.0.0.1", port):
     case Ok(conn):
-        send(conn, str_to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-        resp: List<byte> = recv(conn, 4096)
-        match bytes_to_str(resp):
-            case Ok(response_msg):
-                print(contains(response_msg, "POST:/api/data"))
+        match send(conn, str_to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(response_msg):
+                        print(contains(response_msg, "POST:/api/data"))
+                    case Err(e):
+                        print("false")
             case Err(e):
                 print("false")
         close(conn)
@@ -121,17 +156,27 @@ TEST_F(CodeGenTest, HttpResponse404) {
 fn manual_server(ready: Channel<int>) -> str:
     match bind("127.0.0.1", 0):
         case Ok(server):
-            listen(server, 1)
-            port = listener_port(server)
-            send(ready, port)
-            match accept(server):
-                case Ok(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-                    send(conn, str_to_bytes(response_str))
-                    close(conn)
+            match listen(server, 1):
+                case Ok(_):
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            match recv(conn, 4096):
+                                case Ok(data):
+                                    response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
+                                    match send(conn, str_to_bytes(response_str)):
+                                        case Ok(_):
+                                            ...
+                                        case Err(e):
+                                            ...
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
                 case Err(e):
-                    ...
+                    send(ready, 0)
             close(server)
         case Err(e):
             send(ready, 0)
@@ -142,11 +187,18 @@ t: Task<str> = spawn manual_server(ready)
 port = recv(ready)
 match connect("127.0.0.1", port):
     case Ok(conn):
-        send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n"))
-        resp: List<byte> = recv(conn, 4096)
-        match bytes_to_str(resp):
-            case Ok(response_msg):
-                print(contains(response_msg, "404 Not Found"))
+        match send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(response_msg):
+                        print(contains(response_msg, "404 Not Found"))
+                    case Err(e):
+                        print("false")
             case Err(e):
                 print("false")
         close(conn)

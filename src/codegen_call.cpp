@@ -1320,7 +1320,14 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
                 codegenError("send() with TcpStream requires List<byte> as second argument");
             auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
             auto fn = mod_->getOrInsertFunction("__ry_tcp_send", fnTy);
-            return builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
+            llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
+            // Wrap in Result<int, Error>
+            llvm::Value *isErr = builder_.CreateICmpSLT(sent,
+                llvm::ConstantInt::get(i64Ty_, 0), "send_err");
+            llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
+            llvm::Value *okVal = buildOkValue(sent, resTy);
+            llvm::Value *errVal = buildErrValue(buildStaticError("tcp send failed", ".send_err_msg"), resTy);
+            return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
         }
         llvm::Value *channelVal = firstArg;
         llvm::Type *elemTy = getChannelElementType(channelVal);
@@ -1368,14 +1375,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     if (e.callee == "recv") {
         if (e.args.size() == 2) {
-            // TCP recv(stream, max_bytes)
+            // TCP recv(stream, max_bytes) -> Result<List<byte>, Error>
             llvm::Value *streamVal = emitExpr(*e.args[0]);
             if (!isTcpStream(streamVal))
                 codegenError("recv() with 2 arguments requires TcpStream as first argument");
             llvm::Value *maxBytes = emitExpr(*e.args[1]);
             auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
             auto fn = mod_->getOrInsertFunction("__ry_tcp_recv", fnTy);
-            llvm::Value *result = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+            llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+            // Wrap in Result<List<byte>, Error>: nullptr = Err, non-null = Ok
+            llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
+            llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+            llvm::Value *okVal = buildOkValue(ptr, resTy);
+            llvm::Value *errVal = buildErrValue(buildStaticError("tcp recv failed", ".recv_err_msg"), resTy);
+            llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
             list_element_types_[result] = i8Ty_;
             return result;
         }
@@ -4469,12 +4483,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
         llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
         llvm::Value *okVal = buildOkValue(ptr, resTy);
-        // Build Error from static message
-        llvm::Value *errMsgStr = builder_.CreateGlobalString(errMsg, "." + name + "_err_msg");
-        llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-        errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
-        errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-        llvm::Value *errVal = buildErrValue(errStruct, resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
         llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
         trackingSet.insert(res);
         return res;
@@ -4492,7 +4501,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         return emitPtrToResult(result, "bind", "bind failed", tcp_listener_values_);
     }
 
-    // listen(listener, backlog) -> Unit
+    // listen(listener, backlog) -> Result<Unit, Error>
     if (e.callee == "listen") {
         if (e.args.size() != 2)
             codegenError("listen() takes exactly 2 arguments");
@@ -4500,10 +4509,16 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         if (!isTcpListener(listener))
             codegenError("listen() requires TcpListener as first argument");
         llvm::Value *backlog = emitExpr(*e.args[1]);
-        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_listen", fnTy);
-        builder_.CreateCall(fn, {listener, backlog});
-        return llvm::ConstantInt::get(i64Ty_, 0);
+        llvm::Value *status = builder_.CreateCall(fn, {listener, backlog}, "listen_status");
+        // Wrap in Result<Unit, Error>
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "listen_err");
+        llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
+        llvm::Value *okVal = buildOkValue(llvm::ConstantInt::get(i8Ty_, 0), resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError("listen failed", ".listen_err_msg"), resTy);
+        return builder_.CreateSelect(isErr, errVal, okVal, "listen_result");
     }
 
     // listener_port(listener) -> int
@@ -4666,9 +4681,20 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
         // 2. listen(listener, 128)
         builder_.SetInsertPoint(bindOkBB);
-        auto listenFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_}, false);
+        auto listenFnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
         auto listenFn = mod_->getOrInsertFunction("__ry_listen", listenFnTy);
-        builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(i64Ty_, 128)});
+        llvm::Value *listenStatus = builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(i64Ty_, 128)}, "listen_status");
+        // Check listen result — fatal for http_listen
+        llvm::Value *listenFailed = builder_.CreateICmpNE(listenStatus,
+            llvm::ConstantInt::get(i64Ty_, 0), "listen_failed");
+        llvm::BasicBlock *listenFailBB = llvm::BasicBlock::Create(*ctx_, "http.listen_fail", fn_);
+        llvm::BasicBlock *listenOkBB = llvm::BasicBlock::Create(*ctx_, "http.listen_ok", fn_);
+        builder_.CreateCondBr(listenFailed, listenFailBB, listenOkBB);
+        builder_.SetInsertPoint(listenFailBB);
+        static int httpListenErrCounter = 0;
+        emitRuntimeError("runtime error: http_listen() listen failed\n",
+                          ".http_listen_err_" + std::to_string(httpListenErrCounter++));
+        builder_.SetInsertPoint(listenOkBB);
 
         // 3. accept loop
         llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "http.loop", fn_);

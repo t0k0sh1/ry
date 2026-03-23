@@ -11,6 +11,19 @@ describe("TCP socket API", fn():
                 expect(true).to_eq(false)
 
     )
+    it("listen returns Ok on valid listener", fn():
+        match bind("127.0.0.1", 0):
+            case Ok(server):
+                match listen(server, 1):
+                    case Ok(_):
+                        expect(true).to_eq(true)
+                    case Err(e):
+                        expect(true).to_eq(false)
+                close(server)
+            case Err(e):
+                expect(true).to_eq(false)
+
+    )
     it("connect to closed port returns Err", fn():
         match connect("127.0.0.1", 19998):
             case Ok(conn):
@@ -24,20 +37,30 @@ describe("TCP socket API", fn():
         fn run_server(ready: Channel<int>) -> str:
             match bind("127.0.0.1", 0):
                 case Ok(server):
-                    listen(server, 1)
-                    port = listener_port(server)
-                    send(ready, port)
-                    match accept(server):
-                        case Ok(conn):
-                            data: List<byte> = recv(conn, 4096)
-                            match bytes_to_str(data):
-                                case Ok(msg):
-                                    send(conn, str_to_bytes("echo:" + msg))
+                    match listen(server, 1):
+                        case Ok(_):
+                            port = listener_port(server)
+                            send(ready, port)
+                            match accept(server):
+                                case Ok(conn):
+                                    match recv(conn, 4096):
+                                        case Ok(data):
+                                            match bytes_to_str(data):
+                                                case Ok(msg):
+                                                    match send(conn, str_to_bytes("echo:" + msg)):
+                                                        case Ok(_):
+                                                            ...
+                                                        case Err(e):
+                                                            ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn)
                                 case Err(e):
                                     ...
-                            close(conn)
                         case Err(e):
-                            ...
+                            send(ready, 0)
                     close(server)
                 case Err(e):
                     send(ready, 0)
@@ -46,15 +69,23 @@ describe("TCP socket API", fn():
         fn run_client(port: int) -> str:
             match connect("127.0.0.1", port):
                 case Ok(conn):
-                    send(conn, str_to_bytes("hello"))
-                    resp: List<byte> = recv(conn, 4096)
-                    match bytes_to_str(resp):
-                        case Ok(msg):
-                            close(conn)
-                            return msg
+                    match send(conn, str_to_bytes("hello")):
+                        case Ok(_):
+                            ...
                         case Err(e):
-                            close(conn)
-                            return "fail"
+                            ...
+                    match recv(conn, 4096):
+                        case Ok(resp):
+                            match bytes_to_str(resp):
+                                case Ok(msg):
+                                    close(conn)
+                                    return msg
+                                case Err(e):
+                                    ...
+                        case Err(e):
+                            ...
+                    close(conn)
+                    return "fail"
                 case Err(e):
                     return "fail"
 

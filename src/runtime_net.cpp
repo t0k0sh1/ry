@@ -71,12 +71,12 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
     return handle;
 }
 
-extern "C" void __ry_listen(void *listener, int64_t backlog) {
+extern "C" int64_t __ry_listen(void *listener, int64_t backlog) {
     auto *handle = (TcpListenerHandle *)listener;
     if (::listen(handle->fd, (int)backlog) < 0) {
-        fprintf(stderr, "runtime error: listen() failed\n");
-        exit(1);
+        return -1;
     }
+    return 0;
 }
 
 extern "C" void *__ry_accept(void *listener) {
@@ -202,10 +202,6 @@ extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
     auto *handle = (TcpStreamHandle *)stream;
     auto *header = (IOListHeader *)byte_list;
     ssize_t sent = __ry_send_all(handle->fd, header->data, (size_t)header->len);
-    if (sent < 0) {
-        fprintf(stderr, "runtime error: tcp send() failed\n");
-        exit(1);
-    }
     return (int64_t)sent;
 }
 
@@ -227,7 +223,14 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
     header->data = (int8_t *)malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
-    if (n <= 0) {
+    if (n < 0) {
+        // Error: free everything and return nullptr
+        free(header->data);
+        free(header);
+        return nullptr;
+    }
+    if (n == 0) {
+        // Connection closed: return empty list (non-null)
         free(header->data);
         header->data = nullptr;
         header->len = 0;
