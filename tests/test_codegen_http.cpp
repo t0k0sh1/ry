@@ -100,9 +100,7 @@ fn run_server(ready: Channel<int>) -> str:
                         case Ok(conn):
                             match recv(conn, 4096):
                                 case Ok(data):
-                                    body = "POST:/api/data"
-                                    content_length = len(body)
-                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_str(content_length) + "\r\n\r\n" + body
+                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 14\r\n\r\nPOST:/api/data"
                                     match send(conn, str_to_bytes(response_str)):
                                         case Ok(_):
                                             ...
@@ -225,9 +223,7 @@ fn manual_server(ready: Channel<int>) -> str:
                         case Ok(conn):
                             match recv(conn, 4096):
                                 case Ok(data):
-                                    body = "header:test-value"
-                                    content_length = len(body)
-                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: " + to_str(content_length) + "\r\n\r\n" + body
+                                    response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\r\nheader:test-value"
                                     match send(conn, str_to_bytes(response_str)):
                                         case Ok(_):
                                             ...
