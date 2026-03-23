@@ -1,19 +1,19 @@
 # TCP socket operations
 
 @native
-fn bind(host: str, port: int) -> Option<TcpListener>
+fn bind(host: str, port: int) -> Result<TcpListener, Error>
 
 @native
 fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 
 @native
-fn accept(listener: TcpListener) -> Option<TcpStream>
+fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 
 @native
 fn listener_port(listener: TcpListener) -> int
 
 @native
-fn connect(host: str, port: int) -> Option<TcpStream>
+fn connect(host: str, port: int) -> Result<TcpStream, Error>
 
 @native
 fn shutdown(listener: TcpListener) -> Unit
