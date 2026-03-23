@@ -1,4 +1,5 @@
 #include "ry/runtime_regex.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
@@ -383,7 +384,10 @@ struct NFAState {
     NFAState *out2 = nullptr; // only for Split
 
     // Generation counter for epsilon closure visited check (O(1) lookup)
-    int visitGeneration = 0;
+    int64_t visitGeneration = 0;
+
+    // For single-pass search: tracks the text position where this match attempt started
+    size_t matchStartPos = 0;
 };
 
 struct NFAFragment {
@@ -606,25 +610,7 @@ public:
 
             for (NFAState *s : current_) {
                 if (s == matchState_) continue;
-                bool matches = false;
-                switch (s->kind) {
-                case NFAState::Char:
-                    if (caseInsensitive_) {
-                        matches = (std::tolower((unsigned char)s->ch) == std::tolower((unsigned char)c));
-                    } else {
-                        matches = (s->ch == c);
-                    }
-                    break;
-                case NFAState::Dot:
-                    matches = (c != '\n');
-                    break;
-                case NFAState::CharClass:
-                    matches = charClassMatches(s, c, caseInsensitive_);
-                    break;
-                default:
-                    break;
-                }
-                if (matches && s->out1) {
+                if (stateMatchesChar(s, c) && s->out1) {
                     addState(next_, s->out1, text, textLen, i + 1);
                 }
             }
@@ -647,29 +633,229 @@ public:
         return lastMatch;
     }
 
+    // Single-pass search: find the first (leftmost) match in O(n*s) time
+    // instead of O(n^2) by injecting start state at every position during
+    // a single forward scan.
+    std::pair<int64_t, int64_t> searchSinglePass(
+            const char *text, size_t textLen, bool preferShortest) {
+        current_.clear();
+        next_.clear();
+        int64_t bestStart = -1, bestEnd = -1;
+
+        for (size_t i = 0; i <= textLen; ++i) {
+            // Inject start state for a new match attempt at position i.
+            // Mark existing states as visited so addState won't duplicate them
+            // (they have earlier/equal matchStartPos, which is preferred).
+            ++generation_;
+            for (NFAState *s : current_) {
+                s->visitGeneration = generation_;
+            }
+            addState(current_, start_, text, textLen, i, i);
+
+            // Check for match state in current set
+            for (NFAState *s : current_) {
+                if (s == matchState_) {
+                    int64_t S = (int64_t)s->matchStartPos;
+                    int64_t E = (int64_t)i;
+                    if (bestStart == -1 || S < bestStart ||
+                        (S == bestStart && !preferShortest && E > bestEnd)) {
+                        bestStart = S;
+                        bestEnd = E;
+                    }
+                    if (preferShortest && bestStart >= 0) {
+                        // Only return once no active thread has an earlier
+                        // start position — preserves leftmost-start semantics.
+                        bool hasEarlierStart = false;
+                        for (NFAState *t : current_) {
+                            if (t != matchState_ &&
+                                (int64_t)t->matchStartPos < bestStart) {
+                                hasEarlierStart = true;
+                                break;
+                            }
+                        }
+                        if (!hasEarlierStart) {
+                            return {bestStart, bestEnd};
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // Early termination for greedy: once we have a leftmost match and
+            // no thread from that start position remains, we're done.
+            if (!preferShortest && bestStart >= 0) {
+                if (!hasActiveThreadFrom((size_t)bestStart)) {
+                    return {bestStart, bestEnd};
+                }
+            }
+
+            if (i == textLen) break;
+
+            // Step: consume text[i], build next state set
+            char c = text[i];
+            next_.clear();
+            ++generation_;
+
+            for (NFAState *s : current_) {
+                if (s == matchState_) continue;
+                if (stateMatchesChar(s, c) && s->out1) {
+                    addState(next_, s->out1, text, textLen, i + 1,
+                             s->matchStartPos);
+                }
+            }
+
+            current_.swap(next_);
+
+            if (current_.empty() && bestStart >= 0) {
+                return {bestStart, bestEnd};
+            }
+        }
+
+        return {bestStart, bestEnd};
+    }
+
+    // Single-pass findAll: find all non-overlapping matches in O(n*s) time.
+    std::vector<std::pair<int64_t, int64_t>> findAllSinglePass(
+            const char *text, size_t textLen, bool preferShortest) {
+        std::vector<std::pair<int64_t, int64_t>> results;
+        current_.clear();
+        next_.clear();
+        size_t discardBefore = 0;
+
+        // Track pending match: the best match found for the current leftmost
+        // start position, not yet emitted (for greedy, we wait for longest).
+        int64_t pendingStart = -1, pendingEnd = -1;
+
+        for (size_t i = 0; i <= textLen; ++i) {
+            // Prune threads starting before discardBefore
+            if (discardBefore > 0) {
+                current_.erase(
+                    std::remove_if(current_.begin(), current_.end(),
+                        [&](NFAState *s) {
+                            return s->matchStartPos < discardBefore;
+                        }),
+                    current_.end());
+            }
+
+            // Inject start state for position i (only if >= discardBefore)
+            ++generation_;
+            for (NFAState *s : current_) {
+                s->visitGeneration = generation_;
+            }
+            if (i >= discardBefore) {
+                addState(current_, start_, text, textLen, i, i);
+            }
+
+            // Check for match state
+            for (NFAState *s : current_) {
+                if (s == matchState_) {
+                    int64_t S = (int64_t)s->matchStartPos;
+                    int64_t E = (int64_t)i;
+
+                    if (preferShortest) {
+                        // Non-greedy: record as pending, emit only once
+                        // no earlier-start thread is active (leftmost-first).
+                        if (pendingStart == -1 || S < pendingStart) {
+                            pendingStart = S;
+                            pendingEnd = E;
+                        }
+                    } else {
+                        // Greedy: record as pending, wait for longest
+                        if (pendingStart == -1 || S < pendingStart ||
+                            (S == pendingStart && E > pendingEnd)) {
+                            pendingStart = S;
+                            pendingEnd = E;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // Emit pending match once no earlier-start thread can
+            // produce a better result (leftmost-first semantics).
+            if (pendingStart >= 0) {
+                bool canEmit;
+                if (preferShortest) {
+                    // Non-greedy: emit once no thread has an earlier start
+                    bool hasEarlierStart = false;
+                    for (NFAState *s : current_) {
+                        if (s != matchState_ &&
+                            (int64_t)s->matchStartPos < pendingStart) {
+                            hasEarlierStart = true;
+                            break;
+                        }
+                    }
+                    canEmit = !hasEarlierStart;
+                } else {
+                    // Greedy: emit once no thread from the same start remains
+                    canEmit = !hasActiveThreadFrom((size_t)pendingStart);
+                }
+                if (canEmit) {
+                    results.push_back({pendingStart, pendingEnd});
+                    if (pendingEnd == pendingStart) {
+                        discardBefore = (size_t)pendingStart + 1;
+                    } else {
+                        discardBefore = (size_t)pendingEnd;
+                    }
+                    pendingStart = -1;
+                    pendingEnd = -1;
+                }
+            }
+
+            if (i == textLen) break;
+
+            // Step: consume text[i]
+            char c = text[i];
+            next_.clear();
+            ++generation_;
+
+            for (NFAState *s : current_) {
+                if (s == matchState_) continue;
+                // Skip threads from already-emitted match regions
+                // (discardBefore may have changed mid-iteration)
+                if (s->matchStartPos < discardBefore) continue;
+                if (stateMatchesChar(s, c) && s->out1) {
+                    addState(next_, s->out1, text, textLen, i + 1,
+                             s->matchStartPos);
+                }
+            }
+
+            current_.swap(next_);
+        }
+
+        // Emit any remaining pending match
+        if (pendingStart >= 0) {
+            results.push_back({pendingStart, pendingEnd});
+        }
+
+        return results;
+    }
+
 private:
     NFAState *start_;
     NFAState *matchState_;
     std::vector<NFAState *> current_;
     std::vector<NFAState *> next_;
-    int generation_;
+    int64_t generation_;
     bool caseInsensitive_;
 
     void addState(std::vector<NFAState *> &stateSet, NFAState *s,
-                  const char *text, size_t textLen, size_t pos) {
+                  const char *text, size_t textLen, size_t pos,
+                  size_t matchStartPos = 0) {
         if (!s || s->visitGeneration == generation_) return;
         s->visitGeneration = generation_;
+        s->matchStartPos = matchStartPos;
 
         if (s->kind == NFAState::Split) {
-            addState(stateSet, s->out1, text, textLen, pos);
-            addState(stateSet, s->out2, text, textLen, pos);
+            addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
+            addState(stateSet, s->out2, text, textLen, pos, matchStartPos);
             return;
         }
         if (s->kind == NFAState::Anchor) {
             if (s->ch == '^') {
-                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos);
+                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             } else { // '$'
-                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos);
+                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             }
             return;
         }
@@ -678,7 +864,7 @@ private:
             bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
             bool atBoundary = (prevIsWord != currIsWord);
             if (atBoundary != s->negated) {
-                addState(stateSet, s->out1, text, textLen, pos);
+                addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             }
             return;
         }
@@ -688,6 +874,32 @@ private:
     static bool isWordChar(char c) {
         for (auto &[lo, hi] : WORD_CHAR_RANGES) {
             if (c >= lo && c <= hi) return true;
+        }
+        return false;
+    }
+
+    bool stateMatchesChar(NFAState *s, char c) const {
+        switch (s->kind) {
+        case NFAState::Char:
+            if (caseInsensitive_) {
+                return std::tolower((unsigned char)s->ch) ==
+                       std::tolower((unsigned char)c);
+            }
+            return s->ch == c;
+        case NFAState::Dot:
+            return c != '\n';
+        case NFAState::CharClass:
+            return charClassMatches(s, c, caseInsensitive_);
+        default:
+            return false;
+        }
+    }
+
+    bool hasActiveThreadFrom(size_t startPos) const {
+        for (NFAState *s : current_) {
+            if (s != matchState_ && s->matchStartPos == startPos) {
+                return true;
+            }
         }
         return false;
     }
@@ -762,35 +974,14 @@ struct CompiledRegex {
     std::pair<int64_t, int64_t> search(const char *text) {
         size_t len = strlen(text);
         NFASimulator sim(start, matchState, caseInsensitive_);
-        for (size_t i = 0; i <= len; ++i) {
-            int64_t endPos = sim.simulate(text, len, i, false, hasLazy_);
-            if (endPos >= 0) {
-                return {(int64_t)i, endPos};
-            }
-        }
-        return {-1, -1};
+        return sim.searchSinglePass(text, len, hasLazy_);
     }
 
     // Find all non-overlapping matches
     std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
         size_t len = strlen(text);
-        std::vector<std::pair<int64_t, int64_t>> results;
         NFASimulator sim(start, matchState, caseInsensitive_);
-        size_t pos = 0;
-        while (pos <= len) {
-            int64_t endPos = sim.simulate(text, len, pos, false, hasLazy_);
-            if (endPos >= 0) {
-                results.push_back({(int64_t)pos, endPos});
-                if ((size_t)endPos == pos) {
-                    ++pos; // avoid infinite loop on zero-length match
-                } else {
-                    pos = (size_t)endPos;
-                }
-            } else {
-                ++pos;
-            }
-        }
-        return results;
+        return sim.findAllSinglePass(text, len, hasLazy_);
     }
 };
 
