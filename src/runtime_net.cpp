@@ -91,7 +91,7 @@ extern "C" void *__ry_accept(void *listener) {
     struct pollfd pfd = {handle->fd, POLLIN, 0};
     int poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
     if (poll_ret == 0) {
-        errno = 0;
+        errno = ETIMEDOUT;
         return nullptr;
     }
     if (poll_ret < 0)
