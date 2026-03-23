@@ -29,3 +29,26 @@ fn http_cookies(req: HttpRequest) -> Map<str, str>
 
 @native
 fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
+
+# HTTP client operations
+
+@native
+fn http_get(url: str) -> Result<HttpClientResponse, Error>
+
+@native
+fn http_post(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>
+
+@native
+fn http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
+
+@native
+fn http_client_status(response: HttpClientResponse) -> int
+
+@native
+fn http_client_body(response: HttpClientResponse) -> str
+
+@native
+fn http_client_header(response: HttpClientResponse, key: str) -> Option<str>
+
+@native
+fn http_client_response_free(response: HttpClientResponse) -> Unit

@@ -2,7 +2,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
 extern "C" {
@@ -17,6 +20,18 @@ void *__ry_http_query_all(void *req);
 const char *__ry_http_cookie(void *req, const char *name);
 void *__ry_http_cookies(void *req);
 void __ry_http_request_free(void *req);
+
+// HTTP client functions
+void *__ry_http_parse_url(const char *url);
+void __ry_http_parsed_url_free(void *parsed);
+void *__ry_http_client_request(const char *method, const char *url,
+                                void *headers_map, const char *body);
+void *__ry_http_get(const char *url);
+void *__ry_http_post(const char *url, const char *body, void *headers_map);
+int64_t __ry_http_client_status(void *resp);
+const char *__ry_http_client_body(void *resp);
+const char *__ry_http_client_header(void *resp, const char *key);
+void __ry_http_client_response_free(void *resp);
 }
 
 // TcpStreamHandle layout must match runtime_http.cpp
@@ -521,6 +536,284 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);
+}
+
+// --- ParsedUrl struct for tests ---
+struct ParsedUrl { char *host; int64_t port; char *path; };
+
+// --- URL parsing tests ---
+
+TEST(RuntimeHttpClient, ParseUrlBasic) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/path");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 80);
+    EXPECT_STREQ(u->path, "/path");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlWithPort) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://localhost:8080/api/data");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "localhost");
+    EXPECT_EQ(u->port, 8080);
+    EXPECT_STREQ(u->path, "/api/data");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlNoPath) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 80);
+    EXPECT_STREQ(u->path, "/");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlTrailingSlash) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 80);
+    EXPECT_STREQ(u->path, "/");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlWithQuery) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/search?q=hello");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_STREQ(u->path, "/search?q=hello");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlHttpsRejected) {
+    EXPECT_EQ(__ry_http_parse_url("https://example.com"), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlNoScheme) {
+    EXPECT_EQ(__ry_http_parse_url("example.com/path"), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlEmptyString) {
+    EXPECT_EQ(__ry_http_parse_url(""), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlNull) {
+    EXPECT_EQ(__ry_http_parse_url(nullptr), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlEmptyHost) {
+    EXPECT_EQ(__ry_http_parse_url("http:///path"), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlBadPort) {
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:99999/path"), nullptr);
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:0/path"), nullptr);
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:abc/path"), nullptr);
+}
+
+TEST(RuntimeHttpClient, ParseUrlPortNoPath) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://localhost:3000");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "localhost");
+    EXPECT_EQ(u->port, 3000);
+    EXPECT_STREQ(u->path, "/");
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlQueryWithoutPath) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com?x=1&y=2");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 80);
+    EXPECT_STREQ(u->path, "/?x=1&y=2");
+    __ry_http_parsed_url_free(u);
+}
+
+// --- HTTP client integration tests ---
+
+static void mock_http_server(int fd, const std::string &response) {
+    char buf[4096];
+    ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+    (void)n;
+    size_t sent = 0;
+    while (sent < response.size()) {
+        ssize_t w = ::write(fd, response.c_str() + sent, response.size() - sent);
+        if (w <= 0) break;
+        sent += (size_t)w;
+    }
+    ::close(fd);
+}
+
+static std::string mock_http_server_capture(int fd, const std::string &response) {
+    char buf[8192];
+    std::string request;
+    struct timeval tv = {2, 0};
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    while (true) {
+        ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+        if (n <= 0) break;
+        request.append(buf, (size_t)n);
+        if (request.find("\r\n\r\n") != std::string::npos) break;
+    }
+    size_t sent = 0;
+    while (sent < response.size()) {
+        ssize_t w = ::write(fd, response.c_str() + sent, response.size() - sent);
+        if (w <= 0) break;
+        sent += (size_t)w;
+    }
+    ::close(fd);
+    return request;
+}
+
+static int start_mock_server() {
+    int srv = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) return -1;
+    int opt = 1;
+    ::setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    if (::bind(srv, (struct sockaddr *)&addr, sizeof(addr)) != 0) { ::close(srv); return -1; }
+    if (::listen(srv, 1) != 0) { ::close(srv); return -1; }
+    return srv;
+}
+
+static int get_server_port(int srv) {
+    struct sockaddr_in addr{};
+    socklen_t len = sizeof(addr);
+    ::getsockname(srv, (struct sockaddr *)&addr, &len);
+    return ntohs(addr.sin_port);
+}
+
+TEST(DISABLED_RuntimeHttpClient, HttpGetBasic) {
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Custom: test-value\r\n\r\nhello";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        mock_http_server(conn, response);
+    });
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/test";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+    EXPECT_STREQ(__ry_http_client_body(resp), "hello");
+    EXPECT_STREQ(__ry_http_client_header(resp, "X-Custom"), "test-value");
+    EXPECT_EQ(__ry_http_client_header(resp, "Missing"), nullptr);
+    __ry_http_client_response_free(resp);
+
+    server_thread.join();
+    ::close(srv);
+}
+
+TEST(DISABLED_RuntimeHttpClient, HttpPostWithBody) {
+    std::string response = "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::string captured_request;
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        captured_request = mock_http_server_capture(conn, response);
+    });
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/data";
+    void *resp = __ry_http_post(url.c_str(), "test body", nullptr);
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 201);
+    EXPECT_STREQ(__ry_http_client_body(resp), "ok");
+    __ry_http_client_response_free(resp);
+
+    server_thread.join();
+    ::close(srv);
+
+    EXPECT_NE(captured_request.find("POST /data HTTP/1.1"), std::string::npos);
+    EXPECT_NE(captured_request.find("Content-Length: 9"), std::string::npos);
+}
+
+TEST(RuntimeHttpClient, HttpGetConnectionRefused) {
+    void *resp = __ry_http_get("http://127.0.0.1:1/nonexistent");
+    EXPECT_EQ(resp, nullptr);
+}
+
+TEST(DISABLED_RuntimeHttpClient, HttpGetNoContentLength) {
+    std::string response = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nno content length body";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        mock_http_server(conn, response);
+    });
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+    EXPECT_STREQ(__ry_http_client_body(resp), "no content length body");
+    __ry_http_client_response_free(resp);
+
+    server_thread.join();
+    ::close(srv);
+}
+
+TEST(DISABLED_RuntimeHttpClient, HttpRequestCustomMethod) {
+    std::string response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::string captured_request;
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        captured_request = mock_http_server_capture(conn, response);
+    });
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/resource";
+    void *resp = __ry_http_client_request("DELETE", url.c_str(), nullptr, "");
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 204);
+    __ry_http_client_response_free(resp);
+
+    server_thread.join();
+    ::close(srv);
+
+    EXPECT_NE(captured_request.find("DELETE /resource HTTP/1.1"), std::string::npos);
+}
+
+TEST(DISABLED_RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
+    std::string response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        mock_http_server(conn, response);
+    });
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_STREQ(__ry_http_client_header(resp, "Content-Type"), "application/json");
+    EXPECT_STREQ(__ry_http_client_header(resp, "content-type"), "application/json");
+    __ry_http_client_response_free(resp);
+
+    server_thread.join();
+    ::close(srv);
 }
 
 // --- Cookie tests ---

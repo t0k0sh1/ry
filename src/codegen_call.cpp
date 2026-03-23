@@ -4797,6 +4797,132 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
 
+    // Helper: wrap a nullable ptr result in Result<ptr, Error> and register it in a tracking set
+    auto emitPtrToResult = [&](llvm::Value *ptr, const std::string &name,
+                               const std::string &errMsg,
+                               std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
+        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+        llvm::Value *okVal = buildOkValue(ptr, resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
+        llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
+        trackingSet.insert(res);
+        return res;
+    };
+
+    // http_get(url) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_get") {
+        if (e.args.size() != 1)
+            codegenError("http_get() takes exactly 1 argument");
+        llvm::Value *url = emitExpr(*e.args[0]);
+        if (url->getType() != ptrTy_)
+            codegenError("http_get() url must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_get", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {url}, "http_get_result");
+        return emitPtrToResult(result, "http_get", "HTTP request failed", http_client_response_values_);
+    }
+
+    // http_post(url, body, headers) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_post") {
+        if (e.args.size() != 3)
+            codegenError("http_post() takes exactly 3 arguments");
+        llvm::Value *url = emitExpr(*e.args[0]);
+        llvm::Value *body = emitExpr(*e.args[1]);
+        llvm::Value *headers = emitExpr(*e.args[2]);
+        if (url->getType() != ptrTy_)
+            codegenError("http_post() url must be str");
+        if (body->getType() != ptrTy_)
+            codegenError("http_post() body must be str");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_post() headers must be Map<str, str>");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_post", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
+        return emitPtrToResult(result, "http_post", "HTTP request failed", http_client_response_values_);
+    }
+
+    // http_request(method, url, headers, body) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_request") {
+        if (e.args.size() != 4)
+            codegenError("http_request() takes exactly 4 arguments");
+        llvm::Value *method = emitExpr(*e.args[0]);
+        llvm::Value *url = emitExpr(*e.args[1]);
+        llvm::Value *headers = emitExpr(*e.args[2]);
+        llvm::Value *body = emitExpr(*e.args[3]);
+        if (method->getType() != ptrTy_)
+            codegenError("http_request() method must be str");
+        if (url->getType() != ptrTy_)
+            codegenError("http_request() url must be str");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_request() headers must be Map<str, str>");
+        if (body->getType() != ptrTy_)
+            codegenError("http_request() body must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_request", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {method, url, headers, body}, "http_request_result");
+        return emitPtrToResult(result, "http_request", "HTTP request failed", http_client_response_values_);
+    }
+
+    // http_client_status(resp) -> int
+    if (e.callee == "http_client_status") {
+        if (e.args.size() != 1)
+            codegenError("http_client_status() takes exactly 1 argument");
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_status() requires HttpClientResponse argument");
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_status", fnTy);
+        return builder_.CreateCall(fn, {resp}, "http_client_status");
+    }
+
+    // http_client_body(resp) -> str
+    if (e.callee == "http_client_body") {
+        if (e.args.size() != 1)
+            codegenError("http_client_body() takes exactly 1 argument");
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_body() requires HttpClientResponse argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_body", fnTy);
+        return builder_.CreateCall(fn, {resp}, "http_client_body");
+    }
+
+    // http_client_header(resp, key) -> Option<str>
+    if (e.callee == "http_client_header") {
+        if (e.args.size() != 2)
+            codegenError("http_client_header() takes exactly 2 arguments");
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_header() requires HttpClientResponse argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_client_header() key must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {resp, key}, "http_client_hdr");
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_client_hdr_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(result, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        return builder_.CreateSelect(isNull, noneVal, someVal, "http_client_hdr_opt");
+    }
+
+    // http_client_response_free(resp) -> Unit
+    if (e.callee == "http_client_response_free") {
+        if (e.args.size() != 1)
+            codegenError("http_client_response_free() takes exactly 1 argument");
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_response_free() requires HttpClientResponse argument");
+        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_response_free", fnTy);
+        builder_.CreateCall(fn, {resp});
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
     return nullptr;
 }
 

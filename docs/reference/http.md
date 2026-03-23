@@ -1,6 +1,6 @@
 [English](http.md)
 
-# HTTP Server Reference
+# HTTP Reference
 
 ## Types
 
@@ -8,8 +8,9 @@
 |------|-------------|
 | `HttpRequest` | Opaque handle for an incoming HTTP request |
 | `HttpResponse` | Opaque handle for an outgoing HTTP response |
+| `HttpClientResponse` | Opaque handle for an HTTP client response |
 
-Both types are opaque pointers. `HttpRequest` is provided by the server framework; `HttpResponse` is created via `http_response()`.
+`HttpRequest` is provided by the server framework. `HttpResponse` is created via `http_response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
 
 ## Functions (from `std.http`)
 
@@ -189,8 +190,63 @@ The following status codes have standard reason phrases (RFC 9110):
 
 Other status codes use `"Unknown"` as the reason phrase.
 
+## HTTP Client
+
+### Client Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `http_get` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. |
+| `http_post` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. |
+| `http_request` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. |
+
+### Response Accessors
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `http_client_status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
+| `http_client_body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
+| `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
+| `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
+
+### Client Usage Example
+
+```python
+from std.http import http_get, http_post, http_client_status, http_client_body, http_client_header
+
+# Simple GET request
+match http_get("http://example.com/api/data"):
+    case Ok(resp):
+        status = http_client_status(resp)
+        body = http_client_body(resp)
+        print(to_str(status) + ": " + body)
+    case Err(e):
+        print("Request failed")
+
+# POST request with body and headers
+headers: Map<str, str> = {"Content-Type": "application/json"}
+match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+    case Ok(resp):
+        print(http_client_body(resp))
+    case Err(e):
+        print("Request failed")
+```
+
+### Client Behavior
+
+- Only `http://` URLs are supported. `https://` returns `Err` (TLS support is planned).
+- The `Host` header is automatically added based on the URL.
+- `Connection: close` is always sent; each request uses a separate TCP connection.
+- `Content-Length` is always added automatically (including `0` for empty bodies). User-provided `Content-Length` headers are overridden with the correct value.
+- Response body reading supports `Content-Length` or read-until-close.
+- Response header lookup is case-insensitive.
+- Connection timeout is 5 seconds; receive timeout is 30 seconds.
+- Returns `Err` on connection failure, invalid URL, or malformed response.
+- `HttpClientResponse` owns allocated memory (headers, body). Call `http_client_response_free()` when done to avoid memory leaks.
+
 ## Error Handling
 
 - `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
 - Malformed requests (incomplete request line) are silently skipped and the connection is closed.
 - The handler function must always return an `HttpResponse` — there is no default response.
+- Client functions return `Result<HttpClientResponse, Error>` — use `match` to handle success and failure.
