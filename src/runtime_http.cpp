@@ -11,6 +11,8 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+static const int64_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
 // Forward declaration: TcpStreamHandle from runtime_net.cpp has fd at offset 0
 struct TcpStreamHandle {
     int fd;
@@ -43,6 +45,31 @@ struct MapHeader {
     void *buckets;
 };
 
+extern "C" int64_t __ry_http_parse_content_length(const char *value) {
+    if (!value) return -1;
+
+    // Skip leading whitespace
+    const char *p = value;
+    while (*p == ' ' || *p == '\t') p++;
+
+    // Must start with a digit
+    if (*p < '0' || *p > '9') return -2;
+
+    char *endptr = nullptr;
+    long long parsed = strtoll(p, &endptr, 10);
+
+    // Reject trailing non-whitespace characters
+    if (endptr) {
+        const char *q = endptr;
+        while (*q == ' ' || *q == '\t') q++;
+        if (*q != '\0') return -2;
+    }
+
+    if (parsed < 0) return -2;
+    if (parsed > MAX_BODY_SIZE) return -3;
+    return (int64_t)parsed;
+}
+
 static std::string recv_all(int fd, size_t max_bytes) {
     std::string buf;
     buf.resize(max_bytes);
@@ -63,8 +90,7 @@ static std::string recv_all(int fd, size_t max_bytes) {
 extern "C" void *__ry_http_read_request(void *stream) {
     auto *handle = (TcpStreamHandle *)stream;
     struct timeval tv = {5, 0};
-    if (::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
-        return nullptr;
+    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     std::string raw = recv_all(handle->fd, 8192);
     if (raw.empty()) return nullptr;
 
@@ -101,10 +127,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
     size_t headers_start = line_end + 2;
     size_t headers_end = raw.find("\r\n\r\n", headers_start);
     if (headers_end == std::string::npos) {
-        // Incomplete headers (no \r\n\r\n terminator) — treat as malformed
-        free(req->method);
-        free(req->path);
-        free(req);
+        __ry_http_request_free(req);
         return nullptr;
     }
 
@@ -145,40 +168,47 @@ extern "C" void *__ry_http_read_request(void *stream) {
         req->header_values = nullptr;
     }
 
-    // Parse body (after \r\n\r\n)
+    // Validate Content-Length before body parsing
     size_t body_start = headers_end + 4;
-    if (body_start < raw.size()) {
-        // Check Content-Length for body reading
-        int64_t content_length = -1;
-        for (int64_t i = 0; i < req->header_count; i++) {
-            if (strcasecmp(req->header_keys[i], "Content-Length") == 0) {
-                content_length = atoll(req->header_values[i]);
-                break;
-            }
+    const char *cl_value = nullptr;
+    for (int64_t i = 0; i < req->header_count; i++) {
+        if (strcasecmp(req->header_keys[i], "Content-Length") == 0) {
+            cl_value = req->header_values[i];
+            break;
         }
-        // Cap Content-Length to prevent unbounded allocation (10 MB limit)
-        static const int64_t MAX_BODY_SIZE = 10 * 1024 * 1024;
-        if (content_length > MAX_BODY_SIZE)
-            content_length = MAX_BODY_SIZE;
-
-        std::string body_data = raw.substr(body_start);
-        if (content_length > 0 && (int64_t)body_data.size() < content_length) {
-            // Need to read more body data
-            size_t remaining = (size_t)content_length - body_data.size();
-            char *extra = (char *)malloc(remaining);
-            size_t got = 0;
-            while (got < remaining) {
-                ssize_t n = ::recv(handle->fd, extra + got, remaining - got, 0);
-                if (n <= 0) break;
-                got += (size_t)n;
-            }
-            body_data.append(extra, got);
-            free(extra);
-        }
-        req->body = strdup(body_data.c_str());
-    } else {
-        req->body = strdup("");
     }
+    int64_t content_length = __ry_http_parse_content_length(cl_value);
+    if (content_length == -2 || content_length == -3) {
+        // Invalid or oversized Content-Length — reject as malformed
+        __ry_http_request_free(req);
+        return nullptr;
+    }
+
+    // Parse body
+    std::string body_data;
+    if (body_start < raw.size())
+        body_data = raw.substr(body_start);
+
+    if (content_length > 0 && (int64_t)body_data.size() < content_length) {
+        // Need to read more body data
+        size_t remaining = (size_t)content_length - body_data.size();
+        char *extra = (char *)malloc(remaining);
+        size_t got = 0;
+        while (got < remaining) {
+            ssize_t n = ::recv(handle->fd, extra + got, remaining - got, 0);
+            if (n <= 0) break;
+            got += (size_t)n;
+        }
+        body_data.append(extra, got);
+        free(extra);
+
+        // Reject truncated body
+        if ((int64_t)body_data.size() < content_length) {
+            __ry_http_request_free(req);
+            return nullptr;
+        }
+    }
+    req->body = strdup(body_data.c_str());
 
     return req;
 }
