@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
+#include <cstdio>
 
 using namespace ry::self_update;
 using namespace ry::self_update::detail;
@@ -207,4 +208,148 @@ TEST_F(InstallStdlibTest, CleansUpDeeplyNestedEmptyDirectories) {
     // Both a/b/ and a/ should be removed
     EXPECT_FALSE(fs::exists(dest_std / "a" / "b"));
     EXPECT_FALSE(fs::exists(dest_std / "a"));
+}
+
+// --- Checksum verification tests ---
+
+TEST(SelfUpdate, BuildChecksumsUrl) {
+    auto url = build_checksums_url("v0.0.5");
+    EXPECT_EQ(url, "https://github.com/t0k0sh1/ry/releases/download/v0.0.5/checksums.txt");
+}
+
+TEST(SelfUpdate, ParseChecksumForFileExactMatch) {
+    std::string content =
+        "abc123def456  ry-darwin-arm64.tar.gz\n"
+        "789012fed345  ry-linux-amd64.tar.gz\n";
+
+    EXPECT_EQ(parse_checksum_for_file(content, "ry-darwin-arm64.tar.gz"), "abc123def456");
+    EXPECT_EQ(parse_checksum_for_file(content, "ry-linux-amd64.tar.gz"), "789012fed345");
+}
+
+TEST(SelfUpdate, ParseChecksumForFileFallback) {
+    // CI produces "ry-v0.0.5-darwin-arm64.tar.gz" but download URL uses "ry-darwin-arm64.tar.gz"
+    std::string content =
+        "abc123def456  ry-v0.0.5-darwin-arm64.tar.gz\n"
+        "789012fed345  ry-v0.0.5-linux-amd64.tar.gz\n";
+
+    // Exact match fails, but fallback by platform suffix should work
+    EXPECT_EQ(parse_checksum_for_file(content, "ry-darwin-arm64.tar.gz"), "abc123def456");
+    EXPECT_EQ(parse_checksum_for_file(content, "ry-linux-amd64.tar.gz"), "789012fed345");
+}
+
+TEST(SelfUpdate, ParseChecksumForFileNotFound) {
+    std::string content = "abc123  ry-darwin-arm64.tar.gz\n";
+    EXPECT_EQ(parse_checksum_for_file(content, "ry-windows-amd64.tar.gz"), "");
+}
+
+TEST(SelfUpdate, ParseChecksumForFileEmpty) {
+    EXPECT_EQ(parse_checksum_for_file("", "ry-darwin-arm64.tar.gz"), "");
+}
+
+TEST(SelfUpdate, ParseChecksumForFileMalformed) {
+    // Lines without proper separator
+    std::string content = "nospacehere\n";
+    EXPECT_EQ(parse_checksum_for_file(content, "nospacehere"), "");
+}
+
+TEST(SelfUpdate, ComputeSha256KnownContent) {
+    auto tmp = fs::temp_directory_path() / "ry_test_sha256";
+    {
+        std::ofstream ofs(tmp);
+        ofs << "hello world\n";
+    }
+    std::string hash = compute_sha256(tmp.string());
+    EXPECT_FALSE(hash.empty());
+    // sha256 of "hello world\n" is well-known
+    EXPECT_EQ(hash, "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447");
+    fs::remove(tmp);
+}
+
+TEST(SelfUpdate, VerifyChecksumCorrect) {
+    auto tmp = fs::temp_directory_path() / "ry_test_verify";
+    {
+        std::ofstream ofs(tmp);
+        ofs << "hello world\n";
+    }
+    EXPECT_TRUE(verify_checksum(tmp.string(), "a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447"));
+    fs::remove(tmp);
+}
+
+TEST(SelfUpdate, VerifyChecksumWrong) {
+    auto tmp = fs::temp_directory_path() / "ry_test_verify_bad";
+    {
+        std::ofstream ofs(tmp);
+        ofs << "hello world\n";
+    }
+    EXPECT_FALSE(verify_checksum(tmp.string(), "0000000000000000000000000000000000000000000000000000000000000000"));
+    fs::remove(tmp);
+}
+
+// --- Tar validation tests ---
+
+class TarValidationTest : public ::testing::Test {
+protected:
+    fs::path tmp_root;
+
+    void SetUp() override {
+        tmp_root = fs::temp_directory_path() / "ry_test_tar_validation";
+        fs::remove_all(tmp_root);
+        fs::create_directories(tmp_root);
+    }
+
+    void TearDown() override {
+        fs::remove_all(tmp_root);
+    }
+};
+
+TEST_F(TarValidationTest, SafeArchive) {
+    // Create a safe tar archive
+    auto content_dir = tmp_root / "content";
+    fs::create_directories(content_dir / "lib" / "std");
+    { std::ofstream(content_dir / "ry") << "binary"; }
+    { std::ofstream(content_dir / "lib" / "std" / "builtins.ry") << "# builtins"; }
+
+    auto archive = tmp_root / "safe.tar.gz";
+    run_command({"tar", "-czf", archive.string(), "-C", content_dir.string(), "ry", "lib"});
+
+    EXPECT_TRUE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, PathTraversal) {
+    auto archive = tmp_root / "traversal.tar.gz";
+    // Use python to create a tar with path traversal entry (portable across macOS/Linux)
+    std::string script =
+        "import tarfile, io\n"
+        "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+        "    info = tarfile.TarInfo(name='../etc/passwd')\n"
+        "    info.size = 4\n"
+        "    t.addfile(info, io.BytesIO(b'evil'))\n";
+    run_command({"python3", "-c", script});
+
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, AbsolutePath) {
+    auto archive = tmp_root / "absolute.tar.gz";
+    std::string script =
+        "import tarfile, io\n"
+        "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+        "    info = tarfile.TarInfo(name='/etc/passwd')\n"
+        "    info.size = 4\n"
+        "    t.addfile(info, io.BytesIO(b'evil'))\n";
+    run_command({"python3", "-c", script});
+
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, Symlink) {
+    // Create a tar archive containing a symlink
+    auto content_dir = tmp_root / "content";
+    fs::create_directories(content_dir);
+    fs::create_symlink("/etc/passwd", content_dir / "link");
+
+    auto archive = tmp_root / "symlink.tar.gz";
+    run_command({"tar", "-czf", archive.string(), "-C", content_dir.string(), "link"});
+
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
 }
