@@ -264,27 +264,57 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
     return resp;
 }
 
+extern "C" const char *__ry_http_reason_phrase(int64_t status) {
+    switch (status) {
+        case 100: return "Continue";
+        case 101: return "Switching Protocols";
+        case 200: return "OK";
+        case 201: return "Created";
+        case 202: return "Accepted";
+        case 203: return "Non-Authoritative Information";
+        case 204: return "No Content";
+        case 205: return "Reset Content";
+        case 206: return "Partial Content";
+        case 300: return "Multiple Choices";
+        case 301: return "Moved Permanently";
+        case 302: return "Found";
+        case 303: return "See Other";
+        case 304: return "Not Modified";
+        case 307: return "Temporary Redirect";
+        case 308: return "Permanent Redirect";
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 403: return "Forbidden";
+        case 404: return "Not Found";
+        case 405: return "Method Not Allowed";
+        case 406: return "Not Acceptable";
+        case 408: return "Request Timeout";
+        case 409: return "Conflict";
+        case 410: return "Gone";
+        case 411: return "Length Required";
+        case 413: return "Content Too Large";
+        case 414: return "URI Too Long";
+        case 415: return "Unsupported Media Type";
+        case 416: return "Range Not Satisfiable";
+        case 417: return "Expectation Failed";
+        case 422: return "Unprocessable Content";
+        case 426: return "Upgrade Required";
+        case 429: return "Too Many Requests";
+        case 500: return "Internal Server Error";
+        case 501: return "Not Implemented";
+        case 502: return "Bad Gateway";
+        case 503: return "Service Unavailable";
+        case 504: return "Gateway Timeout";
+        case 505: return "HTTP Version Not Supported";
+        default: return "Unknown";
+    }
+}
+
 extern "C" void __ry_http_send_response(void *stream, void *response) {
     auto *handle = (TcpStreamHandle *)stream;
     auto *resp = (HttpResponseHandle *)response;
 
-    // Map status code to reason phrase
-    const char *reason = "OK";
-    switch (resp->status) {
-        case 200: reason = "OK"; break;
-        case 201: reason = "Created"; break;
-        case 204: reason = "No Content"; break;
-        case 301: reason = "Moved Permanently"; break;
-        case 302: reason = "Found"; break;
-        case 304: reason = "Not Modified"; break;
-        case 400: reason = "Bad Request"; break;
-        case 401: reason = "Unauthorized"; break;
-        case 403: reason = "Forbidden"; break;
-        case 404: reason = "Not Found"; break;
-        case 405: reason = "Method Not Allowed"; break;
-        case 500: reason = "Internal Server Error"; break;
-        default: reason = "Unknown"; break;
-    }
+    const char *reason = __ry_http_reason_phrase(resp->status);
 
     // Estimate response size to avoid repeated reallocations
     size_t body_len = strlen(resp->body);
