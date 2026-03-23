@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <algorithm>
 #include <vector>
 #include <regex>
@@ -269,7 +270,119 @@ bool download_file(const std::string &url, const std::string &dest_path) {
     return run_command({"curl", "-sfL", "-o", dest_path, url}) == 0;
 }
 
-std::string download_and_extract(const std::string &download_url) {
+std::string build_checksums_url(const std::string &tag) {
+    return "https://github.com/" + std::string(REPO) +
+           "/releases/download/" + tag + "/checksums.txt";
+}
+
+std::string parse_checksum_for_file(const std::string &checksums_content, const std::string &filename) {
+    std::istringstream stream(checksums_content);
+    std::string line;
+
+    // Extract platform suffix for fallback matching (e.g., "darwin-arm64.tar.gz")
+    std::string suffix;
+    auto dash_pos = filename.rfind('-');
+    if (dash_pos != std::string::npos) {
+        // Look for the os-arch part: find second-to-last dash
+        auto prev_dash = filename.rfind('-', dash_pos - 1);
+        if (prev_dash != std::string::npos) {
+            suffix = filename.substr(prev_dash + 1);
+        }
+    }
+
+    std::string fallback_hash;
+
+    while (std::getline(stream, line)) {
+        if (line.empty()) continue;
+
+        // Format: "<hash>  <filename>" (two spaces) or "<hash> <filename>" (one space)
+        auto sep = line.find(' ');
+        if (sep == std::string::npos) continue;
+
+        std::string hash = line.substr(0, sep);
+        // Skip spaces
+        auto name_start = line.find_first_not_of(' ', sep);
+        if (name_start == std::string::npos) continue;
+        std::string entry_name = line.substr(name_start);
+
+        // Exact match
+        if (entry_name == filename) {
+            return hash;
+        }
+
+        // Fallback: match by platform suffix
+        if (!suffix.empty() && entry_name.size() >= suffix.size() &&
+            entry_name.substr(entry_name.size() - suffix.size()) == suffix) {
+            fallback_hash = hash;
+        }
+    }
+
+    return fallback_hash;
+}
+
+std::string compute_sha256(const std::string &file_path) {
+    std::string output;
+    if (run_command({"shasum", "-a", "256", file_path}, &output) != 0 || output.empty()) {
+        return "";
+    }
+    // Output format: "<hash>  <filename>"
+    auto sep = output.find(' ');
+    if (sep == std::string::npos) return "";
+    return output.substr(0, sep);
+}
+
+bool verify_checksum(const std::string &archive_path, const std::string &expected_hash) {
+    std::string actual_hash = compute_sha256(archive_path);
+    if (actual_hash.empty()) {
+        std::cerr << "Error: Failed to compute SHA-256 checksum.\n";
+        return false;
+    }
+    return actual_hash == expected_hash;
+}
+
+bool validate_tar_entries(const std::string &archive_path) {
+    std::string verbose_listing;
+    if (run_command({"tar", "-tvzf", archive_path}, &verbose_listing) != 0) {
+        std::cerr << "Error: Failed to list archive entries.\n";
+        return false;
+    }
+
+    std::istringstream stream(verbose_listing);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.empty()) continue;
+
+        // Symlink detection: verbose tar output starts with 'l' for symlinks
+        if (line[0] == 'l') {
+            std::cerr << "Error: Archive contains symlink entry: " << line << "\n";
+            return false;
+        }
+
+        // Extract the entry path (last whitespace-delimited field)
+        auto last_space = line.rfind(' ');
+        if (last_space == std::string::npos) continue;
+        std::string entry = line.substr(last_space + 1);
+        if (entry.empty()) continue;
+
+        // Reject absolute paths
+        if (entry[0] == '/') {
+            std::cerr << "Error: Archive contains absolute path: " << entry << "\n";
+            return false;
+        }
+
+        // Reject path traversal
+        if (entry == ".." || entry.find("../") != std::string::npos ||
+            entry.find("/../") != std::string::npos ||
+            (entry.size() >= 3 && entry.substr(entry.size() - 3) == "/..")) {
+            std::cerr << "Error: Archive contains path traversal: " << entry << "\n";
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::string download_and_extract(const std::string &download_url, const std::string &tag) {
     char tmp_dir[] = "/tmp/ry-update-XXXXXX";
     if (mkdtemp(tmp_dir) == nullptr) {
         std::cerr << "Error: Failed to create temporary directory.\n";
@@ -287,6 +400,45 @@ std::string download_and_extract(const std::string &download_url) {
         return "";
     }
     std::cerr << " done.\n";
+
+    // Checksum verification
+    std::string checksums_url = build_checksums_url(tag);
+    std::string checksums_path = tmp_dir_str + "/checksums.txt";
+    if (download_file(checksums_url, checksums_path)) {
+        std::ifstream ifs(checksums_path);
+        std::string checksums_content((std::istreambuf_iterator<char>(ifs)),
+                                       std::istreambuf_iterator<char>());
+
+        // Extract filename from download URL
+        std::string expected_filename;
+        auto slash_pos = download_url.rfind('/');
+        if (slash_pos != std::string::npos) {
+            expected_filename = download_url.substr(slash_pos + 1);
+        }
+
+        std::string expected_hash = parse_checksum_for_file(checksums_content, expected_filename);
+        if (expected_hash.empty()) {
+            std::cerr << "Warning: Could not find checksum for " << expected_filename << " in checksums.txt. Skipping verification.\n";
+        } else {
+            std::cerr << "Verifying checksum..." << std::flush;
+            if (!verify_checksum(archive_path, expected_hash)) {
+                std::cerr << " failed.\n";
+                std::cerr << "Error: Checksum verification failed. The downloaded file may be corrupted or tampered with.\n";
+                run_command({"rm", "-rf", tmp_dir_str});
+                return "";
+            }
+            std::cerr << " ok.\n";
+        }
+    } else {
+        std::cerr << "Warning: checksums.txt not available. Skipping checksum verification.\n";
+    }
+
+    // Validate tar entries before extraction
+    if (!validate_tar_entries(archive_path)) {
+        std::cerr << "Error: Archive contains unsafe entries. Aborting update.\n";
+        run_command({"rm", "-rf", tmp_dir_str});
+        return "";
+    }
 
     if (run_command({"tar", "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
@@ -437,7 +589,7 @@ int cmd_self_update(int argc, char *argv[]) {
         return 1;
     }
 
-    std::string tmp_dir = detail::download_and_extract(target.download_url);
+    std::string tmp_dir = detail::download_and_extract(target.download_url, target.tag);
     if (tmp_dir.empty()) {
         return 1;
     }
