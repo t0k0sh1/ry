@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -90,6 +91,26 @@ TEST(RuntimeHttp, ReadRequestValidPostWithBody) {
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
     std::string req = "POST /data HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_method(result), "POST");
+    EXPECT_STREQ(__ry_http_body(result), "hello");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ReadRequestBodyLongerThanContentLength) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // Content-Length says 5, but 10 bytes of body are sent
+    std::string req =
+        "POST /data HTTP/1.1\r\nContent-Length: 5\r\n\r\nhelloEXTRA";
     send_and_close(fds[1], req);
 
     auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));

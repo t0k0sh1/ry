@@ -208,6 +208,11 @@ extern "C" void *__ry_http_read_request(void *stream) {
             return nullptr;
         }
     }
+
+    // Truncate body to exactly Content-Length to prevent request smuggling
+    if (content_length >= 0 && (int64_t)body_data.size() > content_length)
+        body_data.resize((size_t)content_length);
+
     req->body = strdup(body_data.c_str());
 
     return req;
