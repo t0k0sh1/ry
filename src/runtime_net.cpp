@@ -204,8 +204,10 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
     if (n <= 0) {
         free(header->data);
-        free(header);
-        return makeEmptyIOList();
+        header->data = nullptr;
+        header->len = 0;
+        header->cap = 0;
+        return header;
     }
     header->len = (int64_t)n;
     header->cap = max_bytes;
