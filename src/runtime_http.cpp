@@ -29,6 +29,9 @@ struct HttpRequestHandle {
     char **query_keys;
     char **query_values;
     int64_t query_count;
+    char **cookie_keys;
+    char **cookie_values;
+    int64_t cookie_count;
 };
 
 struct HttpResponseHandle {
@@ -52,6 +55,32 @@ struct MapHeader {
 // Forward declaration for hash table construction
 extern "C" int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
                                         int64_t newBucketCount);
+
+// Build a MapHeader from pre-existing key/value arrays.
+// Ownership of the char* pointers is transferred to the MapHeader.
+static void *build_str_map(char **keys, char **vals, int64_t count) {
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    map->len = count;
+    map->cap = count;
+    if (count > 0) {
+        map->keys = (char **)malloc(sizeof(char *) * (size_t)count);
+        map->vals = (char **)malloc(sizeof(char *) * (size_t)count);
+        for (int64_t i = 0; i < count; i++) {
+            map->keys[i] = keys[i];
+            map->vals[i] = vals[i];
+        }
+        int64_t bc = 4;
+        while (bc < count * 2) bc *= 2;
+        map->bucket_count = bc;
+        map->buckets = __ry_ht_rehash_str((const char **)map->keys, count, bc);
+    } else {
+        map->keys = nullptr;
+        map->vals = nullptr;
+        map->bucket_count = 4;
+        map->buckets = __ry_ht_rehash_str(nullptr, 0, 4);
+    }
+    return map;
+}
 
 static int hex_digit(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -134,6 +163,78 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
     } else {
         req->query_keys = nullptr;
         req->query_values = nullptr;
+    }
+}
+
+// Parse the Cookie header value and store results in req->cookie_keys/values/count.
+// Cookie format: "name1=value1; name2=value2; ..."
+// Only the first '=' splits name from value (values may contain '=').
+static void parse_cookie_header(HttpRequestHandle *req) {
+    // Find Cookie header (case-insensitive)
+    const char *cookie_str = nullptr;
+    for (int64_t i = 0; i < req->header_count; i++) {
+        if (strcasecmp(req->header_keys[i], "Cookie") == 0) {
+            cookie_str = req->header_values[i];
+            break;
+        }
+    }
+    if (!cookie_str || !*cookie_str) {
+        req->cookie_keys = nullptr;
+        req->cookie_values = nullptr;
+        req->cookie_count = 0;
+        return;
+    }
+
+    struct CookiePair { char *key; char *val; };
+    std::vector<CookiePair> pairs;
+    std::unordered_set<std::string> seen_keys;
+
+    const char *p = cookie_str;
+    while (*p) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+
+        const char *semi = strchr(p, ';');
+        size_t pair_len = semi ? (size_t)(semi - p) : strlen(p);
+
+        const char *eq = (const char *)memchr(p, '=', pair_len);
+        if (eq) {
+            const char *key_end = eq;
+            while (key_end > p && (*(key_end - 1) == ' ' || *(key_end - 1) == '\t'))
+                key_end--;
+            size_t key_len = (size_t)(key_end - p);
+
+            const char *val_start = eq + 1;
+            const char *val_end = p + pair_len;
+            while (val_start < val_end && (*val_start == ' ' || *val_start == '\t'))
+                val_start++;
+            while (val_end > val_start && (*(val_end - 1) == ' ' || *(val_end - 1) == '\t'))
+                val_end--;
+            size_t val_len = (size_t)(val_end - val_start);
+
+            if (key_len > 0) {
+                std::string key_s(p, key_len);
+                if (seen_keys.insert(key_s).second)
+                    pairs.push_back({strndup(p, key_len), strndup(val_start, val_len)});
+            }
+        }
+
+        p += pair_len;
+        if (*p == ';') p++;
+    }
+
+    int64_t count = (int64_t)pairs.size();
+    req->cookie_count = count;
+    if (count > 0) {
+        req->cookie_keys = (char **)malloc(sizeof(char *) * (size_t)count);
+        req->cookie_values = (char **)malloc(sizeof(char *) * (size_t)count);
+        for (int64_t i = 0; i < count; i++) {
+            req->cookie_keys[i] = pairs[(size_t)i].key;
+            req->cookie_values[i] = pairs[(size_t)i].val;
+        }
+    } else {
+        req->cookie_keys = nullptr;
+        req->cookie_values = nullptr;
     }
 }
 
@@ -268,6 +369,9 @@ extern "C" void *__ry_http_read_request(void *stream) {
         req->header_values = nullptr;
     }
 
+    // Pre-parse Cookie header into req->cookie_keys/values/count
+    parse_cookie_header(req);
+
     // Validate Content-Length before body parsing
     size_t body_start = headers_end + 4;
     const char *cl_value = nullptr;
@@ -353,28 +457,47 @@ extern "C" const char *__ry_http_query(void *r, const char *key) {
 
 extern "C" void *__ry_http_query_all(void *r) {
     auto *req = (HttpRequestHandle *)r;
-    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
-    map->len = req->query_count;
-    map->cap = req->query_count;
+    // strdup all entries so the MapHeader owns independent copies
+    char **dup_keys = nullptr;
+    char **dup_vals = nullptr;
     if (req->query_count > 0) {
-        map->keys = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
-        map->vals = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
+        dup_keys = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
+        dup_vals = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
         for (int64_t i = 0; i < req->query_count; i++) {
-            map->keys[i] = strdup(req->query_keys[i]);
-            map->vals[i] = strdup(req->query_values[i]);
+            dup_keys[i] = strdup(req->query_keys[i]);
+            dup_vals[i] = strdup(req->query_values[i]);
         }
-        // Load factor <= 0.5 keeps linear probing fast
-        int64_t bc = 4;
-        while (bc < req->query_count * 2) bc *= 2;
-        map->bucket_count = bc;
-        map->buckets = __ry_ht_rehash_str((const char **)map->keys,
-                                           map->len, bc);
-    } else {
-        map->keys = nullptr;
-        map->vals = nullptr;
-        map->bucket_count = 4;
-        map->buckets = __ry_ht_rehash_str(nullptr, 0, 4);
     }
+    auto *map = (MapHeader *)build_str_map(dup_keys, dup_vals, req->query_count);
+    free(dup_keys);
+    free(dup_vals);
+    return map;
+}
+
+extern "C" const char *__ry_http_cookie(void *r, const char *name) {
+    auto *req = (HttpRequestHandle *)r;
+    for (int64_t i = 0; i < req->cookie_count; i++) {
+        if (strcmp(req->cookie_keys[i], name) == 0)
+            return req->cookie_values[i];
+    }
+    return nullptr;
+}
+
+extern "C" void *__ry_http_cookies(void *r) {
+    auto *req = (HttpRequestHandle *)r;
+    char **dup_keys = nullptr;
+    char **dup_vals = nullptr;
+    if (req->cookie_count > 0) {
+        dup_keys = (char **)malloc(sizeof(char *) * (size_t)req->cookie_count);
+        dup_vals = (char **)malloc(sizeof(char *) * (size_t)req->cookie_count);
+        for (int64_t i = 0; i < req->cookie_count; i++) {
+            dup_keys[i] = strdup(req->cookie_keys[i]);
+            dup_vals[i] = strdup(req->cookie_values[i]);
+        }
+    }
+    auto *map = (MapHeader *)build_str_map(dup_keys, dup_vals, req->cookie_count);
+    free(dup_keys);
+    free(dup_vals);
     return map;
 }
 
@@ -519,6 +642,12 @@ extern "C" void __ry_http_request_free(void *r) {
     }
     free(req->query_keys);
     free(req->query_values);
+    for (int64_t i = 0; i < req->cookie_count; i++) {
+        free(req->cookie_keys[i]);
+        free(req->cookie_values[i]);
+    }
+    free(req->cookie_keys);
+    free(req->cookie_values);
     free(req->body);
     free(req);
 }
