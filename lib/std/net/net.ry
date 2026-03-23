@@ -4,7 +4,7 @@
 fn bind(host: str, port: int) -> Option<TcpListener>
 
 @native
-fn listen(listener: TcpListener, backlog: int) -> Unit
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 
 @native
 fn accept(listener: TcpListener) -> Option<TcpStream>

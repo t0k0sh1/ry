@@ -11,7 +11,7 @@ static const std::string NET_DECLS = R"(
 @native
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-fn listen(listener: TcpListener, backlog: int) -> Unit
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
 fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
@@ -53,6 +53,25 @@ match connect("127.0.0.1", 19999):
 }
 
 // ============================================================
+// listen returns Result<Unit, Error>
+// ============================================================
+
+TEST_F(CodeGenTest, NetListenReturnsResult) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match bind("127.0.0.1", 18082):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                print("ok")
+            case Err(e):
+                print("listen err")
+        close(server)
+    case Err(e):
+        print("bind err")
+)"), "ok\n");
+}
+
+// ============================================================
 // Echo round-trip: server and client via spawn
 // TODO: re-enable once network test hang on CI (macos-14) is resolved
 // See: https://github.com/t0k0sh1/ry/issues/96
@@ -63,16 +82,29 @@ match connect("127.0.0.1", 19999):
 // fn run_server(port: int, ready: Channel<int>) -> str:
 //     match bind("127.0.0.1", port):
 //         case Ok(server):
-//             listen(server, 1)
-//             send(ready, 1)
-//             match accept(server):
-//                 case Ok(conn):
-//                     data: List<byte> = recv(conn, 4096)
-//                     msg = bytes_to_str(data)
-//                     send(conn, str_to_bytes("echo:" + msg))
-//                     close(conn)
+//             match listen(server, 1):
+//                 case Ok(_):
+//                     send(ready, 1)
+//                     match accept(server):
+//                         case Ok(conn):
+//                             match recv(conn, 4096):
+//                                 case Ok(data):
+//                                     match bytes_to_str(data):
+//                                         case Ok(msg):
+//                                             match send(conn, str_to_bytes("echo:" + msg)):
+//                                                 case Ok(_):
+//                                                     ...
+//                                                 case Err(e):
+//                                                     ...
+//                                         case Err(e):
+//                                             ...
+//                                 case Err(e):
+//                                     ...
+//                             close(conn)
+//                         case Err(e):
+//                             ...
 //                 case Err(e):
-//                     ...
+//                     send(ready, 0)
 //             close(server)
 //         case Err(e):
 //             send(ready, 0)
@@ -81,11 +113,23 @@ match connect("127.0.0.1", 19999):
 // fn run_client(port: int) -> str:
 //     match connect("127.0.0.1", port):
 //         case Ok(conn):
-//             send(conn, str_to_bytes("hello"))
-//             resp: List<byte> = recv(conn, 4096)
-//             msg = bytes_to_str(resp)
+//             match send(conn, str_to_bytes("hello")):
+//                 case Ok(_):
+//                     ...
+//                 case Err(e):
+//                     ...
+//             match recv(conn, 4096):
+//                 case Ok(resp):
+//                     match bytes_to_str(resp):
+//                         case Ok(msg):
+//                             close(conn)
+//                             return msg
+//                         case Err(e):
+//                             ...
+//                 case Err(e):
+//                     ...
 //             close(conn)
-//             return msg
+//             return "fail"
 //         case Err(e):
 //             return "fail"
 //
@@ -115,6 +159,27 @@ print(val)
 close(ch)
 join(t)
 )"), "42\n");
+}
+
+// ============================================================
+// __ry_tcp_send: closed fd returns -1 (no exit)
+// ============================================================
+
+TEST(TcpSend, ClosedFdReturnsNegative) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+    ::close(fds[0]);
+    ::close(fds[1]);
+
+    // Build a minimal IOListHeader
+    IOListHeader header;
+    int8_t data[] = {'x'};
+    header.data = data;
+    header.len = 1;
+    header.cap = 1;
+
+    int64_t result = __ry_tcp_send(&fds[0], &header);
+    EXPECT_EQ(result, -1);
 }
 
 // ============================================================
@@ -215,6 +280,18 @@ TEST(TcpRecv, PeerCloseReturnsEmptyList) {
 
     free(result);
     ::close(fds[0]);
+}
+
+TEST(TcpRecv, ErrorReturnsNull) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+    // Close both ends so recv() gets an error (not just EOF)
+    ::close(fds[1]);
+    ::close(fds[0]);
+
+    // recv on closed fd returns nullptr (error)
+    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    EXPECT_EQ(result, nullptr);
 }
 
 TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {

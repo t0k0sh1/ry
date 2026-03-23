@@ -716,6 +716,14 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
     return val;
 }
 
+llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string &globalName) {
+    llvm::Value *errMsgStr = builder_.CreateGlobalString(msg, globalName);
+    llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
+    errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
+    errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+    return errStruct;
+}
+
 std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
     std::string inner = typeStr.substr(4, typeStr.size() - 5);
     size_t depth = 0;
