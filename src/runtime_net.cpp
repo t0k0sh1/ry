@@ -155,8 +155,13 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
 ssize_t __ry_send_all(int fd, const void *buf, size_t len) {
     auto *data = static_cast<const char *>(buf);
     size_t remaining = len;
+    // Use MSG_NOSIGNAL on Linux to suppress SIGPIPE (macOS uses SO_NOSIGPIPE instead)
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags = MSG_NOSIGNAL;
+#endif
     while (remaining > 0) {
-        ssize_t n = ::send(fd, data, remaining, 0);
+        ssize_t n = ::send(fd, data, remaining, flags);
         if (n < 0) {
             if (errno == EINTR) continue;
             return -1;

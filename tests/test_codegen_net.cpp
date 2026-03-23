@@ -137,15 +137,19 @@ TEST(SendAll, SmallPayload) {
     ::close(fds[1]);
 }
 
-TEST(SendAll, LargePayload) {
+TEST(SendAll, LargePayloadWithPartialWrites) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
-    // 128KB payload — likely to cause partial writes
+    // Shrink socket buffers to force partial writes
+    int bufsize = 4096;
+    ::setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
+    ::setsockopt(fds[1], SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+
     const size_t payload_size = 128 * 1024;
     std::vector<char> payload(payload_size, 'A');
 
-    // Send in a separate thread since socketpair buffers are limited
+    // Send in a separate thread since small buffers will block
     std::thread sender([&]() {
         ssize_t sent = __ry_send_all(fds[0], payload.data(), payload_size);
         EXPECT_EQ(sent, (ssize_t)payload_size);
