@@ -623,6 +623,15 @@ TEST(RuntimeHttpClient, ParseUrlPortNoPath) {
     __ry_http_parsed_url_free(u);
 }
 
+TEST(RuntimeHttpClient, ParseUrlQueryWithoutPath) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com?x=1&y=2");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 80);
+    EXPECT_STREQ(u->path, "/?x=1&y=2");
+    __ry_http_parsed_url_free(u);
+}
+
 // --- HTTP client integration tests ---
 
 static void mock_http_server(int fd, const std::string &response) {

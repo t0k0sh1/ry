@@ -4910,6 +4910,19 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return builder_.CreateSelect(isNull, noneVal, someVal, "http_client_hdr_opt");
     }
 
+    // http_client_response_free(resp) -> Unit
+    if (e.callee == "http_client_response_free") {
+        if (e.args.size() != 1)
+            codegenError("http_client_response_free() takes exactly 1 argument");
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_response_free() requires HttpClientResponse argument");
+        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_response_free", fnTy);
+        builder_.CreateCall(fn, {resp});
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
     return nullptr;
 }
 

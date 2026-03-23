@@ -49,3 +49,6 @@ fn http_client_body(response: HttpClientResponse) -> str
 
 @native
 fn http_client_header(response: HttpClientResponse, key: str) -> Option<str>
+
+@native
+fn http_client_response_free(response: HttpClientResponse) -> Unit

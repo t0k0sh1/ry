@@ -207,6 +207,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 | `http_client_status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
 | `http_client_body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
 | `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
+| `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
 
 ### Client Usage Example
 
@@ -241,6 +242,7 @@ match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 - Response header lookup is case-insensitive.
 - Connection timeout is 5 seconds; receive timeout is 30 seconds.
 - Returns `Err` on connection failure, invalid URL, or malformed response.
+- `HttpClientResponse` owns allocated memory (headers, body). Call `http_client_response_free()` when done to avoid memory leaks.
 
 ## Error Handling
 

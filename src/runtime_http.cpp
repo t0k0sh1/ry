@@ -669,9 +669,9 @@ static ParsedUrl *parse_url(const char *url) {
     const char *authority = url + 7;
     if (!*authority || *authority == '/' || *authority == ':') return nullptr;
 
-    // Find end of host: ':' (port), '/' (path), or end of string
+    // Find end of host: ':' (port), '/' (path), '?' (query), or end of string
     const char *p = authority;
-    while (*p && *p != ':' && *p != '/') p++;
+    while (*p && *p != ':' && *p != '/' && *p != '?') p++;
 
     std::string host(authority, p);
     if (host.empty()) return nullptr;
@@ -690,7 +690,11 @@ static ParsedUrl *parse_url(const char *url) {
 
     std::string path;
     if (*p == '/') {
-        path = p; // includes query string
+        path = p;
+    } else if (*p == '?') {
+        // Query without explicit path: normalize to "/?..."
+        path = "/";
+        path += p;
     } else if (*p == '\0') {
         path = "/";
     } else {
@@ -808,7 +812,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
             body_data.append(extra, got);
             free(extra);
         }
-        if (content_length > 0 && (int64_t)body_data.size() > content_length)
+        if ((int64_t)body_data.size() > content_length)
             body_data.resize((size_t)content_length);
     } else {
         // No valid Content-Length: read until connection close
@@ -846,12 +850,26 @@ static HttpClientResponseHandle *read_http_response(int fd) {
     return resp;
 }
 
+// Reject strings containing CR or LF to prevent HTTP request splitting
+static bool has_crlf(const char *s) {
+    if (!s) return false;
+    for (; *s; s++) {
+        if (*s == '\r' || *s == '\n') return true;
+    }
+    return false;
+}
+
 extern "C" void *__ry_http_client_request(const char *method, const char *url,
                                            void *headers_map, const char *body) {
+    if (has_crlf(method)) return nullptr;
+
     ParsedUrl *parsed = parse_url(url);
     if (!parsed) return nullptr;
 
-    // Connect via existing TCP infrastructure
+    if (has_crlf(parsed->path)) {
+        __ry_http_parsed_url_free(parsed);
+        return nullptr;
+    }
     void *stream = __ry_connect(parsed->host, parsed->port);
     if (!stream) {
         __ry_http_parsed_url_free(parsed);
@@ -882,6 +900,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
     if (headers_map) {
         auto *map = (MapHeader *)headers_map;
         for (int64_t i = 0; i < map->len; i++) {
+            if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
             request += map->keys[i];
             request += ": ";
             request += map->vals[i];
@@ -891,9 +910,8 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
         }
     }
 
-    // Content-Length if body present and not already set
     size_t body_len = (body && *body) ? strlen(body) : 0;
-    if (!has_content_length && body_len > 0) {
+    if (!has_content_length) {
         request += "Content-Length: ";
         request += std::to_string(body_len);
         request += "\r\n";
