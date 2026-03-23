@@ -620,6 +620,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // HTTP opaque handle types
     if (typeName == "HttpRequest")  return ptrTy_;
     if (typeName == "HttpResponse") return ptrTy_;
+    if (typeName == "HttpClientResponse") return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {

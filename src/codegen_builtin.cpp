@@ -73,6 +73,10 @@ bool CodeGen::isHttpResponse(llvm::Value *val) {
     return lookupValueSet(http_response_values_, val);
 }
 
+bool CodeGen::isHttpClientResponse(llvm::Value *val) {
+    return lookupValueSet(http_client_response_values_, val);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
@@ -1751,6 +1755,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     if (isTcpStream(subject))   tcp_stream_values_.insert(subjectAlloca);
     if (isHttpRequest(subject))  http_request_values_.insert(subjectAlloca);
     if (isHttpResponse(subject)) http_response_values_.insert(subjectAlloca);
+    if (isHttpClientResponse(subject)) http_client_response_values_.insert(subjectAlloca);
 
     // Propagate collection metadata to subject alloca
     if (auto it = list_element_types_.find(subject); it != list_element_types_.end())
@@ -1941,6 +1946,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         http_request_values_.insert(varAlloca);
                     if (http_response_values_.count(subjectAlloca))
                         http_response_values_.insert(varAlloca);
+                    if (http_client_response_values_.count(subjectAlloca))
+                        http_client_response_values_.insert(varAlloca);
                 } else if constexpr (std::is_same_v<T, OkPattern>) {
                     if (pat.binding != "_") {
                         llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -1957,6 +1964,12 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                             tcp_listener_values_.insert(varAlloca);
                         if (tcp_stream_values_.count(subjectAlloca))
                             tcp_stream_values_.insert(varAlloca);
+                        if (http_request_values_.count(subjectAlloca))
+                            http_request_values_.insert(varAlloca);
+                        if (http_response_values_.count(subjectAlloca))
+                            http_response_values_.insert(varAlloca);
+                        if (http_client_response_values_.count(subjectAlloca))
+                            http_client_response_values_.insert(varAlloca);
                     }
                 } else if constexpr (std::is_same_v<T, ErrPattern>) {
                     if (pat.binding != "_") {
@@ -2004,6 +2017,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     http_request_values_.insert(varAlloca);
                 if (http_response_values_.count(subjectAlloca))
                     http_response_values_.insert(varAlloca);
+                if (http_client_response_values_.count(subjectAlloca))
+                    http_client_response_values_.insert(varAlloca);
             } else if constexpr (std::is_same_v<T, OkPattern>) {
                 if (pat.binding != "_") {
                     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -2021,6 +2036,12 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         tcp_listener_values_.insert(varAlloca);
                     if (tcp_stream_values_.count(subjectAlloca))
                         tcp_stream_values_.insert(varAlloca);
+                    if (http_request_values_.count(subjectAlloca))
+                        http_request_values_.insert(varAlloca);
+                    if (http_response_values_.count(subjectAlloca))
+                        http_response_values_.insert(varAlloca);
+                    if (http_client_response_values_.count(subjectAlloca))
+                        http_client_response_values_.insert(varAlloca);
                 }
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
                 if (pat.binding != "_") {
