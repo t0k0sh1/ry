@@ -18,6 +18,8 @@ const char *__ry_http_path(void *req);
 const char *__ry_http_body(void *req);
 const char *__ry_http_query(void *req, const char *key);
 void *__ry_http_query_all(void *req);
+const char *__ry_http_cookie(void *req, const char *name);
+void *__ry_http_cookies(void *req);
 void __ry_http_request_free(void *req);
 
 // HTTP client functions
@@ -804,4 +806,173 @@ TEST(DISABLED_RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
 
     server_thread.join();
     ::close(srv);
+}
+
+// --- Cookie tests ---
+
+TEST(RuntimeHttp, CookieBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\nCookie: session_id=abc123; theme=dark\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_cookie(result, "session_id"), "abc123");
+    EXPECT_STREQ(__ry_http_cookie(result, "theme"), "dark");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookieNotFound) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\nCookie: session_id=abc123\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(__ry_http_cookie(result, "nonexistent"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookieNoCookieHeader) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(__ry_http_cookie(result, "session_id"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookieValueWithEquals) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\nCookie: token=abc=def=ghi\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_cookie(result, "token"), "abc=def=ghi");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookiesAll) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\nCookie: a=1; b=2; c=3\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_cookies(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 3);
+    EXPECT_GE(map->bucket_count, 4);
+    ASSERT_NE(map->keys, nullptr);
+    ASSERT_NE(map->vals, nullptr);
+    EXPECT_STREQ(map->keys[0], "a");
+    EXPECT_STREQ(map->vals[0], "1");
+    EXPECT_STREQ(map->keys[1], "b");
+    EXPECT_STREQ(map->vals[1], "2");
+    EXPECT_STREQ(map->keys[2], "c");
+    EXPECT_STREQ(map->vals[2], "3");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookiesAllEmpty) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_cookies(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 0);
+    EXPECT_GE(map->bucket_count, 4);
+
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, CookiesAllDuplicateFirstWins) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\nCookie: a=1; b=2; a=3\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_cookies(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 2);
+    EXPECT_STREQ(map->keys[0], "a");
+    EXPECT_STREQ(map->vals[0], "1");
+    EXPECT_STREQ(map->keys[1], "b");
+    EXPECT_STREQ(map->vals[1], "2");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
 }

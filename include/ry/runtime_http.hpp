@@ -13,6 +13,8 @@ void       *__ry_http_response_create(int64_t status, void *headers_map, const c
 void        __ry_http_send_response(void *stream, void *response);
 const char *__ry_http_query(void *req, const char *key);
 void       *__ry_http_query_all(void *req);
+const char *__ry_http_cookie(void *req, const char *name);
+void       *__ry_http_cookies(void *req);
 void        __ry_http_request_free(void *req);
 void        __ry_http_response_free(void *resp);
 

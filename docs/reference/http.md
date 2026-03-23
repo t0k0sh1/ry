@@ -17,7 +17,7 @@
 These functions require explicit import:
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_response
+from std.http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_response
 ```
 
 ### Server
@@ -36,6 +36,8 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 | `http_body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
 | `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
 | `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
+| `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
+| `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
 
 ### Response Builder
 
@@ -111,6 +113,20 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 )
 ```
 
+### Reading Cookies
+
+```python
+from std.http import http_listen, http_cookie, http_cookies, http_response
+
+http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    match http_cookie(req, "session_id"):
+        case Some(sid):
+            return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
+        case None:
+            return http_response(401, {"Content-Type": "text/plain"}, "No session")
+)
+```
+
 ## Behavior
 
 - `http_listen()` binds to the address, starts listening, and enters an infinite accept loop.
@@ -121,6 +137,9 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - `http_path()` returns the path without the query string. Query parameters are accessed separately via `http_query()` or `http_query_all()`.
 - Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
 - For duplicate query parameter keys, the first value is returned.
+- `http_cookie()` and `http_cookies()` parse the `Cookie` header by splitting on `;`, then splitting each pair on the first `=`. Leading and trailing whitespace is trimmed from names and values.
+- For duplicate cookie names, the first value is returned.
+- Cookie values may contain `=` characters (only the first `=` separates the name from the value).
 
 ## Supported Status Codes
 
