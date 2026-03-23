@@ -22,7 +22,7 @@ from std.net import bind, listen, accept, connect
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. |
-| `listen` | `(listener: TcpListener, backlog: int) -> Unit` | Starts listening for incoming connections. Runtime error on failure. |
+| `listen` | `(listener: TcpListener, backlog: int) -> Result<Unit, Error>` | Starts listening for incoming connections. Returns `Err` on failure. |
 | `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
 | `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
 
@@ -32,8 +32,8 @@ These functions are built-in and work with both `Channel<T>` and TCP socket type
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `send` | `(stream: TcpStream, data: List<byte>) -> int` | Sends bytes through a TCP connection. Returns the number of bytes sent. Runtime error on failure. |
-| `recv` | `(stream: TcpStream, max: int) -> List<byte>` | Receives up to `max` bytes from a TCP connection. Returns an empty list on connection close. |
+| `send` | `(stream: TcpStream, data: List<byte>) -> Result<int, Error>` | Sends bytes through a TCP connection. Returns `Ok` with the number of bytes sent, or `Err` on failure. |
+| `recv` | `(stream: TcpStream, max: int) -> Result<List<byte>, Error>` | Receives up to `max` bytes from a TCP connection. Returns `Ok` with an empty list on connection close, or `Err` on error. |
 | `close` | `(handle: TcpStream) -> Unit` | Closes a TCP stream. |
 | `close` | `(handle: TcpListener) -> Unit` | Closes a TCP listener. |
 
@@ -48,14 +48,24 @@ from std.io import str_to_bytes, bytes_to_str
 # Server
 match bind("127.0.0.1", 8080):
     case Ok(server):
-        listen(server, 128)
-        match accept(server):
-            case Ok(conn):
-                data: List<byte> = recv(conn, 4096)
-                send(conn, data)
-                close(conn)
+        match listen(server, 128):
+            case Ok(_):
+                match accept(server):
+                    case Ok(conn):
+                        match recv(conn, 4096):
+                            case Ok(data):
+                                match send(conn, data):
+                                    case Ok(_):
+                                        ...
+                                    case Err(e):
+                                        print(e.message)
+                            case Err(e):
+                                print(e.message)
+                        close(conn)
+                    case Err(e):
+                        ...
             case Err(e):
-                ...
+                print("listen failed")
         close(server)
     case Err(e):
         print("bind failed")
@@ -66,11 +76,18 @@ match bind("127.0.0.1", 8080):
 ```python
 match connect("127.0.0.1", 8080):
     case Ok(conn):
-        send(conn, str_to_bytes("hello"))
-        resp: List<byte> = recv(conn, 4096)
-        match bytes_to_str(resp):
-            case Ok(s):
-                print(s)
+        match send(conn, str_to_bytes("hello")):
+            case Ok(_):
+                ...
+            case Err(e):
+                print(e.message)
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(s):
+                        print(s)
+                    case Err(e):
+                        print(e.message)
             case Err(e):
                 print(e.message)
         close(conn)
@@ -84,12 +101,22 @@ match connect("127.0.0.1", 8080):
 fn echo_server(port: int) -> str:
     match bind("127.0.0.1", port):
         case Ok(server):
-            listen(server, 1)
-            match accept(server):
-                case Ok(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    send(conn, data)
-                    close(conn)
+            match listen(server, 1):
+                case Ok(_):
+                    match accept(server):
+                        case Ok(conn):
+                            match recv(conn, 4096):
+                                case Ok(data):
+                                    match send(conn, data):
+                                        case Ok(_):
+                                            ...
+                                        case Err(e):
+                                            ...
+                                case Err(e):
+                                    ...
+                            close(conn)
+                        case Err(e):
+                            ...
                 case Err(e):
                     ...
             close(server)
@@ -104,10 +131,8 @@ join(t)
 
 ## Error Handling
 
-- `bind()` and `connect()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
-- `listen()` raises a runtime error on failure.
-- `send()` raises a runtime error on failure.
-- `recv()` returns an empty `List<byte>` when the connection is closed or when a receive error occurs; unlike `listen()`/`send()`, it does not raise on failure.
+- All TCP functions except `close()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
+- `recv()` returns `Ok` with an empty `List<byte>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 
 ## Byte Conversion

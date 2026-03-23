@@ -11,6 +11,19 @@ describe("TCP socket API", fn():
                 expect(true).to_eq(false)
 
     )
+    it("listen returns Ok on valid listener", fn():
+        match bind("127.0.0.1", 18091):
+            case Ok(server):
+                match listen(server, 1):
+                    case Ok(_):
+                        expect(true).to_eq(true)
+                    case Err(e):
+                        expect(true).to_eq(false)
+                close(server)
+            case Err(e):
+                expect(true).to_eq(false)
+
+    )
     it("connect to closed port returns Err", fn():
         match connect("127.0.0.1", 19998):
             case Ok(conn):
