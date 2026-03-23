@@ -1,4 +1,5 @@
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_net.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -285,14 +286,7 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
     out.append(resp->body, body_len);
 
     // Send full response
-    const char *data = out.c_str();
-    size_t remaining = out.size();
-    while (remaining > 0) {
-        ssize_t n = ::send(handle->fd, data, remaining, 0);
-        if (n <= 0) break;
-        data += n;
-        remaining -= (size_t)n;
-    }
+    __ry_send_all(handle->fd, out.c_str(), out.size());
 }
 
 extern "C" void __ry_http_request_free(void *r) {
