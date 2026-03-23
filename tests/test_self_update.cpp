@@ -357,7 +357,7 @@ TEST_F(TarValidationTest, Symlink) {
 TEST_F(TarValidationTest, Hardlink) {
     auto archive = tmp_root / "hardlink.tar.gz";
     std::string script =
-        "import tarfile, io\n"
+        "import tarfile\n"
         "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
         "    info = tarfile.TarInfo(name='evil')\n"
         "    info.type = tarfile.LNKTYPE\n"
