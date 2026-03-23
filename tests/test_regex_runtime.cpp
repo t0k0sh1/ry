@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include "ry/runtime_regex.hpp"
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 // ============================================================
 // regex_match tests
@@ -445,5 +447,46 @@ TEST(RegexRuntime, CaseInsensitiveFindAll) {
     EXPECT_STREQ(list->data[0], "Hello");
     EXPECT_STREQ(list->data[1], "HELLO");
     EXPECT_STREQ(list->data[2], "hello");
+    freeStringList(list);
+}
+
+// ============================================================
+// Performance regression tests (issue #107)
+// ============================================================
+
+TEST(RegexRuntime, PerfSearchLongNonMatch) {
+    // Pattern "a" on 10000 'b's: previously O(n^2), now O(n*s)
+    std::string text(10000, 'b');
+    auto start = std::chrono::steady_clock::now();
+    int64_t result = __ry_regex_search("a", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_EQ(result, -1);
+    // Should complete well within 100ms with linear algorithm
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 100);
+}
+
+TEST(RegexRuntime, PerfSearchDotStarNonMatch) {
+    // Pattern ".*x" on 10000 'a's: worst case for naive approach
+    std::string text(10000, 'a');
+    auto start = std::chrono::steady_clock::now();
+    int64_t result = __ry_regex_search(".*x", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_EQ(result, -1);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 100);
+}
+
+TEST(RegexRuntime, PerfFindAllManyMatches) {
+    // Pattern "[a-z]+" on 10000 lowercase chars interspersed with spaces
+    std::string text;
+    text.reserve(20000);
+    for (int i = 0; i < 10000; ++i) {
+        text += (char)('a' + (i % 26));
+        if (i % 5 == 4) text += ' ';
+    }
+    auto start = std::chrono::steady_clock::now();
+    auto *list = (ListHeader *)__ry_regex_find_all("[a-z]+", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_GT(list->len, 0);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 100);
     freeStringList(list);
 }
