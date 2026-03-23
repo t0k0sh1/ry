@@ -1,4 +1,5 @@
 #include "ry/runtime_regex.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
