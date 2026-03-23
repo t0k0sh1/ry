@@ -93,7 +93,7 @@ from mypackage import add   # imports only add
 ## Standard Library (`std`)
 
 The `std` package is automatically imported into every program. It provides:
-- Built-in functions (`print`, `len`, `range`, etc.)
+- Built-in functions (`print`, `length`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`to_int`, `to_float`, `to_str`)
 - Collection functions (`map`, `filter`, `sort`, etc.)

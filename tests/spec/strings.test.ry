@@ -96,7 +96,7 @@ describe("split and join", fn():
     )
 )
 describe("UTF-8 support", fn():
-    it("len counts characters", fn():
+    it("length counts characters", fn():
         expect("hello").to_have_length(5)
         expect("あいう").to_have_length(3)
 

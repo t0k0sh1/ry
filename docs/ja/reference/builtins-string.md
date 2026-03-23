@@ -4,7 +4,7 @@
 
 文字列（`str`）に対する操作関数の一覧です。すべての関数で UFCS 記法が使用可能です。
 
-> **注意:** すべての文字列操作は UTF-8 対応です。`len()`、`char_at()`、`substring()`、`find()`、`reverse()` は Unicode コードポイント単位で動作し、バイト単位ではありません。バイト長が必要な場合は `byte_len()` を使用してください。
+> **注意:** すべての文字列操作は UTF-8 対応です。`length()`、`char_at()`、`substring()`、`find()`、`reverse()` は Unicode コードポイント単位で動作し、バイト単位ではありません。バイト長が必要な場合は `byte_len()` を使用してください。
 
 ## 関数一覧
 
@@ -67,9 +67,9 @@
 
 ## contains
 
-**シグネチャ:** `contains(s: str, sub: str) -> bool`
+**シグネチャ:** `contains(string: str, substring: str) -> bool`
 
-文字列 `s` に部分文字列 `sub` が含まれるかを返します。
+文字列 `string` に部分文字列 `substring` が含まれるかを返します。
 
 ```python
 print(contains("hello", "ell"))   # true
@@ -80,9 +80,9 @@ print("hello".contains("xyz"))    # false (UFCS)
 
 ## starts_with
 
-**シグネチャ:** `starts_with(s: str, prefix: str) -> bool`
+**シグネチャ:** `starts_with(string: str, prefix: str) -> bool`
 
-文字列 `s` が `prefix` で始まるかを返します。
+文字列 `string` が `prefix` で始まるかを返します。
 
 ```python
 print(starts_with("hello", "hel"))   # true
@@ -93,9 +93,9 @@ print("hello".starts_with("world"))  # false (UFCS)
 
 ## ends_with
 
-**シグネチャ:** `ends_with(s: str, suffix: str) -> bool`
+**シグネチャ:** `ends_with(string: str, suffix: str) -> bool`
 
-文字列 `s` が `suffix` で終わるかを返します。
+文字列 `string` が `suffix` で終わるかを返します。
 
 ```python
 print(ends_with("hello", "llo"))   # true
@@ -106,9 +106,9 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**シグネチャ:** `find(s: str, sub: str) -> Option<int>`
+**シグネチャ:** `find(string: str, substring: str) -> Option<int>`
 
-文字列 `s` 中の部分文字列 `sub` の最初の出現位置（文字位置）を返します。見つからない場合は `None` を返します。
+文字列 `string` 中の部分文字列 `substring` の最初の出現位置（文字位置）を返します。見つからない場合は `None` を返します。
 
 ```python
 print(find("hello world", "world"))   # Some(6)
@@ -120,9 +120,9 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 ## substring
 
-**シグネチャ:** `substring(s: str, start: int, end: int) -> str`
+**シグネチャ:** `substring(string: str, start: int, end: int) -> str`
 
-文字列 `s` の `start` から `end`（排他）までの部分文字列を返します。インデックスは文字位置（UTF-8 対応）です。
+文字列 `string` の `start` から `end`（排他）までの部分文字列を返します。インデックスは文字位置（UTF-8 対応）です。
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -134,9 +134,9 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 ## char_at
 
-**シグネチャ:** `char_at(s: str, i: int) -> str`
+**シグネチャ:** `char_at(string: str, i: int) -> str`
 
-文字列 `s` の `i` 番目の UTF-8 文字を文字列として返します。
+文字列 `string` の `i` 番目の UTF-8 文字を文字列として返します。
 
 ```python
 print(char_at("hello", 0))   # h
@@ -147,9 +147,9 @@ print("abc".char_at(2))       # c (UFCS)
 
 ## replace
 
-**シグネチャ:** `replace(s: str, old: str, new: str) -> str`
+**シグネチャ:** `replace(string: str, old: str, new: str) -> str`
 
-文字列 `s` 中の `old` をすべて `new` に置換した新しい文字列を返します。
+文字列 `string` 中の `old` をすべて `new` に置換した新しい文字列を返します。
 
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
@@ -161,7 +161,7 @@ print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
 
 ## to_upper
 
-**シグネチャ:** `to_upper(s: str) -> str`
+**シグネチャ:** `to_upper(string: str) -> str`
 
 ASCII 小文字（a-z）を大文字に変換した新しい文字列を返します。
 
@@ -174,7 +174,7 @@ print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 
 ## to_lower
 
-**シグネチャ:** `to_lower(s: str) -> str`
+**シグネチャ:** `to_lower(string: str) -> str`
 
 ASCII 大文字（A-Z）を小文字に変換した新しい文字列を返します。
 
@@ -187,7 +187,7 @@ print("Hello World".to_lower())  # hello world (UFCS)
 
 ## trim
 
-**シグネチャ:** `trim(s: str) -> str`
+**シグネチャ:** `trim(string: str) -> str`
 
 文字列の前後の空白文字（スペース、タブ、改行、復帰）を除去した新しい文字列を返します。
 
@@ -200,7 +200,7 @@ print("  hi  ".trim())     # hi (UFCS)
 
 ## trim_start
 
-**シグネチャ:** `trim_start(s: str) -> str`
+**シグネチャ:** `trim_start(string: str) -> str`
 
 文字列の先頭の空白文字を除去した新しい文字列を返します。
 
@@ -213,7 +213,7 @@ print("  hi".trim_start())       # hi (UFCS)
 
 ## trim_end
 
-**シグネチャ:** `trim_end(s: str) -> str`
+**シグネチャ:** `trim_end(string: str) -> str`
 
 文字列の末尾の空白文字を除去した新しい文字列を返します。
 
@@ -226,9 +226,9 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 ## repeat
 
-**シグネチャ:** `repeat(s: str, n: int) -> str`
+**シグネチャ:** `repeat(string: str, count: int) -> str`
 
-文字列 `s` を `n` 回繰り返した新しい文字列を返します。
+文字列 `string` を `count` 回繰り返した新しい文字列を返します。
 
 ```python
 print(repeat("ab", 3))     # ababab
@@ -239,7 +239,7 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 ## reverse
 
-**シグネチャ:** `reverse(s: str) -> str`
+**シグネチャ:** `reverse(string: str) -> str`
 
 文字列を逆順にした新しい文字列を返します（UTF-8 対応）。
 
@@ -252,23 +252,23 @@ print("abc".reverse())     # cba (UFCS)
 
 ## byte_len
 
-**シグネチャ:** `byte_len(s: str) -> int`
+**シグネチャ:** `byte_len(string: str) -> int`
 
-文字列 `s` のバイト長を返します。UTF-8 文字数を返す `len()` とは異なり、`byte_len()` はバイト数を返します。
+文字列 `string` のバイト長を返します。UTF-8 文字数を返す `length()` とは異なり、`byte_len()` はバイト数を返します。
 
 ```python
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
-print(len("あいう"))        # 3 (文字数)
+print(length("あいう"))        # 3 (文字数)
 ```
 
 ---
 
 ## split
 
-**シグネチャ:** `split(s: str, delim: str) -> List<str>`
+**シグネチャ:** `split(string: str, delimiter: str) -> List<str>`
 
-文字列 `s` をデリミタ `delim` で分割し、`List<str>` を返します。
+文字列 `string` をデリミタ `delimiter` で分割し、`List<str>` を返します。
 
 ```python
 parts = split("a,b,c", ",")
@@ -286,7 +286,7 @@ for word in "hello world".split(" "):
 
 ## join
 
-**シグネチャ:** `join(xs: List<str>, sep: str) -> str`
+**シグネチャ:** `join(values: List<str>, sep: str) -> str`
 
 文字列リストの要素をセパレータ `sep` で結合した文字列を返します。
 
@@ -300,7 +300,7 @@ print(parts.join("-"))         # a-b-c (UFCS)
 
 ## to_int
 
-**シグネチャ:** `to_int(s: str) -> int`
+**シグネチャ:** `to_int(value: str) -> int`
 
 文字列を整数に変換します。
 
@@ -314,7 +314,7 @@ print("123".to_int())     # 123 (UFCS)
 
 ## to_float
 
-**シグネチャ:** `to_float(s: str) -> float`
+**シグネチャ:** `to_float(value: str) -> float`
 
 文字列を浮動小数点数に変換します。
 
@@ -327,7 +327,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**シグネチャ:** `to_str(v: int | float | bool | str) -> str`
+**シグネチャ:** `to_str(value: int | float | bool | str) -> str`
 
 値を文字列に変換します。
 

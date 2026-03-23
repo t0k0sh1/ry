@@ -255,7 +255,7 @@ Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are
 
 ```python
 p = Point(3, 4)
-len = p.x.to_float()   # Field access + UFCS
+length = p.x.to_float()   # Field access + UFCS
 ```
 
 ---

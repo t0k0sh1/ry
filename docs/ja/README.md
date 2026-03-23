@@ -40,7 +40,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [関数・ラムダ・UFCS・演算子オーバーロード](reference/functions.md) | 関数定義の全形式 |
 | [構造体・列挙型](reference/structs.md) | type 定義・enum 定義の完全な文法 |
 | [タプル・リスト・マップ・セット](reference/collections.md) | コレクション型の操作方法 |
-| [組み込み関数](reference/builtins.md) | print・len・Some 等 |
+| [組み込み関数](reference/builtins.md) | print・length・Some 等 |
 | [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
 | [正規表現](reference/regex.md) | regex_match・regex_search・regex_replace・regex_split・regex_find_all |
 | [数学関数](reference/math.md) | PI・E・sqrt・sin・cos・abs・floor・ceil・round 等 |

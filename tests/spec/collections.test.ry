@@ -11,7 +11,7 @@ describe("List", fn():
         expect(xs[0]).to_eq(99)
 
     )
-    it("len", fn():
+    it("length", fn():
         expect([1, 2, 3]).to_have_length(3)
 
     )
@@ -323,7 +323,7 @@ describe("Map", fn():
         expect(m["b"]).to_eq(2)
 
     )
-    it("len", fn():
+    it("length", fn():
         m = {"a": 1, "b": 2, "c": 3}
         expect(m).to_have_length(3)
 
@@ -396,7 +396,7 @@ describe("Set", fn():
         expect(s).to_not_contain(5)
 
     )
-    it("len", fn():
+    it("length", fn():
         s = {1, 2, 3}
         expect(s).to_have_length(3)
 

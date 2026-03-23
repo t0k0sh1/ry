@@ -58,7 +58,7 @@ describe("file I/O", fn():
 
     it("byte conversions", fn():
         bs = str_to_bytes("ABC")
-        expect(len(bs)).to_eq(3)
+        expect(length(bs)).to_eq(3)
         match bytes_to_str(bs):
             case Ok(s):
                 expect(s).to_eq("ABC")
@@ -75,7 +75,7 @@ describe("file I/O", fn():
                 expect(true).to_eq(false)
         match read_bytes("/tmp/ry_selftest_io_bytes.bin"):
             case Ok(rb):
-                expect(len(rb)).to_eq(11)
+                expect(length(rb)).to_eq(11)
                 match bytes_to_str(rb):
                     case Ok(s):
                         expect(s).to_eq("binary test")

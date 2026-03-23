@@ -59,7 +59,7 @@ from mypackage import add   # 僅匯入 add
 ```python
 # 這些函式無需匯入即可使用
 print("hello")
-n = len("world")
+n = length("world")
 xs = range(5)
 ```
 

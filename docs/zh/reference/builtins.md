@@ -9,8 +9,8 @@
 | 函式 | 說明 |
 |------|------|
 | `print(expr)` | 將值輸出到標準輸出 |
-| `len(x)` | 回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數 |
-| `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
+| `length(value)` | 回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數 |
+| `range(count)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
 | `exit(code)` | 以指定的結束碼終止程序 |
 | `args()` | 以 `List<str>` 回傳命令列引數 |
 
@@ -39,7 +39,7 @@
 | `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
 | `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
 | `sort!(list)` / `sort!(list, comp)` | 就地排序串列（破壞性） |
-| `insert(list, i, val)` | 在索引 i 處插入元素 |
+| `insert(list, i, value)` | 在索引 i 處插入元素 |
 | `remove_at(list, i)` | 移除並回傳索引 i 處的元素 |
 | `items(map)` | 回傳 (鍵, 值) 元組的串列 |
 | `remove(map, key)` | 刪除指定鍵的條目 |
@@ -56,21 +56,21 @@
 
 | 函式 | 說明 |
 |------|------|
-| `contains(s, sub)` | 是否包含子字串 |
-| `starts_with(s, prefix)` | 是否以前綴開頭 |
-| `ends_with(s, suffix)` | 是否以後綴結尾 |
-| `find(s, sub)` | 子字串的字元位置（`Option<int>`） |
-| `byte_len(s)` | 回傳字串的位元組長度 |
-| `substring(s, start, end)` | 取得子字串 |
-| `char_at(s, i)` | 取得指定位置的字元 |
-| `replace(s, old, new)` | 全部取代子字串 |
-| `to_upper(s)` / `to_lower(s)` | 大小寫轉換 |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | 去除空白 |
-| `repeat(s, n)` | 將字串重複 n 次 |
-| `reverse(s)` | 反轉字串 |
-| `split(s, delim)` | 分割字串並回傳串列 |
-| `join(list, sep)` | 以分隔符號連接串列中的字串 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型別轉換 |
+| `contains(string, substring)` | 是否包含子字串 |
+| `starts_with(string, prefix)` | 是否以前綴開頭 |
+| `ends_with(string, suffix)` | 是否以後綴結尾 |
+| `find(string, substring)` | 子字串的字元位置（`Option<int>`） |
+| `byte_len(string)` | 回傳字串的位元組長度 |
+| `substring(string, start, end)` | 取得子字串 |
+| `char_at(string, i)` | 取得指定位置的字元 |
+| `replace(string, old, new)` | 全部取代子字串 |
+| `to_upper(string)` / `to_lower(string)` | 大小寫轉換 |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | 去除空白 |
+| `repeat(string, count)` | 將字串重複 n 次 |
+| `reverse(string)` | 反轉字串 |
+| `split(string, delimiter)` | 分割字串並回傳串列 |
+| `join(values, sep)` | 以分隔符號連接串列中的字串 |
+| `to_int(string)` / `to_float(string)` / `to_str(v)` | 型別轉換 |
 
 → 詳細請參閱 **[字串操作函式參考](builtins-string.md)**
 
@@ -124,25 +124,25 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**簽名：** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**簽名：** `length(value: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數。如需取得位元組長度，請使用 `byte_len()`。
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 字元數)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3 (UTF-8 字元數)
 ```
 
 ---
 
 ## has_key
 
-**簽名：** `has_key(m: Map<K, V>, key: K) -> bool`
+**簽名：** `has_key(map: Map<K, V>, key: K) -> bool`
 
 回傳映射中是否存在指定的鍵。也可使用 UFCS 記法。
 
@@ -156,7 +156,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 ## add
 
-**簽名：** `add(s: Set<T>, value: T)`
+**簽名：** `add(set: Set<T>, value: T)`
 
 向集合新增元素。若元素已存在則不做任何操作。也可使用 UFCS 記法。
 
@@ -165,14 +165,14 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 一般呼叫
 s.add(1)          # 已存在，因此忽略
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
 
 ## remove
 
-**簽名：** `remove(s: Set<T>, value: T)`
+**簽名：** `remove(set: Set<T>, value: T)`
 
 從集合刪除元素。也可使用 UFCS 記法。
 
@@ -186,13 +186,13 @@ print(2 in s)     # false
 
 ## range
 
-**簽名：** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
+**簽名：** `range(count: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 生成整數串列。
 
 | 形式 | 生成的值 |
 |------|------------|
-| `range(n)` | `[0, 1, ..., n-1]` |
+| `range(count)` | `[0, 1, ..., count-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
 | `range(start, end, step)` | `[start, start+step, start+2*step, ...]`（不包含 `end`） |
 
@@ -237,7 +237,7 @@ exit(1)        # 錯誤終止
 ```python
 # 執行: ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
@@ -295,7 +295,7 @@ print(xs)   # [1, 2, 3]（未修改）
 
 **簽名：** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `len(list)`）。也可使用 UFCS 記法。
+傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `length(list)`）。也可使用 UFCS 記法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -307,9 +307,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
 
 ## take
 
-**簽名：** `take(list: List<T>, n: int) -> List<T>`
+**簽名：** `take(list: List<T>, count: int) -> List<T>`
 
-傳回包含前 `n` 個元素的新串列。若 `n` 超過串列長度，傳回整個串列的副本。若 `n <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
+傳回包含前 `count` 個元素的新串列。若 `count` 超過串列長度，傳回整個串列的副本。若 `count <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -366,7 +366,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**簽名:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**簽名:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comparator: fn(T, T) -> bool) -> List<T>`
 
 傳回排序後的新串列。預設為升序。可提供自訂比較函式（第一引數應排在第二引數之前時回傳 `true`）。原始串列不會被修改。排序是**穩定的**（相等元素保持原始順序）。也可使用 UFCS 記法。
 
@@ -383,7 +383,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**簽名:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**簽名:** `sort!(list: List<T>)` / `sort!(list: List<T>, comparator: fn(T, T) -> bool)`
 
 就地排序串列。排序演算法與 `sort()` 相同，但修改原始串列而非建立新串列。也可使用 UFCS 記法。
 

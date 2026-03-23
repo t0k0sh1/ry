@@ -9,7 +9,7 @@
 | Function | Description |
 |------|------|
 | `print(expr)` | Prints a value to standard output |
-| `len(x)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
+| `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
@@ -80,19 +80,19 @@
 
 | Function | Description |
 |------|------|
-| `contains(s, sub)` | Whether a substring is contained |
-| `starts_with(s, prefix)` | Whether it starts with a prefix |
-| `ends_with(s, suffix)` | Whether it ends with a suffix |
-| `find(s, sub)` | Character position of a substring (`Option<int>`) |
-| `byte_len(s)` | Returns the byte length of a string |
-| `substring(s, start, end)` | Extract a substring |
-| `char_at(s, i)` | Get the character at a specified position |
-| `replace(s, old, new)` | Replace all occurrences of a substring |
-| `to_upper(s)` / `to_lower(s)` | Uppercase / lowercase conversion |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | Whitespace removal |
-| `repeat(s, n)` | Repeat a string n times |
-| `reverse(s)` | Reverse a string |
-| `split(s, delim)` | Split a string into a list |
+| `contains(string, substring)` | Whether a substring is contained |
+| `starts_with(string, prefix)` | Whether it starts with a prefix |
+| `ends_with(string, suffix)` | Whether it ends with a suffix |
+| `find(string, substring)` | Character position of a substring (`Option<int>`) |
+| `byte_len(string)` | Returns the byte length of a string |
+| `substring(string, start, end)` | Extract a substring |
+| `char_at(string, i)` | Get the character at a specified position |
+| `replace(string, old, new)` | Replace all occurrences of a substring |
+| `to_upper(string)` / `to_lower(string)` | Uppercase / lowercase conversion |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | Whitespace removal |
+| `repeat(string, count)` | Repeat a string n times |
+| `reverse(string)` | Reverse a string |
+| `split(string, delimiter)` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
 | `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion |
 
@@ -148,18 +148,18 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**Signature:** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 characters)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3 (UTF-8 characters)
 ```
 
 ---
@@ -189,7 +189,7 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
 s.add(1)          # Ignored because it already exists
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
@@ -262,7 +262,7 @@ Returns the command-line arguments passed to the script as a list of strings. Do
 ```python
 # Run: ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
@@ -320,7 +320,7 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 **Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `length(list)`). UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]

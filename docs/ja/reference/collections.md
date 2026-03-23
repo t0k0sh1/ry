@@ -85,11 +85,11 @@ xs[0] = 99
 print(xs[0])   # 99
 ```
 
-### len
+### length
 
 ```python
 xs = [1, 2, 3]
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -405,7 +405,7 @@ print(xs)            # [[1, 2], [3, 4]]（変更なし）
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
-| `len` | O(1) |
+| `length` | O(1) |
 
 ### 制約とエラー
 
@@ -445,11 +445,11 @@ m["b"] = 2     # 新規追加
 m["a"] = 99    # 更新
 ```
 
-### len
+### length
 
 ```python
 m = {"a": 1, "b": 2, "c": 3}
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -566,11 +566,11 @@ print(2 in s)   # true
 print(5 in s)   # false
 ```
 
-### len
+### length
 
 ```python
 s = {1, 2, 3}
-print(len(s))   # 3
+print(length(s))   # 3
 ```
 
 ### print
@@ -588,7 +588,7 @@ print(s)   # {1, 2, 3}
 s = {1, 2, 3}
 s.add(4)         # 追加
 s.add(1)         # 既に存在するため無視
-print(len(s))    # 4
+print(length(s))    # 4
 ```
 
 ### remove（要素削除）

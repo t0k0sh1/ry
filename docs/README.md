@@ -40,7 +40,7 @@ For detailed language specifications, see the reference pages below.
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Structs and Enums](reference/structs.md) | Complete grammar for type and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
-| [Built-in Functions](reference/builtins.md) | print, len, Some, range, etc. |
+| [Built-in Functions](reference/builtins.md) | print, length, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
 | [Regular Expressions](reference/regex.md) | regex_match, regex_search, regex_replace, regex_split, regex_find_all |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |

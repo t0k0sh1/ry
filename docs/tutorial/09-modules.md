@@ -59,7 +59,7 @@ The `std` package is automatically imported into every program. You don't need t
 ```python
 # These functions are available without any import
 print("hello")
-n = len("world")
+n = length("world")
 xs = range(5)
 ```
 

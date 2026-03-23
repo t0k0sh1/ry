@@ -1,16 +1,16 @@
 # Type conversion functions
 
 @native
-fn to_int(x: str) -> int
+fn to_int(value: str) -> int
 
 @native
-fn to_float(x: str) -> float
+fn to_float(value: str) -> float
 
 @native
-fn to_str(x: int) -> str
+fn to_str(value: int) -> str
 
 @native
-fn to_str(x: float) -> str
+fn to_str(value: float) -> str
 
 @native
-fn to_str(x: bool) -> str
+fn to_str(value: bool) -> str

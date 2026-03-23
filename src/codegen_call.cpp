@@ -1603,13 +1603,13 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // len(xs) → list/map length
-    if (e.callee == "len") {
+    // length(xs) → list/map length
+    if (e.callee == "length") {
         if (e.args.size() != 1)
-            codegenError("len() takes exactly 1 argument");
+            codegenError("length() takes exactly 1 argument");
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
-            codegenError("len() requires list, map, or str argument");
+            codegenError("length() requires list, map, or str argument");
         // Check if it's a set
         if (getSetElementType(ptr)) {
             llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, ptr, 0, "set_len_ptr");

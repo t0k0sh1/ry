@@ -93,7 +93,7 @@ from mypackage import add   # add のみインポート
 ## 標準ライブラリ (`std`)
 
 `std` パッケージはすべてのプログラムに自動的にインポートされます。提供する機能:
-- 組み込み関数（`print`, `len`, `range` など）
+- 組み込み関数（`print`, `length`, `range` など）
 - 文字列関数（`contains`, `find`, `replace` など）
 - 型変換関数（`to_int`, `to_float`, `to_str`）
 - コレクション関数（`map`, `filter`, `sort` など）

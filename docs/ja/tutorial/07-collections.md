@@ -85,10 +85,10 @@ print(xs[i])   # 2
 xs[0] = 99
 ```
 
-### len
+### length
 
 ```python
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -240,10 +240,10 @@ m["c"] = 3    # 新規追加
 m["a"] = 99   # 更新
 ```
 
-### len
+### length
 
 ```python
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -318,10 +318,10 @@ s.remove(1)    # 要素削除
 s.add(2)       # 既に存在するため無視
 ```
 
-### len / print
+### length / print
 
 ```python
-print(len(s))  # 3
+print(length(s))  # 3
 print(s)       # {2, 3, 4}
 ```
 

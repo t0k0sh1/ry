@@ -1,52 +1,52 @@
 # List operations
 
 @native
-fn append(xs: List<int>, val: int) -> Unit
+fn append(values: List<int>, value: int) -> Unit
 
 @native
-fn pop(xs: List<int>) -> Option<int>
+fn pop(values: List<int>) -> Option<int>
 
 @native
-fn insert(xs: List<int>, index: int, val: int) -> Unit
+fn insert(values: List<int>, index: int, value: int) -> Unit
 
 @native
-fn remove_at(xs: List<int>, index: int) -> Unit
+fn remove_at(values: List<int>, index: int) -> Unit
 
 @native
-fn slice(xs: List<int>, start: int, end: int) -> List<int>
+fn slice(values: List<int>, start: int, end: int) -> List<int>
 
 @native
-fn distinct(xs: List<int>) -> List<int>
+fn distinct(values: List<int>) -> List<int>
 
 @native
-fn flatten(xs: List<int>) -> List<int>
+fn flatten(values: List<int>) -> List<int>
 
 @native
-fn sort(xs: List<int>) -> List<int>
+fn sort(values: List<int>) -> List<int>
 
 @native
-fn sort(xs: List<int>, comp: fn(int, int) -> bool) -> List<int>
+fn sort(values: List<int>, comparator: fn(int, int) -> bool) -> List<int>
 
 @native
-fn first(xs: List<int>) -> Option<int>
+fn first(values: List<int>) -> Option<int>
 
 @native
-fn last(xs: List<int>) -> Option<int>
+fn last(values: List<int>) -> Option<int>
 
 @native
-fn sort!(xs: List<int>) -> Unit
+fn sort!(values: List<int>) -> Unit
 
 @native
-fn sort!(xs: List<int>, comp: fn(int, int) -> bool) -> Unit
+fn sort!(values: List<int>, comparator: fn(int, int) -> bool) -> Unit
 
 @native
-fn reverse!(xs: List<int>) -> Unit
+fn reverse!(values: List<int>) -> Unit
 
 @native
-fn appended(xs: List<int>, val: int) -> List<int>
+fn appended(values: List<int>, value: int) -> List<int>
 
 @native
-fn append!(xs: List<int>, val: int) -> Unit
+fn append!(values: List<int>, value: int) -> Unit
 
 @native
-fn is_empty(xs: List<int>) -> bool
+fn is_empty(values: List<int>) -> bool
