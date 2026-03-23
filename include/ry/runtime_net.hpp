@@ -17,5 +17,8 @@ void *__ry_connect(const char *host, int64_t port);
 int64_t __ry_tcp_send(void *stream, void *byte_list);
 void   *__ry_tcp_recv(void *stream, int64_t max_bytes);
 void    __ry_tcp_close(void *handle);
+void    __ry_tcp_listener_close(void *listener);
+void    __ry_tcp_listener_shutdown(void *listener);
+int64_t __ry_listener_port(void *listener);
 
 }

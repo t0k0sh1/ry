@@ -11,9 +11,11 @@
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
 #include <algorithm>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <unistd.h>
 #include <unordered_set>
 #include <vector>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -27,6 +29,12 @@ using namespace llvm;
 using namespace llvm::orc;
 
 namespace fs = std::filesystem;
+
+static void test_timeout_handler(int) {
+    const char msg[] = "\nTest timed out (30s)\n";
+    (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    _exit(124);
+}
 
 // Compile and run a .ry file via JIT. Returns the JIT function's exit code.
 static int runRyFile(const std::string &filepath, bool test_mode,
@@ -158,7 +166,15 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         return 1;
     }
     auto *fn = symOrErr->toPtr<int(*)()>();
+
+    if (test_mode) {
+        std::signal(SIGALRM, test_timeout_handler);
+        alarm(30);
+    }
     int result = fn();
+    if (test_mode)
+        alarm(0);
+
     return result > 0 ? 1 : 0;
 }
 

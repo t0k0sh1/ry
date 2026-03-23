@@ -16,15 +16,17 @@ Both types are opaque pointers. They cannot be constructed directly; use `bind()
 These functions require explicit import:
 
 ```python
-from std.net import bind, listen, accept, connect
+from std.net import bind, listen, accept, connect, listener_port, shutdown
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. |
+| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. Use port `0` for dynamic allocation. |
 | `listen` | `(listener: TcpListener, backlog: int) -> Result<Unit, Error>` | Starts listening for incoming connections. Returns `Err` on failure. |
 | `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
 | `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
+| `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). |
+| `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return within at most 1 second. |
 
 ## Built-in Overloaded Functions
 

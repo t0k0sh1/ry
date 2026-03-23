@@ -10,4 +10,10 @@ fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 fn accept(listener: TcpListener) -> Option<TcpStream>
 
 @native
+fn listener_port(listener: TcpListener) -> int
+
+@native
 fn connect(host: str, port: int) -> Option<TcpStream>
+
+@native
+fn shutdown(listener: TcpListener) -> Unit

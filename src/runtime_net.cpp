@@ -15,8 +15,12 @@
 #include <errno.h>
 #include <sys/time.h>
 
+#include <atomic>
+#include <new>
+
 struct TcpListenerHandle {
     int fd;
+    std::atomic<bool> shutdown{false};
 };
 
 struct TcpStreamHandle {
@@ -58,7 +62,11 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
 
     ::freeaddrinfo(result);
 
-    auto *handle = (TcpListenerHandle *)malloc(sizeof(TcpListenerHandle));
+    auto *handle = new (std::nothrow) TcpListenerHandle;
+    if (!handle) {
+        ::close(fd);
+        return nullptr;
+    }
     handle->fd = fd;
     return handle;
 }
@@ -73,9 +81,30 @@ extern "C" int64_t __ry_listen(void *listener, int64_t backlog) {
 
 extern "C" void *__ry_accept(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
-    struct timeval tv = {1, 0};
-    if (::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0)
+    if (handle->shutdown.load(std::memory_order_relaxed)) {
+        errno = ECANCELED;
         return nullptr;
+    }
+
+    // Use poll() for cross-platform timeout (SO_RCVTIMEO doesn't work
+    // for accept() on macOS).
+    struct pollfd pfd = {handle->fd, POLLIN, 0};
+    int poll_ret = ::poll(&pfd, 1, 1000);  // 1-second timeout
+    if (poll_ret == 0) {
+        errno = ETIMEDOUT;
+        return nullptr;
+    }
+    if (poll_ret < 0)
+        return nullptr;
+    if (pfd.revents & (POLLERR | POLLNVAL | POLLHUP))
+        return nullptr;
+
+    // Shutdown may have been requested while poll() was blocking.
+    if (handle->shutdown.load(std::memory_order_relaxed)) {
+        errno = ECANCELED;
+        return nullptr;
+    }
+
     struct sockaddr_in client_addr{};
     socklen_t addr_len = sizeof(client_addr);
     int client_fd = ::accept(handle->fd, (struct sockaddr *)&client_addr, &addr_len);
@@ -86,7 +115,11 @@ extern "C" void *__ry_accept(void *listener) {
     ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
 #endif
 
-    auto *stream = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    auto *stream = new (std::nothrow) TcpStreamHandle;
+    if (!stream) {
+        ::close(client_fd);
+        return nullptr;
+    }
     stream->fd = client_fd;
     return stream;
 }
@@ -147,7 +180,11 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
     // Restore blocking mode
     ::fcntl(fd, F_SETFL, flags);
 
-    auto *stream = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    auto *stream = new (std::nothrow) TcpStreamHandle;
+    if (!stream) {
+        ::close(fd);
+        return nullptr;
+    }
     stream->fd = fd;
     return stream;
 }
@@ -219,8 +256,31 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
 
 extern "C" void __ry_tcp_close(void *handle) {
     if (!handle) return;
-    // Works for both TcpListenerHandle and TcpStreamHandle since fd is at offset 0
-    int fd = ((TcpListenerHandle *)handle)->fd;
-    ::close(fd);
-    free(handle);
+    auto *stream = (TcpStreamHandle *)handle;
+    ::close(stream->fd);
+    delete stream;
+}
+
+extern "C" void __ry_tcp_listener_close(void *listener) {
+    if (!listener) return;
+    auto *handle = (TcpListenerHandle *)listener;
+    ::close(handle->fd);
+    delete handle;
+}
+
+extern "C" void __ry_tcp_listener_shutdown(void *listener) {
+    if (!listener) return;
+    auto *handle = (TcpListenerHandle *)listener;
+    handle->shutdown.store(true, std::memory_order_relaxed);
+    ::shutdown(handle->fd, SHUT_RDWR);
+}
+
+extern "C" int64_t __ry_listener_port(void *listener) {
+    if (!listener) return -1;
+    auto *handle = (TcpListenerHandle *)listener;
+    struct sockaddr_in addr{};
+    socklen_t len = sizeof(addr);
+    if (::getsockname(handle->fd, (struct sockaddr *)&addr, &len) < 0)
+        return -1;
+    return (int64_t)ntohs(addr.sin_port);
 }
