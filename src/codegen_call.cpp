@@ -4599,19 +4599,22 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return builder_.CreateCall(fn, {req}, e.callee);
     }
 
-    // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str>
-    if (e.callee == "http_header" || e.callee == "http_query") {
+    // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str> / http_cookie(req, name) -> Option<str>
+    if (e.callee == "http_header" || e.callee == "http_query" || e.callee == "http_cookie") {
         if (e.args.size() != 2)
             codegenError(e.callee + "() takes exactly 2 arguments");
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
-        if (key->getType() != ptrTy_)
-            codegenError(e.callee + "() key must be str");
+        if (key->getType() != ptrTy_) {
+            std::string param = (e.callee == "http_cookie") ? "name" : "key";
+            codegenError(e.callee + "() " + param + " must be str");
+        }
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
-        std::string hint = (e.callee == "http_header") ? "http_hdr" : "http_qry";
+        std::string hint = (e.callee == "http_header") ? "http_hdr"
+                         : (e.callee == "http_query") ? "http_qry" : "http_ck";
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, hint);
         llvm::Value *isNull = builder_.CreateICmpEQ(result,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), hint + "_null");
@@ -4631,6 +4634,21 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_http_query_all", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_qry_all");
+        map_key_types_[result] = ptrTy_;
+        map_value_types_[result] = ptrTy_;
+        return result;
+    }
+
+    // http_cookies(req) -> Map<str, str>
+    if (e.callee == "http_cookies") {
+        if (e.args.size() != 1)
+            codegenError("http_cookies() takes exactly 1 argument");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_cookies() requires HttpRequest argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_cookies", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_cookies");
         map_key_types_[result] = ptrTy_;
         map_value_types_[result] = ptrTy_;
         return result;
