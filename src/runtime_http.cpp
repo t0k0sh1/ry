@@ -300,7 +300,7 @@ extern "C" const char *__ry_http_reason_phrase(int64_t status) {
         case 415: return "Unsupported Media Type";
         case 416: return "Range Not Satisfiable";
         case 417: return "Expectation Failed";
-        case 418: return "I'm a Teapot";
+        case 418: return "I'm a teapot";
         case 421: return "Misdirected Request";
         case 422: return "Unprocessable Content";
         case 425: return "Too Early";

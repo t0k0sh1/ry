@@ -66,7 +66,7 @@ TEST(RuntimeHttp, ReasonPhrase4xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(415), "Unsupported Media Type");
     EXPECT_STREQ(__ry_http_reason_phrase(416), "Range Not Satisfiable");
     EXPECT_STREQ(__ry_http_reason_phrase(417), "Expectation Failed");
-    EXPECT_STREQ(__ry_http_reason_phrase(418), "I'm a Teapot");
+    EXPECT_STREQ(__ry_http_reason_phrase(418), "I'm a teapot");
     EXPECT_STREQ(__ry_http_reason_phrase(421), "Misdirected Request");
     EXPECT_STREQ(__ry_http_reason_phrase(422), "Unprocessable Content");
     EXPECT_STREQ(__ry_http_reason_phrase(425), "Too Early");
