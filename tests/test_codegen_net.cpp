@@ -1,4 +1,10 @@
 #include "test_codegen_common.hpp"
+#include "ry/runtime_net.hpp"
+#include <sys/socket.h>
+#include <unistd.h>
+#include <cstring>
+#include <vector>
+#include <thread>
 
 static const std::string NET_DECLS = R"(
 @native
@@ -108,4 +114,82 @@ print(val)
 close(ch)
 join(t)
 )"), "42\n");
+}
+
+// ============================================================
+// __ry_send_all: basic full-send via socketpair
+// ============================================================
+
+TEST(SendAll, SmallPayload) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    const char *msg = "hello";
+    ssize_t sent = __ry_send_all(fds[0], msg, 5);
+    EXPECT_EQ(sent, 5);
+
+    char buf[16] = {};
+    ssize_t n = ::recv(fds[1], buf, sizeof(buf), 0);
+    EXPECT_EQ(n, 5);
+    EXPECT_EQ(std::string(buf, 5), "hello");
+
+    ::close(fds[0]);
+    ::close(fds[1]);
+}
+
+TEST(SendAll, LargePayloadWithPartialWrites) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // Shrink socket buffers to force partial writes
+    int bufsize = 4096;
+    ::setsockopt(fds[0], SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
+    ::setsockopt(fds[1], SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+
+    const size_t payload_size = 128 * 1024;
+    std::vector<char> payload(payload_size, 'A');
+
+    // Send in a separate thread since small buffers will block
+    std::thread sender([&]() {
+        ssize_t sent = __ry_send_all(fds[0], payload.data(), payload_size);
+        EXPECT_EQ(sent, (ssize_t)payload_size);
+        ::close(fds[0]);
+    });
+
+    // Receive all data
+    std::vector<char> received;
+    received.reserve(payload_size);
+    char buf[4096];
+    while (true) {
+        ssize_t n = ::recv(fds[1], buf, sizeof(buf), 0);
+        if (n <= 0) break;
+        received.insert(received.end(), buf, buf + n);
+    }
+
+    sender.join();
+    ::close(fds[1]);
+
+    EXPECT_EQ(received.size(), payload_size);
+    EXPECT_EQ(received, payload);
+}
+
+TEST(SendAll, ClosedFdReturnsError) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+    ::close(fds[0]);
+    ::close(fds[1]);
+
+    ssize_t sent = __ry_send_all(fds[0], "x", 1);
+    EXPECT_EQ(sent, -1);
+}
+
+TEST(SendAll, ZeroLengthSucceeds) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    ssize_t sent = __ry_send_all(fds[0], "", 0);
+    EXPECT_EQ(sent, 0);
+
+    ::close(fds[0]);
+    ::close(fds[1]);
 }

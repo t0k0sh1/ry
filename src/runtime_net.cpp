@@ -46,6 +46,9 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
 
     int opt = 1;
     ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+#ifdef SO_NOSIGPIPE
+    ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
+#endif
 
     if (::bind(fd, result->ai_addr, result->ai_addrlen) < 0) {
         ::close(fd);
@@ -78,6 +81,10 @@ extern "C" void *__ry_accept(void *listener) {
     int client_fd = ::accept(handle->fd, (struct sockaddr *)&client_addr, &addr_len);
     if (client_fd < 0)
         return nullptr;
+#ifdef SO_NOSIGPIPE
+    int nosig = 1;
+    ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
+#endif
 
     auto *stream = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
     stream->fd = client_fd;
@@ -100,6 +107,12 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
         ::freeaddrinfo(result);
         return nullptr;
     }
+#ifdef SO_NOSIGPIPE
+    {
+        int nosig = 1;
+        ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
+    }
+#endif
 
     // Non-blocking connect with 5-second timeout
     int flags = ::fcntl(fd, F_GETFL, 0);
@@ -139,10 +152,31 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
     return stream;
 }
 
+ssize_t __ry_send_all(int fd, const void *buf, size_t len) {
+    auto *data = static_cast<const char *>(buf);
+    size_t remaining = len;
+    // Use MSG_NOSIGNAL on Linux to suppress SIGPIPE (macOS uses SO_NOSIGPIPE instead)
+    int flags = 0;
+#ifdef MSG_NOSIGNAL
+    flags = MSG_NOSIGNAL;
+#endif
+    while (remaining > 0) {
+        ssize_t n = ::send(fd, data, remaining, flags);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0) return -1;  // defensive: should not happen with remaining > 0
+        data += n;
+        remaining -= static_cast<size_t>(n);
+    }
+    return static_cast<ssize_t>(len);
+}
+
 extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
     auto *handle = (TcpStreamHandle *)stream;
     auto *header = (IOListHeader *)byte_list;
-    ssize_t sent = ::send(handle->fd, header->data, (size_t)header->len, 0);
+    ssize_t sent = __ry_send_all(handle->fd, header->data, (size_t)header->len);
     if (sent < 0) {
         fprintf(stderr, "runtime error: tcp send() failed\n");
         exit(1);

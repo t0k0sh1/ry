@@ -1,6 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <sys/types.h>
+
+// Send all bytes, retrying on EINTR and partial writes.
+// Returns total bytes sent, or -1 on error.
+ssize_t __ry_send_all(int fd, const void *buf, size_t len);
 
 extern "C" {
 
