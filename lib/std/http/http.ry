@@ -16,4 +16,10 @@ fn http_header(req: HttpRequest, key: str) -> Option<str>
 fn http_body(req: HttpRequest) -> str
 
 @native
+fn http_query(req: HttpRequest, key: str) -> Option<str>
+
+@native
+fn http_query_all(req: HttpRequest) -> Map<str, str>
+
+@native
 fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse

@@ -25,6 +25,9 @@ struct HttpRequestHandle {
     char **header_values;
     int64_t header_count;
     char *body;
+    char **query_keys;
+    char **query_values;
+    int64_t query_count;
 };
 
 struct HttpResponseHandle {
@@ -44,6 +47,90 @@ struct MapHeader {
     int64_t bucket_count;
     void *buckets;
 };
+
+// Forward declaration for hash table construction
+extern "C" int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
+                                        int64_t newBucketCount);
+
+static int hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static std::string url_decode(const std::string &src) {
+    std::string out;
+    out.reserve(src.size());
+    for (size_t i = 0; i < src.size(); i++) {
+        if (src[i] == '+') {
+            out += ' ';
+        } else if (src[i] == '%' && i + 2 < src.size()) {
+            int hi = hex_digit(src[i + 1]);
+            int lo = hex_digit(src[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out += (char)(hi * 16 + lo);
+                i += 2;
+            } else {
+                out += '%';
+            }
+        } else {
+            out += src[i];
+        }
+    }
+    return out;
+}
+
+static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
+    if (qs.empty()) {
+        req->query_keys = nullptr;
+        req->query_values = nullptr;
+        req->query_count = 0;
+        return;
+    }
+
+    struct QParam { char *key; char *val; };
+    std::vector<QParam> params;
+
+    size_t pos = 0;
+    while (pos < qs.size()) {
+        size_t amp = qs.find('&', pos);
+        if (amp == std::string::npos) amp = qs.size();
+        if (amp > pos) {
+            std::string pair = qs.substr(pos, amp - pos);
+            size_t eq = pair.find('=');
+            std::string key, val;
+            if (eq != std::string::npos) {
+                key = url_decode(pair.substr(0, eq));
+                val = url_decode(pair.substr(eq + 1));
+            } else {
+                key = url_decode(pair);
+            }
+            // First-value-wins for duplicate keys
+            bool dup = false;
+            for (auto &p : params) {
+                if (strcmp(p.key, key.c_str()) == 0) { dup = true; break; }
+            }
+            if (!dup)
+                params.push_back({strdup(key.c_str()), strdup(val.c_str())});
+        }
+        pos = amp + 1;
+    }
+
+    int64_t count = (int64_t)params.size();
+    req->query_count = count;
+    if (count > 0) {
+        req->query_keys = (char **)malloc(sizeof(char *) * (size_t)count);
+        req->query_values = (char **)malloc(sizeof(char *) * (size_t)count);
+        for (int64_t i = 0; i < count; i++) {
+            req->query_keys[i] = params[(size_t)i].key;
+            req->query_values[i] = params[(size_t)i].val;
+        }
+    } else {
+        req->query_keys = nullptr;
+        req->query_values = nullptr;
+    }
+}
 
 extern "C" int64_t __ry_http_parse_content_length(const char *value) {
     if (!value) return -1;
@@ -114,14 +201,22 @@ extern "C" void *__ry_http_read_request(void *stream) {
     std::string method = request_line.substr(0, sp1);
     req->method = strdup(method.c_str());
 
-    // Parse path
+    // Parse path and query string
     size_t sp2 = request_line.find(' ', sp1 + 1);
-    std::string path;
+    std::string full_path;
     if (sp2 != std::string::npos)
-        path = request_line.substr(sp1 + 1, sp2 - sp1 - 1);
+        full_path = request_line.substr(sp1 + 1, sp2 - sp1 - 1);
     else
-        path = request_line.substr(sp1 + 1);
-    req->path = strdup(path.c_str());
+        full_path = request_line.substr(sp1 + 1);
+
+    size_t qmark = full_path.find('?');
+    if (qmark != std::string::npos) {
+        req->path = strdup(full_path.substr(0, qmark).c_str());
+        parse_query_string(full_path.substr(qmark + 1), req);
+    } else {
+        req->path = strdup(full_path.c_str());
+        parse_query_string("", req);
+    }
 
     // Parse headers
     size_t headers_start = line_end + 2;
@@ -240,6 +335,42 @@ extern "C" const char *__ry_http_header(void *r, const char *key) {
 extern "C" const char *__ry_http_body(void *r) {
     auto *req = (HttpRequestHandle *)r;
     return req->body;
+}
+
+extern "C" const char *__ry_http_query(void *r, const char *key) {
+    auto *req = (HttpRequestHandle *)r;
+    for (int64_t i = 0; i < req->query_count; i++) {
+        if (strcmp(req->query_keys[i], key) == 0)
+            return req->query_values[i];
+    }
+    return nullptr;
+}
+
+extern "C" void *__ry_http_query_all(void *r) {
+    auto *req = (HttpRequestHandle *)r;
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    map->len = req->query_count;
+    map->cap = req->query_count;
+    if (req->query_count > 0) {
+        map->keys = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
+        map->vals = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
+        for (int64_t i = 0; i < req->query_count; i++) {
+            map->keys[i] = strdup(req->query_keys[i]);
+            map->vals[i] = strdup(req->query_values[i]);
+        }
+        // Load factor <= 0.5 keeps linear probing fast
+        int64_t bc = 4;
+        while (bc < req->query_count * 2) bc *= 2;
+        map->bucket_count = bc;
+        map->buckets = __ry_ht_rehash_str((const char **)map->keys,
+                                           map->len, bc);
+    } else {
+        map->keys = nullptr;
+        map->vals = nullptr;
+        map->bucket_count = 4;
+        map->buckets = __ry_ht_rehash_str(nullptr, 0, 4);
+    }
+    return map;
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
@@ -365,6 +496,12 @@ extern "C" void __ry_http_request_free(void *r) {
     }
     free(req->header_keys);
     free(req->header_values);
+    for (int64_t i = 0; i < req->query_count; i++) {
+        free(req->query_keys[i]);
+        free(req->query_values[i]);
+    }
+    free(req->query_keys);
+    free(req->query_values);
     free(req->body);
     free(req);
 }
