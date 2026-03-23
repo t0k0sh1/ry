@@ -31,7 +31,7 @@ fn write_bytes(path: str, data: List<byte>) -> Unit
 
 # Byte conversions
 @native
-fn str_to_bytes(s: str) -> List<byte>
+fn str_to_bytes(string: str) -> List<byte>
 
 @native
-fn bytes_to_str(bs: List<byte>) -> str
+fn bytes_to_str(bytes: List<byte>) -> str

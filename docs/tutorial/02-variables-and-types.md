@@ -86,7 +86,7 @@ print(a != b)   # true
 print(a < b)    # true ("H" < "W")
 
 # Length
-print(len(a))   # 5
+print(length(a))   # 5
 
 # Substring checks
 s = "Hello, World!"

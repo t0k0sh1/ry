@@ -86,7 +86,7 @@ print(a != b)   # true
 print(a < b)    # true（"H" < "W"）
 
 # 長さ
-print(len(a))   # 5
+print(length(a))   # 5
 
 # 部分文字列チェック
 s = "Hello, World!"

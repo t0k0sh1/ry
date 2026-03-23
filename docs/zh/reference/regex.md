@@ -77,7 +77,7 @@ print(s)  # aXbXcX
 
 ```ry
 parts = regex_split("\\s+", "hello  world  foo")
-print(len(parts))  # 3
+print(length(parts))  # 3
 print(parts[0])    # hello
 ```
 
@@ -85,7 +85,7 @@ print(parts[0])    # hello
 
 ```ry
 matches = regex_find_all("[0-9]+", "a1b23c456")
-print(len(matches))  # 3
+print(length(matches))  # 3
 print(matches[0])    # 1
 print(matches[1])    # 23
 ```
@@ -111,7 +111,7 @@ print(l)  # X and X
 
 # 取得個別 HTML 標籤
 tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
-print(len(tags))  # 3
+print(length(tags))  # 3
 ```
 
 > **注意：** 非貪婪匹配控制整體匹配長度。沒有使用括號分組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
@@ -125,7 +125,7 @@ print(pos)  # 6
 
 # 取得所有單字
 words = regex_find_all("\\b\\w+\\b", "hello world foo")
-print(len(words))  # 3
+print(length(words))  # 3
 
 # \B 匹配非邊界（單字內部）
 pos2 = regex_search("\\Bworld", "helloworld")

@@ -86,7 +86,7 @@ print(a != b)   # true
 print(a < b)    # true（"H" < "W"）
 
 # 長度
-print(len(a))   # 5
+print(length(a))   # 5
 
 # 子字串檢查
 s = "Hello, World!"

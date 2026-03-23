@@ -133,7 +133,7 @@ match write_text(")" + path + R"(", "temp"):
 TEST_F(CodeGenTest, IOStrToBytes) {
     EXPECT_EQ(runSource(IO_DECLS + R"(
 bs = str_to_bytes("ABC")
-print(len(bs))
+print(length(bs))
 print(bs[0])
 print(bs[1])
 print(bs[2])
@@ -167,7 +167,7 @@ match write_bytes(")" + path + R"(", bs):
                 match bytes_to_str(rb):
                     case Ok(s):
                         print(s)
-                        print(len(rb))
+                        print(length(rb))
                     case Err(e):
                         print(e.message)
             case Err(e):

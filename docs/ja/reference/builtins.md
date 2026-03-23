@@ -9,8 +9,8 @@
 | 関数 | 説明 |
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
-| `len(x)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
-| `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
+| `length(value)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
+| `range(count)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
@@ -47,9 +47,9 @@
 | `tap(list, fn)` | 各要素に fn を呼び出し、元のリストを返す |
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
 | `map(list, fn)` | 各要素を変換した新しいリストを返す |
-| `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
-| `sort!(list)` / `sort!(list, comp)` | リストをその場でソートする（ミューテーション操作） |
-| `insert(list, i, val)` | インデックス i に要素を挿入 |
+| `sort(list)` / `sort(list, comparator)` | ソート済みの新しいリストを返す（デフォルト昇順） |
+| `sort!(list)` / `sort!(list, comparator)` | リストをその場でソートする（ミューテーション操作） |
+| `insert(list, i, value)` | インデックス i に要素を挿入 |
 | `remove_at(list, i)` | インデックス i の要素を削除して返す |
 | `items(map)` | (キー, 値) タプルのリストを返す |
 | `remove(map, key)` | 指定したキーのエントリを削除 |
@@ -66,21 +66,21 @@
 
 | 関数 | 説明 |
 |------|------|
-| `contains(s, sub)` | 部分文字列が含まれるか |
-| `starts_with(s, prefix)` | 接頭辞で始まるか |
-| `ends_with(s, suffix)` | 接尾辞で終わるか |
-| `find(s, sub)` | 部分文字列の文字位置（`Option<int>`） |
-| `byte_len(s)` | 文字列のバイト長を返す |
-| `substring(s, start, end)` | 部分文字列を取得 |
-| `char_at(s, i)` | 指定位置の文字を取得 |
-| `replace(s, old, new)` | 部分文字列を全置換 |
-| `to_upper(s)` / `to_lower(s)` | 大文字・小文字変換 |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | 空白除去 |
-| `repeat(s, n)` | 文字列を n 回繰り返す |
-| `reverse(s)` | 文字列を逆順にする |
-| `split(s, delim)` | 文字列を分割してリストを返す |
+| `contains(string, substring)` | 部分文字列が含まれるか |
+| `starts_with(string, prefix)` | 接頭辞で始まるか |
+| `ends_with(string, suffix)` | 接尾辞で終わるか |
+| `find(string, substring)` | 部分文字列の文字位置（`Option<int>`） |
+| `byte_len(string)` | 文字列のバイト長を返す |
+| `substring(string, start, end)` | 部分文字列を取得 |
+| `char_at(string, i)` | 指定位置の文字を取得 |
+| `replace(string, old, new)` | 部分文字列を全置換 |
+| `to_upper(string)` / `to_lower(string)` | 大文字・小文字変換 |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | 空白除去 |
+| `repeat(string, count)` | 文字列を n 回繰り返す |
+| `reverse(string)` | 文字列を逆順にする |
+| `split(string, delimiter)` | 文字列を分割してリストを返す |
 | `join(list, sep)` | リストの文字列をセパレータで結合 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換 |
+| `to_int(string)` / `to_float(string)` / `to_str(v)` | 型変換 |
 
 → 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
 
@@ -134,25 +134,25 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**シグネチャ:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**シグネチャ:** `length(value: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 リスト・マップ・セットの要素数、または文字列の UTF-8 文字数を返します。バイト長が必要な場合は `byte_len()` を使用してください。
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 文字数)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3 (UTF-8 文字数)
 ```
 
 ---
 
 ## has_key
 
-**シグネチャ:** `has_key(m: Map<K, V>, key: K) -> bool`
+**シグネチャ:** `has_key(map: Map<K, V>, key: K) -> bool`
 
 マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
 
@@ -166,7 +166,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 ## add
 
-**シグネチャ:** `add(s: Set<T>, value: T)`
+**シグネチャ:** `add(set: Set<T>, value: T)`
 
 セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
 
@@ -175,14 +175,14 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 通常の呼び出し
 s.add(1)          # 既に存在するため無視
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
 
 ## remove
 
-**シグネチャ:** `remove(s: Set<T>, value: T)`
+**シグネチャ:** `remove(set: Set<T>, value: T)`
 
 セットから要素を削除します。UFCS記法も使用可能です。
 
@@ -196,13 +196,13 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
+**シグネチャ:** `range(count: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 整数のリストを生成します。
 
 | 形式 | 生成される値 |
 |------|------------|
-| `range(n)` | `[0, 1, ..., n-1]` |
+| `range(count)` | `[0, 1, ..., count-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
 | `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (`end` は含まない) |
 
@@ -247,7 +247,7 @@ exit(1)        # エラー終了
 ```python
 # 実行: ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
@@ -305,7 +305,7 @@ print(xs)   # [1, 2, 3]（変更なし）
 
 **シグネチャ:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `len(list)` まで）にクランプされます。UFCS記法も使用可能です。
+`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `length(list)` まで）にクランプされます。UFCS記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -317,9 +317,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 
 ## take
 
-**シグネチャ:** `take(list: List<T>, n: int) -> List<T>`
+**シグネチャ:** `take(list: List<T>, count: int) -> List<T>`
 
-先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+先頭 `count` 要素の新しいリストを返します。`count` がリストの長さを超える場合はリスト全体のコピーを返します。`count <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -376,7 +376,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comparator: fn(T, T) -> bool) -> List<T>`
 
 ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。UFCS記法も使用可能です。
 
@@ -393,7 +393,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comparator: fn(T, T) -> bool)`
 
 リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS記法も使用可能です。
 
@@ -468,7 +468,7 @@ print(last([10, 20, 30]))   # Some(30)
 
 ## get (Map)
 
-**シグネチャ:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+**シグネチャ:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default_value: V) -> V`
 
 2引数形式はキーの値を `Option<V>` として返します。3引数形式はキーの値またはデフォルト値を返します。
 

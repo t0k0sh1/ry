@@ -85,10 +85,10 @@ print(xs[i])   # 2
 xs[0] = 99
 ```
 
-### len
+### length
 
 ```python
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -240,10 +240,10 @@ m["c"] = 3    # Insert new entry
 m["a"] = 99   # Update existing entry
 ```
 
-### len
+### length
 
 ```python
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -318,10 +318,10 @@ s.remove(1)    # Remove element
 s.add(2)       # Ignored since it already exists
 ```
 
-### len / print
+### length / print
 
 ```python
-print(len(s))  # 3
+print(length(s))  # 3
 print(s)       # {2, 3, 4}
 ```
 

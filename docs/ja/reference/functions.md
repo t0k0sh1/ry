@@ -255,7 +255,7 @@ result = 5.double().add_one()   # double(5) → 10, add_one(10) → 11
 
 ```python
 p = Point(3, 4)
-len = p.x.to_float()   # フィールドアクセス + UFCS
+length = p.x.to_float()   # フィールドアクセス + UFCS
 ```
 
 ---

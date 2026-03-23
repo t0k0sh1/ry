@@ -63,7 +63,7 @@ print(file_exists("hello.txt"))   # false
 from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
-print(len(bs))    # 3
+print(length(bs))    # 3
 
 write_bytes("data.bin", bs)
 rb = read_bytes("data.bin")
@@ -94,6 +94,6 @@ print(f"Hello, {name}!")
 
 ## 備考
 
-- `List<byte>` をバッファ型として使用します。標準的なリスト操作（`len()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
+- `List<byte>` をバッファ型として使用します。標準的なリスト操作（`length()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
 - ファイルパスは絶対パスを指定しない限り、カレントディレクトリからの相対パスとなります。
 - `write_text` と `write_bytes` は既存ファイルを上書きします。既存ファイルに追記するには `append_text` を使用してください。

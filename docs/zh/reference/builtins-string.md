@@ -4,7 +4,7 @@
 
 針對字串（`str`）的操作函式一覽。所有函式皆可使用 UFCS 記法。
 
-> **注意：** 所有字串操作皆支援 UTF-8。`len()`、`char_at()`、`substring()`、`find()` 和 `reverse()` 以 Unicode 碼位為單位操作，而非位元組。如需取得位元組長度，請使用 `byte_len()`。
+> **注意：** 所有字串操作皆支援 UTF-8。`length()`、`char_at()`、`substring()`、`find()` 和 `reverse()` 以 Unicode 碼位為單位操作，而非位元組。如需取得位元組長度，請使用 `byte_len()`。
 
 ## 函式一覽
 
@@ -67,9 +67,9 @@
 
 ## contains
 
-**簽名：** `contains(s: str, sub: str) -> bool`
+**簽名：** `contains(string: str, substring: str) -> bool`
 
-回傳字串 `s` 中是否包含子字串 `sub`。
+回傳字串 `string` 中是否包含子字串 `substring`。
 
 ```python
 print(contains("hello", "ell"))   # true
@@ -80,9 +80,9 @@ print("hello".contains("xyz"))    # false (UFCS)
 
 ## starts_with
 
-**簽名：** `starts_with(s: str, prefix: str) -> bool`
+**簽名：** `starts_with(string: str, prefix: str) -> bool`
 
-回傳字串 `s` 是否以 `prefix` 開頭。
+回傳字串 `string` 是否以 `prefix` 開頭。
 
 ```python
 print(starts_with("hello", "hel"))   # true
@@ -93,9 +93,9 @@ print("hello".starts_with("world"))  # false (UFCS)
 
 ## ends_with
 
-**簽名：** `ends_with(s: str, suffix: str) -> bool`
+**簽名：** `ends_with(string: str, suffix: str) -> bool`
 
-回傳字串 `s` 是否以 `suffix` 結尾。
+回傳字串 `string` 是否以 `suffix` 結尾。
 
 ```python
 print(ends_with("hello", "llo"))   # true
@@ -106,9 +106,9 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**簽名：** `find(s: str, sub: str) -> Option<int>`
+**簽名：** `find(string: str, substring: str) -> Option<int>`
 
-回傳字串 `s` 中子字串 `sub` 首次出現的字元位置。未找到時回傳 `None`。
+回傳字串 `string` 中子字串 `substring` 首次出現的字元位置。未找到時回傳 `None`。
 
 ```python
 print(find("hello world", "world"))   # Some(6)
@@ -120,9 +120,9 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 ## substring
 
-**簽名：** `substring(s: str, start: int, end: int) -> str`
+**簽名：** `substring(string: str, start: int, end: int) -> str`
 
-回傳字串 `s` 從 `start` 到 `end`（不含）的子字串。索引為字元位置（UTF-8 感知）。
+回傳字串 `string` 從 `start` 到 `end`（不含）的子字串。索引為字元位置（UTF-8 感知）。
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -134,9 +134,9 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 ## char_at
 
-**簽名：** `char_at(s: str, i: int) -> str`
+**簽名：** `char_at(string: str, i: int) -> str`
 
-回傳字串 `s` 第 `i` 個位置的 UTF-8 字元作為字串。
+回傳字串 `string` 第 `i` 個位置的 UTF-8 字元作為字串。
 
 ```python
 print(char_at("hello", 0))   # h
@@ -147,9 +147,9 @@ print("abc".char_at(2))       # c (UFCS)
 
 ## replace
 
-**簽名：** `replace(s: str, old: str, new: str) -> str`
+**簽名：** `replace(string: str, old: str, new: str) -> str`
 
-回傳將字串 `s` 中所有 `old` 替換為 `new` 後的新字串。
+回傳將字串 `string` 中所有 `old` 替換為 `new` 後的新字串。
 
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
@@ -161,7 +161,7 @@ print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
 
 ## to_upper
 
-**簽名：** `to_upper(s: str) -> str`
+**簽名：** `to_upper(string: str) -> str`
 
 回傳將 ASCII 小寫字母（a-z）轉換為大寫後的新字串。
 
@@ -174,7 +174,7 @@ print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 
 ## to_lower
 
-**簽名：** `to_lower(s: str) -> str`
+**簽名：** `to_lower(string: str) -> str`
 
 回傳將 ASCII 大寫字母（A-Z）轉換為小寫後的新字串。
 
@@ -187,7 +187,7 @@ print("Hello World".to_lower())  # hello world (UFCS)
 
 ## trim
 
-**簽名：** `trim(s: str) -> str`
+**簽名：** `trim(string: str) -> str`
 
 回傳去除字串前後空白字元（空格、定位字元、換行、回車）後的新字串。
 
@@ -200,7 +200,7 @@ print("  hi  ".trim())     # hi (UFCS)
 
 ## trim_start
 
-**簽名：** `trim_start(s: str) -> str`
+**簽名：** `trim_start(string: str) -> str`
 
 回傳去除字串開頭空白字元後的新字串。
 
@@ -213,7 +213,7 @@ print("  hi".trim_start())       # hi (UFCS)
 
 ## trim_end
 
-**簽名：** `trim_end(s: str) -> str`
+**簽名：** `trim_end(string: str) -> str`
 
 回傳去除字串結尾空白字元後的新字串。
 
@@ -226,9 +226,9 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 ## repeat
 
-**簽名：** `repeat(s: str, n: int) -> str`
+**簽名：** `repeat(string: str, count: int) -> str`
 
-回傳將字串 `s` 重複 `n` 次後的新字串。
+回傳將字串 `string` 重複 `count` 次後的新字串。
 
 ```python
 print(repeat("ab", 3))     # ababab
@@ -239,7 +239,7 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 ## reverse
 
-**簽名：** `reverse(s: str) -> str`
+**簽名：** `reverse(string: str) -> str`
 
 回傳字元順序反轉後的新字串（UTF-8 感知）。
 
@@ -252,23 +252,23 @@ print("abc".reverse())     # cba (UFCS)
 
 ## byte_len
 
-**簽名：** `byte_len(s: str) -> int`
+**簽名：** `byte_len(string: str) -> int`
 
-回傳字串 `s` 的位元組長度。與回傳 UTF-8 字元數的 `len()` 不同，`byte_len()` 回傳的是位元組數。
+回傳字串 `string` 的位元組長度。與回傳 UTF-8 字元數的 `length()` 不同，`byte_len()` 回傳的是位元組數。
 
 ```python
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
-print(len("あいう"))        # 3 (字元數)
+print(length("あいう"))        # 3 (字元數)
 ```
 
 ---
 
 ## split
 
-**簽名：** `split(s: str, delim: str) -> List<str>`
+**簽名：** `split(string: str, delimiter: str) -> List<str>`
 
-以分隔符號 `delim` 分割字串 `s`，回傳 `List<str>`。
+以分隔符號 `delimiter` 分割字串 `string`，回傳 `List<str>`。
 
 ```python
 parts = split("a,b,c", ",")
@@ -286,7 +286,7 @@ for word in "hello world".split(" "):
 
 ## join
 
-**簽名：** `join(xs: List<str>, sep: str) -> str`
+**簽名：** `join(values: List<str>, sep: str) -> str`
 
 以分隔符號 `sep` 連接字串串列的元素，回傳結合後的字串。
 
@@ -300,7 +300,7 @@ print(parts.join("-"))         # a-b-c (UFCS)
 
 ## to_int
 
-**簽名：** `to_int(s: str) -> int`
+**簽名：** `to_int(string: str) -> int`
 
 將字串轉換為整數。
 
@@ -314,7 +314,7 @@ print("123".to_int())     # 123 (UFCS)
 
 ## to_float
 
-**簽名：** `to_float(s: str) -> float`
+**簽名：** `to_float(string: str) -> float`
 
 將字串轉換為浮點數。
 

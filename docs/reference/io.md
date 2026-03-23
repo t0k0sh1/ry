@@ -68,7 +68,7 @@ match delete_file("hello.txt"):
 from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
-print(len(bs))    # 3
+print(length(bs))    # 3
 
 match write_bytes("data.bin", bs):
     case Ok(_):
@@ -115,6 +115,6 @@ match read_text("missing.txt"):
 
 ## Notes
 
-- `List<byte>` is used as the buffer type. Standard list operations (`len()`, `append()`, `slice()`, index access) all work with byte lists.
+- `List<byte>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.

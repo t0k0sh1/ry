@@ -14,7 +14,7 @@ describe("@each parameterized tests", fn():
         ("ry", 2)
     ])
     it("length of \"{0}\" is {1}", fn(s: str, expected: int):
-        expect(len(s)).to_eq(expected)
+        expect(length(s)).to_eq(expected)
     )
 )
 

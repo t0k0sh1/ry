@@ -498,12 +498,12 @@ TEST_F(CodeGenTest, ExitTooManyArgsThrows) {
 // ===== args() テスト =====
 
 TEST_F(CodeGenTest, ArgsEmpty) {
-    EXPECT_EQ(runSourceWithArgs("a = args()\nprint(len(a))", {}), "0\n");
+    EXPECT_EQ(runSourceWithArgs("a = args()\nprint(length(a))", {}), "0\n");
 }
 
 TEST_F(CodeGenTest, ArgsWithValues) {
     EXPECT_EQ(runSourceWithArgs(
-        "a = args()\nprint(len(a))\nprint(a[0])\nprint(a[1])",
+        "a = args()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
         {"hello", "world"}), "2\nhello\nworld\n");
 }
 

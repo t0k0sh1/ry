@@ -63,7 +63,7 @@ print(file_exists("hello.txt"))   # false
 from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
-print(len(bs))    # 3
+print(length(bs))    # 3
 
 write_bytes("data.bin", bs)
 rb = read_bytes("data.bin")
@@ -94,6 +94,6 @@ print(f"Hello, {name}!")
 
 ## 備註
 
-- 使用 `List<byte>` 作為緩衝區型別。標準串列操作（`len()`、`append()`、`slice()`、索引存取）均可用於位元組串列。
+- 使用 `List<byte>` 作為緩衝區型別。標準串列操作（`length()`、`append()`、`slice()`、索引存取）均可用於位元組串列。
 - 檔案路徑若未指定絕對路徑，則為相對於當前工作目錄的相對路徑。
 - `write_text` 與 `write_bytes` 會覆蓋既有檔案。若要追加內容，請使用 `append_text`。

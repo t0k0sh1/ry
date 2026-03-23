@@ -1050,7 +1050,7 @@ TEST_F(CodeGenTest, ForKVInMap) {
 TEST_F(CodeGenTest, RangeExpr) {
     std::string src =
         "xs = 1 .. 5\n"
-        "print(len(xs))";
+        "print(length(xs))";
     EXPECT_EQ(runSource(src), "5\n");
 }
 

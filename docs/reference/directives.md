@@ -108,7 +108,7 @@ Declares a function whose implementation is provided by the runtime (built-in). 
 
 ```
 @native
-fn contains(s: str, sub: str) -> bool
+fn contains(string: str, substring: str) -> bool
 
 print(contains("hello world", "world"))  # true
 ```
@@ -126,7 +126,7 @@ print("hello" + " world")  # hello world
 
 ```
 @native
-fn to_upper(s: str) -> str
+fn to_upper(string: str) -> str
 
 print("hello".to_upper())  # HELLO
 ```
@@ -141,9 +141,9 @@ fn range(n: int) -> List<int>
 @native
 fn range(start: int, end: int) -> List<int>
 
-print(len(range(5)))       # OK: matches 1-arg overload
-print(len(range(1, 10)))   # OK: matches 2-arg overload
-print(len(range()))        # Error: expects 1 or 2 argument(s), but got 0
+print(length(range(5)))       # OK: matches 1-arg overload
+print(length(range(1, 10)))   # OK: matches 2-arg overload
+print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
 ```
 
 **Standard library declarations (`core/`):**
@@ -152,7 +152,7 @@ The `core/` directory contains `@native` declarations for all built-in functions
 
 | File | Contents |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
+| `core/builtins.ry` | `print`, `length`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |

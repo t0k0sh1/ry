@@ -1,4 +1,4 @@
-describe("len", fn():
+describe("length", fn():
     it("List", fn():
         expect([1, 2, 3]).to_have_length(3)
 

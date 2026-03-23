@@ -93,7 +93,7 @@ from mypackage import add   # 僅匯入 add
 ## 標準函式庫 (`std`)
 
 `std` 套件會自動匯入到每個程式中。提供的功能：
-- 內建函式（`print`, `len`, `range` 等）
+- 內建函式（`print`, `length`, `range` 等）
 - 字串函式（`contains`, `find`, `replace` 等）
 - 型別轉換函式（`to_int`, `to_float`, `to_str`）
 - 集合函式（`map`, `filter`, `sort` 等）
