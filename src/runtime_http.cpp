@@ -6,6 +6,7 @@
 #include <cstring>
 #include <strings.h>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -69,7 +70,14 @@ static std::string url_decode(const std::string &src) {
             int hi = hex_digit(src[i + 1]);
             int lo = hex_digit(src[i + 2]);
             if (hi >= 0 && lo >= 0) {
-                out += (char)(hi * 16 + lo);
+                char decoded = static_cast<char>(hi * 16 + lo);
+                if (decoded == '\0') {
+                    out += '%';
+                    out += src[i + 1];
+                    out += src[i + 2];
+                } else {
+                    out += decoded;
+                }
                 i += 2;
             } else {
                 out += '%';
@@ -91,6 +99,7 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
 
     struct QParam { char *key; char *val; };
     std::vector<QParam> params;
+    std::unordered_set<std::string> seen_keys;
 
     size_t pos = 0;
     while (pos < qs.size()) {
@@ -107,11 +116,7 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
                 key = url_decode(pair);
             }
             // First-value-wins for duplicate keys
-            bool dup = false;
-            for (auto &p : params) {
-                if (strcmp(p.key, key.c_str()) == 0) { dup = true; break; }
-            }
-            if (!dup)
+            if (seen_keys.insert(key).second)
                 params.push_back({strdup(key.c_str()), strdup(val.c_str())});
         }
         pos = amp + 1;
