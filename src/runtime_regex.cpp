@@ -663,7 +663,19 @@ public:
                         bestEnd = E;
                     }
                     if (preferShortest && bestStart >= 0) {
-                        return {bestStart, bestEnd};
+                        // Only return once no active thread has an earlier
+                        // start position — preserves leftmost-start semantics.
+                        bool hasEarlierStart = false;
+                        for (NFAState *t : current_) {
+                            if (t != matchState_ &&
+                                (int64_t)t->matchStartPos < bestStart) {
+                                hasEarlierStart = true;
+                                break;
+                            }
+                        }
+                        if (!hasEarlierStart) {
+                            return {bestStart, bestEnd};
+                        }
                     }
                     break;
                 }
@@ -741,15 +753,12 @@ public:
                     int64_t E = (int64_t)i;
 
                     if (preferShortest) {
-                        // Non-greedy: emit immediately
-                        results.push_back({S, E});
-                        if (E == S) {
-                            discardBefore = (size_t)S + 1;
-                        } else {
-                            discardBefore = (size_t)E;
+                        // Non-greedy: record as pending, emit only once
+                        // no earlier-start thread is active (leftmost-first).
+                        if (pendingStart == -1 || S < pendingStart) {
+                            pendingStart = S;
+                            pendingEnd = E;
                         }
-                        pendingStart = -1;
-                        pendingEnd = -1;
                     } else {
                         // Greedy: record as pending, wait for longest
                         if (pendingStart == -1 || S < pendingStart ||
@@ -762,9 +771,26 @@ public:
                 }
             }
 
-            // For greedy: check if pending match's threads are all gone
-            if (!preferShortest && pendingStart >= 0) {
-                if (!hasActiveThreadFrom((size_t)pendingStart)) {
+            // Emit pending match once no earlier-start thread can
+            // produce a better result (leftmost-first semantics).
+            if (pendingStart >= 0) {
+                bool canEmit;
+                if (preferShortest) {
+                    // Non-greedy: emit once no thread has an earlier start
+                    bool hasEarlierStart = false;
+                    for (NFAState *s : current_) {
+                        if (s != matchState_ &&
+                            (int64_t)s->matchStartPos < pendingStart) {
+                            hasEarlierStart = true;
+                            break;
+                        }
+                    }
+                    canEmit = !hasEarlierStart;
+                } else {
+                    // Greedy: emit once no thread from the same start remains
+                    canEmit = !hasActiveThreadFrom((size_t)pendingStart);
+                }
+                if (canEmit) {
                     results.push_back({pendingStart, pendingEnd});
                     if (pendingEnd == pendingStart) {
                         discardBefore = (size_t)pendingStart + 1;
