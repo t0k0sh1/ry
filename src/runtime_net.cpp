@@ -184,13 +184,17 @@ extern "C" int64_t __ry_tcp_send(void *stream, void *byte_list) {
     return (int64_t)sent;
 }
 
+static IOListHeader *makeEmptyIOList() {
+    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+    header->len = 0;
+    header->cap = 0;
+    header->data = nullptr;
+    return header;
+}
+
 extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
     if (max_bytes <= 0) {
-        auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-        header->len = 0;
-        header->cap = 0;
-        header->data = nullptr;
-        return header;
+        return makeEmptyIOList();
     }
     auto *handle = (TcpStreamHandle *)stream;
     struct timeval tv = {30, 0};
@@ -198,11 +202,10 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
     header->data = (int8_t *)malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
-    if (n < 0) {
-        // Connection error: return empty list
-        header->len = 0;
-        header->cap = max_bytes;
-        return header;
+    if (n <= 0) {
+        free(header->data);
+        free(header);
+        return makeEmptyIOList();
     }
     header->len = (int64_t)n;
     header->cap = max_bytes;
