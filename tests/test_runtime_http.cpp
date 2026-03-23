@@ -50,22 +50,31 @@ TEST(RuntimeHttp, ReasonPhrase3xx) {
 TEST(RuntimeHttp, ReasonPhrase4xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(400), "Bad Request");
     EXPECT_STREQ(__ry_http_reason_phrase(401), "Unauthorized");
+    EXPECT_STREQ(__ry_http_reason_phrase(402), "Payment Required");
     EXPECT_STREQ(__ry_http_reason_phrase(403), "Forbidden");
     EXPECT_STREQ(__ry_http_reason_phrase(404), "Not Found");
     EXPECT_STREQ(__ry_http_reason_phrase(405), "Method Not Allowed");
     EXPECT_STREQ(__ry_http_reason_phrase(406), "Not Acceptable");
+    EXPECT_STREQ(__ry_http_reason_phrase(407), "Proxy Authentication Required");
     EXPECT_STREQ(__ry_http_reason_phrase(408), "Request Timeout");
     EXPECT_STREQ(__ry_http_reason_phrase(409), "Conflict");
     EXPECT_STREQ(__ry_http_reason_phrase(410), "Gone");
     EXPECT_STREQ(__ry_http_reason_phrase(411), "Length Required");
+    EXPECT_STREQ(__ry_http_reason_phrase(412), "Precondition Failed");
     EXPECT_STREQ(__ry_http_reason_phrase(413), "Content Too Large");
     EXPECT_STREQ(__ry_http_reason_phrase(414), "URI Too Long");
     EXPECT_STREQ(__ry_http_reason_phrase(415), "Unsupported Media Type");
     EXPECT_STREQ(__ry_http_reason_phrase(416), "Range Not Satisfiable");
     EXPECT_STREQ(__ry_http_reason_phrase(417), "Expectation Failed");
+    EXPECT_STREQ(__ry_http_reason_phrase(418), "I'm a teapot");
+    EXPECT_STREQ(__ry_http_reason_phrase(421), "Misdirected Request");
     EXPECT_STREQ(__ry_http_reason_phrase(422), "Unprocessable Content");
+    EXPECT_STREQ(__ry_http_reason_phrase(425), "Too Early");
     EXPECT_STREQ(__ry_http_reason_phrase(426), "Upgrade Required");
+    EXPECT_STREQ(__ry_http_reason_phrase(428), "Precondition Required");
     EXPECT_STREQ(__ry_http_reason_phrase(429), "Too Many Requests");
+    EXPECT_STREQ(__ry_http_reason_phrase(431), "Request Header Fields Too Large");
+    EXPECT_STREQ(__ry_http_reason_phrase(451), "Unavailable For Legal Reasons");
 }
 
 TEST(RuntimeHttp, ReasonPhrase5xx) {
@@ -75,6 +84,9 @@ TEST(RuntimeHttp, ReasonPhrase5xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(503), "Service Unavailable");
     EXPECT_STREQ(__ry_http_reason_phrase(504), "Gateway Timeout");
     EXPECT_STREQ(__ry_http_reason_phrase(505), "HTTP Version Not Supported");
+    EXPECT_STREQ(__ry_http_reason_phrase(507), "Insufficient Storage");
+    EXPECT_STREQ(__ry_http_reason_phrase(508), "Loop Detected");
+    EXPECT_STREQ(__ry_http_reason_phrase(511), "Network Authentication Required");
 }
 
 TEST(RuntimeHttp, ReasonPhraseUnknown) {
