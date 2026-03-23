@@ -4607,8 +4607,10 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
-        if (key->getType() != ptrTy_)
-            codegenError(e.callee + "() key must be str");
+        if (key->getType() != ptrTy_) {
+            std::string param = (e.callee == "http_cookie") ? "name" : "key";
+            codegenError(e.callee + "() " + param + " must be str");
+        }
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
         std::string hint = (e.callee == "http_header") ? "http_hdr"

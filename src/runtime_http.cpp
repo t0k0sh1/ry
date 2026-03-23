@@ -56,19 +56,16 @@ struct MapHeader {
 extern "C" int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
                                         int64_t newBucketCount);
 
-// Build a MapHeader from pre-existing key/value arrays.
-// Ownership of the char* pointers is transferred to the MapHeader.
+// Build a MapHeader by adopting the provided keys/vals arrays directly.
+// The MapHeader takes ownership of both the arrays and the strings they point to.
+// The caller must NOT free keys, vals, or their elements after this call.
 static void *build_str_map(char **keys, char **vals, int64_t count) {
     auto *map = (MapHeader *)malloc(sizeof(MapHeader));
     map->len = count;
     map->cap = count;
     if (count > 0) {
-        map->keys = (char **)malloc(sizeof(char *) * (size_t)count);
-        map->vals = (char **)malloc(sizeof(char *) * (size_t)count);
-        for (int64_t i = 0; i < count; i++) {
-            map->keys[i] = keys[i];
-            map->vals[i] = vals[i];
-        }
+        map->keys = keys;
+        map->vals = vals;
         int64_t bc = 4;
         while (bc < count * 2) bc *= 2;
         map->bucket_count = bc;
@@ -457,7 +454,6 @@ extern "C" const char *__ry_http_query(void *r, const char *key) {
 
 extern "C" void *__ry_http_query_all(void *r) {
     auto *req = (HttpRequestHandle *)r;
-    // strdup all entries so the MapHeader owns independent copies
     char **dup_keys = nullptr;
     char **dup_vals = nullptr;
     if (req->query_count > 0) {
@@ -468,10 +464,7 @@ extern "C" void *__ry_http_query_all(void *r) {
             dup_vals[i] = strdup(req->query_values[i]);
         }
     }
-    auto *map = (MapHeader *)build_str_map(dup_keys, dup_vals, req->query_count);
-    free(dup_keys);
-    free(dup_vals);
-    return map;
+    return build_str_map(dup_keys, dup_vals, req->query_count);
 }
 
 extern "C" const char *__ry_http_cookie(void *r, const char *name) {
@@ -495,10 +488,7 @@ extern "C" void *__ry_http_cookies(void *r) {
             dup_vals[i] = strdup(req->cookie_values[i]);
         }
     }
-    auto *map = (MapHeader *)build_str_map(dup_keys, dup_vals, req->cookie_count);
-    free(dup_keys);
-    free(dup_vals);
-    return map;
+    return build_str_map(dup_keys, dup_vals, req->cookie_count);
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
