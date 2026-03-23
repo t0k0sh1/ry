@@ -12,6 +12,8 @@ void *__ry_http_read_request(void *stream);
 const char *__ry_http_method(void *req);
 const char *__ry_http_path(void *req);
 const char *__ry_http_body(void *req);
+const char *__ry_http_query(void *req, const char *key);
+void *__ry_http_query_all(void *req);
 void __ry_http_request_free(void *req);
 }
 
@@ -277,6 +279,243 @@ TEST(RuntimeHttp, ReadRequestPostBodySplitAcrossRecv) {
     void *result = __ry_http_read_request(handle);
     ASSERT_NE(result, nullptr);
     EXPECT_STREQ(__ry_http_body(result), "hello world");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+// --- Query parameter tests ---
+
+TEST(RuntimeHttp, QueryParamsBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /search?q=hello&page=2 HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_path(result), "/search");
+    EXPECT_STREQ(__ry_http_query(result, "q"), "hello");
+    EXPECT_STREQ(__ry_http_query(result, "page"), "2");
+    EXPECT_EQ(__ry_http_query(result, "missing"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsNone) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_path(result), "/hello");
+    EXPECT_EQ(__ry_http_query(result, "anything"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsEmpty) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /path? HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_path(result), "/path");
+    EXPECT_EQ(__ry_http_query(result, "anything"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsUrlDecode) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /search?q=hello%20world&tag=c%2B%2B HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_query(result, "q"), "hello world");
+    EXPECT_STREQ(__ry_http_query(result, "tag"), "c++");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsPlusAsSpace) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /search?q=hello+world HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_query(result, "q"), "hello world");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsNoValue) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /path?flag&key= HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_query(result, "flag"), "");
+    EXPECT_STREQ(__ry_http_query(result, "key"), "");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryParamsDuplicateFirstWins) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /path?a=1&a=2 HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_query(result, "a"), "1");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+// MapHeader layout must match codegen
+struct MapHeader {
+    int64_t len;
+    int64_t cap;
+    char **keys;
+    char **vals;
+    int64_t bucket_count;
+    void *buckets;
+};
+
+TEST(RuntimeHttp, QueryAllBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /search?q=hello%20world&page=2 HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_query_all(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 2);
+    EXPECT_GE(map->bucket_count, 4);
+    ASSERT_NE(map->keys, nullptr);
+    ASSERT_NE(map->vals, nullptr);
+
+    // Verify decoded key/value pairs exist (order matches insertion)
+    EXPECT_STREQ(map->keys[0], "q");
+    EXPECT_STREQ(map->vals[0], "hello world");
+    EXPECT_STREQ(map->keys[1], "page");
+    EXPECT_STREQ(map->vals[1], "2");
+
+    // Cleanup map
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryAllEmpty) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_query_all(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 0);
+    EXPECT_GE(map->bucket_count, 4);
+
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET /path?a=1&b=2&a=3 HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_query_all(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 2);
+    EXPECT_STREQ(map->keys[0], "a");
+    EXPECT_STREQ(map->vals[0], "1");
+    EXPECT_STREQ(map->keys[1], "b");
+    EXPECT_STREQ(map->vals[1], "2");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);

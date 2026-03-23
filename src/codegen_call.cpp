@@ -4599,26 +4599,41 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return builder_.CreateCall(fn, {req}, e.callee);
     }
 
-    // http_header(req, key) -> Option<str>
-    if (e.callee == "http_header") {
+    // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str>
+    if (e.callee == "http_header" || e.callee == "http_query") {
         if (e.args.size() != 2)
-            codegenError("http_header() takes exactly 2 arguments");
+            codegenError(e.callee + "() takes exactly 2 arguments");
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
-            codegenError("http_header() requires HttpRequest argument");
+            codegenError(e.callee + "() requires HttpRequest argument");
         if (key->getType() != ptrTy_)
-            codegenError("http_header() key must be str");
+            codegenError(e.callee + "() key must be str");
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
-        auto fn = mod_->getOrInsertFunction("__ry_http_header", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_hdr");
-        // Convert nullable ptr to Option<str>
+        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        std::string hint = (e.callee == "http_header") ? "http_hdr" : "http_qry";
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, hint);
         llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_hdr_null");
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), hint + "_null");
         llvm::StructType *optTy = getOptionType(ptrTy_);
         llvm::Value *someVal = buildSomeValue(result, optTy);
         llvm::Value *noneVal = buildNoneValue(optTy);
-        return builder_.CreateSelect(isNull, noneVal, someVal, "http_hdr_opt");
+        return builder_.CreateSelect(isNull, noneVal, someVal, hint + "_opt");
+    }
+
+    // http_query_all(req) -> Map<str, str>
+    if (e.callee == "http_query_all") {
+        if (e.args.size() != 1)
+            codegenError("http_query_all() takes exactly 1 argument");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_query_all() requires HttpRequest argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_query_all", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_qry_all");
+        map_key_types_[result] = ptrTy_;
+        map_value_types_[result] = ptrTy_;
+        return result;
     }
 
     // http_listen(host, port, handler) -> Unit

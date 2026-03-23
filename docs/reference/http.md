@@ -16,7 +16,7 @@ Both types are opaque pointers. `HttpRequest` is provided by the server framewor
 These functions require explicit import:
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
+from std.http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_response
 ```
 
 ### Server
@@ -30,9 +30,11 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `http_method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
-| `http_path` | `(req: HttpRequest) -> str` | Returns the request path (e.g., `"/hello"`). |
+| `http_path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
 | `http_header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
 | `http_body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
+| `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
+| `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
 
 ### Response Builder
 
@@ -77,6 +79,23 @@ t: Task<str> = spawn start_server(8080)
 # Server runs in background thread
 ```
 
+### Reading Query Parameters
+
+```python
+from std.http import http_listen, http_path, http_query, http_query_all, http_response
+
+http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    path = http_path(req)
+    if path == "/search":
+        match http_query(req, "q"):
+            case Some(query):
+                return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
+            case None:
+                return http_response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
+    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+)
+```
+
 ### Reading Headers
 
 ```python
@@ -98,6 +117,9 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - `Content-Length` is automatically added to the response if not provided in the headers map.
 - The server supports HTTP/1.1 with `Content-Length`-based body reading.
 - Header lookup via `http_header()` is case-insensitive.
+- `http_path()` returns the path without the query string. Query parameters are accessed separately via `http_query()` or `http_query_all()`.
+- Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
+- For duplicate query parameter keys, the first value is returned.
 
 ## Supported Status Codes
 
