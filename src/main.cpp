@@ -7,6 +7,7 @@
 #include "ry/jit.hpp"
 #include "ry/test_runtime.hpp"
 #include "ry/project_config.hpp"
+#include "ry/formatter.hpp"
 #include "ry/self_update.hpp"
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
@@ -422,6 +423,9 @@ int main(int argc, char *argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "new") == 0) {
         return cmd_new(argc - 2, argv + 2);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "fmt") == 0) {
+        return cmd_fmt(argc - 2, argv + 2);
+    }
 
     InitLLVM X(argc, argv);
     InitializeNativeTarget();
@@ -475,6 +479,7 @@ int main(int argc, char *argv[]) {
         errs() << "Usage: ry <file.ry> [args...]\n";
         errs() << "       ry test [-p | --parallel] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
+        errs() << "       ry fmt [--check] [<file|dir>]\n";
         errs() << "       ry new <project-name>\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";
