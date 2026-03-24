@@ -745,6 +745,7 @@ TEST(RuntimeHttpClient, HttpPostWithBody) {
     __ry_http_client_response_free(resp);
 
     ::close(srv);
+    server_thread.join(); // ensure captured_request is fully written
 
     EXPECT_NE(captured_request.find("POST /data HTTP/1.1"), std::string::npos);
     EXPECT_NE(captured_request.find("Content-Length: 9"), std::string::npos);
@@ -799,6 +800,7 @@ TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
     __ry_http_client_response_free(resp);
 
     ::close(srv);
+    server_thread.join(); // ensure captured_request is fully written
 
     EXPECT_NE(captured_request.find("DELETE /resource HTTP/1.1"), std::string::npos);
 }
