@@ -31,19 +31,25 @@ cmake --build build
 
 ## プロジェクトの初期化
 
-`ry init` コマンドで新しいプロジェクトを作成できます。
+`ry new` コマンドで新しいプロジェクトを作成できます。
 
 ```bash
-mkdir my-project
+ry new my-project
 cd my-project
-ry init
 ```
 
 これにより以下のファイルとディレクトリが生成されます。
 
 - `ry.toml` — プロジェクト設定ファイル
 - `src/main.ry` — エントリポイント（サンプルコード付き）
-- `test/` — テストコード用ディレクトリ
+
+カレントディレクトリをプロジェクトとして初期化する場合は `ry init` を使います。
+
+```bash
+mkdir my-project
+cd my-project
+ry init
+```
 
 詳細は [プロジェクト管理](../reference/project.md) を参照してください。
 

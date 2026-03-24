@@ -31,19 +31,25 @@ cmake --build build
 
 ## 專案初始化
 
-使用 `ry init` 指令建立新專案。
+使用 `ry new` 指令建立新專案。
 
 ```bash
-mkdir my-project
+ry new my-project
 cd my-project
-ry init
 ```
 
 這將產生以下檔案和目錄：
 
 - `ry.toml` — 專案設定檔
 - `src/main.ry` — 進入點（附帶範例程式碼）
-- `test/` — 測試程式碼目錄
+
+若要將當前目錄初始化為專案，請使用 `ry init`：
+
+```bash
+mkdir my-project
+cd my-project
+ry init
+```
 
 詳情請參閱[專案管理](../reference/project.md)。
 

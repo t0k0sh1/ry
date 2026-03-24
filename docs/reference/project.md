@@ -28,6 +28,34 @@ my-project/
 
 ---
 
+## `ry new` - Create a New Project
+
+Creates a new directory and initializes it as a Ry project.
+
+```bash
+ry new my-project
+```
+
+### Generated Files and Directories
+
+```
+my-project/
+  ry.toml          # Project configuration file
+  src/
+    main.ry        # Entry point (sample code)
+```
+
+### Behavior
+
+1. Exits with an error if no project name is given
+2. Exits with an error if the directory already exists
+3. Creates the `<project-name>/` directory
+4. Creates the `src/` directory inside it
+5. Generates `ry.toml` (`name` is set to the given project name)
+6. Generates `src/main.ry`
+
+---
+
 ## `ry self-update` - Self Update
 
 Updates ry itself to the latest version. Downloads a binary from GitHub Releases and replaces the current executable.
