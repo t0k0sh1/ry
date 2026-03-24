@@ -1301,6 +1301,10 @@ TEST(ParserTest, SnakeCaseParamRequired) {
     EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
 }
 
+TEST(ParserTest, BangSuffixParamRejected) {
+    EXPECT_THROW(parseStr("fn add(x!: int) -> int:\n    return x!"), std::runtime_error);
+}
+
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
