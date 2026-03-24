@@ -132,7 +132,10 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - `http_listen()` binds to the address, starts listening, and enters an infinite accept loop.
 - Each accepted connection reads one HTTP/1.1 request, calls the handler, sends the response, and closes the connection.
 - `Content-Length` is automatically added to the response if not provided in the headers map.
-- The server supports HTTP/1.1 with `Content-Length`-based body reading.
+- The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
+- When `Transfer-Encoding: chunked` is present in a request, the body is automatically decoded and concatenated — Ry code receives the full body transparently.
+- If both `Transfer-Encoding: chunked` and `Content-Length` are present, the request is rejected as malformed (per RFC 9112).
+- To send a chunked response, include `"Transfer-Encoding": "chunked"` in the headers map passed to `http_response()`. The body will be encoded in chunked format automatically.
 - Header lookup via `http_header()` is case-insensitive.
 - `http_path()` returns the path without the query string. Query parameters are accessed separately via `http_query()` or `http_query_all()`.
 - Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
@@ -238,7 +241,7 @@ match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 - The `Host` header is automatically added based on the URL.
 - `Connection: close` is always sent; each request uses a separate TCP connection.
 - `Content-Length` is always added automatically (including `0` for empty bodies). User-provided `Content-Length` headers are overridden with the correct value.
-- Response body reading supports `Content-Length` or read-until-close.
+- Response body reading supports `Content-Length`, `Transfer-Encoding: chunked`, or read-until-close.
 - Response header lookup is case-insensitive.
 - Connection timeout is 5 seconds; receive timeout is 30 seconds.
 - Returns `Err` on connection failure, invalid URL, or malformed response.

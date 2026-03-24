@@ -20,6 +20,9 @@ void *__ry_http_query_all(void *req);
 const char *__ry_http_cookie(void *req, const char *name);
 void *__ry_http_cookies(void *req);
 void __ry_http_request_free(void *req);
+void *__ry_http_response_create(int64_t status, void *headers_map, const char *body);
+void __ry_http_send_response(void *stream, void *response);
+void __ry_http_response_free(void *resp);
 
 // HTTP client functions
 void *__ry_http_parse_url(const char *url);
@@ -990,4 +993,260 @@ TEST(RuntimeHttp, CookiesAllDuplicateFirstWins) {
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);
+}
+
+// --- Chunked transfer encoding tests ---
+
+TEST(RuntimeHttp, ChunkedRequestBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /data HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "5\r\nhello\r\n"
+        "6\r\n world\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_method(result), "POST");
+    EXPECT_STREQ(__ry_http_path(result), "/data");
+    EXPECT_STREQ(__ry_http_body(result), "hello world");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedRequestSingleChunk) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /single HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "d\r\nHello, World!\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_body(result), "Hello, World!");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedRequestEmptyBody) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /empty HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_body(result), "");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedRequestHexSize) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // 1A = 26 bytes
+    std::string chunk_data = "abcdefghijklmnopqrstuvwxyz";
+    std::string req =
+        "POST /hex HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "1A\r\n" + chunk_data + "\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_body(result), "abcdefghijklmnopqrstuvwxyz");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedRequestWithExtensions) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /ext HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "5;ext=val\r\nhello\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_body(result), "hello");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedRequestRejectsWithContentLength) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /conflict HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n"
+        "5\r\nhello\r\n"
+        "0\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    EXPECT_EQ(result, nullptr);
+
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ChunkedResponseSend) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // Build a MapHeader with Transfer-Encoding: chunked
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    map->len = 1;
+    map->cap = 1;
+    map->keys = (char **)malloc(sizeof(char *));
+    map->vals = (char **)malloc(sizeof(char *));
+    map->keys[0] = strdup("Transfer-Encoding");
+    map->vals[0] = strdup("chunked");
+    map->bucket_count = 4;
+    map->buckets = calloc(4, sizeof(int64_t));
+
+    void *resp = __ry_http_response_create(200, map, "hello world");
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    __ry_http_send_response(handle, resp);
+    ::close(fds[0]);
+
+    // Read what was sent
+    char buf[4096];
+    std::string received;
+    while (true) {
+        ssize_t n = ::read(fds[1], buf, sizeof(buf));
+        if (n <= 0) break;
+        received.append(buf, (size_t)n);
+    }
+    ::close(fds[1]);
+
+    // Verify chunked format
+    EXPECT_NE(received.find("Transfer-Encoding: chunked"), std::string::npos);
+    EXPECT_EQ(received.find("Content-Length"), std::string::npos);
+    // Body should contain chunk: "b\r\nhello world\r\n0\r\n\r\n"
+    EXPECT_NE(received.find("b\r\nhello world\r\n0\r\n\r\n"), std::string::npos);
+
+    __ry_http_response_free(resp);
+    free(map->keys[0]);
+    free(map->vals[0]);
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+    free(handle);
+}
+
+TEST(RuntimeHttpClient, ChunkedClientResponse) {
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "5\r\nhello\r\n"
+        "6\r\n world\r\n"
+        "0\r\n\r\n";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        mock_http_server(conn, response);
+    });
+    JoinGuard jg(server_thread);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/chunked";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+    EXPECT_STREQ(__ry_http_client_body(resp), "hello world");
+    __ry_http_client_response_free(resp);
+
+    ::close(srv);
+}
+
+TEST(RuntimeHttpClient, ChunkedClientResponseMultipleChunks) {
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "\r\n"
+        "4\r\nWiki\r\n"
+        "5\r\npedia\r\n"
+        "e\r\n in\r\n\r\nchunks.\r\n"
+        "0\r\n\r\n";
+    int srv = start_mock_server();
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        mock_http_server(conn, response);
+    });
+    JoinGuard jg(server_thread);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/chunked-multi";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+    EXPECT_STREQ(__ry_http_client_body(resp), "Wikipedia in\r\n\r\nchunks.");
+    __ry_http_client_response_free(resp);
+
+    ::close(srv);
 }
