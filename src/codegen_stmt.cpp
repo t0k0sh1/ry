@@ -310,26 +310,9 @@ void CodeGen::emitVarDecl(const std::string &name,
     // --- Resource type tracking ---
     // These must be outside the ptrTy_ guard because resources can be
     // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
-    if (isTcpListener(val))
-        tcp_listener_values_.insert(ptr);
-    else if (type_annotation && *type_annotation == "TcpListener")
-        tcp_listener_values_.insert(ptr);
-    if (isTcpStream(val))
-        tcp_stream_values_.insert(ptr);
-    else if (type_annotation && *type_annotation == "TcpStream")
-        tcp_stream_values_.insert(ptr);
-    if (isHttpRequest(val))
-        http_request_values_.insert(ptr);
-    else if (type_annotation && *type_annotation == "HttpRequest")
-        http_request_values_.insert(ptr);
-    if (isHttpResponse(val))
-        http_response_values_.insert(ptr);
-    else if (type_annotation && *type_annotation == "HttpResponse")
-        http_response_values_.insert(ptr);
-    if (isHttpClientResponse(val))
-        http_client_response_values_.insert(ptr);
-    else if (type_annotation && *type_annotation == "HttpClientResponse")
-        http_client_response_values_.insert(ptr);
+    propagateResourceTrackingWide(val, ptr);
+    if (type_annotation)
+        registerResourceByTypeName(*type_annotation, ptr);
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
     {
@@ -434,11 +417,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             channel_element_types_[ptr] = channelTy;
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
-    if (isTcpListener(val)) tcp_listener_values_.insert(ptr);
-    if (isTcpStream(val))   tcp_stream_values_.insert(ptr);
-    if (isHttpRequest(val))  http_request_values_.insert(ptr);
-    if (isHttpResponse(val)) http_response_values_.insert(ptr);
-    if (isHttpClientResponse(val)) http_client_response_values_.insert(ptr);
+    propagateResourceTrackingWide(val, ptr);
 }
 
 
