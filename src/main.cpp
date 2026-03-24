@@ -11,6 +11,7 @@
 #include "ry/self_update.hpp"
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
+#include "ry/file_watcher.hpp"
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -441,11 +442,15 @@ int main(int argc, char *argv[]) {
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
         // Parse test subcommand arguments
         bool parallel = false;
+        bool watch = false;
         const char *target = nullptr;
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
                 std::strcmp(argv[i], "--parallel") == 0) {
                 parallel = true;
+            } else if (std::strcmp(argv[i], "-w") == 0 ||
+                       std::strcmp(argv[i], "--watch") == 0) {
+                watch = true;
             } else if (!target) {
                 target = argv[i];
             }
@@ -455,6 +460,13 @@ int main(int argc, char *argv[]) {
             std::string target_str = target;
             std::error_code ec;
             if (fs::is_directory(target_str, ec)) {
+                if (watch) {
+                    const char *a0 = argv[0];
+                    ry::watchAndRunTests(target_str, [target_str, a0, parallel]() {
+                        return discoverAndRunTests(target_str, a0, parallel);
+                    });
+                    return 0;
+                }
                 return discoverAndRunTests(target_str, argv[0], parallel);
             }
             if (ec) {
@@ -462,22 +474,48 @@ int main(int argc, char *argv[]) {
                        << ec.message() << "\n";
                 return 1;
             }
+            if (watch) {
+                // Watch project root (or file's parent dir) and re-run single file
+                std::string watch_root = findProjectRoot().value_or(
+                    fs::path(target_str).parent_path().string());
+                const char *a0 = argv[0];
+                ry::watchAndRunTests(watch_root, [target_str, a0]() {
+                    try {
+                        return runRyFile(target_str, true, a0);
+                    } catch (const DiagnosticError &e) {
+                        errs() << e.what();
+                        return 1;
+                    } catch (const std::exception &e) {
+                        errs() << "Error: " << e.what() << "\n";
+                        return 1;
+                    }
+                });
+                return 0;
+            }
             // ry test <file.ry> — single file test (parallel flag ignored)
             test_mode = true;
             filename = target;
             __ry_args_init(0, nullptr);
         } else {
-            // ry test [-p] — discover from project root
+            // ry test [-p] [-w] — discover from project root
             auto root = findProjectRoot();
             if (!root) {
                 errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
                 return 1;
             }
+            if (watch) {
+                std::string root_dir = *root;
+                const char *a0 = argv[0];
+                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel]() {
+                    return discoverAndRunTests(root_dir, a0, parallel);
+                });
+                return 0;
+            }
             return discoverAndRunTests(*root, argv[0], parallel);
         }
     } else {
         errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [-p | --parallel] [<file.ry> | <dir>]\n";
+        errs() << "       ry test [-p | --parallel] [-w | --watch] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry fmt [--check] [<file|dir>]\n";
         errs() << "       ry new <project-name>\n";

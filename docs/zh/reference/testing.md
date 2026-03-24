@@ -14,6 +14,9 @@ ry test tests/spec   # 遞迴執行指定目錄下所有 *.test.ry 檔案
 ry test test_file.ry # 執行指定的測試檔案
 ry test -p           # 並行執行所有測試（-p 或 --parallel）
 ry test -p tests/    # 並行執行指定目錄的測試
+ry test -w           # 監看模式：檔案變更時自動重新執行測試（-w 或 --watch）
+ry test -w -p        # 監看模式 + 並行執行
+ry test -w tests/    # 監看指定目錄
 ```
 
 結束代碼為 0 表示所有測試通過，1 表示有測試失敗。

@@ -80,6 +80,7 @@ add_library(ry_lib STATIC
     src/runtime_net.cpp
     src/runtime_http.cpp
     src/formatter.cpp
+    src/file_watcher.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -127,6 +128,7 @@ add_executable(ry_tests
     tests/test_codegen_net.cpp
     tests/test_codegen_http.cpp
     tests/test_formatter.cpp
+    tests/test_file_watcher.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
