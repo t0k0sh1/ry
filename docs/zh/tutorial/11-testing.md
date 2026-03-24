@@ -14,6 +14,7 @@ Ry 內建了使用 `describe`、`it`、`expect` 的 RSpec 風格測試語法。�
 ry test                       # 自動探索並執行所有 *.test.ry 檔案
 ry test tests/spec            # 遞迴執行指定目錄下所有 *.test.ry 檔案
 ry test tests/my_test.test.ry # 執行特定的測試檔案
+ry test -p                    # 並行執行所有測試（-p 或 --parallel）
 ```
 
 所有測試通過時，結束碼為 `0`；若有任一測試失敗，則為 `1`。
