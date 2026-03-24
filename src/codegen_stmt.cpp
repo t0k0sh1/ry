@@ -310,7 +310,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     // --- Resource type tracking ---
     // These must be outside the ptrTy_ guard because resources can be
     // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
-    detectAndRegisterResource(val, ptr);
+    propagateResourceTrackingWide(val, ptr);
     if (type_annotation)
         registerResourceByTypeName(*type_annotation, ptr);
 
@@ -417,7 +417,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             channel_element_types_[ptr] = channelTy;
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
-    detectAndRegisterResource(val, ptr);
+    propagateResourceTrackingWide(val, ptr);
 }
 
 

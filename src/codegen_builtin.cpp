@@ -102,14 +102,6 @@ void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) 
     if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
 }
 
-void CodeGen::detectAndRegisterResource(llvm::Value *src, llvm::Value *dst) {
-    if (isTcpListener(src))        tcp_listener_values_.insert(dst);
-    if (isTcpStream(src))          tcp_stream_values_.insert(dst);
-    if (isHttpRequest(src))        http_request_values_.insert(dst);
-    if (isHttpResponse(src))       http_response_values_.insert(dst);
-    if (isHttpClientResponse(src)) http_client_response_values_.insert(dst);
-}
-
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
