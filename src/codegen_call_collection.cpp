@@ -1,14 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
-namespace {
-// RAII guard to restore moved-out args after proxy CallExpr delegation
-struct ArgsRestoreGuard {
-    std::vector<ExprPtr> &dst;
-    std::vector<ExprPtr> &src;
-    ~ArgsRestoreGuard() { dst = std::move(src); }
-};
-} // namespace
 
 // ===== Builtin Collection =====
 
@@ -347,7 +339,7 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
     }
 
     // append(list, val) → mutating append
-    if (e.callee == "append" && e.args.size() == 2) {
+    if ((e.callee == "append" || e.callee == "append!") && e.args.size() == 2) {
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (elemTy) {
@@ -441,15 +433,6 @@ llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
         }
     }
 
-    // append!(list, elem) → alias for append
-    if (e.callee == "append!" && e.args.size() == 2) {
-        auto &mutArgs = const_cast<CallExpr &>(e).args;
-        CallExpr appendProxy;
-        appendProxy.callee = "append";
-        appendProxy.args = std::move(mutArgs);
-        ArgsRestoreGuard guard{mutArgs, appendProxy.args};
-        return emitBuiltinCollection(appendProxy);
-    }
 
     // pop(list) → Option<T>: remove and return last element
     if (e.callee == "pop" && e.args.size() == 1) {

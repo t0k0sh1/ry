@@ -357,6 +357,7 @@ private:
     llvm::Value *emitBuiltinCollection(const CallExpr &e);
     llvm::Value *emitBuiltinString(const CallExpr &e);
     llvm::Value *emitBuiltinHigherOrder(const CallExpr &e);
+    llvm::Value *emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args);
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);

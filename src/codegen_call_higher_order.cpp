@@ -1,14 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
-namespace {
-// RAII guard to restore moved-out args after proxy CallExpr delegation
-struct ArgsRestoreGuard {
-    std::vector<ExprPtr> &dst;
-    std::vector<ExprPtr> &src;
-    ~ArgsRestoreGuard() { dst = std::move(src); }
-};
-} // namespace
 
 // ===== Builtin Higher-Order =====
 
@@ -203,114 +195,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             codegenError("sort() takes 1 or 2 arguments");
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getListElementType(listVal);
-        if (!elemTy)
-            codegenError("sort() requires a list as first argument");
-
-        bool hasComparator = (e.args.size() == 2);
-        llvm::Value *compVal = nullptr;
-        FnTypeInfo compInfo;
-        if (hasComparator) {
-            compVal = emitExpr(*e.args[1]);
-            auto fnIt = fn_type_info_.find(compVal);
-            if (fnIt == fn_type_info_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(compVal))
-                    fnIt = fn_type_info_.find(load->getPointerOperand());
-            }
-            if (fnIt == fn_type_info_.end())
-                codegenError("sort() comparator must be a function");
-            compInfo = fnIt->second;
-            if (compInfo.paramTypes.size() != 2 || compInfo.returnType != i1Ty_)
-                codegenError("sort() comparator must take 2 arguments and return bool");
-        }
-
-        // Read source list
-        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "sort_src_len_ptr");
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "sort_src_len");
-        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "sort_src_data_field");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "sort_src_data");
-
-        // Allocate new list and copy data
-        auto mallocFn = getStdlibMalloc();
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sort_header");
-
-        uint64_t elemSz = dl.getTypeAllocSize(elemTy);
-        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSz), "sort_data_size");
-        llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sort_data");
-
-        // memcpy source data to new data
-        auto memcpyFn = getStdlibMemcpy();
-        builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
-
-        // Set header
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "sort_len_ptr");
-        builder_.CreateStore(srcLen, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sort_cap_ptr");
-        builder_.CreateStore(srcLen, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sort_data_field");
-        builder_.CreateStore(newData, newDataField);
-
-        // Generate trampoline function for TimSort comparator
-        std::string trampName = "__sort_trampoline_" + std::to_string(lambda_counter_++);
-        llvm::FunctionType *trampTy = llvm::FunctionType::get(
-            i1Ty_, {ptrTy_, ptrTy_, ptrTy_}, false);
-        llvm::Function *trampFn = llvm::Function::Create(
-            trampTy, llvm::Function::ExternalLinkage, trampName, mod_.get());
-        trampFn->setCallingConv(llvm::CallingConv::C);
-
-        auto trampArgs = trampFn->arg_begin();
-        llvm::Argument *argA = &*trampArgs++;
-        llvm::Argument *argB = &*trampArgs++;
-        llvm::Argument *argCtx = &*trampArgs++;
-        argA->setName("a_ptr");
-        argB->setName("b_ptr");
-        argCtx->setName("ctx");
-
-        {
-            FnScope guard(*this);
-            fn_ = trampFn;
-            llvm::BasicBlock *trampBB = llvm::BasicBlock::Create(*ctx_, "entry", trampFn);
-            builder_.SetInsertPoint(trampBB);
-
-            llvm::Value *valA = builder_.CreateLoad(elemTy, argA, "val_a");
-            llvm::Value *valB = builder_.CreateLoad(elemTy, argB, "val_b");
-
-            llvm::Value *result;
-            if (hasComparator) {
-                // ctx is the closure struct pointer (or raw fn ptr for non-closures)
-                result = emitLambdaCall(argCtx, compInfo, {valA, valB}, "sort_comp");
-            } else if (elemTy == i64Ty_) {
-                result = builder_.CreateICmpSLT(valA, valB, "sort_lt");
-            } else if (elemTy == f64Ty_) {
-                result = builder_.CreateFCmpOLT(valA, valB, "sort_lt");
-            } else if (elemTy == ptrTy_) {
-                auto strcmpFn = getStdlibStrcmp();
-                llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
-                result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
-            } else {
-                codegenError("sort() does not support this element type");
-            }
-
-            builder_.CreateRet(result);
-        }
-
-        // Call __ry_timsort(newData, srcLen, elemSize, trampoline, cmpCtx)
-        llvm::Value *elemSizeConst = llvm::ConstantInt::get(i64Ty_, elemSz);
-        llvm::Value *cmpCtx = hasComparator
-            ? compVal
-            : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-
-        auto timsortTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
-        auto timsortFn = mod_->getOrInsertFunction("__ry_timsort", timsortTy);
-        builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
-
-        // Return sorted list
-        list_element_types_[newHeader] = elemTy;
-        return newHeader;
+        return emitSortCore(listVal, e.args);
     }
 
     // sort!(list) / sort!(list, comparator) → in-place sort
@@ -318,19 +203,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (e.args.size() < 1 || e.args.size() > 2)
             codegenError("sort!() takes 1 or 2 arguments");
 
-        // Evaluate list arg once before sort() re-evaluates it
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (!elemTy) codegenError("sort!() requires a list");
 
-        // Reuse sort() via a proxy CallExpr with scope guard for exception safety
-        auto &mutArgs = const_cast<CallExpr &>(e).args;
-        CallExpr sortProxy;
-        sortProxy.callee = "sort";
-        sortProxy.args = std::move(mutArgs);
-        ArgsRestoreGuard guard{mutArgs, sortProxy.args};
-        llvm::Value *sorted = emitBuiltinHigherOrder(sortProxy);
-
+        llvm::Value *sorted = emitSortCore(listPtr, e.args);
         if (!sorted)
             codegenError("sort!() internal error");
 
@@ -719,3 +596,112 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     return nullptr;
 }
 
+llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args) {
+    llvm::Type *elemTy = getListElementType(listVal);
+    if (!elemTy)
+        codegenError("sort() requires a list as first argument");
+
+    bool hasComparator = (args.size() >= 2);
+    llvm::Value *compVal = nullptr;
+    FnTypeInfo compInfo;
+    if (hasComparator) {
+        compVal = emitExpr(*args[1]);
+        auto fnIt = fn_type_info_.find(compVal);
+        if (fnIt == fn_type_info_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(compVal))
+                fnIt = fn_type_info_.find(load->getPointerOperand());
+        }
+        if (fnIt == fn_type_info_.end())
+            codegenError("sort() comparator must be a function");
+        compInfo = fnIt->second;
+        if (compInfo.paramTypes.size() != 2 || compInfo.returnType != i1Ty_)
+            codegenError("sort() comparator must take 2 arguments and return bool");
+    }
+
+    // Read source list
+    llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "sort_src_len_ptr");
+    llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "sort_src_len");
+    llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "sort_src_data_field");
+    llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "sort_src_data");
+
+    // Allocate new list and copy data
+    auto mallocFn = getStdlibMalloc();
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+    llvm::Value *newHeader = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sort_header");
+
+    uint64_t elemSz = dl.getTypeAllocSize(elemTy);
+    llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSz), "sort_data_size");
+    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sort_data");
+
+    // memcpy source data to new data
+    auto memcpyFn = getStdlibMemcpy();
+    builder_.CreateCall(memcpyFn, {newData, srcData, dataSize});
+
+    // Set header
+    llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "sort_len_ptr");
+    builder_.CreateStore(srcLen, newLenPtr);
+    llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sort_cap_ptr");
+    builder_.CreateStore(srcLen, newCapPtr);
+    llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sort_data_field");
+    builder_.CreateStore(newData, newDataField);
+
+    // Generate trampoline function for TimSort comparator
+    std::string trampName = "__sort_trampoline_" + std::to_string(lambda_counter_++);
+    llvm::FunctionType *trampTy = llvm::FunctionType::get(
+        i1Ty_, {ptrTy_, ptrTy_, ptrTy_}, false);
+    llvm::Function *trampFn = llvm::Function::Create(
+        trampTy, llvm::Function::ExternalLinkage, trampName, mod_.get());
+    trampFn->setCallingConv(llvm::CallingConv::C);
+
+    auto trampArgs = trampFn->arg_begin();
+    llvm::Argument *argA = &*trampArgs++;
+    llvm::Argument *argB = &*trampArgs++;
+    llvm::Argument *argCtx = &*trampArgs++;
+    argA->setName("a_ptr");
+    argB->setName("b_ptr");
+    argCtx->setName("ctx");
+
+    {
+        FnScope guard(*this);
+        fn_ = trampFn;
+        llvm::BasicBlock *trampBB = llvm::BasicBlock::Create(*ctx_, "entry", trampFn);
+        builder_.SetInsertPoint(trampBB);
+
+        llvm::Value *valA = builder_.CreateLoad(elemTy, argA, "val_a");
+        llvm::Value *valB = builder_.CreateLoad(elemTy, argB, "val_b");
+
+        llvm::Value *result;
+        if (hasComparator) {
+            result = emitLambdaCall(argCtx, compInfo, {valA, valB}, "sort_comp");
+        } else if (elemTy == i64Ty_) {
+            result = builder_.CreateICmpSLT(valA, valB, "sort_lt");
+        } else if (elemTy == f64Ty_) {
+            result = builder_.CreateFCmpOLT(valA, valB, "sort_lt");
+        } else if (elemTy == ptrTy_) {
+            auto strcmpFn = getStdlibStrcmp();
+            llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
+            result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
+        } else {
+            codegenError("sort() does not support this element type");
+        }
+
+        builder_.CreateRet(result);
+    }
+
+    // Call __ry_timsort(newData, srcLen, elemSize, trampoline, cmpCtx)
+    llvm::Value *elemSizeConst = llvm::ConstantInt::get(i64Ty_, elemSz);
+    llvm::Value *cmpCtx = hasComparator
+        ? compVal
+        : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+
+    auto timsortTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
+    auto timsortFn = mod_->getOrInsertFunction("__ry_timsort", timsortTy);
+    builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
+
+    // Return sorted list
+    list_element_types_[newHeader] = elemTy;
+    return newHeader;
+}
