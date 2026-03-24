@@ -688,6 +688,13 @@ static int get_server_port(int srv) {
     return ntohs(addr.sin_port);
 }
 
+// RAII guard to ensure std::thread is always joined, even if ASSERT_* triggers early return.
+struct JoinGuard {
+    std::thread &t;
+    explicit JoinGuard(std::thread &t) : t(t) {}
+    ~JoinGuard() { if (t.joinable()) t.join(); }
+};
+
 TEST(RuntimeHttpClient, HttpGetBasic) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Custom: test-value\r\n\r\nhello";
     int srv = start_mock_server();
@@ -699,6 +706,7 @@ TEST(RuntimeHttpClient, HttpGetBasic) {
         int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
         mock_http_server(conn, response);
     });
+    JoinGuard jg(server_thread);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/test";
     void *resp = __ry_http_get(url.c_str());
@@ -709,7 +717,6 @@ TEST(RuntimeHttpClient, HttpGetBasic) {
     EXPECT_EQ(__ry_http_client_header(resp, "Missing"), nullptr);
     __ry_http_client_response_free(resp);
 
-    server_thread.join();
     ::close(srv);
 }
 
@@ -725,6 +732,7 @@ TEST(RuntimeHttpClient, HttpPostWithBody) {
         int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
         captured_request = mock_http_server_capture(conn, response);
     });
+    JoinGuard jg(server_thread);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/data";
     void *resp = __ry_http_post(url.c_str(), "test body", nullptr);
@@ -733,7 +741,6 @@ TEST(RuntimeHttpClient, HttpPostWithBody) {
     EXPECT_STREQ(__ry_http_client_body(resp), "ok");
     __ry_http_client_response_free(resp);
 
-    server_thread.join();
     ::close(srv);
 
     EXPECT_NE(captured_request.find("POST /data HTTP/1.1"), std::string::npos);
@@ -756,6 +763,7 @@ TEST(RuntimeHttpClient, HttpGetNoContentLength) {
         int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
         mock_http_server(conn, response);
     });
+    JoinGuard jg(server_thread);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
     void *resp = __ry_http_get(url.c_str());
@@ -764,7 +772,6 @@ TEST(RuntimeHttpClient, HttpGetNoContentLength) {
     EXPECT_STREQ(__ry_http_client_body(resp), "no content length body");
     __ry_http_client_response_free(resp);
 
-    server_thread.join();
     ::close(srv);
 }
 
@@ -780,6 +787,7 @@ TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
         int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
         captured_request = mock_http_server_capture(conn, response);
     });
+    JoinGuard jg(server_thread);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/resource";
     void *resp = __ry_http_client_request("DELETE", url.c_str(), nullptr, "");
@@ -787,7 +795,6 @@ TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
     EXPECT_EQ(__ry_http_client_status(resp), 204);
     __ry_http_client_response_free(resp);
 
-    server_thread.join();
     ::close(srv);
 
     EXPECT_NE(captured_request.find("DELETE /resource HTTP/1.1"), std::string::npos);
@@ -804,6 +811,7 @@ TEST(RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
         int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
         mock_http_server(conn, response);
     });
+    JoinGuard jg(server_thread);
 
     std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
     void *resp = __ry_http_get(url.c_str());
@@ -812,7 +820,6 @@ TEST(RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
     EXPECT_STREQ(__ry_http_client_header(resp, "content-type"), "application/json");
     __ry_http_client_response_free(resp);
 
-    server_thread.join();
     ::close(srv);
 }
 
