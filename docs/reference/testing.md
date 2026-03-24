@@ -14,6 +14,9 @@ ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
 ry test -p           # Run all tests in parallel (-p or --parallel)
 ry test -p tests/    # Run tests in a directory in parallel
+ry test -w           # Watch mode: re-run tests on file change (-w or --watch)
+ry test -w -p        # Watch mode with parallel execution
+ry test -w tests/    # Watch a specific directory
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.

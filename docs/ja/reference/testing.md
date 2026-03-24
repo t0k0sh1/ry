@@ -14,6 +14,9 @@ ry test tests/spec   # 指定ディレクトリ以下の *.test.ry を再帰的�
 ry test test_file.ry # 特定のテストファイルを実行
 ry test -p           # 全テストを並列実行（-p または --parallel）
 ry test -p tests/    # 指定ディレクトリのテストを並列実行
+ry test -w           # ウォッチモード: ファイル変更時にテストを自動再実行（-w または --watch）
+ry test -w -p        # ウォッチモード + 並列実行
+ry test -w tests/    # 特定ディレクトリをウォッチ
 ```
 
 終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
