@@ -1183,10 +1183,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
         channel_element_types_[phi] = channel_element_types_[trueVal];
     if (iterator_element_types_.count(trueVal))
         iterator_element_types_[phi] = iterator_element_types_[trueVal];
-    if (tcp_listener_values_.count(trueVal))
-        tcp_listener_values_.insert(phi);
-    if (tcp_stream_values_.count(trueVal))
-        tcp_stream_values_.insert(phi);
+    propagateResourceTracking(trueVal, phi);
 
     return phi;
 }

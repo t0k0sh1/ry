@@ -370,6 +370,9 @@ private:
     bool isHttpRequest(llvm::Value *val);
     bool isHttpResponse(llvm::Value *val);
     bool isHttpClientResponse(llvm::Value *val);
+    void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
+    void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
+    void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
     std::unordered_set<llvm::Value*> tcp_listener_values_;
     std::unordered_set<llvm::Value*> tcp_stream_values_;
     std::unordered_set<llvm::Value*> http_request_values_;

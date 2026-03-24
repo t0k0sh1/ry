@@ -3,6 +3,14 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
+    if (typeName == "TcpListener") tcp_listener_values_.insert(val);
+    else if (typeName == "TcpStream")   tcp_stream_values_.insert(val);
+    else if (typeName == "HttpRequest")  http_request_values_.insert(val);
+    else if (typeName == "HttpResponse") http_response_values_.insert(val);
+    else if (typeName == "HttpClientResponse") http_client_response_values_.insert(val);
+}
+
 void CodeGen::emitStmt(AwaitStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
 
@@ -357,11 +365,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 std::string inner = ptype.substr(8, ptype.size() - 9);
                 channel_element_types_[alloca] = resolveType(inner);
             }
-            if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
-            if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
-            if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
-            if (ptype == "HttpResponse") http_response_values_.insert(alloca);
-            if (ptype == "HttpClientResponse") http_client_response_values_.insert(alloca);
+            registerResourceByTypeName(ptype, alloca);
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);

@@ -1122,8 +1122,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                     enum_value_types_[dst] = it->second;
                 if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
                     channel_element_types_[dst] = it->second;
-                if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
-                if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
+                propagateResourceTracking(src, dst);
             }
         }
 

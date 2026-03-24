@@ -86,6 +86,22 @@ bool CodeGen::isHttpClientResponse(llvm::Value *val) {
     return lookupValueSet(http_client_response_values_, val);
 }
 
+void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
+    if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
+    if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
+    if (http_request_values_.count(src))  http_request_values_.insert(dst);
+    if (http_response_values_.count(src)) http_response_values_.insert(dst);
+    if (http_client_response_values_.count(src)) http_client_response_values_.insert(dst);
+}
+
+void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
+    if (lookupValueSetWide(tcp_listener_values_, src)) tcp_listener_values_.insert(dst);
+    if (lookupValueSetWide(tcp_stream_values_, src))   tcp_stream_values_.insert(dst);
+    if (lookupValueSetWide(http_request_values_, src))  http_request_values_.insert(dst);
+    if (lookupValueSetWide(http_response_values_, src)) http_response_values_.insert(dst);
+    if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
@@ -846,12 +862,8 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
     }
 
     // Track resource types for subject alloca.
-    // Uses lookupValueSetWide to resolve through Result<T, Error> struct loads.
-    if (lookupValueSetWide(tcp_listener_values_, subject)) tcp_listener_values_.insert(subjectAlloca);
-    if (lookupValueSetWide(tcp_stream_values_, subject))   tcp_stream_values_.insert(subjectAlloca);
-    if (lookupValueSetWide(http_request_values_, subject))  http_request_values_.insert(subjectAlloca);
-    if (lookupValueSetWide(http_response_values_, subject)) http_response_values_.insert(subjectAlloca);
-    if (lookupValueSetWide(http_client_response_values_, subject)) http_client_response_values_.insert(subjectAlloca);
+    // Uses wide variant to resolve through Result<T, Error> struct loads.
+    propagateResourceTrackingWide(subject, subjectAlloca);
 
     // Propagate collection metadata to subject alloca
     if (auto it = list_element_types_.find(subject); it != list_element_types_.end())
@@ -1034,16 +1046,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                     llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                     builder_.CreateStore(inner, varAlloca);
-                    if (tcp_listener_values_.count(subjectAlloca))
-                        tcp_listener_values_.insert(varAlloca);
-                    if (tcp_stream_values_.count(subjectAlloca))
-                        tcp_stream_values_.insert(varAlloca);
-                    if (http_request_values_.count(subjectAlloca))
-                        http_request_values_.insert(varAlloca);
-                    if (http_response_values_.count(subjectAlloca))
-                        http_response_values_.insert(varAlloca);
-                    if (http_client_response_values_.count(subjectAlloca))
-                        http_client_response_values_.insert(varAlloca);
+                    propagateResourceTracking(subjectAlloca, varAlloca);
                 } else if constexpr (std::is_same_v<T, OkPattern>) {
                     if (pat.binding != "_") {
                         llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -1056,16 +1059,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                             map_key_types_[varAlloca] = it->second;
                         if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
                             map_value_types_[varAlloca] = it->second;
-                        if (tcp_listener_values_.count(subjectAlloca))
-                            tcp_listener_values_.insert(varAlloca);
-                        if (tcp_stream_values_.count(subjectAlloca))
-                            tcp_stream_values_.insert(varAlloca);
-                        if (http_request_values_.count(subjectAlloca))
-                            http_request_values_.insert(varAlloca);
-                        if (http_response_values_.count(subjectAlloca))
-                            http_response_values_.insert(varAlloca);
-                        if (http_client_response_values_.count(subjectAlloca))
-                            http_client_response_values_.insert(varAlloca);
+                        propagateResourceTracking(subjectAlloca, varAlloca);
                     }
                 } else if constexpr (std::is_same_v<T, ErrPattern>) {
                     if (pat.binding != "_") {
@@ -1105,16 +1099,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
-                if (tcp_listener_values_.count(subjectAlloca))
-                    tcp_listener_values_.insert(varAlloca);
-                if (tcp_stream_values_.count(subjectAlloca))
-                    tcp_stream_values_.insert(varAlloca);
-                if (http_request_values_.count(subjectAlloca))
-                    http_request_values_.insert(varAlloca);
-                if (http_response_values_.count(subjectAlloca))
-                    http_response_values_.insert(varAlloca);
-                if (http_client_response_values_.count(subjectAlloca))
-                    http_client_response_values_.insert(varAlloca);
+                propagateResourceTracking(subjectAlloca, varAlloca);
             } else if constexpr (std::is_same_v<T, OkPattern>) {
                 if (pat.binding != "_") {
                     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -1128,16 +1113,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         map_key_types_[varAlloca] = it->second;
                     if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
                         map_value_types_[varAlloca] = it->second;
-                    if (tcp_listener_values_.count(subjectAlloca))
-                        tcp_listener_values_.insert(varAlloca);
-                    if (tcp_stream_values_.count(subjectAlloca))
-                        tcp_stream_values_.insert(varAlloca);
-                    if (http_request_values_.count(subjectAlloca))
-                        http_request_values_.insert(varAlloca);
-                    if (http_response_values_.count(subjectAlloca))
-                        http_response_values_.insert(varAlloca);
-                    if (http_client_response_values_.count(subjectAlloca))
-                        http_client_response_values_.insert(varAlloca);
+                    propagateResourceTracking(subjectAlloca, varAlloca);
                 }
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
                 if (pat.binding != "_") {
