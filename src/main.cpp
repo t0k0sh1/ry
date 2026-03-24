@@ -261,16 +261,23 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
 
     int pipefd[2];
     if (pipe(pipefd) == -1) {
-        result.output = "Error: pipe() failed\n";
+        result.output = "Error: pipe() failed: " + std::string(strerror(errno)) + "\n";
         return result;
     }
 
     posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
-    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+    int rc = posix_spawn_file_actions_init(&actions);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+    if (rc != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        result.output = "Error: posix_spawn_file_actions failed: " + std::string(strerror(rc)) + "\n";
+        return result;
+    }
 
     const char *argv[] = {exe_path.c_str(), "test", filepath.c_str(), nullptr};
     pid_t pid;
@@ -293,12 +300,15 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
     }
     close(pipefd[0]);
 
-    int status;
-    while (waitpid(pid, &status, 0) == -1) {
+    int status = 0;
+    pid_t wp;
+    while ((wp = waitpid(pid, &status, 0)) == -1) {
         if (errno != EINTR) break;
     }
 
-    if (WIFEXITED(status))
+    if (wp == -1)
+        result.exit_code = -1;
+    else if (WIFEXITED(status))
         result.exit_code = WEXITSTATUS(status);
     else if (WIFSIGNALED(status))
         result.exit_code = 128 + WTERMSIG(status);
@@ -381,7 +391,7 @@ static int runTestFiles(const std::vector<std::string> &test_files,
     }
     unsigned hw = std::thread::hardware_concurrency();
     int parallelism = static_cast<int>(std::min({hw, 8u, static_cast<unsigned>(test_files.size())}));
-    if (parallelism < 2) parallelism = 2;
+    if (parallelism < 1) parallelism = 1;
     return runTestFilesParallel(test_files, exe_path, parallelism);
 }
 
