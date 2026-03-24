@@ -4,7 +4,11 @@ describe("sleep", fn():
         expect(true).to_eq(true)
     )
     it("completes with positive duration", fn():
-        sleep(50)
+        sleep(5)
+        expect(true).to_eq(true)
+    )
+    it("completes with negative duration", fn():
+        sleep(-1)
         expect(true).to_eq(true)
     )
 )

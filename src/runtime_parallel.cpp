@@ -446,6 +446,8 @@ extern "C" int64_t __ry_available_parallelism() {
     return scheduler().parallelism();
 }
 
+// NOTE: blocks the calling OS thread. When called from a spawned task,
+// this occupies a worker thread for the full duration.
 extern "C" void __ry_sleep(int64_t duration_ms) {
     if (duration_ms > 0)
         std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
