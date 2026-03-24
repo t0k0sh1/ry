@@ -1256,6 +1256,20 @@ TEST(ParserTest, SnakeCaseFunctionRequired) {
     EXPECT_THROW(parseStr("fn myFunc() -> int:\n    return 1"), std::runtime_error);
 }
 
+TEST(ParserTest, BangSuffixFunctionAccepted) {
+    Program prog = parseStr("@native\nfn sort!(values: List<int>) -> Unit");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.name, "sort!");
+}
+
+TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
+    Program prog = parseStr("fn clear!(xs: List<int>) -> Unit:\n    ...");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn.name, "clear!");
+}
+
 TEST(ParserTest, PascalCaseRecordRequired) {
     EXPECT_THROW(parseStr("record my_point:\n    x: int"), std::runtime_error);
 }
@@ -1285,6 +1299,10 @@ TEST(ParserTest, SnakeCaseForLoopVariable) {
 
 TEST(ParserTest, SnakeCaseParamRequired) {
     EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
+}
+
+TEST(ParserTest, BangSuffixParamRejected) {
+    EXPECT_THROW(parseStr("fn add(x!: int) -> int:\n    return x!"), std::runtime_error);
 }
 
 // ===== expect マッチャー =====

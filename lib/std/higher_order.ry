@@ -1,5 +1,4 @@
 # Higher-order functions
-
 @native
 fn filter(values: List<int>, predicate: fn(int) -> bool) -> List<int>
 

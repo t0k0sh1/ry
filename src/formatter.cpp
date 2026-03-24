@@ -727,6 +727,15 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.return_type.empty()) {
         emit(" -> " + s.return_type);
     }
+
+    // @native functions without body: no colon, no block
+    if (s.body.empty() && s.preconditions.empty() && s.postconditions.empty()) {
+        emitInlineComment(s.loc.line);
+        emitNewline();
+        last_emitted_line_ = s.loc.line;
+        return;
+    }
+
     emit(":");
     emitInlineComment(s.loc.line);
     emitNewline();

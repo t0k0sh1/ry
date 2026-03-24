@@ -12,6 +12,13 @@ static bool isSnakeCase(const std::string &name) {
     return std::regex_match(name, pattern);
 }
 
+// snake_case with optional trailing '!' for mutating function names (sort!, reverse!)
+static bool isMutationFnName(const std::string &name) {
+    if (name.empty()) return false;
+    static const std::regex pattern("[a-z_][a-z0-9_]*!?");
+    return std::regex_match(name, pattern);
+}
+
 static bool isScreamingSnakeCase(const std::string &name) {
     if (name.empty()) return false;
     static const std::regex pattern("[A-Z][A-Z0-9_]*");
@@ -71,7 +78,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
             parseError(nameTok.line, "expected function name after 'fn'");
-        bool validName = isSnakeCase(nameTok.value) ||
+        bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
             parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native functions)");

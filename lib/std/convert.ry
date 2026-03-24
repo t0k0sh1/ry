@@ -1,5 +1,4 @@
 # Type conversion functions
-
 @native
 fn to_int(value: str) -> int
 

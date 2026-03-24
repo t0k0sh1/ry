@@ -1,5 +1,4 @@
 # String operations
-
 @native
 fn contains(string: str, substring: str) -> bool
 
