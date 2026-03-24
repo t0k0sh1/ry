@@ -428,7 +428,8 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "write_text" || s.callee == "append_text" ||
         s.callee == "delete_file" || s.callee == "write_bytes" ||
         s.callee == "listen" ||
-        s.callee == "http_listen") {
+        s.callee == "http_listen" ||
+        s.callee == "sleep") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);

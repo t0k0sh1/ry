@@ -13,6 +13,8 @@
 | `range(count)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
 | `exit(code)` | 以指定的結束碼終止程序 |
 | `args()` | 以 `List<str>` 回傳命令列引數 |
+| `available_parallelism()` | 回傳此系統建議的平行度（可用執行緒數） |
+| `sleep(duration_ms)` | 暫停執行指定的毫秒數 |
 
 ### Option
 
@@ -244,6 +246,21 @@ print(a[1])      # world
 for x in args():
     print(x)
 ```
+
+---
+
+## sleep
+
+**簽名：** `sleep(duration_ms: int) -> Unit`
+
+讓目前執行緒暫停執行約 `duration_ms` 毫秒。若 `duration_ms` 小於或等於 0，則函式會立即返回。
+
+```python
+sleep(1000)    # 等待 1 秒
+sleep(0)       # 立即返回
+```
+
+> **注意：** 在 `spawn` 的任務內呼叫 `sleep` 時，底層的工作執行緒會被阻塞。若多個任務同時 sleep，執行緒池可能耗盡，其他任務將停滯直到 sleep 結束。
 
 ---
 

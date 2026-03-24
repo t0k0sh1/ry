@@ -14,6 +14,7 @@
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
+| `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `channel[T]()` | Creates an unbuffered `Channel<T>` |
 | `channel[T](capacity)` | Creates a buffered `Channel<T>` |
 | `send(ch, value)` | Sends a value through `Channel<T>` |
@@ -269,6 +270,21 @@ print(a[1])      # world
 for x in args():
     print(x)
 ```
+
+---
+
+## sleep
+
+**Signature:** `sleep(duration_ms: int) -> Unit`
+
+Suspends execution of the current thread for the specified number of milliseconds. If `duration_ms` is 0 or negative, the function returns immediately.
+
+```python
+sleep(1000)    # wait 1 second
+sleep(0)       # returns immediately
+```
+
+> **Note:** When called inside a `spawn`ed task, `sleep` blocks the underlying worker thread. If many tasks sleep concurrently, the thread pool may become exhausted and other tasks will stall until a sleep expires.
 
 ---
 
