@@ -373,6 +373,9 @@ private:
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
+    llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
+                                 const std::string &errMsg,
+                                 std::unordered_set<llvm::Value*> &trackingSet);
     std::unordered_set<llvm::Value*> tcp_listener_values_;
     std::unordered_set<llvm::Value*> tcp_stream_values_;
     std::unordered_set<llvm::Value*> http_request_values_;

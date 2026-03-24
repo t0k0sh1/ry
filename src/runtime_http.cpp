@@ -52,6 +52,49 @@ struct MapHeader {
     void *buckets;
 };
 
+struct HeaderPair { char *key; char *val; };
+
+static std::vector<HeaderPair> parse_raw_headers(const std::string &raw,
+                                                  size_t start, size_t end) {
+    std::vector<HeaderPair> headers;
+    size_t pos = start;
+    while (pos < end) {
+        size_t eol = raw.find("\r\n", pos);
+        if (eol == std::string::npos || eol > end) eol = end;
+        if (eol == pos) break;
+        size_t colon = raw.find(':', pos);
+        if (colon != std::string::npos && colon < eol) {
+            size_t vstart = colon + 1;
+            while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
+                vstart++;
+            headers.push_back({
+                strndup(raw.c_str() + pos, colon - pos),
+                strndup(raw.c_str() + vstart, eol - vstart)
+            });
+        }
+        pos = eol + 2;
+    }
+    return headers;
+}
+
+static void assign_headers(const std::vector<HeaderPair> &headers,
+                            char ***keys_out, char ***values_out,
+                            int64_t *count_out) {
+    int64_t count = (int64_t)headers.size();
+    *count_out = count;
+    if (count > 0) {
+        *keys_out = (char **)malloc(sizeof(char *) * (size_t)count);
+        *values_out = (char **)malloc(sizeof(char *) * (size_t)count);
+        for (int64_t i = 0; i < count; i++) {
+            (*keys_out)[i] = headers[(size_t)i].key;
+            (*values_out)[i] = headers[(size_t)i].val;
+        }
+    } else {
+        *keys_out = nullptr;
+        *values_out = nullptr;
+    }
+}
+
 // Forward declaration for hash table construction
 extern "C" int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
                                         int64_t newBucketCount);
@@ -329,42 +372,9 @@ extern "C" void *__ry_http_read_request(void *stream) {
         return nullptr;
     }
 
-    // Single-pass header parsing with dynamic storage
-    struct HeaderPair { char *key; char *val; };
-    std::vector<HeaderPair> parsed_headers;
-
-    size_t pos = headers_start;
-    while (pos < headers_end) {
-        size_t eol = raw.find("\r\n", pos);
-        if (eol == std::string::npos || eol > headers_end) eol = headers_end;
-        if (eol == pos) break;
-        size_t colon = raw.find(':', pos);
-        if (colon != std::string::npos && colon < eol) {
-            // Trim leading whitespace from value
-            size_t vstart = colon + 1;
-            while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
-                vstart++;
-            parsed_headers.push_back({
-                strndup(raw.c_str() + pos, colon - pos),
-                strndup(raw.c_str() + vstart, eol - vstart)
-            });
-        }
-        pos = eol + 2;
-    }
-
-    int64_t count = (int64_t)parsed_headers.size();
-    req->header_count = count;
-    if (count > 0) {
-        req->header_keys = (char **)malloc(sizeof(char *) * (size_t)count);
-        req->header_values = (char **)malloc(sizeof(char *) * (size_t)count);
-        for (int64_t i = 0; i < count; i++) {
-            req->header_keys[i] = parsed_headers[(size_t)i].key;
-            req->header_values[i] = parsed_headers[(size_t)i].val;
-        }
-    } else {
-        req->header_keys = nullptr;
-        req->header_values = nullptr;
-    }
+    // Parse headers using shared helper
+    auto parsed_headers = parse_raw_headers(raw, headers_start, headers_end);
+    assign_headers(parsed_headers, &req->header_keys, &req->header_values, &req->header_count);
 
     // Pre-parse Cookie header into req->cookie_keys/values/count
     parse_cookie_header(req);
@@ -760,28 +770,9 @@ static HttpClientResponseHandle *read_http_response(int fd) {
     if (!endptr || endptr == status_str.c_str() || status_code < 100 || status_code > 599)
         return nullptr;
 
-    // Parse headers (same pattern as request parsing)
-    struct HeaderPair { char *key; char *val; };
-    std::vector<HeaderPair> parsed_headers;
-
+    // Parse headers using shared helper
     size_t headers_start = line_end + 2;
-    size_t pos = headers_start;
-    while (pos < hdr_end) {
-        size_t eol = raw.find("\r\n", pos);
-        if (eol == std::string::npos || eol > hdr_end) eol = hdr_end;
-        if (eol == pos) break;
-        size_t colon = raw.find(':', pos);
-        if (colon != std::string::npos && colon < eol) {
-            size_t vstart = colon + 1;
-            while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
-                vstart++;
-            parsed_headers.push_back({
-                strndup(raw.c_str() + pos, colon - pos),
-                strndup(raw.c_str() + vstart, eol - vstart)
-            });
-        }
-        pos = eol + 2;
-    }
+    auto parsed_headers = parse_raw_headers(raw, headers_start, hdr_end);
 
     // Find Content-Length
     const char *cl_value = nullptr;
@@ -841,19 +832,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
     resp->status = (int64_t)status_code;
     resp->body = strdup(body_data.c_str());
 
-    int64_t count = (int64_t)parsed_headers.size();
-    resp->header_count = count;
-    if (count > 0) {
-        resp->header_keys = (char **)malloc(sizeof(char *) * (size_t)count);
-        resp->header_values = (char **)malloc(sizeof(char *) * (size_t)count);
-        for (int64_t i = 0; i < count; i++) {
-            resp->header_keys[i] = parsed_headers[(size_t)i].key;
-            resp->header_values[i] = parsed_headers[(size_t)i].val;
-        }
-    } else {
-        resp->header_keys = nullptr;
-        resp->header_values = nullptr;
-    }
+    assign_headers(parsed_headers, &resp->header_keys, &resp->header_values, &resp->header_count);
 
     return resp;
 }

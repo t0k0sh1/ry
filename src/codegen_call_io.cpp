@@ -225,23 +225,22 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
 
 // ===== Builtin Net =====
 
+llvm::Value *CodeGen::emitPtrToResult(llvm::Value *ptr, const std::string &name,
+                                       const std::string &errMsg,
+                                       std::unordered_set<llvm::Value*> &trackingSet) {
+    llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
+    llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+    llvm::Value *okVal = buildOkValue(ptr, resTy);
+    llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
+    llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
+    trackingSet.insert(res);
+    return res;
+}
+
 llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
-
-    // Helper: wrap a nullable ptr result in Result<ptr, Error> and register it in a tracking set
-    auto emitPtrToResult = [&](llvm::Value *ptr, const std::string &name,
-                               const std::string &errMsg,
-                               std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
-        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
-        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-        llvm::Value *okVal = buildOkValue(ptr, resTy);
-        llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
-        llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
-        trackingSet.insert(res);
-        return res;
-    };
 
     // bind(host, port) -> Result<TcpListener, Error>
     if (e.callee == "bind") {
@@ -563,20 +562,6 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
-
-    // Helper: wrap a nullable ptr result in Result<ptr, Error> and register it in a tracking set
-    auto emitPtrToResult = [&](llvm::Value *ptr, const std::string &name,
-                               const std::string &errMsg,
-                               std::unordered_set<llvm::Value*> &trackingSet) -> llvm::Value * {
-        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
-        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-        llvm::Value *okVal = buildOkValue(ptr, resTy);
-        llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
-        llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
-        trackingSet.insert(res);
-        return res;
-    };
 
     // http_get(url) -> Result<HttpClientResponse, Error>
     if (e.callee == "http_get") {
