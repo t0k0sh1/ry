@@ -6,12 +6,11 @@
 // Helper: allocate IteratorHeader {next_fn, state} and track element type
 static llvm::Value *emitIteratorHeaderAlloc(
     llvm::IRBuilder<> &builder, llvm::Module &mod,
-    llvm::StructType *iterHeaderTy, llvm::Type *i64Ty, llvm::Type *ptrTy,
+    llvm::StructType *iterHeaderTy, llvm::Type *i64Ty,
+    llvm::FunctionCallee mallocFn,
     llvm::Function *nextFn, llvm::Value *stateAlloc, llvm::Type *elemTy,
     std::unordered_map<llvm::Value*, llvm::Type*> &elemTypes,
     const std::string &name) {
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy, {i64Ty}, false);
-    llvm::FunctionCallee mallocFn = mod.getOrInsertFunction("malloc", mallocTy);
     uint64_t headerSize = mod.getDataLayout().getTypeAllocSize(iterHeaderTy);
     llvm::Value *header = builder.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty, headerSize)}, name);
@@ -100,7 +99,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
                 builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, ptrTy_, nextFn, stateAlloc, elemTy, iterator_element_types_, "iter_header");
+                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, iterator_element_types_, "iter_header");
         };
 
         // Try List (data at index 2, len at index 0)
@@ -178,7 +177,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
                 builder_.CreateStructGEP(stateTy, stateAlloc, 3));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, ptrTy_, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
+                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
         }
 
         codegenError("iter() argument must be a List, Set, or Map");
@@ -364,7 +363,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, ptrTy_, filterNextFn, stateAlloc, elemTy, iterator_element_types_, "filter_iter");
+            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, iterator_element_types_, "filter_iter");
     }
 
     // map(iter, transform) → new Iterator with transformed element type
@@ -438,7 +437,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, ptrTy_, mapNextFn, stateAlloc, outElemTy, iterator_element_types_, "map_iter");
+            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, iterator_element_types_, "map_iter");
     }
 
     // take(iter, n) → new Iterator that yields at most n elements
@@ -502,7 +501,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, ptrTy_, takeNextFn, stateAlloc, elemTy, iterator_element_types_, "take_iter");
+            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, iterator_element_types_, "take_iter");
     }
 
     return nullptr;
