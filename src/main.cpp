@@ -463,7 +463,7 @@ int main(int argc, char *argv[]) {
                 if (watch) {
                     const char *a0 = argv[0];
                     ry::watchAndRunTests(target_str, [target_str, a0, parallel]() {
-                        return discoverAndRunTests(target_str, a0, parallel);
+                        discoverAndRunTests(target_str, a0, parallel);
                     });
                     return 0;
                 }
@@ -476,18 +476,16 @@ int main(int argc, char *argv[]) {
             }
             if (watch) {
                 // Watch project root (or file's parent dir) and re-run single file
-                std::string watch_root = findProjectRoot().value_or(
-                    fs::path(target_str).parent_path().string());
+                auto target_dir = fs::path(target_str).parent_path().string();
+                std::string watch_root = findProjectRoot(target_dir).value_or(target_dir);
                 const char *a0 = argv[0];
                 ry::watchAndRunTests(watch_root, [target_str, a0]() {
                     try {
-                        return runRyFile(target_str, true, a0);
+                        runRyFile(target_str, true, a0);
                     } catch (const DiagnosticError &e) {
                         errs() << e.what();
-                        return 1;
                     } catch (const std::exception &e) {
                         errs() << "Error: " << e.what() << "\n";
-                        return 1;
                     }
                 });
                 return 0;
@@ -507,7 +505,7 @@ int main(int argc, char *argv[]) {
                 std::string root_dir = *root;
                 const char *a0 = argv[0];
                 ry::watchAndRunTests(root_dir, [root_dir, a0, parallel]() {
-                    return discoverAndRunTests(root_dir, a0, parallel);
+                    discoverAndRunTests(root_dir, a0, parallel);
                 });
                 return 0;
             }

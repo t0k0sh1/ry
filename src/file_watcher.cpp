@@ -1,5 +1,4 @@
 #include "ry/file_watcher.hpp"
-#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
@@ -42,10 +41,10 @@ MtimeMap collectRyFileMtimes(const std::string &root_dir) {
     return mtimes;
 }
 
-static std::atomic<bool> g_watch_stop{false};
+static volatile std::sig_atomic_t g_watch_stop = 0;
 
 static void watch_sigint_handler(int) {
-    g_watch_stop.store(true, std::memory_order_relaxed);
+    g_watch_stop = 1;
 }
 
 /// Detect changed files between old and new snapshots.
@@ -77,15 +76,25 @@ static std::string currentTimeString() {
     return buf;
 }
 
+// RAII guard for restoring SIGINT handler on scope exit
+struct SigintGuard {
+    struct sigaction old_sa{};
+    SigintGuard() {
+        struct sigaction sa{};
+        sa.sa_handler = watch_sigint_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGINT, &sa, &old_sa);
+    }
+    ~SigintGuard() { sigaction(SIGINT, &old_sa, nullptr); }
+    SigintGuard(const SigintGuard &) = delete;
+    SigintGuard &operator=(const SigintGuard &) = delete;
+};
+
 void watchAndRunTests(const std::string &root_dir,
-                      std::function<int()> run_tests) {
-    // Install SIGINT handler, saving the previous one for restoration
-    g_watch_stop.store(false, std::memory_order_relaxed);
-    struct sigaction sa{}, old_sa{};
-    sa.sa_handler = watch_sigint_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, &old_sa);
+                      std::function<void()> run_tests) {
+    g_watch_stop = 0;
+    SigintGuard sigint_guard;
 
     std::printf("[%s] Watch mode started. Monitoring *.ry files in %s\n",
                 currentTimeString().c_str(), root_dir.c_str());
@@ -96,16 +105,16 @@ void watchAndRunTests(const std::string &root_dir,
     run_tests();
 
     // Poll loop
-    while (!g_watch_stop.load(std::memory_order_relaxed)) {
+    while (!g_watch_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
-        if (g_watch_stop.load(std::memory_order_relaxed)) break;
+        if (g_watch_stop) break;
 
         auto new_snap = collectRyFileMtimes(root_dir);
         if (detectChanges(snapshot, new_snap).empty()) continue;
 
         // Debounce: wait 200ms and re-scan to coalesce rapid changes
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        if (g_watch_stop.load(std::memory_order_relaxed)) break;
+        if (g_watch_stop) break;
         new_snap = collectRyFileMtimes(root_dir);
         auto changed = detectChanges(snapshot, new_snap);
 
@@ -123,8 +132,6 @@ void watchAndRunTests(const std::string &root_dir,
         run_tests();
     }
 
-    // Restore previous SIGINT handler
-    sigaction(SIGINT, &old_sa, nullptr);
     std::printf("\nWatch mode terminated.\n");
 }
 

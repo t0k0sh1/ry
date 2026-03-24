@@ -18,6 +18,6 @@ MtimeMap collectRyFileMtimes(const std::string &root_dir);
 /// 3. Clears screen and prints changed files + timestamp before re-run.
 /// 4. Exits on SIGINT (Ctrl+C).
 void watchAndRunTests(const std::string &root_dir,
-                      std::function<int()> run_tests);
+                      std::function<void()> run_tests);
 
 } // namespace ry
