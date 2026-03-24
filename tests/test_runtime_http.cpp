@@ -688,7 +688,7 @@ static int get_server_port(int srv) {
     return ntohs(addr.sin_port);
 }
 
-TEST(DISABLED_RuntimeHttpClient, HttpGetBasic) {
+TEST(RuntimeHttpClient, HttpGetBasic) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Custom: test-value\r\n\r\nhello";
     int srv = start_mock_server();
     int port = get_server_port(srv);
@@ -713,7 +713,7 @@ TEST(DISABLED_RuntimeHttpClient, HttpGetBasic) {
     ::close(srv);
 }
 
-TEST(DISABLED_RuntimeHttpClient, HttpPostWithBody) {
+TEST(RuntimeHttpClient, HttpPostWithBody) {
     std::string response = "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok";
     int srv = start_mock_server();
     int port = get_server_port(srv);
@@ -745,7 +745,7 @@ TEST(RuntimeHttpClient, HttpGetConnectionRefused) {
     EXPECT_EQ(resp, nullptr);
 }
 
-TEST(DISABLED_RuntimeHttpClient, HttpGetNoContentLength) {
+TEST(RuntimeHttpClient, HttpGetNoContentLength) {
     std::string response = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nno content length body";
     int srv = start_mock_server();
     int port = get_server_port(srv);
@@ -768,7 +768,7 @@ TEST(DISABLED_RuntimeHttpClient, HttpGetNoContentLength) {
     ::close(srv);
 }
 
-TEST(DISABLED_RuntimeHttpClient, HttpRequestCustomMethod) {
+TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
     std::string response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
     int srv = start_mock_server();
     int port = get_server_port(srv);
@@ -793,7 +793,7 @@ TEST(DISABLED_RuntimeHttpClient, HttpRequestCustomMethod) {
     EXPECT_NE(captured_request.find("DELETE /resource HTTP/1.1"), std::string::npos);
 }
 
-TEST(DISABLED_RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
+TEST(RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
     std::string response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nContent-Length: 2\r\n\r\n{}";
     int srv = start_mock_server();
     int port = get_server_port(srv);
