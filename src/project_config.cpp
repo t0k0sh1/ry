@@ -102,7 +102,12 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
 
 static int scaffold_project(const fs::path &project_dir, const std::string &project_name) {
     // 1. Create directories
-    fs::create_directories(project_dir / "src");
+    std::error_code ec;
+    fs::create_directories(project_dir / "src", ec);
+    if (ec) {
+        std::cerr << "Error: failed to create directories: " << ec.message() << "\n";
+        return 1;
+    }
 
     // 2. Generate ry.toml
     ProjectConfig config;
@@ -113,6 +118,10 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
 
     {
         std::ofstream f(project_dir / "ry.toml");
+        if (!f) {
+            std::cerr << "Error: failed to create ry.toml\n";
+            return 1;
+        }
         f << ProjectConfigParser::serialize(config);
     }
 
@@ -120,6 +129,10 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
     auto main_ry = project_dir / "src" / "main.ry";
     if (!fs::exists(main_ry)) {
         std::ofstream f(main_ry);
+        if (!f) {
+            std::cerr << "Error: failed to create src/main.ry\n";
+            return 1;
+        }
         f << "print(\"Hello, World!\")\n";
     }
 
@@ -152,6 +165,16 @@ int cmd_new(int argc, char *argv[]) {
     }
 
     std::string project_name = argv[0];
+
+    // Reject absolute paths and path traversal
+    fs::path name_path(project_name);
+    if (name_path.is_absolute() || project_name.find("..") != std::string::npos
+        || project_name.find('/') != std::string::npos
+        || project_name.find('\\') != std::string::npos) {
+        std::cerr << "Error: project name must be a simple directory name\n";
+        return 1;
+    }
+
     fs::path project_dir = fs::current_path() / project_name;
 
     if (fs::exists(project_dir)) {
