@@ -56,6 +56,41 @@ my-project/
 
 ---
 
+## `ry fmt` - Code Formatter
+
+Formats `.ry` source files with consistent 2-space indentation and canonical style.
+
+```bash
+ry fmt                     # Format all .ry files in the project (requires ry.toml)
+ry fmt src/main.ry         # Format a single file
+ry fmt src/                # Format all .ry files in a directory (recursive)
+ry fmt --check             # Check if files are formatted (exit 1 if not)
+ry fmt --check src/        # Check specific directory
+```
+
+### Formatting Rules
+
+- 2-space indentation per block level
+- Spaces around binary operators (`a + b`, not `a+b`)
+- Space after comma (`f(a, b)`, not `f(a,b)`)
+- Blank line between top-level definitions (functions, records, enums)
+- Comments are preserved
+
+### Behavior
+
+1. Reads the source file, parses it into an AST, and re-emits with canonical formatting
+2. Writes the formatted result back to the file (in-place)
+3. With `--check`, only reports unformatted files and exits with code 1 if any are found (useful for CI)
+4. Skips `.git/`, `build/`, and `node_modules/` directories during recursive formatting
+
+### Notes
+
+- Does not require LLVM initialization (fast startup)
+- Compound assignment operators (`+=`, `-=`, etc.) are represented in their desugared form (`x = x + expr`) after formatting, because the parser desugars them during parsing
+- Hex (`0xFF`) and binary (`0b1010`) number literals are converted to decimal notation
+
+---
+
 ## `ry self-update` - Self Update
 
 Updates ry itself to the latest version. Downloads a binary from GitHub Releases and replaces the current executable.
