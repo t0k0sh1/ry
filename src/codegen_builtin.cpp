@@ -57,6 +57,15 @@ static bool lookupValueSet(const std::unordered_set<llvm::Value*> &set, llvm::Va
     return false;
 }
 
+// Relaxed variant: resolves LoadInst to alloca regardless of loaded type.
+// Used for resource propagation where the value may be a Result<T, Error> struct.
+static bool lookupValueSetWide(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
+    if (set.count(val)) return true;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+        return set.count(load->getPointerOperand()) > 0;
+    return false;
+}
+
 bool CodeGen::isTcpListener(llvm::Value *val) {
     return lookupValueSet(tcp_listener_values_, val);
 }
@@ -836,12 +845,13 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             enum_value_types_[subjectAlloca] = subjectEnumType;
     }
 
-    // Track TCP types for subject alloca
-    if (isTcpListener(subject)) tcp_listener_values_.insert(subjectAlloca);
-    if (isTcpStream(subject))   tcp_stream_values_.insert(subjectAlloca);
-    if (isHttpRequest(subject))  http_request_values_.insert(subjectAlloca);
-    if (isHttpResponse(subject)) http_response_values_.insert(subjectAlloca);
-    if (isHttpClientResponse(subject)) http_client_response_values_.insert(subjectAlloca);
+    // Track resource types for subject alloca.
+    // Uses lookupValueSetWide to resolve through Result<T, Error> struct loads.
+    if (lookupValueSetWide(tcp_listener_values_, subject)) tcp_listener_values_.insert(subjectAlloca);
+    if (lookupValueSetWide(tcp_stream_values_, subject))   tcp_stream_values_.insert(subjectAlloca);
+    if (lookupValueSetWide(http_request_values_, subject))  http_request_values_.insert(subjectAlloca);
+    if (lookupValueSetWide(http_response_values_, subject)) http_response_values_.insert(subjectAlloca);
+    if (lookupValueSetWide(http_client_response_values_, subject)) http_client_response_values_.insert(subjectAlloca);
 
     // Propagate collection metadata to subject alloca
     if (auto it = list_element_types_.find(subject); it != list_element_types_.end())
