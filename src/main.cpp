@@ -11,13 +11,23 @@
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define RY_ENVIRON (*_NSGetEnviron())
+#else
+extern char **environ;
+#define RY_ENVIRON environ
+#endif
+#include <cstdlib>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <deque>
 #include <filesystem>
 #include <mutex>
+#include <spawn.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -241,7 +251,8 @@ struct TestFileResult {
     std::string output;
 };
 
-// Run a single test file in a subprocess, capturing stdout+stderr
+// Run a single test file in a subprocess, capturing stdout+stderr.
+// Uses posix_spawn instead of fork to be safe from multi-threaded contexts.
 static TestFileResult runTestFileSubprocess(const std::string &filepath,
                                             const std::string &exe_path) {
     TestFileResult result;
@@ -254,36 +265,43 @@ static TestFileResult runTestFileSubprocess(const std::string &filepath,
         return result;
     }
 
-    pid_t pid = fork();
-    if (pid == -1) {
-        close(pipefd[0]);
-        close(pipefd[1]);
-        result.output = "Error: fork() failed\n";
-        return result;
-    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+    posix_spawn_file_actions_addclose(&actions, pipefd[1]);
 
-    if (pid == 0) {
+    const char *argv[] = {exe_path.c_str(), "test", filepath.c_str(), nullptr};
+    pid_t pid;
+    int err = posix_spawn(&pid, exe_path.c_str(), &actions, nullptr,
+                          const_cast<char *const *>(argv), RY_ENVIRON);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (err != 0) {
         close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
         close(pipefd[1]);
-        execl(exe_path.c_str(), exe_path.c_str(), "test", filepath.c_str(), nullptr);
-        _exit(127);
+        result.output = "Error: posix_spawn() failed: " + std::string(strerror(err)) + "\n";
+        return result;
     }
 
     close(pipefd[1]);
     char buf[4096];
     ssize_t n;
-    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
-        result.output.append(buf, n);
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0 || (n == -1 && errno == EINTR)) {
+        if (n > 0) result.output.append(buf, n);
     }
     close(pipefd[0]);
 
     int status;
-    waitpid(pid, &status, 0);
+    while (waitpid(pid, &status, 0) == -1) {
+        if (errno != EINTR) break;
+    }
 
     if (WIFEXITED(status))
         result.exit_code = WEXITSTATUS(status);
+    else if (WIFSIGNALED(status))
+        result.exit_code = 128 + WTERMSIG(status);
     else
         result.exit_code = -1;
 
