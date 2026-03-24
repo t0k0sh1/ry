@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <charconv>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -151,17 +152,14 @@ std::string Formatter::escapeString(const std::string &s) {
 }
 
 std::string Formatter::formatFloat(double v) {
-    std::ostringstream oss;
-    oss << std::fixed;
-    oss.precision(10);
-    oss << v;
-    std::string s = oss.str();
-    // Remove trailing zeros but keep at least one decimal digit
-    auto dot = s.find('.');
-    if (dot != std::string::npos) {
-        auto last_nonzero = s.find_last_not_of('0');
-        if (last_nonzero == dot) last_nonzero++; // keep "X.0"
-        s.erase(last_nonzero + 1);
+    // Use std::to_chars with fixed format for round-trip safe output
+    // without scientific notation
+    char buf[64];
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), v, std::chars_format::fixed);
+    std::string s(buf, ptr);
+    // Ensure at least one decimal digit
+    if (s.find('.') == std::string::npos) {
+        s += ".0";
     }
     return s;
 }
@@ -807,8 +805,11 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.postconditions.empty()) {
         emitIndent();
         emit("ensure");
-        for (const auto &b : s.ensure_bindings) {
-            emit(" " + b);
+        if (!s.ensure_bindings.empty()) {
+            emit(" " + s.ensure_bindings[0]);
+            for (size_t i = 1; i < s.ensure_bindings.size(); ++i) {
+                emit(", " + s.ensure_bindings[i]);
+            }
         }
         emit(":");
         emitNewline();
