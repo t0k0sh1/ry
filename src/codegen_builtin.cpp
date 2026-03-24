@@ -88,18 +88,18 @@ bool CodeGen::isHttpClientResponse(llvm::Value *val) {
 
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
-    else if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
-    else if (http_request_values_.count(src))  http_request_values_.insert(dst);
-    else if (http_response_values_.count(src)) http_response_values_.insert(dst);
-    else if (http_client_response_values_.count(src)) http_client_response_values_.insert(dst);
+    if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
+    if (http_request_values_.count(src))  http_request_values_.insert(dst);
+    if (http_response_values_.count(src)) http_response_values_.insert(dst);
+    if (http_client_response_values_.count(src)) http_client_response_values_.insert(dst);
 }
 
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
     if (lookupValueSetWide(tcp_listener_values_, src)) tcp_listener_values_.insert(dst);
-    else if (lookupValueSetWide(tcp_stream_values_, src))   tcp_stream_values_.insert(dst);
-    else if (lookupValueSetWide(http_request_values_, src))  http_request_values_.insert(dst);
-    else if (lookupValueSetWide(http_response_values_, src)) http_response_values_.insert(dst);
-    else if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
+    if (lookupValueSetWide(tcp_stream_values_, src))   tcp_stream_values_.insert(dst);
+    if (lookupValueSetWide(http_request_values_, src))  http_request_values_.insert(dst);
+    if (lookupValueSetWide(http_response_values_, src)) http_response_values_.insert(dst);
+    if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
 }
 
 // Step 1: Hash function resolution helper
