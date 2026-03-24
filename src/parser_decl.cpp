@@ -740,17 +740,21 @@ StmtNode Parser::parseMatchStatement() {
 
         // Check for OR pattern: case A | B | C:
         if (lex_.peek().kind == TokenKind::Pipe) {
+            auto hasBinding = [](const Pattern &p) {
+                return std::holds_alternative<VariablePattern>(p) ||
+                       std::holds_alternative<SomePattern>(p) ||
+                       std::holds_alternative<OkPattern>(p) ||
+                       std::holds_alternative<ErrPattern>(p) ||
+                       std::holds_alternative<EnumConstructorPattern>(p);
+            };
             auto orPat = std::make_unique<OrPattern>();
-            // Check that first pattern has no variable binding
-            if (std::holds_alternative<VariablePattern>(arm.pattern) ||
-                std::holds_alternative<SomePattern>(arm.pattern))
+            if (hasBinding(arm.pattern))
                 parseError("OR pattern cannot contain variable bindings");
             orPat->alternatives.push_back(std::move(arm.pattern));
             while (lex_.peek().kind == TokenKind::Pipe) {
                 lex_.next(); // consume '|'
                 Pattern alt = parsePattern();
-                if (std::holds_alternative<VariablePattern>(alt) ||
-                    std::holds_alternative<SomePattern>(alt))
+                if (hasBinding(alt))
                     parseError("OR pattern cannot contain variable bindings");
                 orPat->alternatives.push_back(std::move(alt));
             }
