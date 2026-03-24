@@ -142,6 +142,233 @@ describe("HTTP Client", fn():
         join(t)
     )
 
+    it("http_get follows 302 redirect", fn():
+        fn redirect_server(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(srv):
+                    match listen(srv, 2):
+                        case Ok(_):
+                            port = listener_port(srv)
+                            send(ready, port)
+                            # First request: respond with 302 redirect
+                            match accept(srv):
+                                case Ok(conn1):
+                                    match recv(conn1, 4096):
+                                        case Ok(data):
+                                            redirect_resp = "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + to_str(port) + "/final\r\nContent-Length: 0\r\n\r\n"
+                                            match send(conn1, str_to_bytes(redirect_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn1)
+                                case Err(e):
+                                    ...
+                            # Second request: respond with 200
+                            match accept(srv):
+                                case Ok(conn2):
+                                    match recv(conn2, 4096):
+                                        case Ok(data):
+                                            final_resp = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nredirected!"
+                                            match send(conn2, str_to_bytes(final_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn2)
+                                case Err(e):
+                                    ...
+                        case Err(e):
+                            send(ready, 0)
+                    close(srv)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn redirect_server(ready)
+        port = recv(ready)
+        url = "http://127.0.0.1:" + to_str(port) + "/start"
+        match http_get(url):
+            case Ok(resp):
+                expect(http_client_status(resp)).to_eq(200)
+                expect(http_client_body(resp)).to_eq("redirected!")
+                ...
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+
+    it("303 redirect changes POST to GET", fn():
+        fn server_303(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(srv):
+                    match listen(srv, 2):
+                        case Ok(_):
+                            port = listener_port(srv)
+                            send(ready, port)
+                            # First request: respond with 303
+                            match accept(srv):
+                                case Ok(conn1):
+                                    match recv(conn1, 4096):
+                                        case Ok(data):
+                                            redirect_resp = "HTTP/1.1 303 See Other\r\nLocation: http://127.0.0.1:" + to_str(port) + "/result\r\nContent-Length: 0\r\n\r\n"
+                                            match send(conn1, str_to_bytes(redirect_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn1)
+                                case Err(e):
+                                    ...
+                            # Second request: respond with 200
+                            match accept(srv):
+                                case Ok(conn2):
+                                    match recv(conn2, 4096):
+                                        case Ok(data):
+                                            final_resp = "HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\ngot_get"
+                                            match send(conn2, str_to_bytes(final_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn2)
+                                case Err(e):
+                                    ...
+                        case Err(e):
+                            send(ready, 0)
+                    close(srv)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn server_303(ready)
+        port = recv(ready)
+        url = "http://127.0.0.1:" + to_str(port) + "/submit"
+        headers: Map<str, str> = {"Content-Type": "application/json"}
+        match http_post(url, "{\"data\":1}", headers):
+            case Ok(resp):
+                expect(http_client_status(resp)).to_eq(200)
+                expect(http_client_body(resp)).to_eq("got_get")
+                ...
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+
+    it("redirect with relative Location path", fn():
+        fn server_rel(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(srv):
+                    match listen(srv, 2):
+                        case Ok(_):
+                            port = listener_port(srv)
+                            send(ready, port)
+                            match accept(srv):
+                                case Ok(conn1):
+                                    match recv(conn1, 4096):
+                                        case Ok(data):
+                                            redirect_resp = "HTTP/1.1 301 Moved Permanently\r\nLocation: /new-path\r\nContent-Length: 0\r\n\r\n"
+                                            match send(conn1, str_to_bytes(redirect_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn1)
+                                case Err(e):
+                                    ...
+                            match accept(srv):
+                                case Ok(conn2):
+                                    match recv(conn2, 4096):
+                                        case Ok(data):
+                                            final_resp = "HTTP/1.1 200 OK\r\nContent-Length: 8\r\n\r\nnew-path"
+                                            match send(conn2, str_to_bytes(final_resp)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn2)
+                                case Err(e):
+                                    ...
+                        case Err(e):
+                            send(ready, 0)
+                    close(srv)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn server_rel(ready)
+        port = recv(ready)
+        url = "http://127.0.0.1:" + to_str(port) + "/old-path"
+        match http_get(url):
+            case Ok(resp):
+                expect(http_client_status(resp)).to_eq(200)
+                expect(http_client_body(resp)).to_eq("new-path")
+                ...
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+
+    it("redirect limit exceeded returns Err", fn():
+        fn server_loop(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(srv):
+                    match listen(srv, 12):
+                        case Ok(_):
+                            port = listener_port(srv)
+                            send(ready, port)
+                            i = 0
+                            while i < 12:
+                                match accept(srv):
+                                    case Ok(conn):
+                                        match recv(conn, 4096):
+                                            case Ok(data):
+                                                redirect_resp = "HTTP/1.1 301 Moved Permanently\r\nLocation: http://127.0.0.1:" + to_str(port) + "/loop\r\nContent-Length: 0\r\n\r\n"
+                                                match send(conn, str_to_bytes(redirect_resp)):
+                                                    case Ok(_):
+                                                        ...
+                                                    case Err(e):
+                                                        ...
+                                            case Err(e):
+                                                ...
+                                        close(conn)
+                                    case Err(e):
+                                        ...
+                                i = i + 1
+                        case Err(e):
+                            send(ready, 0)
+                    close(srv)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn server_loop(ready)
+        port = recv(ready)
+        url = "http://127.0.0.1:" + to_str(port) + "/loop"
+        match http_get(url):
+            case Ok(resp):
+                expect(true).to_eq(false)
+            case Err(e):
+                expect(true).to_eq(true)
+        join(t)
+    )
+
     it("http_get returns Err on connection refused", fn():
         match http_get("http://127.0.0.1:1/nonexistent"):
             case Ok(resp):
