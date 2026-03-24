@@ -131,11 +131,13 @@ if(APPLE)
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
         GTest::gtest_main
+        GTest::gmock
     )
 else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         GTest::gtest_main
+        GTest::gmock
     )
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
