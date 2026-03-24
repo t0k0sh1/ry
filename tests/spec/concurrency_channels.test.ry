@@ -1,108 +1,94 @@
 describe("channels", fn():
-    it("passes values through an unbuffered channel", fn():
-        fn worker(ch: Channel<int>) -> int:
-            send(ch, 42)
-            return 0
-
-        ch: Channel<int> = channel[int]()
-        t: Task<int> = spawn worker(ch)
-        expect(recv(ch)).to_eq(42)
-        expect(join(t)).to_eq(0)
-
-    )
-    it("preserves fifo order for buffered channels", fn():
-        ch: Channel<int> = channel[int](2)
-        send(ch, 1)
-        send(ch, 2)
-        expect(recv(ch)).to_eq(1)
-        expect(recv(ch)).to_eq(2)
-
-    )
-    it("works across async tasks", fn():
-        async fn produce(ch: Channel<int>) -> Unit:
-            send(ch, 7)
-
-        ch: Channel<int> = channel[int]()
-        t: Task<Unit> = produce(ch)
-        expect(recv(ch)).to_eq(7)
-        await t
-
-    )
-    it("returns Some while draining a closed buffered channel", fn():
-        ch: Channel<int> = channel[int](2)
-        send(ch, 5)
-        close(ch)
-        expect(recv_opt(ch)).to_eq(Some(5))
-        drained: Option<int> = None
-        expect(recv_opt(ch)).to_eq(drained)
-
-    )
-    it("returns false for a drained closed Unit channel", fn():
-        ch: Channel<Unit> = channel[Unit]()
-        close(ch)
-        expect(recv_opt(ch)).to_eq(false)
-
-    )
-    it("try_recv returns Some then None for buffered channels", fn():
-        ch: Channel<int> = channel[int](1)
-        send(ch, 9)
-        expect(try_recv(ch)).to_eq(Some(9))
-        empty: Option<int> = None
-        expect(try_recv(ch)).to_eq(empty)
-
-    )
-    it("try_send returns false for closed channels", fn():
-        ch: Channel<int> = channel[int](1)
-        close(ch)
-        expect(try_send(ch, 1)).to_eq(false)
-
-    )
-    it("try_send can handshake with an unbuffered receiver", fn():
-        fn consume(ch: Channel<int>) -> int:
-            return recv(ch)
-
-        ch: Channel<int> = channel[int]()
-        t: Task<int> = spawn consume(ch)
-        sent = false
-        while not sent:
-            sent = try_send(ch, 13)
-        expect(sent).to_eq(true)
-        expect(join(t)).to_eq(13)
-
-    )
-    it("iterates a closed buffered channel with for-in", fn():
-        ch: Channel<int> = channel[int](2)
-        send(ch, 1)
-        send(ch, 2)
-        close(ch)
-        total = 0
-        for x in ch:
-            total = total + x
-        expect(total).to_eq(3)
-
-    )
-    it("iterates an unbuffered channel from a spawned producer", fn():
-        fn produce_numbers(ch: Channel<int>) -> int:
-            send(ch, 3)
-            send(ch, 4)
-            close(ch)
-            return 0
-
-        ch: Channel<int> = channel[int]()
-        t: Task<int> = spawn produce_numbers(ch)
-        total = 0
-        for x in ch:
-            total = total + x
-        expect(total).to_eq(7)
-        expect(join(t)).to_eq(0)
-
-    )
-    it("stops cleanly on a closed drained channel", fn():
-        ch: Channel<int> = channel[int](1)
-        close(ch)
-        count = 0
-        for x in ch:
-            count = count + 1
-        expect(count).to_eq(0)
-    )
+  it("passes values through an unbuffered channel", fn():
+    fn worker(ch: Channel<int>) -> int:
+      send(ch, 42)
+      return 0
+    ch: Channel<int> = channel[int]()
+    t: Task<int> = spawn worker(ch)
+    expect(recv(ch)).to_eq(42)
+    expect(join(t)).to_eq(0)
+  )
+  it("preserves fifo order for buffered channels", fn():
+    ch: Channel<int> = channel[int](2)
+    send(ch, 1)
+    send(ch, 2)
+    expect(recv(ch)).to_eq(1)
+    expect(recv(ch)).to_eq(2)
+  )
+  it("works across async tasks", fn():
+    async fn produce(ch: Channel<int>) -> Unit:
+      send(ch, 7)
+    ch: Channel<int> = channel[int]()
+    t: Task<Unit> = produce(ch)
+    expect(recv(ch)).to_eq(7)
+    await t
+  )
+  it("returns Some while draining a closed buffered channel", fn():
+    ch: Channel<int> = channel[int](2)
+    send(ch, 5)
+    close(ch)
+    expect(recv_opt(ch)).to_eq(Some(5))
+    drained: Option<int> = None
+    expect(recv_opt(ch)).to_eq(drained)
+  )
+  it("returns false for a drained closed Unit channel", fn():
+    ch: Channel<Unit> = channel[Unit]()
+    close(ch)
+    expect(recv_opt(ch)).to_eq(false)
+  )
+  it("try_recv returns Some then None for buffered channels", fn():
+    ch: Channel<int> = channel[int](1)
+    send(ch, 9)
+    expect(try_recv(ch)).to_eq(Some(9))
+    empty: Option<int> = None
+    expect(try_recv(ch)).to_eq(empty)
+  )
+  it("try_send returns false for closed channels", fn():
+    ch: Channel<int> = channel[int](1)
+    close(ch)
+    expect(try_send(ch, 1)).to_eq(false)
+  )
+  it("try_send can handshake with an unbuffered receiver", fn():
+    fn consume(ch: Channel<int>) -> int:
+      return recv(ch)
+    ch: Channel<int> = channel[int]()
+    t: Task<int> = spawn consume(ch)
+    sent = false
+    while not sent:
+      sent = try_send(ch, 13)
+    expect(sent).to_eq(true)
+    expect(join(t)).to_eq(13)
+  )
+  it("iterates a closed buffered channel with for-in", fn():
+    ch: Channel<int> = channel[int](2)
+    send(ch, 1)
+    send(ch, 2)
+    close(ch)
+    total = 0
+    for x in ch:
+      total = total + x
+    expect(total).to_eq(3)
+  )
+  it("iterates an unbuffered channel from a spawned producer", fn():
+    fn produce_numbers(ch: Channel<int>) -> int:
+      send(ch, 3)
+      send(ch, 4)
+      close(ch)
+      return 0
+    ch: Channel<int> = channel[int]()
+    t: Task<int> = spawn produce_numbers(ch)
+    total = 0
+    for x in ch:
+      total = total + x
+    expect(total).to_eq(7)
+    expect(join(t)).to_eq(0)
+  )
+  it("stops cleanly on a closed drained channel", fn():
+    ch: Channel<int> = channel[int](1)
+    close(ch)
+    count = 0
+    for x in ch:
+      count = count + 1
+    expect(count).to_eq(0)
+  )
 )

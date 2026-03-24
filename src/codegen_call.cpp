@@ -958,9 +958,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 
-    // Validate @native fn type signatures before dispatch
-    validateNativeCallArgs(e->callee, e->args);
-
     // Dispatch to category helpers
     if (auto *v = emitBuiltinIterator(*e))   return v;
     if (auto *v = emitBuiltinString(*e))     return v;
@@ -975,6 +972,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinIO(*e))       return v;
     if (auto *v = emitBuiltinNet(*e))     return v;
     if (auto *v = emitBuiltinHttp(*e))    return v;
+
+    // Validate @native fn type signatures (after builtin dispatch)
+    validateNativeCallArgs(e->callee, e->args);
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);

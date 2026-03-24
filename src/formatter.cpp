@@ -152,11 +152,16 @@ std::string Formatter::escapeString(const std::string &s) {
 
 std::string Formatter::formatFloat(double v) {
     std::ostringstream oss;
+    oss << std::fixed;
+    oss.precision(10);
     oss << v;
     std::string s = oss.str();
-    // Ensure at least one decimal digit
-    if (s.find('.') == std::string::npos && s.find('e') == std::string::npos) {
-        s += ".0";
+    // Remove trailing zeros but keep at least one decimal digit
+    auto dot = s.find('.');
+    if (dot != std::string::npos) {
+        auto last_nonzero = s.find_last_not_of('0');
+        if (last_nonzero == dot) last_nonzero++; // keep "X.0"
+        s.erase(last_nonzero + 1);
     }
     return s;
 }
@@ -189,6 +194,10 @@ bool Formatter::needsParens(const ExprNode &child, const std::string &parent_op,
     }
     if (auto *tern = std::get_if<std::unique_ptr<TernaryExpr>>(&child.data)) {
         return true; // always parenthesize ternary inside binary
+    }
+    if (std::get_if<std::unique_ptr<AwaitExpr>>(&child.data) ||
+        std::get_if<std::unique_ptr<SpawnExpr>>(&child.data)) {
+        return true; // parenthesize await/spawn inside binary
     }
     return false;
 }
@@ -238,7 +247,16 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 if (i > 0) args += ", ";
                 args += formatExpr(*call.args[i]);
             }
-            return call.callee + "(" + args + ")";
+            // Restore bracket syntax: parser converts name[T]() to name<T>()
+            // but generic enum constructors use <> with :: (e.g. Option<int>::Some)
+            std::string callee = call.callee;
+            auto lt = callee.find('<');
+            if (lt != std::string::npos && callee.back() == '>'
+                && callee.find("::") == std::string::npos) {
+                callee[lt] = '[';
+                callee.back() = ']';
+            }
+            return callee + "(" + args + ")";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
             return formatExpr(*v->object) + "." + v->field;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
@@ -315,7 +333,9 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 indent();
                 for (size_t i = 0; i < v->body.size(); ++i) {
                     emitCommentsBefore(getStmtLine(v->body[i]));
-                    emitIndent();
+                    if (!hasDirectives(v->body[i])) {
+                        emitIndent();
+                    }
                     formatStmt(v->body[i]);
                 }
                 indent_level_ = saved;
@@ -405,12 +425,28 @@ void Formatter::formatDirectives(const std::vector<Directive> &directives) {
 
 // --- Block formatting ---
 
+bool Formatter::hasDirectives(const StmtNode &stmt) const {
+    return std::visit([](const auto &v) -> bool {
+        using T = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<T, AssignStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, CallStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, RecordStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, TupleDestructStmt>) return !v.directives.empty();
+        else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) return !v->directives.empty();
+        else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) return !v->directives.empty();
+        else return false;
+    }, stmt);
+}
+
 void Formatter::formatBlock(const std::vector<StmtNode> &body) {
     indent();
     for (size_t i = 0; i < body.size(); ++i) {
         int stmt_line = getStmtLine(body[i]);
         emitCommentsBefore(stmt_line);
-        emitIndent();
+        // Directive-bearing statements emit their own indent via formatDirectives
+        if (!hasDirectives(body[i])) {
+            emitIndent();
+        }
         formatStmt(body[i]);
     }
     dedent();
@@ -505,6 +541,14 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (s.type_annotation) {
         emit(": " + *s.type_annotation);
     }
+    // @native @const declarations have no value
+    if (!s.value) {
+        emitInlineComment(s.loc.line);
+        emitNewline();
+        last_emitted_line_ = s.loc.line;
+        return;
+    }
+
     emit(" = ");
 
     // Check if value is a multi-line lambda
@@ -623,17 +667,21 @@ void Formatter::formatRecord(const RecordStmt &s) {
     indent();
     for (const auto &field : s.fields) {
         formatDirectives(field.directives);
-        if (!field.directives.empty()) emitIndent();
         emitIndent();
         emit(field.name + ": " + field.type);
         emitNewline();
     }
     if (!s.invariants.empty()) {
+        emitIndent();
+        emit("invariant:");
+        emitNewline();
+        indent();
         for (const auto &inv : s.invariants) {
             emitIndent();
-            emit("invariant " + formatExpr(*inv));
+            emit(formatExpr(*inv));
             emitNewline();
         }
+        dedent();
     }
     dedent();
 }
@@ -743,20 +791,34 @@ void Formatter::formatFn(const FnStmt &s) {
 
     indent();
     // Preconditions
-    for (const auto &pre : s.preconditions) {
+    if (!s.preconditions.empty()) {
         emitIndent();
-        emit("require " + formatExpr(*pre));
+        emit("require:");
         emitNewline();
+        indent();
+        for (const auto &pre : s.preconditions) {
+            emitIndent();
+            emit(formatExpr(*pre));
+            emitNewline();
+        }
+        dedent();
     }
     // Postconditions
-    for (size_t i = 0; i < s.postconditions.size(); ++i) {
+    if (!s.postconditions.empty()) {
         emitIndent();
         emit("ensure");
-        if (i < s.ensure_bindings.size() && !s.ensure_bindings[i].empty()) {
-            emit(" " + s.ensure_bindings[i]);
+        for (const auto &b : s.ensure_bindings) {
+            emit(" " + b);
         }
-        emit(" " + formatExpr(*s.postconditions[i]));
+        emit(":");
         emitNewline();
+        indent();
+        for (const auto &post : s.postconditions) {
+            emitIndent();
+            emit(formatExpr(*post));
+            emitNewline();
+        }
+        dedent();
     }
     dedent();
 
@@ -935,7 +997,9 @@ void Formatter::formatProgram(const Program &prog) {
         }
 
         emitCommentsBefore(stmt_line);
-        emitIndent();
+        if (!hasDirectives(prog[i])) {
+            emitIndent();
+        }
         formatStmt(prog[i]);
     }
 }

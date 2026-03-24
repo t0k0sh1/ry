@@ -1,119 +1,113 @@
 record Point:
-    x: int
-    y: int
+  x: int
+  y: int
 
 record Circle:
-    center: Point
-    radius: float
+  center: Point
+  radius: float
 
 describe("record", fn():
-    it("constructor and field access", fn():
-        p = Point(10, 20)
-        expect(p.x).to_eq(10)
-        expect(p.y).to_eq(20)
-
-    )
-    it("var field assignment", fn():
-        p = Point(10, 20)
-        p.x = 100
-        expect(p.x).to_eq(100)
-
-    )
-    it("nested record", fn():
-        c = Circle(Point(0, 0), 1.0)
-        expect(c.center.x).to_eq(0)
-        expect(c.center.y).to_eq(0)
-        expect(c.radius).to_eq(1.0)
-
-    )
+  it("constructor and field access", fn():
+    p = Point(10, 20)
+    expect(p.x).to_eq(10)
+    expect(p.y).to_eq(20)
+  )
+  it("var field assignment", fn():
+    p = Point(10, 20)
+    p.x = 100
+    expect(p.x).to_eq(100)
+  )
+  it("nested record", fn():
+    c = Circle(Point(0, 0), 1.0)
+    expect(c.center.x).to_eq(0)
+    expect(c.center.y).to_eq(0)
+    expect(c.radius).to_eq(1.0)
+  )
 )
+
 enum Color:
-    Red
-    Green
-    Blue
+  Red
+  Green
+  Blue
 
 describe("simple enum", fn():
-    it("variant access", fn():
-        c = Color::Red
-        expect(c == Color::Red).to_be_true()
-
-    )
-    it("comparison", fn():
-        expect(Color::Red == Color::Red).to_be_true()
-        expect(Color::Red != Color::Green).to_be_true()
-
-    )
-    it("match", fn():
-        res = ""
-        c = Color::Blue
-        match c:
-            case Color::Red:
-                res = "red"
-            case Color::Green:
-                res = "green"
-            case Color::Blue:
-                res = "blue"
-        expect(res).to_eq("blue")
-
-    )
+  it("variant access", fn():
+    c = Color::Red
+    expect(c == Color::Red).to_be_true()
+  )
+  it("comparison", fn():
+    expect(Color::Red == Color::Red).to_be_true()
+    expect(Color::Red != Color::Green).to_be_true()
+  )
+  it("match", fn():
+    res = ""
+    c = Color::Blue
+    match c:
+      case Color::Red:
+        res = "red"
+      case Color::Green:
+        res = "green"
+      case Color::Blue:
+        res = "blue"
+    expect(res).to_eq("blue")
+  )
 )
+
 enum Shape:
-    CircleS(float)
-    RectS(float, float)
-    PointS
+  CircleS(float)
+  RectS(float, float)
+  PointS
 
 describe("ADT enum", fn():
-    it("associated data", fn():
-        s = Shape::CircleS(3.14)
+  it("associated data", fn():
+    s = Shape::CircleS(3.14)
+    res = 0.0
+    match s:
+      case Shape::CircleS(r):
+        res = r
+      case Shape::RectS(w, h):
+        res = w * h
+      case Shape::PointS:
         res = 0.0
-        match s:
-            case Shape::CircleS(r):
-                res = r
-            case Shape::RectS(w, h):
-                res = w * h
-            case Shape::PointS:
-                res = 0.0
-        expect(res).to_eq(3.14)
-
-    )
-    it("multi-field pattern match", fn():
-        s = Shape::RectS(4.0, 5.0)
+    expect(res).to_eq(3.14)
+  )
+  it("multi-field pattern match", fn():
+    s = Shape::RectS(4.0, 5.0)
+    res = 0.0
+    match s:
+      case Shape::CircleS(r):
+        res = r
+      case Shape::RectS(w, h):
+        res = w * h
+      case Shape::PointS:
         res = 0.0
-        match s:
-            case Shape::CircleS(r):
-                res = r
-            case Shape::RectS(w, h):
-                res = w * h
-            case Shape::PointS:
-                res = 0.0
-        expect(res).to_eq(20.0)
-
-    )
+    expect(res).to_eq(20.0)
+  )
 )
+
 enum MyOption<T>:
-    MySome(T)
-    MyNone
+  MySome(T)
+  MyNone
 
 describe("generic enum", fn():
-    it("with type parameter", fn():
-        a = MyOption<int>::MySome(42)
-        res = 0
-        match a:
-            case MyOption::MySome(v):
-                res = v
-            case MyOption::MyNone:
-                res = -1
-        expect(res).to_eq(42)
-
-    )
-    it("none variant", fn():
-        b = MyOption<int>::MyNone
-        res = 0
-        match b:
-            case MyOption::MySome(v):
-                res = v
-            case MyOption::MyNone:
-                res = -1
-        expect(res).to_eq(-1)
-    )
+  it("with type parameter", fn():
+    a = MyOption<int>::MySome(42)
+    res = 0
+    match a:
+      case MyOption::MySome(v):
+        res = v
+      case MyOption::MyNone:
+        res = -1
+    expect(res).to_eq(42)
+  )
+  it("none variant", fn():
+    b = MyOption<int>::MyNone
+    res = 0
+    match b:
+      case MyOption::MySome(v):
+        res = v
+      case MyOption::MyNone:
+        res = -1
+    expect(res).to_eq(-1)
+  )
 )

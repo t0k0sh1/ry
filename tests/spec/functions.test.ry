@@ -1,111 +1,107 @@
 fn add(a: int, b: int) -> int:
-    return a + b
+  return a + b
 
 fn factorial(n: int) -> int:
-    if n <= 1:
-        return 1
-    return n * factorial(n - 1)
+  if n <= 1:
+    return 1
+  return n * factorial(n - 1)
 
 fn area(side: int) -> int:
-    return side * side
+  return side * side
 
 fn area(w: int, h: int) -> int:
-    return w * h
+  return w * h
 
 fn apply(f: fn(int) -> int, x: int) -> int:
-    return f(x)
+  return f(x)
 
 fn double(x: int) -> int:
-    return x * 2
+  return x * 2
 
 fn add_one(x: int) -> int:
-    return x + 1
+  return x + 1
 
 record Vec2:
-    x: float
-    y: float
+  x: float
+  y: float
 
 fn operator+(a: Vec2, b: Vec2) -> Vec2:
-    return Vec2(a.x + b.x, a.y + b.y)
+  return Vec2(a.x + b.x, a.y + b.y)
 
 fn operator==(a: Vec2, b: Vec2) -> bool:
-    return a.x == b.x and a.y == b.y
+  return a.x == b.x and a.y == b.y
 
 describe("basic function", fn():
-    it("call", fn():
-        expect(add(1, 2)).to_eq(3)
-
-    )
+  it("call", fn():
+    expect(add(1, 2)).to_eq(3)
+  )
 )
+
 describe("recursion", fn():
-    it("factorial", fn():
-        expect(factorial(5)).to_eq(120)
-
-    )
+  it("factorial", fn():
+    expect(factorial(5)).to_eq(120)
+  )
 )
+
 describe("overloading", fn():
-    it("1 arg", fn():
-        expect(area(5)).to_eq(25)
-
-    )
-    it("2 args", fn():
-        expect(area(3, 4)).to_eq(12)
-
-    )
+  it("1 arg", fn():
+    expect(area(5)).to_eq(25)
+  )
+  it("2 args", fn():
+    expect(area(3, 4)).to_eq(12)
+  )
 )
+
 describe("lambda", fn():
-    it("single expression", fn():
-        double = fn(x: int): x * 2
-        expect(double(5)).to_eq(10)
-
-    )
-    it("multi-line", fn():
-        abs_val = fn(x: int):
-            if x < 0:
-                return -x
-            return x
-        expect(abs_val(-5)).to_eq(5)
-
-    )
+  it("single expression", fn():
+    double = fn(x: int): x * 2
+    expect(double(5)).to_eq(10)
+  )
+  it("multi-line", fn():
+    abs_val = fn(x: int):
+      if x < 0:
+        return -x
+      return x
+    expect(abs_val(-5)).to_eq(5)
+  )
 )
+
 describe("closure", fn():
-    it("captures by value", fn():
-        base = 10
-        add_base = fn(x: int): x + base
-        base = 99
-        expect(add_base(5)).to_eq(15)
-
-    )
+  it("captures by value", fn():
+    base = 10
+    add_base = fn(x: int): x + base
+    base = 99
+    expect(add_base(5)).to_eq(15)
+  )
 )
+
 describe("higher-order function", fn():
-    it("function as argument", fn():
-        res = apply(fn(x: int): x * 3, 5)
-        expect(res).to_eq(15)
-
-    )
+  it("function as argument", fn():
+    res = apply(fn(x: int): x * 3, 5)
+    expect(res).to_eq(15)
+  )
 )
+
 describe("UFCS", fn():
-    it("method-style call", fn():
-        expect(5.double()).to_eq(10)
-
-    )
-    it("chaining", fn():
-        expect(5.double().add_one()).to_eq(11)
-
-    )
+  it("method-style call", fn():
+    expect(double(5)).to_eq(10)
+  )
+  it("chaining", fn():
+    expect(add_one(double(5))).to_eq(11)
+  )
 )
-describe("operator overloading", fn():
-    it("binary +", fn():
-        v1 = Vec2(1.0, 2.0)
-        v2 = Vec2(3.0, 4.0)
-        v3 = v1 + v2
-        expect(v3.x).to_eq(4.0)
-        expect(v3.y).to_eq(6.0)
 
-    )
-    it("== comparison", fn():
-        v1 = Vec2(1.0, 2.0)
-        v2 = Vec2(1.0, 2.0)
-        expect(v1 == v2).to_be_true()
-    )
+describe("operator overloading", fn():
+  it("binary +", fn():
+    v1 = Vec2(1.0, 2.0)
+    v2 = Vec2(3.0, 4.0)
+    v3 = v1 + v2
+    expect(v3.x).to_eq(4.0)
+    expect(v3.y).to_eq(6.0)
+  )
+  it("== comparison", fn():
+    v1 = Vec2(1.0, 2.0)
+    v2 = Vec2(1.0, 2.0)
+    expect(v1 == v2).to_be_true()
+  )
 )

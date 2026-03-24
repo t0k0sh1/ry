@@ -1,36 +1,25 @@
 describe("@each parameterized tests", fn():
-    @each([
-        (1, 2, 3),
-        (0, 0, 0),
-        (-1, 1, 0)
-    ])
-    it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
-        expect(a + b).to_eq(expected)
-    )
-
-    @each([
-        ("hello", 5),
-        ("", 0),
-        ("ry", 2)
-    ])
-    it("length of \"{0}\" is {1}", fn(s: str, expected: int):
-        expect(length(s)).to_eq(expected)
-    )
+  @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
+  it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+    expect(a + b).to_eq(expected)
+  )
+  @each([("hello", 5), ("", 0), ("ry", 2)])
+  it("length of \"{0}\" is {1}", fn(s: str, expected: int):
+    expect(length(s)).to_eq(expected)
+  )
 )
 
 describe("@property tests", fn():
-    @property(count=100)
-    it("addition is commutative", fn(a: int, b: int):
-        expect(a + b).to_eq(b + a)
-    )
-
-    @property(count=50)
-    it("double is always even", fn(n: int):
-        expect((n * 2) % 2).to_eq(0)
-    )
-
-    @property(count=20)
-    it("bool identity", fn(x: bool):
-        expect(x == x).to_be_true()
-    )
+  @property(count=100)
+  it("addition is commutative", fn(a: int, b: int):
+    expect(a + b).to_eq(b + a)
+  )
+  @property(count=50)
+  it("double is always even", fn(n: int):
+    expect(n * 2 % 2).to_eq(0)
+  )
+  @property(count=20)
+  it("bool identity", fn(x: bool):
+    expect(x == x).to_be_true()
+  )
 )
