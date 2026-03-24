@@ -17,7 +17,7 @@
 #include <crt_externs.h>
 #define RY_ENVIRON (*_NSGetEnviron())
 #else
-extern char **environ;
+extern "C" { extern char **environ; }
 #define RY_ENVIRON environ
 #endif
 #include <cstdlib>
