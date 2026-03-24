@@ -405,6 +405,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {}, "available_parallelism");
     }
 
+    // sleep(duration_ms) -> Unit
+    if (e.callee == "sleep") {
+        if (e.args.size() != 1)
+            codegenError("sleep() takes exactly 1 argument");
+        llvm::Value *duration = emitExpr(*e.args[0]);
+        if (duration->getType() != i64Ty_)
+            codegenError("sleep() requires int argument");
+
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {i64Ty_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_sleep", fnTy);
+        return builder_.CreateCall(fn, {duration});
+    }
+
     if (e.callee == "join" && e.args.size() == 1) {
         llvm::Value *taskVal = emitExpr(*e.args[0]);
         llvm::Type *resultTy = getTaskResultType(taskVal);

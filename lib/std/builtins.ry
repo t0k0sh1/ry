@@ -38,3 +38,6 @@ fn args() -> List<str>
 
 @native
 fn available_parallelism() -> int
+
+@native
+fn sleep(duration_ms: int) -> Unit

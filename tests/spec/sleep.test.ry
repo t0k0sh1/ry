@@ -1,0 +1,10 @@
+describe("sleep", fn():
+    it("completes with zero duration", fn():
+        sleep(0)
+        expect(true).to_eq(true)
+    )
+    it("completes with positive duration", fn():
+        sleep(50)
+        expect(true).to_eq(true)
+    )
+)

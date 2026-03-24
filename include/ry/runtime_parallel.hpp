@@ -12,6 +12,7 @@ void __ry_task_join(void *task, void *out_buf);
 void __ry_parallel_for_i64(int64_t begin, int64_t end, int64_t step,
                            void *env, __ry_parallel_for_fn fn);
 int64_t __ry_available_parallelism();
+void __ry_sleep(int64_t duration_ms);
 void *__ry_channel_new(int64_t elem_size, int64_t capacity);
 void __ry_channel_send(void *channel, void *value_ptr);
 bool __ry_channel_try_send(void *channel, void *value_ptr);

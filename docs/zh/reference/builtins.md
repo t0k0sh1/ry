@@ -13,6 +13,7 @@
 | `range(count)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
 | `exit(code)` | 以指定的結束碼終止程序 |
 | `args()` | 以 `List<str>` 回傳命令列引數 |
+| `sleep(duration_ms)` | 暫停執行指定的毫秒數 |
 
 ### Option
 

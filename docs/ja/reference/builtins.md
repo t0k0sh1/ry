@@ -14,6 +14,7 @@
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
+| `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
 | `channel[T]()` | unbuffered な `Channel<T>` を作成 |
 | `channel[T](capacity)` | buffered な `Channel<T>` を作成 |
 | `send(ch, value)` | `Channel<T>` に値を送る |
@@ -254,6 +255,21 @@ print(a[1])      # world
 for x in args():
     print(x)
 ```
+
+---
+
+## sleep
+
+**シグネチャ:** `sleep(duration_ms: int) -> Unit`
+
+指定されたミリ秒間、現在のスレッドの実行を一時停止します。`duration_ms` が 0 以下の場合は即座に返ります。
+
+```python
+sleep(1000)    # 1秒待機
+sleep(0)       # 即座に返る
+```
+
+> **注意:** `spawn` したタスク内で `sleep` を呼ぶと、そのワーカースレッドがブロックされます。多数のタスクが同時に sleep すると、スレッドプールが枯渇し、他のタスクが sleep 完了まで停止する可能性があります。
 
 ---
 

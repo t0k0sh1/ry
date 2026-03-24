@@ -446,6 +446,11 @@ extern "C" int64_t __ry_available_parallelism() {
     return scheduler().parallelism();
 }
 
+extern "C" void __ry_sleep(int64_t duration_ms) {
+    if (duration_ms > 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
+}
+
 extern "C" void *__ry_channel_new(int64_t elem_size, int64_t capacity) {
     auto *ch = new ChannelHandle(
         elem_size <= 0 ? static_cast<size_t>(0) : static_cast<size_t>(elem_size),
