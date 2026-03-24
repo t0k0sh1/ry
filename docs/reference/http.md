@@ -255,7 +255,7 @@ HTTP client functions automatically follow redirect responses (3xx with `Locatio
   - 303: Method is always changed to `GET` (body is dropped)
   - 307, 308: Method and body are preserved
 - **URL resolution**: Absolute URLs, protocol-relative (`//...`), absolute paths (`/...`), and relative paths in `Location` headers are supported
-- User-provided headers are re-sent on each redirect hop
+- User-provided headers are re-sent on each redirect hop, except sensitive headers (`Authorization`, `Proxy-Authorization`, `Cookie`) which are stripped on cross-origin redirects (different host or port)
 - If the `Location` header is missing or empty, the redirect response is returned as-is
 - The caller receives only the final response after all redirects are followed
 

@@ -872,10 +872,12 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
     if (strncmp(base_url, "http://", 7) != 0) return nullptr;
 
     const char *authority_start = base_url + 7;
-    const char *path_start = strchr(authority_start, '/');
+    const char *origin_end = strpbrk(authority_start, "/?#");
 
-    std::string origin(base_url, path_start ? (size_t)(path_start - base_url)
-                                             : strlen(base_url));
+    std::string origin(base_url, origin_end ? (size_t)(origin_end - base_url)
+                                            : strlen(base_url));
+
+    const char *path_start = (origin_end && *origin_end == '/') ? origin_end : nullptr;
 
     // Absolute path
     if (location[0] == '/') {
@@ -895,6 +897,26 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
     // No path in base — append /location
     std::string resolved = origin + "/" + location;
     return strdup(resolved.c_str());
+}
+
+static bool is_sensitive_header(const char *name) {
+    return strcasecmp(name, "Authorization") == 0 ||
+           strcasecmp(name, "Proxy-Authorization") == 0 ||
+           strcasecmp(name, "Cookie") == 0;
+}
+
+static bool is_cross_origin(const char *url_a, const char *url_b) {
+    ParsedUrl *a = parse_url(url_a);
+    ParsedUrl *b = parse_url(url_b);
+    if (!a || !b) {
+        __ry_http_parsed_url_free(a);
+        __ry_http_parsed_url_free(b);
+        return true;
+    }
+    bool cross = (a->port != b->port || strcasecmp(a->host, b->host) != 0);
+    __ry_http_parsed_url_free(a);
+    __ry_http_parsed_url_free(b);
+    return cross;
 }
 
 static bool is_redirect_status(int status) {
@@ -922,6 +944,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
     const char *current_method = method;
     const char *current_body = body ? body : "";
     int redirect_count = 0;
+    bool strip_sensitive = false;
     void *result = nullptr;
 
     for (;;) {
@@ -964,6 +987,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
             for (int64_t i = 0; i < map->len; i++) {
                 if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
                 if (strcasecmp(map->keys[i], "Content-Length") == 0) continue;
+                if (strip_sensitive && is_sensitive_header(map->keys[i])) continue;
                 request += map->keys[i];
                 request += ": ";
                 request += map->vals[i];
@@ -1001,7 +1025,12 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
         if (is_redirect_status((int)resp->status)) {
             const char *location = __ry_http_client_header(resp, "Location");
 
-            if (location && *location && redirect_count < MAX_REDIRECTS) {
+            if (location && *location) {
+                if (redirect_count >= MAX_REDIRECTS) {
+                    __ry_http_client_response_free(resp);
+                    break;
+                }
+
                 char *new_url = resolve_redirect_url(current_url, location);
                 if (!new_url) {
                     result = resp;
@@ -1013,6 +1042,10 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
                     owned_method = strdup("GET");
                     current_method = owned_method;
                     current_body = "";
+                }
+
+                if (!strip_sensitive && is_cross_origin(current_url, new_url)) {
+                    strip_sensitive = true;
                 }
 
                 __ry_http_client_response_free(resp);
