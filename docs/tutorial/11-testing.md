@@ -14,6 +14,7 @@ Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. 
 ry test                       # Auto-discover and run all *.test.ry files
 ry test tests/spec            # Run all *.test.ry files under a directory (recursive)
 ry test tests/my_test.test.ry # Run a specific test file
+ry test -p                    # Run all tests in parallel (-p or --parallel)
 ```
 
 The exit code is `0` if all tests pass, `1` if any test fails.

@@ -12,6 +12,8 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 ry test              # プロジェクト内の *.test.ry を自動検出して実行
 ry test tests/spec   # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test test_file.ry # 特定のテストファイルを実行
+ry test -p           # 全テストを並列実行（-p または --parallel）
+ry test -p tests/    # 指定ディレクトリのテストを並列実行
 ```
 
 終了コードは全テスト成功時に 0、失敗がある場合は 1 です。

@@ -11,10 +11,25 @@
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define RY_ENVIRON (*_NSGetEnviron())
+#else
+extern "C" { extern char **environ; }
+#define RY_ENVIRON environ
+#endif
+#include <cstdlib>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <filesystem>
+#include <mutex>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 #include <unordered_set>
 #include <vector>
@@ -205,9 +220,9 @@ static std::vector<std::string> findTestFiles(const std::string &root_dir) {
     return files;
 }
 
-// Run multiple test files and report results
-static int runTestFiles(const std::vector<std::string> &test_files,
-                        const char *argv0) {
+// Run multiple test files sequentially and report results
+static int runTestFilesSequential(const std::vector<std::string> &test_files,
+                                  const char *argv0) {
     int total_failed = 0;
     int total_files = 0;
     for (const auto &tf : test_files) {
@@ -230,14 +245,165 @@ static int runTestFiles(const std::vector<std::string> &test_files,
     return total_failed > 0 ? 1 : 0;
 }
 
+struct TestFileResult {
+    std::string filepath;
+    int exit_code;
+    std::string output;
+};
+
+// Run a single test file in a subprocess, capturing stdout+stderr.
+// Uses posix_spawn instead of fork to be safe from multi-threaded contexts.
+static TestFileResult runTestFileSubprocess(const std::string &filepath,
+                                            const std::string &exe_path) {
+    TestFileResult result;
+    result.filepath = filepath;
+    result.exit_code = -1;
+
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        result.output = "Error: pipe() failed: " + std::string(strerror(errno)) + "\n";
+        return result;
+    }
+
+    posix_spawn_file_actions_t actions;
+    int rc = posix_spawn_file_actions_init(&actions);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+    if (rc != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        result.output = "Error: posix_spawn_file_actions failed: " + std::string(strerror(rc)) + "\n";
+        return result;
+    }
+
+    const char *argv[] = {exe_path.c_str(), "test", filepath.c_str(), nullptr};
+    pid_t pid;
+    int err = posix_spawn(&pid, exe_path.c_str(), &actions, nullptr,
+                          const_cast<char *const *>(argv), RY_ENVIRON);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (err != 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        result.output = "Error: posix_spawn() failed: " + std::string(strerror(err)) + "\n";
+        return result;
+    }
+
+    close(pipefd[1]);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0 || (n == -1 && errno == EINTR)) {
+        if (n > 0) result.output.append(buf, n);
+    }
+    close(pipefd[0]);
+
+    int status = 0;
+    pid_t wp;
+    while ((wp = waitpid(pid, &status, 0)) == -1) {
+        if (errno != EINTR) break;
+    }
+
+    if (wp == -1)
+        result.exit_code = -1;
+    else if (WIFEXITED(status))
+        result.exit_code = WEXITSTATUS(status);
+    else if (WIFSIGNALED(status))
+        result.exit_code = 128 + WTERMSIG(status);
+    else
+        result.exit_code = -1;
+
+    return result;
+}
+
+// Run multiple test files in parallel using worker threads
+static int runTestFilesParallel(const std::vector<std::string> &test_files,
+                                const std::string &exe_path, int parallelism) {
+    int num_files = static_cast<int>(test_files.size());
+    std::vector<TestFileResult> results(num_files);
+
+    // Work queue: indices into test_files
+    std::deque<int> work_queue;
+    for (int i = 0; i < num_files; ++i)
+        work_queue.push_back(i);
+
+    std::mutex queue_mutex;
+    std::mutex progress_mutex;
+    int completed = 0;
+
+    auto worker = [&]() {
+        while (true) {
+            int idx;
+            {
+                std::lock_guard<std::mutex> lock(queue_mutex);
+                if (work_queue.empty()) return;
+                idx = work_queue.front();
+                work_queue.pop_front();
+            }
+            results[idx] = runTestFileSubprocess(test_files[idx], exe_path);
+            {
+                std::lock_guard<std::mutex> lock(progress_mutex);
+                ++completed;
+                std::fprintf(stderr, "\r\033[K[%d/%d] Running tests...",
+                             completed, num_files);
+            }
+        }
+    };
+
+    int num_workers = std::min(parallelism, num_files);
+    std::vector<std::thread> threads;
+    threads.reserve(num_workers);
+
+    auto wall_start = std::chrono::steady_clock::now();
+    for (int i = 0; i < num_workers; ++i)
+        threads.emplace_back(worker);
+    for (auto &t : threads)
+        t.join();
+    auto wall_end = std::chrono::steady_clock::now();
+    double wall_elapsed = std::chrono::duration<double>(wall_end - wall_start).count();
+
+    std::fprintf(stderr, "\r\033[K");
+
+    int total_failed = 0;
+    for (const auto &r : results) {
+        std::fputs(r.output.c_str(), stdout);
+        if (r.exit_code != 0)
+            ++total_failed;
+    }
+
+    std::printf("\n%d test files executed, %d total failures (%.2fs, %d workers)\n",
+                num_files, total_failed, wall_elapsed, num_workers);
+    return total_failed > 0 ? 1 : 0;
+}
+
+// Run multiple test files and report results
+static int runTestFiles(const std::vector<std::string> &test_files,
+                        const char *argv0, bool parallel) {
+    if (!parallel || test_files.size() <= 1) {
+        return runTestFilesSequential(test_files, argv0);
+    }
+    std::string exe_path = ry::self_update::detail::get_executable_path();
+    if (exe_path.empty()) {
+        errs() << "Warning: cannot resolve executable path, falling back to sequential\n";
+        return runTestFilesSequential(test_files, argv0);
+    }
+    unsigned hw = std::thread::hardware_concurrency();
+    int parallelism = static_cast<int>(std::min({hw, 8u, static_cast<unsigned>(test_files.size())}));
+    if (parallelism < 1) parallelism = 1;
+    return runTestFilesParallel(test_files, exe_path, parallelism);
+}
+
 // Discover *.test.ry files in a directory and run them
-static int discoverAndRunTests(const std::string &dir, const char *argv0) {
+static int discoverAndRunTests(const std::string &dir, const char *argv0,
+                               bool parallel) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0);
+    return runTestFiles(test_files, argv0, parallel);
 }
 
 int main(int argc, char *argv[]) {
@@ -265,31 +431,46 @@ int main(int argc, char *argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
         filename = argv[1];
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
-    } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
-        std::string target = argv[2];
-        std::error_code ec;
-        if (fs::is_directory(target, ec)) {
-            return discoverAndRunTests(target, argv[0]);
+    } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
+        // Parse test subcommand arguments
+        bool parallel = false;
+        const char *target = nullptr;
+        for (int i = 2; i < argc; ++i) {
+            if (std::strcmp(argv[i], "-p") == 0 ||
+                std::strcmp(argv[i], "--parallel") == 0) {
+                parallel = true;
+            } else if (!target) {
+                target = argv[i];
+            }
         }
-        if (ec) {
-            errs() << "Error: cannot access " << target << ": "
-                   << ec.message() << "\n";
-            return 1;
+
+        if (target) {
+            std::string target_str = target;
+            std::error_code ec;
+            if (fs::is_directory(target_str, ec)) {
+                return discoverAndRunTests(target_str, argv[0], parallel);
+            }
+            if (ec) {
+                errs() << "Error: cannot access " << target_str << ": "
+                       << ec.message() << "\n";
+                return 1;
+            }
+            // ry test <file.ry> — single file test (parallel flag ignored)
+            test_mode = true;
+            filename = target;
+            __ry_args_init(0, nullptr);
+        } else {
+            // ry test [-p] — discover from project root
+            auto root = findProjectRoot();
+            if (!root) {
+                errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
+                return 1;
+            }
+            return discoverAndRunTests(*root, argv[0], parallel);
         }
-        // ry test <file.ry> — single file test
-        test_mode = true;
-        filename = argv[2];
-        __ry_args_init(0, nullptr);
-    } else if (argc == 2 && std::strcmp(argv[1], "test") == 0) {
-        auto root = findProjectRoot();
-        if (!root) {
-            errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
-            return 1;
-        }
-        return discoverAndRunTests(*root, argv[0]);
     } else {
         errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [<file.ry> | <dir>]\n";
+        errs() << "       ry test [-p | --parallel] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";

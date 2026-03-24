@@ -14,6 +14,7 @@ Ry には `describe`、`it`、`expect` を使った RSpec スタイルの組み�
 ry test                       # *.test.ry ファイルを自動検出して実行
 ry test tests/spec            # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test tests/my_test.test.ry # 特定のテストファイルを実行
+ry test -p                    # 全テストを並列実行（-p または --parallel）
 ```
 
 すべてのテストが成功すると終了コード `0`、1つでも失敗すると `1` が返されます。
