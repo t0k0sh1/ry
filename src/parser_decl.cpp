@@ -741,11 +741,20 @@ StmtNode Parser::parseMatchStatement() {
         // Check for OR pattern: case A | B | C:
         if (lex_.peek().kind == TokenKind::Pipe) {
             auto hasBinding = [](const Pattern &p) {
-                return std::holds_alternative<VariablePattern>(p) ||
-                       std::holds_alternative<SomePattern>(p) ||
-                       std::holds_alternative<OkPattern>(p) ||
-                       std::holds_alternative<ErrPattern>(p) ||
-                       std::holds_alternative<EnumConstructorPattern>(p);
+                if (std::holds_alternative<VariablePattern>(p))
+                    return true;
+                if (std::holds_alternative<SomePattern>(p))
+                    return std::get<SomePattern>(p).binding != "_";
+                if (std::holds_alternative<OkPattern>(p))
+                    return std::get<OkPattern>(p).binding != "_";
+                if (std::holds_alternative<ErrPattern>(p))
+                    return std::get<ErrPattern>(p).binding != "_";
+                if (std::holds_alternative<EnumConstructorPattern>(p)) {
+                    const auto &ec = std::get<EnumConstructorPattern>(p);
+                    return std::any_of(ec.bindings.begin(), ec.bindings.end(),
+                                       [](const std::string &b) { return b != "_"; });
+                }
+                return false;
             };
             auto orPat = std::make_unique<OrPattern>();
             if (hasBinding(arm.pattern))

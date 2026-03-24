@@ -1448,3 +1448,27 @@ TEST(ParserTest, OrPatternRejectsErrAsAlternative) {
         parseStr("match x:\n    case 1 | Err(e):\n        print(e)\n");
     }, std::runtime_error);
 }
+
+TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
+    EXPECT_THROW({
+        parseStr("match x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
+    }, std::runtime_error);
+}
+
+TEST(ParserTest, OrPatternAllowsWildcardBindings) {
+    EXPECT_NO_THROW({
+        parseStr("match x:\n"
+                 "    case Ok(_) | Err(_):\n"
+                 "        print(\"done\")\n");
+    });
+    EXPECT_NO_THROW({
+        parseStr("match x:\n"
+                 "    case Some(_) | None:\n"
+                 "        print(\"done\")\n");
+    });
+    EXPECT_NO_THROW({
+        parseStr("match x:\n"
+                 "    case Foo::Bar(_) | Foo::Baz(_):\n"
+                 "        print(\"done\")\n");
+    });
+}
