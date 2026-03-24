@@ -195,7 +195,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             codegenError("sort() takes 1 or 2 arguments");
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
-        return emitSortCore(listVal, e.args);
+        return emitSortCore(listVal, e.args, "sort");
     }
 
     // sort!(list) / sort!(list, comparator) → in-place sort
@@ -207,7 +207,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Type *elemTy = getListElementType(listPtr);
         if (!elemTy) codegenError("sort!() requires a list");
 
-        llvm::Value *sorted = emitSortCore(listPtr, e.args);
+        llvm::Value *sorted = emitSortCore(listPtr, e.args, "sort!");
         if (!sorted)
             codegenError("sort!() internal error");
 
@@ -596,10 +596,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     return nullptr;
 }
 
-llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args) {
+llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args, const std::string &callee) {
     llvm::Type *elemTy = getListElementType(listVal);
     if (!elemTy)
-        codegenError("sort() requires a list as first argument");
+        codegenError(callee + "() requires a list as first argument");
 
     bool hasComparator = (args.size() >= 2);
     llvm::Value *compVal = nullptr;
@@ -612,10 +612,10 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
                 fnIt = fn_type_info_.find(load->getPointerOperand());
         }
         if (fnIt == fn_type_info_.end())
-            codegenError("sort() comparator must be a function");
+            codegenError(callee + "() comparator must be a function");
         compInfo = fnIt->second;
         if (compInfo.paramTypes.size() != 2 || compInfo.returnType != i1Ty_)
-            codegenError("sort() comparator must take 2 arguments and return bool");
+            codegenError(callee + "() comparator must take 2 arguments and return bool");
     }
 
     // Read source list
@@ -684,7 +684,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
             llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {valA, valB}, "sort_strcmp");
             result = builder_.CreateICmpSLT(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "sort_lt");
         } else {
-            codegenError("sort() does not support this element type");
+            codegenError(callee + "() does not support this element type");
         }
 
         builder_.CreateRet(result);
