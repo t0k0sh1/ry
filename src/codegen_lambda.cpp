@@ -161,11 +161,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
-                // Track opaque handle types
-                if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
-                if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
-                if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
-                if (ptype == "HttpResponse") http_response_values_.insert(alloca);
+                registerResourceByTypeName(ptype, alloca);
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
