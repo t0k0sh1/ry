@@ -97,6 +97,51 @@ describe("HTTP Client", fn():
         join(t)
     )
 
+    it("http_get with variable assignment and match", fn():
+        fn var_server(ready: Channel<int>) -> str:
+            match bind("127.0.0.1", 0):
+                case Ok(srv):
+                    match listen(srv, 1):
+                        case Ok(_):
+                            port = listener_port(srv)
+                            send(ready, port)
+                            match accept(srv):
+                                case Ok(conn):
+                                    match recv(conn, 4096):
+                                        case Ok(data):
+                                            response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello"
+                                            match send(conn, str_to_bytes(response_str)):
+                                                case Ok(_):
+                                                    ...
+                                                case Err(e):
+                                                    ...
+                                        case Err(e):
+                                            ...
+                                    close(conn)
+                                case Err(e):
+                                    ...
+                        case Err(e):
+                            send(ready, 0)
+                    close(srv)
+                case Err(e):
+                    send(ready, 0)
+            return "done"
+
+        ready: Channel<int> = channel[int]()
+        t: Task<str> = spawn var_server(ready)
+        port = recv(ready)
+        url = "http://127.0.0.1:" + to_str(port) + "/test"
+        result = http_get(url)
+        match result:
+            case Ok(resp):
+                expect(http_client_status(resp)).to_eq(200)
+                expect(http_client_body(resp)).to_eq("hello")
+                ...
+            case Err(e):
+                expect(true).to_eq(false)
+        join(t)
+    )
+
     it("http_get returns Err on connection refused", fn():
         match http_get("http://127.0.0.1:1/nonexistent"):
             case Ok(resp):
