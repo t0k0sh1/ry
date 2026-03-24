@@ -240,6 +240,28 @@ TEST(Formatter, NativeDirective) {
     EXPECT_NE(out.find("fn append("), std::string::npos);
 }
 
+TEST(Formatter, NativeBangFunction) {
+    auto src = "@native\nfn sort!(values: List<int>) -> Unit\n";
+    auto out = fmt(src);
+    EXPECT_NE(out.find("@native"), std::string::npos);
+    EXPECT_NE(out.find("fn sort!(values: List<int>) -> Unit"), std::string::npos);
+}
+
+TEST(Formatter, NativeFunctionNoColon) {
+    auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
+    auto out = fmt(src);
+    EXPECT_NE(out.find("fn append(values: List<int>, value: int) -> Unit\n"), std::string::npos);
+    // Must NOT have a colon after native function declaration
+    EXPECT_EQ(out.find("-> Unit:"), std::string::npos);
+}
+
+TEST(Formatter, NativeFunctionNoBody) {
+    auto src = "@native\nfn pop(values: List<int>) -> Option<int>\n";
+    auto out = fmt(src);
+    EXPECT_EQ(out.find("-> Option<int>:"), std::string::npos);
+    EXPECT_NE(out.find("-> Option<int>\n"), std::string::npos);
+}
+
 // ===== Comment Tests =====
 
 TEST(Formatter, StandaloneComment) {

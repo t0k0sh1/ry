@@ -8,7 +8,7 @@
 static bool isSnakeCase(const std::string &name) {
     if (name.empty()) return false;
     if (name == "_") return true;
-    static const std::regex pattern("[a-z_][a-z0-9_]*");
+    static const std::regex pattern("[a-z_][a-z0-9_]*!?");
     return std::regex_match(name, pattern);
 }
 

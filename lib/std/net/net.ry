@@ -1,5 +1,4 @@
 # TCP socket operations
-
 @native
 fn bind(host: str, port: int) -> Result<TcpListener, Error>
 

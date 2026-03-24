@@ -1,5 +1,4 @@
 # Regular expression operations
-
 @native
 fn regex_match(pattern: str, text: str) -> bool
 

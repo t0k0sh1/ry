@@ -1,5 +1,4 @@
 # Core built-in functions
-
 @native
 fn print(value: str) -> Unit
 

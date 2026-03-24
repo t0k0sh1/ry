@@ -1,5 +1,4 @@
 # Map operations
-
 @native
 fn keys(map: Map<str, int>) -> List<str>
 
