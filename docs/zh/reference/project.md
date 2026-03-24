@@ -28,6 +28,34 @@ my-project/
 
 ---
 
+## `ry new` - 建立新專案
+
+建立新目錄並將其初始化為 Ry 專案。
+
+```bash
+ry new my-project
+```
+
+### 生成的檔案與目錄
+
+```
+my-project/
+  ry.toml          # 專案設定檔
+  src/
+    main.ry        # 進入點（範例程式碼）
+```
+
+### 行為
+
+1. 若未指定專案名稱則錯誤結束
+2. 若同名目錄已存在則錯誤結束
+3. 建立 `<project-name>/` 目錄
+4. 在其中建立 `src/` 目錄
+5. 生成 `ry.toml`（`name` 為指定的專案名稱）
+6. 生成 `src/main.ry`
+
+---
+
 ## `ry self-update` - 自我更新
 
 將 ry 本身更新至最新版本。從 GitHub Releases 下載二進位檔並取代目前的執行檔。

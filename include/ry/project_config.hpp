@@ -19,3 +19,4 @@ public:
 std::optional<std::string> findProjectRoot(const std::string &start_dir = "");
 
 int cmd_init();
+int cmd_new(int argc, char *argv[]);

@@ -165,3 +165,73 @@ TEST_F(CmdInitTest, DoesNotOverwriteExistingMainRy) {
                          std::istreambuf_iterator<char>());
     EXPECT_EQ(content, "# my code\n");
 }
+
+// --- cmd_new Tests ---
+
+class CmdNewTest : public ::testing::Test {
+protected:
+    fs::path tmpdir;
+    fs::path original_cwd;
+
+    void SetUp() override {
+        original_cwd = fs::current_path();
+        tmpdir = fs::temp_directory_path() / "ry_test_new";
+        fs::remove_all(tmpdir);
+        fs::create_directories(tmpdir);
+        fs::current_path(tmpdir);
+    }
+
+    void TearDown() override {
+        fs::current_path(original_cwd);
+        fs::remove_all(tmpdir);
+    }
+};
+
+TEST_F(CmdNewTest, CreatesProjectStructure) {
+    char arg[] = "my-app";
+    char *argv[] = {arg};
+    ASSERT_EQ(cmd_new(1, argv), 0);
+
+    auto project_dir = tmpdir / "my-app";
+    EXPECT_TRUE(fs::exists(project_dir / "ry.toml"));
+    EXPECT_TRUE(fs::is_directory(project_dir / "src"));
+    EXPECT_TRUE(fs::exists(project_dir / "src" / "main.ry"));
+
+    // Verify ry.toml content
+    std::ifstream f(project_dir / "ry.toml");
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    auto config = ProjectConfigParser::load(content);
+    EXPECT_EQ(config.name, "my-app");
+    EXPECT_EQ(config.version, "0.1.0");
+    EXPECT_EQ(config.entry, "src/main.ry");
+}
+
+TEST_F(CmdNewTest, FailsWithNoArgs) {
+    EXPECT_EQ(cmd_new(0, nullptr), 1);
+}
+
+TEST_F(CmdNewTest, FailsIfDirectoryExists) {
+    fs::create_directories(tmpdir / "existing");
+    char arg[] = "existing";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_new(1, argv), 1);
+}
+
+TEST_F(CmdNewTest, RejectsAbsolutePath) {
+    char arg[] = "/tmp/bad-project";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_new(1, argv), 1);
+}
+
+TEST_F(CmdNewTest, RejectsPathTraversal) {
+    char arg[] = "../bad-project";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_new(1, argv), 1);
+}
+
+TEST_F(CmdNewTest, RejectsNestedPath) {
+    char arg[] = "foo/bar";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_new(1, argv), 1);
+}

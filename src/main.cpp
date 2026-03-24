@@ -419,6 +419,9 @@ int main(int argc, char *argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
         return cmd_init();
     }
+    if (argc >= 2 && std::strcmp(argv[1], "new") == 0) {
+        return cmd_new(argc - 2, argv + 2);
+    }
 
     InitLLVM X(argc, argv);
     InitializeNativeTarget();
@@ -472,6 +475,7 @@ int main(int argc, char *argv[]) {
         errs() << "Usage: ry <file.ry> [args...]\n";
         errs() << "       ry test [-p | --parallel] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
+        errs() << "       ry new <project-name>\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";
         return 1;

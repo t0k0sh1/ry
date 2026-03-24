@@ -98,40 +98,93 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
     return std::nullopt;
 }
 
-// --- cmd_init ---
+// --- scaffold_project (shared helper) ---
 
-int cmd_init() {
-    fs::path cwd = fs::current_path();
-
-    // 1. Check if ry.toml already exists
-    if (fs::exists(cwd / "ry.toml")) {
-        std::cerr << "Error: ry.toml already exists\n";
+static int scaffold_project(const fs::path &project_dir, const std::string &project_name) {
+    // 1. Create directories
+    std::error_code ec;
+    fs::create_directories(project_dir / "src", ec);
+    if (ec) {
+        std::cerr << "Error: failed to create directories: " << ec.message() << "\n";
         return 1;
     }
 
-    // 2. Create directories
-    fs::create_directories(cwd / "src");
-
-    // 3. Generate ry.toml
+    // 2. Generate ry.toml
     ProjectConfig config;
-    config.name     = cwd.filename().string();
+    config.name     = project_name;
     config.version  = "0.1.0";
     config.entry    = "src/main.ry";
     config.src_dir  = "src";
 
     {
-        std::ofstream f(cwd / "ry.toml");
+        std::ofstream f(project_dir / "ry.toml");
+        if (!f) {
+            std::cerr << "Error: failed to create ry.toml\n";
+            return 1;
+        }
         f << ProjectConfigParser::serialize(config);
     }
 
-    // 4. Generate src/main.ry (if not exists)
-    auto main_ry = cwd / "src" / "main.ry";
+    // 3. Generate src/main.ry (if not exists)
+    auto main_ry = project_dir / "src" / "main.ry";
     if (!fs::exists(main_ry)) {
         std::ofstream f(main_ry);
+        if (!f) {
+            std::cerr << "Error: failed to create src/main.ry\n";
+            return 1;
+        }
         f << "print(\"Hello, World!\")\n";
     }
 
-    // 5. Success message
+    return 0;
+}
+
+// --- cmd_init ---
+
+int cmd_init() {
+    fs::path cwd = fs::current_path();
+
+    if (fs::exists(cwd / "ry.toml")) {
+        std::cerr << "Error: ry.toml already exists\n";
+        return 1;
+    }
+
+    int ret = scaffold_project(cwd, cwd.filename().string());
+    if (ret != 0) return ret;
+
     std::cout << "Initialized ry project in " << cwd.string() << "\n";
+    return 0;
+}
+
+// --- cmd_new ---
+
+int cmd_new(int argc, char *argv[]) {
+    if (argc < 1) {
+        std::cerr << "Usage: ry new <project-name>\n";
+        return 1;
+    }
+
+    std::string project_name = argv[0];
+
+    // Reject absolute paths and path traversal
+    fs::path name_path(project_name);
+    if (name_path.is_absolute() || project_name.find("..") != std::string::npos
+        || project_name.find('/') != std::string::npos
+        || project_name.find('\\') != std::string::npos) {
+        std::cerr << "Error: project name must be a simple directory name\n";
+        return 1;
+    }
+
+    fs::path project_dir = fs::current_path() / project_name;
+
+    if (fs::exists(project_dir)) {
+        std::cerr << "Error: directory '" << project_name << "' already exists\n";
+        return 1;
+    }
+
+    int ret = scaffold_project(project_dir, project_name);
+    if (ret != 0) return ret;
+
+    std::cout << "Created ry project '" << project_name << "'\n";
     return 0;
 }
