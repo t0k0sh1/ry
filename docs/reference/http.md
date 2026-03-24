@@ -244,6 +244,21 @@ match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 - Returns `Err` on connection failure, invalid URL, or malformed response.
 - `HttpClientResponse` owns allocated memory (headers, body). Call `http_client_response_free()` when done to avoid memory leaks.
 
+### Redirect Behavior
+
+HTTP client functions automatically follow redirect responses (3xx with `Location` header).
+
+- **Supported status codes**: 301, 302, 303, 307, 308
+- **Maximum redirects**: 10 (returns `Err` if exceeded)
+- **Method conversion** (per RFC 9110):
+  - 301, 302: `POST` is changed to `GET` (body is dropped); other methods are preserved
+  - 303: Method is always changed to `GET` (body is dropped)
+  - 307, 308: Method and body are preserved
+- **URL resolution**: Absolute URLs, protocol-relative (`//...`), absolute paths (`/...`), and relative paths in `Location` headers are supported
+- User-provided headers are re-sent on each redirect hop
+- If the `Location` header is missing or empty, the redirect response is returned as-is
+- The caller receives only the final response after all redirects are followed
+
 ## Error Handling
 
 - `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
