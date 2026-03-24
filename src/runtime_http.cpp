@@ -353,6 +353,23 @@ static bool te_value_is_chunked(const char *value) {
     return len == 7 && strncasecmp(last_token, "chunked", 7) == 0;
 }
 
+// Check if Transfer-Encoding header is present (regardless of value).
+static bool has_transfer_encoding(char **keys, int64_t count) {
+    for (int64_t i = 0; i < count; i++) {
+        if (strcasecmp(keys[i], "Transfer-Encoding") == 0)
+            return true;
+    }
+    return false;
+}
+
+static bool has_transfer_encoding(const std::vector<HeaderPair> &headers) {
+    for (auto &h : headers) {
+        if (strcasecmp(h.key, "Transfer-Encoding") == 0)
+            return true;
+    }
+    return false;
+}
+
 static bool has_chunked_encoding(char **keys, char **values, int64_t count) {
     for (int64_t i = 0; i < count; i++) {
         if (strcasecmp(keys[i], "Transfer-Encoding") == 0 &&
@@ -406,17 +423,26 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
 
         char *endptr = nullptr;
         unsigned long long chunk_size = strtoull(size_start, &endptr, 16);
-        if (!endptr || endptr == size_start || (size_t)(endptr - size_start) > size_len) {
-            ok = false; return "";
+        if (!endptr || endptr == size_start) { ok = false; return ""; }
+        // Reject trailing non-whitespace after hex digits (RFC 9112: chunk-size = 1*HEXDIG)
+        for (const char *t = endptr; t < size_start + size_len; t++) {
+            if (*t != ' ' && *t != '\t') { ok = false; return ""; }
         }
 
         pos = crlf + 2;
 
         if (chunk_size == 0) {
-            // Consume final CRLF after terminal chunk (tolerate missing on close)
-            if (!ensure(2)) break;
-            if (buf.size() - pos >= 2 && buf[pos] == '\r' && buf[pos + 1] == '\n')
-                pos += 2;
+            // Consume optional trailers and final CRLF after terminal chunk.
+            // Trailers end with an empty line (\r\n), so we read until \r\n\r\n.
+            while (true) {
+                size_t end = buf.find("\r\n", pos);
+                if (end == std::string::npos) {
+                    if (!recv_into_buf(fd, buf)) break;
+                    continue;
+                }
+                if (end == pos) { pos += 2; break; } // empty line = end of trailers
+                pos = end + 2; // skip trailer line
+            }
             break;
         }
 
@@ -432,6 +458,12 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
 
         if (buf[pos] != '\r' || buf[pos + 1] != '\n') { ok = false; return ""; }
         pos += 2;
+
+        // Discard consumed data to avoid unbounded buffer growth
+        if (pos > 8192) {
+            buf.erase(0, pos);
+            pos = 0;
+        }
     }
 
     return body;
@@ -504,11 +536,18 @@ extern "C" void *__ry_http_read_request(void *stream) {
             break;
         }
     }
-    bool is_chunked = has_chunked_encoding(
+    bool has_te = has_transfer_encoding(req->header_keys, req->header_count);
+    bool is_chunked = has_te && has_chunked_encoding(
         req->header_keys, req->header_values, req->header_count);
 
     // RFC 9112 §6.1: reject if both Transfer-Encoding and Content-Length are present
     if (is_chunked && cl_value != nullptr) {
+        __ry_http_request_free(req);
+        return nullptr;
+    }
+
+    // Reject unsupported transfer codings (e.g. gzip without chunked)
+    if (has_te && !is_chunked) {
         __ry_http_request_free(req);
         return nullptr;
     }
@@ -930,7 +969,14 @@ static HttpClientResponseHandle *read_http_response(int fd) {
             break;
         }
     }
-    bool is_chunked = has_chunked_encoding(parsed_headers);
+    bool has_te = has_transfer_encoding(parsed_headers);
+    bool is_chunked = has_te && has_chunked_encoding(parsed_headers);
+
+    // Reject unsupported transfer codings (e.g. gzip without chunked)
+    if (has_te && !is_chunked) {
+        for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+        return nullptr;
+    }
 
     size_t body_start = hdr_end + 4;
     std::string body_data;
