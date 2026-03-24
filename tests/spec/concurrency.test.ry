@@ -1,57 +1,46 @@
 describe("spawn and join", fn():
-    it("joins spawned computation", fn():
-        fn spawned_add(a: int, b: int) -> int:
-            return a + b
-
-        t: Task<int> = spawn spawned_add(20, 22)
-        expect(join(t)).to_eq(42)
-
-    )
+  it("joins spawned computation", fn():
+    fn spawned_add(a: int, b: int) -> int:
+      return a + b
+    t: Task<int> = spawn spawned_add(20, 22)
+    expect(join(t)).to_eq(42)
+  )
 )
+
 describe("async and await", fn():
-    it("awaits direct async call", fn():
-        async fn async_add_direct(a: int, b: int) -> int:
-            return a + b
-
-        expect(await async_add_direct(20, 22)).to_eq(42)
-
-    )
-    it("awaits task variable", fn():
-        async fn async_add_task(a: int, b: int) -> int:
-            return a + b
-
-        t: Task<int> = async_add_task(7, 8)
-        expect(await t).to_eq(15)
-
-    )
-    it("chains async functions", fn():
-        async fn inner() -> int:
-            return 21
-
-        async fn outer() -> int:
-            return (await inner()) * 2
-
-        expect(await outer()).to_eq(42)
-
-    )
-    it("supports Unit-returning async functions through await", fn():
-        async fn bump() -> Unit:
-            print("done")
-
-        await bump()
-        expect(1).to_eq(1)
-
-    )
+  it("awaits direct async call", fn():
+    async fn async_add_direct(a: int, b: int) -> int:
+      return a + b
+    expect(await async_add_direct(20, 22)).to_eq(42)
+  )
+  it("awaits task variable", fn():
+    async fn async_add_task(a: int, b: int) -> int:
+      return a + b
+    t: Task<int> = async_add_task(7, 8)
+    expect(await t).to_eq(15)
+  )
+  it("chains async functions", fn():
+    async fn inner() -> int:
+      return 21
+    async fn outer() -> int:
+      return (await inner()) * 2
+    expect(await outer()).to_eq(42)
+  )
+  it("supports Unit-returning async functions through await", fn():
+    async fn bump() -> Unit:
+      print("done")
+    await bump()
+    expect(1).to_eq(1)
+  )
 )
+
 describe("parallel for", fn():
-    it("executes counted loops", fn():
-        fn consume(x: int) -> int:
-            return x + 1
-
-        expect(available_parallelism() > 0).to_be_true()
-
-        @parallel
-        for i in range(5):
-            consume(i)
-    )
+  it("executes counted loops", fn():
+    fn consume(x: int) -> int:
+      return x + 1
+    expect(available_parallelism() > 0).to_be_true()
+    @parallel
+    for i in range(5):
+      consume(i)
+  )
 )

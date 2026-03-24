@@ -80,6 +80,7 @@ private:
     std::string formatFloat(double v);
 
     bool isDefinition(const StmtNode &stmt) const;
+    bool hasDirectives(const StmtNode &stmt) const;
     int getStmtLine(const StmtNode &stmt) const;
     int operatorPrecedence(const std::string &op) const;
     bool needsParens(const ExprNode &child, const std::string &parent_op, bool is_right) const;

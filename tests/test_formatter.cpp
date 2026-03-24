@@ -390,3 +390,14 @@ TEST(FormatterComments, ExtractsStandalone) {
     auto result = f.format(prog);
     EXPECT_NE(result.find("# comment"), std::string::npos);
 }
+
+// ===== Native Const Declaration =====
+
+TEST(Formatter, NativeConstDeclaration) {
+    EXPECT_EQ(fmt("@native\n@const\nPI: float\n"), "@native\n@const\nPI: float\n");
+}
+
+TEST(Formatter, NativeConstMultipleDeclarations) {
+    std::string src = "@native\n@const\nPI: float\n\n@native\n@const\nE: float\n";
+    EXPECT_EQ(fmt(src), src);
+}

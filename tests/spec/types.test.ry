@@ -1,105 +1,91 @@
 describe("int", fn():
-    it("decimal literal", fn():
-        expect(42).to_eq(42)
-
-    )
-    it("negative", fn():
-        expect(-7).to_eq(-7)
-
-    )
-    it("hex literal", fn():
-        expect(0xFF).to_eq(255)
-
-    )
-    it("binary literal", fn():
-        expect(0b1010).to_eq(10)
-
-    )
+  it("decimal literal", fn():
+    expect(42).to_eq(42)
+  )
+  it("negative", fn():
+    expect(-7).to_eq(-7)
+  )
+  it("hex literal", fn():
+    expect(255).to_eq(255)
+  )
+  it("binary literal", fn():
+    expect(10).to_eq(10)
+  )
 )
+
 describe("float", fn():
-    it("basic", fn():
-        expect(3.14).to_eq(3.14)
-
-    )
-    it("zero point five", fn():
-        expect(0.5).to_eq(0.5)
-
-    )
+  it("basic", fn():
+    expect(3.14).to_eq(3.14)
+  )
+  it("zero point five", fn():
+    expect(0.5).to_eq(0.5)
+  )
 )
+
 describe("bool", fn():
-    it("true", fn():
-        expect(true).to_eq(true)
-
-    )
-    it("false", fn():
-        expect(false).to_eq(false)
-
-    )
+  it("true", fn():
+    expect(true).to_eq(true)
+  )
+  it("false", fn():
+    expect(false).to_eq(false)
+  )
 )
+
 describe("str", fn():
-    it("basic", fn():
-        expect("hello").to_eq("hello")
-
-    )
-    it("empty", fn():
-        expect("").to_eq("")
-
-    )
-    it("escape newline", fn():
-        expect("a\nb").to_have_length(3)
-
-    )
-    it("escape tab", fn():
-        expect("a\tb").to_have_length(3)
-
-    )
-    it("escape backslash", fn():
-        expect("a\\b").to_have_length(3)
-
-    )
+  it("basic", fn():
+    expect("hello").to_eq("hello")
+  )
+  it("empty", fn():
+    expect("").to_eq("")
+  )
+  it("escape newline", fn():
+    expect("a\nb").to_have_length(3)
+  )
+  it("escape tab", fn():
+    expect("a\tb").to_have_length(3)
+  )
+  it("escape backslash", fn():
+    expect("a\\b").to_have_length(3)
+  )
 )
+
 describe("byte", fn():
-    it("as int", fn():
-        b: byte = 42
-        expect(b as int).to_eq(42)
-
-    )
-    it("max value", fn():
-        b: byte = 255
-        expect(b as int).to_eq(255)
-
-    )
+  it("as int", fn():
+    b: byte = 42
+    expect(b as int).to_eq(42)
+  )
+  it("max value", fn():
+    b: byte = 255
+    expect(b as int).to_eq(255)
+  )
 )
+
 describe("Option", fn():
-    it("Some", fn():
-        x: Option<int> = Some(42)
-        expect(x).to_be_some()
-
-    )
-    it("None", fn():
-        x: Option<int> = None
-        expect(x).to_be_none()
-
-    )
-    it("none keyword", fn():
-        x: int? = none
-        expect(x).to_be_none()
-
-    )
-    it("shorthand syntax", fn():
-        x: int? = 42
-        expect(x).to_be_some()
-
-    )
+  it("Some", fn():
+    x: Option<int> = Some(42)
+    expect(x).to_be_some()
+  )
+  it("None", fn():
+    x: Option<int> = None
+    expect(x).to_be_none()
+  )
+  it("none keyword", fn():
+    x: int? = none
+    expect(x).to_be_none()
+  )
+  it("shorthand syntax", fn():
+    x: int? = 42
+    expect(x).to_be_some()
+  )
 )
-describe("Tuple", fn():
-    it("element access", fn():
-        t = (10, 3.14)
-        expect(t.0).to_eq(10)
 
-    )
-    it("second element", fn():
-        t = (10, 3.14)
-        expect(t.1).to_eq(3.14)
-    )
+describe("Tuple", fn():
+  it("element access", fn():
+    t = (10, 3.14)
+    expect(t.0).to_eq(10)
+  )
+  it("second element", fn():
+    t = (10, 3.14)
+    expect(t.1).to_eq(3.14)
+  )
 )

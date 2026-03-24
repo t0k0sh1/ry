@@ -1,479 +1,413 @@
 describe("List", fn():
-    it("indexing", fn():
-        xs = [1, 2, 3]
-        expect(xs[0]).to_eq(1)
-        expect(xs[2]).to_eq(3)
-
-    )
-    it("index assignment", fn():
-        xs = [1, 2, 3]
-        xs[0] = 99
-        expect(xs[0]).to_eq(99)
-
-    )
-    it("length", fn():
-        expect([1, 2, 3]).to_have_length(3)
-
-    )
-    it("append", fn():
-        xs = [1, 2]
-        xs.append(3)
-        expect(xs).to_have_length(3)
-        expect(xs[2]).to_eq(3)
-
-    )
-    it("pop", fn():
-        xs = [1, 2, 3]
-        v = xs.pop()
-        expect(v).to_eq(Some(3))
-        expect(xs).to_have_length(2)
-
-    )
-    it("pop empty", fn():
-        xs = [1]
-        ys = xs.filter(fn(x: int): x > 10)
-        v = ys.pop()
-        expect(v).to_be_none()
-
-    )
-    it("reverse", fn():
-        xs = [1, 2, 3]
-        ys = reverse(xs)
-        expect(ys[0]).to_eq(3)
-        expect(ys[2]).to_eq(1)
-        expect(xs[0]).to_eq(1)
-
-    )
-    it("slice", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = slice(xs, 1, 3)
-        expect(ys).to_have_length(2)
-        expect(ys[0]).to_eq(2)
-        expect(ys[1]).to_eq(3)
-
-    )
-    it("filter", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.filter(fn(x: int): x > 3)
-        expect(ys).to_have_length(2)
-        expect(ys[0]).to_eq(4)
-
-    )
-    it("map", fn():
-        xs = [1, 2, 3]
-        ys = xs.map(fn(x: int): x * 2)
-        expect(ys[0]).to_eq(2)
-        expect(ys[1]).to_eq(4)
-        expect(ys[2]).to_eq(6)
-
-    )
-    it("sort default", fn():
-        xs = [3, 1, 2]
-        ys = xs.sort()
-        expect(ys[0]).to_eq(1)
-        expect(ys[1]).to_eq(2)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("sort custom comparator", fn():
-        xs = [3, 1, 2]
-        ys = xs.sort(fn(a: int, b: int): a > b)
-        expect(ys[0]).to_eq(3)
-        expect(ys[1]).to_eq(2)
-        expect(ys[2]).to_eq(1)
-
-    )
-    it("reduce", fn():
-        xs = [1, 2, 3, 4, 5]
-        total = reduce(xs, fn(a: int, b: int): a + b)
-        expect(total).to_eq(15)
-
-    )
-    it("fold", fn():
-        xs = [1, 2, 3, 4, 5]
-        total = fold(xs, 0, fn(a: int, b: int): a + b)
-        expect(total).to_eq(15)
-
-    )
-    it("any", fn():
-        xs = [1, 2, 3, 4, 5]
-        expect(any(xs, fn(x: int): x > 4)).to_be_true()
-        expect(any(xs, fn(x: int): x > 9)).to_be_false()
-
-    )
-    it("all", fn():
-        xs = [2, 4, 6]
-        expect(all(xs, fn(x: int): x > 0)).to_be_true()
-        expect(all(xs, fn(x: int): x > 3)).to_be_false()
-
-    )
-    it("sum", fn():
-        expect(sum([1, 2, 3, 4, 5])).to_eq(15)
-
-    )
-    it("min", fn():
-        expect(min([3, 1, 4, 1, 5])).to_eq(1)
-
-    )
-    it("max", fn():
-        expect(max([3, 1, 4, 1, 5])).to_eq(5)
-
-    )
-    it("first", fn():
-        expect(first([10, 20, 30])).to_eq(Some(10))
-
-    )
-    it("first empty", fn():
-        xs = [1]
-        ys = xs.filter(fn(x: int): x > 10)
-        expect(first(ys)).to_be_none()
-
-    )
-    it("last", fn():
-        expect(last([10, 20, 30])).to_eq(Some(30))
-
-    )
-    it("last empty", fn():
-        xs = [1]
-        ys = xs.filter(fn(x: int): x > 10)
-        expect(last(ys)).to_be_none()
-
-    )
-    it("is_empty", fn():
-        expect(is_empty([1, 2])).to_be_false()
-
-    )
-    it("enumerate", fn():
-        xs = [10, 20, 30]
-        pairs = enumerate(xs)
-        expect(pairs[0].0).to_eq(0)
-        expect(pairs[0].1).to_eq(10)
-
-    )
-    it("zip", fn():
-        pairs = zip([1, 2], [10, 20])
-        expect(pairs[0].0).to_eq(1)
-        expect(pairs[0].1).to_eq(10)
-
-    )
-    it("insert", fn():
-        xs = [1, 2, 3]
-        insert(xs, 1, 99)
-        expect(xs[1]).to_eq(99)
-        expect(xs).to_have_length(4)
-
-    )
-    it("remove_at", fn():
-        xs = [1, 2, 3, 4]
-        v = remove_at(xs, 1)
-        expect(v).to_eq(2)
-        expect(xs).to_have_length(3)
-
-    )
-    it("remove", fn():
-        xs = [1, 2, 3, 2, 4]
-        remove(xs, 2)
-        expect(xs[0]).to_eq(1)
-        expect(xs[1]).to_eq(3)
-
-    )
-    it("distinct", fn():
-        xs = [1, 2, 3, 2, 1, 4]
-        ys = distinct(xs)
-        expect(ys).to_have_length(4)
-        expect(ys[0]).to_eq(1)
-        expect(ys[3]).to_eq(4)
-
-    )
-    it("flatten", fn():
-        xs = [[1, 2], [3, 4]]
-        ys = flatten(xs)
-        expect(ys).to_have_length(4)
-        expect(ys[0]).to_eq(1)
-        expect(ys[3]).to_eq(4)
-
-    )
-    it("sort!", fn():
-        xs = [3, 1, 2]
-        xs.sort!()
-        expect(xs[0]).to_eq(1)
-        expect(xs[1]).to_eq(2)
-        expect(xs[2]).to_eq(3)
-
-    )
-    it("reverse!", fn():
-        xs = [1, 2, 3]
-        xs.reverse!()
-        expect(xs[0]).to_eq(3)
-        expect(xs[1]).to_eq(2)
-        expect(xs[2]).to_eq(1)
-
-    )
-    it("appended", fn():
-        xs = [1, 2]
-        ys = xs.appended(3)
-        expect(xs).to_have_length(2)
-        expect(ys).to_have_length(3)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("append!", fn():
-        xs = [1, 2]
-        xs.append!(3)
-        expect(xs).to_have_length(3)
-        expect(xs[2]).to_eq(3)
-
-    )
-    it("take", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.take(3)
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("take exceeds length", fn():
-        xs = [1, 2, 3]
-        ys = xs.take(10)
-        expect(ys).to_have_length(3)
-
-    )
-    it("take zero", fn():
-        xs = [1, 2, 3]
-        ys = xs.take(0)
-        expect(ys).to_have_length(0)
-
-    )
-    it("take non-mutating", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.take(2)
-        expect(xs).to_have_length(5)
-        expect(ys).to_have_length(2)
-
-    )
-    it("take negative", fn():
-        xs = [1, 2, 3]
-        ys = xs.take(-1)
-        expect(ys).to_have_length(0)
-
-    )
-    it("tap returns original list", fn():
-        xs = [1, 2, 3]
-        ys = xs.tap(fn(x: int): x * 2)
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-        expect(ys[1]).to_eq(2)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("tap in chain", fn():
-        xs = [5, 3, 1, 4, 2]
-        res = xs.filter(fn(x: int): x > 2).tap(fn(x: int): x + 1).sort()
-        expect(res).to_have_length(3)
-        expect(res[0]).to_eq(3)
-        expect(res[1]).to_eq(4)
-        expect(res[2]).to_eq(5)
-
-    )
-    it("chain filter-map-sort", fn():
-        xs = [5, 3, 1, 4, 2]
-        res = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
-        expect(res[0]).to_eq(20)
-        expect(res[1]).to_eq(30)
-        expect(res[2]).to_eq(40)
-        expect(res[3]).to_eq(50)
-
-    )
-    it("sort 32 elements (MIN_MERGE threshold)", fn():
-        xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
-        ys = sort(xs)
-        expect(ys[0]).to_eq(1)
-        expect(ys[31]).to_eq(32)
-
-    )
-    it("sort 33 elements (TimSort merge path)", fn():
-        xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
-        ys = sort(xs)
-        expect(ys[0]).to_eq(1)
-        expect(ys[32]).to_eq(33)
-
-    )
-    it("sort stability", fn():
-        xs = [201, 102, 303, 104, 205]
-        ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)
-        expect(ys[0]).to_eq(102)
-        expect(ys[1]).to_eq(104)
-        expect(ys[2]).to_eq(201)
-        expect(ys[3]).to_eq(205)
-        expect(ys[4]).to_eq(303)
-
-    )
+  it("indexing", fn():
+    xs = [1, 2, 3]
+    expect(xs[0]).to_eq(1)
+    expect(xs[2]).to_eq(3)
+  )
+  it("index assignment", fn():
+    xs = [1, 2, 3]
+    xs[0] = 99
+    expect(xs[0]).to_eq(99)
+  )
+  it("length", fn():
+    expect([1, 2, 3]).to_have_length(3)
+  )
+  it("append", fn():
+    xs = [1, 2]
+    append(xs, 3)
+    expect(xs).to_have_length(3)
+    expect(xs[2]).to_eq(3)
+  )
+  it("pop", fn():
+    xs = [1, 2, 3]
+    v = pop(xs)
+    expect(v).to_eq(Some(3))
+    expect(xs).to_have_length(2)
+  )
+  it("pop empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int): x > 10)
+    v = pop(ys)
+    expect(v).to_be_none()
+  )
+  it("reverse", fn():
+    xs = [1, 2, 3]
+    ys = reverse(xs)
+    expect(ys[0]).to_eq(3)
+    expect(ys[2]).to_eq(1)
+    expect(xs[0]).to_eq(1)
+  )
+  it("slice", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = slice(xs, 1, 3)
+    expect(ys).to_have_length(2)
+    expect(ys[0]).to_eq(2)
+    expect(ys[1]).to_eq(3)
+  )
+  it("filter", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = filter(xs, fn(x: int): x > 3)
+    expect(ys).to_have_length(2)
+    expect(ys[0]).to_eq(4)
+  )
+  it("map", fn():
+    xs = [1, 2, 3]
+    ys = map(xs, fn(x: int): x * 2)
+    expect(ys[0]).to_eq(2)
+    expect(ys[1]).to_eq(4)
+    expect(ys[2]).to_eq(6)
+  )
+  it("sort default", fn():
+    xs = [3, 1, 2]
+    ys = sort(xs)
+    expect(ys[0]).to_eq(1)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(3)
+  )
+  it("sort custom comparator", fn():
+    xs = [3, 1, 2]
+    ys = sort(xs, fn(a: int, b: int): a > b)
+    expect(ys[0]).to_eq(3)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(1)
+  )
+  it("reduce", fn():
+    xs = [1, 2, 3, 4, 5]
+    total = reduce(xs, fn(a: int, b: int): a + b)
+    expect(total).to_eq(15)
+  )
+  it("fold", fn():
+    xs = [1, 2, 3, 4, 5]
+    total = fold(xs, 0, fn(a: int, b: int): a + b)
+    expect(total).to_eq(15)
+  )
+  it("any", fn():
+    xs = [1, 2, 3, 4, 5]
+    expect(any(xs, fn(x: int): x > 4)).to_be_true()
+    expect(any(xs, fn(x: int): x > 9)).to_be_false()
+  )
+  it("all", fn():
+    xs = [2, 4, 6]
+    expect(all(xs, fn(x: int): x > 0)).to_be_true()
+    expect(all(xs, fn(x: int): x > 3)).to_be_false()
+  )
+  it("sum", fn():
+    expect(sum([1, 2, 3, 4, 5])).to_eq(15)
+  )
+  it("min", fn():
+    expect(min([3, 1, 4, 1, 5])).to_eq(1)
+  )
+  it("max", fn():
+    expect(max([3, 1, 4, 1, 5])).to_eq(5)
+  )
+  it("first", fn():
+    expect(first([10, 20, 30])).to_eq(Some(10))
+  )
+  it("first empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int): x > 10)
+    expect(first(ys)).to_be_none()
+  )
+  it("last", fn():
+    expect(last([10, 20, 30])).to_eq(Some(30))
+  )
+  it("last empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int): x > 10)
+    expect(last(ys)).to_be_none()
+  )
+  it("is_empty", fn():
+    expect(is_empty([1, 2])).to_be_false()
+  )
+  it("enumerate", fn():
+    xs = [10, 20, 30]
+    pairs = enumerate(xs)
+    expect(pairs[0].0).to_eq(0)
+    expect(pairs[0].1).to_eq(10)
+  )
+  it("zip", fn():
+    pairs = zip([1, 2], [10, 20])
+    expect(pairs[0].0).to_eq(1)
+    expect(pairs[0].1).to_eq(10)
+  )
+  it("insert", fn():
+    xs = [1, 2, 3]
+    insert(xs, 1, 99)
+    expect(xs[1]).to_eq(99)
+    expect(xs).to_have_length(4)
+  )
+  it("remove_at", fn():
+    xs = [1, 2, 3, 4]
+    v = remove_at(xs, 1)
+    expect(v).to_eq(2)
+    expect(xs).to_have_length(3)
+  )
+  it("remove", fn():
+    xs = [1, 2, 3, 2, 4]
+    remove(xs, 2)
+    expect(xs[0]).to_eq(1)
+    expect(xs[1]).to_eq(3)
+  )
+  it("distinct", fn():
+    xs = [1, 2, 3, 2, 1, 4]
+    ys = distinct(xs)
+    expect(ys).to_have_length(4)
+    expect(ys[0]).to_eq(1)
+    expect(ys[3]).to_eq(4)
+  )
+  it("flatten", fn():
+    xs = [[1, 2], [3, 4]]
+    ys = flatten(xs)
+    expect(ys).to_have_length(4)
+    expect(ys[0]).to_eq(1)
+    expect(ys[3]).to_eq(4)
+  )
+  it("sort!", fn():
+    xs = [3, 1, 2]
+    sort!(xs)
+    expect(xs[0]).to_eq(1)
+    expect(xs[1]).to_eq(2)
+    expect(xs[2]).to_eq(3)
+  )
+  it("reverse!", fn():
+    xs = [1, 2, 3]
+    reverse!(xs)
+    expect(xs[0]).to_eq(3)
+    expect(xs[1]).to_eq(2)
+    expect(xs[2]).to_eq(1)
+  )
+  it("appended", fn():
+    xs = [1, 2]
+    ys = appended(xs, 3)
+    expect(xs).to_have_length(2)
+    expect(ys).to_have_length(3)
+    expect(ys[2]).to_eq(3)
+  )
+  it("append!", fn():
+    xs = [1, 2]
+    append!(xs, 3)
+    expect(xs).to_have_length(3)
+    expect(xs[2]).to_eq(3)
+  )
+  it("take", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = take(xs, 3)
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[2]).to_eq(3)
+  )
+  it("take exceeds length", fn():
+    xs = [1, 2, 3]
+    ys = take(xs, 10)
+    expect(ys).to_have_length(3)
+  )
+  it("take zero", fn():
+    xs = [1, 2, 3]
+    ys = take(xs, 0)
+    expect(ys).to_have_length(0)
+  )
+  it("take non-mutating", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = take(xs, 2)
+    expect(xs).to_have_length(5)
+    expect(ys).to_have_length(2)
+  )
+  it("take negative", fn():
+    xs = [1, 2, 3]
+    ys = take(xs, -1)
+    expect(ys).to_have_length(0)
+  )
+  it("tap returns original list", fn():
+    xs = [1, 2, 3]
+    ys = tap(xs, fn(x: int): x * 2)
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(3)
+  )
+  it("tap in chain", fn():
+    xs = [5, 3, 1, 4, 2]
+    res = sort(tap(filter(xs, fn(x: int): x > 2), fn(x: int): x + 1))
+    expect(res).to_have_length(3)
+    expect(res[0]).to_eq(3)
+    expect(res[1]).to_eq(4)
+    expect(res[2]).to_eq(5)
+  )
+  it("chain filter-map-sort", fn():
+    xs = [5, 3, 1, 4, 2]
+    res = sort(map(filter(xs, fn(x: int): x > 1), fn(x: int): x * 10))
+    expect(res[0]).to_eq(20)
+    expect(res[1]).to_eq(30)
+    expect(res[2]).to_eq(40)
+    expect(res[3]).to_eq(50)
+  )
+  it("sort 32 elements (MIN_MERGE threshold)", fn():
+    xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    ys = sort(xs)
+    expect(ys[0]).to_eq(1)
+    expect(ys[31]).to_eq(32)
+  )
+  it("sort 33 elements (TimSort merge path)", fn():
+    xs = [33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    ys = sort(xs)
+    expect(ys[0]).to_eq(1)
+    expect(ys[32]).to_eq(33)
+  )
+  it("sort stability", fn():
+    xs = [201, 102, 303, 104, 205]
+    ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)
+    expect(ys[0]).to_eq(102)
+    expect(ys[1]).to_eq(104)
+    expect(ys[2]).to_eq(201)
+    expect(ys[3]).to_eq(205)
+    expect(ys[4]).to_eq(303)
+  )
 )
+
 describe("Map", fn():
-    it("key access", fn():
-        m = {"a": 1, "b": 2}
-        expect(m["a"]).to_eq(1)
-
-    )
-    it("insert and update", fn():
-        m = {"a": 1}
-        m["b"] = 2
-        m["a"] = 99
-        expect(m["a"]).to_eq(99)
-        expect(m["b"]).to_eq(2)
-
-    )
-    it("length", fn():
-        m = {"a": 1, "b": 2, "c": 3}
-        expect(m).to_have_length(3)
-
-    )
-    it("has_key", fn():
-        m = {"a": 1, "b": 2}
-        expect(m).to_contain("a")
-        expect(m).to_not_contain("z")
-
-    )
-    it("keys", fn():
-        m = {"x": 1}
-        ks = keys(m)
-        expect(ks).to_have_length(1)
-        expect(ks[0]).to_eq("x")
-
-    )
-    it("values", fn():
-        m = {"x": 10}
-        vs = values(m)
-        expect(vs).to_have_length(1)
-        expect(vs).to_contain(10)
-
-    )
-    it("items", fn():
-        m = {"a": 1}
-        pairs = items(m)
-        expect(pairs).to_have_length(1)
-
-    )
-    it("remove", fn():
-        m = {"a": 1, "b": 2}
-        remove(m, "a")
-        expect(m).to_not_contain("a")
-        expect(m).to_have_length(1)
-
-    )
-    it("get with default", fn():
-        m = {"a": 1, "b": 2}
-        expect(get(m, "a", 0)).to_eq(1)
-        expect(get(m, "z", 0)).to_eq(0)
-
-    )
-    it("get optional", fn():
-        m = {"a": 1, "b": 2}
-        expect(get(m, "a")).to_eq(Some(1))
-        expect(get(m, "z")).to_be_none()
-
-    )
-    it("merge", fn():
-        m1 = {"a": 1, "b": 2}
-        m2 = {"b": 99, "c": 3}
-        m3 = merge(m1, m2)
-        expect(m3["a"]).to_eq(1)
-        expect(m3["b"]).to_eq(99)
-        expect(m3["c"]).to_eq(3)
-
-    )
-    it("in operator", fn():
-        m = {"a": 1}
-        expect(m).to_contain("a")
-        expect(m).to_not_contain("z")
-
-    )
+  it("key access", fn():
+    m = {"a": 1, "b": 2}
+    expect(m["a"]).to_eq(1)
+  )
+  it("insert and update", fn():
+    m = {"a": 1}
+    m["b"] = 2
+    m["a"] = 99
+    expect(m["a"]).to_eq(99)
+    expect(m["b"]).to_eq(2)
+  )
+  it("length", fn():
+    m = {"a": 1, "b": 2, "c": 3}
+    expect(m).to_have_length(3)
+  )
+  it("has_key", fn():
+    m = {"a": 1, "b": 2}
+    expect(m).to_contain("a")
+    expect(m).to_not_contain("z")
+  )
+  it("keys", fn():
+    m = {"x": 1}
+    ks = keys(m)
+    expect(ks).to_have_length(1)
+    expect(ks[0]).to_eq("x")
+  )
+  it("values", fn():
+    m = {"x": 10}
+    vs = values(m)
+    expect(vs).to_have_length(1)
+    expect(vs).to_contain(10)
+  )
+  it("items", fn():
+    m = {"a": 1}
+    pairs = items(m)
+    expect(pairs).to_have_length(1)
+  )
+  it("remove", fn():
+    m = {"a": 1, "b": 2}
+    remove(m, "a")
+    expect(m).to_not_contain("a")
+    expect(m).to_have_length(1)
+  )
+  it("get with default", fn():
+    m = {"a": 1, "b": 2}
+    expect(get(m, "a", 0)).to_eq(1)
+    expect(get(m, "z", 0)).to_eq(0)
+  )
+  it("get optional", fn():
+    m = {"a": 1, "b": 2}
+    expect(get(m, "a")).to_eq(Some(1))
+    expect(get(m, "z")).to_be_none()
+  )
+  it("merge", fn():
+    m1 = {"a": 1, "b": 2}
+    m2 = {"b": 99, "c": 3}
+    m3 = merge(m1, m2)
+    expect(m3["a"]).to_eq(1)
+    expect(m3["b"]).to_eq(99)
+    expect(m3["c"]).to_eq(3)
+  )
+  it("in operator", fn():
+    m = {"a": 1}
+    expect(m).to_contain("a")
+    expect(m).to_not_contain("z")
+  )
 )
+
 describe("Set", fn():
-    it("in", fn():
-        s = {1, 2, 3}
-        expect(s).to_contain(2)
-        expect(s).to_not_contain(5)
-
-    )
-    it("length", fn():
-        s = {1, 2, 3}
-        expect(s).to_have_length(3)
-
-    )
-    it("add", fn():
-        s = {1, 2, 3}
-        s.add(4)
-        s.add(1)
-        expect(s).to_have_length(4)
-
-    )
-    it("remove", fn():
-        s = {1, 2, 3}
-        s.remove(2)
-        expect(s).to_not_contain(2)
-
-    )
-    it("union", fn():
-        a = {1, 2, 3}
-        b = {3, 4, 5}
-        c = union(a, b)
-        expect(c).to_have_length(5)
-
-    )
-    it("intersection", fn():
-        a = {1, 2, 3}
-        b = {2, 3, 4}
-        c = intersection(a, b)
-        expect(c).to_have_length(2)
-        expect(c).to_contain(2)
-        expect(c).to_contain(3)
-
-    )
-    it("difference", fn():
-        a = {1, 2, 3}
-        b = {2, 3, 4}
-        c = difference(a, b)
-        expect(c).to_have_length(1)
-        expect(c).to_contain(1)
-
-    )
-    it("symmetric_difference", fn():
-        a = {1, 2, 3}
-        b = {2, 3, 4}
-        c = symmetric_difference(a, b)
-        expect(c).to_have_length(2)
-        expect(c).to_contain(1)
-        expect(c).to_contain(4)
-
-    )
-    it("is_subset", fn():
-        a = {1, 2}
-        b = {1, 2, 3}
-        expect(is_subset(a, b)).to_be_true()
-        expect(is_subset(b, a)).to_be_false()
-
-    )
-    it("is_superset", fn():
-        a = {1, 2, 3}
-        b = {1, 2}
-        expect(is_superset(a, b)).to_be_true()
-        expect(is_superset(b, a)).to_be_false()
-
-    )
+  it("in", fn():
+    s = {1, 2, 3}
+    expect(s).to_contain(2)
+    expect(s).to_not_contain(5)
+  )
+  it("length", fn():
+    s = {1, 2, 3}
+    expect(s).to_have_length(3)
+  )
+  it("add", fn():
+    s = {1, 2, 3}
+    add(s, 4)
+    add(s, 1)
+    expect(s).to_have_length(4)
+  )
+  it("remove", fn():
+    s = {1, 2, 3}
+    remove(s, 2)
+    expect(s).to_not_contain(2)
+  )
+  it("union", fn():
+    a = {1, 2, 3}
+    b = {3, 4, 5}
+    c = union(a, b)
+    expect(c).to_have_length(5)
+  )
+  it("intersection", fn():
+    a = {1, 2, 3}
+    b = {2, 3, 4}
+    c = intersection(a, b)
+    expect(c).to_have_length(2)
+    expect(c).to_contain(2)
+    expect(c).to_contain(3)
+  )
+  it("difference", fn():
+    a = {1, 2, 3}
+    b = {2, 3, 4}
+    c = difference(a, b)
+    expect(c).to_have_length(1)
+    expect(c).to_contain(1)
+  )
+  it("symmetric_difference", fn():
+    a = {1, 2, 3}
+    b = {2, 3, 4}
+    c = symmetric_difference(a, b)
+    expect(c).to_have_length(2)
+    expect(c).to_contain(1)
+    expect(c).to_contain(4)
+  )
+  it("is_subset", fn():
+    a = {1, 2}
+    b = {1, 2, 3}
+    expect(is_subset(a, b)).to_be_true()
+    expect(is_subset(b, a)).to_be_false()
+  )
+  it("is_superset", fn():
+    a = {1, 2, 3}
+    b = {1, 2}
+    expect(is_superset(a, b)).to_be_true()
+    expect(is_superset(b, a)).to_be_false()
+  )
 )
-describe("Tuple", fn():
-    it("element access", fn():
-        t = (10, "hello")
-        expect(t.0).to_eq(10)
-        expect(t.1).to_eq("hello")
 
-    )
-    it("function return", fn():
-        fn swap(a: int, b: int) -> (int, int):
-            return (b, a)
-        res = swap(1, 2)
-        expect(res.0).to_eq(2)
-        expect(res.1).to_eq(1)
-    )
+describe("Tuple", fn():
+  it("element access", fn():
+    t = (10, "hello")
+    expect(t.0).to_eq(10)
+    expect(t.1).to_eq("hello")
+  )
+  it("function return", fn():
+    fn swap(a: int, b: int) -> (int, int):
+      return (b, a)
+    res = swap(1, 2)
+    expect(res.0).to_eq(2)
+    expect(res.1).to_eq(1)
+  )
 )

@@ -1,5 +1,4 @@
 # Math constants and functions
-
 @native
 @const
 PI: float
