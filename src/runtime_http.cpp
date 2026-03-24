@@ -330,11 +330,33 @@ static bool recv_into_buf(int fd, std::string &buf) {
     return true;
 }
 
-// Check if headers contain "Transfer-Encoding: chunked" (case-insensitive).
+// Check if a Transfer-Encoding value has "chunked" as the last coding.
+// Handles comma-separated lists (e.g. "gzip, chunked") per RFC 9112.
+static bool te_value_is_chunked(const char *value) {
+    // Find the last non-whitespace token after the last comma
+    const char *last_token = value;
+    const char *p = value;
+    while (*p) {
+        // Skip whitespace
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') break;
+        last_token = p;
+        // Advance to next comma or end
+        while (*p && *p != ',') p++;
+        if (*p == ',') p++;
+    }
+    // Compare last token, ignoring trailing whitespace
+    size_t len = strlen(last_token);
+    // Trim trailing whitespace
+    while (len > 0 && (last_token[len - 1] == ' ' || last_token[len - 1] == '\t'))
+        len--;
+    return len == 7 && strncasecmp(last_token, "chunked", 7) == 0;
+}
+
 static bool has_chunked_encoding(char **keys, char **values, int64_t count) {
     for (int64_t i = 0; i < count; i++) {
         if (strcasecmp(keys[i], "Transfer-Encoding") == 0 &&
-            strcasecmp(values[i], "chunked") == 0)
+            te_value_is_chunked(values[i]))
             return true;
     }
     return false;
@@ -343,7 +365,7 @@ static bool has_chunked_encoding(char **keys, char **values, int64_t count) {
 static bool has_chunked_encoding(const std::vector<HeaderPair> &headers) {
     for (auto &h : headers) {
         if (strcasecmp(h.key, "Transfer-Encoding") == 0 &&
-            strcasecmp(h.val, "chunked") == 0)
+            te_value_is_chunked(h.val))
             return true;
     }
     return false;
@@ -364,11 +386,15 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
         return true;
     };
 
+    // Max chunk-size line length to prevent DoS from extremely long lines without CRLF
+    static const size_t MAX_CHUNK_LINE = 4096;
+
     while (true) {
         size_t crlf;
         while (true) {
             crlf = buf.find("\r\n", pos);
             if (crlf != std::string::npos) break;
+            if (buf.size() - pos > MAX_CHUNK_LINE) { ok = false; return ""; }
             if (!recv_into_buf(fd, buf)) { ok = false; return ""; }
         }
 
@@ -394,9 +420,13 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
             break;
         }
 
-        if ((int64_t)(body.size() + chunk_size) > MAX_BODY_SIZE) { ok = false; return ""; }
+        // Reject chunk sizes that would exceed MAX_BODY_SIZE (also prevents overflow)
+        if (chunk_size > (unsigned long long)MAX_BODY_SIZE ||
+            (int64_t)(body.size() + chunk_size) > MAX_BODY_SIZE) {
+            ok = false; return "";
+        }
 
-        if (!ensure(chunk_size + 2)) { ok = false; return ""; }
+        if (!ensure((size_t)chunk_size + 2)) { ok = false; return ""; }
         body.append(buf, pos, (size_t)chunk_size);
         pos += (size_t)chunk_size;
 
@@ -469,8 +499,10 @@ extern "C" void *__ry_http_read_request(void *stream) {
     size_t body_start = headers_end + 4;
     const char *cl_value = nullptr;
     for (int64_t i = 0; i < req->header_count; i++) {
-        if (strcasecmp(req->header_keys[i], "Content-Length") == 0)
+        if (strcasecmp(req->header_keys[i], "Content-Length") == 0) {
             cl_value = req->header_values[i];
+            break;
+        }
     }
     bool is_chunked = has_chunked_encoding(
         req->header_keys, req->header_values, req->header_count);
@@ -706,8 +738,10 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
     bool is_chunked = has_chunked_encoding(
         resp->header_keys, resp->header_values, resp->header_count);
     for (int64_t i = 0; i < resp->header_count; i++) {
-        if (strcasecmp(resp->header_keys[i], "Content-Length") == 0)
+        if (strcasecmp(resp->header_keys[i], "Content-Length") == 0) {
             has_content_length = true;
+            if (is_chunked) continue; // suppress Content-Length when using chunked
+        }
         out += resp->header_keys[i];
         out += ": ";
         out += resp->header_values[i];
@@ -723,13 +757,15 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
     out += "\r\n";
 
     if (is_chunked) {
-        // Encode body as a single chunk
-        char size_buf[20];
-        snprintf(size_buf, sizeof(size_buf), "%llx", (unsigned long long)body_len);
-        out += size_buf;
-        out += "\r\n";
-        out.append(resp->body, body_len);
-        out += "\r\n0\r\n\r\n";
+        if (body_len > 0) {
+            char size_buf[20];
+            snprintf(size_buf, sizeof(size_buf), "%llx", (unsigned long long)body_len);
+            out += size_buf;
+            out += "\r\n";
+            out.append(resp->body, body_len);
+            out += "\r\n";
+        }
+        out += "0\r\n\r\n";
     } else {
         out.append(resp->body, body_len);
     }
@@ -889,8 +925,10 @@ static HttpClientResponseHandle *read_http_response(int fd) {
 
     const char *cl_value = nullptr;
     for (auto &h : parsed_headers) {
-        if (strcasecmp(h.key, "Content-Length") == 0)
+        if (strcasecmp(h.key, "Content-Length") == 0) {
             cl_value = h.val;
+            break;
+        }
     }
     bool is_chunked = has_chunked_encoding(parsed_headers);
 
