@@ -49,11 +49,20 @@ add_library(ry_lib STATIC
     src/diagnostic.cpp
     src/lexer.cpp
     src/parser.cpp
+    src/parser_expr.cpp
+    src/parser_decl.cpp
     src/codegen.cpp
     src/codegen_builtin.cpp
+    src/codegen_test.cpp
     src/codegen_stmt.cpp
+    src/codegen_fn.cpp
     src/codegen_expr.cpp
     src/codegen_call.cpp
+    src/codegen_call_string.cpp
+    src/codegen_call_collection.cpp
+    src/codegen_call_higher_order.cpp
+    src/codegen_call_io.cpp
+    src/codegen_call_iterator.cpp
     src/codegen_lambda.cpp
     src/module_loader.cpp
     src/jit.cpp
