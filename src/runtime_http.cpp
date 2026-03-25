@@ -321,6 +321,154 @@ static std::string recv_all(int fd, size_t max_bytes) {
     return buf;
 }
 
+// Append data from fd into buf. Returns false on connection close/error.
+static bool recv_into_buf(int fd, std::string &buf) {
+    char tmp[4096];
+    ssize_t n = ::recv(fd, tmp, sizeof(tmp), 0);
+    if (n <= 0) return false;
+    buf.append(tmp, (size_t)n);
+    return true;
+}
+
+// Check if a Transfer-Encoding value has "chunked" as the last coding.
+// Handles comma-separated lists (e.g. "gzip, chunked") per RFC 9112.
+static bool te_value_is_chunked(const char *value) {
+    // Find the last non-whitespace token after the last comma
+    const char *last_token = value;
+    const char *p = value;
+    while (*p) {
+        // Skip whitespace
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0') break;
+        last_token = p;
+        // Advance to next comma or end
+        while (*p && *p != ',') p++;
+        if (*p == ',') p++;
+    }
+    // Compare last token, ignoring trailing whitespace
+    size_t len = strlen(last_token);
+    // Trim trailing whitespace
+    while (len > 0 && (last_token[len - 1] == ' ' || last_token[len - 1] == '\t'))
+        len--;
+    return len == 7 && strncasecmp(last_token, "chunked", 7) == 0;
+}
+
+// Check if Transfer-Encoding header is present (regardless of value).
+static bool has_transfer_encoding(char **keys, int64_t count) {
+    for (int64_t i = 0; i < count; i++) {
+        if (strcasecmp(keys[i], "Transfer-Encoding") == 0)
+            return true;
+    }
+    return false;
+}
+
+static bool has_transfer_encoding(const std::vector<HeaderPair> &headers) {
+    for (auto &h : headers) {
+        if (strcasecmp(h.key, "Transfer-Encoding") == 0)
+            return true;
+    }
+    return false;
+}
+
+static bool has_chunked_encoding(char **keys, char **values, int64_t count) {
+    for (int64_t i = 0; i < count; i++) {
+        if (strcasecmp(keys[i], "Transfer-Encoding") == 0 &&
+            te_value_is_chunked(values[i]))
+            return true;
+    }
+    return false;
+}
+
+static bool has_chunked_encoding(const std::vector<HeaderPair> &headers) {
+    for (auto &h : headers) {
+        if (strcasecmp(h.key, "Transfer-Encoding") == 0 &&
+            te_value_is_chunked(h.val))
+            return true;
+    }
+    return false;
+}
+
+// Decode a chunked transfer-encoded body from fd.
+// `buf` is the read buffer (may already contain data after headers);
+// `pos` is the current offset into buf.
+// Sets `ok` to false on parse error or size overflow.
+static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool &ok) {
+    ok = true;
+    std::string body;
+
+    auto ensure = [&](size_t needed) -> bool {
+        while (buf.size() - pos < needed) {
+            if (!recv_into_buf(fd, buf)) return false;
+        }
+        return true;
+    };
+
+    // Max chunk-size line length to prevent DoS from extremely long lines without CRLF
+    static const size_t MAX_CHUNK_LINE = 4096;
+
+    while (true) {
+        size_t crlf;
+        while (true) {
+            crlf = buf.find("\r\n", pos);
+            if (crlf != std::string::npos) break;
+            if (buf.size() - pos > MAX_CHUNK_LINE) { ok = false; return ""; }
+            if (!recv_into_buf(fd, buf)) { ok = false; return ""; }
+        }
+
+        // Parse hex chunk size, ignoring extensions after ';'
+        const char *size_start = buf.c_str() + pos;
+        size_t size_len = crlf - pos;
+        const char *semi = (const char *)memchr(size_start, ';', size_len);
+        if (semi) size_len = (size_t)(semi - size_start);
+
+        char *endptr = nullptr;
+        unsigned long long chunk_size = strtoull(size_start, &endptr, 16);
+        if (!endptr || endptr == size_start) { ok = false; return ""; }
+        // Reject trailing non-whitespace after hex digits (RFC 9112: chunk-size = 1*HEXDIG)
+        for (const char *t = endptr; t < size_start + size_len; t++) {
+            if (*t != ' ' && *t != '\t') { ok = false; return ""; }
+        }
+
+        pos = crlf + 2;
+
+        if (chunk_size == 0) {
+            // Consume optional trailers and final CRLF after terminal chunk.
+            // Trailers end with an empty line (\r\n), so we read until \r\n\r\n.
+            while (true) {
+                size_t end = buf.find("\r\n", pos);
+                if (end == std::string::npos) {
+                    if (!recv_into_buf(fd, buf)) break;
+                    continue;
+                }
+                if (end == pos) { pos += 2; break; } // empty line = end of trailers
+                pos = end + 2; // skip trailer line
+            }
+            break;
+        }
+
+        // Reject chunk sizes that would exceed MAX_BODY_SIZE (also prevents overflow)
+        if (chunk_size > (unsigned long long)MAX_BODY_SIZE ||
+            (int64_t)(body.size() + chunk_size) > MAX_BODY_SIZE) {
+            ok = false; return "";
+        }
+
+        if (!ensure((size_t)chunk_size + 2)) { ok = false; return ""; }
+        body.append(buf, pos, (size_t)chunk_size);
+        pos += (size_t)chunk_size;
+
+        if (buf[pos] != '\r' || buf[pos + 1] != '\n') { ok = false; return ""; }
+        pos += 2;
+
+        // Discard consumed data to avoid unbounded buffer growth
+        if (pos > 8192) {
+            buf.erase(0, pos);
+            pos = 0;
+        }
+    }
+
+    return body;
+}
+
 extern "C" void *__ry_http_read_request(void *stream) {
     auto *handle = (TcpStreamHandle *)stream;
     struct timeval tv = {5, 0};
@@ -380,7 +528,6 @@ extern "C" void *__ry_http_read_request(void *stream) {
     // Pre-parse Cookie header into req->cookie_keys/values/count
     parse_cookie_header(req);
 
-    // Validate Content-Length before body parsing
     size_t body_start = headers_end + 4;
     const char *cl_value = nullptr;
     for (int64_t i = 0; i < req->header_count; i++) {
@@ -389,20 +536,46 @@ extern "C" void *__ry_http_read_request(void *stream) {
             break;
         }
     }
-    int64_t content_length = __ry_http_parse_content_length(cl_value);
-    if (content_length == -2 || content_length == -3) {
-        // Invalid or oversized Content-Length — reject as malformed
+    bool has_te = has_transfer_encoding(req->header_keys, req->header_count);
+    bool is_chunked = has_te && has_chunked_encoding(
+        req->header_keys, req->header_values, req->header_count);
+
+    // RFC 9112 §6.1: reject if both Transfer-Encoding and Content-Length are present
+    if (is_chunked && cl_value != nullptr) {
         __ry_http_request_free(req);
         return nullptr;
     }
 
-    // Parse body
+    // Reject unsupported transfer codings (e.g. gzip without chunked)
+    if (has_te && !is_chunked) {
+        __ry_http_request_free(req);
+        return nullptr;
+    }
+
+    if (is_chunked) {
+        // Chunked transfer encoding
+        bool ok;
+        std::string body_data = read_chunked_body(handle->fd, raw, body_start, ok);
+        if (!ok) {
+            __ry_http_request_free(req);
+            return nullptr;
+        }
+        req->body = strdup(body_data.c_str());
+        return req;
+    }
+
+    // Content-Length based body parsing
+    int64_t content_length = __ry_http_parse_content_length(cl_value);
+    if (content_length == -2 || content_length == -3) {
+        __ry_http_request_free(req);
+        return nullptr;
+    }
+
     std::string body_data;
     if (body_start < raw.size())
         body_data = raw.substr(body_start);
 
     if (content_length > 0 && (int64_t)body_data.size() < content_length) {
-        // Need to read more body data
         size_t remaining = (size_t)content_length - body_data.size();
         char *extra = (char *)malloc(remaining);
         size_t got = 0;
@@ -414,14 +587,12 @@ extern "C" void *__ry_http_read_request(void *stream) {
         body_data.append(extra, got);
         free(extra);
 
-        // Reject truncated body
         if ((int64_t)body_data.size() < content_length) {
             __ry_http_request_free(req);
             return nullptr;
         }
     }
 
-    // Truncate body to exactly Content-Length to prevent request smuggling
     if (content_length >= 0 && (int64_t)body_data.size() > content_length)
         body_data.resize((size_t)content_length);
 
@@ -602,25 +773,41 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
     out += reason;
     out += "\r\n";
 
-    // Check if Content-Length is already provided
     bool has_content_length = false;
+    bool is_chunked = has_chunked_encoding(
+        resp->header_keys, resp->header_values, resp->header_count);
     for (int64_t i = 0; i < resp->header_count; i++) {
-        if (strcasecmp(resp->header_keys[i], "Content-Length") == 0)
+        if (strcasecmp(resp->header_keys[i], "Content-Length") == 0) {
             has_content_length = true;
+            if (is_chunked) continue; // suppress Content-Length when using chunked
+        }
         out += resp->header_keys[i];
         out += ": ";
         out += resp->header_values[i];
         out += "\r\n";
     }
 
-    if (!has_content_length) {
+    if (!is_chunked && !has_content_length) {
         out += "Content-Length: ";
         out += std::to_string(body_len);
         out += "\r\n";
     }
 
     out += "\r\n";
-    out.append(resp->body, body_len);
+
+    if (is_chunked) {
+        if (body_len > 0) {
+            char size_buf[20];
+            snprintf(size_buf, sizeof(size_buf), "%llx", (unsigned long long)body_len);
+            out += size_buf;
+            out += "\r\n";
+            out.append(resp->body, body_len);
+            out += "\r\n";
+        }
+        out += "0\r\n\r\n";
+    } else {
+        out.append(resp->body, body_len);
+    }
 
     // Send full response
     __ry_send_all(handle->fd, out.c_str(), out.size());
@@ -775,7 +962,6 @@ static HttpClientResponseHandle *read_http_response(int fd) {
     size_t headers_start = line_end + 2;
     auto parsed_headers = parse_raw_headers(raw, headers_start, hdr_end);
 
-    // Find Content-Length
     const char *cl_value = nullptr;
     for (auto &h : parsed_headers) {
         if (strcasecmp(h.key, "Content-Length") == 0) {
@@ -783,47 +969,63 @@ static HttpClientResponseHandle *read_http_response(int fd) {
             break;
         }
     }
+    bool has_te = has_transfer_encoding(parsed_headers);
+    bool is_chunked = has_te && has_chunked_encoding(parsed_headers);
 
-    // Read body
-    size_t body_start = hdr_end + 4;
-    std::string body_data;
-    if (body_start < raw.size())
-        body_data = raw.substr(body_start);
-
-    int64_t content_length = __ry_http_parse_content_length(cl_value);
-    if (content_length == -2 || content_length == -3) {
+    // Reject unsupported transfer codings (e.g. gzip without chunked)
+    if (has_te && !is_chunked) {
         for (auto &h : parsed_headers) { free(h.key); free(h.val); }
         return nullptr;
     }
-    if (content_length >= 0) {
-        if ((int64_t)body_data.size() < content_length) {
-            size_t remaining = (size_t)content_length - body_data.size();
-            char *extra = (char *)malloc(remaining);
-            size_t got = 0;
-            while (got < remaining) {
-                ssize_t n = ::recv(fd, extra + got, remaining - got, 0);
-                if (n <= 0) break;
-                got += (size_t)n;
-            }
-            body_data.append(extra, got);
-            free(extra);
-        }
-        if ((int64_t)body_data.size() < content_length) {
+
+    size_t body_start = hdr_end + 4;
+    std::string body_data;
+
+    if (is_chunked) {
+        bool ok;
+        body_data = read_chunked_body(fd, raw, body_start, ok);
+        if (!ok) {
             for (auto &h : parsed_headers) { free(h.key); free(h.val); }
             return nullptr;
         }
-        if ((int64_t)body_data.size() > content_length)
-            body_data.resize((size_t)content_length);
     } else {
-        // No valid Content-Length: read until connection close
-        char buf[4096];
-        while (true) {
-            ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
-            if (n <= 0) break;
-            body_data.append(buf, (size_t)n);
-            if ((int64_t)body_data.size() > MAX_BODY_SIZE) {
-                body_data.resize((size_t)MAX_BODY_SIZE);
-                break;
+        if (body_start < raw.size())
+            body_data = raw.substr(body_start);
+
+        int64_t content_length = __ry_http_parse_content_length(cl_value);
+        if (content_length == -2 || content_length == -3) {
+            for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+            return nullptr;
+        }
+        if (content_length >= 0) {
+            if ((int64_t)body_data.size() < content_length) {
+                size_t remaining = (size_t)content_length - body_data.size();
+                char *extra = (char *)malloc(remaining);
+                size_t got = 0;
+                while (got < remaining) {
+                    ssize_t n = ::recv(fd, extra + got, remaining - got, 0);
+                    if (n <= 0) break;
+                    got += (size_t)n;
+                }
+                body_data.append(extra, got);
+                free(extra);
+            }
+            if ((int64_t)body_data.size() < content_length) {
+                for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+                return nullptr;
+            }
+            if ((int64_t)body_data.size() > content_length)
+                body_data.resize((size_t)content_length);
+        } else {
+            char buf[4096];
+            while (true) {
+                ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+                if (n <= 0) break;
+                body_data.append(buf, (size_t)n);
+                if ((int64_t)body_data.size() > MAX_BODY_SIZE) {
+                    body_data.resize((size_t)MAX_BODY_SIZE);
+                    break;
+                }
             }
         }
     }
