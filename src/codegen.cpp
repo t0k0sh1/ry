@@ -29,6 +29,9 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
     iteratorHeaderTy_ = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "IteratorHeader");
+
+    anyTy_ = llvm::StructType::create(
+        *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
 }
 
 // ===== B5: FnScope RAII =====
@@ -581,6 +584,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "str")   return ptrTy_;
     if (typeName == "Error") return errorTy_;
+    if (typeName == "any")   return anyTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
 
     // Optional type suffix: "int?" -> Option<int>

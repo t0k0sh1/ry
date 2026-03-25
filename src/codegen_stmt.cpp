@@ -177,6 +177,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                             "' does not match expression type for variable '" + name + "'");
                     val = buildSomeValue(val, annotTy);
                     newTy = annotTy;
+                } else if (isAnyType(annotTy)) {
+                    val = wrapInAny(val);
+                    newTy = anyTy_;
                 } else if (isUnionType(*type_annotation)) {
                     val = wrapInUnion(val, *type_annotation);
                     newTy = val->getType();

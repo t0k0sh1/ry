@@ -21,6 +21,7 @@
 | 使用者定義型別 | LLVM StructType (named) | `record Point: ...` | 以 `record` 關鍵字定義的結構體 |
 | `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 內建錯誤型別 |
+| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | 可持有任意基本值的標籤聯合 |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
 | int 字面量 | i64 | `42`, `0 \| 1` | int 字面量型別（值限制） |
 | str 字面量 | ptr | `"N" \| "S"` | str 字面量型別（值限制） |
@@ -43,6 +44,7 @@ m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
 fn_val: fn(int) -> int = fn(x: int): x * 2
 u: int | str = 42
+a: any = 42
 ```
 
 ## 可用型別名稱一覽
@@ -62,6 +64,7 @@ u: int | str = 42
 | `Set<T>` | 泛型集合型別 |
 | `fn(T1, ...) -> R` | 函式型別 |
 | `Error` | 內建錯誤型別（`message: str`、`code: int`） |
+| `any` | 可持有任意基本值（`int`, `float`, `bool`, `str`）的內建型別 |
 | `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
 | 使用者定義型別名稱 | 以 `record` 或 `enum` 關鍵字宣告的型別 |
 | int 字面量型別 | 以 int 字面量值限制（例：`42`、`0 \| 1`） |

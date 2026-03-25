@@ -21,6 +21,7 @@
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
+| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | Tagged union that can hold any primitive value |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | Union type (holds one of multiple types) |
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
@@ -43,6 +44,7 @@ m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
 fn_val: fn(int) -> int = fn(x: int): x * 2
 u: int | str = 42
+a: any = 42
 ```
 
 ## Available Type Names
@@ -62,6 +64,7 @@ u: int | str = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 

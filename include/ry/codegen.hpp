@@ -33,6 +33,12 @@ private:
     llvm::StructType *setHeaderTy_;
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
+    llvm::StructType *anyTy_;
+    static constexpr int64_t TAG_INT   = 0;
+    static constexpr int64_t TAG_FLOAT = 1;
+    static constexpr int64_t TAG_BOOL  = 2;
+    static constexpr int64_t TAG_STR   = 3;
+    static constexpr int64_t TAG_UNIT  = 4; // reserved for future use
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     struct OverloadEntry {
@@ -436,4 +442,9 @@ private:
     std::string normalizeUnionType(const std::string &typeName);
     bool isUnionType(const std::string &typeName);
     llvm::Value *wrapInUnion(llvm::Value *val, const std::string &unionTypeName);
+
+    int64_t getAnyTypeTag(llvm::Type *ty);
+    llvm::Value *wrapInAny(llvm::Value *val);
+    llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy);
+    bool isAnyType(llvm::Type *ty) const;
 };
