@@ -5,10 +5,12 @@
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
-./build/ry_tests                          # C++ テスト (GoogleTest)
-./build/ry test                           # Ry セルフテスト (全 *.test.ry)
-./build/ry test tests/spec/<file>.test.ry # 個別ファイル実行
+./build/ry_tests                                        # C++ テスト (GoogleTest)
+RY_ENV=internal ./build/ry test                         # Ry セルフテスト (全 *.test.ry)
+RY_ENV=internal ./build/ry test tests/spec/<file>.test.ry # 個別ファイル実行
 ```
+
+> **`RY_ENV=internal`**: グローバル (`~/.ry/lib`) をスキップし、プロジェクトローカルの `lib/std/` を使用する。言語開発時は常にこれを付けること。
 
 ## ワークフロー全体像
 
@@ -101,7 +103,7 @@ cmake --build build
 全テストを実行して成功を確認する。
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm && cmake --build build && ./build/ry_tests && ./build/ry test
+cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm && cmake --build build && ./build/ry_tests && RY_ENV=internal ./build/ry test
 ```
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。

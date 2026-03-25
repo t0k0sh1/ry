@@ -1,0 +1,63 @@
+[English](../../reference/base64.md) | [日本語](base64.md) | [繁體中文](../../zh/reference/base64.md)
+
+# Base64 関数リファレンス
+
+Base64 エンコード・デコード。すべての関数は `base64` からの明示的な import が必要です。
+
+```python
+from base64 import encode, decode, encode_url_safe, decode_url_safe
+```
+
+## 関数一覧
+
+| 関数 | シグネチャ | 説明 |
+|------|-----------|------|
+| `encode` | `(str) -> str` | 文字列を標準 base64 にエンコード |
+| `decode` | `(str) -> Result<str, Error>` | 標準 base64 文字列をデコード |
+| `encode_url_safe` | `(str) -> str` | 文字列を URL-safe base64 にエンコード（パディングなし） |
+| `decode_url_safe` | `(str) -> Result<str, Error>` | URL-safe base64 文字列をデコード |
+
+## 使用例
+
+### 基本的なエンコード・デコード
+
+```python
+from base64 import encode, decode
+
+encoded = encode("Hello, World!")
+print(encoded)  # SGVsbG8sIFdvcmxkIQ==
+
+match decode(encoded):
+    case Ok(s):
+        print(s)  # Hello, World!
+    case Err(e):
+        print(e.message)
+```
+
+### URL-safe Base64
+
+URL-safe base64 は `+` と `/` の代わりに `-` と `_` を使用し、パディング（`=`）を省略します。URL、ファイル名、トークンに適しています。
+
+```python
+from base64 import encode_url_safe, decode_url_safe
+
+encoded = encode_url_safe("data with special chars: ?&=")
+
+match decode_url_safe(encoded):
+    case Ok(s):
+        print(s)
+    case Err(e):
+        print(e.message)
+```
+
+## エラーハンドリング
+
+`decode` と `decode_url_safe` は `Result<str, Error>` を返します。無効な base64 文字が含まれている場合、デコードは失敗します。
+
+```python
+match decode("!!!not-valid!!!"):
+    case Ok(s):
+        print(s)
+    case Err(e):
+        print(e.message)  # "invalid base64 character at position 0"
+```
