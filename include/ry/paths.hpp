@@ -10,7 +10,9 @@ std::filesystem::path get_ry_home();
 
 // Find the lib/ directory containing stdlib
 // Search order: $RY_HOME/lib -> exe/../lib -> exe/lib
-std::filesystem::path find_lib_dir(const std::string &exe_path);
+// When skip_global is true, $RY_HOME/lib is skipped (for RY_ENV=internal)
+std::filesystem::path find_lib_dir(const std::string &exe_path,
+                                   bool skip_global = false);
 
 struct StdlibManifest {
     std::string version;

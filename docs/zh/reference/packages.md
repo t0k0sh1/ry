@@ -125,6 +125,26 @@ from std.str import contains
 export RY_HOME="$HOME/.ry"   # 預設值
 ```
 
+### RY_ENV
+
+`RY_ENV` 環境變數控制執行時環境模式。也可以使用 `--env=<value>` CLI 旗標。
+
+| 值 | 說明 | lib 搜尋 |
+|---|------|---------|
+| `production`（預設） | 正式環境模式 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `development` | 專案開發 | 與 production 相同（保留供未來擴充） |
+| `internal` | Ry 語言本身的開發 | 僅 `exe/../lib` → `exe/lib`（跳過 `$RY_HOME`） |
+
+也接受自定義值（如 `staging`、`testing`），行為與 `production` 相同。
+
+```bash
+# 僅使用執行檔相對的 stdlib（用於 Ry 語言開發）
+RY_ENV=internal ./build/ry test
+
+# 也可以使用 CLI 旗標
+./build/ry --env=internal test
+```
+
 ---
 
 ## 搜尋路徑的優先順序

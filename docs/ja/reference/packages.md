@@ -125,6 +125,26 @@ from std.str import contains
 export RY_HOME="$HOME/.ry"   # デフォルト
 ```
 
+### RY_ENV
+
+`RY_ENV` 環境変数でランタイム環境モードを制御します。`--env=<value>` CLI フラグでも指定可能です。
+
+| 値 | 説明 | lib 探索 |
+|---|------|---------|
+| `production`（デフォルト） | 本番モード | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `development` | プロジェクト開発 | production と同じ（将来の拡張用） |
+| `internal` | Ry 言語自体の開発 | `exe/../lib` → `exe/lib` のみ（`$RY_HOME` スキップ） |
+
+カスタム値（`staging`、`testing` など）も設定可能で、`production` と同じ動作になります。
+
+```bash
+# 実行ファイル相対の stdlib のみ使用（Ry 言語開発用）
+RY_ENV=internal ./build/ry test
+
+# CLI フラグでも指定可能
+./build/ry --env=internal test
+```
+
 ---
 
 ## 検索パスの優先順位

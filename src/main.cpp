@@ -54,6 +54,9 @@ static void test_timeout_handler(int) {
     _exit(124);
 }
 
+// RY_ENV: skip $RY_HOME/lib when running in "internal" mode
+static bool g_skip_global_lib = false;
+
 // Coverage: accumulated filenames across multiple runRyFile calls.
 // Maps global file_id to filename for user files (excluding stdlib).
 static std::vector<std::string> g_coverage_filenames;
@@ -97,7 +100,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
 
     // Set up search paths with lib/ for stdlib
     std::vector<std::string> search_paths;
-    std::string lib_dir = ry::find_lib_dir(argv0).string();
+    std::string lib_dir = ry::find_lib_dir(argv0, g_skip_global_lib).string();
     if (!lib_dir.empty()) search_paths.push_back(lib_dir);
 
     std::string referrer_dir = fs::path(filepath).parent_path().string();
@@ -469,7 +472,28 @@ static int discoverAndRunTests(const std::string &dir, const char *argv0,
     return runTestFiles(test_files, argv0, parallel, coverage);
 }
 
+static void applyRyEnv(const char *value) {
+    setenv("RY_ENV", value, 1);
+    if (std::strcmp(value, "internal") == 0)
+        g_skip_global_lib = true;
+}
+
+static void parseRyEnv(int &argc, char **&argv) {
+    // --env=<value> CLI flag takes precedence over RY_ENV env var
+    if (argc >= 2 && std::strncmp(argv[1], "--env=", 6) == 0) {
+        applyRyEnv(argv[1] + 6);
+        // Remove --env flag from argv, preserving argv[0] (program name)
+        argv[1] = argv[0];
+        ++argv;
+        --argc;
+    } else if (const char *env = std::getenv("RY_ENV")) {
+        applyRyEnv(env);
+    }
+}
+
 int main(int argc, char *argv[]) {
+    parseRyEnv(argc, argv);
+
     if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
         llvm::outs() << "ry " << RY_VERSION << "\n";
         return 0;
@@ -583,13 +607,15 @@ int main(int argc, char *argv[]) {
             return discoverAndRunTests(*root, argv[0], parallel, coverage);
         }
     } else {
-        errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [-p | --parallel] [-w | --watch] [--coverage | --cov] [<file.ry> | <dir>]\n";
+        errs() << "Usage: ry [--env=<env>] <file.ry> [args...]\n";
+        errs() << "       ry [--env=<env>] test [-p | --parallel] [-w | --watch] [--coverage | --cov] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry fmt [--check] [<file|dir>]\n";
         errs() << "       ry new <project-name>\n";
         errs() << "       ry self-update [--nightly | <version>]\n";
         errs() << "       ry --version\n";
+        errs() << "\n";
+        errs() << "Environment: RY_ENV=production|development|internal (default: production)\n";
         return 1;
     }
 

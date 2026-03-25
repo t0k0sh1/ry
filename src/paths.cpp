@@ -18,11 +18,13 @@ fs::path get_ry_home() {
     return fs::path(".ry");
 }
 
-fs::path find_lib_dir(const std::string &exe_path) {
-    // 1. $RY_HOME/lib
-    fs::path ry_home_lib = get_ry_home() / "lib";
-    if (fs::is_directory(ry_home_lib / "std")) {
-        return ry_home_lib;
+fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
+    // 1. $RY_HOME/lib (skipped when skip_global is true)
+    if (!skip_global) {
+        fs::path ry_home_lib = get_ry_home() / "lib";
+        if (fs::is_directory(ry_home_lib / "std")) {
+            return ry_home_lib;
+        }
     }
 
     // 2. exe/../lib (installed layout)
