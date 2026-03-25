@@ -497,7 +497,8 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "cancel" || s.callee == "is_cancelled" ||
         s.callee == "spawn_in" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
-        s.callee == "shutdown") {
+        s.callee == "shutdown" ||
+        s.callee == "json_free") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);

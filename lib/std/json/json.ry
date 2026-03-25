@@ -1,0 +1,40 @@
+# JSON parsing and serialization
+
+@native
+fn parse(text: str) -> str
+
+@native
+fn stringify(value: str) -> str
+
+@native
+fn stringify(value: str, indent: int) -> str
+
+@native
+fn json_type(value: str) -> str
+
+@native
+fn json_get(value: str, key: str) -> str
+
+@native
+fn json_at(value: str, index: int) -> str
+
+@native
+fn json_str(value: str) -> str
+
+@native
+fn json_int(value: str) -> int
+
+@native
+fn json_float(value: str) -> float
+
+@native
+fn json_bool(value: str) -> bool
+
+@native
+fn json_len(value: str) -> int
+
+@native
+fn json_keys(value: str) -> List<str>
+
+@native
+fn json_free(value: str) -> Unit

@@ -80,6 +80,8 @@ add_library(ry_lib STATIC
     src/runtime_io.cpp
     src/runtime_net.cpp
     src/runtime_http.cpp
+    src/runtime_json.cpp
+    src/codegen_call_json.cpp
     src/formatter.cpp
     src/file_watcher.cpp
     src/coverage_runtime.cpp
@@ -138,6 +140,7 @@ add_executable(ry_tests
     tests/test_file_watcher.cpp
     tests/test_coverage_runtime.cpp
     tests/test_dotenv.cpp
+    tests/test_runtime_json.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

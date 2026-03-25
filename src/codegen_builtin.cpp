@@ -97,6 +97,7 @@ void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     if (http_request_values_.count(src))  http_request_values_.insert(dst);
     if (http_response_values_.count(src)) http_response_values_.insert(dst);
     if (http_client_response_values_.count(src)) http_client_response_values_.insert(dst);
+    if (json_value_values_.count(src)) json_value_values_.insert(dst);
 }
 
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
@@ -106,6 +107,7 @@ void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) 
     if (lookupValueSetWide(http_request_values_, src))  http_request_values_.insert(dst);
     if (lookupValueSetWide(http_response_values_, src)) http_response_values_.insert(dst);
     if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
+    if (lookupValueSetWide(json_value_values_, src)) json_value_values_.insert(dst);
 }
 
 void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {

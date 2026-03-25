@@ -3,6 +3,6 @@
   "files": [
     "builtins.ry", "convert.ry", "higher_order.ry",
     "list.ry", "map.ry", "set.ry", "str.ry", "regex.ry",
-    "http/http.ry", "io/io.ry", "math/math.ry", "net/net.ry"
+    "http/http.ry", "io/io.ry", "json/json.ry", "math/math.ry", "net/net.ry"
   ]
 }
