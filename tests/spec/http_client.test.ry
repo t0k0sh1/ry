@@ -44,10 +44,10 @@ describe("HTTP Client", fn():
           case Some(v):
             expect(v).to_eq("text/plain")
           case None:
-            expect(true).to_eq(false)
+            fail("unexpected error")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("http_post sends body to server", fn():
@@ -90,7 +90,7 @@ describe("HTTP Client", fn():
         expect(http_client_body(resp)).to_eq("ok")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("http_get with variable assignment and match", fn():
@@ -133,7 +133,7 @@ describe("HTTP Client", fn():
         expect(http_client_body(resp)).to_eq("hello")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("http_get follows 302 redirect", fn():
@@ -192,7 +192,7 @@ describe("HTTP Client", fn():
         expect(http_client_body(resp)).to_eq("redirected!")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("303 redirect changes POST to GET", fn():
@@ -252,7 +252,7 @@ describe("HTTP Client", fn():
         expect(http_client_body(resp)).to_eq("got_get")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("redirect with relative Location path", fn():
@@ -309,7 +309,7 @@ describe("HTTP Client", fn():
         expect(http_client_body(resp)).to_eq("new-path")
         ...
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("redirect limit exceeded returns Err", fn():
@@ -350,7 +350,7 @@ describe("HTTP Client", fn():
     url = "http://127.0.0.1:" + to_str(port) + "/loop"
     match http_get(url):
       case Ok(resp):
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(true).to_eq(true)
     join(t)
@@ -358,7 +358,7 @@ describe("HTTP Client", fn():
   it("http_get returns Err on connection refused", fn():
     match http_get("http://127.0.0.1:1/nonexistent"):
       case Ok(resp):
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(true).to_eq(true)
   )
@@ -400,7 +400,7 @@ describe("HTTP Client", fn():
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("hello world")
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
 )

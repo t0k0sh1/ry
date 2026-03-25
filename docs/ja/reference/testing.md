@@ -86,6 +86,21 @@ foo("arg", fn():
 | `to_start_with(prefix)` | 文字列が prefix で始まること | str |
 | `to_end_with(suffix)` | 文字列が suffix で終わること | str |
 
+### fail
+
+現在のテストを即座に失敗としてマークします。
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — 汎用メッセージでテストを失敗にする
+- `fail(msg)` — カスタムメッセージでテストを失敗にする
+- `fail()` 後も実行は継続される（テストを中断はしない）
+- `ry test` モードでのみ使用可能
+
 ---
 
 ## 出力形式

@@ -235,9 +235,11 @@ private:
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
+    void emitFailCall(CallStmt &s);
     void emitTaskGroupCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
+    llvm::Constant *fail_empty_msg_ = nullptr;
     llvm::Value *toBool(llvm::Value *v);
 
     // Type promotion helpers (B1)

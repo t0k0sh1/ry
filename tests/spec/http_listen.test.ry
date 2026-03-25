@@ -19,7 +19,7 @@ describe("http_listen with max_requests", fn():
         expect(http_client_body(resp)).to_eq("hello")
 
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     result = join(t)
     expect(result).to_eq("done")
   )
@@ -44,7 +44,7 @@ describe("http_listen with max_requests", fn():
         expect(http_client_body(resp)).to_eq("/first")
 
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
 
     match http_get("http://127.0.0.1:18941/second"):
       case Ok(resp):
@@ -52,7 +52,7 @@ describe("http_listen with max_requests", fn():
         expect(http_client_body(resp)).to_eq("/second")
 
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
 
     result = join(t)
     expect(result).to_eq("done")

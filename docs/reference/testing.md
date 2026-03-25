@@ -86,6 +86,21 @@ foo("arg", fn():
 | `to_start_with(prefix)` | Asserts string starts with prefix | str |
 | `to_end_with(suffix)` | Asserts string ends with suffix | str |
 
+### fail
+
+Immediately marks the current test as failed.
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — marks the test as failed with a generic message
+- `fail(msg)` — marks the test as failed with a custom message
+- Execution continues after `fail()` (does not abort the test)
+- Only available in `ry test` mode
+
 ---
 
 ## Output Format

@@ -49,6 +49,15 @@ void __ry_test_expect_fail(int line, const char *actual, const char *expected) {
     std::printf("    \033[31mline %d: expected %s, got %s\033[0m\n", line, expected, actual);
 }
 
+void __ry_test_fail(int line, const char *msg) {
+    g_current_it_failed = true;
+    if (msg && msg[0] != '\0') {
+        std::printf("    \033[31mline %d: %s\033[0m\n", line, msg);
+    } else {
+        std::printf("    \033[31mline %d: test failed\033[0m\n", line);
+    }
+}
+
 int __ry_test_summary() {
     std::printf("\n%d passed, %d failed\n", g_passed, g_failed);
     int result = g_failed;

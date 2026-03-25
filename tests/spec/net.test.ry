@@ -8,7 +8,7 @@ describe("TCP socket API", fn():
         close(server)
         expect(true).to_eq(true)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
   )
   it("listen returns Ok on valid listener", fn():
     match bind("127.0.0.1", 0):
@@ -17,16 +17,16 @@ describe("TCP socket API", fn():
           case Ok(_):
             expect(true).to_eq(true)
           case Err(e):
-            expect(true).to_eq(false)
+            fail("unexpected error")
         close(server)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
   )
   it("tls_connect to closed port returns Err", fn():
     match tls_connect("127.0.0.1", 19991):
       case Ok(conn):
         close(conn)
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(true).to_eq(true)
   )
@@ -34,7 +34,7 @@ describe("TCP socket API", fn():
     match connect("127.0.0.1", 19998):
       case Ok(conn):
         close(conn)
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(true).to_eq(true)
   )
@@ -66,12 +66,12 @@ describe("TCP socket API", fn():
         set_recv_timeout(conn, 100)
         match recv(conn, 4096):
           case Ok(data):
-            expect(true).to_eq(false)
+            fail("expected Err but got Ok")
           case Err(e):
             expect(true).to_eq(true)
         close(conn)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("echo round-trip with spawn", fn():
