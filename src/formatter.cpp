@@ -1018,6 +1018,21 @@ std::string Formatter::formatSource(const std::string &source, int indent_width)
     return fmt.format(prog);
 }
 
+bool Formatter::verifyFormatting(const std::string &formatted, std::string &reason) {
+    reason.clear();
+    try {
+        auto reformatted = Formatter::formatSource(formatted);
+        if (reformatted != formatted) {
+            reason = "formatting is not idempotent (round-trip produced different output)";
+            return false;
+        }
+        return true;
+    } catch (const std::exception &e) {
+        reason = std::string("formatted output failed to re-parse (") + e.what() + ")";
+        return false;
+    }
+}
+
 // ===== cmd_fmt =====
 
 static void collectRyFiles(const std::string &dir, std::vector<std::string> &files) {
@@ -1086,12 +1101,20 @@ int cmd_fmt(int argc, char *argv[]) {
     }
 
     int unformatted = 0;
+    int skipped = 0;
     for (const auto &file : files) {
         try {
             auto source = readFile(file);
             auto formatted = Formatter::formatSource(source);
 
             if (source != formatted) {
+                std::string reason;
+                if (!Formatter::verifyFormatting(formatted, reason)) {
+                    std::cerr << "warning: skipping " << file << ": " << reason << "\n";
+                    ++skipped;
+                    continue;
+                }
+
                 if (check_mode) {
                     std::cerr << file << " needs formatting\n";
                     ++unformatted;
@@ -1106,9 +1129,11 @@ int cmd_fmt(int argc, char *argv[]) {
         }
     }
 
+    if (skipped > 0) {
+        std::cerr << skipped << " file(s) skipped (unsafe formatting detected)\n";
+    }
     if (check_mode && unformatted > 0) {
         std::cerr << unformatted << " file(s) need formatting\n";
-        return 1;
     }
-    return 0;
+    return (check_mode && unformatted > 0) || skipped > 0 ? 1 : 0;
 }
