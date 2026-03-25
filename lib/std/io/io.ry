@@ -7,7 +7,6 @@ fn read_line() -> str
 @native
 fn read_all() -> str
 
-
 # File I/O
 @native
 fn read_text(path: str) -> str
@@ -29,7 +28,6 @@ fn read_bytes(path: str) -> List<byte>
 
 @native
 fn write_bytes(path: str, data: List<byte>) -> Unit
-
 
 # Byte conversions
 @native

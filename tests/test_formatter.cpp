@@ -401,3 +401,25 @@ TEST(Formatter, NativeConstMultipleDeclarations) {
     std::string src = "@native\n@const\nPI: float\n\n@native\n@const\nE: float\n";
     EXPECT_EQ(fmt(src), src);
 }
+
+// ===== Blank Line Before Section Comment After Definition =====
+
+static const char *kNativeDefWithSectionComment =
+    "@native\n"
+    "fn read_all() -> str\n"
+    "\n"
+    "# File I/O\n"
+    "@native\n"
+    "fn read_text(path: str) -> str\n";
+
+TEST(Formatter, NativeDefFollowedBySectionComment) {
+    std::string out = fmt(kNativeDefWithSectionComment);
+    EXPECT_EQ(out.find("\n\n\n"), std::string::npos) << "Found triple newline (double blank line) in:\n" << out;
+    EXPECT_NE(out.find("-> str\n\n# File I/O"), std::string::npos) << "Expected single blank line before comment in:\n" << out;
+}
+
+TEST(Formatter, NativeDefFollowedBySectionCommentIdempotent) {
+    std::string first = fmt(kNativeDefWithSectionComment);
+    std::string second = fmt(first);
+    EXPECT_EQ(first, second) << "Formatting is not idempotent:\nFirst:\n" << first << "\nSecond:\n" << second;
+}
