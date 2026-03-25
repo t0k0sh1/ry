@@ -82,7 +82,7 @@ TEST(Formatter, AssignWithType) {
 }
 
 TEST(Formatter, ImportStatement) {
-    EXPECT_EQ(fmt("from std.io import print, println\n"), "from std.io import print, println\n");
+    EXPECT_EQ(fmt("from io import print, println\n"), "from io import print, println\n");
 }
 
 TEST(Formatter, ReturnStatement) {

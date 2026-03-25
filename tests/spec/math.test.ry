@@ -1,6 +1,6 @@
-from std.math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
+from math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
 
-describe("std.math constants", fn():
+describe("math constants", fn():
   it("PI", fn():
     expect(PI > 3.14).to_eq(true)
     expect(PI < 3.15).to_eq(true)
@@ -11,7 +11,7 @@ describe("std.math constants", fn():
   )
 )
 
-describe("std.math special values", fn():
+describe("math special values", fn():
   it("Inf", fn():
     expect(is_inf(Inf)).to_eq(true)
     expect(Inf > 1000000.0).to_eq(true)
@@ -21,7 +21,7 @@ describe("std.math special values", fn():
   )
 )
 
-describe("std.math abs", fn():
+describe("math abs", fn():
   it("int", fn():
     expect(abs(-5)).to_eq(5)
     expect(abs(3)).to_eq(3)
@@ -33,7 +33,7 @@ describe("std.math abs", fn():
   )
 )
 
-describe("std.math rounding", fn():
+describe("math rounding", fn():
   it("floor", fn():
     expect(floor(3.7)).to_eq(3)
     expect(floor(-2.3)).to_eq(-3)
@@ -48,7 +48,7 @@ describe("std.math rounding", fn():
   )
 )
 
-describe("std.math pow/sqrt", fn():
+describe("math pow/sqrt", fn():
   it("sqrt", fn():
     expect(sqrt(4.0)).to_eq(2.0)
     expect(sqrt(9.0)).to_eq(3.0)
@@ -59,7 +59,7 @@ describe("std.math pow/sqrt", fn():
   )
 )
 
-describe("std.math log", fn():
+describe("math log", fn():
   it("log", fn():
     expect(log(1.0)).to_eq(0.0)
   )
@@ -71,13 +71,13 @@ describe("std.math log", fn():
   )
 )
 
-describe("std.math exp", fn():
+describe("math exp", fn():
   it("exp(0)", fn():
     expect(exp(0.0)).to_eq(1.0)
   )
 )
 
-describe("std.math trigonometric", fn():
+describe("math trigonometric", fn():
   it("sin(0)", fn():
     expect(sin(0.0)).to_eq(0.0)
   )
@@ -89,7 +89,7 @@ describe("std.math trigonometric", fn():
   )
 )
 
-describe("std.math inverse trig", fn():
+describe("math inverse trig", fn():
   it("asin(0)", fn():
     expect(asin(0.0)).to_eq(0.0)
   )
@@ -101,7 +101,7 @@ describe("std.math inverse trig", fn():
   )
 )
 
-describe("std.math two-arg", fn():
+describe("math two-arg", fn():
   it("atan2", fn():
     expect(atan2(0.0, 1.0)).to_eq(0.0)
   )
@@ -110,7 +110,7 @@ describe("std.math two-arg", fn():
   )
 )
 
-describe("std.math predicates", fn():
+describe("math predicates", fn():
   it("is_nan", fn():
     expect(is_nan(NaN)).to_eq(true)
     expect(is_nan(1.0)).to_eq(false)

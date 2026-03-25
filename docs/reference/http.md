@@ -12,12 +12,12 @@
 
 `HttpRequest` is provided by the server framework. `HttpResponse` is created via `http_response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
 
-## Functions (from `std.http`)
+## Functions (from `http`)
 
 These functions require explicit import:
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_response
+from http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_response
 ```
 
 ### Server
@@ -51,7 +51,7 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 ### Basic HTTP Server
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import http_listen, http_method, http_path, http_header, http_body, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     method = http_method(req)
@@ -68,7 +68,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 ### Non-blocking Server with `spawn`
 
 ```python
-from std.http import http_listen, http_path, http_response
+from http import http_listen, http_path, http_response
 
 fn start_server(port: int) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
@@ -86,7 +86,7 @@ t: Task<str> = spawn start_server(8080)
 ### Server with Request Limit (`max_requests`)
 
 ```python
-from std.http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
 
 fn start_server(ready: Channel<int>) -> str:
     send(ready, 1)
@@ -112,7 +112,7 @@ result = join(t)  # Server exits after 1 request; join completes
 ### Reading Query Parameters
 
 ```python
-from std.http import http_listen, http_path, http_query, http_query_all, http_response
+from http import http_listen, http_path, http_query, http_query_all, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     path = http_path(req)
@@ -129,7 +129,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 ### Reading Headers
 
 ```python
-from std.http import http_listen, http_header, http_response
+from http import http_listen, http_header, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     match http_header(req, "Authorization"):
@@ -143,7 +143,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 ### Reading Cookies
 
 ```python
-from std.http import http_listen, http_cookie, http_cookies, http_response
+from http import http_listen, http_cookie, http_cookies, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     match http_cookie(req, "session_id"):
@@ -244,7 +244,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 ### Client Usage Example
 
 ```python
-from std.http import http_get, http_post, http_client_status, http_client_body, http_client_header
+from http import http_get, http_post, http_client_status, http_client_body, http_client_header
 
 # Simple GET request
 match http_get("http://example.com/api/data"):

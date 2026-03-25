@@ -46,7 +46,7 @@ from math import add, sub
 |---|---|
 | `from math` | `math/` ディレクトリ（パッケージ）または `math.ry` ファイル |
 | `from utils.math` | `utils/math/` ディレクトリまたは `utils/math.ry` ファイル |
-| `from std.str` | `std/str/` ディレクトリまたは `std/str.ry` ファイル |
+| `from str` | `str/` ディレクトリまたは `str.ry` ファイル |
 
 ### 解決順序
 
@@ -104,17 +104,17 @@ from mypackage import add   # add のみインポート
 
 | パッケージ | 説明 |
 |-----------|------|
-| [`std.math`](math.md) | 数学定数・関数 |
-| [`std.io`](io.md) | ファイル I/O・標準入力・バイト変換 |
+| [`math`](math.md) | 数学定数・関数 |
+| [`io`](io.md) | ファイル I/O・標準入力・バイト変換 |
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
-特定の定義を `std` から明示的にインポートすることもできます:
+標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます:
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

@@ -1,4 +1,4 @@
-from std.io import read_text, write_text, append_text, file_exists, delete_file, read_bytes, write_bytes, str_to_bytes, bytes_to_str
+from io import read_text, write_text, append_text, file_exists, delete_file, read_bytes, write_bytes, str_to_bytes, bytes_to_str
 
 describe("file I/O", fn():
   it("write and read text", fn():

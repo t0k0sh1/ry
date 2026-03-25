@@ -1,6 +1,6 @@
-from std.net import bind, listen, accept, listener_port
-from std.io import str_to_bytes, bytes_to_str
-from std.http import http_get, http_post, http_request, http_client_status, http_client_body, http_client_header
+from net import bind, listen, accept, listener_port
+from io import str_to_bytes, bytes_to_str
+from http import http_get, http_post, http_request, http_client_status, http_client_body, http_client_header
 
 describe("HTTP Client", fn():
   it("http_get returns 200 response", fn():

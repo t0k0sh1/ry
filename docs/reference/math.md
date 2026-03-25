@@ -1,13 +1,13 @@
 [English](math.md) | [日本語](../ja/reference/math.md) | [繁體中文](../zh/reference/math.md)
 
-# Math Functions (`std.math`)
+# Math Functions (`math`)
 
 ## Overview
 
-The `std.math` package provides mathematical constants and functions. Unlike the `std` package, it is not automatically imported. Use explicit import to access the functions.
+The `math` package provides mathematical constants and functions. Unlike the `std` package, it is not automatically imported. Use explicit import to access the functions.
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
 ---
@@ -22,7 +22,7 @@ from std.math import sqrt, PI, sin
 | `NaN` | `float` | Not a Number |
 
 ```python
-from std.math import PI, E, Inf, NaN
+from math import PI, E, Inf, NaN
 
 circumference = 2.0 * PI * radius
 ```
@@ -37,7 +37,7 @@ circumference = 2.0 * PI * radius
 | `abs(x)` | `(float) -> float` | Absolute value of float |
 
 ```python
-from std.math import abs
+from math import abs
 
 abs(-5)      # 5
 abs(-3.14)   # 3.14
@@ -54,7 +54,7 @@ abs(-3.14)   # 3.14
 | `round(x)` | `(float) -> int` | Round to nearest integer |
 
 ```python
-from std.math import floor, ceil, round
+from math import floor, ceil, round
 
 floor(3.7)    # 3
 ceil(3.2)     # 4
@@ -71,7 +71,7 @@ round(3.5)    # 4
 | `pow(x, y)` | `(float, float) -> float` | x raised to the power of y |
 
 ```python
-from std.math import sqrt, pow
+from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
@@ -134,7 +134,7 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | True if x is positive or negative infinity |
 
 ```python
-from std.math import is_nan, is_inf, NaN, Inf
+from math import is_nan, is_inf, NaN, Inf
 
 is_nan(NaN)   # true
 is_inf(Inf)   # true

@@ -46,7 +46,7 @@ Packages are resolved using dot-separated notation:
 |---|---|
 | `from math` | `math/` directory (package) or `math.ry` file |
 | `from utils.math` | `utils/math/` directory or `utils/math.ry` file |
-| `from std.str` | `std/str/` directory or `std/str.ry` file |
+| `from str` | `str/` directory or `str.ry` file |
 
 ### Resolution Order
 
@@ -104,17 +104,17 @@ The following sub-packages require explicit import:
 
 | Package | Description |
 |---------|-------------|
-| [`std.math`](math.md) | Mathematical constants and functions |
-| [`std.io`](io.md) | File I/O, standard input, and byte conversions |
+| [`math`](math.md) | Mathematical constants and functions |
+| [`io`](io.md) | File I/O, standard input, and byte conversions |
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
-You can also explicitly import specific definitions from `std`:
+You can also explicitly import specific definitions from standard library packages:
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

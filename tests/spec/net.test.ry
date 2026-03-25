@@ -1,5 +1,5 @@
-from std.net import bind, listen, accept, connect, listener_port, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
+from io import str_to_bytes, bytes_to_str
 
 describe("TCP socket API", fn():
   it("bind returns Ok on valid address", fn():

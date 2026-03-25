@@ -12,12 +12,12 @@
 
 Both types are opaque pointers. They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tls_connect()` for `TlsStream`.
 
-## Functions (from `std.net`)
+## Functions (from `net`)
 
 These functions require explicit import:
 
 ```python
-from std.net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
+from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
 ```
 
 | Function | Signature | Description |
@@ -49,8 +49,8 @@ These functions are built-in and work with both `Channel<T>` and TCP socket type
 ### Echo Server
 
 ```python
-from std.net import bind, listen, accept, connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect
+from io import str_to_bytes, bytes_to_str
 
 # Server
 match bind("127.0.0.1", 8080):
@@ -141,7 +141,7 @@ join(t)
 By default, `recv()` uses a 30-second timeout if no custom timeout is set. Use `set_timeout()`, `set_recv_timeout()`, or `set_send_timeout()` to override the default:
 
 ```python
-from std.net import connect, set_recv_timeout
+from net import connect, set_recv_timeout
 
 match connect("127.0.0.1", 8080):
     case Ok(conn):
@@ -166,4 +166,4 @@ Pass `0` to disable the timeout (wait indefinitely).
 
 ## Byte Conversion
 
-TCP operations work with `List<byte>`. Use `str_to_bytes()` and `bytes_to_str()` from `std.io` to convert between strings and byte lists.
+TCP operations work with `List<byte>`. Use `str_to_bytes()` and `bytes_to_str()` from `io` to convert between strings and byte lists.
