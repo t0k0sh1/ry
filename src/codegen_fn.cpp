@@ -13,6 +13,7 @@ void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Valu
 
 void CodeGen::emitStmt(AwaitStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
 
     auto awaitExpr = std::make_unique<AwaitExpr>();
     awaitExpr->operand = std::move(s.operand);
@@ -24,6 +25,7 @@ void CodeGen::emitStmt(AwaitStmt &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<SelectStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
+    emitCoverage(s->loc);
 
     llvm::FunctionType *beginTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
     llvm::FunctionType *addRecvTy = llvm::FunctionType::get(
@@ -215,6 +217,7 @@ void CodeGen::emitStmt(std::unique_ptr<SelectStmt> &s) {
 
 void CodeGen::emitStmt(ReturnStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     if (!s.value) {
         if (!fn_->getReturnType()->isVoidTy())
             codegenError("return without value in non-Unit function");
@@ -271,6 +274,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
+    emitCoverage(s->loc);
     if (hasDirective(s->directives, "native")) {
         if (s->is_async)
             codegenError("async native functions are not supported");

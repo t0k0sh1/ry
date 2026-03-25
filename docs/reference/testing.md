@@ -17,6 +17,8 @@ ry test -p tests/    # Run tests in a directory in parallel
 ry test -w           # Watch mode: re-run tests on file change (-w or --watch)
 ry test -w -p        # Watch mode with parallel execution
 ry test -w tests/    # Watch a specific directory
+ry test --coverage   # Run all tests with line coverage summary
+ry test --cov        # Short alias for --coverage
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
@@ -216,6 +218,31 @@ it("addition is commutative", fn(a: int, b: int):
 - On failure, the counterexample (failing inputs) is printed
 - The test stops at the first failure
 - Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
+
+---
+
+## Test Coverage
+
+Run tests with the `--coverage` (or `--cov`) flag to measure line coverage:
+
+```bash
+ry test --coverage                    # All tests with coverage summary
+ry test --cov tests/spec/math.test.ry # Single file
+ry test --coverage tests/spec/        # Directory
+```
+
+### Output
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- Only user code is reported; standard library files are excluded
+- `--coverage` with `--parallel` falls back to sequential execution
 
 ---
 

@@ -674,6 +674,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 // ===== MatchStmt =====
 
 void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
+    emitCoverage(s->loc);
     llvm::Value *subject = emitExpr(*s->subject);
     llvm::Type *subjectTy = subject->getType();
 

@@ -17,6 +17,8 @@ ry test -p tests/    # 指定ディレクトリのテストを並列実行
 ry test -w           # ウォッチモード: ファイル変更時にテストを自動再実行（-w または --watch）
 ry test -w -p        # ウォッチモード + 並列実行
 ry test -w tests/    # 特定ディレクトリをウォッチ
+ry test --coverage   # 全テストをラインカバレッジ付きで実行
+ry test --cov        # --coverage の短縮形
 ```
 
 終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
@@ -216,6 +218,31 @@ it("addition is commutative", fn(a: int, b: int):
 - 失敗時は反例（失敗した入力値）が表示される
 - 最初の失敗でテストを停止
 - 対応するパラメータ型: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (ランダム ASCII、0-20文字)
+
+---
+
+## テストカバレッジ
+
+`--coverage`（または `--cov`）フラグでラインカバレッジを計測できます:
+
+```bash
+ry test --coverage                    # 全テスト + カバレッジサマリー
+ry test --cov tests/spec/math.test.ry # 単一ファイル
+ry test --coverage tests/spec/        # ディレクトリ
+```
+
+### 出力例
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- 標準ライブラリのファイルは除外され、ユーザーコードのみが対象
+- `--coverage` と `--parallel` を同時に指定した場合、逐次実行にフォールバック
 
 ---
 
