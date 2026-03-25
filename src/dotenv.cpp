@@ -1,5 +1,6 @@
 #include "ry/dotenv.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -83,11 +84,19 @@ static void loadEnvFile(const std::filesystem::path &path) {
     }
 }
 
+static bool isValidEnvName(const std::string &name) {
+    return !name.empty() &&
+           std::all_of(name.begin(), name.end(), [](char c) {
+               return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                      (c >= '0' && c <= '9') || c == '_' || c == '-';
+           });
+}
+
 void loadDotEnv(const std::string &dir, const std::string &env_name) {
     if (env_name == "prod") return;
 
     std::filesystem::path base(dir);
-    if (!env_name.empty()) {
+    if (!env_name.empty() && isValidEnvName(env_name)) {
         loadEnvFile(base / (".env." + env_name));
     }
     loadEnvFile(base / ".env");

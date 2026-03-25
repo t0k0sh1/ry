@@ -242,3 +242,15 @@ TEST_F(DotEnvLoadTest, EmptyEnvNameLoadsOnlyBase) {
 
     unsetenv("RY_TEST_ENVSPEC_E");
 }
+
+TEST_F(DotEnvLoadTest, InvalidEnvNameFallsBackToBase) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_F=base\n";
+    unsetenv("RY_TEST_ENVSPEC_F");
+
+    // Path traversal attempt — should be ignored, only .env loaded
+    ry::loadDotEnv(tmp_dir.string(), "../etc");
+
+    EXPECT_STREQ(std::getenv("RY_TEST_ENVSPEC_F"), "base");
+
+    unsetenv("RY_TEST_ENVSPEC_F");
+}

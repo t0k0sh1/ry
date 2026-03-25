@@ -131,12 +131,12 @@ The `RY_ENV` environment variable controls the runtime environment mode. You can
 
 | Value | Alias | `.env` loading | Lib search |
 |-------|-------|---------------|------------|
-| `prod` (default) | `production` | Disabled | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | Disabled | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
 | `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
 | `test` | — | `.env.test` → `.env` | Same as `prod` |
 | `staging` | — | `.env.staging` → `.env` | Same as `prod` |
 | `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` only (`$RY_HOME` skipped) |
-| (unset) | — | `.env` only | Same as `prod` |
+| (unset) (default) | — | `.env` only | Same as `prod` |
 
 Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
 

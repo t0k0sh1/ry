@@ -131,12 +131,12 @@ export RY_HOME="$HOME/.ry"   # 預設值
 
 | 值 | 別名 | `.env` 載入 | lib 搜尋 |
 |---|------|-----------|---------|
-| `prod`（預設） | `production` | 停用 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | 停用 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
 | `dev` | `development` | `.env.dev` → `.env` | 與 `prod` 相同 |
 | `test` | — | `.env.test` → `.env` | 與 `prod` 相同 |
 | `staging` | — | `.env.staging` → `.env` | 與 `prod` 相同 |
 | `internal` | — | `.env.internal` → `.env` | 僅 `exe/../lib` → `exe/lib`（跳過 `$RY_HOME`） |
-| （未設定） | — | 僅 `.env` | 與 `prod` 相同 |
+| （未設定）（預設） | — | 僅 `.env` | 與 `prod` 相同 |
 
 別名會自動解析為正規形式。例如 `RY_ENV=production` 會被正規化為 `prod`。
 

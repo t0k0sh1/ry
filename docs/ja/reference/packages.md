@@ -131,12 +131,12 @@ export RY_HOME="$HOME/.ry"   # デフォルト
 
 | 値 | エイリアス | `.env` 読み込み | lib 探索 |
 |---|----------|---------------|---------|
-| `prod`（デフォルト） | `production` | 無効 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | 無効 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
 | `dev` | `development` | `.env.dev` → `.env` | `prod` と同じ |
 | `test` | — | `.env.test` → `.env` | `prod` と同じ |
 | `staging` | — | `.env.staging` → `.env` | `prod` と同じ |
 | `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` のみ（`$RY_HOME` スキップ） |
-| （未設定） | — | `.env` のみ | `prod` と同じ |
+| （未設定）（デフォルト） | — | `.env` のみ | `prod` と同じ |
 
 エイリアスは自動的に正規形に解決されます。例えば `RY_ENV=production` は `prod` に正規化されます。
 
