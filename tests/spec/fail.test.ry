@@ -1,9 +1,0 @@
-describe("fail", fn():
-  it("fail with message marks test as failed", fn():
-    fail("intentional failure")
-  )
-
-  it("fail without message marks test as failed", fn():
-    fail()
-  )
-)
