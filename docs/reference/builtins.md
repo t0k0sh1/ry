@@ -15,6 +15,8 @@
 | `args()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
+| `env(key)` | Returns the environment variable as `Option<str>` |
+| `env(key, default)` | Returns the environment variable, or `default` if not set |
 | `channel[T]()` | Creates an unbuffered `Channel<T>` |
 | `channel[T](capacity)` | Creates a buffered `Channel<T>` |
 | `send(ch, value)` | Sends a value through `Channel<T>` |
@@ -285,6 +287,42 @@ sleep(0)       # returns immediately
 ```
 
 > **Note:** When called inside a `spawn`ed task, `sleep` blocks the underlying worker thread. If many tasks sleep concurrently, the thread pool may become exhausted and other tasks will stall until a sleep expires.
+
+---
+
+## env
+
+**Signature:** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+Returns the value of an environment variable. The one-argument form returns `Option<str>` (`Some(value)` if set, `None` if not). The two-argument form returns the value or `default` if the variable is not set.
+
+If a `.env` file exists in the project root (the directory containing `ry.toml`), its entries are automatically loaded into the process environment at startup. Existing environment variables are not overwritten by `.env` values.
+
+> **Security note:** `.env` files typically contain secrets (API keys, database passwords, tokens, etc.). Do **not** commit `.env` to version control (add it to `.gitignore` or equivalent), and treat its contents as sensitive configuration.
+
+```python
+# One-argument form: returns Option<str>
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# Two-argument form: returns str with default
+port = env("PORT", "8080")
+print(port)   # "8080" if PORT is not set
+```
+
+### `.env` file format
+
+```env
+# Comments start with #
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
 
 ---
 

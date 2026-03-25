@@ -419,6 +419,33 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {duration});
     }
 
+    if (e.callee == "env") {
+        if (e.args.empty() || e.args.size() > 2)
+            codegenError("env() takes 1 or 2 arguments");
+        llvm::Value *key = emitExpr(*e.args[0]);
+        if (key->getType() != ptrTy_)
+            codegenError("env() key must be str");
+
+        auto getenvTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto getenvFn = mod_->getOrInsertFunction("getenv", getenvTy);
+        llvm::Value *result = builder_.CreateCall(getenvFn, {key}, "env_result");
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(
+                llvm::cast<llvm::PointerType>(ptrTy_)), "env_null");
+
+        if (e.args.size() == 1) {
+            llvm::StructType *optTy = getOptionType(ptrTy_);
+            llvm::Value *someVal = buildSomeValue(result, optTy);
+            llvm::Value *noneVal = buildNoneValue(optTy);
+            return builder_.CreateSelect(isNull, noneVal, someVal, "env_opt");
+        } else {
+            llvm::Value *def = emitExpr(*e.args[1]);
+            if (def->getType() != ptrTy_)
+                codegenError("env() default must be str");
+            return builder_.CreateSelect(isNull, def, result, "env_val");
+        }
+    }
+
     if (e.callee == "join" && e.args.size() == 1) {
         llvm::Value *taskVal = emitExpr(*e.args[0]);
         llvm::Type *resultTy = getTaskResultType(taskVal);
