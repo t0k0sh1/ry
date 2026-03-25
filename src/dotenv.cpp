@@ -1,8 +1,10 @@
 #include "ry/dotenv.hpp"
 
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 
 namespace ry {
@@ -71,8 +73,10 @@ void loadDotEnv(const std::string &dir) {
 
     auto entries = parseDotEnv(content);
     for (const auto &[key, value] : entries) {
-        // 0 = don't overwrite existing
-        setenv(key.c_str(), value.c_str(), 0);
+        if (setenv(key.c_str(), value.c_str(), 0) != 0) {
+            std::cerr << "warning: .env: failed to set '" << key
+                      << "': " << strerror(errno) << "\n";
+        }
     }
 }
 

@@ -87,10 +87,16 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     }
     std::string src = (*bufOrErr)->getBuffer().str();
 
-    // Load .env from project root (if present)
-    auto fileDir = fs::path(filepath).parent_path().string();
-    if (auto root = findProjectRoot(fileDir)) {
-        ry::loadDotEnv(*root);
+    // Load .env from project root (once per root per process)
+    {
+        auto fileDir = fs::path(filepath).parent_path().string();
+        if (auto root = findProjectRoot(fileDir)) {
+            static std::string loaded_root;
+            if (loaded_root != *root) {
+                ry::loadDotEnv(*root);
+                loaded_root = *root;
+            }
+        }
     }
 
     // Source manager for rich error messages

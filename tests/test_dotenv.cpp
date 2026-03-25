@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -111,7 +112,8 @@ protected:
     fs::path tmp_dir;
 
     void SetUp() override {
-        tmp_dir = fs::temp_directory_path() / "ry_dotenv_test";
+        tmp_dir = fs::temp_directory_path() /
+            ("ry_dotenv_test_" + std::to_string(getpid()));
         fs::create_directories(tmp_dir);
     }
 

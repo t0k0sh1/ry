@@ -298,6 +298,8 @@ Returns the value of an environment variable. The one-argument form returns `Opt
 
 If a `.env` file exists in the project root (the directory containing `ry.toml`), its entries are automatically loaded into the process environment at startup. Existing environment variables are not overwritten by `.env` values.
 
+> **Security note:** `.env` files typically contain secrets (API keys, database passwords, tokens, etc.). Do **not** commit `.env` to version control (add it to `.gitignore` or equivalent), and treat its contents as sensitive configuration.
+
 ```python
 # One-argument form: returns Option<str>
 path = env("PATH")
