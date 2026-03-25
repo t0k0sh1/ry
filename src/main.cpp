@@ -238,10 +238,13 @@ static int runRyFile(const std::string &filepath, bool test_mode,
             for (int i = 0; i < fc; ++i) {
                 int gid = g_coverage_file_id_offset + i;
                 const std::string &fname = sm.getFilename(i);
-                if (!lib_dir.empty() && fname.find(lib_dir) == 0)
-                    g_coverage_filenames[gid] = "";  // stdlib: skip in report
-                else
-                    g_coverage_filenames[gid] = fname;
+                bool is_stdlib = false;
+                if (!lib_dir.empty()) {
+                    auto canonical = fs::weakly_canonical(fname).string();
+                    auto canonical_lib = fs::weakly_canonical(lib_dir).string();
+                    is_stdlib = canonical.find(canonical_lib) == 0;
+                }
+                g_coverage_filenames[gid] = is_stdlib ? "" : fname;
             }
             g_coverage_file_count = new_total;
         }

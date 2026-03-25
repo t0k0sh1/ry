@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -11,25 +12,35 @@
 static std::unordered_map<int32_t, std::unordered_set<int32_t>> g_coverable_lines;
 // file_id -> (line -> hit count)
 static std::unordered_map<int32_t, std::unordered_map<int32_t, uint64_t>> g_hit_counts;
+static std::mutex g_coverage_mutex;
 
 extern "C" {
 
 void __ry_coverage_register_line(int32_t file_id, int32_t line) {
+    std::lock_guard<std::mutex> lock(g_coverage_mutex);
     g_coverable_lines[file_id].insert(line);
     g_hit_counts[file_id][line]; // default-init to 0
 }
 
 void __ry_coverage_hit(int32_t file_id, int32_t line) {
-    ++g_hit_counts[file_id][line];
+    std::lock_guard<std::mutex> lock(g_coverage_mutex);
+    auto file_it = g_hit_counts.find(file_id);
+    if (file_it != g_hit_counts.end()) {
+        auto line_it = file_it->second.find(line);
+        if (line_it != file_it->second.end())
+            ++line_it->second;
+    }
 }
 
 void __ry_coverage_reset() {
+    std::lock_guard<std::mutex> lock(g_coverage_mutex);
     g_coverable_lines.clear();
     g_hit_counts.clear();
 }
 
 void __ry_coverage_report_summary(const char *const *filenames, int32_t file_count) {
-    if (file_count <= 0) return;
+    std::lock_guard<std::mutex> lock(g_coverage_mutex);
+    if (file_count <= 0 || !filenames) return;
 
     struct FileStats {
         std::string name;
