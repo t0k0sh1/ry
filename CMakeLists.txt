@@ -82,6 +82,7 @@ add_library(ry_lib STATIC
     src/formatter.cpp
     src/file_watcher.cpp
     src/coverage_runtime.cpp
+    src/dotenv.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -131,6 +132,7 @@ add_executable(ry_tests
     tests/test_formatter.cpp
     tests/test_file_watcher.cpp
     tests/test_coverage_runtime.cpp
+    tests/test_dotenv.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

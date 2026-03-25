@@ -40,3 +40,9 @@ fn available_parallelism() -> int
 
 @native
 fn sleep(duration_ms: int) -> Unit
+
+@native
+fn env(key: str) -> Option<str>
+
+@native
+fn env(key: str, default: str) -> str

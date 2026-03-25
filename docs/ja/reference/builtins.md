@@ -15,6 +15,8 @@
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
 | `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
+| `env(key)` | 環境変数を `Option<str>` で返す |
+| `env(key, default)` | 環境変数を返す。未設定なら `default` を返す |
 | `channel[T]()` | unbuffered な `Channel<T>` を作成 |
 | `channel[T](capacity)` | buffered な `Channel<T>` を作成 |
 | `send(ch, value)` | `Channel<T>` に値を送る |
@@ -270,6 +272,40 @@ sleep(0)       # 即座に返る
 ```
 
 > **注意:** `spawn` したタスク内で `sleep` を呼ぶと、そのワーカースレッドがブロックされます。多数のタスクが同時に sleep すると、スレッドプールが枯渇し、他のタスクが sleep 完了まで停止する可能性があります。
+
+---
+
+## env
+
+**シグネチャ:** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+環境変数の値を返します。1引数の場合は `Option<str>`（設定済みなら `Some(value)`、未設定なら `None`）を返します。2引数の場合は値が未設定なら `default` を返します。
+
+プロジェクトルート（`ry.toml` が存在するディレクトリ）に `.env` ファイルがある場合、起動時に自動的に読み込まれます。既存の環境変数は `.env` の値で上書きされません。
+
+```python
+# 1引数: Option<str> を返す
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# 2引数: デフォルト値付き
+port = env("PORT", "8080")
+print(port)   # PORT 未設定なら "8080"
+```
+
+### `.env` ファイルの書式
+
+```env
+# コメント
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
 
 ---
 

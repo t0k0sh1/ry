@@ -15,6 +15,8 @@
 | `args()` | 以 `List<str>` 回傳命令列引數 |
 | `available_parallelism()` | 回傳此系統建議的平行度（可用執行緒數） |
 | `sleep(duration_ms)` | 暫停執行指定的毫秒數 |
+| `env(key)` | 回傳環境變數為 `Option<str>` |
+| `env(key, default)` | 回傳環境變數，若未設定則回傳 `default` |
 
 ### Option
 
@@ -261,6 +263,40 @@ sleep(0)       # 立即返回
 ```
 
 > **注意：** 在 `spawn` 的任務內呼叫 `sleep` 時，底層的工作執行緒會被阻塞。若多個任務同時 sleep，執行緒池可能耗盡，其他任務將停滯直到 sleep 結束。
+
+---
+
+## env
+
+**簽名：** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+回傳環境變數的值。單引數形式回傳 `Option<str>`（若已設定則為 `Some(value)`，未設定則為 `None`）。雙引數形式在變數未設定時回傳 `default`。
+
+若專案根目錄（包含 `ry.toml` 的目錄）中存在 `.env` 檔案，啟動時會自動載入。現有的環境變數不會被 `.env` 的值覆蓋。
+
+```python
+# 單引數: 回傳 Option<str>
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# 雙引數: 帶預設值
+port = env("PORT", "8080")
+print(port)   # 若 PORT 未設定則為 "8080"
+```
+
+### `.env` 檔案格式
+
+```env
+# 註解
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
 
 ---
 
