@@ -15,6 +15,9 @@
 | `args()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
+| `cancel(task)` | Requests cancellation of a spawned task |
+| `is_cancelled()` | Returns `true` if the current task has been cancelled |
+| `task_group(fn)` | Runs a lambda and auto-joins all tasks spawned within it |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
 | `channel[T]()` | Creates an unbuffered `Channel<T>` |
@@ -286,7 +289,68 @@ sleep(1000)    # wait 1 second
 sleep(0)       # returns immediately
 ```
 
-> **Note:** When called inside a `spawn`ed task, `sleep` blocks the underlying worker thread. If many tasks sleep concurrently, the thread pool may become exhausted and other tasks will stall until a sleep expires.
+> **Note:** When called inside a `spawn`ed task, `sleep` blocks the underlying worker thread but can be interrupted by `cancel()`.
+
+---
+
+## cancel
+
+**Signature:** `cancel(task: Task<T>) -> Unit`
+
+Requests cancellation of a spawned task. The task will be interrupted at the next cancellation point (channel operations, `sleep`, `select`). If the task has already completed, `cancel` is a no-op.
+
+```python
+async fn long_work() -> int:
+    sleep(60000)
+    return 42
+
+t: Task<int> = long_work()
+cancel(t)
+result = join(t)   # returns 0 (zero value) since the task was cancelled
+```
+
+Cancellation is cooperative — CPU-bound tasks that don't hit a cancellation point will not be interrupted. Use `is_cancelled()` to poll for cancellation in tight loops.
+
+---
+
+## is_cancelled
+
+**Signature:** `is_cancelled() -> bool`
+
+Returns `true` if the current task has been cancelled via `cancel()`. Returns `false` if called outside a task or if the task has not been cancelled.
+
+```python
+async fn work() -> int:
+    total = 0
+    for i in range(1000000):
+        if is_cancelled():
+            return total
+        total = total + i
+    return total
+```
+
+---
+
+## task_group
+
+**Signature:** `task_group(body: fn() -> Unit) -> Unit`
+
+Creates a structured concurrency scope. All tasks spawned (via `spawn`) within the lambda body are automatically joined when the lambda returns. If any child task throws an error, remaining children are cancelled and the error is propagated.
+
+```python
+fn compute(x: int) -> int:
+    return x * 10
+
+task_group(fn():
+    t1 = spawn compute(3)
+    t2 = spawn compute(4)
+    r = join(t1) + join(t2)   # can join explicitly within the group
+    print(to_str(r))
+)
+# all tasks are guaranteed to have completed here
+```
+
+Tasks spawned inside a `task_group` that are not explicitly joined will be auto-joined at the end of the scope.
 
 ---
 

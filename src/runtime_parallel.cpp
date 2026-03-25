@@ -20,6 +20,12 @@
 namespace {
 
 thread_local bool g_runtime_worker = false;
+thread_local void *g_current_task = nullptr;
+thread_local int g_worker_id = -1;
+
+struct CancellationError : std::runtime_error {
+    CancellationError() : std::runtime_error("runtime error: task cancelled") {}
+};
 
 struct TaskHandle {
     std::mutex mu;
@@ -27,6 +33,7 @@ struct TaskHandle {
     bool done = false;
     std::exception_ptr error;
     std::vector<unsigned char> result;
+    std::atomic<bool> cancelled{false};
 };
 
 struct ParallelWaitState {
@@ -203,21 +210,27 @@ int64_t iteration_count(int64_t begin, int64_t end, int64_t step) {
     return (begin - end + abs_step - 1) / abs_step;
 }
 
+struct WorkerQueue {
+    std::mutex mu;
+    std::deque<std::function<void()>> jobs;
+};
+
 class RuntimeScheduler {
 public:
     RuntimeScheduler()
-        : parallelism_(normalize_parallelism()) {
+        : parallelism_(normalize_parallelism()),
+          worker_queues_(static_cast<size_t>(parallelism_)) {
         workers_.reserve(static_cast<size_t>(parallelism_));
         for (int64_t i = 0; i < parallelism_; ++i)
-            workers_.emplace_back([this]() { workerLoop(); });
+            workers_.emplace_back([this, i]() { workerLoop(static_cast<int>(i)); });
     }
 
     ~RuntimeScheduler() {
         {
-            std::lock_guard<std::mutex> lock(mu_);
+            std::lock_guard<std::mutex> lock(global_mu_);
             stopping_ = true;
         }
-        cv_.notify_all();
+        global_cv_.notify_all();
         for (std::thread &worker : workers_) {
             if (worker.joinable()) {
                 try { worker.join(); } catch (...) {}
@@ -262,50 +275,122 @@ public:
         live_channels_.erase(ch);
     }
 
+    void notifyAllChannels() {
+        std::lock_guard<std::mutex> lock(channel_registry_mu_);
+        for (ChannelHandle *ch : live_channels_)
+            ch->cv.notify_all();
+    }
+
     void submit(std::function<void()> job) {
-        {
-            std::lock_guard<std::mutex> lock(mu_);
-            jobs_.push_back(std::move(job));
+        pending_jobs_.fetch_add(1, std::memory_order_relaxed);
+        if (g_worker_id >= 0) {
+            auto &wq = worker_queues_[static_cast<size_t>(g_worker_id)];
+            {
+                std::lock_guard<std::mutex> lock(wq.mu);
+                wq.jobs.push_back(std::move(job));
+            }
+            global_cv_.notify_one();
+            return;
         }
-        cv_.notify_one();
+        size_t target = next_submit_.fetch_add(1, std::memory_order_relaxed)
+                        % worker_queues_.size();
+        {
+            std::lock_guard<std::mutex> lock(worker_queues_[target].mu);
+            worker_queues_[target].jobs.push_back(std::move(job));
+        }
+        global_cv_.notify_one();
     }
 
     bool tryRunOne() {
-        std::function<void()> job;
-        {
-            std::lock_guard<std::mutex> lock(mu_);
-            if (jobs_.empty())
-                return false;
-            job = std::move(jobs_.front());
-            jobs_.pop_front();
+        if (g_worker_id >= 0) {
+            auto &wq = worker_queues_[static_cast<size_t>(g_worker_id)];
+            std::function<void()> job;
+            {
+                std::lock_guard<std::mutex> lock(wq.mu);
+                if (!wq.jobs.empty()) {
+                    job = std::move(wq.jobs.front());
+                    wq.jobs.pop_front();
+                    pending_jobs_.fetch_sub(1, std::memory_order_relaxed);
+                }
+            }
+            if (job) { job(); return true; }
         }
-        job();
-        return true;
+        return trySteal();
     }
 
 private:
-    void workerLoop() {
-        g_runtime_worker = true;
-        while (true) {
+    bool trySteal() {
+        for (size_t i = 0; i < worker_queues_.size(); ++i) {
+            if (static_cast<int>(i) == g_worker_id) continue;
+            auto &wq = worker_queues_[i];
             std::function<void()> job;
             {
-                std::unique_lock<std::mutex> lock(mu_);
-                cv_.wait(lock, [this]() { return stopping_ || !jobs_.empty(); });
-                if (stopping_ && jobs_.empty())
-                    break;
-                job = std::move(jobs_.front());
-                jobs_.pop_front();
+                std::lock_guard<std::mutex> lock(wq.mu);
+                if (!wq.jobs.empty()) {
+                    job = std::move(wq.jobs.back());
+                    wq.jobs.pop_back();
+                    pending_jobs_.fetch_sub(1, std::memory_order_relaxed);
+                }
             }
-            job();
+            if (job) { job(); return true; }
         }
+        return false;
+    }
+
+    void workerLoop(int id) {
+        g_runtime_worker = true;
+        g_worker_id = id;
+        auto &local = worker_queues_[static_cast<size_t>(id)];
+
+        while (true) {
+            std::function<void()> job;
+
+            {
+                std::lock_guard<std::mutex> lock(local.mu);
+                if (!local.jobs.empty()) {
+                    job = std::move(local.jobs.front());
+                    local.jobs.pop_front();
+                    pending_jobs_.fetch_sub(1, std::memory_order_relaxed);
+                }
+            }
+
+            if (!job) {
+                for (size_t i = 0; i < worker_queues_.size() && !job; ++i) {
+                    if (static_cast<int>(i) == id) continue;
+                    auto &wq = worker_queues_[i];
+                    std::lock_guard<std::mutex> lock(wq.mu);
+                    if (!wq.jobs.empty()) {
+                        job = std::move(wq.jobs.back());
+                        wq.jobs.pop_back();
+                        pending_jobs_.fetch_sub(1, std::memory_order_relaxed);
+                    }
+                }
+            }
+
+            if (job) {
+                job();
+                continue;
+            }
+
+            // No work found, wait for new submissions or shutdown
+            std::unique_lock<std::mutex> lock(global_mu_);
+            global_cv_.wait(lock, [this]() {
+                return stopping_ || pending_jobs_.load(std::memory_order_relaxed) > 0;
+            });
+            if (stopping_ && pending_jobs_.load(std::memory_order_relaxed) == 0)
+                break;
+        }
+        g_worker_id = -1;
         g_runtime_worker = false;
     }
 
     int64_t parallelism_;
-    std::mutex mu_;
-    std::condition_variable cv_;
+    std::atomic<size_t> next_submit_{0};
+    std::atomic<int64_t> pending_jobs_{0};
+    std::mutex global_mu_;
+    std::condition_variable global_cv_;
     bool stopping_ = false;
-    std::deque<std::function<void()>> jobs_;
+    std::vector<WorkerQueue> worker_queues_;
     std::vector<std::thread> workers_;
 
     std::mutex task_registry_mu_;
@@ -338,6 +423,19 @@ void waitWithWorkerHelp(std::unique_lock<std::mutex> &lock,
     }
 }
 
+struct TaskGroupHandle {
+    std::mutex mu;
+    std::vector<TaskHandle*> children;
+    std::atomic<bool> cancelled{false};
+    std::exception_ptr first_error;
+};
+
+void checkCancellation() {
+    auto *task = static_cast<TaskHandle *>(g_current_task);
+    if (task && task->cancelled.load(std::memory_order_relaxed))
+        throw CancellationError();
+}
+
 } // namespace
 
 extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t result_size) {
@@ -348,9 +446,12 @@ extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t re
     scheduler().registerTask(task);
     scheduler().submit([entry, env, task]() {
         std::unique_ptr<void, decltype(&std::free)> env_guard(env, &std::free);
+        void *prev_task = g_current_task;
+        g_current_task = task;
         try {
             entry(env, task->result.empty() ? nullptr : task->result.data());
         } catch (...) {
+            g_current_task = prev_task;
             std::lock_guard<std::mutex> lock(task->mu);
             task->error = std::current_exception();
             task->done = true;
@@ -358,6 +459,7 @@ extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t re
             return;
         }
 
+        g_current_task = prev_task;
         std::lock_guard<std::mutex> lock(task->mu);
         task->done = true;
         task->cv.notify_all();
@@ -374,12 +476,15 @@ extern "C" void __ry_task_join(void *task_ptr, void *out_buf) {
     std::unique_lock<std::mutex> lock(task->mu);
     waitWithWorkerHelp(lock, task->cv, [&]() { return task->done; });
     std::exception_ptr error = task->error;
+    bool was_cancelled = task->cancelled.load(std::memory_order_relaxed);
     if (out_buf && !task->result.empty())
         std::memcpy(out_buf, task->result.data(), task->result.size());
     lock.unlock();
 
     delete task;
-    if (error)
+    // Don't rethrow CancellationError — cancellation is a normal termination.
+    // Only rethrow real errors (non-cancellation).
+    if (error && !was_cancelled)
         std::rethrow_exception(error);
 }
 
@@ -446,11 +551,43 @@ extern "C" int64_t __ry_available_parallelism() {
     return scheduler().parallelism();
 }
 
-// NOTE: blocks the calling OS thread. When called from a spawned task,
-// this occupies a worker thread for the full duration.
+// Sleeps for the given duration. If the current task is cancelled,
+// the sleep is interrupted immediately.
 extern "C" void __ry_sleep(int64_t duration_ms) {
-    if (duration_ms > 0)
+    if (duration_ms <= 0)
+        return;
+    auto *task = static_cast<TaskHandle *>(g_current_task);
+    if (task) {
+        std::unique_lock<std::mutex> lock(task->mu);
+        if (task->cancelled.load(std::memory_order_relaxed))
+            throw CancellationError();
+        task->cv.wait_for(lock, std::chrono::milliseconds(duration_ms), [&]() {
+            return task->cancelled.load(std::memory_order_relaxed);
+        });
+        if (task->cancelled.load(std::memory_order_relaxed))
+            throw CancellationError();
+    } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
+    }
+}
+
+extern "C" void __ry_task_cancel(void *task_ptr) {
+    auto *task = static_cast<TaskHandle *>(task_ptr);
+    task->cancelled.store(true, std::memory_order_relaxed);
+    // Acquire/release task->mu as a memory fence: ensures any thread
+    // inside cv.wait() re-evaluates its predicate after seeing cancelled=true.
+    { std::lock_guard<std::mutex> lock(task->mu); }
+    task->cv.notify_all();
+    notifySelectWaiters();
+    // Wake any channel waiters so blocked send/recv can check cancellation
+    scheduler().notifyAllChannels();
+}
+
+extern "C" bool __ry_current_task_is_cancelled() {
+    auto *task = static_cast<TaskHandle *>(g_current_task);
+    if (!task)
+        return false;
+    return task->cancelled.load(std::memory_order_relaxed);
 }
 
 extern "C" void *__ry_channel_new(int64_t elem_size, int64_t capacity) {
@@ -462,13 +599,20 @@ extern "C" void *__ry_channel_new(int64_t elem_size, int64_t capacity) {
 }
 
 extern "C" void __ry_channel_send(void *channel_ptr, void *value_ptr) {
+    checkCancellation();
     auto *channel = static_cast<ChannelHandle *>(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
+    auto is_cancelled = [&]() {
+        auto *t = static_cast<TaskHandle *>(g_current_task);
+        return t && t->cancelled.load(std::memory_order_relaxed);
+    };
+
     if (channel->capacity > 0) {
         channel->cv.wait(lock, [&]() {
-            return channel->closed || static_cast<int64_t>(channel->queue.size()) < channel->capacity;
+            return is_cancelled() || channel->closed || static_cast<int64_t>(channel->queue.size()) < channel->capacity;
         });
+        checkCancellation();
         if (channel->closed)
             throw std::runtime_error("runtime error: send() on closed channel");
 
@@ -483,10 +627,11 @@ extern "C" void __ry_channel_send(void *channel_ptr, void *value_ptr) {
     }
 
     channel->cv.wait(lock, [&]() {
-        return channel->closed ||
+        return is_cancelled() || channel->closed ||
                (!channel->has_rendezvous &&
                 (channel->waiting_receivers + channel->waiting_select_receivers) > 0);
     });
+    checkCancellation();
     if (channel->closed)
         throw std::runtime_error("runtime error: send() on closed channel");
 
@@ -497,7 +642,8 @@ extern "C" void __ry_channel_send(void *channel_ptr, void *value_ptr) {
     lock.unlock();
     notifySelectWaiters();
     lock.lock();
-    channel->cv.wait(lock, [&]() { return channel->closed || !channel->has_rendezvous; });
+    channel->cv.wait(lock, [&]() { return is_cancelled() || channel->closed || !channel->has_rendezvous; });
+    checkCancellation();
     if (channel->closed && channel->has_rendezvous)
         throw std::runtime_error("runtime error: send() on closed channel");
 }
@@ -537,13 +683,20 @@ extern "C" bool __ry_channel_try_send(void *channel_ptr, void *value_ptr) {
 }
 
 extern "C" void __ry_channel_recv(void *channel_ptr, void *out_buf) {
+    checkCancellation();
     auto *channel = static_cast<ChannelHandle *>(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
+    auto is_cancelled = [&]() {
+        auto *t = static_cast<TaskHandle *>(g_current_task);
+        return t && t->cancelled.load(std::memory_order_relaxed);
+    };
+
     if (channel->capacity > 0) {
         channel->cv.wait(lock, [&]() {
-            return channel->closed || !channel->queue.empty();
+            return is_cancelled() || channel->closed || !channel->queue.empty();
         });
+        checkCancellation();
         if (channel->queue.empty())
             throw std::runtime_error("runtime error: recv() on closed empty channel");
 
@@ -558,15 +711,24 @@ extern "C" void __ry_channel_recv(void *channel_ptr, void *out_buf) {
     }
 
     channel->waiting_receivers += 1;
+    auto decrement_guard = [&]() {
+        channel->waiting_receivers -= 1;
+        channel->cv.notify_all();
+    };
     channel->cv.notify_all();
     lock.unlock();
     notifySelectWaiters();
     lock.lock();
     channel->cv.wait(lock, [&]() {
-        return channel->closed || channel->has_rendezvous;
+        return is_cancelled() || channel->closed || channel->has_rendezvous;
     });
-    channel->waiting_receivers -= 1;
-    channel->cv.notify_all();
+    try {
+        checkCancellation();
+    } catch (...) {
+        decrement_guard();
+        throw;
+    }
+    decrement_guard();
     lock.unlock();
     notifySelectWaiters();
     lock.lock();
@@ -612,13 +774,20 @@ extern "C" bool __ry_channel_try_recv(void *channel_ptr, void *out_buf) {
 }
 
 extern "C" bool __ry_channel_recv_opt(void *channel_ptr, void *out_buf) {
+    checkCancellation();
     auto *channel = static_cast<ChannelHandle *>(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
+    auto is_cancelled = [&]() {
+        auto *t = static_cast<TaskHandle *>(g_current_task);
+        return t && t->cancelled.load(std::memory_order_relaxed);
+    };
+
     if (channel->capacity > 0) {
         channel->cv.wait(lock, [&]() {
-            return channel->closed || !channel->queue.empty();
+            return is_cancelled() || channel->closed || !channel->queue.empty();
         });
+        checkCancellation();
         if (channel->queue.empty())
             return false;
 
@@ -633,15 +802,24 @@ extern "C" bool __ry_channel_recv_opt(void *channel_ptr, void *out_buf) {
     }
 
     channel->waiting_receivers += 1;
+    auto decrement_guard = [&]() {
+        channel->waiting_receivers -= 1;
+        channel->cv.notify_all();
+    };
     channel->cv.notify_all();
     lock.unlock();
     notifySelectWaiters();
     lock.lock();
     channel->cv.wait(lock, [&]() {
-        return channel->closed || channel->has_rendezvous;
+        return is_cancelled() || channel->closed || channel->has_rendezvous;
     });
-    channel->waiting_receivers -= 1;
-    channel->cv.notify_all();
+    try {
+        checkCancellation();
+    } catch (...) {
+        decrement_guard();
+        throw;
+    }
+    decrement_guard();
     lock.unlock();
     notifySelectWaiters();
     lock.lock();
@@ -690,6 +868,7 @@ extern "C" void __ry_select_add_send(void *select_state_ptr, void *channel_ptr, 
 }
 
 extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_index, int64_t timeout_ms, int64_t timeout_index) {
+    checkCancellation();
     auto *state = static_cast<SelectState *>(select_state_ptr);
     if (state->cases.empty())
         throw std::runtime_error("runtime error: select requires at least one case");
@@ -765,6 +944,15 @@ extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_inde
                 unregisterChannels();
                 continue;
             }
+            // Check cancellation before blocking
+            {
+                auto *task = static_cast<TaskHandle *>(g_current_task);
+                if (task && task->cancelled.load(std::memory_order_relaxed)) {
+                    lock.unlock();
+                    unregisterChannels();
+                    throw CancellationError();
+                }
+            }
             if (has_timeout) {
                 if (!g_select_cv.wait_until(lock, deadline, [&]() {
                         return g_select_epoch.load(std::memory_order_relaxed) != current_epoch;
@@ -789,4 +977,94 @@ extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_inde
 
 extern "C" void __ry_select_destroy(void *select_state_ptr) {
     delete static_cast<SelectState *>(select_state_ptr);
+}
+
+extern "C" void *__ry_task_group_new() {
+    return new TaskGroupHandle;
+}
+
+extern "C" void *__ry_task_group_spawn(void *group_ptr, __ry_task_entry_fn entry, void *env, int64_t result_size) {
+    auto *group = static_cast<TaskGroupHandle *>(group_ptr);
+    void *task_ptr = __ry_task_spawn(entry, env, result_size);
+    auto *task = static_cast<TaskHandle *>(task_ptr);
+
+    // If group is already cancelled, cancel the new child immediately
+    if (group->cancelled.load(std::memory_order_relaxed))
+        task->cancelled.store(true, std::memory_order_relaxed);
+
+    std::lock_guard<std::mutex> lock(group->mu);
+    group->children.push_back(task);
+    return task_ptr;
+}
+
+extern "C" void __ry_task_group_await(void *group_ptr) {
+    auto *group = static_cast<TaskGroupHandle *>(group_ptr);
+
+    std::vector<TaskHandle *> children;
+    {
+        std::lock_guard<std::mutex> lock(group->mu);
+        children = group->children;
+    }
+
+    // First pass: wait for all children, capture first error, cancel remaining
+    for (size_t idx = 0; idx < children.size(); ++idx) {
+        TaskHandle *task = children[idx];
+
+        // If already joined by user code, skip
+        if (!scheduler().unregisterTask(task)) {
+            children[idx] = nullptr;
+            continue;
+        }
+
+        {
+            std::unique_lock<std::mutex> lock(task->mu);
+            waitWithWorkerHelp(lock, task->cv, [&]() { return task->done; });
+        }
+        // task->mu released before touching group state
+
+        if (task->error && !task->cancelled.load(std::memory_order_relaxed)
+            && !group->first_error) {
+            group->first_error = task->error;
+            group->cancelled.store(true, std::memory_order_relaxed);
+            for (size_t j = idx + 1; j < children.size(); ++j) {
+                TaskHandle *other = children[j];
+                if (!other) continue;
+                // Skip if already joined by user code (no longer registered)
+                {
+                    std::lock_guard<std::mutex> tl(other->mu);
+                    if (other->done) continue;
+                }
+                __ry_task_cancel(other);
+            }
+        }
+    }
+
+    // Second pass: delete all task handles
+    for (TaskHandle *task : children) {
+        if (task) delete task;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(group->mu);
+        group->children.clear();
+    }
+
+    if (group->first_error)
+        std::rethrow_exception(group->first_error);
+}
+
+extern "C" void __ry_task_group_destroy(void *group_ptr) {
+    delete static_cast<TaskGroupHandle *>(group_ptr);
+}
+
+extern "C" void __ry_task_group_await_and_destroy(void *group_ptr) {
+    std::exception_ptr error;
+    try {
+        __ry_task_group_await(group_ptr);
+    } catch (...) {
+        error = std::current_exception();
+    }
+    __ry_task_group_destroy(group_ptr);
+    if (error)
+        std::rethrow_exception(error);
 }

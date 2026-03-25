@@ -15,6 +15,9 @@
 | `args()` | 以 `List<str>` 回傳命令列引數 |
 | `available_parallelism()` | 回傳此系統建議的平行度（可用執行緒數） |
 | `sleep(duration_ms)` | 暫停執行指定的毫秒數 |
+| `cancel(task)` | 請求取消已 spawn 的任務 |
+| `is_cancelled()` | 當前任務已被取消時回傳 `true` |
+| `task_group(fn)` | 執行 lambda 並自動 join 其中 spawn 的所有任務 |
 | `env(key)` | 回傳環境變數為 `Option<str>` |
 | `env(key, default)` | 回傳環境變數，若未設定則回傳 `default` |
 
@@ -262,7 +265,42 @@ sleep(1000)    # 等待 1 秒
 sleep(0)       # 立即返回
 ```
 
-> **注意：** 在 `spawn` 的任務內呼叫 `sleep` 時，底層的工作執行緒會被阻塞。若多個任務同時 sleep，執行緒池可能耗盡，其他任務將停滯直到 sleep 結束。
+> **注意：** 在 `spawn` 的任務內呼叫 `sleep` 時，底層的工作執行緒會被阻塞，但可透過 `cancel()` 中斷。
+
+---
+
+## cancel
+
+**簽名：** `cancel(task: Task<T>) -> Unit`
+
+請求取消已 spawn 的任務。任務會在下一個取消點（通道操作、`sleep`、`select`）被中斷。對已完成的任務呼叫 `cancel` 不會產生任何效果。
+
+---
+
+## is_cancelled
+
+**簽名：** `is_cancelled() -> bool`
+
+若當前任務已被 `cancel()` 取消，則回傳 `true`。在任務外呼叫或任務未被取消時回傳 `false`。
+
+---
+
+## task_group
+
+**簽名：** `task_group(body: fn() -> Unit) -> Unit`
+
+建立結構化並行性的作用域。在 lambda 內 `spawn` 的所有任務會在 lambda 結束時自動 join。若子任務拋出錯誤，剩餘子任務會被取消，錯誤會傳播到父級。
+
+```python
+fn compute(x: int) -> int:
+    return x * 10
+
+task_group(fn():
+    t1 = spawn compute(3)
+    t2 = spawn compute(4)
+)
+# 此處保證兩個任務都已完成
+```
 
 ---
 

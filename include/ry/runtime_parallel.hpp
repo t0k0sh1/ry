@@ -27,4 +27,13 @@ void __ry_select_add_send(void *select_state, void *channel, void *value_ptr);
 int64_t __ry_select_wait(void *select_state, int64_t default_index, int64_t timeout_ms, int64_t timeout_index);
 void __ry_select_destroy(void *select_state);
 
+void __ry_task_cancel(void *task);
+bool __ry_current_task_is_cancelled();
+
+void *__ry_task_group_new();
+void *__ry_task_group_spawn(void *group, __ry_task_entry_fn entry, void *env, int64_t result_size);
+void __ry_task_group_await(void *group);
+void __ry_task_group_destroy(void *group);
+void __ry_task_group_await_and_destroy(void *group);
+
 }

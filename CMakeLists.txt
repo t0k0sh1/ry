@@ -111,6 +111,8 @@ add_executable(ry_tests
     tests/test_spec_concurrency.cpp
     tests/test_spec_concurrency_channels.cpp
     tests/test_spec_concurrency_select.cpp
+    tests/test_spec_concurrency_cancel.cpp
+    tests/test_spec_concurrency_taskgroup.cpp
     tests/test_codegen_collection.cpp
     tests/test_codegen_advanced.cpp
     tests/test_codegen_contract.cpp

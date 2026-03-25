@@ -463,6 +463,134 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateLoad(resultTy, resultSlot, "joined");
     }
 
+    if (e.callee == "spawn_in") {
+        if (e.args.size() != 2)
+            codegenError("spawn_in() requires exactly 2 arguments: spawn_in(group, fn(args...))");
+
+        llvm::Value *groupVal = emitExpr(*e.args[0]);
+
+        auto *innerCallPtr = std::get_if<std::unique_ptr<CallExpr>>(&e.args[1]->data);
+        if (!innerCallPtr)
+            codegenError("spawn_in() second argument must be a function call, e.g. spawn_in(g, compute(1))");
+
+        task_group_stack_.push_back(groupVal);
+        const CallExpr &innerCall = **innerCallPtr;
+
+        llvm::Function *directFunc = nullptr;
+        llvm::Value *calleeVal = nullptr;
+        FnTypeInfo calleeInfo;
+        std::vector<llvm::Value*> argVals;
+
+        auto namedIt = functions_.find(innerCall.callee);
+        if (namedIt != functions_.end()) {
+            directFunc = resolveOverload(innerCall.callee, innerCall.args, argVals);
+        } else if (llvm::AllocaInst *varPtr = findVar(innerCall.callee)) {
+            auto fnIt = fn_type_info_.find(varPtr);
+            if (fnIt == fn_type_info_.end())
+                codegenError("spawn_in requires a function or lambda call");
+            calleeInfo = fnIt->second;
+            for (auto &arg : innerCall.args)
+                argVals.push_back(emitExpr(*arg));
+            calleeVal = builder_.CreateLoad(ptrTy_, varPtr, innerCall.callee + ".spawn_fn");
+        } else {
+            codegenError("spawn_in requires a user-defined function or lambda call");
+        }
+
+        llvm::Type *resultTy = directFunc ? directFunc->getReturnType() : calleeInfo.returnType;
+        if (resultTy->isVoidTy())
+            codegenError("spawn_in does not support Unit-returning calls");
+
+        std::vector<llvm::Type*> envFields;
+        if (!directFunc) envFields.push_back(ptrTy_);
+        for (auto *argVal : argVals) envFields.push_back(argVal->getType());
+        if (envFields.empty()) envFields.push_back(i8Ty_);
+        llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
+
+        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
+        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+        llvm::Value *envPtr = builder_.CreateCall(
+            mallocFn,
+            {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
+            "spawni_env");
+
+        unsigned fieldIndex = 0;
+        if (directFunc && argVals.empty()) {
+            llvm::Value *df = builder_.CreateStructGEP(envTy, envPtr, 0, "spawni_env_dummy");
+            builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), df);
+        } else if (!directFunc) {
+            llvm::Value *cf = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawni_env_fn");
+            builder_.CreateStore(calleeVal, cf);
+        }
+        for (size_t i = 0; i < argVals.size(); ++i) {
+            llvm::Value *af = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawni_env_arg." + std::to_string(i));
+            builder_.CreateStore(argVals[i], af);
+        }
+
+        llvm::FunctionType *thunkTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+        llvm::Function *thunk = llvm::Function::Create(
+            thunkTy, llvm::Function::InternalLinkage,
+            "__ry_spawn_in." + std::to_string(lambda_counter_++), *mod_);
+        {
+            FnScope guard(*this);
+            fn_ = thunk;
+            pushScope();
+            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
+            builder_.SetInsertPoint(entry);
+            auto argIt = thunk->arg_begin();
+            llvm::Value *envRaw = &*argIt++; envRaw->setName("env_raw");
+            llvm::Value *outRaw = &*argIt; outRaw->setName("out_raw");
+
+            std::vector<llvm::Value*> thunkArgs;
+            fieldIndex = 0;
+            llvm::Value *thunkCallee = nullptr;
+            if (!directFunc) {
+                llvm::Value *cf = builder_.CreateStructGEP(envTy, envRaw, fieldIndex++, "spawni_fn_field");
+                thunkCallee = builder_.CreateLoad(ptrTy_, cf, "spawni_fn");
+            }
+            for (size_t i = 0; i < argVals.size(); ++i) {
+                llvm::Type *argTy = argVals[i]->getType();
+                llvm::Value *af = builder_.CreateStructGEP(envTy, envRaw, fieldIndex++, "spawni_arg." + std::to_string(i));
+                thunkArgs.push_back(builder_.CreateLoad(argTy, af, "spawni_arg_val." + std::to_string(i)));
+            }
+
+            llvm::Value *result = directFunc
+                ? builder_.CreateCall(directFunc, thunkArgs, "spawni_call")
+                : emitLambdaCall(thunkCallee, calleeInfo, thunkArgs, "spawni_call");
+            builder_.CreateStore(result, outRaw);
+            builder_.CreateRetVoid();
+        }
+
+        llvm::FunctionType *groupSpawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee groupSpawnFn = mod_->getOrInsertFunction("__ry_task_group_spawn", groupSpawnTy);
+        llvm::Value *task = builder_.CreateCall(
+            groupSpawnFn,
+            {groupVal, builder_.CreateBitCast(thunk, ptrTy_), envPtr,
+             llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))},
+            "task");
+        task_result_types_[task] = resultTy;
+        task_group_stack_.pop_back();
+        return task;
+    }
+
+    if (e.callee == "cancel") {
+        if (e.args.size() != 1)
+            codegenError("cancel() takes exactly 1 argument");
+        llvm::Value *taskVal = emitExpr(*e.args[0]);
+        llvm::FunctionType *cancelTy = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        llvm::FunctionCallee cancelFn = mod_->getOrInsertFunction("__ry_task_cancel", cancelTy);
+        return builder_.CreateCall(cancelFn, {taskVal});
+    }
+
+    if (e.callee == "is_cancelled") {
+        if (!e.args.empty())
+            codegenError("is_cancelled() takes no arguments");
+        llvm::FunctionType *isCancelledTy = llvm::FunctionType::get(i1Ty_, {}, false);
+        llvm::FunctionCallee isCancelledFn = mod_->getOrInsertFunction("__ry_current_task_is_cancelled", isCancelledTy);
+        return builder_.CreateCall(isCancelledFn, {}, "is_cancelled");
+    }
+
     if (e.callee == "send") {
         if (e.args.size() != 2)
             codegenError("send() takes exactly 2 arguments");

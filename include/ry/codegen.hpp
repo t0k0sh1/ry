@@ -60,6 +60,7 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> task_result_types_;
+    std::vector<llvm::Value*> task_group_stack_;
     std::unordered_map<llvm::Value*, llvm::Type*> channel_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
     int iterator_fn_counter_ = 0;
@@ -234,6 +235,7 @@ private:
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
+    void emitTaskGroupCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Value *toBool(llvm::Value *v);
