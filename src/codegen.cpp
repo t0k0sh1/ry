@@ -489,7 +489,9 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "http_listen" ||
         s.callee == "sleep" ||
         s.callee == "cancel" || s.callee == "is_cancelled" ||
-        s.callee == "spawn_in") {
+        s.callee == "spawn_in" ||
+        s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
+        s.callee == "shutdown") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
@@ -677,6 +679,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // TCP socket opaque handle types
     if (typeName == "TcpListener") return ptrTy_;
     if (typeName == "TcpStream")   return ptrTy_;
+    if (typeName == "TlsStream")   return ptrTy_;
 
     // HTTP opaque handle types
     if (typeName == "HttpRequest")  return ptrTy_;

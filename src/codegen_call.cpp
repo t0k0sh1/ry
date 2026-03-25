@@ -595,19 +595,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (e.args.size() != 2)
             codegenError("send() takes exactly 2 arguments");
         llvm::Value *firstArg = emitExpr(*e.args[0]);
-        if (isTcpStream(firstArg)) {
+        if (isTcpStream(firstArg) || isTlsStream(firstArg)) {
             llvm::Value *data = emitExpr(*e.args[1]);
             if (!getListElementType(data) || getListElementType(data) != i8Ty_)
-                codegenError("send() with TcpStream requires List<byte> as second argument");
+                codegenError("send() with TcpStream/TlsStream requires List<byte> as second argument");
             auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_send", fnTy);
+            std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
+            auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
             llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
             // Wrap in Result<int, Error>
             llvm::Value *isErr = builder_.CreateICmpSLT(sent,
                 llvm::ConstantInt::get(i64Ty_, 0), "send_err");
             llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
             llvm::Value *okVal = buildOkValue(sent, resTy);
-            llvm::Value *errVal = buildErrValue(buildStaticError("tcp send failed", ".send_err_msg"), resTy);
+            llvm::Value *errVal = buildErrValue(buildStaticError("send failed", ".send_err_msg"), resTy);
             return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
         }
         llvm::Value *channelVal = firstArg;
@@ -656,20 +657,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     if (e.callee == "recv") {
         if (e.args.size() == 2) {
-            // TCP recv(stream, max_bytes) -> Result<List<byte>, Error>
+            // TCP/TLS recv(stream, max_bytes) -> Result<List<byte>, Error>
             llvm::Value *streamVal = emitExpr(*e.args[0]);
-            if (!isTcpStream(streamVal))
-                codegenError("recv() with 2 arguments requires TcpStream as first argument");
+            if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
+                codegenError("recv() with 2 arguments requires TcpStream or TlsStream as first argument");
             llvm::Value *maxBytes = emitExpr(*e.args[1]);
             auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_recv", fnTy);
+            std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
+            auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
             llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
             // Wrap in Result<List<byte>, Error>: nullptr = Err, non-null = Ok
             llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
                 llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
             llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
             llvm::Value *okVal = buildOkValue(ptr, resTy);
-            llvm::Value *errVal = buildErrValue(buildStaticError("tcp recv failed", ".recv_err_msg"), resTy);
+            llvm::Value *errVal = buildErrValue(buildStaticError("recv failed", ".recv_err_msg"), resTy);
             llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
             list_element_types_[result] = i8Ty_;
             return result;
@@ -772,8 +774,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             auto fn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
             return builder_.CreateCall(fn, {val});
         }
+        if (isTlsStream(val)) {
+            auto fn = mod_->getOrInsertFunction("__ry_tls_close", voidPtrFnTy);
+            return builder_.CreateCall(fn, {val});
+        }
         if (!getChannelElementType(val))
-            codegenError("close() requires Channel<T>, TcpStream, or TcpListener argument");
+            codegenError("close() requires Channel<T>, TcpStream, TlsStream, or TcpListener argument");
         auto fn = mod_->getOrInsertFunction("__ry_channel_close", voidPtrFnTy);
         return builder_.CreateCall(fn, {val});
     }

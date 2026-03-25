@@ -324,6 +324,33 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         return emitPtrToResult(result, "connect", "connection failed", tcp_stream_values_);
     }
 
+    // tls_connect(host, port) -> Result<TlsStream, Error>
+    if (e.callee == "tls_connect") {
+        if (e.args.size() != 2)
+            codegenError("tls_connect() takes exactly 2 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_tls_connect", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "tls_connect_result");
+        return emitPtrToResult(result, "tls_connect", "TLS connection failed", tls_stream_values_);
+    }
+
+    // set_timeout / set_recv_timeout / set_send_timeout — works for both TcpStream and TlsStream
+    if (e.callee == "set_timeout" || e.callee == "set_recv_timeout" || e.callee == "set_send_timeout") {
+        if (e.args.size() != 2)
+            codegenError(e.callee + "() takes exactly 2 arguments");
+        llvm::Value *stream = emitExpr(*e.args[0]);
+        llvm::Value *ms = emitExpr(*e.args[1]);
+        auto *voidTy = llvm::Type::getVoidTy(*ctx_);
+        auto fnTy = llvm::FunctionType::get(voidTy, {ptrTy_, i64Ty_}, false);
+        std::string prefix = isTlsStream(stream) ? "__ry_tls_" : "__ry_tcp_";
+        if (!isTcpStream(stream) && !isTlsStream(stream))
+            codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
+        auto fn = mod_->getOrInsertFunction(prefix + e.callee, fnTy);
+        return builder_.CreateCall(fn, {stream, ms});
+    }
+
     return nullptr;
 }
 

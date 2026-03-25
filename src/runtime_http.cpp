@@ -1,5 +1,8 @@
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_tls.hpp"
+
+#include <openssl/ssl.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -304,16 +307,47 @@ extern "C" int64_t __ry_http_parse_content_length(const char *value) {
     return (int64_t)parsed;
 }
 
-static std::string recv_all(int fd, size_t max_bytes) {
+// ============================================================
+// HttpTransport — abstracts plain TCP and TLS I/O
+// ============================================================
+
+struct HttpTransport {
+    int fd;
+    SSL *ssl;  // nullptr for plain TCP
+
+    ssize_t do_recv(void *buf, size_t len) {
+        if (ssl) return (ssize_t)SSL_read(ssl, buf, (int)len);
+        return ::recv(fd, buf, len, 0);
+    }
+
+    ssize_t do_send(const void *buf, size_t len) {
+        if (ssl) return __ry_tls_send_all(ssl, buf, len);
+        return __ry_send_all(fd, buf, len);
+    }
+
+    void close_transport() {
+        if (ssl) {
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+            ssl = nullptr;
+        }
+        if (fd >= 0) {
+            ::close(fd);
+            fd = -1;
+        }
+    }
+};
+
+static std::string recv_all(HttpTransport &t, size_t max_bytes) {
     std::string buf;
     buf.resize(max_bytes);
     size_t total = 0;
     while (total < max_bytes) {
-        ssize_t n = ::recv(fd, &buf[total], max_bytes - total, 0);
+        ssize_t n = t.do_recv(&buf[total], max_bytes - total);
         if (n <= 0) break;
         total += (size_t)n;
         // Search for header/body boundary starting near the new data
-        size_t search_from = (total > n + 3) ? total - (size_t)n - 3 : 0;
+        size_t search_from = (total > (size_t)n + 3) ? total - (size_t)n - 3 : 0;
         if (buf.find("\r\n\r\n", search_from) != std::string::npos)
             break;
     }
@@ -321,13 +355,24 @@ static std::string recv_all(int fd, size_t max_bytes) {
     return buf;
 }
 
-// Append data from fd into buf. Returns false on connection close/error.
-static bool recv_into_buf(int fd, std::string &buf) {
+// Append data from transport into buf. Returns false on connection close/error.
+static bool recv_into_buf(HttpTransport &t, std::string &buf) {
     char tmp[4096];
-    ssize_t n = ::recv(fd, tmp, sizeof(tmp), 0);
+    ssize_t n = t.do_recv(tmp, sizeof(tmp));
     if (n <= 0) return false;
     buf.append(tmp, (size_t)n);
     return true;
+}
+
+// Legacy overloads for server-side code that still uses raw fd
+static std::string recv_all(int fd, size_t max_bytes) {
+    HttpTransport t{fd, nullptr};
+    return recv_all(t, max_bytes);
+}
+
+static bool recv_into_buf(int fd, std::string &buf) {
+    HttpTransport t{fd, nullptr};
+    return recv_into_buf(t, buf);
 }
 
 // Check if a Transfer-Encoding value has "chunked" as the last coding.
@@ -392,13 +437,19 @@ static bool has_chunked_encoding(const std::vector<HeaderPair> &headers) {
 // `buf` is the read buffer (may already contain data after headers);
 // `pos` is the current offset into buf.
 // Sets `ok` to false on parse error or size overflow.
+static std::string read_chunked_body(HttpTransport &t, std::string &buf, size_t pos, bool &ok);
 static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool &ok) {
+    HttpTransport t{fd, nullptr};
+    return read_chunked_body(t, buf, pos, ok);
+}
+
+static std::string read_chunked_body(HttpTransport &t, std::string &buf, size_t pos, bool &ok) {
     ok = true;
     std::string body;
 
     auto ensure = [&](size_t needed) -> bool {
         while (buf.size() - pos < needed) {
-            if (!recv_into_buf(fd, buf)) return false;
+            if (!recv_into_buf(t, buf)) return false;
         }
         return true;
     };
@@ -412,7 +463,7 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
             crlf = buf.find("\r\n", pos);
             if (crlf != std::string::npos) break;
             if (buf.size() - pos > MAX_CHUNK_LINE) { ok = false; return ""; }
-            if (!recv_into_buf(fd, buf)) { ok = false; return ""; }
+            if (!recv_into_buf(t, buf)) { ok = false; return ""; }
         }
 
         // Parse hex chunk size, ignoring extensions after ';'
@@ -425,8 +476,8 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
         unsigned long long chunk_size = strtoull(size_start, &endptr, 16);
         if (!endptr || endptr == size_start) { ok = false; return ""; }
         // Reject trailing non-whitespace after hex digits (RFC 9112: chunk-size = 1*HEXDIG)
-        for (const char *t = endptr; t < size_start + size_len; t++) {
-            if (*t != ' ' && *t != '\t') { ok = false; return ""; }
+        for (const char *cp = endptr; cp < size_start + size_len; cp++) {
+            if (*cp != ' ' && *cp != '\t') { ok = false; return ""; }
         }
 
         pos = crlf + 2;
@@ -437,7 +488,7 @@ static std::string read_chunked_body(int fd, std::string &buf, size_t pos, bool 
             while (true) {
                 size_t end = buf.find("\r\n", pos);
                 if (end == std::string::npos) {
-                    if (!recv_into_buf(fd, buf)) break;
+                    if (!recv_into_buf(t, buf)) break;
                     continue;
                 }
                 if (end == pos) { pos += 2; break; } // empty line = end of trailers
@@ -856,15 +907,23 @@ struct ParsedUrl {
     char *host;
     int64_t port;
     char *path;
+    bool is_https;
 };
 
 static ParsedUrl *parse_url(const char *url) {
     if (!url || !*url) return nullptr;
 
-    // Must start with "http://"
-    if (strncmp(url, "http://", 7) != 0) return nullptr;
+    bool is_https = false;
+    const char *authority = nullptr;
+    if (strncmp(url, "https://", 8) == 0) {
+        is_https = true;
+        authority = url + 8;
+    } else if (strncmp(url, "http://", 7) == 0) {
+        authority = url + 7;
+    } else {
+        return nullptr;
+    }
 
-    const char *authority = url + 7;
     if (!*authority || *authority == '/' || *authority == ':') return nullptr;
 
     // Find end of host: ':' (port), '/' (path), '?' (query), '#' (fragment), or end
@@ -874,7 +933,7 @@ static ParsedUrl *parse_url(const char *url) {
     std::string host(authority, p);
     if (host.empty()) return nullptr;
 
-    int64_t port = 80;
+    int64_t port = is_https ? 443 : 80;
     if (*p == ':') {
         p++;
         const char *port_start = p;
@@ -906,6 +965,7 @@ static ParsedUrl *parse_url(const char *url) {
     auto *result = (ParsedUrl *)malloc(sizeof(ParsedUrl));
     result->host = strdup(host.c_str());
     result->port = port;
+    result->is_https = is_https;
     result->path = strdup(path.c_str());
     return result;
 }
@@ -922,13 +982,11 @@ extern "C" void __ry_http_parsed_url_free(void *parsed) {
     free(u);
 }
 
-static HttpClientResponseHandle *read_http_response(int fd) {
-    // Set receive timeout
-    struct timeval tv = {30, 0};
-    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
+    __ry_apply_default_recv_timeout(t.fd);
 
     // Read headers
-    std::string raw = recv_all(fd, 8192);
+    std::string raw = recv_all(t, 8192);
     if (raw.empty()) return nullptr;
 
     // Find header/body boundary
@@ -983,7 +1041,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
 
     if (is_chunked) {
         bool ok;
-        body_data = read_chunked_body(fd, raw, body_start, ok);
+        body_data = read_chunked_body(t, raw, body_start, ok);
         if (!ok) {
             for (auto &h : parsed_headers) { free(h.key); free(h.val); }
             return nullptr;
@@ -1003,7 +1061,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
                 char *extra = (char *)malloc(remaining);
                 size_t got = 0;
                 while (got < remaining) {
-                    ssize_t n = ::recv(fd, extra + got, remaining - got, 0);
+                    ssize_t n = t.do_recv(extra + got, remaining - got);
                     if (n <= 0) break;
                     got += (size_t)n;
                 }
@@ -1019,7 +1077,7 @@ static HttpClientResponseHandle *read_http_response(int fd) {
         } else {
             char buf[4096];
             while (true) {
-                ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
+                ssize_t n = t.do_recv(buf, sizeof(buf));
                 if (n <= 0) break;
                 body_data.append(buf, (size_t)n);
                 if ((int64_t)body_data.size() > MAX_BODY_SIZE) {
@@ -1115,7 +1173,8 @@ static bool is_cross_origin(const char *url_a, const char *url_b) {
         __ry_http_parsed_url_free(b);
         return true;
     }
-    bool cross = (a->port != b->port || strcasecmp(a->host, b->host) != 0);
+    bool cross = (a->port != b->port || strcasecmp(a->host, b->host) != 0 ||
+                  a->is_https != b->is_https);
     __ry_http_parsed_url_free(a);
     __ry_http_parsed_url_free(b);
     return cross;
@@ -1158,13 +1217,24 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
             break;
         }
 
-        void *stream = __ry_connect(parsed->host, parsed->port);
-        if (!stream) {
-            __ry_http_parsed_url_free(parsed);
-            break;
+        // Establish connection (plain TCP or TLS)
+        HttpTransport transport{-1, nullptr};
+        if (parsed->is_https) {
+            void *tls = __ry_tls_connect(parsed->host, parsed->port);
+            if (!tls) {
+                __ry_http_parsed_url_free(parsed);
+                break;
+            }
+            __ry_tls_take_ownership(tls, &transport.fd, &transport.ssl);
+        } else {
+            void *stream = __ry_connect(parsed->host, parsed->port);
+            if (!stream) {
+                __ry_http_parsed_url_free(parsed);
+                break;
+            }
+            transport.fd = ((TcpStreamHandle *)stream)->fd;
+            delete (TcpStreamHandle *)stream;
         }
-
-        auto *tcp = (TcpStreamHandle *)stream;
 
         // Build HTTP/1.1 request
         std::string request;
@@ -1177,7 +1247,8 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
         // Host header
         request += "Host: ";
         request += parsed->host;
-        if (parsed->port != 80) {
+        int64_t default_port = parsed->is_https ? 443 : 80;
+        if (parsed->port != default_port) {
             request += ':';
             request += std::to_string(parsed->port);
         }
@@ -1209,16 +1280,16 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
             request.append(current_body, body_len);
         }
 
-        ssize_t sent = __ry_send_all(tcp->fd, request.c_str(), request.size());
+        ssize_t sent = transport.do_send(request.c_str(), request.size());
         if (sent < 0) {
-            __ry_tcp_close(tcp);
+            transport.close_transport();
             __ry_http_parsed_url_free(parsed);
             break;
         }
 
-        HttpClientResponseHandle *resp = read_http_response(tcp->fd);
+        HttpClientResponseHandle *resp = read_http_response(transport);
 
-        __ry_tcp_close(tcp);
+        transport.close_transport();
         __ry_http_parsed_url_free(parsed);
 
         if (!resp) break;

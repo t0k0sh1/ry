@@ -18,7 +18,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev
+          sudo apt-get install -y libllvm21 llvm-21-dev libssl-dev
       - name: Build
         run: |
           cmake -B build -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm

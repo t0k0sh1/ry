@@ -17,9 +17,17 @@ fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
 fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
+fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
+@native
 fn str_to_bytes(s: str) -> List<byte>
 @native
 fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
+@native
+fn set_timeout(stream: TcpStream, ms: int) -> Unit
+@native
+fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
+@native
+fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
 )";
 
 // ============================================================
@@ -295,6 +303,171 @@ TEST(TcpRecv, ErrorReturnsNull) {
     // recv on closed fd returns nullptr (error)
     auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
     EXPECT_EQ(result, nullptr);
+}
+
+// ============================================================
+// set_timeout / set_recv_timeout / set_send_timeout
+// ============================================================
+
+TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match connect("127.0.0.1", 19997):
+    case Ok(conn):
+        set_timeout(conn, 500)
+        print("ok")
+        close(conn)
+    case Err(e):
+        print("err")
+)"), "err\n");
+}
+
+TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match connect("127.0.0.1", 19996):
+    case Ok(conn):
+        set_recv_timeout(conn, 500)
+        print("ok")
+        close(conn)
+    case Err(e):
+        print("err")
+)"), "err\n");
+}
+
+TEST_F(CodeGenTest, NetSetSendTimeoutCompiles) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match connect("127.0.0.1", 19995):
+    case Ok(conn):
+        set_send_timeout(conn, 500)
+        print("ok")
+        close(conn)
+    case Err(e):
+        print("err")
+)"), "err\n");
+}
+
+TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+@native
+fn listener_port(listener: TcpListener) -> int
+
+fn server_task(ready: Channel<int>) -> str:
+    match bind("127.0.0.1", 0):
+        case Ok(server):
+            match listen(server, 1):
+                case Ok(_):
+                    port = listener_port(server)
+                    send(ready, port)
+                    match accept(server):
+                        case Ok(conn):
+                            # Don't send anything — let client timeout
+                            sleep(500)
+                            close(conn)
+                        case Err(e):
+                            ...
+                case Err(e):
+                    send(ready, 0)
+            close(server)
+        case Err(e):
+            send(ready, 0)
+    return "done"
+
+ready: Channel<int> = channel[int]()
+t: Task<str> = spawn server_task(ready)
+port = recv(ready)
+match connect("127.0.0.1", port):
+    case Ok(conn):
+        set_recv_timeout(conn, 100)
+        match recv(conn, 4096):
+            case Ok(data):
+                print("got data")
+            case Err(e):
+                print("timeout")
+        close(conn)
+    case Err(e):
+        print("connect failed")
+join(t)
+)"), "timeout\n");
+}
+
+// ============================================================
+// __ry_tcp_set_timeout: runtime-level test
+// ============================================================
+
+TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // TcpStreamHandle layout: { int fd; }
+    // socketpair fd can be used directly since TcpStreamHandle.fd is first field
+    __ry_tcp_set_timeout(&fds[0], 250);
+
+    struct timeval tv;
+    socklen_t len = sizeof(tv);
+    ::getsockopt(fds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len);
+    EXPECT_EQ(tv.tv_sec, 0);
+    EXPECT_EQ(tv.tv_usec, 250000);
+
+    ::getsockopt(fds[0], SOL_SOCKET, SO_SNDTIMEO, &tv, &len);
+    EXPECT_EQ(tv.tv_sec, 0);
+    EXPECT_EQ(tv.tv_usec, 250000);
+
+    ::close(fds[0]);
+    ::close(fds[1]);
+}
+
+// ============================================================
+// tls_connect to invalid host returns Err
+// ============================================================
+
+TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match tls_connect("127.0.0.1", 19993):
+    case Ok(conn):
+        print("connected")
+        close(conn)
+    case Err(e):
+        print("tls err")
+)"), "tls err\n");
+}
+
+// ============================================================
+// TLS send/recv/close overloads compile for TlsStream
+// ============================================================
+
+TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
+    EXPECT_EQ(runSource(NET_DECLS + R"(
+match tls_connect("127.0.0.1", 19992):
+    case Ok(conn):
+        match send(conn, str_to_bytes("hello")):
+            case Ok(n):
+                print("sent")
+            case Err(e):
+                print("send err")
+        match recv(conn, 4096):
+            case Ok(data):
+                print("recv ok")
+            case Err(e):
+                print("recv err")
+        close(conn)
+    case Err(e):
+        print("err")
+)"), "err\n");
+}
+
+TEST(TcpTimeout, SetRecvTimeoutOnly) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    __ry_tcp_set_recv_timeout(&fds[0], 1500);
+
+    struct timeval tv;
+    socklen_t len = sizeof(tv);
+    ::getsockopt(fds[0], SOL_SOCKET, SO_RCVTIMEO, &tv, &len);
+    EXPECT_EQ(tv.tv_sec, 1);
+    EXPECT_EQ(tv.tv_usec, 500000);
+
+    ::close(fds[0]);
+    ::close(fds[1]);
 }
 
 TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {
