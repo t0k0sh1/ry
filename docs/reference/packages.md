@@ -111,7 +111,7 @@ The following sub-packages require explicit import:
 from math import sqrt, PI, sin
 ```
 
-You can also explicitly import specific definitions from `std`:
+You can also explicitly import specific definitions from standard library packages:
 
 ```python
 from str import contains

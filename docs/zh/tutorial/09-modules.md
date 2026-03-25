@@ -63,7 +63,7 @@ n = length("world")
 xs = range(5)
 ```
 
-也可以從 `std` 子套件中明確匯入特定定義：
+也可以直接從標準函式庫的套件中明確匯入特定定義：
 
 ```python
 from str import contains

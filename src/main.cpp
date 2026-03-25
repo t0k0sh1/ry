@@ -118,7 +118,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     if (!lib_dir.empty()) {
         search_paths.push_back(lib_dir);
         // Enable flattened imports: "from math" resolves to lib/std/math/
-        search_paths.push_back(lib_dir + "/std");
+        search_paths.push_back((fs::path(lib_dir) / "std").string());
     }
 
     std::string referrer_dir = fs::path(filepath).parent_path().string();

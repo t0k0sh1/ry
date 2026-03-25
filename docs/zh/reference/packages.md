@@ -111,7 +111,7 @@ from mypackage import add   # 僅匯入 add
 from math import sqrt, PI, sin
 ```
 
-也可以從 `std` 明確匯入特定的定義：
+也可以直接從標準函式庫的套件中明確匯入特定定義：
 
 ```python
 from str import contains

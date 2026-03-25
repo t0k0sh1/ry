@@ -63,7 +63,7 @@ n = length("world")
 xs = range(5)
 ```
 
-`std` のサブパッケージから特定の定義を明示的にインポートすることもできます。
+標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます。
 
 ```python
 from str import contains

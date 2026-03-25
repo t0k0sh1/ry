@@ -111,7 +111,7 @@ from mypackage import add   # add のみインポート
 from math import sqrt, PI, sin
 ```
 
-特定の定義を `std` から明示的にインポートすることもできます:
+標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます:
 
 ```python
 from str import contains
