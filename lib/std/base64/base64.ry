@@ -4,10 +4,10 @@
 fn encode(input: str) -> str
 
 @native
-fn decode(input: str) -> str
+fn decode(input: str) -> Result<str, Error>
 
 @native
 fn encode_url_safe(input: str) -> str
 
 @native
-fn decode_url_safe(input: str) -> str
+fn decode_url_safe(input: str) -> Result<str, Error>

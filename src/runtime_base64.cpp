@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 
 // Thread-local error buffer (independent from runtime_io.cpp)
 static thread_local char last_error_buf[512] = {0};
@@ -36,10 +37,13 @@ static void build_decode_table(const char *table, int8_t *decode_tbl) {
         decode_tbl[(uint8_t)table[i]] = (int8_t)i;
 }
 
-__attribute__((constructor))
+static std::once_flag decode_tables_init;
 static void init_decode_tables() {
     build_decode_table(std_table, std_decode_tbl);
     build_decode_table(url_table, url_decode_tbl);
+}
+static void ensure_decode_tables() {
+    std::call_once(decode_tables_init, init_decode_tables);
 }
 
 static char *base64_encode_impl(const char *input, size_t len, const char *table, bool pad) {
@@ -127,6 +131,7 @@ extern "C" const char *__ry_base64_encode(const char *input) {
 extern "C" const char *__ry_base64_decode(const char *input) {
     size_t len;
     if (auto *r = empty_guard(input, &len)) return r;
+    ensure_decode_tables();
     return base64_decode_impl(input, len, std_decode_tbl);
 }
 
@@ -139,5 +144,6 @@ extern "C" const char *__ry_base64_encode_url_safe(const char *input) {
 extern "C" const char *__ry_base64_decode_url_safe(const char *input) {
     size_t len;
     if (auto *r = empty_guard(input, &len)) return r;
+    ensure_decode_tables();
     return base64_decode_impl(input, len, url_decode_tbl);
 }
