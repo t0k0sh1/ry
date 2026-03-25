@@ -42,6 +42,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedPostconditions_ = cg_.current_postconditions_;
     savedEnsureBindings_ = cg_.ensure_bindings_;
     savedInEnsureContext_ = cg_.in_ensure_context_;
+    savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.current_postconditions_ = nullptr;
@@ -57,6 +58,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
     cg_.in_ensure_context_ = savedInEnsureContext_;
+    cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
 }
 
 // ===== Coverage instrumentation =====

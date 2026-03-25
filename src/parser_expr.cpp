@@ -627,18 +627,53 @@ ExprPtr Parser::parseLambdaExpr() {
     return node;
 }
 
+ExprPtr Parser::makeErrorPropagateExpr(ExprPtr operand, const Token &tok) {
+    auto ep = std::make_unique<ErrorPropagateExpr>();
+    ep->operand = std::move(operand);
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(ep);
+    node->loc = locFromToken(tok);
+    return node;
+}
+
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
-           lex_.peek().kind == TokenKind::BangBang) {
+           lex_.peek().kind == TokenKind::BangBang || lex_.peek().kind == TokenKind::Question) {
+        if (lex_.peek().kind == TokenKind::Question) {
+            auto saved = lex_.saveState();
+            Token qTok = lex_.next(); // consume '?'
+            TokenKind next = lex_.peek().kind;
+            // Disambiguate postfix ? (error propagation) from ternary ? :
+            // by checking whether the next token can start an expression
+            // but is NOT an operator/postfix continuation (those mean the
+            // ? was postfix, e.g. `result? + 1` or `result?[0]`).
+            // Tokens that unambiguously continue a postfix expression
+            // (binary operators, field access, chained ?).
+            bool isPostfixContinuation =
+                (next == TokenKind::Plus || next == TokenKind::Minus ||
+                 next == TokenKind::Tilde ||
+                 next == TokenKind::Dot || next == TokenKind::BangBang ||
+                 next == TokenKind::Question);
+            if (!isPostfixContinuation &&
+                (next == TokenKind::Ident || next == TokenKind::Number ||
+                 next == TokenKind::Float || next == TokenKind::String ||
+                 next == TokenKind::True || next == TokenKind::False ||
+                 next == TokenKind::LParen || next == TokenKind::LBrace ||
+                 next == TokenKind::Not || next == TokenKind::Fn ||
+                 next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
+                 next == TokenKind::FStringStart ||
+                 next == TokenKind::Spawn || next == TokenKind::Await ||
+                 next == TokenKind::LBracket)) {
+                lex_.restoreState(std::move(saved));
+                break; // delegate to parseTernary()
+            }
+            expr = makeErrorPropagateExpr(std::move(expr), qTok);
+            continue;
+        }
         if (lex_.peek().kind == TokenKind::BangBang) {
             Token bangTok = lex_.next(); // consume '!!'
-            auto ep = std::make_unique<ErrorPropagateExpr>();
-            ep->operand = std::move(expr);
-            auto node = std::make_unique<ExprNode>();
-            node->data = std::move(ep);
-            node->loc = locFromToken(bangTok);
-            expr = std::move(node);
+            expr = makeErrorPropagateExpr(std::move(expr), bangTok);
             continue;
         }
         if (lex_.peek().kind == TokenKind::LBracket) {

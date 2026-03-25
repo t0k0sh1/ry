@@ -8,7 +8,7 @@
 
 | 優先順序 | 運算子 | 說明 | 結合性 |
 |---|---|---|---|
-| 0 | `!!` | 錯誤傳播（後綴） | 左 |
+| 0 | `?` | 錯誤傳播（後綴） | 左 |
 | 1 | `()` | 分組 | — |
 | 2 | `+x` `-x` `~x` | 一元正號、負號、位元 NOT | 右 |
 | 3 | `**` | 次方 | 右結合 |
@@ -111,6 +111,41 @@ flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
+
+## 錯誤傳播運算子（`?`）
+
+後綴 `?` 運算子用於解包 `Result` 值。如果值為 `Ok(v)`，則求值為 `v`。如果值為 `Err(e)`，則外層函式立即回傳 `Err(e)`。
+
+外層函式必須具有 `Result` 回傳型別。
+
+```python
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    x = safe_divide(a, b)?    # 若 b == 0 則提前回傳 Err
+    y = safe_divide(x, c)?    # 若 c == 0 則提前回傳 Err
+    return Ok(y + 1)
+```
+
+這等同於以下 `match` 模式，但更加簡潔：
+
+```python
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
+        case Ok(x):
+            match safe_divide(x, c):
+                case Ok(y):
+                    return Ok(y + 1)
+                case Err(e):
+                    return Err(e)
+        case Err(e):
+            return Err(e)
+```
+
+---
 
 ## 三元條件運算子
 

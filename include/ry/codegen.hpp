@@ -190,6 +190,7 @@ private:
         std::vector<ExprPtr> *savedPostconditions_;
         std::vector<std::string> *savedEnsureBindings_;
         bool savedInEnsureContext_;
+        std::string savedFnReturnType_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
