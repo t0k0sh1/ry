@@ -1250,7 +1250,7 @@ llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *res
     return phi;
 }
 
-llvm::Value *CodeGen::buildErrorFromRuntime(const std::string &errFnName) {
+llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {
     auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
     auto errFn = mod_->getOrInsertFunction(errFnName, errFnTy);
     llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
@@ -1260,7 +1260,7 @@ llvm::Value *CodeGen::buildErrorFromRuntime(const std::string &errFnName) {
     return errStruct;
 }
 
-llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const std::string &errFnName) {
+llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const char *errFnName) {
     llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
     llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
         llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
@@ -1269,7 +1269,7 @@ llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const std::string &errFn
         [&]() { return buildErrValue(buildErrorFromRuntime(errFnName), resTy); });
 }
 
-llvm::Value *CodeGen::wrapStatusAsResult(llvm::Value *status, const std::string &errFnName) {
+llvm::Value *CodeGen::wrapStatusAsResult(llvm::Value *status, const char *errFnName) {
     llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
     llvm::Value *isErr = builder_.CreateICmpNE(status,
         llvm::ConstantInt::get(i64Ty_, 0), "is_err");
@@ -1307,6 +1307,7 @@ llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
     case NativeConstantKind::Infinity: return llvm::ConstantFP::getInfinity(f64Ty_);
     case NativeConstantKind::NaN:      return llvm::ConstantFP::getNaN(f64Ty_);
     }
+    llvm_unreachable("unhandled NativeConstantKind");
 }
 
 // ===== Builtin Math =====

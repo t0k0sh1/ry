@@ -396,9 +396,9 @@ private:
     llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
                                    std::function<llvm::Value*()> buildOk,
                                    std::function<llvm::Value*()> buildErr);
-    llvm::Value *buildErrorFromRuntime(const std::string &errFnName = "__ry_get_last_error");
-    llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const std::string &errFnName = "__ry_get_last_error");
-    llvm::Value *wrapStatusAsResult(llvm::Value *status, const std::string &errFnName = "__ry_get_last_error");
+    llvm::Value *buildErrorFromRuntime(const char *errFnName = "__ry_get_last_error");
+    llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
+    llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg,
