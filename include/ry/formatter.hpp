@@ -39,6 +39,7 @@ private:
     void emit(const std::string &s);
     void emitIndent();
     void emitNewline();
+    bool endsWithBlankLine() const;
     void indent();
     void dedent();
 

@@ -83,6 +83,9 @@ void Formatter::emitIndent() {
 void Formatter::emitNewline() { out_ += '\n'; }
 void Formatter::indent() { ++indent_level_; }
 void Formatter::dedent() { --indent_level_; }
+bool Formatter::endsWithBlankLine() const {
+    return out_.size() >= 2 && out_[out_.size() - 1] == '\n' && out_[out_.size() - 2] == '\n';
+}
 
 // --- Comment emission ---
 
@@ -92,8 +95,8 @@ void Formatter::emitCommentsBefore(int line) {
         if (c.line >= line) break;
         if (c.is_inline) { ++next_comment_idx_; continue; }
 
-        // Preserve blank line before comment if there was one in source
-        if (last_emitted_line_ > 0 && c.line > last_emitted_line_ + 1) {
+        // Preserve blank line before comment if source had one and output doesn't already
+        if (last_emitted_line_ > 0 && c.line > last_emitted_line_ + 1 && !endsWithBlankLine()) {
             emitNewline();
         }
 
@@ -976,7 +979,7 @@ std::string Formatter::format(const Program &prog) {
     }
 
     // Remove trailing blank lines (keep single newline at end)
-    while (out_.size() > 1 && out_[out_.size() - 1] == '\n' && out_[out_.size() - 2] == '\n') {
+    while (endsWithBlankLine()) {
         out_.pop_back();
     }
 

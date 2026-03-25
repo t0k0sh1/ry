@@ -32,7 +32,6 @@ fn http_cookies(req: HttpRequest) -> Map<str, str>
 @native
 fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
 
-
 # HTTP client operations
 @native
 fn http_get(url: str) -> Result<HttpClientResponse, Error>
