@@ -16,6 +16,10 @@ static void setLastError(const char *fmt, ...) {
     va_end(args);
 }
 
+extern "C" void __ry_set_last_error(const char *msg) {
+    snprintf(last_error_buf, sizeof(last_error_buf), "%s", msg);
+}
+
 extern "C" const char *__ry_get_last_error() {
     // Return a heap copy so it can be stored as a ry str
     return strdup(last_error_buf);

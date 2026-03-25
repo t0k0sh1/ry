@@ -30,7 +30,8 @@ int64_t __ry_write_bytes(const char *path, void *list);
 void *__ry_str_to_bytes(const char *s);
 const char *__ry_bytes_to_str(void *list);
 
-// Error message retrieval (thread-local)
+// Error message retrieval/setting (thread-local)
 const char *__ry_get_last_error();
+void __ry_set_last_error(const char *msg);
 
 }

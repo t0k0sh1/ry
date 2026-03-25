@@ -10,6 +10,7 @@ void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Valu
     else if (typeName == "HttpRequest")  http_request_values_.insert(val);
     else if (typeName == "HttpResponse") http_response_values_.insert(val);
     else if (typeName == "HttpClientResponse") http_client_response_values_.insert(val);
+    else if (typeName == "JsonValue") json_value_values_.insert(val);
 }
 
 void CodeGen::emitStmt(AwaitStmt &s) {

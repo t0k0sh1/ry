@@ -497,7 +497,8 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "cancel" || s.callee == "is_cancelled" ||
         s.callee == "spawn_in" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
-        s.callee == "shutdown") {
+        s.callee == "shutdown" ||
+        s.callee == "json_free") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
@@ -691,6 +692,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "HttpRequest")  return ptrTy_;
     if (typeName == "HttpResponse") return ptrTy_;
     if (typeName == "HttpClientResponse") return ptrTy_;
+
+    // JSON opaque handle type
+    if (typeName == "JsonValue") return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
