@@ -329,6 +329,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
 void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     bool is_const = hasDirective(s.directives, "const");
     bool is_native = hasDirective(s.directives, "native");
 
@@ -422,6 +423,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
 
 void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
+    emitCoverage(s->loc);
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
     llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "while.body", fn_);
     llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "while.end", fn_);
@@ -447,6 +449,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 }
 
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
+    emitCoverage(s->loc);
     if (hasDirective(s->directives, "parallel")) {
         if (s->var_name2.has_value())
             codegenError(s->loc, "@parallel for does not support destructuring iteration");
@@ -725,6 +728,7 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
 
 void CodeGen::emitStmt(BreakStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     if (loop_stack_.empty())
         codegenError("break outside of loop");
     builder_.CreateBr(loop_stack_.back().second);
@@ -735,6 +739,7 @@ void CodeGen::emitStmt(BreakStmt &s) {
 
 void CodeGen::emitStmt(ContinueStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     if (loop_stack_.empty())
         codegenError("continue outside of loop");
     builder_.CreateBr(loop_stack_.back().first);
@@ -748,6 +753,7 @@ void CodeGen::emitStmt(EllipsisStmt &) {
 
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     // Get the variable name from the object expression
     auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
     if (!varExpr)
@@ -872,6 +878,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
 }
 
 void CodeGen::emitStmt(TupleDestructStmt &s) {
+    emitCoverage(s.loc);
     llvm::Value *tupleVal = emitExpr(*s.value);
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
     if (!structTy)
@@ -896,6 +903,7 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
+    emitCoverage(s->loc);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
 
     for (auto &branch : s->branches) {
@@ -1150,6 +1158,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
 
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     llvm::Value *objPtr = emitExpr(*s.object);
     llvm::Value *key = emitExpr(*s.index);
     llvm::Value *val = emitExpr(*s.value);

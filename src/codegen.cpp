@@ -1,13 +1,18 @@
 #include "ry/codegen.hpp"
+#include "ry/coverage_runtime.hpp"
 #include "ry/diagnostic.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
-CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_unique<llvm::LLVMContext>()),
-                     mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
-                     builder_(*ctx_),
-                     test_mode_(test_mode),
-                     sm_(sm) {
+CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
+                 int coverage_file_id_offset)
+    : ctx_(std::make_unique<llvm::LLVMContext>()),
+      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
+      builder_(*ctx_),
+      test_mode_(test_mode),
+      coverage_mode_(coverage_mode),
+      coverage_file_id_offset_(coverage_file_id_offset),
+      sm_(sm) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
     i8Ty_  = llvm::Type::getInt8Ty(*ctx_);
@@ -52,6 +57,26 @@ CodeGen::FnScope::~FnScope() {
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
     cg_.in_ensure_context_ = savedInEnsureContext_;
+}
+
+// ===== Coverage instrumentation =====
+
+void CodeGen::emitCoverage(const SourceLocation &loc) {
+    if (!coverage_mode_ || loc.line <= 0) return;
+    int32_t gid = loc.file_id + coverage_file_id_offset_;
+
+    // Register line at compile time (deduplicated)
+    int64_t key = (static_cast<int64_t>(gid) << 32) | loc.line;
+    if (registered_coverage_lines_.insert(key).second)
+        __ry_coverage_register_line(gid, loc.line);
+
+    // Emit runtime hit call
+    auto *ft = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_, i32Ty_}, false);
+    auto hitFn = mod_->getOrInsertFunction("__ry_coverage_hit", ft);
+    builder_.CreateCall(hitFn,
+        {llvm::ConstantInt::get(i32Ty_, gid),
+         llvm::ConstantInt::get(i32Ty_, loc.line)});
 }
 
 // ===== Error helpers =====
@@ -399,6 +424,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
+    emitCoverage(s.loc);
     if (s.callee == "describe") {
         emitDescribeCall(s);
         return;

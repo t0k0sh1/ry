@@ -12,6 +12,7 @@
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
 #include "ry/file_watcher.hpp"
+#include "ry/coverage_runtime.hpp"
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -53,9 +54,31 @@ static void test_timeout_handler(int) {
     _exit(124);
 }
 
+// Coverage: accumulated filenames across multiple runRyFile calls.
+// Maps global file_id to filename for user files (excluding stdlib).
+static std::vector<std::string> g_coverage_filenames;
+static int g_coverage_file_count = 0;
+// Global offset to avoid file_id collisions across separate runRyFile calls.
+static int g_coverage_file_id_offset = 0;
+
+static void resetCoverageState() {
+    __ry_coverage_reset();
+    g_coverage_file_id_offset = 0;
+    g_coverage_file_count = 0;
+    g_coverage_filenames.clear();
+}
+
+static void emitCoverageReport() {
+    if (g_coverage_file_count <= 0) return;
+    std::vector<const char*> ptrs(g_coverage_file_count);
+    for (int i = 0; i < g_coverage_file_count; ++i)
+        ptrs[i] = g_coverage_filenames[i].c_str();
+    __ry_coverage_report_summary(ptrs.data(), g_coverage_file_count);
+}
+
 // Compile and run a .ry file via JIT. Returns the JIT function's exit code.
 static int runRyFile(const std::string &filepath, bool test_mode,
-                     const char *argv0) {
+                     const char *argv0, bool coverage_mode = false) {
     auto bufOrErr = MemoryBuffer::getFile(filepath);
     if (!bufOrErr) {
         errs() << "Error reading file: " << filepath << "\n";
@@ -99,7 +122,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     prog = loader.resolveImports(prog, referrer_dir);
 
     // CodeGen -> ThreadSafeModule
-    CodeGen cg(test_mode, &sm);
+    CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset);
     ThreadSafeModule tsm = cg.compile(prog);
 
     // Build LLJIT
@@ -168,6 +191,19 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         }
     }
 
+    // Register coverage runtime symbols if in coverage mode
+    if (coverage_mode) {
+        auto &es = jit->getExecutionSession();
+        SymbolMap covSymbols;
+        covSymbols[es.intern("__ry_coverage_hit")] =
+            {ExecutorAddr::fromPtr(&__ry_coverage_hit), JITSymbolFlags::Exported};
+        if (auto err = mainJD.define(absoluteSymbols(std::move(covSymbols)))) {
+            errs() << "Failed to define coverage symbols: ";
+            logAllUnhandledErrors(std::move(err), errs());
+            return 1;
+        }
+    }
+
     // Add module
     if (auto err = jit->addIRModule(std::move(tsm))) {
         errs() << "Failed to add IR module: ";
@@ -191,6 +227,26 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     int result = fn();
     if (test_mode)
         alarm(0);
+
+    // Record filenames for coverage reporting (accumulates across calls).
+    // Exclude stdlib files (those under lib_dir) from the report.
+    if (coverage_mode) {
+        int fc = sm.getFileCount();
+        int new_total = g_coverage_file_id_offset + fc;
+        if (new_total > g_coverage_file_count) {
+            g_coverage_filenames.resize(new_total);
+            for (int i = 0; i < fc; ++i) {
+                int gid = g_coverage_file_id_offset + i;
+                const std::string &fname = sm.getFilename(i);
+                if (!lib_dir.empty() && fname.find(lib_dir) == 0)
+                    g_coverage_filenames[gid] = "";  // stdlib: skip in report
+                else
+                    g_coverage_filenames[gid] = fname;
+            }
+            g_coverage_file_count = new_total;
+        }
+        g_coverage_file_id_offset += fc;
+    }
 
     return result > 0 ? 1 : 0;
 }
@@ -224,13 +280,14 @@ static std::vector<std::string> findTestFiles(const std::string &root_dir) {
 
 // Run multiple test files sequentially and report results
 static int runTestFilesSequential(const std::vector<std::string> &test_files,
-                                  const char *argv0) {
+                                  const char *argv0, bool coverage = false) {
+    if (coverage) resetCoverageState();
     int total_failed = 0;
     int total_files = 0;
     for (const auto &tf : test_files) {
         ++total_files;
         try {
-            int failed = runRyFile(tf, /*test_mode=*/true, argv0);
+            int failed = runRyFile(tf, /*test_mode=*/true, argv0, coverage);
             total_failed += failed;
         } catch (const DiagnosticError &e) {
             errs() << e.what();
@@ -244,6 +301,7 @@ static int runTestFilesSequential(const std::vector<std::string> &test_files,
         std::printf("\n%d test files executed, %d total failures\n",
                     total_files, total_failed);
     }
+    if (coverage) emitCoverageReport();
     return total_failed > 0 ? 1 : 0;
 }
 
@@ -382,14 +440,14 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
 
 // Run multiple test files and report results
 static int runTestFiles(const std::vector<std::string> &test_files,
-                        const char *argv0, bool parallel) {
+                        const char *argv0, bool parallel, bool coverage = false) {
     if (!parallel || test_files.size() <= 1) {
-        return runTestFilesSequential(test_files, argv0);
+        return runTestFilesSequential(test_files, argv0, coverage);
     }
     std::string exe_path = ry::self_update::detail::get_executable_path();
     if (exe_path.empty()) {
         errs() << "Warning: cannot resolve executable path, falling back to sequential\n";
-        return runTestFilesSequential(test_files, argv0);
+        return runTestFilesSequential(test_files, argv0, coverage);
     }
     unsigned hw = std::thread::hardware_concurrency();
     int parallelism = static_cast<int>(std::min({hw, 8u, static_cast<unsigned>(test_files.size())}));
@@ -399,13 +457,13 @@ static int runTestFiles(const std::vector<std::string> &test_files,
 
 // Discover *.test.ry files in a directory and run them
 static int discoverAndRunTests(const std::string &dir, const char *argv0,
-                               bool parallel) {
+                               bool parallel, bool coverage = false) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0, parallel);
+    return runTestFiles(test_files, argv0, parallel, coverage);
 }
 
 int main(int argc, char *argv[]) {
@@ -434,6 +492,7 @@ int main(int argc, char *argv[]) {
     InitializeNativeTargetAsmParser();
 
     bool test_mode = false;
+    bool coverage_mode = false;
     const char *filename = nullptr;
 
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
@@ -443,6 +502,7 @@ int main(int argc, char *argv[]) {
         // Parse test subcommand arguments
         bool parallel = false;
         bool watch = false;
+        bool coverage = false;
         const char *target = nullptr;
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
@@ -451,9 +511,16 @@ int main(int argc, char *argv[]) {
             } else if (std::strcmp(argv[i], "-w") == 0 ||
                        std::strcmp(argv[i], "--watch") == 0) {
                 watch = true;
+            } else if (std::strcmp(argv[i], "--coverage") == 0 ||
+                       std::strcmp(argv[i], "--cov") == 0) {
+                coverage = true;
             } else if (!target) {
                 target = argv[i];
             }
+        }
+        if (coverage && parallel) {
+            errs() << "Warning: --coverage is not supported with --parallel, falling back to sequential\n";
+            parallel = false;
         }
 
         if (target) {
@@ -462,12 +529,12 @@ int main(int argc, char *argv[]) {
             if (fs::is_directory(target_str, ec)) {
                 if (watch) {
                     const char *a0 = argv[0];
-                    ry::watchAndRunTests(target_str, [target_str, a0, parallel]() {
-                        discoverAndRunTests(target_str, a0, parallel);
+                    ry::watchAndRunTests(target_str, [target_str, a0, parallel, coverage]() {
+                        discoverAndRunTests(target_str, a0, parallel, coverage);
                     });
                     return 0;
                 }
-                return discoverAndRunTests(target_str, argv[0], parallel);
+                return discoverAndRunTests(target_str, argv[0], parallel, coverage);
             }
             if (ec) {
                 errs() << "Error: cannot access " << target_str << ": "
@@ -492,6 +559,7 @@ int main(int argc, char *argv[]) {
             }
             // ry test <file.ry> — single file test (parallel flag ignored)
             test_mode = true;
+            coverage_mode = coverage;
             filename = target;
             __ry_args_init(0, nullptr);
         } else {
@@ -504,16 +572,16 @@ int main(int argc, char *argv[]) {
             if (watch) {
                 std::string root_dir = *root;
                 const char *a0 = argv[0];
-                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel]() {
-                    discoverAndRunTests(root_dir, a0, parallel);
+                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel, coverage]() {
+                    discoverAndRunTests(root_dir, a0, parallel, coverage);
                 });
                 return 0;
             }
-            return discoverAndRunTests(*root, argv[0], parallel);
+            return discoverAndRunTests(*root, argv[0], parallel, coverage);
         }
     } else {
         errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [-p | --parallel] [-w | --watch] [<file.ry> | <dir>]\n";
+        errs() << "       ry test [-p | --parallel] [-w | --watch] [--coverage | --cov] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry fmt [--check] [<file|dir>]\n";
         errs() << "       ry new <project-name>\n";
@@ -523,7 +591,10 @@ int main(int argc, char *argv[]) {
     }
 
     try {
-        return runRyFile(filename, test_mode, argv[0]);
+        if (coverage_mode) resetCoverageState();
+        int rc = runRyFile(filename, test_mode, argv[0], coverage_mode);
+        if (coverage_mode) emitCoverageReport();
+        return rc;
     } catch (const DiagnosticError &e) {
         errs() << e.what();
         return 1;

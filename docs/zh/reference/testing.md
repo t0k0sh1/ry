@@ -17,6 +17,8 @@ ry test -p tests/    # 並行執行指定目錄的測試
 ry test -w           # 監看模式：檔案變更時自動重新執行測試（-w 或 --watch）
 ry test -w -p        # 監看模式 + 並行執行
 ry test -w tests/    # 監看指定目錄
+ry test --coverage   # 所有測試 + 行覆蓋率摘要
+ry test --cov        # --coverage 的縮寫
 ```
 
 結束代碼為 0 表示所有測試通過，1 表示有測試失敗。
@@ -216,6 +218,31 @@ it("addition is commutative", fn(a: int, b: int):
 - 失敗時會顯示反例（導致失敗的輸入值）
 - 在第一次失敗時停止測試
 - 支援的參數型別: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (隨機 ASCII、0-20 字元)
+
+---
+
+## 測試覆蓋率
+
+使用 `--coverage`（或 `--cov`）旗標來測量行覆蓋率:
+
+```bash
+ry test --coverage                    # 所有測試 + 覆蓋率摘要
+ry test --cov tests/spec/math.test.ry # 單一檔案
+ry test --coverage tests/spec/        # 目錄
+```
+
+### 輸出範例
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- 僅報告使用者程式碼；標準函式庫檔案會被排除
+- `--coverage` 與 `--parallel` 同時指定時，會退回為循序執行
 
 ---
 

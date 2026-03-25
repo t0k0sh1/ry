@@ -480,6 +480,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
 // ===== Test: ExpectStmt =====
 
 void CodeGen::emitStmt(ExpectStmt &s) {
+    emitCoverage(s.loc);
     if (!test_mode_)
         codegenError("'expect' is only allowed in test mode (use 'ry test')");
 

@@ -17,7 +17,8 @@
 
 class CodeGen {
 public:
-    explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr);
+    explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
+                     bool coverage_mode = false, int coverage_file_id_offset = 0);
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
@@ -108,9 +109,14 @@ private:
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     int lambda_counter_ = 0;
     bool test_mode_ = false;
+    bool coverage_mode_ = false;
+    int coverage_file_id_offset_ = 0;
     int test_fn_counter_ = 0;
     const SourceManager *sm_ = nullptr;
     SourceLocation current_loc_;
+    std::unordered_set<int64_t> registered_coverage_lines_;
+
+    void emitCoverage(const SourceLocation &loc);
 
     // Contract (Design by Contract) support
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
