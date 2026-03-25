@@ -645,18 +645,26 @@ ExprPtr Parser::parsePostfix() {
             Token qTok = lex_.next(); // consume '?'
             TokenKind next = lex_.peek().kind;
             // Disambiguate postfix ? (error propagation) from ternary ? :
-            // by checking whether the next token can start an expression.
-            if (next == TokenKind::Ident || next == TokenKind::Number ||
-                next == TokenKind::Float || next == TokenKind::String ||
-                next == TokenKind::True || next == TokenKind::False ||
-                next == TokenKind::LParen || next == TokenKind::LBrace ||
-                next == TokenKind::Not || next == TokenKind::Fn ||
-                next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
-                next == TokenKind::FStringStart ||
-                next == TokenKind::Spawn || next == TokenKind::Await ||
-                next == TokenKind::LBracket ||
-                next == TokenKind::Minus || next == TokenKind::Plus ||
-                next == TokenKind::Tilde) {
+            // by checking whether the next token can start an expression
+            // but is NOT an operator/postfix continuation (those mean the
+            // ? was postfix, e.g. `result? + 1` or `result?[0]`).
+            // Tokens that unambiguously continue a postfix expression
+            // (binary operators, field access, chained ?).
+            bool isPostfixContinuation =
+                (next == TokenKind::Plus || next == TokenKind::Minus ||
+                 next == TokenKind::Tilde ||
+                 next == TokenKind::Dot || next == TokenKind::BangBang ||
+                 next == TokenKind::Question);
+            if (!isPostfixContinuation &&
+                (next == TokenKind::Ident || next == TokenKind::Number ||
+                 next == TokenKind::Float || next == TokenKind::String ||
+                 next == TokenKind::True || next == TokenKind::False ||
+                 next == TokenKind::LParen || next == TokenKind::LBrace ||
+                 next == TokenKind::Not || next == TokenKind::Fn ||
+                 next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
+                 next == TokenKind::FStringStart ||
+                 next == TokenKind::Spawn || next == TokenKind::Await ||
+                 next == TokenKind::LBracket)) {
                 lex_.restoreState(std::move(saved));
                 break; // delegate to parseTernary()
             }

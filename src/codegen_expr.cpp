@@ -1265,6 +1265,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     if (!isResultType(fnRetTy))
         codegenError("'?' operator can only be used in a function that returns Result");
 
+    llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
+    llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
+    if (operandResultTy->getElementType(2) != retResultTy->getElementType(2))
+        codegenError("'?' operator error type mismatch: operand and function return different error types");
+
     llvm::Value *isOk = builder_.CreateExtractValue(operandVal, 0, "is_ok");
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "try.ok", fn_);
     llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "try.err", fn_);
@@ -1273,13 +1278,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     // Err path: extract error, wrap in function return type, return
     builder_.SetInsertPoint(errBB);
     llvm::Value *errVal = builder_.CreateExtractValue(operandVal, 2, "err_val");
-    llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
     llvm::Value *retErr = buildErrValue(errVal, retResultTy);
+    emitEnsureChecks(retErr);
     builder_.CreateRet(retErr);
 
     // Ok path: extract ok value, continue
     builder_.SetInsertPoint(okBB);
-    return builder_.CreateExtractValue(operandVal, 1, "ok_val");
+    llvm::Value *okVal = builder_.CreateExtractValue(operandVal, 1, "ok_val");
+    propagateAllMetadata(operandVal, okVal);
+    return okVal;
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {

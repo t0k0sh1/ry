@@ -12,6 +12,9 @@ fn chained(a: int, b: int, c: int) -> Result<int, Error>:
   y = safe_divide(x, c)?
   return Ok(y)
 
+fn inline_expr(a: int, b: int) -> Result<int, Error>:
+  return Ok(safe_divide(a, b)? + 1)
+
 describe("Result type", fn():
   it("Ok wraps value", fn():
     res = Ok(42)
@@ -62,6 +65,13 @@ describe("Result type", fn():
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
+  )
+  it("? in expression position with arithmetic", fn():
+    match inline_expr(10, 2):
+      case Ok(v):
+        expect(v).to_eq(6)
+      case Err(e):
+        fail("unexpected error")
   )
   it("match Ok with wildcard for Unit result", fn():
     fn unit_ok() -> Result<Unit, Error>:
