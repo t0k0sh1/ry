@@ -129,20 +129,36 @@ export RY_HOME="$HOME/.ry"   # default
 
 The `RY_ENV` environment variable controls the runtime environment mode. You can also use the `--env=<value>` CLI flag.
 
-| Value | Description | Lib search |
-|-------|-------------|------------|
-| `production` (default) | Production mode | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
-| `development` | Project development | Same as production (reserved for future extensions) |
-| `internal` | Ry language development | `exe/../lib` → `exe/lib` only (`$RY_HOME` skipped) |
+| Value | Alias | `.env` loading | Lib search |
+|-------|-------|---------------|------------|
+| `prod` (default) | `production` | Disabled | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
+| `test` | — | `.env.test` → `.env` | Same as `prod` |
+| `staging` | — | `.env.staging` → `.env` | Same as `prod` |
+| `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` only (`$RY_HOME` skipped) |
+| (unset) | — | `.env` only | Same as `prod` |
 
-Custom values (e.g., `staging`, `testing`) are also accepted and behave like `production`.
+Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
+
+In `prod` mode, `.env` files are not loaded for security — production secrets should be managed via infrastructure-level environment variables (CI/CD, secret managers, etc.).
+
+For other modes, `.env.<env>` is loaded first (if it exists), then `.env`. Environment-specific values take precedence because existing variables are not overwritten.
 
 ```bash
+# Short form (recommended)
+RY_ENV=dev ./build/ry app.ry
+
+# Long form (backward compatible)
+RY_ENV=development ./build/ry app.ry
+
+# CLI flag
+./build/ry --env=dev test
+
+# prod mode: .env is NOT loaded
+RY_ENV=prod ./build/ry app.ry
+
 # Use exe-relative stdlib only (for Ry language development)
 RY_ENV=internal ./build/ry test
-
-# Or use CLI flag
-./build/ry --env=internal test
 ```
 
 ---

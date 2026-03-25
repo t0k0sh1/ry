@@ -10,6 +10,12 @@
 
 namespace ry {
 
+std::string resolveRyEnv(const std::string &value) {
+    if (value == "production") return "prod";
+    if (value == "development") return "dev";
+    return value;
+}
+
 std::vector<std::pair<std::string, std::string>>
 parseDotEnv(const std::string &content) {
     std::vector<std::pair<std::string, std::string>> result;
@@ -61,24 +67,30 @@ parseDotEnv(const std::string &content) {
     return result;
 }
 
-void loadDotEnv(const std::string &dir) {
-    namespace fs = std::filesystem;
-    fs::path env_path = fs::path(dir) / ".env";
-
-    std::ifstream file(env_path);
+static void loadEnvFile(const std::filesystem::path &path) {
+    std::ifstream file(path);
     if (!file.is_open()) return;
 
     std::ostringstream buf;
     buf << file.rdbuf();
-    std::string content = buf.str();
-
-    auto entries = parseDotEnv(content);
+    auto entries = parseDotEnv(buf.str());
     for (const auto &[key, value] : entries) {
         if (setenv(key.c_str(), value.c_str(), 0) != 0) {
-            std::cerr << "warning: .env: failed to set '" << key
+            std::cerr << "warning: " << path.filename().string()
+                      << ": failed to set '" << key
                       << "': " << strerror(errno) << "\n";
         }
     }
+}
+
+void loadDotEnv(const std::string &dir, const std::string &env_name) {
+    if (env_name == "prod") return;
+
+    std::filesystem::path base(dir);
+    if (!env_name.empty()) {
+        loadEnvFile(base / (".env." + env_name));
+    }
+    loadEnvFile(base / ".env");
 }
 
 } // namespace ry
