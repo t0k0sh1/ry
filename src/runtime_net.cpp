@@ -290,6 +290,13 @@ void __ry_set_socket_timeval(int fd, int option, int64_t ms) {
     ::setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv));
 }
 
+int __ry_tcp_take_fd(void *stream) {
+    auto *handle = (TcpStreamHandle *)stream;
+    int fd = handle->fd;
+    delete handle;
+    return fd;
+}
+
 void __ry_apply_default_recv_timeout(int fd) {
     struct timeval current_tv{};
     socklen_t tv_len = sizeof(current_tv);

@@ -3,6 +3,7 @@
 #include "ry/runtime_tls.hpp"
 
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -316,7 +317,16 @@ struct HttpTransport {
     SSL *ssl;  // nullptr for plain TCP
 
     ssize_t do_recv(void *buf, size_t len) {
-        if (ssl) return (ssize_t)SSL_read(ssl, buf, (int)len);
+        if (ssl) {
+            int n = SSL_read(ssl, buf, (int)len);
+            if (n > 0) return (ssize_t)n;
+            int err = SSL_get_error(ssl, n);
+            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE)
+                return 0; // transient — caller retries
+            if (err == SSL_ERROR_ZERO_RETURN)
+                return 0; // clean TLS shutdown (EOF)
+            return -1;
+        }
         return ::recv(fd, buf, len, 0);
     }
 
@@ -1115,23 +1125,30 @@ static bool should_redirect_as_get(int status, const char *method) {
 static char *resolve_redirect_url(const char *base_url, const char *location) {
     if (!location || !*location) return nullptr;
 
-    // Absolute URL
-    if (strncmp(location, "http://", 7) == 0) {
+    // Absolute URL (http:// or https://)
+    if (strncmp(location, "http://", 7) == 0 || strncmp(location, "https://", 8) == 0) {
         return strdup(location);
     }
 
-    // Protocol-relative URL
+    // Determine base scheme
+    const char *authority_start = nullptr;
+    std::string scheme;
+    if (strncmp(base_url, "https://", 8) == 0) {
+        scheme = "https:";
+        authority_start = base_url + 8;
+    } else if (strncmp(base_url, "http://", 7) == 0) {
+        scheme = "http:";
+        authority_start = base_url + 7;
+    } else {
+        return nullptr;
+    }
+
+    // Protocol-relative URL — inherit scheme from base
     if (location[0] == '/' && location[1] == '/') {
-        std::string resolved = "http:";
-        resolved += location;
+        std::string resolved = scheme + location;
         return strdup(resolved.c_str());
     }
 
-    // Need scheme+authority from base_url
-    // base_url is like "http://host:port/path..."
-    if (strncmp(base_url, "http://", 7) != 0) return nullptr;
-
-    const char *authority_start = base_url + 7;
     const char *origin_end = strpbrk(authority_start, "/?#");
 
     std::string origin(base_url, origin_end ? (size_t)(origin_end - base_url)
@@ -1232,8 +1249,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
                 __ry_http_parsed_url_free(parsed);
                 break;
             }
-            transport.fd = ((TcpStreamHandle *)stream)->fd;
-            delete (TcpStreamHandle *)stream;
+            transport.fd = __ry_tcp_take_fd(stream);
         }
 
         // Build HTTP/1.1 request

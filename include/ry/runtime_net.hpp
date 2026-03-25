@@ -15,6 +15,10 @@ void __ry_set_socket_timeval(int fd, int option, int64_t ms);
 // Apply 30s default recv timeout if none has been set.
 void __ry_apply_default_recv_timeout(int fd);
 
+// Extract fd from a TcpStreamHandle and free the handle.
+// Caller takes ownership of the fd.
+int __ry_tcp_take_fd(void *stream);
+
 extern "C" {
 
 void *__ry_bind(const char *host, int64_t port);

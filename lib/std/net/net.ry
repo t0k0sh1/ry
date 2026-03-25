@@ -21,7 +21,7 @@ fn shutdown(listener: TcpListener) -> Unit
 @native
 fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 
-# Timeout configuration (milliseconds)
+# Timeout configuration (milliseconds) — TcpStream
 @native
 fn set_timeout(stream: TcpStream, ms: int) -> Unit
 
@@ -30,3 +30,13 @@ fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
 
 @native
 fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
+
+# Timeout configuration (milliseconds) — TlsStream
+@native
+fn set_timeout(stream: TlsStream, ms: int) -> Unit
+
+@native
+fn set_recv_timeout(stream: TlsStream, ms: int) -> Unit
+
+@native
+fn set_send_timeout(stream: TlsStream, ms: int) -> Unit

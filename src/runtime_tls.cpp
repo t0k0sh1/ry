@@ -6,9 +6,11 @@
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
 
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <new>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -47,7 +49,8 @@ ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len) {
     auto *data = static_cast<const char *>(buf);
     size_t remaining = len;
     while (remaining > 0) {
-        int n = SSL_write(ssl, data, (int)remaining);
+        int chunk = (remaining > (size_t)INT_MAX) ? INT_MAX : (int)remaining;
+        int n = SSL_write(ssl, data, chunk);
         if (n <= 0) {
             int err = SSL_get_error(ssl, n);
             if (err == SSL_ERROR_WANT_WRITE || err == SSL_ERROR_WANT_READ)
@@ -69,20 +72,17 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     void *tcp = __ry_connect(host, port);
     if (!tcp) return nullptr;
 
-    // TcpStreamHandle layout: { int fd; }
-    int fd = *reinterpret_cast<int *>(tcp);
+    int fd = __ry_tcp_take_fd(tcp);
 
     SSL_CTX *ctx = get_global_tls_ctx();
     if (!ctx) {
         ::close(fd);
-        free(tcp);
         return nullptr;
     }
 
     SSL *ssl = SSL_new(ctx);
     if (!ssl) {
         ::close(fd);
-        free(tcp);
         return nullptr;
     }
 
@@ -97,7 +97,7 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     if (ret != 1) {
         SSL_free(ssl);
         ::close(fd);
-        free(tcp);
+
         return nullptr;
     }
 
@@ -107,12 +107,9 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
-        free(tcp);
+
         return nullptr;
     }
-
-    // Free the TcpStreamHandle — we manage the fd ourselves now
-    free(tcp);
 
     auto *handle = new (std::nothrow) TlsStreamHandle;
     if (!handle) {
@@ -142,6 +139,8 @@ extern "C" int64_t __ry_tls_send(void *tls_stream, void *byte_list) {
 // ============================================================
 
 extern "C" void *__ry_tls_recv(void *tls_stream, int64_t max_bytes) {
+    auto *h = (TlsStreamHandle *)tls_stream;
+    __ry_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
         auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
         header->len = 0;

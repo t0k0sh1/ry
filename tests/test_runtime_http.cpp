@@ -597,7 +597,7 @@ TEST(RuntimeHttpClient, ParseUrlHttpsAccepted) {
     EXPECT_EQ(u->port, 443);
     EXPECT_STREQ(u->path, "/");
     EXPECT_TRUE(u->is_https);
-    free(u->host); free(u->path); free(u);
+    __ry_http_parsed_url_free(u);
 }
 
 TEST(RuntimeHttpClient, ParseUrlHttpsWithPort) {
@@ -607,14 +607,14 @@ TEST(RuntimeHttpClient, ParseUrlHttpsWithPort) {
     EXPECT_EQ(u->port, 8443);
     EXPECT_STREQ(u->path, "/api");
     EXPECT_TRUE(u->is_https);
-    free(u->host); free(u->path); free(u);
+    __ry_http_parsed_url_free(u);
 }
 
 TEST(RuntimeHttpClient, ParseUrlHttpNotHttps) {
     auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
     ASSERT_NE(u, nullptr);
     EXPECT_FALSE(u->is_https);
-    free(u->host); free(u->path); free(u);
+    __ry_http_parsed_url_free(u);
 }
 
 TEST(RuntimeHttpClient, ParseUrlNoScheme) {
