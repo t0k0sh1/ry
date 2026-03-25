@@ -10,7 +10,7 @@ fn function_name(param_name: type, ...) -> return_type:
     return value
 ```
 
-- Parameter types are required.
+- Parameter types are optional. When omitted, the parameter is treated as `any` type.
 - Return type is optional (defaults to `Unit` when omitted).
 - The body is an indented block.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
@@ -31,7 +31,7 @@ fn greet(name: str):
 
 | Item | Description |
 |---|---|
-| Parameter type | Required. All parameters must have type annotations |
+| Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted |
 | Return type | Optional. Defaults to `Unit` (equivalent to void) when omitted |
 | `Unit` | Return type for functions that return no value |
 
@@ -41,6 +41,9 @@ fn no_return(x: int):      # Return type Unit (omitted)
 
 fn get_value() -> int:     # Return type int
     return 42
+
+fn identity(x) -> any:    # Parameter type any (omitted)
+    return x
 ```
 
 ---
@@ -132,6 +135,9 @@ Anonymous functions can be defined inline.
 ```python
 # Single expression (the expression value is returned; return type is inferred)
 fn(param_name: type, ...): expression
+
+# Parameter type can be omitted (defaults to any)
+fn(param_name, ...): expression
 
 # Multi-line block
 fn(param_name: type, ...):

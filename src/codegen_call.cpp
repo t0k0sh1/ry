@@ -1169,9 +1169,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                     " arguments, got " + std::to_string(argVals.size()));
 
             for (size_t i = 0; i < argVals.size(); ++i) {
-                if (argVals[i]->getType() != info.paramTypes[i])
-                    codegenError(
-                        "lambda call: argument " + std::to_string(i) + " type mismatch");
+                if (argVals[i]->getType() != info.paramTypes[i]) {
+                    if (isAnyType(info.paramTypes[i]))
+                        argVals[i] = wrapInAny(argVals[i]);
+                    else
+                        codegenError(
+                            "lambda call: argument " + std::to_string(i) + " type mismatch");
+                }
             }
 
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");

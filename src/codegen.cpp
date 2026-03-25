@@ -290,8 +290,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
             } else {
                 if (emittedArgs[i]->getType() != entry.paramTypes[i]) {
-                    // Check if param is a union type that accepts this arg type
-                    if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
+                    if (isAnyType(entry.paramTypes[i])) {
+                        // Match: any type accepts all primitives; wrapping deferred to arg building
+                    } else if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
                         std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
                         auto uIt = union_type_info_.find(norm);
                         if (uIt != union_type_info_.end()) {
@@ -321,6 +322,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     for (size_t i = 0; i < args.size(); ++i) {
         if (isNone[i]) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
+        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
+                   isAnyType(chosen->paramTypes[i])) {
+            outArgVals.push_back(wrapInAny(emittedArgs[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    i < chosen->paramTypeNames.size() &&
                    isUnionType(chosen->paramTypeNames[i])) {

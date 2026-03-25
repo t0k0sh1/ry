@@ -100,11 +100,11 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 parseError(paramName.line, "parameter name '" + paramName.value + "' must be snake_case");
             lex_.next(); // consume param name
 
-            if (lex_.peek().kind != TokenKind::Colon)
-                parseError("expected ':' after parameter name");
-            lex_.next(); // consume ':'
-
-            std::string paramType = parseTypeName();
+            std::string paramType = "any";  // default when type is omitted
+            if (lex_.peek().kind == TokenKind::Colon) {
+                lex_.next(); // consume ':'
+                paramType = parseTypeName();
+            }
 
             fnStmt->params.push_back({paramName.value, paramType});
 

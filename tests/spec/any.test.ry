@@ -16,3 +16,48 @@ describe("any type", fn():
     expect(true).to_eq(true)
   )
 )
+
+describe("optional param type", fn():
+  it("single param without type annotation", fn():
+    fn identity(x) -> any:
+      return x
+    result: any = identity(42)
+    expect(true).to_eq(true)
+  )
+  it("multiple params without type annotation", fn():
+    fn take_two(x, y) -> any:
+      return x
+    result: any = take_two(1, 2)
+    expect(true).to_eq(true)
+  )
+  it("mixed: some typed, some untyped", fn():
+    fn mixed(x: int, y) -> int:
+      return x
+    expect(mixed(10, "hello")).to_eq(10)
+  )
+  it("lambda without type annotation", fn():
+    f = fn(x) -> any: x
+    result: any = f(42)
+    expect(true).to_eq(true)
+  )
+  it("param accepts int", fn():
+    fn accept(v) -> bool:
+      return true
+    expect(accept(42)).to_eq(true)
+  )
+  it("param accepts float", fn():
+    fn accept_f(v) -> bool:
+      return true
+    expect(accept_f(3.14)).to_eq(true)
+  )
+  it("param accepts str", fn():
+    fn accept_s(v) -> bool:
+      return true
+    expect(accept_s("hello")).to_eq(true)
+  )
+  it("param accepts bool", fn():
+    fn accept_b(v) -> bool:
+      return true
+    expect(accept_b(false)).to_eq(true)
+  )
+)
