@@ -1391,16 +1391,32 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
         builder_.CreateRetVoid();
     }
 
-    llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-    llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
-    llvm::Value *task = builder_.CreateCall(
-        spawnFn,
-        {
-            builder_.CreateBitCast(thunk, ptrTy_),
-            envPtr,
-            llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
-        },
-        "task");
+    llvm::Value *task = nullptr;
+    if (!task_group_stack_.empty()) {
+        llvm::FunctionType *groupSpawnTy = llvm::FunctionType::get(
+            ptrTy_, {ptrTy_, ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee groupSpawnFn = mod_->getOrInsertFunction("__ry_task_group_spawn", groupSpawnTy);
+        task = builder_.CreateCall(
+            groupSpawnFn,
+            {
+                task_group_stack_.back(),
+                builder_.CreateBitCast(thunk, ptrTy_),
+                envPtr,
+                llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
+            },
+            "task");
+    } else {
+        llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
+        llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
+        task = builder_.CreateCall(
+            spawnFn,
+            {
+                builder_.CreateBitCast(thunk, ptrTy_),
+                envPtr,
+                llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
+            },
+            "task");
+    }
     task_result_types_[task] = resultTy;
     return task;
 }

@@ -15,6 +15,9 @@
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
 | `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
+| `cancel(task)` | spawn されたタスクのキャンセルを要求する |
+| `is_cancelled()` | 現在のタスクがキャンセルされた場合に `true` を返す |
+| `task_group(fn)` | ラムダを実行し、その中で spawn された全タスクを自動 join する |
 | `env(key)` | 環境変数を `Option<str>` で返す |
 | `env(key, default)` | 環境変数を返す。未設定なら `default` を返す |
 | `channel[T]()` | unbuffered な `Channel<T>` を作成 |
@@ -271,7 +274,52 @@ sleep(1000)    # 1秒待機
 sleep(0)       # 即座に返る
 ```
 
-> **注意:** `spawn` したタスク内で `sleep` を呼ぶと、そのワーカースレッドがブロックされます。多数のタスクが同時に sleep すると、スレッドプールが枯渇し、他のタスクが sleep 完了まで停止する可能性があります。
+> **注意:** `spawn` したタスク内で `sleep` を呼ぶとワーカースレッドがブロックされますが、`cancel()` で中断できます。
+
+---
+
+## cancel
+
+**シグネチャ:** `cancel(task: Task<T>) -> Unit`
+
+spawn されたタスクの協調的キャンセルを要求します。タスクは次のキャンセルポイント（チャネル操作、`sleep`、`select`）で中断されます。既に完了したタスクに対する `cancel` は何もしません。
+
+```python
+async fn long_work() -> int:
+    sleep(60000)
+    return 42
+
+t: Task<int> = long_work()
+cancel(t)
+result = join(t)   # キャンセルされたのでゼロ値（int なら 0）を返す
+```
+
+---
+
+## is_cancelled
+
+**シグネチャ:** `is_cancelled() -> bool`
+
+現在のタスクが `cancel()` でキャンセルされている場合に `true` を返します。タスク外で呼ばれた場合やキャンセルされていない場合は `false` を返します。
+
+---
+
+## task_group
+
+**シグネチャ:** `task_group(body: fn() -> Unit) -> Unit`
+
+構造化並行性のスコープを作成します。ラムダ本体内で `spawn` された全タスクは、ラムダの終了時に自動的に join されます。子タスクがエラーを投げた場合、残りの子タスクはキャンセルされ、エラーが親に伝播されます。
+
+```python
+fn compute(x: int) -> int:
+    return x * 10
+
+task_group(fn():
+    t1 = spawn compute(3)
+    t2 = spawn compute(4)
+)
+# ここでは両方のタスクの完了が保証される
+```
 
 ---
 

@@ -1,0 +1,39 @@
+describe("task_group", fn():
+  it("joins all spawned tasks via join", fn():
+    fn compute(x: int) -> int:
+      return x * 10
+    task_group(fn():
+      t1 = spawn compute(3)
+      t2 = spawn compute(4)
+      r = join(t1) + join(t2)
+      expect(r).to_eq(70)
+    )
+  )
+
+  it("auto-joins tasks at scope exit", fn():
+    fn add(a: int, b: int) -> int:
+      return a + b
+    task_group(fn():
+      t1 = spawn add(10, 20)
+      t2 = spawn add(30, 40)
+    )
+    expect(1).to_eq(1)
+  )
+
+  it("works with channels", fn():
+    ch: Channel<int> = channel[int](3)
+    fn send_to_ch(ch: Channel<int>, v: int) -> int:
+      send(ch, v)
+      return v
+    task_group(fn():
+      t1 = spawn send_to_ch(ch, 10)
+      t2 = spawn send_to_ch(ch, 20)
+      t3 = spawn send_to_ch(ch, 30)
+    )
+    close(ch)
+    total = 0
+    for x in ch:
+      total = total + x
+    expect(total).to_eq(60)
+  )
+)

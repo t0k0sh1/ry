@@ -281,6 +281,43 @@ Use `available_parallelism()` to inspect the runtime worker count.
 
 ---
 
+## Task Cancellation
+
+`cancel(task)` requests cooperative cancellation of a spawned task. The task is interrupted at the next cancellation point (channel operations, `sleep`, `select`).
+
+```python
+async fn long_work() -> int:
+    sleep(60000)
+    return 42
+
+t: Task<int> = long_work()
+cancel(t)
+result = join(t)   # returns zero value (0 for int)
+```
+
+Use `is_cancelled()` inside a task to poll for cancellation in CPU-bound loops.
+
+---
+
+## Structured Concurrency (task_group)
+
+`task_group` creates a scope that guarantees all spawned tasks complete before execution continues. Tasks spawned inside a `task_group` lambda are auto-joined at scope exit.
+
+```python
+fn compute(x: int) -> int:
+    return x * 10
+
+task_group(fn():
+    t1 = spawn compute(3)
+    t2 = spawn compute(4)
+)
+# both tasks guaranteed complete here
+```
+
+If a child task throws an error, remaining children are cancelled and the error propagates to the parent.
+
+---
+
 ## break
 
 - Immediately exits the innermost loop (`while` or `for`).

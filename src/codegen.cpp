@@ -423,6 +423,36 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     return callResult;
 }
 
+void CodeGen::emitTaskGroupCall(CallStmt &s) {
+    if (s.args.size() != 1)
+        codegenError("task_group() takes exactly 1 argument (a lambda)");
+
+    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
+    if (!lambda)
+        codegenError("task_group() argument must be a lambda");
+
+    LambdaExpr &lam = **lambda;
+
+    llvm::FunctionType *newTy = llvm::FunctionType::get(ptrTy_, {}, false);
+    llvm::FunctionCallee newFn = mod_->getOrInsertFunction("__ry_task_group_new", newTy);
+    llvm::Value *group = builder_.CreateCall(newFn, {}, "task_group");
+
+    task_group_stack_.push_back(group);
+
+    for (auto &stmt : lam.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+    task_group_stack_.pop_back();
+
+    llvm::FunctionType *awaitTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee awaitFn = mod_->getOrInsertFunction("__ry_task_group_await", awaitTy);
+    builder_.CreateCall(awaitFn, {group});
+
+    llvm::FunctionType *destroyTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee destroyFn = mod_->getOrInsertFunction("__ry_task_group_destroy", destroyTy);
+    builder_.CreateCall(destroyFn, {group});
+}
+
 void CodeGen::emitStmt(CallStmt &s) {
     emitCoverage(s.loc);
     if (s.callee == "describe") {
@@ -435,6 +465,10 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (s.callee == "mock") {
         emitMockCall(s);
+        return;
+    }
+    if (s.callee == "task_group") {
+        emitTaskGroupCall(s);
         return;
     }
     auto it = builtins_.find(s.callee);
@@ -455,7 +489,9 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "delete_file" || s.callee == "write_bytes" ||
         s.callee == "listen" ||
         s.callee == "http_listen" ||
-        s.callee == "sleep") {
+        s.callee == "sleep" ||
+        s.callee == "cancel" || s.callee == "is_cancelled" ||
+        s.callee == "spawn_in") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
