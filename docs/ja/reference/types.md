@@ -21,6 +21,7 @@
 | ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 組み込みエラー型 |
+| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | 任意のプリミティブ値を保持できるタグ付きユニオン |
 | `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型（複数の型のいずれかを保持） |
 | int リテラル | i64 | `42`, `0 \| 1` | int リテラル型（値の制約） |
 | str リテラル | ptr | `"N" \| "S"` | str リテラル型（値の制約） |
@@ -43,6 +44,7 @@ m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
 fn_val: fn(int) -> int = fn(x: int): x * 2
 u: int | str = 42
+a: any = 42
 ```
 
 ## 使用可能な型名一覧
@@ -62,6 +64,7 @@ u: int | str = 42
 | `Set<T>` | ジェネリック集合型 |
 | `fn(T1, ...) -> R` | 関数型 |
 | `Error` | 組み込みエラー型（`message: str`、`code: int`） |
+| `any` | 任意のプリミティブ値（`int`, `float`, `bool`, `str`）を保持できる組み込み型 |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
 | ユーザー定義型名 | `record` または `enum` キーワードで宣言した型 |
 | int リテラル型 | int リテラル値による制約（例: `42`、`0 \| 1`） |

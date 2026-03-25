@@ -1,0 +1,18 @@
+describe("any type", fn():
+  it("wrap int", fn():
+    x: any = 42
+    expect(true).to_eq(true)
+  )
+  it("wrap float", fn():
+    x: any = 3.14
+    expect(true).to_eq(true)
+  )
+  it("wrap str", fn():
+    x: any = "hello"
+    expect(true).to_eq(true)
+  )
+  it("wrap bool", fn():
+    x: any = true
+    expect(true).to_eq(true)
+  )
+)

@@ -143,6 +143,7 @@ static const StdlibDispatcher stdlib_dispatchers[] = {
 - セルフ検証
 - ドキュメント更新
 - 作業中に現在の PR スコープ外の問題を発見した場合、ユーザーに内容を提示し、承認を得てから GitHub issue を作成する
+- スコープ外とした改善項目について、既存の対応 issue があるか検索する。あれば該当 issue にコメントし、なければ新規 issue を作成する
 
 ### ユーザーが明示的に指示すること
 
