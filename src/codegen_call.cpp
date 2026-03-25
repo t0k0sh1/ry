@@ -1134,6 +1134,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinNet(*e))     return v;
     if (auto *v = emitBuiltinHttp(*e))    return v;
     if (auto *v = emitBuiltinJson(*e))   return v;
+    if (auto *v = emitBuiltinBase64(*e)) return v;
 
     // Validate @native fn type signatures (after builtin dispatch)
     validateNativeCallArgs(e->callee, e->args);

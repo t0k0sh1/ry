@@ -1,0 +1,104 @@
+from base64 import encode, decode, encode_url_safe, decode_url_safe
+
+describe("base64", fn():
+  describe("encode", fn():
+    it("basic string", fn():
+      expect(encode("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ==")
+    )
+    it("empty string", fn():
+      expect(encode("")).to_eq("")
+    )
+    it("single character", fn():
+      expect(encode("A")).to_eq("QQ==")
+    )
+    it("two characters", fn():
+      expect(encode("AB")).to_eq("QUI=")
+    )
+    it("three characters", fn():
+      expect(encode("ABC")).to_eq("QUJD")
+    )
+  )
+
+  describe("decode", fn():
+    it("basic string", fn():
+      match decode("SGVsbG8sIFdvcmxkIQ=="):
+        case Ok(s):
+          expect(s).to_eq("Hello, World!")
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("empty string", fn():
+      match decode(""):
+        case Ok(s):
+          expect(s).to_eq("")
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("no padding", fn():
+      match decode("QUJD"):
+        case Ok(s):
+          expect(s).to_eq("ABC")
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("invalid base64", fn():
+      match decode("!!!invalid!!!"):
+        case Ok(s):
+          fail("expected error but got Ok")
+        case Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+  )
+
+  describe("encode_url_safe", fn():
+    it("basic string", fn():
+      expect(encode_url_safe("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ")
+    )
+    it("uses - and _ instead of + and /", fn():
+      # "?>>" encodes to "Pz4+" in standard, "Pz4-" in URL-safe
+      std_encoded = encode("?>>")
+      url_encoded = encode_url_safe("?>>")
+      expect(contains(std_encoded, "+")).to_eq(true)
+      expect(contains(url_encoded, "+")).to_eq(false)
+      expect(contains(url_encoded, "/")).to_eq(false)
+    )
+  )
+
+  describe("decode_url_safe", fn():
+    it("roundtrip", fn():
+      original = "Hello, World! subjects?_d>>"
+      encoded = encode_url_safe(original)
+      match decode_url_safe(encoded):
+        case Ok(s):
+          expect(s).to_eq(original)
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("invalid input", fn():
+      match decode_url_safe("!!!"):
+        case Ok(s):
+          fail("expected error but got Ok")
+        case Err(e):
+          expect(e.message).to_contain("invalid")
+    )
+  )
+
+  describe("roundtrip", fn():
+    it("standard base64", fn():
+      original = "The quick brown fox jumps over the lazy dog"
+      match decode(encode(original)):
+        case Ok(s):
+          expect(s).to_eq(original)
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("longer string", fn():
+      original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+      match decode(encode(original)):
+        case Ok(s):
+          expect(s).to_eq(original)
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+  )
+)

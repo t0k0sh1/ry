@@ -46,6 +46,7 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | [數學函式](reference/math.md) | PI、E、sqrt、sin、cos、abs、floor、ceil、round 等 |
 | [I/O 函式](reference/io.md) | read_text、write_text、file_exists、read_bytes、str_to_bytes 等 |
 | [JSON](reference/json.md) | parse、stringify、json_get、json_at、json_str、json_int 等 |
+| [Base64](reference/base64.md) | encode、decode、encode_url_safe、decode_url_safe |
 | [套件系統](reference/packages.md) | from/import 的文法、目錄套件、std、RY_HOME |
 | [測試功能](reference/testing.md) | 使用 describe/it/expect 進行測試 |
 | [專案管理](reference/project.md) | ry init 與 ry.toml 的規格 |
