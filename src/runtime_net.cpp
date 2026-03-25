@@ -230,8 +230,7 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
         return makeEmptyIOList();
     }
     auto *handle = (TcpStreamHandle *)stream;
-    struct timeval tv = {30, 0};
-    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    __ry_apply_default_recv_timeout(handle->fd);
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
     header->data = (int8_t *)malloc((size_t)max_bytes);
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
@@ -273,6 +272,58 @@ extern "C" void __ry_tcp_listener_shutdown(void *listener) {
     auto *handle = (TcpListenerHandle *)listener;
     handle->shutdown.store(true, std::memory_order_relaxed);
     ::shutdown(handle->fd, SHUT_RDWR);
+}
+
+// ============================================================
+// Timeout configuration
+// ============================================================
+
+void __ry_set_socket_timeval(int fd, int option, int64_t ms) {
+    struct timeval tv;
+    if (ms <= 0) {
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+    } else {
+        tv.tv_sec = ms / 1000;
+        tv.tv_usec = (ms % 1000) * 1000;
+    }
+    ::setsockopt(fd, SOL_SOCKET, option, &tv, sizeof(tv));
+}
+
+int __ry_tcp_take_fd(void *stream) {
+    auto *handle = (TcpStreamHandle *)stream;
+    int fd = handle->fd;
+    delete handle;
+    return fd;
+}
+
+void __ry_apply_default_recv_timeout(int fd) {
+    struct timeval current_tv{};
+    socklen_t tv_len = sizeof(current_tv);
+    if (::getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &current_tv, &tv_len) == 0 &&
+        current_tv.tv_sec == 0 && current_tv.tv_usec == 0) {
+        struct timeval tv = {30, 0};
+        ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+}
+
+extern "C" void __ry_tcp_set_timeout(void *stream, int64_t ms) {
+    if (!stream) return;
+    auto *handle = (TcpStreamHandle *)stream;
+    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+}
+
+extern "C" void __ry_tcp_set_recv_timeout(void *stream, int64_t ms) {
+    if (!stream) return;
+    auto *handle = (TcpStreamHandle *)stream;
+    __ry_set_socket_timeval(handle->fd, SO_RCVTIMEO, ms);
+}
+
+extern "C" void __ry_tcp_set_send_timeout(void *stream, int64_t ms) {
+    if (!stream) return;
+    auto *handle = (TcpStreamHandle *)stream;
+    __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
 }
 
 extern "C" int64_t __ry_listener_port(void *listener) {

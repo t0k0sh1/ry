@@ -6,6 +6,7 @@
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
     if (typeName == "TcpListener") tcp_listener_values_.insert(val);
     else if (typeName == "TcpStream")   tcp_stream_values_.insert(val);
+    else if (typeName == "TlsStream")   tls_stream_values_.insert(val);
     else if (typeName == "HttpRequest")  http_request_values_.insert(val);
     else if (typeName == "HttpResponse") http_response_values_.insert(val);
     else if (typeName == "HttpClientResponse") http_client_response_values_.insert(val);

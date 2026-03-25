@@ -74,6 +74,10 @@ bool CodeGen::isTcpStream(llvm::Value *val) {
     return lookupValueSet(tcp_stream_values_, val);
 }
 
+bool CodeGen::isTlsStream(llvm::Value *val) {
+    return lookupValueSet(tls_stream_values_, val);
+}
+
 bool CodeGen::isHttpRequest(llvm::Value *val) {
     return lookupValueSet(http_request_values_, val);
 }
@@ -89,6 +93,7 @@ bool CodeGen::isHttpClientResponse(llvm::Value *val) {
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
     if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
+    if (tls_stream_values_.count(src))   tls_stream_values_.insert(dst);
     if (http_request_values_.count(src))  http_request_values_.insert(dst);
     if (http_response_values_.count(src)) http_response_values_.insert(dst);
     if (http_client_response_values_.count(src)) http_client_response_values_.insert(dst);
@@ -97,6 +102,7 @@ void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
     if (lookupValueSetWide(tcp_listener_values_, src)) tcp_listener_values_.insert(dst);
     if (lookupValueSetWide(tcp_stream_values_, src))   tcp_stream_values_.insert(dst);
+    if (lookupValueSetWide(tls_stream_values_, src))   tls_stream_values_.insert(dst);
     if (lookupValueSetWide(http_request_values_, src))  http_request_values_.insert(dst);
     if (lookupValueSetWide(http_response_values_, src)) http_response_values_.insert(dst);
     if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);

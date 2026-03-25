@@ -541,8 +541,8 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     free(handle);
 }
 
-// --- ParsedUrl struct for tests ---
-struct ParsedUrl { char *host; int64_t port; char *path; };
+// --- ParsedUrl struct for tests (must match runtime_http.cpp layout) ---
+struct ParsedUrl { char *host; int64_t port; char *path; bool is_https; };
 
 // --- URL parsing tests ---
 
@@ -590,8 +590,31 @@ TEST(RuntimeHttpClient, ParseUrlWithQuery) {
     __ry_http_parsed_url_free(u);
 }
 
-TEST(RuntimeHttpClient, ParseUrlHttpsRejected) {
-    EXPECT_EQ(__ry_http_parse_url("https://example.com"), nullptr);
+TEST(RuntimeHttpClient, ParseUrlHttpsAccepted) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("https://example.com");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 443);
+    EXPECT_STREQ(u->path, "/");
+    EXPECT_TRUE(u->is_https);
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlHttpsWithPort) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("https://example.com:8443/api");
+    ASSERT_NE(u, nullptr);
+    EXPECT_STREQ(u->host, "example.com");
+    EXPECT_EQ(u->port, 8443);
+    EXPECT_STREQ(u->path, "/api");
+    EXPECT_TRUE(u->is_https);
+    __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlHttpNotHttps) {
+    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
+    ASSERT_NE(u, nullptr);
+    EXPECT_FALSE(u->is_https);
+    __ry_http_parsed_url_free(u);
 }
 
 TEST(RuntimeHttpClient, ParseUrlNoScheme) {

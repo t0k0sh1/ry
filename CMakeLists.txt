@@ -13,6 +13,7 @@ endif()
 
 set(CMAKE_CXX_STANDARD 17)
 find_package(Threads REQUIRED)
+find_package(OpenSSL 3.0 REQUIRED)
 
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
@@ -83,12 +84,13 @@ add_library(ry_lib STATIC
     src/file_watcher.cpp
     src/coverage_runtime.cpp
     src/dotenv.cpp
+    src/runtime_tls.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
 )
-target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads)
+target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)

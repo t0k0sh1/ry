@@ -376,6 +376,7 @@ private:
     llvm::Value *emitBuiltinHttp(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
+    bool isTlsStream(llvm::Value *val);
     bool isHttpRequest(llvm::Value *val);
     bool isHttpResponse(llvm::Value *val);
     bool isHttpClientResponse(llvm::Value *val);
@@ -387,6 +388,7 @@ private:
                                  std::unordered_set<llvm::Value*> &trackingSet);
     std::unordered_set<llvm::Value*> tcp_listener_values_;
     std::unordered_set<llvm::Value*> tcp_stream_values_;
+    std::unordered_set<llvm::Value*> tls_stream_values_;
     std::unordered_set<llvm::Value*> http_request_values_;
     std::unordered_set<llvm::Value*> http_response_values_;
     std::unordered_set<llvm::Value*> http_client_response_values_;

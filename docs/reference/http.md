@@ -266,7 +266,7 @@ match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
 
 ### Client Behavior
 
-- Only `http://` URLs are supported. `https://` returns `Err` (TLS support is planned).
+- Both `http://` and `https://` URLs are supported. HTTPS uses TLS with system CA bundle certificate validation.
 - The `Host` header is automatically added based on the URL.
 - `Connection: close` is always sent; each request uses a separate TCP connection.
 - `Content-Length` is always added automatically (including `0` for empty bodies). User-provided `Content-Length` headers are overridden with the correct value.
