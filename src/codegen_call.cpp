@@ -1119,25 +1119,31 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 
-    // Dispatch to category helpers
-    if (auto *v = emitBuiltinIterator(*e))   return v;
-    if (auto *v = emitBuiltinString(*e))     return v;
-    if (auto *v = emitBuiltinConversion(*e)) return v;
-    if (auto *v = emitBuiltinQuery(*e))      return v;
-    if (auto *v = emitBuiltinCore(*e))       return v;
+    // Dispatch to language-builtin helpers (Pattern B: no @native registry)
+    if (auto *v = emitBuiltinIterator(*e))    return v;
+    if (auto *v = emitBuiltinString(*e))      return v;
+    if (auto *v = emitBuiltinConversion(*e))  return v;
+    if (auto *v = emitBuiltinQuery(*e))       return v;
+    if (auto *v = emitBuiltinCore(*e))        return v;
     if (auto *v = emitBuiltinHigherOrder(*e)) return v;
-    if (auto *v = emitBuiltinCollection(*e)) return v;
-    if (auto *v = emitBuiltinSetOps(*e))     return v;
-    if (auto *v = emitBuiltinRegex(*e))     return v;
-    if (auto *v = emitBuiltinMath(*e))      return v;
-    if (auto *v = emitBuiltinIO(*e))       return v;
-    if (auto *v = emitBuiltinNet(*e))     return v;
-    if (auto *v = emitBuiltinHttp(*e))    return v;
-    if (auto *v = emitBuiltinJson(*e))   return v;
-    if (auto *v = emitBuiltinBase64(*e)) return v;
+    if (auto *v = emitBuiltinCollection(*e))  return v;
+    if (auto *v = emitBuiltinSetOps(*e))      return v;
+    if (auto *v = emitBuiltinRegex(*e))       return v;
 
-    // Validate @native fn type signatures (after builtin dispatch)
-    validateNativeCallArgs(e->callee, e->args);
+    // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
+    // To add a new stdlib package, add its emitBuiltin method here.
+    using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
+    static const StdlibDispatcher stdlib_dispatchers[] = {
+        &CodeGen::emitBuiltinMath,
+        &CodeGen::emitBuiltinIO,
+        &CodeGen::emitBuiltinNet,
+        &CodeGen::emitBuiltinHttp,
+        &CodeGen::emitBuiltinJson,
+        &CodeGen::emitBuiltinBase64,
+    };
+    for (auto dispatcher : stdlib_dispatchers) {
+        if (auto *v = (this->*dispatcher)(*e)) return v;
+    }
 
     // Struct constructor
     auto sit = struct_types_.find(e->callee);
@@ -1217,14 +1223,91 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 }
 
 
-// ===== Native constant emission =====
+// ===== Shared Result-wrapping helpers =====
+
+llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
+                                        std::function<llvm::Value*()> buildOk,
+                                        std::function<llvm::Value*()> buildErr) {
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok", fn_);
+    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "res.err", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.merge", fn_);
+    builder_.CreateCondBr(isErr, errBB, okBB);
+
+    builder_.SetInsertPoint(okBB);
+    llvm::Value *okVal = buildOk();
+    builder_.CreateBr(mergeBB);
+    okBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(errBB);
+    llvm::Value *errVal = buildErr();
+    builder_.CreateBr(mergeBB);
+    errBB = builder_.GetInsertBlock();
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(resTy, 2, "result");
+    phi->addIncoming(okVal, okBB);
+    phi->addIncoming(errVal, errBB);
+    return phi;
+}
+
+llvm::Value *CodeGen::buildErrorFromRuntime(const char *errFnName) {
+    auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
+    auto errFn = mod_->getOrInsertFunction(errFnName, errFnTy);
+    llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
+    llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
+    errStruct = builder_.CreateInsertValue(errStruct, errMsg, 0, "err.msg");
+    errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
+    return errStruct;
+}
+
+llvm::Value *CodeGen::wrapPtrAsResult(llvm::Value *ptr, const char *errFnName) {
+    llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+    llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
+    return emitResultBranch(isNull, resTy,
+        [&]() { return buildOkValue(ptr, resTy); },
+        [&]() { return buildErrValue(buildErrorFromRuntime(errFnName), resTy); });
+}
+
+llvm::Value *CodeGen::wrapStatusAsResult(llvm::Value *status, const char *errFnName) {
+    llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
+    llvm::Value *isErr = builder_.CreateICmpNE(status,
+        llvm::ConstantInt::get(i64Ty_, 0), "is_err");
+    return emitResultBranch(isErr, resTy,
+        [&]() { return buildOkValue(llvm::ConstantInt::get(i8Ty_, 0), resTy); },
+        [&]() { return buildErrValue(buildErrorFromRuntime(errFnName), resTy); });
+}
+
+// ===== Native constant registry & emission =====
+
+enum class NativeConstantKind { Value, Infinity, NaN };
+
+struct NativeConstantEntry {
+    NativeConstantKind kind;
+    double value;  // used only when kind == Value
+};
+
+static const std::unordered_map<std::string, NativeConstantEntry> native_constant_registry = {
+    {"PI",  {NativeConstantKind::Value,    3.141592653589793}},
+    {"E",   {NativeConstantKind::Value,    2.718281828459045}},
+    {"Inf", {NativeConstantKind::Infinity, 0.0}},
+    {"NaN", {NativeConstantKind::NaN,      0.0}},
+};
+
+bool CodeGen::isNativeConstant(const std::string &name) {
+    return native_constant_registry.count(name);
+}
 
 llvm::Value *CodeGen::emitNativeConstant(const std::string &name) {
-    if (name == "PI")  return llvm::ConstantFP::get(f64Ty_, 3.141592653589793);
-    if (name == "E")   return llvm::ConstantFP::get(f64Ty_, 2.718281828459045);
-    if (name == "Inf") return llvm::ConstantFP::getInfinity(f64Ty_);
-    if (name == "NaN") return llvm::ConstantFP::getNaN(f64Ty_);
-    codegenError("unknown native constant: " + name);
+    auto it = native_constant_registry.find(name);
+    if (it == native_constant_registry.end())
+        codegenError("unknown native constant: " + name);
+    switch (it->second.kind) {
+    case NativeConstantKind::Value:    return llvm::ConstantFP::get(f64Ty_, it->second.value);
+    case NativeConstantKind::Infinity: return llvm::ConstantFP::getInfinity(f64Ty_);
+    case NativeConstantKind::NaN:      return llvm::ConstantFP::getNaN(f64Ty_);
+    }
+    llvm_unreachable("unhandled NativeConstantKind");
 }
 
 // ===== Builtin Math =====
@@ -1348,28 +1431,3 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
     return nullptr;
 }
 
-void CodeGen::validateNativeCallArgs(const std::string &callee,
-                                      const std::vector<ExprPtr> &args) {
-    auto it = native_fn_arg_counts_.find(callee);
-    if (it == native_fn_arg_counts_.end()) return;
-
-    const auto &counts = it->second;
-
-    for (size_t count : counts) {
-        if (count == args.size())
-            return;
-    }
-
-    // Deduplicate and sort counts for clear error messages
-    std::vector<size_t> unique_counts(counts.begin(), counts.end());
-    std::sort(unique_counts.begin(), unique_counts.end());
-    unique_counts.erase(std::unique(unique_counts.begin(), unique_counts.end()), unique_counts.end());
-
-    std::string expected;
-    for (size_t i = 0; i < unique_counts.size(); ++i) {
-        if (i > 0) expected += " or ";
-        expected += std::to_string(unique_counts[i]);
-    }
-    codegenError(callee + "() expects " + expected +
-        " argument(s), but got " + std::to_string(args.size()));
-}

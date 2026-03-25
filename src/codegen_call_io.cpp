@@ -103,63 +103,6 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         return builder_.CreateCall(fn, args, name);
     };
 
-    // Helper: emit conditional branch to build Result, deferring error construction to error path
-    auto emitResultBranch = [&](llvm::Value *isErr, llvm::StructType *resTy,
-                                 std::function<llvm::Value*()> buildOk,
-                                 std::function<llvm::Value*()> buildErr) -> llvm::Value * {
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "io.ok", fn_);
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "io.err", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "io.merge", fn_);
-        builder_.CreateCondBr(isErr, errBB, okBB);
-
-        builder_.SetInsertPoint(okBB);
-        llvm::Value *okVal = buildOk();
-        builder_.CreateBr(mergeBB);
-        okBB = builder_.GetInsertBlock();
-
-        builder_.SetInsertPoint(errBB);
-        llvm::Value *errVal = buildErr();
-        builder_.CreateBr(mergeBB);
-        errBB = builder_.GetInsertBlock();
-
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(resTy, 2, "io_result");
-        phi->addIncoming(okVal, okBB);
-        phi->addIncoming(errVal, errBB);
-        return phi;
-    };
-
-    // Helper: build Error struct from __ry_get_last_error()
-    auto buildErrorFromLastError = [&]() -> llvm::Value * {
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_get_last_error", errFnTy);
-        llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
-        llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-        errStruct = builder_.CreateInsertValue(errStruct, errMsg, 0, "err.msg");
-        errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-        return errStruct;
-    };
-
-    // Helper: wrap a nullable ptr result into Result<str, Error>
-    auto wrapPtrResult = [&](llvm::Value *ptr) -> llvm::Value * {
-        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
-        return emitResultBranch(isNull, resTy,
-            [&]() { return buildOkValue(ptr, resTy); },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
-    };
-
-    // Helper: wrap an int64 status (0=ok, non-zero=err) into Result<Unit, Error>
-    auto wrapStatusResult = [&](llvm::Value *status) -> llvm::Value * {
-        llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
-        llvm::Value *isErr = builder_.CreateICmpNE(status,
-            llvm::ConstantInt::get(i64Ty_, 0), "is_err");
-        return emitResultBranch(isErr, resTy,
-            [&]() { return buildOkValue(llvm::ConstantInt::get(i8Ty_, 0), resTy); },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
-    };
-
     // 0-arg -> str (stdin functions: no Result wrapping)
     if (e.callee == "read_line" || e.callee == "read_all")
         return emitIOCall(e.callee, 0, ptrTy_);
@@ -167,31 +110,31 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
     // read_text(path) -> Result<str, Error>
     if (e.callee == "read_text") {
         llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        return wrapPtrResult(ptr);
+        return wrapPtrAsResult(ptr);
     }
 
     // bytes_to_str(bytes) -> Result<str, Error>
     if (e.callee == "bytes_to_str") {
         llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        return wrapPtrResult(ptr);
+        return wrapPtrAsResult(ptr);
     }
 
     // write_text(path, content) -> Result<Unit, Error>
     if (e.callee == "write_text" || e.callee == "append_text") {
         llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
-        return wrapStatusResult(status);
+        return wrapStatusAsResult(status);
     }
 
     // write_bytes(path, bytes) -> Result<Unit, Error>
     if (e.callee == "write_bytes") {
         llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
-        return wrapStatusResult(status);
+        return wrapStatusAsResult(status);
     }
 
     // delete_file(path) -> Result<Unit, Error>
     if (e.callee == "delete_file") {
         llvm::Value *status = emitIOCall(e.callee, 1, i64Ty_);
-        return wrapStatusResult(status);
+        return wrapStatusAsResult(status);
     }
 
     // file_exists(path) -> bool (i64 truncated to i1) — no Result wrapping
@@ -203,12 +146,7 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
     // read_bytes(path) -> Result<List<byte>, Error>
     if (e.callee == "read_bytes") {
         llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
-        llvm::Value *result = emitResultBranch(isNull, resTy,
-            [&]() { return buildOkValue(ptr, resTy); },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+        llvm::Value *result = wrapPtrAsResult(ptr);
         list_element_types_[result] = i8Ty_;
         return result;
     }

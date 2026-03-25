@@ -58,6 +58,75 @@ RY_ENV=internal ./build/ry test tests/spec/<file>.test.ry # 個別ファイル�
 2. 実装してテスト成功を確認
 3. リファクタリング
 
+## stdlib パッケージの追加手順
+
+新しい標準ライブラリパッケージ（例: `crypto`）を追加するための手順。
+
+### 1. Ry 宣言ファイル作成
+
+`lib/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。ディレクトリスキャンで自動認識されるため、`manifest.json` の更新は不要。
+
+```ry
+@native
+fn sha256(data: str) -> str
+```
+
+### 2. C++ ランタイム実装
+
+`src/runtime_<pkg>.cpp` に `extern "C"` 関数を実装する。関数名は `__ry_<pkg>_<name>` の規約に従う。
+
+```cpp
+extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
+```
+
+### 3. Codegen dispatcher 作成
+
+`src/codegen_call_<pkg>.cpp` を作成し、`include/ry/codegen.hpp` に宣言を追加する。
+
+```cpp
+// codegen_call_<pkg>.cpp
+llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee)) return nullptr;
+    // ... dispatch logic ...
+}
+```
+
+共通ヘルパー（`codegen_call.cpp` に実装済み）を活用する:
+
+| ヘルパー | 用途 |
+|---------|------|
+| `wrapPtrAsResult(ptr, errFn)` | nullable ptr → `Result<T, Error>` |
+| `wrapStatusAsResult(status, errFn)` | int status → `Result<Unit, Error>` |
+| `emitResultBranch(isErr, resTy, buildOk, buildErr)` | カスタム Result 構築 |
+| `buildErrorFromRuntime(errFn)` | ランタイムから Error struct を構築 |
+
+### 4. Dispatcher 登録
+
+`src/codegen_call.cpp` の `stdlib_dispatchers` 配列に 1 行追加する。
+
+```cpp
+static const StdlibDispatcher stdlib_dispatchers[] = {
+    ...
+    &CodeGen::emitBuiltin<Pkg>,  // ← 追加
+};
+```
+
+### 5. ビルド設定
+
+`CMakeLists.txt` の `ry_lib` に `src/runtime_<pkg>.cpp` と `src/codegen_call_<pkg>.cpp` を追加する。
+
+### 定数の追加
+
+`src/codegen_call.cpp` の `native_constant_registry` に 1 行追加するだけでよい。`codegen_stmt.cpp` の変更は不要。
+
+### 既存パッケージへの関数追加
+
+既存パッケージに関数を追加する場合は、以下の 3 箇所を変更する:
+
+1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
+2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
+3. `src/codegen_call_<pkg>.cpp` — dispatch case を追加
+
 ## Git ブランチ運用ルール
 
 - コミット前に現在のブランチを確認し、`main` または `vx.x.x` 形式のブランチにいる場合はコミットを行わないこと

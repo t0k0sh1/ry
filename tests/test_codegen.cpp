@@ -512,3 +512,21 @@ TEST_F(CodeGenTest, ArgsIteration) {
         "for x in args():\n    print(x)",
         {"foo", "bar"}), "foo\nbar\n");
 }
+
+// ===== @native function missing dispatcher detection =====
+
+TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
+    try {
+        runSource(
+            "@native\n"
+            "fn unhandled_native(x: str) -> str\n"
+            "\n"
+            "print(unhandled_native(\"hello\"))\n"
+        );
+        FAIL() << "Expected exception for unhandled @native function";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("not handled by any builtin dispatcher"), std::string::npos)
+            << "Error was: " << msg;
+    }
+}
