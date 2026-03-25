@@ -1168,22 +1168,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
     phi->addIncoming(trueVal, trueEndBB);
     phi->addIncoming(falseVal, falseEndBB);
 
-    // Propagate semantic type metadata to the PHI result
-    if (list_element_types_.count(trueVal))
-        list_element_types_[phi] = list_element_types_[trueVal];
-    if (map_key_types_.count(trueVal)) {
-        map_key_types_[phi] = map_key_types_[trueVal];
-        map_value_types_[phi] = map_value_types_[trueVal];
-    }
-    if (set_element_types_.count(trueVal))
-        set_element_types_[phi] = set_element_types_[trueVal];
-    if (task_result_types_.count(trueVal))
-        task_result_types_[phi] = task_result_types_[trueVal];
-    if (channel_element_types_.count(trueVal))
-        channel_element_types_[phi] = channel_element_types_[trueVal];
-    if (iterator_element_types_.count(trueVal))
-        iterator_element_types_[phi] = iterator_element_types_[trueVal];
-    propagateResourceTracking(trueVal, phi);
+    propagateAllMetadata(trueVal, phi);
 
     return phi;
 }

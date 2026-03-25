@@ -36,7 +36,7 @@ fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
 
 TEST_F(CodeGenTest, NetBindReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match bind("127.0.0.1", 18080):
+match bind("127.0.0.1", 0):
     case Ok(server):
         print("ok")
         close(server)
@@ -66,7 +66,7 @@ match connect("127.0.0.1", 19999):
 
 TEST_F(CodeGenTest, NetListenReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match bind("127.0.0.1", 18082):
+match bind("127.0.0.1", 0):
     case Ok(server):
         match listen(server, 1):
             case Ok(_):

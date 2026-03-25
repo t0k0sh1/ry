@@ -108,6 +108,41 @@ void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) 
     if (lookupValueSetWide(http_client_response_values_, src)) http_client_response_values_.insert(dst);
 }
 
+void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
+    if (auto it = list_element_types_.find(src); it != list_element_types_.end())
+        list_element_types_[dst] = it->second;
+    if (auto it = nested_list_element_types_.find(src); it != nested_list_element_types_.end())
+        nested_list_element_types_[dst] = it->second;
+    if (auto it = map_key_types_.find(src); it != map_key_types_.end())
+        map_key_types_[dst] = it->second;
+    if (auto it = map_value_types_.find(src); it != map_value_types_.end())
+        map_value_types_[dst] = it->second;
+    if (auto it = set_element_types_.find(src); it != set_element_types_.end())
+        set_element_types_[dst] = it->second;
+    if (auto it = fn_type_info_.find(src); it != fn_type_info_.end())
+        fn_type_info_[dst] = it->second;
+    if (auto it = task_result_types_.find(src); it != task_result_types_.end())
+        task_result_types_[dst] = it->second;
+    if (auto it = union_value_types_.find(src); it != union_value_types_.end())
+        union_value_types_[dst] = it->second;
+    if (auto it = enum_value_types_.find(src); it != enum_value_types_.end())
+        enum_value_types_[dst] = it->second;
+    if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
+        channel_element_types_[dst] = it->second;
+    if (auto it = iterator_element_types_.find(src); it != iterator_element_types_.end())
+        iterator_element_types_[dst] = it->second;
+}
+
+void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
+    propagateCollectionMetadata(src, dst);
+    propagateResourceTracking(src, dst);
+}
+
+void CodeGen::propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst) {
+    propagateCollectionMetadata(src, dst);
+    propagateResourceTrackingWide(src, dst);
+}
+
 // Step 1: Hash function resolution helper
 CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     if (keyTy == ptrTy_)
@@ -870,15 +905,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
 
     // Track resource types for subject alloca.
     // Uses wide variant to resolve through Result<T, Error> struct loads.
-    propagateResourceTrackingWide(subject, subjectAlloca);
-
-    // Propagate collection metadata to subject alloca
-    if (auto it = list_element_types_.find(subject); it != list_element_types_.end())
-        list_element_types_[subjectAlloca] = it->second;
-    if (auto it = map_key_types_.find(subject); it != map_key_types_.end())
-        map_key_types_[subjectAlloca] = it->second;
-    if (auto it = map_value_types_.find(subject); it != map_value_types_.end())
-        map_value_types_[subjectAlloca] = it->second;
+    propagateAllMetadataWide(subject, subjectAlloca);
 
     for (size_t i = 0; i < s->arms.size(); ++i) {
         auto &arm = s->arms[i];
@@ -1060,13 +1087,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                         llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
                         llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                         builder_.CreateStore(okVal, varAlloca);
-                        if (auto it = list_element_types_.find(subjectAlloca); it != list_element_types_.end())
-                            list_element_types_[varAlloca] = it->second;
-                        if (auto it = map_key_types_.find(subjectAlloca); it != map_key_types_.end())
-                            map_key_types_[varAlloca] = it->second;
-                        if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
-                            map_value_types_[varAlloca] = it->second;
-                        propagateResourceTracking(subjectAlloca, varAlloca);
+                        propagateAllMetadata(subjectAlloca, varAlloca);
                     }
                 } else if constexpr (std::is_same_v<T, ErrPattern>) {
                     if (pat.binding != "_") {
@@ -1113,14 +1134,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *okVal = builder_.CreateExtractValue(sv, 1, "ok_val");
                     llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, okVal->getType());
                     builder_.CreateStore(okVal, varAlloca);
-                    // Propagate collection metadata from subject to extracted ok value
-                    if (auto it = list_element_types_.find(subjectAlloca); it != list_element_types_.end())
-                        list_element_types_[varAlloca] = it->second;
-                    if (auto it = map_key_types_.find(subjectAlloca); it != map_key_types_.end())
-                        map_key_types_[varAlloca] = it->second;
-                    if (auto it = map_value_types_.find(subjectAlloca); it != map_value_types_.end())
-                        map_value_types_[varAlloca] = it->second;
-                    propagateResourceTracking(subjectAlloca, varAlloca);
+                    propagateAllMetadata(subjectAlloca, varAlloca);
                 }
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
                 if (pat.binding != "_") {

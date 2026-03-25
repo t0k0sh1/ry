@@ -248,8 +248,12 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
         header->cap = 0;
         return header;
     }
+    if (n < (ssize_t)max_bytes) {
+        if (auto *shrunk = (int8_t *)realloc(header->data, (size_t)n))
+            header->data = shrunk;
+    }
     header->len = (int64_t)n;
-    header->cap = max_bytes;
+    header->cap = (int64_t)n;
     return header;
 }
 

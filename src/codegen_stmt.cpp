@@ -1089,27 +1089,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
                 builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
                 scope_stack_.back()[name] = dst;
 
-                if (auto it = list_element_types_.find(src); it != list_element_types_.end())
-                    list_element_types_[dst] = it->second;
-                if (auto it = nested_list_element_types_.find(src); it != nested_list_element_types_.end())
-                    nested_list_element_types_[dst] = it->second;
-                if (auto it = map_key_types_.find(src); it != map_key_types_.end())
-                    map_key_types_[dst] = it->second;
-                if (auto it = map_value_types_.find(src); it != map_value_types_.end())
-                    map_value_types_[dst] = it->second;
-                if (auto it = set_element_types_.find(src); it != set_element_types_.end())
-                    set_element_types_[dst] = it->second;
-                if (auto it = fn_type_info_.find(src); it != fn_type_info_.end())
-                    fn_type_info_[dst] = it->second;
-                if (auto it = task_result_types_.find(src); it != task_result_types_.end())
-                    task_result_types_[dst] = it->second;
-                if (auto it = union_value_types_.find(src); it != union_value_types_.end())
-                    union_value_types_[dst] = it->second;
-                if (auto it = enum_value_types_.find(src); it != enum_value_types_.end())
-                    enum_value_types_[dst] = it->second;
-                if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
-                    channel_element_types_[dst] = it->second;
-                propagateResourceTracking(src, dst);
+                propagateAllMetadata(src, dst);
             }
         }
 

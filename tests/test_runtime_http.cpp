@@ -724,6 +724,7 @@ struct JoinGuard {
 TEST(RuntimeHttpClient, HttpGetBasic) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Custom: test-value\r\n\r\nhello";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
@@ -749,6 +750,7 @@ TEST(RuntimeHttpClient, HttpGetBasic) {
 TEST(RuntimeHttpClient, HttpPostWithBody) {
     std::string response = "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::string captured_request;
@@ -782,6 +784,7 @@ TEST(RuntimeHttpClient, HttpGetConnectionRefused) {
 TEST(RuntimeHttpClient, HttpGetNoContentLength) {
     std::string response = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nno content length body";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
@@ -805,6 +808,7 @@ TEST(RuntimeHttpClient, HttpGetNoContentLength) {
 TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
     std::string response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::string captured_request;
@@ -831,6 +835,7 @@ TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
 TEST(RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
     std::string response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nContent-Length: 2\r\n\r\n{}";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
@@ -1226,6 +1231,7 @@ TEST(RuntimeHttpClient, ChunkedClientResponse) {
         "6\r\n world\r\n"
         "0\r\n\r\n";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
@@ -1256,6 +1262,7 @@ TEST(RuntimeHttpClient, ChunkedClientResponseMultipleChunks) {
         "e\r\n in\r\n\r\nchunks.\r\n"
         "0\r\n\r\n";
     int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
     int port = get_server_port(srv);
 
     std::thread server_thread([&]() {
