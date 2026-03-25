@@ -108,5 +108,6 @@ cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm && cmake --build build 
 
 ### 3. ラベル整理
 
-対象 issue の `wip` ラベルを外し、`fixed` ラベルを付与する。
-PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、ラベルが issue の修正状態を示す唯一の手段となる。
+**セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ時に行う:
+- PR が `vx.x.x` ブランチにマージされた時点で、対象 issue の `wip` ラベルを外し `fixed` ラベルを付与する
+- PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、ラベルが issue の修正状態を示す唯一の手段となる
