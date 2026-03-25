@@ -461,12 +461,16 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
         }
 
-        // Optional 4th argument: max_requests (0 = unlimited)
+        // Optional 4th argument: max_requests (must be > 0)
         llvm::Value *maxReqs = llvm::ConstantInt::get(i64Ty_, 0);
         if (e.args.size() == 4) {
             maxReqs = emitExpr(*e.args[3]);
             if (maxReqs->getType() != i64Ty_)
                 codegenError("http_listen() max_requests must be int");
+            if (auto *maxConst = llvm::dyn_cast<llvm::ConstantInt>(maxReqs)) {
+                if (maxConst->getSExtValue() <= 0)
+                    codegenError("http_listen() max_requests must be a positive integer");
+            }
         }
 
         // 1. bind(host, port)
@@ -512,6 +516,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
         auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
+        auto listenerCloseFn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
         auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
         auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
 
@@ -581,7 +586,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             builder_.CreateCondBr(limitReached, shutdownBB, loopBB);
 
             builder_.SetInsertPoint(shutdownBB);
-            builder_.CreateCall(closeFn, {listener});
+            builder_.CreateCall(listenerCloseFn, {listener});
             builder_.CreateBr(loopEndBB);
         } else {
             builder_.CreateBr(loopBB);

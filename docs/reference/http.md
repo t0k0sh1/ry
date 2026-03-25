@@ -92,7 +92,7 @@ fn start_server(ready: Channel<int>) -> str:
     send(ready, 1)
     http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
         return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
-    , 3)  # Stop after 3 requests
+    , 1)  # Stop after 1 request
     return "done"
 
 ready: Channel<int> = channel[int]()
@@ -106,7 +106,7 @@ match http_get("http://127.0.0.1:8080/"):
     case Err(e):
         print("error")
 
-result = join(t)  # Server exits after 3 requests; join completes
+result = join(t)  # Server exits after 1 request; join completes
 ```
 
 ### Reading Query Parameters
@@ -158,7 +158,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 
 - `http_listen()` binds to the address, starts listening, and enters an accept loop.
 - When called with 3 arguments, the accept loop runs indefinitely.
-- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. This enables `spawn` + `join` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
+- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `spawn` + `join` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
 - Each accepted connection reads one HTTP/1.1 request, calls the handler, sends the response, and closes the connection.
 - `Content-Length` is automatically added to the response if not provided in the headers map.
 - The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
