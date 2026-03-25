@@ -444,6 +444,8 @@ TEST(Formatter, VerifyFormattingReParseFailure) {
 TEST(Formatter, RoundTripChannelGenericSyntax) {
     auto src = "ch: Channel<int> = channel[int]()\n";
     auto first = Formatter::formatSource(src);
+    EXPECT_NE(first.find("channel[int]()"), std::string::npos);
+    EXPECT_EQ(first.find("channel<int>()"), std::string::npos);
     auto second = Formatter::formatSource(first);
     EXPECT_EQ(first, second);
 }
@@ -451,6 +453,7 @@ TEST(Formatter, RoundTripChannelGenericSyntax) {
 TEST(Formatter, RoundTripGroupedExpression) {
     auto src = "x: int = (1 + 2) * 3\n";
     auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, "x: int = (1 + 2) * 3\n");
     auto second = Formatter::formatSource(first);
     EXPECT_EQ(first, second);
 }

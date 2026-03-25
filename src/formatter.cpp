@@ -1130,10 +1130,11 @@ int cmd_fmt(int argc, char *argv[]) {
     }
 
     if (skipped > 0) {
-        std::cerr << skipped << " file(s) skipped (unsafe formatting detected)\n";
+        std::cerr << skipped
+                  << " file(s) skipped (round-trip verification failed)\n";
     }
     if (check_mode && unformatted > 0) {
         std::cerr << unformatted << " file(s) need formatting\n";
     }
-    return (check_mode && unformatted > 0) || skipped > 0 ? 1 : 0;
+    return (check_mode && (unformatted > 0 || skipped > 0)) ? 1 : 0;
 }
