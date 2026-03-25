@@ -136,11 +136,11 @@ private:
 
     // @native let constants
     std::unordered_set<std::string> native_constants_;
+    static bool isNativeConstant(const std::string &name);
     llvm::Value *emitNativeConstant(const std::string &name);
 
     // @native fn signature registry (argument count per overload)
     std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
-    void validateNativeCallArgs(const std::string &callee, const std::vector<ExprPtr> &args);
 
     // Literal/range type constraints
     struct TypeConstraint {
@@ -392,6 +392,14 @@ private:
     void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
+    // Shared Result-wrapping helpers for stdlib dispatchers
+    llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
+                                   std::function<llvm::Value*()> buildOk,
+                                   std::function<llvm::Value*()> buildErr);
+    llvm::Value *buildErrorFromRuntime(const std::string &errFnName = "__ry_get_last_error");
+    llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const std::string &errFnName = "__ry_get_last_error");
+    llvm::Value *wrapStatusAsResult(llvm::Value *status, const std::string &errFnName = "__ry_get_last_error");
+
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg,
                                  std::unordered_set<llvm::Value*> &trackingSet);

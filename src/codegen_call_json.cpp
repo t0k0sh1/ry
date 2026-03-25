@@ -12,51 +12,9 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
 
-    // Helper: build Error struct from __ry_get_last_error()
-    auto buildErrorFromLastError = [&]() -> llvm::Value * {
-        auto errFnTy = llvm::FunctionType::get(ptrTy_, {}, false);
-        auto errFn = mod_->getOrInsertFunction("__ry_get_last_error", errFnTy);
-        llvm::Value *errMsg = builder_.CreateCall(errFn, {}, "err_msg");
-        llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
-        errStruct = builder_.CreateInsertValue(errStruct, errMsg, 0, "err.msg");
-        errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
-        return errStruct;
-    };
-
-    // Helper: emit conditional branch to build Result
-    auto emitResultBranch = [&](llvm::Value *isErr, llvm::StructType *resTy,
-                                 std::function<llvm::Value*()> buildOk,
-                                 std::function<llvm::Value*()> buildErr) -> llvm::Value * {
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "json.ok", fn_);
-        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "json.err", fn_);
-        llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "json.merge", fn_);
-        builder_.CreateCondBr(isErr, errBB, okBB);
-
-        builder_.SetInsertPoint(okBB);
-        llvm::Value *okVal = buildOk();
-        builder_.CreateBr(mergeBB);
-        okBB = builder_.GetInsertBlock();
-
-        builder_.SetInsertPoint(errBB);
-        llvm::Value *errVal = buildErr();
-        builder_.CreateBr(mergeBB);
-        errBB = builder_.GetInsertBlock();
-
-        builder_.SetInsertPoint(mergeBB);
-        llvm::PHINode *phi = builder_.CreatePHI(resTy, 2, "json_result");
-        phi->addIncoming(okVal, okBB);
-        phi->addIncoming(errVal, errBB);
-        return phi;
-    };
-
-    // Helper: wrap a nullable ptr into Result<ptr, Error>, optionally track as JsonValue
-    auto wrapPtrResult = [&](llvm::Value *ptr, bool trackJson = false) -> llvm::Value * {
-        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "is_null");
-        llvm::Value *result = emitResultBranch(isNull, resTy,
-            [&]() { return buildOkValue(ptr, resTy); },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+    // Helper: wrap ptr as Result and optionally track as JsonValue
+    auto wrapJsonPtrResult = [&](llvm::Value *ptr, bool trackJson = false) -> llvm::Value * {
+        llvm::Value *result = wrapPtrAsResult(ptr);
         if (trackJson) json_value_values_.insert(result);
         return result;
     };
@@ -71,7 +29,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_json_parse", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {text}, "json_parse");
-        return wrapPtrResult(ptr, true);
+        return wrapJsonPtrResult(ptr, true);
     }
 
     // stringify(value) -> str
@@ -122,7 +80,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_json_get", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val, key}, "json_get");
-        return wrapPtrResult(ptr, true);
+        return wrapJsonPtrResult(ptr, true);
     }
 
     // json_at(value, index) -> Result<JsonValue, Error>
@@ -136,7 +94,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_json_at", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val, idx}, "json_at");
-        return wrapPtrResult(ptr, true);
+        return wrapJsonPtrResult(ptr, true);
     }
 
     // json_str(value) -> Result<str, Error>
@@ -149,7 +107,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_json_str", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_str");
-        return wrapPtrResult(ptr);
+        return wrapJsonPtrResult(ptr);
     }
 
     // json_int(value) -> Result<int, Error>
@@ -172,7 +130,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
                 llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "json_int_val");
                 return buildOkValue(loaded, resTy);
             },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+            [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
     // json_float(value) -> Result<float, Error>
@@ -194,7 +152,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
                 llvm::Value *loaded = builder_.CreateLoad(f64Ty_, outSlot, "json_float_val");
                 return buildOkValue(loaded, resTy);
             },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+            [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
     // json_bool(value) -> Result<bool, Error>
@@ -217,7 +175,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
                 llvm::Value *boolVal = builder_.CreateTrunc(loaded, i1Ty_, "json_bool_val");
                 return buildOkValue(boolVal, resTy);
             },
-            [&]() { return buildErrValue(buildErrorFromLastError(), resTy); });
+            [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
     // json_len(value) -> int

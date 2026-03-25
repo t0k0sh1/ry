@@ -333,9 +333,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
     bool is_const = hasDirective(s.directives, "const");
     bool is_native = hasDirective(s.directives, "native");
 
-    // @native @const declaration (e.g., PI, E, Inf, NaN)
+    // @native @const declaration
     if (is_native && !s.value) {
-        if (s.name == "PI" || s.name == "E" || s.name == "Inf" || s.name == "NaN") {
+        if (isNativeConstant(s.name)) {
             native_constants_.insert(s.name);
         } else {
             codegenError("unsupported native constant: " + s.name);
