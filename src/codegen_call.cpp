@@ -580,8 +580,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         llvm::FunctionType *cancelTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         llvm::FunctionCallee cancelFn = mod_->getOrInsertFunction("__ry_task_cancel", cancelTy);
-        builder_.CreateCall(cancelFn, {taskVal});
-        return llvm::Constant::getNullValue(ptrTy_);
+        return builder_.CreateCall(cancelFn, {taskVal});
     }
 
     if (e.callee == "is_cancelled") {

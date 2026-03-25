@@ -34,5 +34,6 @@ void *__ry_task_group_new();
 void *__ry_task_group_spawn(void *group, __ry_task_entry_fn entry, void *env, int64_t result_size);
 void __ry_task_group_await(void *group);
 void __ry_task_group_destroy(void *group);
+void __ry_task_group_await_and_destroy(void *group);
 
 }

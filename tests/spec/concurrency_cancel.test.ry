@@ -3,6 +3,8 @@ describe("cancel", fn():
     fn add(a: int, b: int) -> int:
       return a + b
     t: Task<int> = spawn add(1, 2)
+    sleep(50)
+    cancel(t)
     result = join(t)
     expect(result).to_eq(3)
   )

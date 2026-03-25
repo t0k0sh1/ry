@@ -444,13 +444,11 @@ void CodeGen::emitTaskGroupCall(CallStmt &s) {
 
     task_group_stack_.pop_back();
 
-    llvm::FunctionType *awaitTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionCallee awaitFn = mod_->getOrInsertFunction("__ry_task_group_await", awaitTy);
-    builder_.CreateCall(awaitFn, {group});
-
-    llvm::FunctionType *destroyTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionCallee destroyFn = mod_->getOrInsertFunction("__ry_task_group_destroy", destroyTy);
-    builder_.CreateCall(destroyFn, {group});
+    // __ry_task_group_await_and_destroy handles both await and cleanup,
+    // ensuring the group is freed even if a child error is rethrown.
+    llvm::FunctionType *awaitDestroyTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    llvm::FunctionCallee awaitDestroyFn = mod_->getOrInsertFunction("__ry_task_group_await_and_destroy", awaitDestroyTy);
+    builder_.CreateCall(awaitDestroyFn, {group});
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
