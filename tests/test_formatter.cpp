@@ -423,3 +423,37 @@ TEST(Formatter, NativeDefFollowedBySectionCommentIdempotent) {
     std::string second = fmt(first);
     EXPECT_EQ(first, second) << "Formatting is not idempotent:\nFirst:\n" << first << "\nSecond:\n" << second;
 }
+
+// ===== Round-Trip Verification =====
+
+TEST(Formatter, VerifyFormattingStable) {
+    auto src = "x: int = 1\n";
+    auto formatted = Formatter::formatSource(src);
+    std::string reason;
+    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason));
+    EXPECT_TRUE(reason.empty());
+}
+
+TEST(Formatter, VerifyFormattingReParseFailure) {
+    std::string garbage = "{{{{totally broken syntax}}}}";
+    std::string reason;
+    EXPECT_FALSE(Formatter::verifyFormatting(garbage, reason));
+    EXPECT_NE(reason.find("failed to re-parse"), std::string::npos);
+}
+
+TEST(Formatter, RoundTripChannelGenericSyntax) {
+    auto src = "ch: Channel<int> = channel[int]()\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_NE(first.find("channel[int]()"), std::string::npos);
+    EXPECT_EQ(first.find("channel<int>()"), std::string::npos);
+    auto second = Formatter::formatSource(first);
+    EXPECT_EQ(first, second);
+}
+
+TEST(Formatter, RoundTripGroupedExpression) {
+    auto src = "x: int = (1 + 2) * 3\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, "x: int = (1 + 2) * 3\n");
+    auto second = Formatter::formatSource(first);
+    EXPECT_EQ(first, second);
+}

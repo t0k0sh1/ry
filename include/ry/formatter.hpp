@@ -17,6 +17,7 @@ public:
 
     std::string format(const Program &prog);
     static std::string formatSource(const std::string &source, int indent_width = 2);
+    static bool verifyFormatting(const std::string &formatted, std::string &reason);
 
 private:
     std::string source_;
