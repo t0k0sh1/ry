@@ -2,10 +2,10 @@
 
 # I/O Function Reference
 
-Standard I/O and file operations. All functions require explicit import from `std.io`.
+Standard I/O and file operations. All functions require explicit import from `io`.
 
 ```python
-from std.io import read_text, write_text, file_exists
+from io import read_text, write_text, file_exists
 ```
 
 ## Function List
@@ -41,7 +41,7 @@ from std.io import read_text, write_text, file_exists
 ### Reading and Writing Files
 
 ```python
-from std.io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, file_exists, delete_file
 
 match write_text("hello.txt", "Hello, World!"):
     case Ok(_):
@@ -65,7 +65,7 @@ match delete_file("hello.txt"):
 ### Byte Operations
 
 ```python
-from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
 print(length(bs))    # 3
@@ -88,7 +88,7 @@ match write_bytes("data.bin", bs):
 ### Reading from Standard Input
 
 ```python
-from std.io import read_line
+from io import read_line
 
 name = read_line()
 print(f"Hello, {name}!")

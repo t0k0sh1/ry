@@ -2,10 +2,10 @@
 
 # I/O 関数リファレンス
 
-標準入出力とファイル操作の関数一覧です。すべての関数は `std.io` からの明示的なインポートが必要です。
+標準入出力とファイル操作の関数一覧です。すべての関数は `io` からの明示的なインポートが必要です。
 
 ```python
-from std.io import read_text, write_text, file_exists
+from io import read_text, write_text, file_exists
 ```
 
 ## 関数一覧
@@ -41,7 +41,7 @@ from std.io import read_text, write_text, file_exists
 ### ファイルの読み書き
 
 ```python
-from std.io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, file_exists, delete_file
 
 write_text("hello.txt", "Hello, World!")
 content = read_text("hello.txt")
@@ -60,7 +60,7 @@ print(file_exists("hello.txt"))   # false
 ### バイト操作
 
 ```python
-from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
 print(length(bs))    # 3
@@ -74,7 +74,7 @@ print(s)          # ABC
 ### 標準入力からの読み取り
 
 ```python
-from std.io import read_line
+from io import read_line
 
 name = read_line()
 print(f"Hello, {name}!")

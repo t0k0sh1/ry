@@ -66,7 +66,7 @@ xs = range(5)
 You can also explicitly import specific definitions from `std` sub-packages:
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

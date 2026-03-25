@@ -1,13 +1,13 @@
 [English](../../reference/math.md) | [日本語](math.md) | [繁體中文](../../zh/reference/math.md)
 
-# 数学関数 (`std.math`)
+# 数学関数 (`math`)
 
 ## 概要
 
-`std.math` パッケージは数学定数と関数を提供します。`std` パッケージと異なり、自動インポートされません。明示的なインポートで使用します。
+`math` パッケージは数学定数と関数を提供します。`std` パッケージと異なり、自動インポートされません。明示的なインポートで使用します。
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
 ---
@@ -22,7 +22,7 @@ from std.math import sqrt, PI, sin
 | `NaN` | `float` | 非数 (Not a Number) |
 
 ```python
-from std.math import PI, E, Inf, NaN
+from math import PI, E, Inf, NaN
 
 circumference = 2.0 * PI * radius
 ```
@@ -37,7 +37,7 @@ circumference = 2.0 * PI * radius
 | `abs(x)` | `(float) -> float` | 浮動小数点数の絶対値 |
 
 ```python
-from std.math import abs
+from math import abs
 
 abs(-5)      # 5
 abs(-3.14)   # 3.14
@@ -54,7 +54,7 @@ abs(-3.14)   # 3.14
 | `round(x)` | `(float) -> int` | 四捨五入 |
 
 ```python
-from std.math import floor, ceil, round
+from math import floor, ceil, round
 
 floor(3.7)    # 3
 ceil(3.2)     # 4
@@ -71,7 +71,7 @@ round(3.5)    # 4
 | `pow(x, y)` | `(float, float) -> float` | x の y 乗 |
 
 ```python
-from std.math import sqrt, pow
+from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
@@ -134,7 +134,7 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | x が正または負の無限大なら true |
 
 ```python
-from std.math import is_nan, is_inf, NaN, Inf
+from math import is_nan, is_inf, NaN, Inf
 
 is_nan(NaN)   # true
 is_inf(Inf)   # true

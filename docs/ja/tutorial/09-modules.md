@@ -66,7 +66,7 @@ xs = range(5)
 `std` のサブパッケージから特定の定義を明示的にインポートすることもできます。
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

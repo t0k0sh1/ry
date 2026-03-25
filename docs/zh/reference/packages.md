@@ -46,7 +46,7 @@ from math import add, sub
 |---|---|
 | `from math` | `math/` 目錄（套件）或 `math.ry` 檔案 |
 | `from utils.math` | `utils/math/` 目錄或 `utils/math.ry` 檔案 |
-| `from std.str` | `std/str/` 目錄或 `std/str.ry` 檔案 |
+| `from str` | `str/` 目錄或 `str.ry` 檔案 |
 
 ### 解析順序
 
@@ -104,17 +104,17 @@ from mypackage import add   # 僅匯入 add
 
 | 套件 | 說明 |
 |------|------|
-| [`std.math`](math.md) | 數學常數與函式 |
-| [`std.io`](io.md) | 檔案 I/O、標準輸入、位元組轉換 |
+| [`math`](math.md) | 數學常數與函式 |
+| [`io`](io.md) | 檔案 I/O、標準輸入、位元組轉換 |
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
 也可以從 `std` 明確匯入特定的定義：
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

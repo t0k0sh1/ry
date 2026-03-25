@@ -1,5 +1,5 @@
-from std.net import bind, listen, accept, connect, listener_port
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
 
 describe("HTTP Server API", fn():
   it("responds with 200 OK for matching path", fn():

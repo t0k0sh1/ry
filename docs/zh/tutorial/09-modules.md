@@ -66,7 +66,7 @@ xs = range(5)
 也可以從 `std` 子套件中明確匯入特定定義：
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME

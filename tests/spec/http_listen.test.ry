@@ -1,4 +1,4 @@
-from std.http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
 
 describe("http_listen with max_requests", fn():
   it("stops after 1 request with max_requests=1", fn():

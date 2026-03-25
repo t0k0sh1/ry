@@ -220,11 +220,11 @@ For channels, `recv(ch)` is the strict form and raises on a closed drained chann
 
 ## Networking (TCP Sockets)
 
-Ry provides TCP socket support through the `std.net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
+Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
 
 ```python
-from std.net import bind, listen, accept, connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect
+from io import str_to_bytes, bytes_to_str
 
 fn echo_server(port: int) -> str:
     match bind("127.0.0.1", port):

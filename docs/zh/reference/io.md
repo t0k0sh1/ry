@@ -2,10 +2,10 @@
 
 # I/O 函式參考手冊
 
-標準輸入輸出與檔案操作的函式一覽。所有函式皆需從 `std.io` 明確匯入。
+標準輸入輸出與檔案操作的函式一覽。所有函式皆需從 `io` 明確匯入。
 
 ```python
-from std.io import read_text, write_text, file_exists
+from io import read_text, write_text, file_exists
 ```
 
 ## 函式一覽
@@ -41,7 +41,7 @@ from std.io import read_text, write_text, file_exists
 ### 讀寫檔案
 
 ```python
-from std.io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, file_exists, delete_file
 
 write_text("hello.txt", "Hello, World!")
 content = read_text("hello.txt")
@@ -60,7 +60,7 @@ print(file_exists("hello.txt"))   # false
 ### 位元組操作
 
 ```python
-from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
 print(length(bs))    # 3
@@ -74,7 +74,7 @@ print(s)          # ABC
 ### 從標準輸入讀取
 
 ```python
-from std.io import read_line
+from io import read_line
 
 name = read_line()
 print(f"Hello, {name}!")
