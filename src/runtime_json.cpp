@@ -537,7 +537,7 @@ int64_t __ry_json_int(void *value, int64_t *out) {
     }
     if (v->type == JsonType::Float) {
         double d = v->float_val;
-        if (d == floor(d) && !isinf(d)) {
+        if (d == std::floor(d) && !std::isinf(d)) {
             *out = (int64_t)d;
             return 0;
         }
