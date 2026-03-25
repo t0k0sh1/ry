@@ -125,6 +125,26 @@ The standard library is installed at `$RY_HOME/lib/std/`. The default value of `
 export RY_HOME="$HOME/.ry"   # default
 ```
 
+### RY_ENV
+
+The `RY_ENV` environment variable controls the runtime environment mode. You can also use the `--env=<value>` CLI flag.
+
+| Value | Description | Lib search |
+|-------|-------------|------------|
+| `production` (default) | Production mode | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `development` | Project development | Same as production (reserved for future extensions) |
+| `internal` | Ry language development | `exe/../lib` → `exe/lib` only (`$RY_HOME` skipped) |
+
+Custom values (e.g., `staging`, `testing`) are also accepted and behave like `production`.
+
+```bash
+# Use exe-relative stdlib only (for Ry language development)
+RY_ENV=internal ./build/ry test
+
+# Or use CLI flag
+./build/ry --env=internal test
+```
+
 ---
 
 ## Search Path Priority
