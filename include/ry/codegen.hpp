@@ -382,6 +382,9 @@ private:
     bool isHttpClientResponse(llvm::Value *val);
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
+    void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
+    void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
+    void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg,

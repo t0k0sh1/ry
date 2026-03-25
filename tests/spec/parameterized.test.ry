@@ -22,4 +22,8 @@ describe("@property tests", fn():
   it("bool identity", fn(x: bool):
     expect(x == x).to_be_true()
   )
+  @property(count=20)
+  it("str length is non-negative", fn(s: str):
+    expect(length(s) >= 0).to_be_true()
+  )
 )
