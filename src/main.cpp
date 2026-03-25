@@ -96,7 +96,8 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         if (auto root = findProjectRoot(fileDir)) {
             static std::string loaded_root;
             if (loaded_root != *root) {
-                ry::loadDotEnv(*root);
+                const char *ry_env = std::getenv("RY_ENV");
+                ry::loadDotEnv(*root, ry_env ? ry_env : "");
                 loaded_root = *root;
             }
         }
@@ -486,8 +487,9 @@ static int discoverAndRunTests(const std::string &dir, const char *argv0,
 }
 
 static void applyRyEnv(const char *value) {
-    setenv("RY_ENV", value, 1);
-    if (std::strcmp(value, "internal") == 0)
+    std::string canonical = ry::resolveRyEnv(value);
+    setenv("RY_ENV", canonical.c_str(), 1);
+    if (canonical == "internal")
         g_skip_global_lib = true;
 }
 

@@ -129,20 +129,36 @@ export RY_HOME="$HOME/.ry"   # デフォルト
 
 `RY_ENV` 環境変数でランタイム環境モードを制御します。`--env=<value>` CLI フラグでも指定可能です。
 
-| 値 | 説明 | lib 探索 |
-|---|------|---------|
-| `production`（デフォルト） | 本番モード | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
-| `development` | プロジェクト開発 | production と同じ（将来の拡張用） |
-| `internal` | Ry 言語自体の開発 | `exe/../lib` → `exe/lib` のみ（`$RY_HOME` スキップ） |
+| 値 | エイリアス | `.env` 読み込み | lib 探索 |
+|---|----------|---------------|---------|
+| `prod` | `production` | 無効 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | `prod` と同じ |
+| `test` | — | `.env.test` → `.env` | `prod` と同じ |
+| `staging` | — | `.env.staging` → `.env` | `prod` と同じ |
+| `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` のみ（`$RY_HOME` スキップ） |
+| （未設定）（デフォルト） | — | `.env` のみ | `prod` と同じ |
 
-カスタム値（`staging`、`testing` など）も設定可能で、`production` と同じ動作になります。
+エイリアスは自動的に正規形に解決されます。例えば `RY_ENV=production` は `prod` に正規化されます。
+
+`prod` モードではセキュリティのため `.env` ファイルを読み込みません。本番環境の秘密情報はインフラレベルの環境変数管理（CI/CD、シークレットマネージャー等）で管理してください。
+
+その他のモードでは `.env.<環境名>` を先に読み込み（存在する場合）、次に `.env` を読み込みます。既存の環境変数は上書きされないため、環境別の値が優先されます。
 
 ```bash
+# 短縮形（推奨）
+RY_ENV=dev ./build/ry app.ry
+
+# フルネーム（後方互換）
+RY_ENV=development ./build/ry app.ry
+
+# CLI フラグ
+./build/ry --env=dev test
+
+# prod モード: .env は読み込まれない
+RY_ENV=prod ./build/ry app.ry
+
 # 実行ファイル相対の stdlib のみ使用（Ry 言語開発用）
 RY_ENV=internal ./build/ry test
-
-# CLI フラグでも指定可能
-./build/ry --env=internal test
 ```
 
 ---

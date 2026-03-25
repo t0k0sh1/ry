@@ -8,6 +8,36 @@
 
 namespace fs = std::filesystem;
 
+// ===== resolveRyEnv tests =====
+
+TEST(RyEnv, ProductionAlias) {
+    EXPECT_EQ(ry::resolveRyEnv("production"), "prod");
+}
+
+TEST(RyEnv, DevelopmentAlias) {
+    EXPECT_EQ(ry::resolveRyEnv("development"), "dev");
+}
+
+TEST(RyEnv, ProdPassthrough) {
+    EXPECT_EQ(ry::resolveRyEnv("prod"), "prod");
+}
+
+TEST(RyEnv, DevPassthrough) {
+    EXPECT_EQ(ry::resolveRyEnv("dev"), "dev");
+}
+
+TEST(RyEnv, InternalPassthrough) {
+    EXPECT_EQ(ry::resolveRyEnv("internal"), "internal");
+}
+
+TEST(RyEnv, StagingPassthrough) {
+    EXPECT_EQ(ry::resolveRyEnv("staging"), "staging");
+}
+
+TEST(RyEnv, CustomPassthrough) {
+    EXPECT_EQ(ry::resolveRyEnv("custom"), "custom");
+}
+
 // ===== parseDotEnv tests =====
 
 TEST(DotEnv, BasicKeyValue) {
@@ -149,4 +179,78 @@ TEST_F(DotEnvLoadTest, DoesNotOverwriteExisting) {
 TEST_F(DotEnvLoadTest, NoErrorWhenFileAbsent) {
     // tmp_dir exists but has no .env — should not throw or crash
     EXPECT_NO_THROW(ry::loadDotEnv(tmp_dir.string()));
+}
+
+// ===== Environment-specific loadDotEnv tests =====
+
+TEST_F(DotEnvLoadTest, LoadsEnvSpecificFile) {
+    std::ofstream(tmp_dir / ".env.dev") << "RY_TEST_ENVSPEC_A=dev_val\n";
+    unsetenv("RY_TEST_ENVSPEC_A");
+
+    ry::loadDotEnv(tmp_dir.string(), "dev");
+
+    const char *val = std::getenv("RY_TEST_ENVSPEC_A");
+    ASSERT_NE(val, nullptr);
+    EXPECT_STREQ(val, "dev_val");
+
+    unsetenv("RY_TEST_ENVSPEC_A");
+}
+
+TEST_F(DotEnvLoadTest, EnvSpecificOverridesBase) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_B=base\n";
+    std::ofstream(tmp_dir / ".env.dev") << "RY_TEST_ENVSPEC_B=dev\n";
+    unsetenv("RY_TEST_ENVSPEC_B");
+
+    ry::loadDotEnv(tmp_dir.string(), "dev");
+
+    EXPECT_STREQ(std::getenv("RY_TEST_ENVSPEC_B"), "dev");
+
+    unsetenv("RY_TEST_ENVSPEC_B");
+}
+
+TEST_F(DotEnvLoadTest, BaseLoadedWhenEnvSpecificMissing) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_C=base\n";
+    unsetenv("RY_TEST_ENVSPEC_C");
+
+    ry::loadDotEnv(tmp_dir.string(), "test");
+
+    EXPECT_STREQ(std::getenv("RY_TEST_ENVSPEC_C"), "base");
+
+    unsetenv("RY_TEST_ENVSPEC_C");
+}
+
+TEST_F(DotEnvLoadTest, ProdSkipsAllEnvFiles) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_D=base\n";
+    std::ofstream(tmp_dir / ".env.prod") << "RY_TEST_ENVSPEC_D2=prod\n";
+    unsetenv("RY_TEST_ENVSPEC_D");
+    unsetenv("RY_TEST_ENVSPEC_D2");
+
+    ry::loadDotEnv(tmp_dir.string(), "prod");
+
+    EXPECT_EQ(std::getenv("RY_TEST_ENVSPEC_D"), nullptr);
+    EXPECT_EQ(std::getenv("RY_TEST_ENVSPEC_D2"), nullptr);
+}
+
+TEST_F(DotEnvLoadTest, EmptyEnvNameLoadsOnlyBase) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_E=base\n";
+    std::ofstream(tmp_dir / ".env.dev") << "RY_TEST_ENVSPEC_E=dev\n";
+    unsetenv("RY_TEST_ENVSPEC_E");
+
+    ry::loadDotEnv(tmp_dir.string(), "");
+
+    EXPECT_STREQ(std::getenv("RY_TEST_ENVSPEC_E"), "base");
+
+    unsetenv("RY_TEST_ENVSPEC_E");
+}
+
+TEST_F(DotEnvLoadTest, InvalidEnvNameFallsBackToBase) {
+    std::ofstream(tmp_dir / ".env") << "RY_TEST_ENVSPEC_F=base\n";
+    unsetenv("RY_TEST_ENVSPEC_F");
+
+    // Path traversal attempt — should be ignored, only .env loaded
+    ry::loadDotEnv(tmp_dir.string(), "../etc");
+
+    EXPECT_STREQ(std::getenv("RY_TEST_ENVSPEC_F"), "base");
+
+    unsetenv("RY_TEST_ENVSPEC_F");
 }

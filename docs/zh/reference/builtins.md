@@ -300,6 +300,17 @@ EMPTY_VALUE=
 QUOTED='single quoted'
 ```
 
+### 環境專屬 `.env` 檔案
+
+設定 `RY_ENV` 時，Ry 會依照以下優先順序載入環境專屬的 `.env` 檔案：
+
+- 先載入 `.env.<環境名>`（例如 `RY_ENV=dev` 時載入 `.env.dev`）
+- 再載入 `.env`（已由 `.env.<環境名>` 設定的值不會被覆蓋）
+- `RY_ENV=prod` 時不載入任何 `.env` 檔案（安全考量）
+- `RY_ENV` 未設定時僅載入 `.env`（向下相容）
+
+環境模式的詳細資訊請參閱 [RY_ENV](packages.md#ry_env)。
+
 ---
 
 ## append

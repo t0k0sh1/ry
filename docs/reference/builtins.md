@@ -324,6 +324,17 @@ EMPTY_VALUE=
 QUOTED='single quoted'
 ```
 
+### Environment-specific `.env` files
+
+When `RY_ENV` is set, Ry loads environment-specific `.env` files with the following priority:
+
+- `.env.<env>` is loaded first (e.g., `.env.dev` when `RY_ENV=dev`)
+- `.env` is loaded second (values already set by `.env.<env>` are not overwritten)
+- When `RY_ENV=prod`, no `.env` files are loaded (security)
+- When `RY_ENV` is not set, only `.env` is loaded (backward compatible)
+
+See [RY_ENV](packages.md#ry_env) for details on environment modes.
+
 ---
 
 ## append

@@ -129,20 +129,36 @@ export RY_HOME="$HOME/.ry"   # 預設值
 
 `RY_ENV` 環境變數控制執行時環境模式。也可以使用 `--env=<value>` CLI 旗標。
 
-| 值 | 說明 | lib 搜尋 |
-|---|------|---------|
-| `production`（預設） | 正式環境模式 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
-| `development` | 專案開發 | 與 production 相同（保留供未來擴充） |
-| `internal` | Ry 語言本身的開發 | 僅 `exe/../lib` → `exe/lib`（跳過 `$RY_HOME`） |
+| 值 | 別名 | `.env` 載入 | lib 搜尋 |
+|---|------|-----------|---------|
+| `prod` | `production` | 停用 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | 與 `prod` 相同 |
+| `test` | — | `.env.test` → `.env` | 與 `prod` 相同 |
+| `staging` | — | `.env.staging` → `.env` | 與 `prod` 相同 |
+| `internal` | — | `.env.internal` → `.env` | 僅 `exe/../lib` → `exe/lib`（跳過 `$RY_HOME`） |
+| （未設定）（預設） | — | 僅 `.env` | 與 `prod` 相同 |
 
-也接受自定義值（如 `staging`、`testing`），行為與 `production` 相同。
+別名會自動解析為正規形式。例如 `RY_ENV=production` 會被正規化為 `prod`。
+
+在 `prod` 模式下，出於安全考量不會載入 `.env` 檔案。正式環境的機密資訊應透過基礎架構級別的環境變數管理（CI/CD、密鑰管理器等）來管理。
+
+其他模式下，先載入 `.env.<環境名>`（若存在），再載入 `.env`。由於不會覆蓋已存在的環境變數，環境專屬的值會優先生效。
 
 ```bash
+# 簡寫形式（建議）
+RY_ENV=dev ./build/ry app.ry
+
+# 完整名稱（向下相容）
+RY_ENV=development ./build/ry app.ry
+
+# CLI 旗標
+./build/ry --env=dev test
+
+# prod 模式：不載入 .env
+RY_ENV=prod ./build/ry app.ry
+
 # 僅使用執行檔相對的 stdlib（用於 Ry 語言開發）
 RY_ENV=internal ./build/ry test
-
-# 也可以使用 CLI 旗標
-./build/ry --env=internal test
 ```
 
 ---

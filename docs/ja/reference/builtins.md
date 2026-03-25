@@ -309,6 +309,17 @@ EMPTY_VALUE=
 QUOTED='single quoted'
 ```
 
+### 環境別 `.env` ファイル
+
+`RY_ENV` が設定されている場合、Ry は以下の優先順位で環境別の `.env` ファイルを読み込みます:
+
+- `.env.<環境名>` を最初に読み込む（例: `RY_ENV=dev` なら `.env.dev`）
+- `.env` を次に読み込む（`.env.<環境名>` で設定済みの値は上書きされない）
+- `RY_ENV=prod` の場合、`.env` ファイルは一切読み込まない（セキュリティ）
+- `RY_ENV` が未設定の場合、`.env` のみ読み込む（後方互換）
+
+環境モードの詳細は [RY_ENV](packages.md#ry_env) を参照してください。
+
 ---
 
 ## append
