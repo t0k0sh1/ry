@@ -693,6 +693,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "HttpResponse") return ptrTy_;
     if (typeName == "HttpClientResponse") return ptrTy_;
 
+    // JSON opaque handle type
+    if (typeName == "JsonValue") return ptrTy_;
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);

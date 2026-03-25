@@ -2,6 +2,7 @@
 #include "ry/runtime_io.hpp"
 
 #include <cctype>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -127,8 +128,19 @@ struct Parser {
                             error = "incomplete unicode escape"; return nullptr;
                         }
                         char hex[5] = {src[pos], src[pos+1], src[pos+2], src[pos+3], 0};
+                        for (int hi = 0; hi < 4; hi++) {
+                            char hc = hex[hi];
+                            if (!((hc >= '0' && hc <= '9') || (hc >= 'a' && hc <= 'f') || (hc >= 'A' && hc <= 'F'))) {
+                                error = "invalid hex digit in unicode escape";
+                                return nullptr;
+                            }
+                        }
                         pos += 4;
                         unsigned cp = (unsigned)strtoul(hex, nullptr, 16);
+                        if (cp == 0) {
+                            error = "null character in unicode escape not supported";
+                            return nullptr;
+                        }
                         // UTF-8 encode
                         if (cp < 0x80) {
                             buf += (char)cp;
@@ -192,10 +204,22 @@ struct Parser {
         auto *v = new JsonValue;
         if (is_float) {
             v->type = JsonType::Float;
+            errno = 0;
             v->float_val = strtod(numstr.c_str(), nullptr);
+            if (!std::isfinite(v->float_val)) {
+                delete v;
+                error = "number out of range at position " + std::to_string(start);
+                return nullptr;
+            }
         } else {
             v->type = JsonType::Int;
+            errno = 0;
             v->int_val = strtoll(numstr.c_str(), nullptr, 10);
+            if (errno == ERANGE) {
+                delete v;
+                error = "integer overflow at position " + std::to_string(start);
+                return nullptr;
+            }
         }
         return v;
     }
@@ -458,7 +482,11 @@ const char *__ry_json_stringify(void *value) {
 const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     auto *v = (JsonValue*)value;
     std::string out;
-    stringify_value(v, out, (int)indent, 0, true);
+    if (indent < 0) {
+        stringify_value(v, out, 0, 0, false);
+    } else {
+        stringify_value(v, out, (int)indent, 0, true);
+    }
     return strdup(out.c_str());
 }
 
@@ -480,6 +508,10 @@ const char *__ry_json_type(void *value) {
 void *__ry_json_get(void *value, const char *key) {
     if (!value) {
         __ry_set_last_error("json_get: value is null");
+        return nullptr;
+    }
+    if (!key) {
+        __ry_set_last_error("json_get: key is null");
         return nullptr;
     }
     auto *v = (JsonValue*)value;
@@ -587,15 +619,18 @@ int64_t __ry_json_len(void *value) {
 }
 
 void *__ry_json_keys(void *value) {
-    if (!value) return nullptr;
-    auto *v = (JsonValue*)value;
-    if (v->type != JsonType::Object) return nullptr;
-
-    int64_t len = v->object_val.len;
     auto *header = (ListHeader*)malloc(sizeof(ListHeader));
+    if (!value || ((JsonValue*)value)->type != JsonType::Object) {
+        header->len = 0;
+        header->cap = 1;
+        header->data = malloc(sizeof(const char*));
+        return header;
+    }
+    auto *v = (JsonValue*)value;
+    int64_t len = v->object_val.len;
     header->len = len;
-    header->cap = len;
-    auto **data = (const char**)malloc(sizeof(const char*) * (len > 0 ? len : 1));
+    header->cap = len > 0 ? len : 1;
+    auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
     for (int64_t i = 0; i < len; i++)
         data[i] = strdup(v->object_val.keys[i]);
     header->data = data;

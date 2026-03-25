@@ -177,7 +177,7 @@ TEST(RuntimeJson, ObjectKeys) {
     struct LH { int64_t len; int64_t cap; void *data; };
     auto *lh = (LH*)keys;
     EXPECT_EQ(lh->len, 2);
-    auto **data = (const char**)lh->data;
+    const char **data = (const char**)lh->data;
     EXPECT_STREQ(data[0], "a");
     EXPECT_STREQ(data[1], "b");
     // Cleanup
