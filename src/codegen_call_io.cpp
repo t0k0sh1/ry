@@ -420,10 +420,10 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_listen(host, port, handler) -> Unit
+    // http_listen(host, port, handler[, max_requests]) -> Unit
     if (e.callee == "http_listen") {
-        if (e.args.size() != 3)
-            codegenError("http_listen() takes exactly 3 arguments");
+        if (e.args.size() < 3 || e.args.size() > 4)
+            codegenError("http_listen() takes 3 or 4 arguments");
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
         llvm::Value *handler = emitExpr(*e.args[2]);
@@ -461,6 +461,18 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
         }
 
+        // Optional 4th argument: max_requests (must be > 0)
+        llvm::Value *maxReqs = llvm::ConstantInt::get(i64Ty_, 0);
+        if (e.args.size() == 4) {
+            maxReqs = emitExpr(*e.args[3]);
+            if (maxReqs->getType() != i64Ty_)
+                codegenError("http_listen() max_requests must be int");
+            if (auto *maxConst = llvm::dyn_cast<llvm::ConstantInt>(maxReqs)) {
+                if (maxConst->getSExtValue() <= 0)
+                    codegenError("http_listen() max_requests must be a positive integer");
+            }
+        }
+
         // 1. bind(host, port)
         auto bindFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
         auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
@@ -494,6 +506,19 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         emitRuntimeError("runtime error: http_listen() listen failed\n",
                           ".http_listen_err_" + std::to_string(httpListenErrCounter++));
         builder_.SetInsertPoint(listenOkBB);
+
+        bool hasLimit = (e.args.size() == 4);
+        llvm::Value *counterAlloca = nullptr;
+        if (hasLimit) {
+            counterAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "req_counter");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), counterAlloca);
+        }
+
+        auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
+        auto listenerCloseFn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
+        auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
+        auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
 
         // 3. accept loop
         llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "http.loop", fn_);
@@ -529,12 +554,6 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*ctx_, "http.req_bad", fn_);
         builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
 
-        // Shared function types for cleanup calls
-        auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
-        auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
-        auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
-
         // Bad request: close conn and continue loop
         builder_.SetInsertPoint(reqBadBB);
         builder_.CreateCall(closeFn, {conn});
@@ -555,9 +574,24 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         builder_.CreateCall(freeReqFn, {req});
         builder_.CreateCall(freeRespFn, {resp});
         builder_.CreateCall(closeFn, {conn});
-        builder_.CreateBr(loopBB);
 
-        // Loop end (unreachable in practice — accept retries on null)
+        if (hasLimit) {
+            llvm::Value *oldCount = builder_.CreateLoad(i64Ty_, counterAlloca, "old_count");
+            llvm::Value *newCount = builder_.CreateAdd(oldCount,
+                llvm::ConstantInt::get(i64Ty_, 1), "new_count");
+            builder_.CreateStore(newCount, counterAlloca);
+
+            llvm::Value *limitReached = builder_.CreateICmpSGE(newCount, maxReqs, "limit_reached");
+            llvm::BasicBlock *shutdownBB = llvm::BasicBlock::Create(*ctx_, "http.shutdown", fn_);
+            builder_.CreateCondBr(limitReached, shutdownBB, loopBB);
+
+            builder_.SetInsertPoint(shutdownBB);
+            builder_.CreateCall(listenerCloseFn, {listener});
+            builder_.CreateBr(loopEndBB);
+        } else {
+            builder_.CreateBr(loopBB);
+        }
+
         builder_.SetInsertPoint(loopEndBB);
 
         return llvm::ConstantInt::get(i64Ty_, 0);

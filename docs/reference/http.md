@@ -25,6 +25,7 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. |
+| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `spawn` + `join` lifecycle management. |
 
 ### Request Accessors
 
@@ -82,6 +83,32 @@ t: Task<str> = spawn start_server(8080)
 # Server runs in background thread
 ```
 
+### Server with Request Limit (`max_requests`)
+
+```python
+from std.http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+
+fn start_server(ready: Channel<int>) -> str:
+    send(ready, 1)
+    http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+        return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
+    , 1)  # Stop after 1 request
+    return "done"
+
+ready: Channel<int> = channel[int]()
+t: Task<str> = spawn start_server(ready)
+recv(ready)
+sleep(100)
+
+match http_get("http://127.0.0.1:8080/"):
+    case Ok(resp):
+        print(http_client_body(resp))  # "Hello!"
+    case Err(e):
+        print("error")
+
+result = join(t)  # Server exits after 1 request; join completes
+```
+
 ### Reading Query Parameters
 
 ```python
@@ -129,7 +156,9 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 
 ## Behavior
 
-- `http_listen()` binds to the address, starts listening, and enters an infinite accept loop.
+- `http_listen()` binds to the address, starts listening, and enters an accept loop.
+- When called with 3 arguments, the accept loop runs indefinitely.
+- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `spawn` + `join` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
 - Each accepted connection reads one HTTP/1.1 request, calls the handler, sends the response, and closes the connection.
 - `Content-Length` is automatically added to the response if not provided in the headers map.
 - The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
