@@ -64,6 +64,7 @@ private:
     ExprPtr parsePower();
     ExprPtr parseCast();
     ExprPtr parsePostfix();
+    ExprPtr makeErrorPropagateExpr(ExprPtr operand, const Token &tok);
     ExprPtr parsePrimary();
     ExprPtr parseComparison();
     ExprPtr parseBitwiseOr();

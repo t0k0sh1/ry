@@ -8,7 +8,7 @@
 
 | 優先順位 | 演算子 | 説明 | 結合性 |
 |---|---|---|---|
-| 0 | `!!` | エラー伝播（後置） | 左 |
+| 0 | `?` | エラー伝播（後置） | 左 |
 | 1 | `()` | グループ化 | — |
 | 2 | `+x` `-x` `~x` | 単項正・負、ビット NOT | 右 |
 | 3 | `**` | 累乗 | 右結合 |
@@ -111,6 +111,41 @@ flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
+
+## エラー伝播演算子（`?`）
+
+後置 `?` 演算子は `Result` 値をアンラップします。値が `Ok(v)` の場合は `v` に評価されます。値が `Err(e)` の場合は、外側の関数から即座に `Err(e)` を返します。
+
+外側の関数は `Result` 型を返す必要があります。
+
+```python
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    x = safe_divide(a, b)?    # b == 0 の場合は Err を早期リターン
+    y = safe_divide(x, c)?    # c == 0 の場合は Err を早期リターン
+    return Ok(y + 1)
+```
+
+これは以下の `match` パターンと等価ですが、はるかに簡潔です:
+
+```python
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
+        case Ok(x):
+            match safe_divide(x, c):
+                case Ok(y):
+                    return Ok(y + 1)
+                case Err(e):
+                    return Err(e)
+        case Err(e):
+            return Err(e)
+```
+
+---
 
 ## 三項条件演算子
 

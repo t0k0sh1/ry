@@ -40,7 +40,8 @@ Each error message includes:
 | Circular import | Modules import each other | `a.ry` imports `b.ry` and `b.ry` imports `a.ry` |
 | Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive match | match does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
-| `!!` operator removed | `!!` operator has been removed | Use `match` with `Ok`/`Err` patterns instead |
+| `?` on non-Result type | Applied `?` to an expression that is not a `Result` type | `x = 42` -> `x?` |
+| `?` in non-Result function | Used `?` in a function that does not return `Result` | `fn foo() -> int:` -> `bar()?` |
 
 ### Compile Error Examples
 

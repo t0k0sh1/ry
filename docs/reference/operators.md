@@ -8,7 +8,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
-| 0 | `!!` | Error propagation (postfix) | Left |
+| 0 | `?` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
@@ -111,6 +111,41 @@ flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
+
+## Error Propagation Operator (`?`)
+
+The postfix `?` operator unwraps a `Result` value. If the value is `Ok(v)`, it evaluates to `v`. If the value is `Err(e)`, the enclosing function immediately returns `Err(e)`.
+
+The enclosing function must have a `Result` return type.
+
+```python
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    x = safe_divide(a, b)?    # returns Err early if b == 0
+    y = safe_divide(x, c)?    # returns Err early if c == 0
+    return Ok(y + 1)
+```
+
+This is equivalent to the following `match` pattern, but much more concise:
+
+```python
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
+        case Ok(x):
+            match safe_divide(x, c):
+                case Ok(y):
+                    return Ok(y + 1)
+                case Err(e):
+                    return Err(e)
+        case Err(e):
+            return Err(e)
+```
+
+---
 
 ## Ternary Conditional Operator
 
