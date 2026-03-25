@@ -9,7 +9,7 @@ int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
     if (ty == f64Ty_)  return TAG_FLOAT;
     if (ty == i1Ty_)   return TAG_BOOL;
     if (ty == ptrTy_)  return TAG_STR;
-    codegenError("cannot convert type to any tag");
+    codegenError("type error: 'any' can only hold int/float/bool/str");
 }
 
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
@@ -40,11 +40,10 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     builder_.SetInsertPoint(mismatchBB);
     emitRuntimeError("runtime error: any type mismatch\n", ".any_type_err");
 
-    // alloca required: extracting targetTy from [8 x i8] data (type punning)
+    // Use anyTy_ alloca for proper alignment when type-punning the data field
     builder_.SetInsertPoint(matchBB);
-    auto *dataTy = llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 8);
-    llvm::Value *data = builder_.CreateExtractValue(anyVal, 1, "any.data");
-    llvm::AllocaInst *tmp = builder_.CreateAlloca(dataTy, nullptr, "any.data.tmp");
-    builder_.CreateStore(data, tmp);
-    return builder_.CreateLoad(targetTy, tmp, "any.unwrap.val");
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
+    builder_.CreateStore(anyVal, tmp);
+    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.ptr");
+    return builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
 }
