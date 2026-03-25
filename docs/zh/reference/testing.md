@@ -86,6 +86,21 @@ foo("arg", fn():
 | `to_start_with(prefix)` | 字串以 prefix 開頭 | str |
 | `to_end_with(suffix)` | 字串以 suffix 結尾 | str |
 
+### fail
+
+立即將當前測試標記為失敗。
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — 使用通用訊息標記測試失敗
+- `fail(msg)` — 使用自訂訊息標記測試失敗
+- `fail()` 之後執行繼續進行（不會中止測試）
+- 僅在 `ry test` 模式下可用
+
 ---
 
 ## 輸出格式

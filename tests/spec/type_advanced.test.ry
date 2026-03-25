@@ -77,13 +77,13 @@ describe("Result type", fn():
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
   )
   it("returns Err on failure", fn():
     res = safe_divide(10, 0)
     match res:
       case Ok(v):
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )

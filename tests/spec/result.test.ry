@@ -17,12 +17,12 @@ describe("Result type", fn():
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
   )
   it("match Err extracts error", fn():
     match safe_divide(10, 0):
       case Ok(v):
-        expect(true).to_eq(false)
+        fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
@@ -33,6 +33,6 @@ describe("Result type", fn():
       case Ok(_):
         expect(true).to_eq(true)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
   )
 )

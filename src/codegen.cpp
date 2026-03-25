@@ -465,6 +465,10 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitMockCall(s);
         return;
     }
+    if (s.callee == "fail") {
+        emitFailCall(s);
+        return;
+    }
     if (s.callee == "task_group") {
         emitTaskGroupCall(s);
         return;

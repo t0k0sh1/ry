@@ -48,12 +48,12 @@ describe("HTTP Server API", fn():
                 expect(contains(msg, "200 OK")).to_eq(true)
                 expect(contains(msg, "Hello!")).to_eq(true)
               case Err(e):
-                expect(true).to_eq(false)
+                fail("unexpected error")
           case Err(e):
-            expect(true).to_eq(false)
+            fail("unexpected error")
         close(conn)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
   it("responds with 404 Not Found", fn():
@@ -101,12 +101,12 @@ describe("HTTP Server API", fn():
               case Ok(msg):
                 expect(contains(msg, "404 Not Found")).to_eq(true)
               case Err(e):
-                expect(true).to_eq(false)
+                fail("unexpected error")
           case Err(e):
-            expect(true).to_eq(false)
+            fail("unexpected error")
         close(conn)
       case Err(e):
-        expect(true).to_eq(false)
+        fail("unexpected error")
     join(t)
   )
 )

@@ -919,3 +919,30 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     // Continue block
     builder_.SetInsertPoint(contBB);
 }
+
+// ===== Test: fail() / fail(msg) =====
+
+void CodeGen::emitFailCall(CallStmt &s) {
+    if (!test_mode_)
+        codegenError("'fail' is only allowed in test mode (use 'ry test')");
+
+    if (s.args.size() > 1)
+        codegenError("fail() expects 0 or 1 argument(s), but got " + std::to_string(s.args.size()));
+
+    llvm::FunctionType *failTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_, ptrTy_}, false);
+    llvm::FunctionCallee failFn = mod_->getOrInsertFunction("__ry_test_fail", failTy);
+
+    llvm::Value *msg;
+    if (s.args.size() == 1) {
+        msg = emitExpr(*s.args[0]);
+        if (msg->getType() != ptrTy_)
+            codegenError("fail() argument must be a string");
+    } else {
+        if (!fail_empty_msg_)
+            fail_empty_msg_ = builder_.CreateGlobalString("", ".fail_empty");
+        msg = fail_empty_msg_;
+    }
+
+    builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), msg});
+}
