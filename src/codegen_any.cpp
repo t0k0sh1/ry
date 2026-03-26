@@ -6,6 +6,10 @@ bool CodeGen::isAnyType(llvm::Type *ty) const {
     return ty == anyTy_;
 }
 
+bool CodeGen::canAnyHoldType(llvm::Type *ty) const {
+    return ty == i64Ty_ || ty == f64Ty_ || ty == i1Ty_ || ty == ptrTy_;
+}
+
 int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
     if (ty == i64Ty_)  return TAG_INT;
     if (ty == f64Ty_)  return TAG_FLOAT;
