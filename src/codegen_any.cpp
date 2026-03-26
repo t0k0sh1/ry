@@ -1,5 +1,7 @@
 #include "ry/codegen.hpp"
 
+#include <unordered_map>
+
 bool CodeGen::isAnyType(llvm::Type *ty) const {
     return ty == anyTy_;
 }
@@ -46,4 +48,57 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     builder_.CreateStore(anyVal, tmp);
     auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.ptr");
     return builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
+}
+
+llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
+                                       llvm::Value *lhs, llvm::Value *rhs) {
+    llvm::AllocaInst *lhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.lhs");
+    builder_.CreateStore(lhs, lhsPtr);
+    llvm::AllocaInst *rhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.rhs");
+    builder_.CreateStore(rhs, rhsPtr);
+
+    static const std::unordered_map<std::string, std::string> arithOps = {
+        {"+", "__ry_any_add"}, {"-", "__ry_any_sub"},
+        {"*", "__ry_any_mul"}, {"/", "__ry_any_div"},
+        {"%", "__ry_any_mod"}, {"//", "__ry_any_floordiv"},
+        {"**", "__ry_any_pow"},
+    };
+    static const std::unordered_map<std::string, std::string> cmpOps = {
+        {"==", "__ry_any_eq"}, {"!=", "__ry_any_ne"},
+        {"<", "__ry_any_lt"},  {"<=", "__ry_any_le"},
+        {">", "__ry_any_gt"},  {">=", "__ry_any_ge"},
+    };
+
+    auto ait = arithOps.find(op);
+    if (ait != arithOps.end()) {
+        llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.result");
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            builder_.getVoidTy(), {ptrTy_, ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction(ait->second, fnTy);
+        builder_.CreateCall(fn, {resultPtr, lhsPtr, rhsPtr});
+        return builder_.CreateLoad(anyTy_, resultPtr, "any.binop");
+    }
+
+    auto cit = cmpOps.find(op);
+    if (cit != cmpOps.end()) {
+        llvm::FunctionType *fnTy = llvm::FunctionType::get(
+            i64Ty_, {ptrTy_, ptrTy_}, false);
+        llvm::FunctionCallee fn = mod_->getOrInsertFunction(cit->second, fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {lhsPtr, rhsPtr}, "any.cmp");
+        return builder_.CreateTrunc(result, i1Ty_, "any.cmp.bool");
+    }
+
+    codegenError("operator '" + op + "' not supported for any type");
+}
+
+llvm::Value *CodeGen::emitAnyUnaryNeg(llvm::Value *operand) {
+    llvm::AllocaInst *opPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.op");
+    builder_.CreateStore(operand, opPtr);
+    llvm::AllocaInst *resultPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.neg.result");
+
+    llvm::FunctionType *fnTy = llvm::FunctionType::get(
+        builder_.getVoidTy(), {ptrTy_, ptrTy_}, false);
+    llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_any_neg", fnTy);
+    builder_.CreateCall(fn, {resultPtr, opPtr});
+    return builder_.CreateLoad(anyTy_, resultPtr, "any.neg");
 }
