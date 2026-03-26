@@ -408,7 +408,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 | `+` `-` `*` | byte | byte or int | int | byte is ZExt-promoted to int during operations |
 | `+` `-` `*` | float or int | float or int (one is float) | float | Implicit float promotion |
 | `/` | any numeric | any numeric | float | Always float |
-| `//` | any numeric | any numeric | int | Float input is truncated |
+| `//` | any numeric | any numeric | int or float | Floor division (toward -∞); int for int operands, float if either is float |
 | `**` | any numeric | any numeric | float | Uses libm `pow` |
 | `%` | int | int | int | |
 | `%` | float or int | float or int (one is float) | float | |
