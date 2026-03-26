@@ -231,6 +231,16 @@ void CodeGen::emitVarDecl(const std::string &name,
                 auto [k, v] = parseMapTypeAnnotation(inner);
                 if (k) map_key_types_[ptr] = k;
                 if (v) map_value_types_[ptr] = v;
+            } else if (inner.size() > 5 && inner.substr(0, 5) == "List<") {
+                std::string elemName = inner.substr(5, inner.size() - 6);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    list_element_types_[ptr] = elemTy;
+            } else if (inner.size() > 4 && inner.substr(0, 4) == "Set<") {
+                std::string elemName = inner.substr(4, inner.size() - 5);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    set_element_types_[ptr] = elemTy;
             }
         }
     }

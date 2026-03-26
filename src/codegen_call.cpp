@@ -937,9 +937,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             codegenError("Some() takes exactly 1 argument");
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::StructType *optTy = getOptionType(inner->getType());
-        llvm::Value *someVal = buildSomeValue(inner, optTy);
-        propagateCollectionMetadata(inner, someVal);
-        return someVal;
+        return buildSomeValue(inner, optTy);
     }
 
     // Ok(value) → Result<V, Error> constructor
@@ -957,9 +955,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             }
         }
         llvm::StructType *resTy = getResultType(inner->getType(), errTy);
-        llvm::Value *okVal = buildOkValue(inner, resTy);
-        propagateCollectionMetadata(inner, okVal);
-        return okVal;
+        return buildOkValue(inner, resTy);
     }
 
     // Err(error) → Result<V, E> constructor

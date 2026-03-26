@@ -353,14 +353,57 @@ ExprPtr Parser::parsePrimary() {
                 int depth = 1;
                 while (depth > 0 && lex_.peek().kind != TokenKind::Eof) {
                     Token tk = lex_.peek();
-                    if (tk.kind == TokenKind::Less) depth++;
-                    else if (tk.kind == TokenKind::Greater) {
+                    if (tk.kind == TokenKind::Less) {
+                        depth++;
+                    } else if (tk.kind == TokenKind::Greater) {
                         depth--;
                         if (depth == 0) {
                             lex_.next(); // consume final '>'
                             typeArgs += ">";
                             break;
                         }
+                    } else if (tk.kind == TokenKind::GreaterGreater) {
+                        // ">>" counts as two '>' closings
+                        depth -= 2;
+                        if (depth <= 0) {
+                            // Split: consume first '>', leave second as current
+                            lex_.consumeGreaterInTypeContext();
+                            typeArgs += ">";
+                            if (depth < 0)
+                                break; // unbalanced, will fail at :: check
+                            // depth == 0: need to consume the remaining '>'
+                            if (lex_.peek().kind == TokenKind::Greater) {
+                                lex_.next();
+                                typeArgs += ">";
+                            }
+                            break;
+                        }
+                        typeArgs += ">>";
+                        lex_.next();
+                        continue;
+                    } else if (tk.kind == TokenKind::GreaterGreaterGreater) {
+                        depth -= 3;
+                        if (depth <= 0) {
+                            // Split: consume first '>', leave ">>" as current
+                            lex_.consumeGreaterInTypeContext();
+                            typeArgs += ">";
+                            // consume remaining '>' tokens
+                            while (depth < 0 || lex_.peek().kind == TokenKind::Greater || lex_.peek().kind == TokenKind::GreaterGreater) {
+                                if (lex_.peek().kind == TokenKind::Greater) {
+                                    lex_.next();
+                                    typeArgs += ">";
+                                } else {
+                                    lex_.consumeGreaterInTypeContext();
+                                    typeArgs += ">";
+                                }
+                                depth++;
+                                if (depth >= 0) break;
+                            }
+                            break;
+                        }
+                        typeArgs += ">>>";
+                        lex_.next();
+                        continue;
                     }
                     typeArgs += tk.value;
                     lex_.next();
