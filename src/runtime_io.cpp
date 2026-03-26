@@ -5,6 +5,24 @@
 #include <cstdlib>
 #include <cstring>
 #include <unistd.h>
+#include <fcntl.h>
+
+static const long MAX_READ_SIZE = 256L * 1024 * 1024; // 256 MB
+
+static FILE *fopen_nofollow(const char *path, const char *mode) {
+    int flags = O_NOFOLLOW;
+    if (strcmp(mode, "r") == 0 || strcmp(mode, "rb") == 0)
+        flags |= O_RDONLY;
+    else if (strcmp(mode, "w") == 0 || strcmp(mode, "wb") == 0)
+        flags |= O_WRONLY | O_CREAT | O_TRUNC;
+    else if (strcmp(mode, "a") == 0)
+        flags |= O_WRONLY | O_CREAT | O_APPEND;
+    int fd = open(path, flags, 0644);
+    if (fd < 0) return nullptr;
+    FILE *f = fdopen(fd, mode);
+    if (!f) { close(fd); return nullptr; }
+    return f;
+}
 
 // Thread-local error message buffer for Result-based error reporting
 static thread_local char last_error_buf[512] = {0};
@@ -79,7 +97,7 @@ extern "C" const char *__ry_read_all() {
 // ===== File I/O =====
 
 extern "C" const char *__ry_read_text(const char *path) {
-    FILE *f = fopen(path, "r");
+    FILE *f = fopen_nofollow(path, "r");
     if (!f) {
         setLastError("cannot open file '%s' for reading", path);
         return nullptr;
@@ -95,17 +113,22 @@ extern "C" const char *__ry_read_text(const char *path) {
         setLastError("cannot determine size of file '%s'", path);
         return nullptr;
     }
+    if (size > MAX_READ_SIZE) {
+        fclose(f);
+        setLastError("file '%s' is too large (%ld bytes, max %ld)", path, size, MAX_READ_SIZE);
+        return nullptr;
+    }
     fseek(f, 0, SEEK_SET);
 
-    char *buf = (char *)malloc(size + 1);
-    size_t nread = fread(buf, 1, size, f);
+    char *buf = (char *)malloc((size_t)size + 1);
+    size_t nread = fread(buf, 1, (size_t)size, f);
     buf[nread] = '\0';
     fclose(f);
     return buf;
 }
 
 extern "C" int64_t __ry_write_text(const char *path, const char *content) {
-    FILE *f = fopen(path, "w");
+    FILE *f = fopen_nofollow(path, "w");
     if (!f) {
         setLastError("cannot open file '%s' for writing", path);
         return 1;
@@ -118,7 +141,7 @@ extern "C" int64_t __ry_write_text(const char *path, const char *content) {
 }
 
 extern "C" int64_t __ry_append_text(const char *path, const char *content) {
-    FILE *f = fopen(path, "a");
+    FILE *f = fopen_nofollow(path, "a");
     if (!f) {
         setLastError("cannot open file '%s' for appending", path);
         return 1;
@@ -143,7 +166,7 @@ extern "C" int64_t __ry_delete_file(const char *path) {
 }
 
 extern "C" void *__ry_read_bytes(const char *path) {
-    FILE *f = fopen(path, "rb");
+    FILE *f = fopen_nofollow(path, "rb");
     if (!f) {
         setLastError("cannot open file '%s' for reading", path);
         return nullptr;
@@ -159,6 +182,11 @@ extern "C" void *__ry_read_bytes(const char *path) {
         setLastError("cannot determine size of file '%s'", path);
         return nullptr;
     }
+    if (size > MAX_READ_SIZE) {
+        fclose(f);
+        setLastError("file '%s' is too large (%ld bytes, max %ld)", path, size, MAX_READ_SIZE);
+        return nullptr;
+    }
     fseek(f, 0, SEEK_SET);
 
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
@@ -172,7 +200,7 @@ extern "C" void *__ry_read_bytes(const char *path) {
 
 extern "C" int64_t __ry_write_bytes(const char *path, void *list) {
     auto *header = (IOListHeader *)list;
-    FILE *f = fopen(path, "wb");
+    FILE *f = fopen_nofollow(path, "wb");
     if (!f) {
         setLastError("cannot open file '%s' for writing", path);
         return 1;

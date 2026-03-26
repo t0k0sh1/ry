@@ -76,6 +76,8 @@ private:
     size_t len_;
     size_t pos_;
     bool caseInsensitive_ = false;
+    int groupDepth_ = 0;
+    static constexpr int MAX_GROUP_DEPTH = 50;
 
     char peek() const {
         if (pos_ >= len_) return '\0';
@@ -222,6 +224,11 @@ private:
     RegexNodePtr parseAtom() {
         char c = peek();
         if (c == '(') {
+            if (++groupDepth_ > MAX_GROUP_DEPTH) {
+                fprintf(stderr, "regex error: group nesting too deep (limit: %d) in pattern '%s'\n",
+                        MAX_GROUP_DEPTH, src_);
+                exit(1);
+            }
             advance(); // consume '('
             // Check for inline flags (?i)
             if (peek() == '?' && pos_ + 1 < len_ && src_[pos_ + 1] == 'i') {
@@ -232,6 +239,7 @@ private:
                     exit(1);
                 }
                 advance(); // consume ')'
+                --groupDepth_;
                 caseInsensitive_ = true;
                 // Return next atom (flag is stateful, not a node)
                 return parseAtom();
@@ -242,6 +250,7 @@ private:
                 exit(1);
             }
             advance(); // consume ')'
+            --groupDepth_;
             auto node = std::make_unique<RegexNode>();
             node->kind = RegexNodeKind::Group;
             node->children.push_back(std::move(inner));
@@ -577,6 +586,8 @@ private:
 
 class NFASimulator {
 public:
+    static constexpr int64_t MAX_STEPS = 10'000'000;
+
     NFASimulator(NFAState *start, NFAState *matchState, bool caseInsensitive = false)
         : start_(start), matchState_(matchState), generation_(0), caseInsensitive_(caseInsensitive) {}
 
@@ -603,12 +614,14 @@ public:
             }
         }
 
+        int64_t steps = 0;
         for (size_t i = startPos; i < textLen; ++i) {
             char c = text[i];
             next_.clear();
             ++generation_;
 
             for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return -1;
                 if (s == matchState_) continue;
                 if (stateMatchesChar(s, c) && s->out1) {
                     addState(next_, s->out1, text, textLen, i + 1);
@@ -641,6 +654,7 @@ public:
         current_.clear();
         next_.clear();
         int64_t bestStart = -1, bestEnd = -1;
+        int64_t steps = 0;
 
         for (size_t i = 0; i <= textLen; ++i) {
             // Inject start state for a new match attempt at position i.
@@ -648,6 +662,7 @@ public:
             // (they have earlier/equal matchStartPos, which is preferred).
             ++generation_;
             for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return {bestStart, bestEnd};
                 s->visitGeneration = generation_;
             }
             addState(current_, start_, text, textLen, i, i);

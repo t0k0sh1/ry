@@ -17,6 +17,20 @@ private:
     Lexer &lex_;
     const SourceManager *sm_ = nullptr;
     int file_id_ = 0;
+    int recursion_depth_ = 0;
+    static constexpr int MAX_RECURSION_DEPTH = 256;
+
+    struct RecursionGuard {
+        Parser &p_;
+        explicit RecursionGuard(Parser &p) : p_(p) {
+            if (++p_.recursion_depth_ > MAX_RECURSION_DEPTH)
+                p_.parseError("expression nesting too deep (limit: " +
+                              std::to_string(MAX_RECURSION_DEPTH) + ")");
+        }
+        ~RecursionGuard() { --p_.recursion_depth_; }
+        RecursionGuard(const RecursionGuard &) = delete;
+        RecursionGuard &operator=(const RecursionGuard &) = delete;
+    };
 
     // Error helpers
     [[noreturn]] void parseError(int line, const std::string &msg);

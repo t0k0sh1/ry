@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "ry/runtime_net.hpp"
 
 extern "C" {
 int64_t __ry_http_parse_content_length(const char *value);
@@ -36,6 +37,11 @@ const char *__ry_http_client_body(void *resp);
 const char *__ry_http_client_header(void *resp, const char *key);
 void __ry_http_client_response_free(void *resp);
 }
+
+// Allow private/loopback connections in HTTP client tests
+static struct AllowPrivateHTTP {
+    AllowPrivateHTTP() { setenv("RY_ALLOW_PRIVATE_HTTP", "1", 1); }
+} allow_private_http_init;
 
 // TcpStreamHandle layout must match runtime_http.cpp
 struct TcpStreamHandle {
@@ -1261,4 +1267,30 @@ TEST(RuntimeHttpClient, ChunkedClientResponseMultipleChunks) {
     __ry_http_client_response_free(resp);
 
     ::close(srv);
+}
+
+// --- SSRF protection tests ---
+
+TEST(HttpSSRF, PrivateHostLoopback) {
+    EXPECT_TRUE(__ry_is_private_host("127.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostLocalhost) {
+    EXPECT_TRUE(__ry_is_private_host("localhost", 80));
+}
+
+TEST(HttpSSRF, PrivateHost10Network) {
+    EXPECT_TRUE(__ry_is_private_host("10.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHost192168) {
+    EXPECT_TRUE(__ry_is_private_host("192.168.1.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostLinkLocal) {
+    EXPECT_TRUE(__ry_is_private_host("169.254.169.254", 80));
+}
+
+TEST(HttpSSRF, PublicHostAllowed) {
+    EXPECT_FALSE(__ry_is_private_host("8.8.8.8", 80));
 }

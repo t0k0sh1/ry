@@ -20,7 +20,23 @@
 
 namespace ry::self_update {
 
-static const char *REPO = "t0k0sh1/ry";
+static std::string get_repo() {
+    const char *env = std::getenv("RY_UPDATE_REPO");
+    if (env && *env) return env;
+    return "t0k0sh1/ry";
+}
+
+// Absolute paths for external commands to prevent PATH injection
+static const char *CURL_PATH = "/usr/bin/curl";
+static const char *TAR_PATH = "/usr/bin/tar";
+static const char *SHASUM_PATH = "/usr/bin/shasum";
+#ifdef __APPLE__
+static const char *CP_PATH = "/bin/cp";
+static const char *RM_PATH = "/bin/rm";
+#else
+static const char *CP_PATH = "/usr/bin/cp";
+static const char *RM_PATH = "/usr/bin/rm";
+#endif
 
 bool is_valid_tag(const std::string &tag) {
     static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
@@ -86,7 +102,11 @@ int run_command(const std::vector<std::string> &args, std::string *output) {
         std::vector<char *> argv;
         for (auto &a : args) argv.push_back(const_cast<char *>(a.c_str()));
         argv.push_back(nullptr);
-        execvp(argv[0], argv.data());
+        // Use execv for absolute paths (secure), execvp as fallback
+        if (argv[0] && argv[0][0] == '/')
+            execv(argv[0], argv.data());
+        else
+            execvp(argv[0], argv.data());
         _exit(127);
     }
 
@@ -186,7 +206,7 @@ bool is_prerelease(const std::string &version) {
 }
 
 std::string build_download_url(const std::string &tag, const PlatformInfo &platform) {
-    return "https://github.com/" + std::string(REPO) +
+    return "https://github.com/" + get_repo() +
            "/releases/download/" + tag +
            "/ry-" + platform.os + "-" + platform.arch + ".tar.gz";
 }
@@ -195,10 +215,10 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
     UpdateTarget target;
 
     if (mode == "stable") {
-        std::string api_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases/latest";
+        std::string api_url = "https://api.github.com/repos/" + get_repo() + "/releases/latest";
         // Check HTTP status first to distinguish 404 from other errors
         std::string http_status;
-        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}",
+        run_command({CURL_PATH, "-sfL", "-o", "/dev/null", "-w", "%{http_code}",
                      "-H", "Accept: application/json", api_url}, &http_status);
         http_status.erase(std::remove_if(http_status.begin(), http_status.end(), ::isspace), http_status.end());
 
@@ -209,7 +229,7 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
 
         std::string json;
-        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", api_url}, &json) != 0 || json.empty()) {
+        if (run_command({CURL_PATH, "-sfL", "-H", "Accept: application/json", api_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch latest release info.\n";
             return target;
         }
@@ -220,9 +240,9 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
         }
         target.download_url = build_download_url(target.tag, platform);
     } else if (mode == "nightly") {
-        std::string releases_url = "https://api.github.com/repos/" + std::string(REPO) + "/releases?per_page=20";
+        std::string releases_url = "https://api.github.com/repos/" + get_repo() + "/releases?per_page=20";
         std::string json;
-        if (run_command({"curl", "-sfL", "-H", "Accept: application/json", releases_url}, &json) != 0 || json.empty()) {
+        if (run_command({CURL_PATH, "-sfL", "-H", "Accept: application/json", releases_url}, &json) != 0 || json.empty()) {
             std::cerr << "Error: Failed to fetch releases.\n";
             return target;
         }
@@ -252,7 +272,7 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
 
         std::string url = build_download_url(tag, platform);
         std::string status;
-        run_command({"curl", "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
+        run_command({CURL_PATH, "-sfL", "-o", "/dev/null", "-w", "%{http_code}", "--head", url}, &status);
         status.erase(std::remove_if(status.begin(), status.end(), ::isspace), status.end());
 
         if (status.empty() || (status != "200" && status != "302")) {
@@ -267,11 +287,11 @@ UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &
 }
 
 bool download_file(const std::string &url, const std::string &dest_path) {
-    return run_command({"curl", "-sfL", "-o", dest_path, url}) == 0;
+    return run_command({CURL_PATH, "-sfL", "-o", dest_path, url}) == 0;
 }
 
 std::string build_checksums_url(const std::string &tag) {
-    return "https://github.com/" + std::string(REPO) +
+    return "https://github.com/" + get_repo() +
            "/releases/download/" + tag + "/checksums.txt";
 }
 
@@ -322,7 +342,7 @@ std::string parse_checksum_for_file(const std::string &checksums_content, const 
 
 std::string compute_sha256(const std::string &file_path) {
     std::string output;
-    if (run_command({"shasum", "-a", "256", file_path}, &output) != 0 || output.empty()) {
+    if (run_command({SHASUM_PATH, "-a", "256", file_path}, &output) != 0 || output.empty()) {
         return "";
     }
     // Output format: "<hash>  <filename>"
@@ -342,7 +362,7 @@ bool verify_checksum(const std::string &archive_path, const std::string &expecte
 
 bool validate_tar_entries(const std::string &archive_path) {
     std::string verbose_listing;
-    if (run_command({"tar", "-tvzf", archive_path}, &verbose_listing) != 0) {
+    if (run_command({TAR_PATH, "-tvzf", archive_path}, &verbose_listing) != 0) {
         std::cerr << "Error: Failed to list archive entries.\n";
         return false;
     }
@@ -397,7 +417,7 @@ std::string download_and_extract(const std::string &download_url, const std::str
     if (!download_file(download_url, archive_path)) {
         std::cerr << " failed.\n";
         std::cerr << "Error: Download failed. Check your network connection.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
+        run_command({RM_PATH, "-rf", tmp_dir_str});
         return "";
     }
     std::cerr << " done.\n";
@@ -420,7 +440,7 @@ std::string download_and_extract(const std::string &download_url, const std::str
         std::string expected_hash = parse_checksum_for_file(checksums_content, expected_filename);
         if (expected_hash.empty()) {
             std::cerr << "Error: Could not find checksum for " << expected_filename << " in checksums.txt.\n";
-            run_command({"rm", "-rf", tmp_dir_str});
+            run_command({RM_PATH, "-rf", tmp_dir_str});
             return "";
         }
 
@@ -428,26 +448,26 @@ std::string download_and_extract(const std::string &download_url, const std::str
         if (!verify_checksum(archive_path, expected_hash)) {
             std::cerr << " failed.\n";
             std::cerr << "Error: Checksum verification failed. The downloaded file may be corrupted or tampered with.\n";
-            run_command({"rm", "-rf", tmp_dir_str});
+            run_command({RM_PATH, "-rf", tmp_dir_str});
             return "";
         }
         std::cerr << " ok.\n";
     } else {
         std::cerr << "Error: checksums.txt not available. Cannot verify archive integrity.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
+        run_command({RM_PATH, "-rf", tmp_dir_str});
         return "";
     }
 
     // Validate tar entries before extraction
     if (!validate_tar_entries(archive_path)) {
         std::cerr << "Error: Archive contains unsafe entries. Aborting update.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
+        run_command({RM_PATH, "-rf", tmp_dir_str});
         return "";
     }
 
-    if (run_command({"tar", "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
+    if (run_command({TAR_PATH, "xzf", archive_path, "-C", tmp_dir_str}) != 0) {
         std::cerr << "Error: Failed to extract archive.\n";
-        run_command({"rm", "-rf", tmp_dir_str});
+        run_command({RM_PATH, "-rf", tmp_dir_str});
         return "";
     }
 
@@ -470,7 +490,7 @@ bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_pa
 
     if (rename(new_binary.c_str(), binary_path.c_str()) != 0) {
         // rename() may fail across filesystems, try cp fallback
-        if (run_command({"cp", new_binary, binary_path}) != 0) {
+        if (run_command({CP_PATH, new_binary, binary_path}) != 0) {
             std::cerr << "Error: Failed to replace binary at " << binary_path << "\n";
             std::cerr << "You may need to run with sudo.\n";
             return false;
@@ -600,7 +620,7 @@ int cmd_self_update(int argc, char *argv[]) {
     }
 
     if (!detail::replace_binary(tmp_dir, binary_path)) {
-        detail::run_command({"rm", "-rf", tmp_dir});
+        detail::run_command({RM_PATH, "-rf", tmp_dir});
         return 1;
     }
 
@@ -611,7 +631,7 @@ int cmd_self_update(int argc, char *argv[]) {
         std::cerr << "Standard library updated.\n";
     }
 
-    detail::run_command({"rm", "-rf", tmp_dir});
+    detail::run_command({RM_PATH, "-rf", tmp_dir});
 
     std::cerr << "Successfully updated to " << target.tag << ".\n";
     return 0;

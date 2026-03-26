@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ry/parser.hpp"
+#include "ry/diagnostic.hpp"
 
 static Program parseStr(const std::string &src) {
     Lexer lex(src);
@@ -1507,4 +1508,16 @@ TEST(ParserTest, OrPatternAllowsWildcardBindings) {
                  "    case Foo::Bar(_) | Foo::Baz(_):\n"
                  "        print(\"done\")\n");
     });
+}
+
+TEST(ParserTest, DeepNestingThrows) {
+    // 300 nested parentheses should exceed MAX_RECURSION_DEPTH (256)
+    std::string deep = "x = " + std::string(300, '(') + "1" + std::string(300, ')');
+    EXPECT_THROW(parseStr(deep), DiagnosticError);
+}
+
+TEST(ParserTest, ModerateNestingSucceeds) {
+    // 50 nested parentheses in an assignment expression should be fine
+    std::string moderate = "x = " + std::string(50, '(') + "1" + std::string(50, ')');
+    EXPECT_NO_THROW(parseStr(moderate));
 }
