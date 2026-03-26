@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -294,6 +295,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         // Register argument count for native function overload
         native_fn_arg_counts_[s->name].push_back(s->params.size());
         return;
+    }
+
+    // Check that non-Unit, non-any functions return on all paths
+    if (s->return_type != "any" && s->return_type != "Unit"
+        && !hasDirective(s->directives, "native")) {
+        if (!allPathsReturn(s->body))
+            codegenError("function '" + s->name + "' with return type '" +
+                         s->return_type + "' does not return a value on all code paths");
     }
 
     std::vector<llvm::Type*> paramTypes;

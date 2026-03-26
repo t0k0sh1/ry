@@ -13,6 +13,7 @@ fn function_name(param_name: type, ...) -> return_type:
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
 - Return type is optional. For named functions, omitting the return type defaults to `any`. For lambdas, omitted return types are inferred from the body. Use `-> Unit` explicitly for functions that return no value.
 - The body is an indented block.
+- Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
 > **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
