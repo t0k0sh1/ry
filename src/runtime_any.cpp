@@ -59,7 +59,12 @@ static double toFloat(const RyAny *a) {
     return static_cast<double>(extractInt(a));
 }
 
+static bool isNumericTag(int64_t tag) {
+    return tag == TAG_INT || tag == TAG_FLOAT;
+}
+
 static bool hasNaN(const RyAny *a, const RyAny *b) {
+    if (!isNumericTag(a->tag) || !isNumericTag(b->tag)) return false;
     if (a->tag == TAG_FLOAT && std::isnan(extractFloat(a))) return true;
     if (b->tag == TAG_FLOAT && std::isnan(extractFloat(b))) return true;
     return false;

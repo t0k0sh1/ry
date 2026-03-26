@@ -486,3 +486,33 @@ TEST(RuntimeAnyNaN, MixedIntNaN) {
     EXPECT_EQ(__ry_any_gt(&nan, &iVal), 0);
     EXPECT_EQ(__ry_any_ge(&nan, &iVal), 0);
 }
+
+TEST_F(RuntimeAnyDeathTest, NaNOrderingWithBool) {
+    RyAny nan = mkFloat(NAN);
+    RyAny bTrue = mkBool(true);
+
+    EXPECT_EXIT(__ry_any_lt(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+
+    EXPECT_EXIT(__ry_any_lt(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+}
+
+TEST_F(RuntimeAnyDeathTest, NaNOrderingWithString) {
+    RyAny nan = mkFloat(NAN);
+    RyAny str = mkStr("x");
+
+    EXPECT_EXIT(__ry_any_lt(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+
+    EXPECT_EXIT(__ry_any_lt(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+}
