@@ -179,8 +179,8 @@ TEST(RuntimeAnyMul, StrTimesZero) {
 TEST(RuntimeAnyDiv, IntDivInt) {
     RyAny a = mkInt(10), b = mkInt(3), r;
     __ry_any_div(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 3);
+    EXPECT_EQ(r.tag, TAG_FLOAT);
+    EXPECT_DOUBLE_EQ(getFloat(&r), 10.0 / 3.0);
 }
 
 TEST(RuntimeAnyDiv, FloatDivFloat) {
@@ -245,8 +245,8 @@ TEST(RuntimeAnyFloordiv, FloatFloorDiv) {
 TEST(RuntimeAnyPow, IntPowInt) {
     RyAny a = mkInt(2), b = mkInt(10), r;
     __ry_any_pow(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 1024);
+    EXPECT_EQ(r.tag, TAG_FLOAT);
+    EXPECT_DOUBLE_EQ(getFloat(&r), 1024.0);
 }
 
 TEST(RuntimeAnyPow, IntPowNegative) {

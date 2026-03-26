@@ -76,7 +76,8 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
         return;
     }
     size_t len = strlen(s);
-    if (len > 0 && static_cast<size_t>(n) > SIZE_MAX / len) {
+    if (len > 0 && (static_cast<uint64_t>(n) > SIZE_MAX ||
+                    static_cast<size_t>(n) > SIZE_MAX / len)) {
         fprintf(stderr, "runtime error: string repeat overflow\n");
         exit(1);
     }
@@ -150,12 +151,12 @@ extern "C" void __ry_any_mul(RyAny *result, const RyAny *a, const RyAny *b) {
 
 extern "C" void __ry_any_div(RyAny *result, const RyAny *a, const RyAny *b) {
     if (a->tag == TAG_INT && b->tag == TAG_INT) {
-        int64_t bv = extractInt(b);
+        int64_t av = extractInt(a), bv = extractInt(b);
         if (bv == 0) {
             fprintf(stderr, "runtime error: division by zero\n");
             exit(1);
         }
-        makeInt(result, extractInt(a) / bv);
+        makeFloat(result, static_cast<double>(av) / static_cast<double>(bv));
     } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
         makeFloat(result, extractFloat(a) / extractFloat(b));
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
@@ -175,10 +176,10 @@ extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
         }
         makeInt(result, extractInt(a) % bv);
     } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
-        makeFloat(result, fmod(extractFloat(a), extractFloat(b)));
+        makeFloat(result, std::fmod(extractFloat(a), extractFloat(b)));
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
-        makeFloat(result, fmod(toFloat(a), toFloat(b)));
+        makeFloat(result, std::fmod(toFloat(a), toFloat(b)));
     } else {
         __ry_any_type_error("%", a->tag, b->tag);
     }
@@ -195,10 +196,10 @@ extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b)
         if ((av ^ bv) < 0 && q * bv != av) q--;
         makeInt(result, q);
     } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
-        makeFloat(result, floor(extractFloat(a) / extractFloat(b)));
+        makeFloat(result, std::floor(extractFloat(a) / extractFloat(b)));
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
-        makeFloat(result, floor(toFloat(a) / toFloat(b)));
+        makeFloat(result, std::floor(toFloat(a) / toFloat(b)));
     } else {
         __ry_any_type_error("//", a->tag, b->tag);
     }
@@ -206,25 +207,13 @@ extern "C" void __ry_any_floordiv(RyAny *result, const RyAny *a, const RyAny *b)
 
 extern "C" void __ry_any_pow(RyAny *result, const RyAny *a, const RyAny *b) {
     if (a->tag == TAG_INT && b->tag == TAG_INT) {
-        int64_t base = extractInt(a), exp = extractInt(b);
-        if (exp < 0) {
-            makeFloat(result, pow(static_cast<double>(base), static_cast<double>(exp)));
-        } else {
-            int64_t r = 1;
-            int64_t bp = base;
-            int64_t e = exp;
-            while (e > 0) {
-                if (e & 1) r *= bp;
-                bp *= bp;
-                e >>= 1;
-            }
-            makeInt(result, r);
-        }
+        makeFloat(result, std::pow(static_cast<double>(extractInt(a)),
+                                   static_cast<double>(extractInt(b))));
     } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
-        makeFloat(result, pow(extractFloat(a), extractFloat(b)));
+        makeFloat(result, std::pow(extractFloat(a), extractFloat(b)));
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
-        makeFloat(result, pow(toFloat(a), toFloat(b)));
+        makeFloat(result, std::pow(toFloat(a), toFloat(b)));
     } else {
         __ry_any_type_error("**", a->tag, b->tag);
     }
