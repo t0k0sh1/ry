@@ -46,8 +46,9 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
 
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     if (isNonStrPointer(val))
-        codegenError("type error: 'any' cannot hold collection or resource "
-                     "types; only int/float/bool/str are supported");
+        codegenError("type error: 'any' can only hold int/float/bool/str; "
+                     "non-str pointer types (collections, resources, function "
+                     "pointers, etc.) are not supported");
 
     int64_t tag = getAnyTypeTag(val->getType());
 

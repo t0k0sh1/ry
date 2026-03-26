@@ -580,3 +580,10 @@ TEST_F(CodeGenTest, AnyRejectsCollectionInFnReturn) {
         "fn f() -> any:\n"
         "    return [1, 2, 3]"), std::runtime_error);
 }
+
+TEST_F(CodeGenTest, AnyRejectsFunctionPointer) {
+    EXPECT_THROW(runSource(
+        "fn f() -> int:\n"
+        "    return 42\n"
+        "x: any = f"), std::runtime_error);
+}
