@@ -19,6 +19,12 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh 21
           sudo apt-get install -y libllvm21 llvm-21-dev libssl-dev ninja-build
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-ubuntu-${{ github.ref }}
+          restore-keys: |
+            ci-ubuntu-
       - name: Build
         run: |
           cmake -B build -G Ninja -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
