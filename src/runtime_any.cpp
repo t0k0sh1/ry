@@ -59,6 +59,12 @@ static double toFloat(const RyAny *a) {
     return static_cast<double>(extractInt(a));
 }
 
+static bool hasNaN(const RyAny *a, const RyAny *b) {
+    if (a->tag == TAG_FLOAT && std::isnan(extractFloat(a))) return true;
+    if (b->tag == TAG_FLOAT && std::isnan(extractFloat(b))) return true;
+    return false;
+}
+
 static char *checkedMalloc(size_t size) {
     char *p = static_cast<char *>(malloc(size));
     if (!p) {
@@ -251,6 +257,7 @@ extern "C" int64_t __ry_any_eq(const RyAny *a, const RyAny *b) {
 }
 
 extern "C" int64_t __ry_any_ne(const RyAny *a, const RyAny *b) {
+    if (hasNaN(a, b)) return 0;
     return __ry_any_eq(a, b) ? 0 : 1;
 }
 
@@ -276,17 +283,21 @@ static int64_t orderCompare(const char *op, const RyAny *a, const RyAny *b) {
 }
 
 extern "C" int64_t __ry_any_lt(const RyAny *a, const RyAny *b) {
+    if (hasNaN(a, b)) return 0;
     return orderCompare("<", a, b) < 0 ? 1 : 0;
 }
 
 extern "C" int64_t __ry_any_le(const RyAny *a, const RyAny *b) {
+    if (hasNaN(a, b)) return 0;
     return orderCompare("<=", a, b) <= 0 ? 1 : 0;
 }
 
 extern "C" int64_t __ry_any_gt(const RyAny *a, const RyAny *b) {
+    if (hasNaN(a, b)) return 0;
     return orderCompare(">", a, b) > 0 ? 1 : 0;
 }
 
 extern "C" int64_t __ry_any_ge(const RyAny *a, const RyAny *b) {
+    if (hasNaN(a, b)) return 0;
     return orderCompare(">=", a, b) >= 0 ? 1 : 0;
 }
