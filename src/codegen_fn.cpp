@@ -725,12 +725,21 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     if (isAnyType(ty)) return "any";
 
     if (ty == ptrTy_) {
-        auto lit = list_element_types_.find(val);
+        // Look through LoadInst to find metadata on the underlying alloca
+        llvm::Value *origin = val;
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            origin = load->getPointerOperand();
+
+        auto lit = list_element_types_.find(origin);
+        if (lit == list_element_types_.end())
+            lit = list_element_types_.find(val);
         if (lit != list_element_types_.end())
             return "List<" + reverseResolveType(
                 llvm::UndefValue::get(lit->second)) + ">";
 
-        auto fit = fn_type_info_.find(val);
+        auto fit = fn_type_info_.find(origin);
+        if (fit == fn_type_info_.end())
+            fit = fn_type_info_.find(val);
         if (fit != fn_type_info_.end()) {
             std::string result = "fn(";
             for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
@@ -767,31 +776,27 @@ std::vector<std::string> CodeGen::inferTypeArgs(
     std::unordered_set<std::string> typeParamSet(
         tmpl.type_params.begin(), tmpl.type_params.end());
 
+    // Use AST-based type inference to avoid emitting IR for arguments
+    std::unordered_map<std::string, llvm::Type*> emptyParamMap;
     for (size_t i = 0; i < args.size(); ++i) {
-        llvm::Value *argVal = emitExpr(*args[i]);
         const std::string &paramType = tmpl.params[i].type;
+        llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
 
         if (typeParamSet.count(paramType)) {
-            // Direct type parameter: T
-            std::string resolved = reverseResolveType(argVal);
+            std::string resolved;
+            if (argTy == i64Ty_)  resolved = "int";
+            else if (argTy == f64Ty_) resolved = "float";
+            else if (argTy == i1Ty_)  resolved = "bool";
+            else if (argTy == i8Ty_)  resolved = "byte";
+            else if (argTy == ptrTy_) resolved = "str";
+            else if (isAnyType(argTy)) resolved = "any";
+            else resolved = "any";
+
             if (inferred.count(paramType) && inferred[paramType] != resolved)
                 codegenError("conflicting type inference for '" + paramType +
                              "': '" + inferred[paramType] + "' vs '" + resolved + "'");
             inferred[paramType] = resolved;
-        } else if (paramType.size() > 5 && paramType.substr(0, 5) == "List<"
-                   && paramType.back() == '>') {
-            // List<T> pattern
-            std::string inner = paramType.substr(5, paramType.size() - 6);
-            if (typeParamSet.count(inner)) {
-                auto lit = list_element_types_.find(argVal);
-                if (lit != list_element_types_.end()) {
-                    std::string resolved = reverseResolveType(
-                        llvm::UndefValue::get(lit->second));
-                    inferred[inner] = resolved;
-                }
-            }
         }
-        // More patterns (fn(T)->U, Map<K,V>, etc.) can be added later
     }
 
     // Build result in template parameter order
@@ -845,7 +850,11 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         paramTypes.push_back(resolveType(p.type));
     llvm::Type *bodyRetTy = resolveType(s.return_type);
 
+    // Substitute type params in return type name
     std::string exposedReturnTypeName = s.return_type;
+    auto retTpit = type_param_scope_.find(s.return_type);
+    if (retTpit != type_param_scope_.end())
+        exposedReturnTypeName = retTpit->second;
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
