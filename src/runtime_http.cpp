@@ -809,13 +809,15 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     if (boundary.empty()) return;
 
     std::string delimiter = "--" + boundary;
-    // Work with the existing C string directly via std::string_view-like approach
-    // parse_raw_headers requires std::string, so wrap without copying the full body upfront
+    // Line-boundary-aware delimiter for subsequent parts (RFC 2046: CRLF before delimiter)
+    std::string crlf_delimiter = "\r\n" + delimiter;
     size_t body_len = strlen(req->body);
 
     std::vector<char *> field_keys, field_vals;
     std::vector<char *> file_keys, file_filenames, file_types, file_data;
+    std::unordered_set<std::string> seen_field_names, seen_file_names;
 
+    // First delimiter appears at start of body (no preceding CRLF required)
     const char *delim_ptr = strstr(req->body, delimiter.c_str());
     if (!delim_ptr) return;
     size_t pos = (size_t)(delim_ptr - req->body) + delimiter.size();
@@ -826,25 +828,23 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
         else
             break;
 
-        // Find end of part headers (empty line)
         const char *hdr_end_ptr = strstr(req->body + pos, "\r\n\r\n");
         if (!hdr_end_ptr) break;
         size_t headers_end = (size_t)(hdr_end_ptr - req->body);
 
-        // parse_raw_headers takes a std::string; construct a view over just the header region
         std::string header_region(req->body + pos, headers_end - pos);
         auto part_headers = parse_raw_headers(header_region, 0, header_region.size());
 
         size_t data_start = headers_end + 4;
 
-        const char *next_ptr = strstr(req->body + data_start, delimiter.c_str());
+        // Search for CRLF + delimiter to avoid false matches inside part data
+        const char *next_ptr = strstr(req->body + data_start, crlf_delimiter.c_str());
         if (!next_ptr) { free_header_pairs(part_headers); break; }
-        size_t next_delim = (size_t)(next_ptr - req->body);
+        // next_delim points to the "--boundary" part (skip the leading CRLF)
+        size_t next_delim = (size_t)(next_ptr - req->body) + 2;
 
-        // Strip trailing CRLF before delimiter
-        size_t data_end = next_delim;
-        if (data_end >= 2 && req->body[data_end - 2] == '\r' && req->body[data_end - 1] == '\n')
-            data_end -= 2;
+        // Part data ends at the CRLF that precedes the delimiter
+        size_t data_end = (size_t)(next_ptr - req->body);
 
         const char *disposition = nullptr;
         const char *part_content_type = nullptr;
@@ -861,13 +861,18 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 
             if (!name.empty()) {
                 if (!filename.empty()) {
-                    file_keys.push_back(strdup(name.c_str()));
-                    file_filenames.push_back(strdup(filename.c_str()));
-                    file_types.push_back(strdup(part_content_type ? part_content_type : "application/octet-stream"));
-                    file_data.push_back(strndup(req->body + data_start, data_end - data_start));
+                    // First-value-wins deduplication
+                    if (seen_file_names.insert(name).second) {
+                        file_keys.push_back(strdup(name.c_str()));
+                        file_filenames.push_back(strdup(filename.c_str()));
+                        file_types.push_back(strdup(part_content_type ? part_content_type : "application/octet-stream"));
+                        file_data.push_back(strndup(req->body + data_start, data_end - data_start));
+                    }
                 } else {
-                    field_keys.push_back(strdup(name.c_str()));
-                    field_vals.push_back(strndup(req->body + data_start, data_end - data_start));
+                    if (seen_field_names.insert(name).second) {
+                        field_keys.push_back(strdup(name.c_str()));
+                        field_vals.push_back(strndup(req->body + data_start, data_end - data_start));
+                    }
                 }
             }
         }
