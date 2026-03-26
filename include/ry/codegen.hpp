@@ -158,6 +158,7 @@ private:
     };
     std::unordered_map<llvm::AllocaInst*, TypeConstraint> type_constraints_;
     int constraint_err_counter_ = 0;
+    int arith_zero_err_counter_ = 0;
 
     bool isIntLiteralType(const std::string &typeName);
     bool isStrLiteralType(const std::string &typeName);
