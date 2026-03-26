@@ -90,6 +90,7 @@ add_library(ry_lib STATIC
     src/runtime_base64.cpp
     src/codegen_call_base64.cpp
     src/codegen_any.cpp
+    src/runtime_any.cpp
 )
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -144,6 +145,7 @@ add_executable(ry_tests
     tests/test_coverage_runtime.cpp
     tests/test_dotenv.cpp
     tests/test_runtime_json.cpp
+    tests/test_runtime_any.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
