@@ -120,7 +120,10 @@ extern "C" const char *__ry_any_to_string(const RyAny *a) {
     case TAG_UNIT:
         return "Unit";
     default:
-        return "unknown";
+        fprintf(stderr,
+                "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
+                (long long)a->tag);
+        exit(1);
     }
 }
 

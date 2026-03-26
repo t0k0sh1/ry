@@ -283,6 +283,12 @@ describe("any to_str / f-string", fn():
     x: any = 42
     expect(f"value is {x}").to_eq("value is 42")
   )
+  it("unit to_str", fn():
+    fn unit_fn() -> any:
+      return
+    x: any = unit_fn()
+    expect(f"{x}").to_eq("Unit")
+  )
 )
 
 describe("any unary negation", fn():
