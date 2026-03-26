@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
@@ -132,6 +133,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         }
     } else {
         retTy = resolveType(e->return_type);
+    }
+
+    // Check that block-bodied lambdas with explicit non-any/Unit return type
+    // return on all paths
+    if (!e->expr_body && !e->return_type.empty()
+        && !isAnyType(retTy) && !retTy->isVoidTy()) {
+        if (!allPathsReturn(e->body))
+            codegenError("lambda with return type '" + e->return_type +
+                         "' does not return a value on all code paths");
     }
 
     // Create the LLVM function

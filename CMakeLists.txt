@@ -65,6 +65,7 @@ add_library(ry_lib STATIC
     src/codegen_call_io.cpp
     src/codegen_call_iterator.cpp
     src/codegen_lambda.cpp
+    src/sema_return.cpp
     src/module_loader.cpp
     src/jit.cpp
     src/test_runtime.cpp
@@ -133,6 +134,7 @@ add_executable(ry_tests
     tests/test_codegen_regex.cpp
     tests/test_codegen_mock.cpp
     tests/test_codegen_fail.cpp
+    tests/test_sema_return.cpp
     tests/test_codegen_iterator.cpp
     tests/test_codegen_parameterized.cpp
     tests/test_runtime_utf8.cpp
