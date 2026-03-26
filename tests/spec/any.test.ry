@@ -303,3 +303,110 @@ describe("any unary negation", fn():
     expect(y == -3.14).to_eq(true)
   )
 )
+
+describe("any parameter computation", fn():
+  it("int addition via any params", fn():
+    fn add(a, b):
+      return a + b
+    expect(add(1, 2)).to_eq(3)
+  )
+  it("string concatenation via any params", fn():
+    fn concat(a, b):
+      return a + b
+    expect(concat("hello", " world")).to_eq("hello world")
+  )
+  it("mixed int/float multiplication", fn():
+    fn mul(a, b):
+      return a * b
+    expect(mul(3, 2.0)).to_eq(6.0)
+  )
+  it("comparison via any params", fn():
+    fn greater(a, b):
+      return a > b
+    expect(greater(5, 3)).to_eq(true)
+  )
+)
+
+describe("any identity / round-trip", fn():
+  it("identity preserves int", fn():
+    fn identity(x: any) -> any:
+      return x
+    expect(identity(42)).to_eq(42)
+  )
+  it("identity preserves str", fn():
+    fn identity_s(x: any) -> any:
+      return x
+    expect(identity_s("hi")).to_eq("hi")
+  )
+  it("identity preserves float", fn():
+    fn identity_f(x: any) -> any:
+      return x
+    expect(identity_f(3.14)).to_eq(3.14)
+  )
+  it("identity preserves bool", fn():
+    fn identity_b(x: any) -> any:
+      return x
+    expect(identity_b(true)).to_eq(true)
+  )
+)
+
+describe("any lambda computation", fn():
+  it("lambda with implicit any param and return", fn():
+    f = fn(x):
+      return x + 1
+    expect(f(10)).to_eq(11)
+  )
+  it("lambda returning any from computation", fn():
+    f = fn(a, b):
+      return a * b
+    expect(f(3, 4)).to_eq(12)
+  )
+)
+
+describe("any default return type", fn():
+  it("function with omitted return type returns computed value", fn():
+    fn double_val(x: int):
+      return x * 2
+    expect(double_val(5)).to_eq(10)
+  )
+)
+
+describe("any to concrete conversion", fn():
+  it("unwrap any(int) to int variable", fn():
+    fn get_int() -> any:
+      return 42
+    x: int = get_int()
+    expect(x).to_eq(42)
+  )
+  it("unwrap any(str) to str variable", fn():
+    fn get_str() -> any:
+      return "hello"
+    x: str = get_str()
+    expect(x).to_eq("hello")
+  )
+  it("unwrap any(float) to float variable", fn():
+    fn get_float() -> any:
+      return 3.14
+    x: float = get_float()
+    expect(x).to_eq(3.14)
+  )
+  it("unwrap any(bool) to bool variable", fn():
+    fn get_bool() -> any:
+      return true
+    x: bool = get_bool()
+    expect(x).to_eq(true)
+  )
+  it("int to float auto-promotion in unwrap", fn():
+    fn get_int_any() -> any:
+      return 42
+    x: float = get_int_any()
+    expect(x).to_eq(42.0)
+  )
+  it("reassign concrete variable from any value", fn():
+    fn get_any() -> any:
+      return 99
+    x: int = 0
+    x = get_any()
+    expect(x).to_eq(99)
+  )
+)

@@ -82,13 +82,55 @@ llvm::Value *CodeGen::buildUnitAny() {
 }
 
 llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
-    int64_t expectedTag = getAnyTypeTag(targetTy);
-
     llvm::Value *tag = builder_.CreateExtractValue(anyVal, 0, "any.tag.val");
+    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
+
+    // int→float auto-promotion: accept both TAG_FLOAT and TAG_INT
+    if (targetTy == f64Ty_) {
+        auto *floatBB = llvm::BasicBlock::Create(*ctx_, "any.float", fn);
+        auto *checkIntBB = llvm::BasicBlock::Create(*ctx_, "any.check_int", fn);
+        auto *intPromoteBB = llvm::BasicBlock::Create(*ctx_, "any.int2float", fn);
+        auto *mismatchBB = llvm::BasicBlock::Create(*ctx_, "any.mismatch", fn);
+        auto *mergeBB = llvm::BasicBlock::Create(*ctx_, "any.merge", fn);
+
+        // Shared alloca for type-punning the data field (used by both branches)
+        llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp.fp");
+        builder_.CreateStore(anyVal, tmp);
+        auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.data.fp");
+
+        llvm::Value *isFloat = builder_.CreateICmpEQ(
+            tag, llvm::ConstantInt::get(i64Ty_, TAG_FLOAT), "is.float");
+        builder_.CreateCondBr(isFloat, floatBB, checkIntBB);
+
+        builder_.SetInsertPoint(checkIntBB);
+        llvm::Value *isInt = builder_.CreateICmpEQ(
+            tag, llvm::ConstantInt::get(i64Ty_, TAG_INT), "is.int");
+        builder_.CreateCondBr(isInt, intPromoteBB, mismatchBB);
+
+        builder_.SetInsertPoint(mismatchBB);
+        emitRuntimeError("runtime error: any type mismatch\n", ".any_type_err");
+
+        builder_.SetInsertPoint(floatBB);
+        llvm::Value *floatVal = builder_.CreateLoad(f64Ty_, dataPtr, "any.f64");
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(intPromoteBB);
+        llvm::Value *intVal = builder_.CreateLoad(i64Ty_, dataPtr, "any.i64");
+        llvm::Value *promoted = builder_.CreateSIToFP(intVal, f64Ty_, "any.i2f");
+        builder_.CreateBr(mergeBB);
+
+        builder_.SetInsertPoint(mergeBB);
+        llvm::PHINode *phi = builder_.CreatePHI(f64Ty_, 2, "any.unwrap.f64");
+        phi->addIncoming(floatVal, floatBB);
+        phi->addIncoming(promoted, intPromoteBB);
+        return phi;
+    }
+
+    // Standard 2-way: exact tag match or error
+    int64_t expectedTag = getAnyTypeTag(targetTy);
     llvm::Value *cmp = builder_.CreateICmpEQ(
         tag, llvm::ConstantInt::get(i64Ty_, expectedTag), "any.tag.check");
 
-    llvm::Function *fn = builder_.GetInsertBlock()->getParent();
     auto *matchBB = llvm::BasicBlock::Create(*ctx_, "any.match", fn);
     auto *mismatchBB = llvm::BasicBlock::Create(*ctx_, "any.mismatch", fn);
 
