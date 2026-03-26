@@ -809,7 +809,9 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             // Assume string pointer, return directly
             return val;
         } else if (isAnyType(ty)) {
-            return emitAnyToString(val);
+            llvm::Value *anyStr = emitAnyToString(val);
+            llvm::Value *fmt = builder_.CreateGlobalString("%s", ".fmt_any");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, anyStr});
         } else if (isOptionType(ty)) {
             llvm::Value *hasVal = builder_.CreateExtractValue(val, 0, "fmt_opt_has");
             llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "fmt_opt_inner");

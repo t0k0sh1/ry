@@ -396,6 +396,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
             newTy = val->getType();
         } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
             val = unwrapFromAny(val, ptr->getAllocatedType());
+            newTy = val->getType();
         } else {
             auto uvIt = union_value_types_.find(ptr);
             if (uvIt != union_value_types_.end()) {

@@ -108,7 +108,7 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
         builder_.CreateCondBr(isInt, intPromoteBB, mismatchBB);
 
         builder_.SetInsertPoint(mismatchBB);
-        emitRuntimeError("runtime error: any type mismatch\n", ".any_type_err");
+        emitRuntimeError("runtime error: any type mismatch (expected float or int)\n", ".any_type_err");
 
         builder_.SetInsertPoint(floatBB);
         llvm::Value *floatVal = builder_.CreateLoad(f64Ty_, dataPtr, "any.f64");
@@ -137,7 +137,12 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     builder_.CreateCondBr(cmp, matchBB, mismatchBB);
 
     builder_.SetInsertPoint(mismatchBB);
-    emitRuntimeError("runtime error: any type mismatch\n", ".any_type_err");
+    std::string typeName = (targetTy == i64Ty_) ? "int"
+                         : (targetTy == i1Ty_)  ? "bool"
+                         : (targetTy == ptrTy_) ? "str"
+                                                : "unknown";
+    emitRuntimeError("runtime error: any type mismatch (expected " + typeName + ")\n",
+                     ".any_type_err");
 
     // Use anyTy_ alloca for proper alignment when type-punning the data field
     builder_.SetInsertPoint(matchBB);
