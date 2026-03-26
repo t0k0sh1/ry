@@ -22,6 +22,7 @@ static int64_t parseIntLiteral(const std::string& s) {
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
 ExprPtr Parser::parseTernary() {
+    RecursionGuard guard(*this);
     ExprPtr expr = parseNullCoalesce();
     if (lex_.peek().kind == TokenKind::Question) {
         Token qTok = lex_.next(); // consume '?'
@@ -127,6 +128,7 @@ ExprPtr Parser::parseExpr()       { return parseBinaryLeft(&Parser::parseTerm, {
 ExprPtr Parser::parseTerm()       { return parseBinaryLeft(&Parser::parseCast, {TokenKind::Star, TokenKind::Slash, TokenKind::SlashSlash, TokenKind::Percent}); }
 
 ExprPtr Parser::parsePower() {
+    RecursionGuard guard(*this);
     ExprPtr lhs = parsePostfix();
     if (lex_.peek().kind == TokenKind::StarStar) {
         Token opTok = lex_.next();
@@ -163,6 +165,7 @@ ExprPtr Parser::parseCast() {
 }
 
 ExprPtr Parser::parseLogicalNot() {
+    RecursionGuard guard(*this);
     if (lex_.peek().kind == TokenKind::Not) {
         Token notTok = lex_.next(); // consume 'not'
         ExprPtr operand = parseLogicalNot(); // 右結合
@@ -204,6 +207,7 @@ ExprPtr Parser::parseAwaitExpr() {
 }
 
 ExprPtr Parser::parsePrimary() {
+    RecursionGuard guard(*this);
     Token t = lex_.peek();
     // 単項 + / - / ~
     if (t.kind == TokenKind::Plus  ||

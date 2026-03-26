@@ -233,6 +233,7 @@ StmtNode Parser::parseImportStatement() {
 }
 
 StmtNode Parser::parseStatement() {
+    RecursionGuard guard(*this);
     // Parse directives before the statement
     auto directives = parseDirectives();
 
@@ -512,6 +513,7 @@ StmtNode Parser::parseStatement() {
 
 
 std::vector<StmtNode> Parser::parseBlock() {
+    RecursionGuard guard(*this);
     if (lex_.peek().kind != TokenKind::Newline)
         parseError("expected newline after ':'");
     lex_.next(); // consume Newline

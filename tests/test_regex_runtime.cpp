@@ -507,3 +507,16 @@ TEST(RegexRuntime, LazyFindAllLeftmostStart) {
     EXPECT_STREQ(list->data[0], "acb");
     freeStringList(list);
 }
+
+// --- ReDoS protection tests ---
+
+TEST(RegexSecurity, ModerateGroupNestingSucceeds) {
+    // 10 nested groups should work fine
+    std::string pattern = std::string(10, '(') + "a" + std::string(10, ')');
+    EXPECT_TRUE(__ry_regex_match(pattern.c_str(), "a"));
+}
+
+TEST(RegexSecurity, NormalPatternWithStepLimit) {
+    // Normal patterns should complete well within the step limit
+    EXPECT_TRUE(__ry_regex_match("(a+)(b+)(c+)", "aaabbbccc"));
+}

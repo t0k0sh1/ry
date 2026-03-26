@@ -124,6 +124,50 @@ extern "C" void *__ry_accept(void *listener) {
     return stream;
 }
 
+static bool is_private_addr(const struct sockaddr *sa) {
+    if (sa->sa_family == AF_INET) {
+        auto *sin = (const struct sockaddr_in *)sa;
+        uint32_t ip = ntohl(sin->sin_addr.s_addr);
+        if ((ip >> 24) == 127) return true;   // 127.0.0.0/8
+        if ((ip >> 24) == 10) return true;    // 10.0.0.0/8
+        if ((ip >> 20) == 0xAC1) return true; // 172.16.0.0/12
+        if ((ip >> 16) == 0xC0A8) return true; // 192.168.0.0/16
+        if ((ip >> 16) == 0xA9FE) return true; // 169.254.0.0/16
+        if ((ip >> 24) == 0) return true;     // 0.0.0.0/8
+        return false;
+    }
+    if (sa->sa_family == AF_INET6) {
+        auto *sin6 = (const struct sockaddr_in6 *)sa;
+        if (IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr)) return true;
+        if (IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) return true;
+        uint8_t first = sin6->sin6_addr.s6_addr[0];
+        if ((first & 0xFE) == 0xFC) return true; // fc00::/7 (ULA)
+        return false;
+    }
+    return false;
+}
+
+bool __ry_is_private_host(const char *host, int64_t port) {
+    struct addrinfo hints{}, *result = nullptr;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    char port_str[16];
+    snprintf(port_str, sizeof(port_str), "%lld", (long long)port);
+
+    if (::getaddrinfo(host, port_str, &hints, &result) != 0)
+        return false;
+
+    for (struct addrinfo *rp = result; rp; rp = rp->ai_next) {
+        if (is_private_addr(rp->ai_addr)) {
+            ::freeaddrinfo(result);
+            return true;
+        }
+    }
+    ::freeaddrinfo(result);
+    return false;
+}
+
 extern "C" void *__ry_connect(const char *host, int64_t port) {
     struct addrinfo hints{}, *result = nullptr;
     hints.ai_family = AF_INET;

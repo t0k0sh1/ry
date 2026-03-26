@@ -19,6 +19,27 @@
 static const int64_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 static const int MAX_REDIRECTS = 10;
 
+// OOM-safe allocation helpers — abort on failure rather than returning null
+[[noreturn]] static void oom_abort() {
+    fprintf(stderr, "ry: out of memory\n");
+    abort();
+}
+static char *checked_strndup(const char *s, size_t n) {
+    char *r = strndup(s, n);
+    if (!r) oom_abort();
+    return r;
+}
+static char *checked_strdup(const char *s) {
+    char *r = strdup(s);
+    if (!r) oom_abort();
+    return r;
+}
+static void *checked_malloc(size_t n) {
+    void *r = malloc(n);
+    if (!r) oom_abort();
+    return r;
+}
+
 // Forward declaration: TcpStreamHandle from runtime_net.cpp has fd at offset 0
 struct TcpStreamHandle {
     int fd;
@@ -83,8 +104,8 @@ static std::vector<HeaderPair> parse_raw_headers(const std::string &raw,
             while (vstart < eol && (raw[vstart] == ' ' || raw[vstart] == '\t'))
                 vstart++;
             headers.push_back({
-                strndup(raw.c_str() + pos, colon - pos),
-                strndup(raw.c_str() + vstart, eol - vstart)
+                checked_strndup(raw.c_str() + pos, colon - pos),
+                checked_strndup(raw.c_str() + vstart, eol - vstart)
             });
         }
         pos = eol + 2;
@@ -98,8 +119,8 @@ static void assign_headers(const std::vector<HeaderPair> &headers,
     int64_t count = (int64_t)headers.size();
     *count_out = count;
     if (count > 0) {
-        *keys_out = (char **)malloc(sizeof(char *) * (size_t)count);
-        *values_out = (char **)malloc(sizeof(char *) * (size_t)count);
+        *keys_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
+        *values_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
             (*keys_out)[i] = headers[(size_t)i].key;
             (*values_out)[i] = headers[(size_t)i].val;
@@ -118,7 +139,7 @@ extern "C" int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
 // The MapHeader takes ownership of both the arrays and the strings they point to.
 // The caller must NOT free keys, vals, or their elements after this call.
 static void *build_str_map(char **keys, char **vals, int64_t count) {
-    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    auto *map = (MapHeader *)checked_malloc(sizeof(MapHeader));
     map->len = count;
     map->cap = count;
     if (count > 0) {
@@ -201,7 +222,7 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
             }
             // First-value-wins for duplicate keys
             if (seen_keys.insert(key).second)
-                params.push_back({strdup(key.c_str()), strdup(val.c_str())});
+                params.push_back({checked_strdup(key.c_str()), checked_strdup(val.c_str())});
         }
         pos = amp + 1;
     }
@@ -209,8 +230,8 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
     int64_t count = (int64_t)params.size();
     req->query_count = count;
     if (count > 0) {
-        req->query_keys = (char **)malloc(sizeof(char *) * (size_t)count);
-        req->query_values = (char **)malloc(sizeof(char *) * (size_t)count);
+        req->query_keys = (char **)checked_malloc(sizeof(char *) * (size_t)count);
+        req->query_values = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
             req->query_keys[i] = params[(size_t)i].key;
             req->query_values[i] = params[(size_t)i].val;
@@ -270,7 +291,7 @@ static void parse_cookie_header(HttpRequestHandle *req) {
             if (key_len > 0) {
                 std::string key_s(p, key_len);
                 if (seen_keys.insert(key_s).second)
-                    pairs.push_back({strndup(p, key_len), strndup(val_start, val_len)});
+                    pairs.push_back({checked_strndup(p, key_len), checked_strndup(val_start, val_len)});
             }
         }
 
@@ -281,8 +302,8 @@ static void parse_cookie_header(HttpRequestHandle *req) {
     int64_t count = (int64_t)pairs.size();
     req->cookie_count = count;
     if (count > 0) {
-        req->cookie_keys = (char **)malloc(sizeof(char *) * (size_t)count);
-        req->cookie_values = (char **)malloc(sizeof(char *) * (size_t)count);
+        req->cookie_keys = (char **)checked_malloc(sizeof(char *) * (size_t)count);
+        req->cookie_values = (char **)checked_malloc(sizeof(char *) * (size_t)count);
         for (int64_t i = 0; i < count; i++) {
             req->cookie_keys[i] = pairs[(size_t)i].key;
             req->cookie_values[i] = pairs[(size_t)i].val;
@@ -547,7 +568,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
     std::string raw = recv_all(handle->fd, 8192);
     if (raw.empty()) return nullptr;
 
-    auto *req = (HttpRequestHandle *)malloc(sizeof(HttpRequestHandle));
+    auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
     memset(req, 0, sizeof(HttpRequestHandle));
 
     // Parse request line: METHOD PATH HTTP/x.x\r\n
@@ -565,7 +586,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
         return nullptr;
     }
     std::string method = request_line.substr(0, sp1);
-    req->method = strdup(method.c_str());
+    req->method = checked_strdup(method.c_str());
 
     // Parse path and query string
     size_t sp2 = request_line.find(' ', sp1 + 1);
@@ -577,10 +598,10 @@ extern "C" void *__ry_http_read_request(void *stream) {
 
     size_t qmark = full_path.find('?');
     if (qmark != std::string::npos) {
-        req->path = strdup(full_path.substr(0, qmark).c_str());
+        req->path = checked_strdup(full_path.substr(0, qmark).c_str());
         parse_query_string(full_path.substr(qmark + 1), req);
     } else {
-        req->path = strdup(full_path.c_str());
+        req->path = checked_strdup(full_path.c_str());
         parse_query_string("", req);
     }
 
@@ -631,7 +652,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
             __ry_http_request_free(req);
             return nullptr;
         }
-        req->body = strdup(body_data.c_str());
+        req->body = checked_strdup(body_data.c_str());
         return req;
     }
 
@@ -648,7 +669,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
 
     if (content_length > 0 && (int64_t)body_data.size() < content_length) {
         size_t remaining = (size_t)content_length - body_data.size();
-        char *extra = (char *)malloc(remaining);
+        char *extra = (char *)checked_malloc(remaining);
         size_t got = 0;
         while (got < remaining) {
             ssize_t n = ::recv(handle->fd, extra + got, remaining - got, 0);
@@ -667,7 +688,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
     if (content_length >= 0 && (int64_t)body_data.size() > content_length)
         body_data.resize((size_t)content_length);
 
-    req->body = strdup(body_data.c_str());
+    req->body = checked_strdup(body_data.c_str());
 
     return req;
 }
@@ -710,11 +731,11 @@ extern "C" void *__ry_http_query_all(void *r) {
     char **dup_keys = nullptr;
     char **dup_vals = nullptr;
     if (req->query_count > 0) {
-        dup_keys = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
-        dup_vals = (char **)malloc(sizeof(char *) * (size_t)req->query_count);
+        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->query_count);
+        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->query_count);
         for (int64_t i = 0; i < req->query_count; i++) {
-            dup_keys[i] = strdup(req->query_keys[i]);
-            dup_vals[i] = strdup(req->query_values[i]);
+            dup_keys[i] = checked_strdup(req->query_keys[i]);
+            dup_vals[i] = checked_strdup(req->query_values[i]);
         }
     }
     return build_str_map(dup_keys, dup_vals, req->query_count);
@@ -734,11 +755,11 @@ extern "C" void *__ry_http_cookies(void *r) {
     char **dup_keys = nullptr;
     char **dup_vals = nullptr;
     if (req->cookie_count > 0) {
-        dup_keys = (char **)malloc(sizeof(char *) * (size_t)req->cookie_count);
-        dup_vals = (char **)malloc(sizeof(char *) * (size_t)req->cookie_count);
+        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->cookie_count);
+        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->cookie_count);
         for (int64_t i = 0; i < req->cookie_count; i++) {
-            dup_keys[i] = strdup(req->cookie_keys[i]);
-            dup_vals[i] = strdup(req->cookie_values[i]);
+            dup_keys[i] = checked_strdup(req->cookie_keys[i]);
+            dup_vals[i] = checked_strdup(req->cookie_values[i]);
         }
     }
     return build_str_map(dup_keys, dup_vals, req->cookie_count);
@@ -863,15 +884,15 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
                 if (!filename.empty()) {
                     // First-value-wins deduplication
                     if (seen_file_names.insert(name).second) {
-                        file_keys.push_back(strdup(name.c_str()));
-                        file_filenames.push_back(strdup(filename.c_str()));
-                        file_types.push_back(strdup(part_content_type ? part_content_type : "application/octet-stream"));
-                        file_data.push_back(strndup(req->body + data_start, data_end - data_start));
+                        file_keys.push_back(checked_strdup(name.c_str()));
+                        file_filenames.push_back(checked_strdup(filename.c_str()));
+                        file_types.push_back(checked_strdup(part_content_type ? part_content_type : "application/octet-stream"));
+                        file_data.push_back(checked_strndup(req->body + data_start, data_end - data_start));
                     }
                 } else {
                     if (seen_field_names.insert(name).second) {
-                        field_keys.push_back(strdup(name.c_str()));
-                        field_vals.push_back(strndup(req->body + data_start, data_end - data_start));
+                        field_keys.push_back(checked_strdup(name.c_str()));
+                        field_vals.push_back(checked_strndup(req->body + data_start, data_end - data_start));
                     }
                 }
             }
@@ -886,8 +907,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 
     req->form_field_count = (int64_t)field_keys.size();
     if (req->form_field_count > 0) {
-        req->form_field_keys = (char **)malloc(sizeof(char *) * field_keys.size());
-        req->form_field_values = (char **)malloc(sizeof(char *) * field_vals.size());
+        req->form_field_keys = (char **)checked_malloc(sizeof(char *) * field_keys.size());
+        req->form_field_values = (char **)checked_malloc(sizeof(char *) * field_vals.size());
         for (size_t i = 0; i < field_keys.size(); i++) {
             req->form_field_keys[i] = field_keys[i];
             req->form_field_values[i] = field_vals[i];
@@ -896,10 +917,10 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 
     req->form_file_count = (int64_t)file_keys.size();
     if (req->form_file_count > 0) {
-        req->form_file_keys = (char **)malloc(sizeof(char *) * file_keys.size());
-        req->form_file_filenames = (char **)malloc(sizeof(char *) * file_filenames.size());
-        req->form_file_types = (char **)malloc(sizeof(char *) * file_types.size());
-        req->form_file_data = (char **)malloc(sizeof(char *) * file_data.size());
+        req->form_file_keys = (char **)checked_malloc(sizeof(char *) * file_keys.size());
+        req->form_file_filenames = (char **)checked_malloc(sizeof(char *) * file_filenames.size());
+        req->form_file_types = (char **)checked_malloc(sizeof(char *) * file_types.size());
+        req->form_file_data = (char **)checked_malloc(sizeof(char *) * file_data.size());
         for (size_t i = 0; i < file_keys.size(); i++) {
             req->form_file_keys[i] = file_keys[i];
             req->form_file_filenames[i] = file_filenames[i];
@@ -925,14 +946,14 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
     for (int64_t i = 0; i < req->form_file_count; i++) {
         if (strcmp(req->form_file_keys[i], name) == 0) {
             // Build a Map<str, str> with keys: "filename", "content_type", "data"
-            char **keys = (char **)malloc(sizeof(char *) * 3);
-            char **vals = (char **)malloc(sizeof(char *) * 3);
-            keys[0] = strdup("filename");
-            vals[0] = strdup(req->form_file_filenames[i]);
-            keys[1] = strdup("content_type");
-            vals[1] = strdup(req->form_file_types[i]);
-            keys[2] = strdup("data");
-            vals[2] = strdup(req->form_file_data[i]);
+            char **keys = (char **)checked_malloc(sizeof(char *) * 3);
+            char **vals = (char **)checked_malloc(sizeof(char *) * 3);
+            keys[0] = checked_strdup("filename");
+            vals[0] = checked_strdup(req->form_file_filenames[i]);
+            keys[1] = checked_strdup("content_type");
+            vals[1] = checked_strdup(req->form_file_types[i]);
+            keys[2] = checked_strdup("data");
+            vals[2] = checked_strdup(req->form_file_data[i]);
             return build_str_map(keys, vals, 3);
         }
     }
@@ -946,29 +967,29 @@ extern "C" void *__ry_http_form_fields(void *r) {
     char **dup_keys = nullptr;
     char **dup_vals = nullptr;
     if (req->form_field_count > 0) {
-        dup_keys = (char **)malloc(sizeof(char *) * (size_t)req->form_field_count);
-        dup_vals = (char **)malloc(sizeof(char *) * (size_t)req->form_field_count);
+        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
+        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         for (int64_t i = 0; i < req->form_field_count; i++) {
-            dup_keys[i] = strdup(req->form_field_keys[i]);
-            dup_vals[i] = strdup(req->form_field_values[i]);
+            dup_keys[i] = checked_strdup(req->form_field_keys[i]);
+            dup_vals[i] = checked_strdup(req->form_field_values[i]);
         }
     }
     return build_str_map(dup_keys, dup_vals, req->form_field_count);
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
-    auto *resp = (HttpResponseHandle *)malloc(sizeof(HttpResponseHandle));
+    auto *resp = (HttpResponseHandle *)checked_malloc(sizeof(HttpResponseHandle));
     resp->status = status;
-    resp->body = strdup(body ? body : "");
+    resp->body = checked_strdup(body ? body : "");
 
     auto *map = (MapHeader *)headers_map;
     resp->header_count = map->len;
     if (map->len > 0) {
-        resp->header_keys = (char **)malloc(sizeof(char *) * (size_t)map->len);
-        resp->header_values = (char **)malloc(sizeof(char *) * (size_t)map->len);
+        resp->header_keys = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
+        resp->header_values = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
         for (int64_t i = 0; i < map->len; i++) {
-            resp->header_keys[i] = strdup(map->keys[i]);
-            resp->header_values[i] = strdup(map->vals[i]);
+            resp->header_keys[i] = checked_strdup(map->keys[i]);
+            resp->header_values[i] = checked_strdup(map->vals[i]);
         }
     } else {
         resp->header_keys = nullptr;
@@ -1210,11 +1231,11 @@ static ParsedUrl *parse_url(const char *url) {
     if (frag != std::string::npos)
         path.resize(frag);
 
-    auto *result = (ParsedUrl *)malloc(sizeof(ParsedUrl));
-    result->host = strdup(host.c_str());
+    auto *result = (ParsedUrl *)checked_malloc(sizeof(ParsedUrl));
+    result->host = checked_strdup(host.c_str());
     result->port = port;
     result->is_https = is_https;
-    result->path = strdup(path.c_str());
+    result->path = checked_strdup(path.c_str());
     return result;
 }
 
@@ -1306,7 +1327,7 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
         if (content_length >= 0) {
             if ((int64_t)body_data.size() < content_length) {
                 size_t remaining = (size_t)content_length - body_data.size();
-                char *extra = (char *)malloc(remaining);
+                char *extra = (char *)checked_malloc(remaining);
                 size_t got = 0;
                 while (got < remaining) {
                     ssize_t n = t.do_recv(extra + got, remaining - got);
@@ -1337,9 +1358,9 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
     }
 
     // Build response handle
-    auto *resp = (HttpClientResponseHandle *)malloc(sizeof(HttpClientResponseHandle));
+    auto *resp = (HttpClientResponseHandle *)checked_malloc(sizeof(HttpClientResponseHandle));
     resp->status = (int64_t)status_code;
-    resp->body = strdup(body_data.c_str());
+    resp->body = checked_strdup(body_data.c_str());
 
     assign_headers(parsed_headers, &resp->header_keys, &resp->header_values, &resp->header_count);
 
@@ -1365,7 +1386,7 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
 
     // Absolute URL (http:// or https://)
     if (strncmp(location, "http://", 7) == 0 || strncmp(location, "https://", 8) == 0) {
-        return strdup(location);
+        return checked_strdup(location);
     }
 
     // Determine base scheme
@@ -1384,7 +1405,7 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
     // Protocol-relative URL — inherit scheme from base
     if (location[0] == '/' && location[1] == '/') {
         std::string resolved = scheme + location;
-        return strdup(resolved.c_str());
+        return checked_strdup(resolved.c_str());
     }
 
     const char *origin_end = strpbrk(authority_start, "/?#");
@@ -1397,7 +1418,7 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
     // Absolute path
     if (location[0] == '/') {
         std::string resolved = origin + location;
-        return strdup(resolved.c_str());
+        return checked_strdup(resolved.c_str());
     }
 
     // Relative path: append to directory of current path
@@ -1406,12 +1427,12 @@ static char *resolve_redirect_url(const char *base_url, const char *location) {
         std::string base_dir(base_url,
                              (size_t)(last_slash + 1 - base_url));
         std::string resolved = base_dir + location;
-        return strdup(resolved.c_str());
+        return checked_strdup(resolved.c_str());
     }
 
     // No path in base — append /location
     std::string resolved = origin + "/" + location;
-    return strdup(resolved.c_str());
+    return checked_strdup(resolved.c_str());
 }
 
 static bool is_sensitive_header(const char *name) {
@@ -1462,12 +1483,19 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
     int redirect_count = 0;
     bool strip_sensitive = false;
     void *result = nullptr;
+    const char *allow_private = std::getenv("RY_ALLOW_PRIVATE_HTTP");
+    bool ssrf_check = !allow_private || strcmp(allow_private, "1") != 0;
 
     for (;;) {
         ParsedUrl *parsed = parse_url(current_url);
         if (!parsed) break;
 
         if (has_crlf(parsed->host) || has_crlf(parsed->path)) {
+            __ry_http_parsed_url_free(parsed);
+            break;
+        }
+
+        if (ssrf_check && __ry_is_private_host(parsed->host, parsed->port)) {
             __ry_http_parsed_url_free(parsed);
             break;
         }
@@ -1566,7 +1594,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
 
                 if (should_redirect_as_get((int)resp->status, current_method)) {
                     free(owned_method);
-                    owned_method = strdup("GET");
+                    owned_method = checked_strdup("GET");
                     current_method = owned_method;
                     current_body = "";
                 }

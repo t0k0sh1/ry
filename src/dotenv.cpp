@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <sys/stat.h>
 
 namespace ry {
 
@@ -69,6 +70,11 @@ parseDotEnv(const std::string &content) {
 }
 
 static void loadEnvFile(const std::filesystem::path &path) {
+    // Reject symlinks to prevent following links to sensitive files
+    struct stat st;
+    if (lstat(path.c_str(), &st) != 0) return;
+    if (!S_ISREG(st.st_mode)) return;
+
     std::ifstream file(path);
     if (!file.is_open()) return;
 

@@ -19,6 +19,9 @@ void __ry_apply_default_recv_timeout(int fd);
 // Caller takes ownership of the fd.
 int __ry_tcp_take_fd(void *stream);
 
+// SSRF protection: check if a hostname resolves to a private/loopback IP
+bool __ry_is_private_host(const char *host, int64_t port);
+
 extern "C" {
 
 void *__ry_bind(const char *host, int64_t port);
