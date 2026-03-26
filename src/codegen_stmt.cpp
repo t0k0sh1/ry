@@ -388,6 +388,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
                         "byte value out of range (0-255): " + std::to_string(v));
             }
             val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
+        } else if (isAnyType(ptr->getAllocatedType())) {
+            val = wrapInAny(val);
+            newTy = val->getType();
         } else {
             auto uvIt = union_value_types_.find(ptr);
             if (uvIt != union_value_types_.end()) {
