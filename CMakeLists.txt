@@ -92,6 +92,34 @@ add_library(ry_lib STATIC
     src/codegen_any.cpp
     src/runtime_any.cpp
 )
+target_precompile_headers(ry_lib PRIVATE
+    <algorithm>
+    <cstdint>
+    <cstdio>
+    <cstdlib>
+    <cstring>
+    <filesystem>
+    <fstream>
+    <functional>
+    <iostream>
+    <map>
+    <memory>
+    <mutex>
+    <optional>
+    <sstream>
+    <stdexcept>
+    <string>
+    <string_view>
+    <unordered_map>
+    <unordered_set>
+    <variant>
+    <vector>
+    <llvm/IR/IRBuilder.h>
+    <llvm/IR/LLVMContext.h>
+    <llvm/IR/Module.h>
+    <llvm/IR/Verifier.h>
+    <llvm/Support/raw_ostream.h>
+)
 target_include_directories(ry_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${LLVM_INCLUDE_DIRS}
@@ -165,6 +193,8 @@ else()
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
+
+target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 
 include(GoogleTest)
 gtest_discover_tests(ry_tests)
