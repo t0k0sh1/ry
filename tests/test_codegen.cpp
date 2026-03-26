@@ -535,12 +535,14 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
 
 TEST_F(CodeGenTest, FloorDivByZeroExits) {
     EXPECT_EXIT(runSource("print(7 // 0)"),
-                ::testing::ExitedWithCode(1), "");
+                ::testing::ExitedWithCode(1),
+                "runtime error: division by zero");
 }
 
 TEST_F(CodeGenTest, ModByZeroExits) {
     EXPECT_EXIT(runSource("print(7 % 0)"),
-                ::testing::ExitedWithCode(1), "");
+                ::testing::ExitedWithCode(1),
+                "runtime error: modulo by zero");
 }
 
 TEST_F(CodeGenTest, FloorDivNonZeroWorks) {

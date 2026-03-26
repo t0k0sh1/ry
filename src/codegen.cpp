@@ -982,9 +982,18 @@ llvm::FunctionCallee CodeGen::getStdlibExit() {
 }
 
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    auto printfFn = getStdlibPrintf();
+    // fprintf(stderr, message)
+    auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
+    auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
+#ifdef __APPLE__
+    const char *stderrName = "__stderrp";
+#else
+    const char *stderrName = "stderr";
+#endif
+    auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
+    llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
     llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
-    builder_.CreateCall(printfFn, {errMsg});
+    builder_.CreateCall(fprintfFn, {stderrVal, errMsg});
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();

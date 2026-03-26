@@ -323,7 +323,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             builder_.CreateCondBr(isZero, errBB, okBB);
             builder_.SetInsertPoint(errBB);
             emitRuntimeError("runtime error: division by zero\n",
-                              ".floordiv_zero_err_" + std::to_string(div_zero_err_counter_++));
+                              ".floordiv_zero_err_" + std::to_string(arith_zero_err_counter_++));
             builder_.SetInsertPoint(okBB);
         }
         // int: sdiv + floor adjustment
@@ -365,7 +365,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             builder_.CreateCondBr(isZero, errBB, okBB);
             builder_.SetInsertPoint(errBB);
             emitRuntimeError("runtime error: modulo by zero\n",
-                              ".mod_zero_err_" + std::to_string(div_zero_err_counter_++));
+                              ".mod_zero_err_" + std::to_string(arith_zero_err_counter_++));
             builder_.SetInsertPoint(okBB);
         }
         return builder_.CreateSRem(lhs, rhs, "srem");
