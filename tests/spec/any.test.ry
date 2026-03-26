@@ -202,6 +202,43 @@ describe("any comparison operators", fn():
   )
 )
 
+describe("any unwrap in function call", fn():
+  it("pass any(int) to int param", fn():
+    fn typed_int(x: int) -> int:
+      return x + 1
+    v: any = 42
+    expect(typed_int(v)).to_eq(43)
+  )
+  it("pass any(float) to float param", fn():
+    fn typed_float(x: float) -> float:
+      return x + 1.0
+    v: any = 2.5
+    expect(typed_float(v)).to_eq(3.5)
+  )
+  it("pass any(str) to str param", fn():
+    fn typed_str(x: str) -> str:
+      return x
+    v: any = "hello"
+    expect(typed_str(v)).to_eq("hello")
+  )
+  it("pass any(bool) to bool param", fn():
+    fn typed_bool(x: bool) -> bool:
+      return x
+    v: any = true
+    expect(typed_bool(v)).to_eq(true)
+  )
+)
+
+describe("overload resolution: concrete preferred over any", fn():
+  it("concrete match wins over any match", fn():
+    fn dispatch(x: int) -> str:
+      return "int"
+    fn dispatch(x) -> str:
+      return "any"
+    expect(dispatch(42)).to_eq("int")
+  )
+)
+
 describe("any unary negation", fn():
   it("negate int", fn():
     x: any = 42

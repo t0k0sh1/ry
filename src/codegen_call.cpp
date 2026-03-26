@@ -1162,22 +1162,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
-
-            if (argVals.size() != info.paramTypes.size())
-                codegenError(
-                    "lambda call: expected " + std::to_string(info.paramTypes.size()) +
-                    " arguments, got " + std::to_string(argVals.size()));
-
-            for (size_t i = 0; i < argVals.size(); ++i) {
-                if (argVals[i]->getType() != info.paramTypes[i]) {
-                    if (isAnyType(info.paramTypes[i]))
-                        argVals[i] = wrapInAny(argVals[i]);
-                    else
-                        codegenError(
-                            "lambda call: argument " + std::to_string(i) + " type mismatch");
-                }
-            }
-
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
             return emitLambdaCall(loaded, info, argVals, "indirect_call");
         }
@@ -1188,8 +1172,44 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
 
 // ===== Lambda call helper =====
 
+std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
+                                                  std::vector<llvm::Value*> args,
+                                                  const std::string &context) {
+    if (args.size() != info.paramTypes.size()) {
+        codegenError(
+            context + ": expected " + std::to_string(info.paramTypes.size()) +
+            " arguments, got " + std::to_string(args.size()));
+    }
+
+    for (size_t i = 0; i < args.size(); ++i) {
+        if (args[i]->getType() == info.paramTypes[i])
+            continue;
+
+        if (isAnyType(info.paramTypes[i])) {
+            args[i] = wrapInAny(args[i]);
+            continue;
+        }
+
+        if (isAnyType(args[i]->getType()) && canAnyHoldType(info.paramTypes[i])) {
+            args[i] = unwrapFromAny(args[i], info.paramTypes[i]);
+            continue;
+        }
+
+        if (i < info.paramTypeNames.size() && isUnionType(info.paramTypeNames[i])) {
+            args[i] = wrapInUnion(args[i], info.paramTypeNames[i]);
+            continue;
+        }
+
+        codegenError(context + ": argument " + std::to_string(i) + " type mismatch");
+    }
+
+    return args;
+}
+
 llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                       std::vector<llvm::Value*> args, const std::string &name) {
+    args = coerceCallArgs(info, std::move(args), "lambda call");
+
     if (info.capturedVars.empty()) {
         llvm::FunctionType *ft = llvm::FunctionType::get(
             info.returnType, info.paramTypes, false);
@@ -1434,4 +1454,3 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
 
     return nullptr;
 }
-

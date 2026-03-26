@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
@@ -134,6 +135,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         retTy = resolveType(e->return_type);
     }
 
+    // Check that block-bodied lambdas with explicit non-any/Unit return type
+    // return on all paths
+    if (!e->expr_body && !e->return_type.empty()
+        && !isAnyType(retTy) && !retTy->isVoidTy()) {
+        if (!allPathsReturn(e->body))
+            codegenError("lambda with return type '" + e->return_type +
+                         "' does not return a value on all code paths");
+    }
+
     // Create the LLVM function
     std::string lambdaName = "__lambda." + std::to_string(lambda_counter_++);
     llvm::FunctionType *ft = llvm::FunctionType::get(retTy, allParamTypes, false);
@@ -213,6 +223,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Register fn_type_info for the function pointer value
     FnTypeInfo info;
     info.paramTypes = paramTypes;  // only the user-visible params
+    for (auto &p : e->params)
+        info.paramTypeNames.push_back(p.type);
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;

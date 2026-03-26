@@ -25,6 +25,7 @@ extern "C" { extern char **environ; }
 #define RY_ENVIRON environ
 #endif
 #include <cstdlib>
+#include <iostream>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -80,20 +81,13 @@ static void emitCoverageReport() {
     __ry_coverage_report_summary(ptrs.data(), g_coverage_file_count);
 }
 
-// Compile and run a .ry file via JIT. Returns the JIT function's exit code.
-static int runRyFile(const std::string &filepath, bool test_mode,
-                     const char *argv0, bool coverage_mode = false) {
-    auto bufOrErr = MemoryBuffer::getFile(filepath);
-    if (!bufOrErr) {
-        errs() << "Error reading file: " << filepath << "\n";
-        return 1;
-    }
-    std::string src = (*bufOrErr)->getBuffer().str();
-
+// Compile and run Ry source code via JIT. Returns the JIT function's exit code.
+static int runRySource(const std::string &src, const std::string &source_name,
+                       const std::string &referrer_dir, bool test_mode,
+                       const char *argv0, bool coverage_mode = false) {
     // Load .env from project root (once per root per process)
     {
-        auto fileDir = fs::path(filepath).parent_path().string();
-        if (auto root = findProjectRoot(fileDir)) {
+        if (auto root = findProjectRoot(referrer_dir)) {
             static std::string loaded_root;
             if (loaded_root != *root) {
                 const char *ry_env = std::getenv("RY_ENV");
@@ -105,7 +99,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
 
     // Source manager for rich error messages
     SourceManager sm;
-    int fileId = sm.addSource(filepath, src);
+    int fileId = sm.addSource(source_name, src);
 
     // Lex -> Parse
     Lexer  lexer(src);
@@ -121,7 +115,6 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         search_paths.push_back((fs::path(lib_dir) / "std").string());
     }
 
-    std::string referrer_dir = fs::path(filepath).parent_path().string();
     ModuleLoader loader(search_paths, &sm);
 
     // Implicit `from std` import (like Java's java.lang)
@@ -273,6 +266,19 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     }
 
     return result > 0 ? 1 : 0;
+}
+
+// Compile and run a .ry file via JIT. Returns the JIT function's exit code.
+static int runRyFile(const std::string &filepath, bool test_mode,
+                     const char *argv0, bool coverage_mode = false) {
+    auto bufOrErr = MemoryBuffer::getFile(filepath);
+    if (!bufOrErr) {
+        errs() << "Error reading file: " << filepath << "\n";
+        return 1;
+    }
+    std::string src = (*bufOrErr)->getBuffer().str();
+    std::string referrer_dir = fs::path(filepath).parent_path().string();
+    return runRySource(src, filepath, referrer_dir, test_mode, argv0, coverage_mode);
 }
 
 // Collect *.test.ry files recursively under root_dir
@@ -625,8 +631,23 @@ int main(int argc, char *argv[]) {
             }
             return discoverAndRunTests(*root, argv[0], parallel, coverage);
         }
+    } else if (argc == 1 && !isatty(STDIN_FILENO)) {
+        std::string src{std::istreambuf_iterator<char>(std::cin),
+                        std::istreambuf_iterator<char>{}};
+        __ry_args_init(0, nullptr);
+        std::string cwd = fs::current_path().string();
+        try {
+            return runRySource(src, "<stdin>", cwd, false, argv[0]);
+        } catch (const DiagnosticError &e) {
+            errs() << e.what();
+            return 1;
+        } catch (const std::exception &e) {
+            errs() << "Error: " << e.what() << "\n";
+            return 1;
+        }
     } else {
         errs() << "Usage: ry [--env=<env>] <file.ry> [args...]\n";
+        errs() << "       echo '<code>' | ry\n";
         errs() << "       ry [--env=<env>] test [-p | --parallel] [-w | --watch] [--coverage | --cov] [<file.ry> | <dir>]\n";
         errs() << "       ry init\n";
         errs() << "       ry fmt [--check] [<file|dir>]\n";

@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -300,6 +301,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type));
     llvm::Type *bodyRetTy = resolveType(s->return_type);
+
+    // Check that non-Unit, non-any functions return on all paths
+    if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
+        && !hasDirective(s->directives, "native")) {
+        if (!allPathsReturn(s->body))
+            codegenError("function '" + s->name + "' with return type '" +
+                         s->return_type + "' does not return a value on all code paths");
+    }
     std::string exposedReturnTypeName = s->is_async ? "Task<" + s->return_type + ">" : s->return_type;
     llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 

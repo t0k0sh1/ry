@@ -34,6 +34,16 @@ TEST_F(CodeGenTest, IteratorLazyMap) {
     EXPECT_EQ(runSource(src), "10\n20\n30\n");
 }
 
+TEST_F(CodeGenTest, IteratorLazyMapUntypedLambdaParam) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "ys = xs.iter().map(fn(x) -> int: 2).to_list()\n"
+        "print(ys[0])\n"
+        "print(ys[1])\n"
+        "print(ys[2])";
+    EXPECT_EQ(runSource(src), "2\n2\n2\n");
+}
+
 TEST_F(CodeGenTest, IteratorLazyTake) {
     std::string src =
         "xs = [1, 2, 3, 4, 5]\n"

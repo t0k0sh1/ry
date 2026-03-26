@@ -308,28 +308,34 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
-            } else {
-                if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
-                    candidate.exactMatches++;
-                    continue;
-                }
-
-                if (isAnyType(entry.paramTypes[i])) {
-                    // Match: any type accepts all primitives; wrapping deferred to arg building
-                    candidate.anyMatches++;
-                } else if (isUnionType(resolvedParamTypeName)) {
-                    std::string norm = normalizeUnionType(resolvedParamTypeName);
-                    auto uIt = union_type_info_.find(norm);
-                    if (uIt != union_type_info_.end()) {
-                        bool found = false;
-                        for (auto *ct : uIt->second.componentTypes) {
-                            if (ct == emittedArgs[i]->getType()) { found = true; break; }
-                        }
-                        if (!found) { match = false; break; }
-                        candidate.unionMatches++;
-                    } else { match = false; break; }
-                } else { match = false; break; }
+                continue;
             }
+
+            if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
+                candidate.exactMatches++;
+                continue;
+            }
+
+            if (isAnyType(entry.paramTypes[i])) {
+                // Match: any type accepts all primitives; wrapping deferred to arg building
+                candidate.anyMatches++;
+            } else if (isUnionType(resolvedParamTypeName)) {
+                std::string norm = normalizeUnionType(resolvedParamTypeName);
+                auto uIt = union_type_info_.find(norm);
+                if (uIt != union_type_info_.end()) {
+                    bool found = false;
+                    for (auto *ct : uIt->second.componentTypes) {
+                        if (ct == emittedArgs[i]->getType()) { found = true; break; }
+                    }
+                    if (!found) { match = false; break; }
+                    candidate.unionMatches++;
+                } else { match = false; break; }
+            } else if (isAnyType(emittedArgs[i]->getType()) &&
+                       canAnyHoldType(entry.paramTypes[i])) {
+                // Matching a concrete parameter from an any-typed value requires runtime unwrap,
+                // so treat it with the same low specificity as an any fallback.
+                candidate.anyMatches++;
+            } else { match = false; break; }
         }
         if (match)
             candidates.push_back(candidate);
@@ -364,6 +370,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isAnyType(chosen->paramTypes[i])) {
             outArgVals.push_back(wrapInAny(emittedArgs[i]));
+        } else if (isAnyType(emittedArgs[i]->getType()) &&
+                   emittedArgs[i]->getType() != chosen->paramTypes[i]) {
+            outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isUnionType(resolvedParamTypeName)) {
             outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
@@ -907,6 +916,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
                 if (s != std::string::npos)
                     p = p.substr(s, e - s + 1);
                 info.paramTypes.push_back(resolveType(p));
+                info.paramTypeNames.push_back(p);
                 start = i + 1;
             }
         }
