@@ -651,10 +651,12 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             auto &info = union_type_info_[unionName];
             llvm::Value *tag = builder_.CreateExtractValue(val, 0, "union.tag");
 
-            // Store the union value in memory so we can extract data via GEP
-            llvm::AllocaInst *unionTmp = builder_.CreateAlloca(info.llvmType, nullptr, "union.print.tmp");
-            builder_.CreateStore(val, unionTmp);
-            auto *dataPtr = builder_.CreateStructGEP(info.llvmType, unionTmp, 1, "union.data.ptr");
+            // Alloca only the data part (not the full union struct) for type punning
+            llvm::Value *dataBytes = builder_.CreateExtractValue(val, 1, "union.data");
+            auto *dataTy = info.llvmType->getElementType(1);
+            llvm::AllocaInst *dataTmp = builder_.CreateAlloca(dataTy, nullptr, "union.data.tmp");
+            dataTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(info.llvmType));
+            builder_.CreateStore(dataBytes, dataTmp);
 
             llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "union.print.end", fn_);
             llvm::SwitchInst *sw = builder_.CreateSwitch(tag, endBB, info.componentTypes.size());
@@ -666,7 +668,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                 builder_.SetInsertPoint(caseBB);
 
                 llvm::Value *innerVal = builder_.CreateLoad(
-                    info.componentTypes[i], dataPtr, "union.inner");
+                    info.componentTypes[i], dataTmp, "union.inner");
 
                 emitPrintValue(innerVal, info.componentTypes[i], printfFn, "_union" + std::to_string(i));
 
@@ -684,6 +686,13 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         emitPrintValue(val, errorTy_, printfFn, "_err");
         llvm::Constant *nl = builder_.CreateGlobalString("\n", ".fmt_nl_err");
         builder_.CreateCall(printfFn, {nl});
+        return;
+    }
+
+    if (val->getType() == anyTy_) {
+        llvm::Value *str = emitAnyToString(val);
+        llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_any");
+        builder_.CreateCall(printfFn, {fmt, str});
         return;
     }
 

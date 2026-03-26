@@ -105,6 +105,14 @@ llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     return builder_.CreateLoad(targetTy, dataPtr, "any.unwrap.val");
 }
 
+llvm::Value *CodeGen::emitAnyToString(llvm::Value *anyVal) {
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.ts");
+    builder_.CreateStore(anyVal, tmp);
+    llvm::FunctionType *fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+    llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_any_to_string", fnTy);
+    return builder_.CreateCall(fn, {tmp}, "any.ts.str");
+}
+
 llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
                                        llvm::Value *lhs, llvm::Value *rhs) {
     llvm::AllocaInst *lhsPtr = builder_.CreateAlloca(anyTy_, nullptr, "any.lhs");

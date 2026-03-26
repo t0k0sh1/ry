@@ -99,6 +99,34 @@ static void repeatStr(RyAny *result, const char *s, int64_t n) {
     makeStr(result, buf);
 }
 
+// ===== String conversion (#225) =====
+
+extern "C" const char *__ry_any_to_string(const RyAny *a) {
+    switch (a->tag) {
+    case TAG_INT: {
+        char *buf = checkedMalloc(32);
+        snprintf(buf, 32, "%lld", (long long)extractInt(a));
+        return buf;
+    }
+    case TAG_FLOAT: {
+        char *buf = checkedMalloc(64);
+        snprintf(buf, 64, "%g", extractFloat(a));
+        return buf;
+    }
+    case TAG_BOOL:
+        return extractInt(a) ? "true" : "false";
+    case TAG_STR:
+        return extractStr(a);
+    case TAG_UNIT:
+        return "Unit";
+    default:
+        fprintf(stderr,
+                "runtime error: __ry_any_to_string: unsupported any tag %lld\n",
+                (long long)a->tag);
+        exit(1);
+    }
+}
+
 // ===== Type error (#224) =====
 
 extern "C" void __ry_any_type_error(const char *op, int64_t tag_a, int64_t tag_b) {

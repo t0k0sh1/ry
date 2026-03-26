@@ -1042,6 +1042,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     llvm::Type *ty = val->getType();
 
+    if (ty == anyTy_)
+        return emitAnyToString(val);
+
     if (ty->isPointerTy()) {
         // Reject non-string pointer types (collections, function pointers)
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {

@@ -457,4 +457,5 @@ private:
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
+    llvm::Value *emitAnyToString(llvm::Value *anyVal);
 };
