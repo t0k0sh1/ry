@@ -300,13 +300,32 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
-    // // 整数除算: f64入力はi64に変換してからsdiv
+    // // floor division (toward -∞)
     if (op == "//") {
         lhs = promoteToInt(lhs);
         rhs = promoteToInt(rhs);
-        if (lhs->getType()->isDoubleTy()) lhs = builder_.CreateFPToSI(lhs, i64Ty_, "lhs_i");
-        if (rhs->getType()->isDoubleTy()) rhs = builder_.CreateFPToSI(rhs, i64Ty_, "rhs_i");
-        return builder_.CreateSDiv(lhs, rhs, "idiv");
+        bool lf = lhs->getType()->isDoubleTy();
+        bool rf = rhs->getType()->isDoubleTy();
+        if (lf || rf) {
+            // float: floor(fdiv)
+            std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
+            llvm::Value *div = builder_.CreateFDiv(lhs, rhs, "fdiv");
+            llvm::Function *floorFn = llvm::Intrinsic::getDeclaration(
+                mod_.get(), llvm::Intrinsic::floor, {f64Ty_});
+            return builder_.CreateCall(floorFn, {div}, "floordiv");
+        }
+        // int: sdiv + floor adjustment
+        llvm::Value *q   = builder_.CreateSDiv(lhs, rhs, "q");
+        llvm::Value *rem  = builder_.CreateSRem(lhs, rhs, "rem");
+        llvm::Value *xorV = builder_.CreateXor(lhs, rhs, "xor");
+        llvm::Value *signsDiffer = builder_.CreateICmpSLT(
+            xorV, llvm::ConstantInt::get(i64Ty_, 0), "signs_differ");
+        llvm::Value *hasRem = builder_.CreateICmpNE(
+            rem, llvm::ConstantInt::get(i64Ty_, 0), "has_rem");
+        llvm::Value *needsAdj = builder_.CreateAnd(signsDiffer, hasRem, "needs_adj");
+        llvm::Value *adjusted = builder_.CreateSub(
+            q, llvm::ConstantInt::get(i64Ty_, 1), "adjusted");
+        return builder_.CreateSelect(needsAdj, adjusted, q, "floordiv");
     }
 
     // / 除算: 常にf64

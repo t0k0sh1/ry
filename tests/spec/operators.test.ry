@@ -14,6 +14,19 @@ describe("arithmetic", fn():
   it("integer division", fn():
     expect(7 // 2).to_eq(3)
   )
+  it("floor division with negative dividend", fn():
+    expect(-7 // 2).to_eq(-4)
+  )
+  it("floor division with negative divisor", fn():
+    expect(7 // -2).to_eq(-4)
+  )
+  it("floor division with both negative", fn():
+    expect(-7 // -2).to_eq(3)
+  )
+  it("floor division with float operands", fn():
+    expect(7.0 // 2.0).to_eq(3.0)
+    expect(-7.0 // 2.0).to_eq(-4.0)
+  )
   it("modulo", fn():
     expect(7 % 3).to_eq(1)
   )

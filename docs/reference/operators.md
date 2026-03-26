@@ -34,7 +34,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
 | `/` | Division (always float) | `7 / 2` -> `3.5` |
-| `//` | Integer division (truncated) | `7 // 2` -> `3` |
+| `//` | Floor division (toward -∞) | `7 // 2` -> `3`, `-7 // 2` -> `-4` |
 | `%` | Modulo | `7 % 3` -> `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
 | `-x` | Unary minus | `-5`, `-3.14` |
@@ -258,7 +258,8 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `+ - *` | float | int / float | float |
 | `+ - *` | int | float | float |
 | `/` | any numeric | any numeric | float |
-| `//` | any numeric | any numeric | int |
+| `//` | int | int | int |
+| `//` | float or int (one is float) | -- | float |
 | `**` | any numeric | any numeric | float |
 | `%` | int | int | int |
 | `%` | float or int (one is float) | -- | float |
