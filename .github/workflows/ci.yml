@@ -18,10 +18,10 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 21
-          sudo apt-get install -y libllvm21 llvm-21-dev libssl-dev
+          sudo apt-get install -y libllvm21 llvm-21-dev libssl-dev ninja-build
       - name: Build
         run: |
-          cmake -B build -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
+          cmake -B build -G Ninja -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
