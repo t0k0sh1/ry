@@ -1117,6 +1117,22 @@ TEST_F(CodeGenTest, FilterUFCS) {
     EXPECT_EQ(runSource(src), "[4, 5]\n");
 }
 
+TEST_F(CodeGenTest, FilterUntypedLambdaParam) {
+    std::string src =
+        "xs = [1, 2, 3, 4, 5]\n"
+        "ys = filter(xs, fn(x): x > 3)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[4, 5]\n");
+}
+
+TEST_F(CodeGenTest, FilterStillRejectsTypedMismatch) {
+    EXPECT_THROW(runSource(
+        "xs = [1, 2, 3]\n"
+        "ys = filter(xs, fn(x: str): true)\n"
+        "print(ys)"
+    ), std::runtime_error);
+}
+
 // ===== map テスト =====
 
 TEST_F(CodeGenTest, MapIntToInt) {
@@ -1167,6 +1183,14 @@ TEST_F(CodeGenTest, MapPreservesOriginal) {
         "print(xs)\n"
         "print(ys)";
     EXPECT_EQ(runSource(src), "[1, 2, 3]\n[2, 4, 6]\n");
+}
+
+TEST_F(CodeGenTest, MapUntypedLambdaParam) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "ys = map(xs, fn(x) -> int: 7)\n"
+        "print(ys)";
+    EXPECT_EQ(runSource(src), "[7, 7, 7]\n");
 }
 
 // ===== filter + map チェーンテスト =====
@@ -1538,6 +1562,14 @@ TEST_F(CodeGenTest, ReduceUFCS) {
         "xs = [1, 2, 3, 4]\n"
         "print(xs.reduce(fn(a: int, b: int): a + b))";
     EXPECT_EQ(runSource(src), "10\n");
+}
+
+TEST_F(CodeGenTest, ReduceUntypedLambdaParams) {
+    std::string src =
+        "xs = [1, 2, 3, 4]\n"
+        "sum = reduce(xs, fn(a, b) -> int: 99)\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "99\n");
 }
 
 TEST_F(CodeGenTest, FoldBasic) {

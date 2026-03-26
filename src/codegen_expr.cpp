@@ -42,6 +42,7 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         llvm::Function *func = fit->second[0].func;
         FnTypeInfo info;
         info.paramTypes = fit->second[0].paramTypes;
+        info.paramTypeNames = fit->second[0].paramTypeNames;
         info.returnType = func->getReturnType();
         fn_type_info_[func] = info;
         return func;
@@ -1369,16 +1370,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
         calleeInfo = fnIt->second;
         for (auto &arg : callExpr.args)
             argVals.push_back(emitExpr(*arg));
-        if (argVals.size() != calleeInfo.paramTypes.size())
-            codegenError("spawn call argument count mismatch");
-        for (size_t i = 0; i < argVals.size(); ++i) {
-            if (argVals[i]->getType() != calleeInfo.paramTypes[i]) {
-                if (isAnyType(calleeInfo.paramTypes[i]))
-                    argVals[i] = wrapInAny(argVals[i]);
-                else
-                    codegenError("spawn call argument type mismatch");
-            }
-        }
         calleeVal = builder_.CreateLoad(ptrTy_, varPtr, callExpr.callee + ".spawn_fn");
     } else {
         codegenError("spawn requires a user-defined function or lambda call");
