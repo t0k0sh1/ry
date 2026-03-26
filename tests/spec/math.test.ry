@@ -21,6 +21,27 @@ describe("math special values", fn():
   )
 )
 
+describe("NaN comparisons", fn():
+  it("NaN == NaN is false", fn():
+    expect(NaN == NaN).to_eq(false)
+  )
+  it("NaN != NaN is false (ordered)", fn():
+    expect(NaN != NaN).to_eq(false)
+  )
+  it("NaN < 1.0 is false", fn():
+    expect(NaN < 1.0).to_eq(false)
+  )
+  it("NaN <= 1.0 is false", fn():
+    expect(NaN <= 1.0).to_eq(false)
+  )
+  it("NaN > 1.0 is false", fn():
+    expect(NaN > 1.0).to_eq(false)
+  )
+  it("NaN >= 1.0 is false", fn():
+    expect(NaN >= 1.0).to_eq(false)
+  )
+)
+
 describe("math abs", fn():
   it("int", fn():
     expect(abs(-5)).to_eq(5)

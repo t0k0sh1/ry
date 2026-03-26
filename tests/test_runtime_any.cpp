@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
 
 // Death tests use "threadsafe" style to avoid fork issues with LLVM state
 class RuntimeAnyDeathTest : public ::testing::Test {
@@ -430,4 +431,88 @@ TEST_F(RuntimeAnyDeathTest, FloordivByZero) {
         ::testing::ExitedWithCode(1),
         "division by zero"
     );
+}
+
+// ===== NaN comparison tests =====
+
+TEST(RuntimeAnyNaN, EqNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_eq(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_eq(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_eq(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, NeNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_ne(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_ne(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_ne(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, LtNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_lt(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_lt(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_lt(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, LeNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_le(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_le(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_le(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, GtNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_gt(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_gt(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_gt(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, GeNaN) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
+    EXPECT_EQ(__ry_any_ge(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_ge(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_ge(&nan, &nan), 0);
+}
+
+TEST(RuntimeAnyNaN, MixedIntNaN) {
+    RyAny nan = mkFloat(NAN), iVal = mkInt(42);
+    EXPECT_EQ(__ry_any_eq(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_ne(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_lt(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_le(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_gt(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_ge(&nan, &iVal), 0);
+}
+
+TEST_F(RuntimeAnyDeathTest, NaNOrderingWithBool) {
+    RyAny nan = mkFloat(NAN);
+    RyAny bTrue = mkBool(true);
+
+    EXPECT_EXIT(__ry_any_lt(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&nan, &bTrue), ::testing::ExitedWithCode(1), ".*");
+
+    EXPECT_EXIT(__ry_any_lt(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&bTrue, &nan), ::testing::ExitedWithCode(1), ".*");
+}
+
+TEST_F(RuntimeAnyDeathTest, NaNOrderingWithString) {
+    RyAny nan = mkFloat(NAN);
+    RyAny str = mkStr("x");
+
+    EXPECT_EXIT(__ry_any_lt(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&nan, &str), ::testing::ExitedWithCode(1), ".*");
+
+    EXPECT_EXIT(__ry_any_lt(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_le(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_gt(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+    EXPECT_EXIT(__ry_any_ge(&str, &nan), ::testing::ExitedWithCode(1), ".*");
 }
