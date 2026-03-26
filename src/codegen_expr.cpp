@@ -1315,8 +1315,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
         if (argVals.size() != calleeInfo.paramTypes.size())
             codegenError("spawn call argument count mismatch");
         for (size_t i = 0; i < argVals.size(); ++i) {
-            if (argVals[i]->getType() != calleeInfo.paramTypes[i])
-                codegenError("spawn call argument type mismatch");
+            if (argVals[i]->getType() != calleeInfo.paramTypes[i]) {
+                if (isAnyType(calleeInfo.paramTypes[i]))
+                    argVals[i] = wrapInAny(argVals[i]);
+                else
+                    codegenError("spawn call argument type mismatch");
+            }
         }
         calleeVal = builder_.CreateLoad(ptrTy_, varPtr, callExpr.callee + ".spawn_fn");
     } else {

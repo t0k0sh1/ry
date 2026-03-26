@@ -561,11 +561,11 @@ ExprPtr Parser::parseLambdaExpr() {
                 parseError(paramName.line, "expected parameter name in lambda");
             lex_.next(); // consume param name
 
-            if (lex_.peek().kind != TokenKind::Colon)
-                parseError("expected ':' after parameter name in lambda");
-            lex_.next(); // consume ':'
-
-            std::string paramType = parseTypeName();
+            std::string paramType = "any";  // default when type is omitted
+            if (lex_.peek().kind == TokenKind::Colon) {
+                lex_.next(); // consume ':'
+                paramType = parseTypeName();
+            }
             lambda->params.push_back({paramName.value, paramType});
 
             if (lex_.peek().kind != TokenKind::Comma)
