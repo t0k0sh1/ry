@@ -113,6 +113,15 @@ cmake --build build
 
 ```bash
 ry <file.ry>
+
+# Execute from stdin (pipe or here-document)
+echo 'print("hello")' | ry
+
+ry <<'RY'
+a = 1
+b = 2
+print(a + b)
+RY
 ```
 
 ## Test

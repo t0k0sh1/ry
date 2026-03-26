@@ -75,6 +75,16 @@ print("Hello, World!")
 Hello, World!
 ```
 
+パイプや Here-document を使って、標準入力からコードを実行することもできます。
+
+```bash
+echo 'print("Hello, World!")' | ./build/ry
+
+./build/ry <<'RY'
+print("Hello, World!")
+RY
+```
+
 ---
 
 ## コメントの書き方
