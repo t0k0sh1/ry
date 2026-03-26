@@ -628,6 +628,13 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
 }
 
 llvm::Type *CodeGen::resolveType(const std::string &typeName) {
+    // Resolve generic type parameter if in scope
+    if (!type_param_scope_.empty()) {
+        auto tpit = type_param_scope_.find(typeName);
+        if (tpit != type_param_scope_.end())
+            return resolveType(tpit->second);
+    }
+
     // Built-in primitive types first (cannot be shadowed by aliases)
     if (typeName == "int")   return i64Ty_;
     if (typeName == "byte")  return i8Ty_;

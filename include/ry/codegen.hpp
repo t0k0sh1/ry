@@ -106,6 +106,20 @@ private:
     void instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
                                 const std::vector<std::string> &typeArgs);
 
+    // Generic function templates
+    struct GenericFnTemplate {
+        std::unique_ptr<FnStmt> fnStmt;
+    };
+    std::unordered_map<std::string, GenericFnTemplate> generic_fn_templates_;
+    std::unordered_set<std::string> generic_fn_instantiated_;
+    std::unordered_map<std::string, std::string> type_param_scope_;
+
+    void instantiateGenericFn(const std::string &baseName,
+                              const std::vector<std::string> &typeArgs);
+    std::vector<std::string> inferTypeArgs(const std::string &baseName,
+                                           const std::vector<ExprPtr> &args);
+    std::string reverseResolveType(llvm::Value *val);
+
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
         std::vector<llvm::Type*> paramTypes;

@@ -286,6 +286,16 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
     emitCoverage(s->loc);
+
+    // Generic function: save as template, don't instantiate yet
+    if (!s->type_params.empty()) {
+        GenericFnTemplate tmpl;
+        std::string name = s->name;
+        tmpl.fnStmt = std::move(s);
+        generic_fn_templates_[name] = std::move(tmpl);
+        return;
+    }
+
     if (hasDirective(s->directives, "native")) {
         if (s->is_async)
             codegenError("async native functions are not supported");
@@ -702,4 +712,253 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
     }
 
     enum_types_[fullName] = std::move(info);
+}
+
+// ===== Generic function type inference =====
+
+std::string CodeGen::reverseResolveType(llvm::Value *val) {
+    llvm::Type *ty = val->getType();
+    if (ty == i64Ty_) return "int";
+    if (ty == f64Ty_) return "float";
+    if (ty == i1Ty_)  return "bool";
+    if (ty == i8Ty_)  return "byte";
+    if (isAnyType(ty)) return "any";
+
+    if (ty == ptrTy_) {
+        // Look through LoadInst to find metadata on the underlying alloca
+        llvm::Value *origin = val;
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            origin = load->getPointerOperand();
+
+        auto lit = list_element_types_.find(origin);
+        if (lit == list_element_types_.end())
+            lit = list_element_types_.find(val);
+        if (lit != list_element_types_.end())
+            return "List<" + reverseResolveType(
+                llvm::UndefValue::get(lit->second)) + ">";
+
+        auto fit = fn_type_info_.find(origin);
+        if (fit == fn_type_info_.end())
+            fit = fn_type_info_.find(val);
+        if (fit != fn_type_info_.end()) {
+            std::string result = "fn(";
+            for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
+                if (i > 0) result += ",";
+                result += fit->second.paramTypeNames[i];
+            }
+            result += ")";
+            if (fit->second.returnType && !fit->second.returnType->isVoidTy())
+                result += " -> " + reverseResolveType(
+                    llvm::UndefValue::get(fit->second.returnType));
+            return result;
+        }
+        return "str";
+    }
+
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        for (auto &[name, info] : struct_types_)
+            if (info.llvmType == st) return name;
+    }
+
+    return "any";
+}
+
+std::vector<std::string> CodeGen::inferTypeArgs(
+    const std::string &baseName, const std::vector<ExprPtr> &args) {
+
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end()) return {};
+
+    const FnStmt &tmpl = *it->second.fnStmt;
+    if (args.size() != tmpl.params.size()) return {};
+
+    std::unordered_map<std::string, std::string> inferred;
+    std::unordered_set<std::string> typeParamSet(
+        tmpl.type_params.begin(), tmpl.type_params.end());
+
+    // Use AST-based type inference to avoid emitting IR for arguments
+    std::unordered_map<std::string, llvm::Type*> emptyParamMap;
+    for (size_t i = 0; i < args.size(); ++i) {
+        const std::string &paramType = tmpl.params[i].type;
+        llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
+
+        if (typeParamSet.count(paramType)) {
+            std::string resolved;
+            if (argTy == i64Ty_)  resolved = "int";
+            else if (argTy == f64Ty_) resolved = "float";
+            else if (argTy == i1Ty_)  resolved = "bool";
+            else if (argTy == i8Ty_)  resolved = "byte";
+            else if (argTy == ptrTy_) resolved = "str";
+            else if (isAnyType(argTy)) resolved = "any";
+            else resolved = "any";
+
+            if (inferred.count(paramType) && inferred[paramType] != resolved)
+                codegenError("conflicting type inference for '" + paramType +
+                             "': '" + inferred[paramType] + "' vs '" + resolved + "'");
+            inferred[paramType] = resolved;
+        }
+    }
+
+    // Build result in template parameter order
+    std::vector<std::string> result;
+    for (auto &tp : tmpl.type_params) {
+        auto found = inferred.find(tp);
+        if (found == inferred.end())
+            codegenError("could not infer type parameter '" + tp +
+                         "' in call to generic function '" + baseName + "'");
+        result.push_back(found->second);
+    }
+    return result;
+}
+
+// ===== Generic function instantiation =====
+
+void CodeGen::instantiateGenericFn(const std::string &baseName,
+                                    const std::vector<std::string> &typeArgs) {
+    // Build full name: "identity<int>" or "map<int,str>"
+    std::string fullName = baseName + "<";
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
+        if (i > 0) fullName += ",";
+        fullName += typeArgs[i];
+    }
+    fullName += ">";
+
+    // Check cache
+    if (generic_fn_instantiated_.count(fullName))
+        return;
+
+    auto it = generic_fn_templates_.find(baseName);
+    if (it == generic_fn_templates_.end())
+        codegenError("undefined generic function: " + baseName);
+
+    FnStmt &s = *it->second.fnStmt;
+
+    if (typeArgs.size() != s.type_params.size())
+        codegenError("generic function '" + baseName + "' expects " +
+                     std::to_string(s.type_params.size()) + " type argument(s), got " +
+                     std::to_string(typeArgs.size()));
+
+    // Set type parameter scope
+    auto savedScope = std::move(type_param_scope_);
+    type_param_scope_.clear();
+    for (size_t i = 0; i < s.type_params.size(); ++i)
+        type_param_scope_[s.type_params[i]] = typeArgs[i];
+
+    // Resolve parameter types and return type using type_param_scope_
+    std::vector<llvm::Type*> paramTypes;
+    for (auto &p : s.params)
+        paramTypes.push_back(resolveType(p.type));
+    llvm::Type *bodyRetTy = resolveType(s.return_type);
+
+    // Substitute type params in return type name
+    std::string exposedReturnTypeName = s.return_type;
+    auto retTpit = type_param_scope_.find(s.return_type);
+    if (retTpit != type_param_scope_.end())
+        exposedReturnTypeName = retTpit->second;
+    llvm::Type *exposedRetTy = bodyRetTy;
+
+    // Register in functions_ before body emission (enables recursion)
+    std::string irName = fullName;
+    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
+    llvm::Function *func = llvm::Function::Create(
+        ft, llvm::Function::InternalLinkage, irName, *mod_);
+
+    std::vector<std::string> paramTypeNames;
+    for (auto &p : s.params) {
+        // Substitute type params in param type names for FnTypeInfo
+        std::string resolvedName = p.type;
+        auto tpit = type_param_scope_.find(p.type);
+        if (tpit != type_param_scope_.end())
+            resolvedName = tpit->second;
+        paramTypeNames.push_back(resolvedName);
+    }
+    functions_[fullName].push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
+    generic_fn_instantiated_.insert(fullName);
+
+    // Emit function body
+    {
+        FnScope guard(*this);
+        fn_ = func;
+        current_fn_return_type_ = s.return_type;
+        pushScope();
+
+        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
+        builder_.SetInsertPoint(entry);
+
+        unsigned idx = 0;
+        for (auto &arg : func->args()) {
+            arg.setName(s.params[idx].name);
+            llvm::AllocaInst *alloca = builder_.CreateAlloca(
+                paramTypes[idx], nullptr, s.params[idx].name);
+            builder_.CreateStore(&arg, alloca);
+            scope_stack_.back()[s.params[idx].name] = alloca;
+
+            // Resolve the actual param type name (with substitution)
+            std::string ptype = paramTypeNames[idx];
+
+            // Track collection element types
+            if (ptype.size() > 5 && ptype.substr(0, 5) == "List<" && ptype.back() == '>') {
+                std::string inner = ptype.substr(5, ptype.size() - 6);
+                list_element_types_[alloca] = resolveType(inner);
+            }
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "Set<" && ptype.back() == '>') {
+                std::string inner = ptype.substr(4, ptype.size() - 5);
+                set_element_types_[alloca] = resolveType(inner);
+            }
+            if (enum_types_.count(ptype))
+                enum_value_types_[alloca] = ptype;
+            if (ptype.size() > 4 && ptype.substr(0, 4) == "Map<" && ptype.back() == '>') {
+                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
+                if (kTy) map_key_types_[alloca] = kTy;
+                if (vTy) map_value_types_[alloca] = vTy;
+            }
+            registerResourceByTypeName(ptype, alloca);
+            {
+                std::string resolvedPtype = resolveTypeAlias(ptype);
+                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(")
+                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+                if (isUnionType(ptype))
+                    union_value_types_[alloca] = normalizeUnionType(ptype);
+            }
+            ++idx;
+        }
+
+        for (auto &stmt : s.body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+
+        if (!builder_.GetInsertBlock()->getTerminator()) {
+            llvm::Value *defaultRet = nullptr;
+            if (bodyRetTy->isVoidTy()) {
+                // no default value needed
+            } else if (bodyRetTy == i64Ty_) {
+                defaultRet = llvm::ConstantInt::get(i64Ty_, 0);
+            } else if (bodyRetTy == f64Ty_) {
+                defaultRet = llvm::ConstantFP::get(f64Ty_, 0.0);
+            } else if (bodyRetTy == i1Ty_) {
+                defaultRet = llvm::ConstantInt::get(i1Ty_, 0);
+            } else if (bodyRetTy == ptrTy_) {
+                defaultRet = llvm::ConstantPointerNull::get(
+                    llvm::cast<llvm::PointerType>(ptrTy_));
+            } else if (isAnyType(bodyRetTy)) {
+                defaultRet = buildUnitAny();
+            } else if (llvm::isa<llvm::StructType>(bodyRetTy)) {
+                defaultRet = llvm::UndefValue::get(bodyRetTy);
+            }
+
+            if (bodyRetTy->isVoidTy())
+                builder_.CreateRetVoid();
+            else if (defaultRet)
+                builder_.CreateRet(defaultRet);
+            else
+                builder_.CreateRet(llvm::UndefValue::get(bodyRetTy));
+        }
+
+        std::string err;
+        llvm::raw_string_ostream errStream(err);
+        if (llvm::verifyFunction(*func, &errStream))
+            codegenError("IR verify error in generic function '" + fullName + "': " + err);
+    }
+
+    // Restore type parameter scope
+    type_param_scope_ = std::move(savedScope);
 }

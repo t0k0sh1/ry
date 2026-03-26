@@ -84,6 +84,24 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             parseError(nameTok.line, "function name '" + nameTok.value + "' must be snake_case (or SCREAMING_SNAKE_CASE for @native functions)");
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
+
+        // Parse optional type parameters: fn name<T, U>(...)
+        if (lex_.peek().kind == TokenKind::Less) {
+            lex_.next(); // consume '<'
+            for (;;) {
+                Token tp = lex_.peek();
+                if (tp.kind != TokenKind::Ident)
+                    parseError(tp.line, "expected type parameter name");
+                lex_.next();
+                fnStmt->type_params.push_back(tp.value);
+                if (lex_.peek().kind != TokenKind::Comma)
+                    break;
+                lex_.next(); // consume ','
+            }
+            if (lex_.peek().kind != TokenKind::Greater)
+                parseError("expected '>' after type parameters");
+            lex_.next(); // consume '>'
+        }
     }
 
     if (lex_.peek().kind != TokenKind::LParen)

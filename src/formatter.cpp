@@ -772,7 +772,16 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.directives.empty()) emitIndent();
 
     if (s.is_async) emit("async ");
-    emit("fn " + s.name + "(" + formatParams(s.params) + ")");
+    emit("fn " + s.name);
+    if (!s.type_params.empty()) {
+        emit("<");
+        for (size_t i = 0; i < s.type_params.size(); ++i) {
+            if (i > 0) emit(", ");
+            emit(s.type_params[i]);
+        }
+        emit(">");
+    }
+    emit("(" + formatParams(s.params) + ")");
     if (!s.return_type.empty()) {
         emit(" -> " + s.return_type);
     }

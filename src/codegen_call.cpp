@@ -1167,6 +1167,47 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // Generic function dispatch (explicit type args or type inference)
+    {
+        std::string baseName = e->callee;
+        std::vector<std::string> typeArgs;
+
+        auto ltPos = baseName.find('<');
+        if (ltPos != std::string::npos && baseName.back() == '>') {
+            std::string argsStr = baseName.substr(ltPos + 1, baseName.size() - ltPos - 2);
+            baseName = baseName.substr(0, ltPos);
+            std::string curr;
+            int depth = 0;
+            for (char c : argsStr) {
+                if (c == '<') depth++;
+                else if (c == '>') depth--;
+                else if (c == ',' && depth == 0) {
+                    typeArgs.push_back(curr);
+                    curr.clear();
+                    continue;
+                }
+                curr += c;
+            }
+            if (!curr.empty()) typeArgs.push_back(curr);
+        }
+
+        if (generic_fn_templates_.count(baseName)) {
+            if (typeArgs.empty() && !functions_.count(baseName))
+                typeArgs = inferTypeArgs(baseName, e->args);
+            if (!typeArgs.empty()) {
+                instantiateGenericFn(baseName, typeArgs);
+                // Build fullName matching instantiateGenericFn's key format
+                std::string fullName = baseName + "<";
+                for (size_t i = 0; i < typeArgs.size(); ++i) {
+                    if (i > 0) fullName += ",";
+                    fullName += typeArgs[i];
+                }
+                fullName += ">";
+                return emitUserFnCall(fullName, e->args);
+            }
+        }
+    }
+
     return emitUserFnCall(e->callee, e->args);
 }
 

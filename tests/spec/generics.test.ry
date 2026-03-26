@@ -1,0 +1,33 @@
+fn identity<T>(x: T) -> T:
+    return x
+
+fn pick_first<T, U>(a: T, b: U) -> T:
+    return a
+
+describe("generic function", fn():
+  it("explicit type arg int", fn():
+    expect(identity[int](42)).to_eq(42)
+  )
+  it("explicit type arg str", fn():
+    expect(identity[str]("hello")).to_eq("hello")
+  )
+  it("explicit type arg bool", fn():
+    expect(identity[bool](true)).to_be_true()
+  )
+  it("type inference int", fn():
+    expect(identity(99)).to_eq(99)
+  )
+  it("type inference str", fn():
+    expect(identity("world")).to_eq("world")
+  )
+  it("multiple type params", fn():
+    expect(pick_first(1, "x")).to_eq(1)
+  )
+  it("multiple type params reversed", fn():
+    expect(pick_first("hello", 42)).to_eq("hello")
+  )
+  it("same instantiation reused", fn():
+    expect(identity(10)).to_eq(10)
+    expect(identity(20)).to_eq(20)
+  )
+)
