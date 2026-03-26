@@ -33,7 +33,7 @@ fn http_cookies(req: HttpRequest) -> Map<str, str>
 fn http_form_field(req: HttpRequest, name: str) -> Option<str>
 
 @native
-fn http_form_file(req: HttpRequest, name: str) -> Map<str, str>
+fn http_form_file(req: HttpRequest, name: str) -> Option<Map<str, str>>
 
 @native
 fn http_form_fields(req: HttpRequest) -> Map<str, str>

@@ -8,6 +8,22 @@ Token Lexer::next() {
     return t;
 }
 
+bool Lexer::consumeGreaterInTypeContext() {
+    if (current_.kind == TokenKind::Greater) {
+        current_ = readToken();
+        return true;
+    }
+    if (current_.kind == TokenKind::GreaterGreater) {
+        current_ = {TokenKind::Greater, ">", current_.line, current_.col + 1};
+        return true;
+    }
+    if (current_.kind == TokenKind::GreaterGreaterGreater) {
+        current_ = {TokenKind::GreaterGreater, ">>", current_.line, current_.col + 1};
+        return true;
+    }
+    return false;
+}
+
 Lexer::State Lexer::saveState() const {
     return {pos_, line_, col_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_};
 }

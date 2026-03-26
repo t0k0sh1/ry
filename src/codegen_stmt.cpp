@@ -207,6 +207,47 @@ void CodeGen::emitVarDecl(const std::string &name,
         union_value_types_[ptr] = normalizeUnionType(*type_annotation);
     }
 
+    // Track collection metadata for Option/Result wrapping a collection
+    // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
+    if (isOptionType(newTy) || isResultType(newTy)) {
+        propagateCollectionMetadata(val, ptr);
+        // Extract inner collection type from Option<Map<K,V>> or Result<Map<K,V>, E>
+        if (type_annotation && map_key_types_.find(ptr) == map_key_types_.end()) {
+            std::string ann = *type_annotation;
+            std::string inner;
+            if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
+                inner = ann.substr(7, ann.size() - 8);
+            else if (ann.size() > 7 && ann.substr(0, 7) == "Result<" && ann.back() == '>') {
+                // Extract first type param: Result<Map<K,V>, E> → Map<K,V>
+                std::string params = ann.substr(7, ann.size() - 8);
+                int depth = 0;
+                for (size_t i = 0; i < params.size(); ++i) {
+                    if (params[i] == '<') ++depth;
+                    else if (params[i] == '>') --depth;
+                    else if (params[i] == ',' && depth == 0) {
+                        inner = params.substr(0, i);
+                        break;
+                    }
+                }
+            }
+            if (inner.size() > 4 && inner.substr(0, 4) == "Map<") {
+                auto [k, v] = parseMapTypeAnnotation(inner);
+                if (k) map_key_types_[ptr] = k;
+                if (v) map_value_types_[ptr] = v;
+            } else if (inner.size() > 5 && inner.substr(0, 5) == "List<") {
+                std::string elemName = inner.substr(5, inner.size() - 6);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    list_element_types_[ptr] = elemTy;
+            } else if (inner.size() > 4 && inner.substr(0, 4) == "Set<") {
+                std::string elemName = inner.substr(4, inner.size() - 5);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    set_element_types_[ptr] = elemTy;
+            }
+        }
+    }
+
     // Track list/map element types if this is a ptr value
     if (newTy == ptrTy_) {
         // --- List tracking ---

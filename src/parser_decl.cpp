@@ -362,9 +362,8 @@ StmtNode Parser::parseEnumStatement() {
                 break;
             lex_.next(); // consume ','
         }
-        if (lex_.peek().kind != TokenKind::Greater)
+        if (!lex_.consumeGreaterInTypeContext())
             parseError("expected '>' after type parameters");
-        lex_.next(); // consume '>'
     }
 
     if (lex_.peek().kind != TokenKind::Colon)
@@ -573,14 +572,12 @@ std::string Parser::parseTypeNameSingle() {
             // Two-parameter generic: Map<K, V> or Result<V, E>
             lex_.next(); // consume ','
             std::string secondTy = parseTypeName();
-            if (lex_.peek().kind != TokenKind::Greater)
+            if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' in " + name + " type");
-            lex_.next(); // consume '>'
             name += "<" + inner + ", " + secondTy + ">";
         } else {
-            if (lex_.peek().kind != TokenKind::Greater)
+            if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' after generic type parameter");
-            lex_.next(); // consume '>'
             name += "<" + inner + ">";
         }
     }

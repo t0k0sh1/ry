@@ -843,6 +843,7 @@ llvm::Value *CodeGen::buildOkValue(llvm::Value *inner, llvm::StructType *resultT
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0, "res.ok");
     val = builder_.CreateInsertValue(val, inner, 1, "res.ok_val");
     val = builder_.CreateInsertValue(val, llvm::Constant::getNullValue(resultTy->getElementType(2)), 2);
+    propagateCollectionMetadata(inner, val);
     return val;
 }
 
@@ -949,6 +950,7 @@ llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
     llvm::Value *val = llvm::UndefValue::get(optionTy);
     val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
     val = builder_.CreateInsertValue(val, inner, 1);
+    propagateCollectionMetadata(inner, val);
     return val;
 }
 

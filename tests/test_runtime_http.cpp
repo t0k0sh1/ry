@@ -1435,12 +1435,8 @@ TEST(RuntimeHttp, FormFileBasic) {
     free(map->buckets);
     free(map);
 
-    // Missing file returns empty map
-    auto *empty_map = (MapHeader *)__ry_http_form_file(result, "missing");
-    ASSERT_NE(empty_map, nullptr);
-    EXPECT_EQ(empty_map->len, 0);
-    free(empty_map->buckets);
-    free(empty_map);
+    // Missing file returns nullptr (None)
+    EXPECT_EQ(__ry_http_form_file(result, "missing"), nullptr);
 
     __ry_http_request_free(result);
     ::close(fds[0]);
@@ -1574,11 +1570,7 @@ TEST(RuntimeHttp, FormFieldNonMultipart) {
     void *result = __ry_http_read_request(handle);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(__ry_http_form_field(result, "anything"), nullptr);
-    auto *fmap = (MapHeader *)__ry_http_form_file(result, "anything");
-    ASSERT_NE(fmap, nullptr);
-    EXPECT_EQ(fmap->len, 0);
-    free(fmap->buckets);
-    free(fmap);
+    EXPECT_EQ(__ry_http_form_file(result, "anything"), nullptr);
 
     auto *map = (MapHeader *)__ry_http_form_fields(result);
     ASSERT_NE(map, nullptr);

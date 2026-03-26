@@ -79,6 +79,22 @@ describe("Option", fn():
   )
 )
 
+describe("nested generic type", fn():
+  it("Option<Option<int>> Some(Some)", fn():
+    inner: Option<int> = Some(42)
+    x: Option<Option<int>> = Some(inner)
+    match x:
+      case Some(v):
+        expect(v).to_be_some()
+      case None:
+        expect(false).to_eq(true)
+  )
+  it("Option<Option<int>> None", fn():
+    x: Option<Option<int>> = None
+    expect(x).to_be_none()
+  )
+)
+
 describe("Tuple", fn():
   it("element access", fn():
     t = (10, 3.14)
