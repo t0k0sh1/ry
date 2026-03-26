@@ -14,7 +14,42 @@ int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
     codegenError("type error: 'any' can only hold int/float/bool/str");
 }
 
+bool CodeGen::isNonStrPointer(llvm::Value *val) {
+    if (val->getType() != ptrTy_) return false;
+
+    // Collection types
+    if (lookupCollectionType(list_element_types_, val)) return true;
+    if (lookupCollectionType(map_key_types_, val)) return true;
+    if (lookupCollectionType(map_value_types_, val)) return true;
+    if (lookupCollectionType(set_element_types_, val)) return true;
+    if (lookupCollectionType(nested_list_element_types_, val)) return true;
+    if (lookupCollectionType(channel_element_types_, val)) return true;
+    if (lookupCollectionType(iterator_element_types_, val)) return true;
+    if (lookupCollectionType(task_result_types_, val)) return true;
+
+    // Resource types
+    if (isTcpListener(val)) return true;
+    if (isTcpStream(val)) return true;
+    if (isTlsStream(val)) return true;
+    if (isHttpRequest(val)) return true;
+    if (isHttpResponse(val)) return true;
+    if (isHttpClientResponse(val)) return true;
+    if (isJsonValue(val)) return true;
+
+    // Function pointers
+    if (fn_type_info_.count(val)) return true;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+        if (fn_type_info_.count(load->getPointerOperand())) return true;
+
+    return false;
+}
+
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
+    if (isNonStrPointer(val))
+        codegenError("type error: 'any' can only hold int/float/bool/str; "
+                     "non-str pointer types (collections, resources, function "
+                     "pointers, etc.) are not supported");
+
     int64_t tag = getAnyTypeTag(val->getType());
 
     // Bool (i1) must be zero-extended to i64 so that the runtime's 8-byte
