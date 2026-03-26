@@ -1063,6 +1063,10 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     } else if (ty->isDoubleTy()) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty == anyTy_) {
+        llvm::Value *str = emitAnyToString(val);
+        llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_any" + suffix);
+        builder_.CreateCall(printfFn, {fmt, str});
     } else if (ty == errorTy_) {
         llvm::Value *msg = builder_.CreateExtractValue(val, 0, "err_msg");
         llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");

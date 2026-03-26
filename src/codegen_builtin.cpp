@@ -687,6 +687,13 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
+    if (val->getType() == anyTy_) {
+        llvm::Value *str = emitAnyToString(val);
+        llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_any");
+        builder_.CreateCall(printfFn, {fmt, str});
+        return;
+    }
+
     if (llvm::isa<llvm::StructType>(val->getType()))
         codegenError("print() does not support struct types");
 
