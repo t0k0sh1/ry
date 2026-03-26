@@ -16,6 +16,12 @@ jobs:
       - name: Install LLVM 21 and OpenSSL
         run: |
           brew install llvm@21 openssl@3 ninja
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: release-macos
+          restore-keys: |
+            release-macos-
       - name: Read version
         id: version
         run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
