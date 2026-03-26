@@ -530,3 +530,24 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
             << "Error was: " << msg;
     }
 }
+
+// ===== zero-division guard tests =====
+
+TEST_F(CodeGenTest, FloorDivByZeroExits) {
+    EXPECT_EXIT(runSource("print(7 // 0)"),
+                ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, ModByZeroExits) {
+    EXPECT_EXIT(runSource("print(7 % 0)"),
+                ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, FloorDivNonZeroWorks) {
+    EXPECT_EQ(runSource("print(7 // 2)"), "3\n");
+    EXPECT_EQ(runSource("print(-7 // 2)"), "-4\n");
+}
+
+TEST_F(CodeGenTest, ModNonZeroWorks) {
+    EXPECT_EQ(runSource("print(7 % 3)"), "1\n");
+}

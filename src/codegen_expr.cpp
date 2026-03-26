@@ -314,6 +314,18 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
                 mod_.get(), llvm::Intrinsic::floor, {f64Ty_});
             return builder_.CreateCall(floorFn, {div}, "floordiv");
         }
+        // int: zero-division guard
+        {
+            llvm::Value *isZero = builder_.CreateICmpEQ(
+                rhs, llvm::ConstantInt::get(i64Ty_, 0), "div_zero");
+            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "floordiv.zero_err", fn_);
+            llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "floordiv.ok", fn_);
+            builder_.CreateCondBr(isZero, errBB, okBB);
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: division by zero\n",
+                              ".floordiv_zero_err_" + std::to_string(div_zero_err_counter_++));
+            builder_.SetInsertPoint(okBB);
+        }
         // int: sdiv + floor adjustment
         llvm::Value *q   = builder_.CreateSDiv(lhs, rhs, "q");
         llvm::Value *rem  = builder_.CreateSRem(lhs, rhs, "rem");
@@ -343,6 +355,18 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (lf || rf) {
             std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
             return builder_.CreateFRem(lhs, rhs, "frem");
+        }
+        // int: zero-division guard
+        {
+            llvm::Value *isZero = builder_.CreateICmpEQ(
+                rhs, llvm::ConstantInt::get(i64Ty_, 0), "mod_zero");
+            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "mod.zero_err", fn_);
+            llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "mod.ok", fn_);
+            builder_.CreateCondBr(isZero, errBB, okBB);
+            builder_.SetInsertPoint(errBB);
+            emitRuntimeError("runtime error: modulo by zero\n",
+                              ".mod_zero_err_" + std::to_string(div_zero_err_counter_++));
+            builder_.SetInsertPoint(okBB);
         }
         return builder_.CreateSRem(lhs, rhs, "srem");
     }
