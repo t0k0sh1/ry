@@ -431,6 +431,50 @@ TEST_F(CodeGenTest, OverloadWithNone) {
     EXPECT_EQ(runSource(src), "0\n42\n");
 }
 
+TEST_F(CodeGenTest, OverloadPrefersExactOverAny) {
+    std::string src =
+        "fn f(x: int) -> int:\n"
+        "    return 1\n"
+        "fn f(x) -> int:\n"
+        "    return 2\n"
+        "print(f(42))\n"
+        "print(f(\"hello\"))";
+    EXPECT_EQ(runSource(src), "1\n2\n");
+}
+
+TEST_F(CodeGenTest, OverloadPrefersUnionOverAny) {
+    std::string src =
+        "fn f(x: int | float) -> int:\n"
+        "    return 1\n"
+        "fn f(x) -> int:\n"
+        "    return 2\n"
+        "print(f(42))\n"
+        "print(f(3.14))\n"
+        "print(f(\"hello\"))";
+    EXPECT_EQ(runSource(src), "1\n1\n2\n");
+}
+
+TEST_F(CodeGenTest, OverloadPrefersExactOverUnion) {
+    std::string src =
+        "fn f(x: int | float) -> int:\n"
+        "    return 1\n"
+        "fn f(x: int) -> int:\n"
+        "    return 2\n"
+        "print(f(42))\n"
+        "print(f(3.14))";
+    EXPECT_EQ(runSource(src), "2\n1\n");
+}
+
+TEST_F(CodeGenTest, OverloadSameSpecificityRemainsAmbiguous) {
+    std::string src =
+        "fn f(x: int | str) -> int:\n"
+        "    return 1\n"
+        "fn f(x: int | float) -> int:\n"
+        "    return 2\n"
+        "f(42)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, OverloadRecursive) {
     std::string src =
         "fn fact(n: int) -> int:\n"

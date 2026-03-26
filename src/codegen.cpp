@@ -279,43 +279,78 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             emittedArgs[i] = emitExpr(*args[i]);
     }
 
-    // Filter candidates
-    std::vector<OverloadEntry*> candidates;
+    struct RankedCandidate {
+        OverloadEntry *entry;
+        int exactMatches = 0;
+        int unionMatches = 0;
+        int anyMatches = 0;
+    };
+
+    auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
+        if (lhs.exactMatches != rhs.exactMatches)
+            return lhs.exactMatches > rhs.exactMatches;
+        if (lhs.unionMatches != rhs.unionMatches)
+            return lhs.unionMatches > rhs.unionMatches;
+        if (lhs.anyMatches != rhs.anyMatches)
+            return lhs.anyMatches < rhs.anyMatches;
+        return false;
+    };
+
+    // Filter and rank candidates
+    std::vector<RankedCandidate> candidates;
     for (auto &entry : overloads) {
         if (entry.paramTypes.size() != args.size())
             continue;
         bool match = true;
+        RankedCandidate candidate{&entry, 0, 0, 0};
         for (size_t i = 0; i < args.size(); ++i) {
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
             } else {
-                if (emittedArgs[i]->getType() != entry.paramTypes[i]) {
-                    if (isAnyType(entry.paramTypes[i])) {
-                        // Match: any type accepts all primitives; wrapping deferred to arg building
-                    } else if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
-                        std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
-                        auto uIt = union_type_info_.find(norm);
-                        if (uIt != union_type_info_.end()) {
-                            bool found = false;
-                            for (auto *ct : uIt->second.componentTypes) {
-                                if (ct == emittedArgs[i]->getType()) { found = true; break; }
-                            }
-                            if (!found) { match = false; break; }
-                        } else { match = false; break; }
-                    } else { match = false; break; }
+                if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
+                    candidate.exactMatches++;
+                    continue;
                 }
+
+                if (isAnyType(entry.paramTypes[i])) {
+                    // Match: any type accepts all primitives; wrapping deferred to arg building
+                    candidate.anyMatches++;
+                } else if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
+                    std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
+                    auto uIt = union_type_info_.find(norm);
+                    if (uIt != union_type_info_.end()) {
+                        bool found = false;
+                        for (auto *ct : uIt->second.componentTypes) {
+                            if (ct == emittedArgs[i]->getType()) { found = true; break; }
+                        }
+                        if (!found) { match = false; break; }
+                        candidate.unionMatches++;
+                    } else { match = false; break; }
+                } else { match = false; break; }
             }
         }
         if (match)
-            candidates.push_back(&entry);
+            candidates.push_back(candidate);
     }
 
     if (candidates.empty())
         codegenError("no matching overload for '" + callee + "'");
-    if (candidates.size() > 1)
+
+    RankedCandidate *best = &candidates[0];
+    bool ambiguous = false;
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        if (isBetterCandidate(candidates[i], *best)) {
+            best = &candidates[i];
+            ambiguous = false;
+        } else if (!isBetterCandidate(*best, candidates[i])) {
+            ambiguous = true;
+        }
+    }
+
+    if (ambiguous)
         codegenError("ambiguous call to '" + callee + "'");
 
-    auto *chosen = candidates[0];
+    auto *chosen = best->entry;
 
     // Build final arg values (fill in None args with proper Option type, wrap union args)
     outArgVals.clear();
