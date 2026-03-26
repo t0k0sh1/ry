@@ -146,6 +146,7 @@ add_executable(ry_tests
     tests/test_dotenv.cpp
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
+    tests/test_stdin.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

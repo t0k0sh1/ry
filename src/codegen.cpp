@@ -302,6 +302,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                             }
                             if (!found) { match = false; break; }
                         } else { match = false; break; }
+                    } else if (isAnyType(emittedArgs[i]->getType()) &&
+                               canAnyHoldType(entry.paramTypes[i])) {
                     } else { match = false; break; }
                 }
             }
@@ -312,8 +314,25 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
 
     if (candidates.empty())
         codegenError("no matching overload for '" + callee + "'");
-    if (candidates.size() > 1)
-        codegenError("ambiguous call to '" + callee + "'");
+    if (candidates.size() > 1) {
+        auto scoreFn = [&](OverloadEntry *entry) -> int {
+            int score = 0;
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (isNone[i]) continue;
+                if (emittedArgs[i]->getType() == entry->paramTypes[i])
+                    continue;
+                if (isAnyType(entry->paramTypes[i]) || isAnyType(emittedArgs[i]->getType()))
+                    score += 2;
+                else
+                    score += 1;
+            }
+            return score;
+        };
+        std::sort(candidates.begin(), candidates.end(),
+            [&](OverloadEntry *a, OverloadEntry *b) { return scoreFn(a) < scoreFn(b); });
+        if (scoreFn(candidates[0]) == scoreFn(candidates[1]))
+            codegenError("ambiguous call to '" + callee + "'");
+    }
 
     auto *chosen = candidates[0];
 
@@ -325,6 +344,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isAnyType(chosen->paramTypes[i])) {
             outArgVals.push_back(wrapInAny(emittedArgs[i]));
+        } else if (isAnyType(emittedArgs[i]->getType()) &&
+                   emittedArgs[i]->getType() != chosen->paramTypes[i]) {
+            outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    i < chosen->paramTypeNames.size() &&
                    isUnionType(chosen->paramTypeNames[i])) {

@@ -1162,7 +1162,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             std::vector<llvm::Value*> argVals;
             for (auto &arg : e->args)
                 argVals.push_back(emitExpr(*arg));
-
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
             return emitLambdaCall(loaded, info, argVals, "indirect_call");
         }
@@ -1188,6 +1187,11 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
 
         if (isAnyType(info.paramTypes[i])) {
             args[i] = wrapInAny(args[i]);
+            continue;
+        }
+
+        if (isAnyType(args[i]->getType()) && canAnyHoldType(info.paramTypes[i])) {
+            args[i] = unwrapFromAny(args[i], info.paramTypes[i]);
             continue;
         }
 
