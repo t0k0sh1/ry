@@ -58,3 +58,21 @@ describe("optional param type", fn():
     expect(accept_b(false)).to_eq(true)
   )
 )
+
+describe("any reassignment", fn():
+  it("reassign int to float", fn():
+    x: any = 42
+    x = 3.14
+    expect(true).to_eq(true)
+  )
+  it("reassign str to int", fn():
+    x: any = "hello"
+    x = 42
+    expect(true).to_eq(true)
+  )
+  it("reassign bool to str", fn():
+    x: any = true
+    x = "world"
+    expect(true).to_eq(true)
+  )
+)
