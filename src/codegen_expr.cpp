@@ -57,6 +57,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
     if (auto *result = tryUnaryOperatorCall(opFnName, val))
         return result;
 
+    // any-type unary dispatch (#223)
+    if (isAnyType(val->getType())) {
+        if (e->op == "-") return emitAnyUnaryNeg(val);
+        if (e->op == "+") return val;
+        codegenError("operator '" + e->op + "' not supported for any type");
+    }
+
     if (e->op == "+") {
         return val;
     }
@@ -534,6 +541,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     std::string opFnName = "operator" + op;
     if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
         return result;
+
+    // any-type dynamic dispatch (#223)
+    if (isAnyType(lhs->getType()) || isAnyType(rhs->getType())) {
+        if (!isAnyType(lhs->getType())) lhs = wrapInAny(lhs);
+        if (!isAnyType(rhs->getType())) rhs = wrapInAny(rhs);
+        return emitAnyBinaryOp(op, lhs, rhs);
+    }
 
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")

@@ -76,3 +76,141 @@ describe("any reassignment", fn():
     expect(true).to_eq(true)
   )
 )
+
+describe("any arithmetic operators", fn():
+  it("int + int", fn():
+    x: any = 10
+    y: any = 20
+    z: any = x + y
+    expect(z == 30).to_eq(true)
+  )
+  it("int - int", fn():
+    x: any = 30
+    y: any = 10
+    z: any = x - y
+    expect(z == 20).to_eq(true)
+  )
+  it("int * int", fn():
+    x: any = 5
+    y: any = 6
+    z: any = x * y
+    expect(z == 30).to_eq(true)
+  )
+  it("int / int", fn():
+    x: any = 10
+    y: any = 2
+    z: any = x / y
+    expect(z == 5.0).to_eq(true)
+  )
+  it("int % int", fn():
+    x: any = 10
+    y: any = 3
+    z: any = x % y
+    expect(z == 1).to_eq(true)
+  )
+  it("int // int", fn():
+    x: any = 7
+    y: any = 2
+    z: any = x // y
+    expect(z == 3).to_eq(true)
+  )
+  it("int ** int", fn():
+    x: any = 2
+    y: any = 10
+    z: any = x ** y
+    expect(z == 1024.0).to_eq(true)
+  )
+  it("float + float", fn():
+    x: any = 1.5
+    y: any = 2.5
+    z: any = x + y
+    expect(z == 4.0).to_eq(true)
+  )
+  it("int + float (mixed)", fn():
+    x: any = 10
+    y: any = 3.14
+    z: any = x + y
+    expect(z == 13.14).to_eq(true)
+  )
+  it("str + str (concat)", fn():
+    x: any = "hello"
+    y: any = " world"
+    z: any = x + y
+    expect(z == "hello world").to_eq(true)
+  )
+  it("concrete + any (auto-wrap lhs)", fn():
+    y: any = 20
+    z: any = 10 + y
+    expect(z == 30).to_eq(true)
+  )
+  it("any + concrete (auto-wrap rhs)", fn():
+    x: any = 10
+    z: any = x + 20
+    expect(z == 30).to_eq(true)
+  )
+)
+
+describe("any comparison operators", fn():
+  it("int == int (true)", fn():
+    x: any = 42
+    y: any = 42
+    expect(x == y).to_eq(true)
+  )
+  it("int == int (false)", fn():
+    x: any = 42
+    y: any = 99
+    expect(x == y).to_eq(false)
+  )
+  it("int != int", fn():
+    x: any = 1
+    y: any = 2
+    expect(x != y).to_eq(true)
+  )
+  it("int < int", fn():
+    x: any = 1
+    y: any = 2
+    expect(x < y).to_eq(true)
+  )
+  it("int <= int", fn():
+    x: any = 2
+    y: any = 2
+    expect(x <= y).to_eq(true)
+  )
+  it("int > int", fn():
+    x: any = 3
+    y: any = 2
+    expect(x > y).to_eq(true)
+  )
+  it("int >= int", fn():
+    x: any = 2
+    y: any = 2
+    expect(x >= y).to_eq(true)
+  )
+  it("str == str", fn():
+    x: any = "hello"
+    y: any = "hello"
+    expect(x == y).to_eq(true)
+  )
+  it("mixed int/float comparison", fn():
+    x: any = 3
+    y: any = 3.0
+    expect(x == y).to_eq(true)
+  )
+  it("concrete == any (auto-wrap)", fn():
+    y: any = 42
+    expect(42 == y).to_eq(true)
+  )
+)
+
+describe("any unary negation", fn():
+  it("negate int", fn():
+    x: any = 42
+    y: any = -x
+    expect(y == -42).to_eq(true)
+  )
+  it("negate float", fn():
+    x: any = 3.14
+    y: any = -x
+    expect(y == -3.14).to_eq(true)
+  )
+)

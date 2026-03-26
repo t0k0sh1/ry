@@ -291,6 +291,8 @@ private:
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
     // Function call helper (B4)
     llvm::Value *emitUserFnCall(const std::string &callee, const std::vector<ExprPtr> &args);
