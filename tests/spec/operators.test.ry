@@ -27,6 +27,12 @@ describe("arithmetic", fn():
     expect(7.0 // 2.0).to_eq(3.0)
     expect(-7.0 // 2.0).to_eq(-4.0)
   )
+  it("floor division with mixed operands", fn():
+    expect(7.0 // 2).to_eq(3.0)
+    expect(7 // 2.0).to_eq(3.0)
+    expect(-7.0 // 2).to_eq(-4.0)
+    expect(7 // -2.0).to_eq(-4.0)
+  )
   it("modulo", fn():
     expect(7 % 3).to_eq(1)
   )
