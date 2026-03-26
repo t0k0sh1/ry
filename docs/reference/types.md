@@ -64,7 +64,7 @@ a: any = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
-| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`). Default return type when omitted |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`). Default return type when omitted (full any-return codegen is in progress, see [#219](https://github.com/t0k0sh1/ry/issues/219)) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
