@@ -279,66 +279,92 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             emittedArgs[i] = emitExpr(*args[i]);
     }
 
-    // Filter candidates
-    std::vector<OverloadEntry*> candidates;
+    struct RankedCandidate {
+        OverloadEntry *entry;
+        int exactMatches = 0;
+        int unionMatches = 0;
+        int anyMatches = 0;
+    };
+
+    auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
+        if (lhs.exactMatches != rhs.exactMatches)
+            return lhs.exactMatches > rhs.exactMatches;
+        if (lhs.unionMatches != rhs.unionMatches)
+            return lhs.unionMatches > rhs.unionMatches;
+        if (lhs.anyMatches != rhs.anyMatches)
+            return lhs.anyMatches < rhs.anyMatches;
+        return false;
+    };
+
+    // Filter and rank candidates
+    std::vector<RankedCandidate> candidates;
     for (auto &entry : overloads) {
         if (entry.paramTypes.size() != args.size())
             continue;
         bool match = true;
+        RankedCandidate candidate{&entry, 0, 0, 0};
         for (size_t i = 0; i < args.size(); ++i) {
+            std::string resolvedParamTypeName =
+                i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
-            } else {
-                if (emittedArgs[i]->getType() != entry.paramTypes[i]) {
-                    if (isAnyType(entry.paramTypes[i])) {
-                        // Match: any type accepts all primitives; wrapping deferred to arg building
-                    } else if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
-                        std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
-                        auto uIt = union_type_info_.find(norm);
-                        if (uIt != union_type_info_.end()) {
-                            bool found = false;
-                            for (auto *ct : uIt->second.componentTypes) {
-                                if (ct == emittedArgs[i]->getType()) { found = true; break; }
-                            }
-                            if (!found) { match = false; break; }
-                        } else { match = false; break; }
-                    } else if (isAnyType(emittedArgs[i]->getType()) &&
-                               canAnyHoldType(entry.paramTypes[i])) {
-                    } else { match = false; break; }
-                }
+                continue;
             }
+
+            if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
+                candidate.exactMatches++;
+                continue;
+            }
+
+            if (isAnyType(entry.paramTypes[i])) {
+                // Match: any type accepts all primitives; wrapping deferred to arg building
+                candidate.anyMatches++;
+            } else if (isUnionType(resolvedParamTypeName)) {
+                std::string norm = normalizeUnionType(resolvedParamTypeName);
+                auto uIt = union_type_info_.find(norm);
+                if (uIt != union_type_info_.end()) {
+                    bool found = false;
+                    for (auto *ct : uIt->second.componentTypes) {
+                        if (ct == emittedArgs[i]->getType()) { found = true; break; }
+                    }
+                    if (!found) { match = false; break; }
+                    candidate.unionMatches++;
+                } else { match = false; break; }
+            } else if (isAnyType(emittedArgs[i]->getType()) &&
+                       canAnyHoldType(entry.paramTypes[i])) {
+                // Matching a concrete parameter from an any-typed value requires runtime unwrap,
+                // so treat it with the same low specificity as an any fallback.
+                candidate.anyMatches++;
+            } else { match = false; break; }
         }
         if (match)
-            candidates.push_back(&entry);
+            candidates.push_back(candidate);
     }
 
     if (candidates.empty())
         codegenError("no matching overload for '" + callee + "'");
-    if (candidates.size() > 1) {
-        auto scoreFn = [&](OverloadEntry *entry) -> int {
-            int score = 0;
-            for (size_t i = 0; i < args.size(); ++i) {
-                if (isNone[i]) continue;
-                if (emittedArgs[i]->getType() == entry->paramTypes[i])
-                    continue;
-                if (isAnyType(entry->paramTypes[i]) || isAnyType(emittedArgs[i]->getType()))
-                    score += 2;
-                else
-                    score += 1;
-            }
-            return score;
-        };
-        std::sort(candidates.begin(), candidates.end(),
-            [&](OverloadEntry *a, OverloadEntry *b) { return scoreFn(a) < scoreFn(b); });
-        if (scoreFn(candidates[0]) == scoreFn(candidates[1]))
-            codegenError("ambiguous call to '" + callee + "'");
+
+    RankedCandidate *best = &candidates[0];
+    bool ambiguous = false;
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        if (isBetterCandidate(candidates[i], *best)) {
+            best = &candidates[i];
+            ambiguous = false;
+        } else if (!isBetterCandidate(*best, candidates[i])) {
+            ambiguous = true;
+        }
     }
 
-    auto *chosen = candidates[0];
+    if (ambiguous)
+        codegenError("ambiguous call to '" + callee + "'");
+
+    auto *chosen = best->entry;
 
     // Build final arg values (fill in None args with proper Option type, wrap union args)
     outArgVals.clear();
     for (size_t i = 0; i < args.size(); ++i) {
+        std::string resolvedParamTypeName =
+            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
         if (isNone[i]) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
@@ -348,9 +374,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                    emittedArgs[i]->getType() != chosen->paramTypes[i]) {
             outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   i < chosen->paramTypeNames.size() &&
-                   isUnionType(chosen->paramTypeNames[i])) {
-            outArgVals.push_back(wrapInUnion(emittedArgs[i], chosen->paramTypeNames[i]));
+                   isUnionType(resolvedParamTypeName)) {
+            outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
         } else {
             outArgVals.push_back(emittedArgs[i]);
         }
