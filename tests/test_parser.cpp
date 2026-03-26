@@ -468,12 +468,12 @@ TEST(ParserTest, FnExplicitUnitReturn) {
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
-    // fn(x: int): x + 1 → return type defaults to "any"
+    // fn(x: int): x + 1 → return type is empty (inferred at codegen time)
     Program prog = parseStr("f = fn(x: int): x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
-    EXPECT_EQ(lambda->return_type, "any");
+    EXPECT_EQ(lambda->return_type, "");
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {

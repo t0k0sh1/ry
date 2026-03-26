@@ -221,9 +221,15 @@ void CodeGen::emitStmt(ReturnStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     if (!s.value) {
-        if (!fn_->getReturnType()->isVoidTy())
+        if (isAnyType(fn_->getReturnType())) {
+            llvm::Value *unitAny = buildUnitAny();
+            emitEnsureChecks(unitAny);
+            builder_.CreateRet(unitAny);
+        } else if (!fn_->getReturnType()->isVoidTy()) {
             codegenError("return without value in non-Unit function");
-        builder_.CreateRetVoid();
+        } else {
+            builder_.CreateRetVoid();
+        }
     } else {
         llvm::Value *val = emitExpr(*s.value);
         llvm::Type *retTy = fn_->getReturnType();
@@ -231,7 +237,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
             codegenError("cannot return a value from Unit function '" +
                                      std::string(fn_->getName()) + "'");
         if (val->getType() != retTy) {
-            if (isUnionType(current_fn_return_type_)) {
+            if (isAnyType(retTy)) {
+                val = wrapInAny(val);
+            } else if (isUnionType(current_fn_return_type_)) {
                 val = wrapInUnion(val, current_fn_return_type_);
             } else {
                 // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
@@ -418,6 +426,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 defaultRet = llvm::ConstantInt::get(i1Ty_, 0);
             } else if (retTy == ptrTy_) {
                 defaultRet = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
+            } else if (isAnyType(retTy)) {
+                defaultRet = buildUnitAny();
             } else if (llvm::isa<llvm::StructType>(retTy)) {
                 defaultRet = llvm::UndefValue::get(retTy);
             }

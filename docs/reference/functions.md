@@ -11,8 +11,7 @@ fn function_name(param_name: type, ...) -> return_type:
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
-- Return type is optional (defaults to `any` when omitted). Use `-> Unit` explicitly for functions that return no value.
-  > **Note**: Full `any`-return codegen is not yet implemented. Currently, lambdas with omitted return types still use type inference. Full support is tracked in [#219](https://github.com/t0k0sh1/ry/issues/219).
+- Return type is optional (defaults to `any` when omitted). Use `-> Unit` explicitly for functions that return no value. For named functions, omitting the return type means the function returns `any`. For lambdas, omitted return types are inferred from the body.
 - The body is an indented block.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 

@@ -24,6 +24,17 @@ llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     return builder_.CreateLoad(anyTy_, tmp, "any.val");
 }
 
+llvm::Value *CodeGen::buildUnitAny() {
+    llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.unit.tmp");
+    auto *tagPtr = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.unit.tag");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, TAG_UNIT), tagPtr);
+    auto *dataPtr = builder_.CreateStructGEP(anyTy_, tmp, 1, "any.unit.data");
+    builder_.CreateStore(
+        llvm::Constant::getNullValue(anyTy_->getElementType(1)),
+        dataPtr);
+    return builder_.CreateLoad(anyTy_, tmp, "any.unit.val");
+}
+
 llvm::Value *CodeGen::unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy) {
     int64_t expectedTag = getAnyTypeTag(targetTy);
 
