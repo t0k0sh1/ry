@@ -1172,7 +1172,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 if (argVals[i]->getType() != info.paramTypes[i]) {
                     if (isAnyType(info.paramTypes[i]))
                         argVals[i] = wrapInAny(argVals[i]);
-                    else if (isAnyType(argVals[i]->getType()))
+                    else if (isAnyType(argVals[i]->getType()) &&
+                             canAnyHoldType(info.paramTypes[i]))
                         argVals[i] = unwrapFromAny(argVals[i], info.paramTypes[i]);
                     else
                         codegenError(

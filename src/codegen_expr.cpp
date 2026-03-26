@@ -1375,7 +1375,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
             if (argVals[i]->getType() != calleeInfo.paramTypes[i]) {
                 if (isAnyType(calleeInfo.paramTypes[i]))
                     argVals[i] = wrapInAny(argVals[i]);
-                else if (isAnyType(argVals[i]->getType()))
+                else if (isAnyType(argVals[i]->getType()) &&
+                         canAnyHoldType(calleeInfo.paramTypes[i]))
                     argVals[i] = unwrapFromAny(argVals[i], calleeInfo.paramTypes[i]);
                 else
                     codegenError("spawn call argument type mismatch");
