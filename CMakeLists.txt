@@ -40,15 +40,8 @@ llvm_map_components_to_libnames(LLVM_LIBS
     ${RY_ARCH_COMPONENTS} targetparser
 )
 
-# ===== GoogleTest (FetchContent) =====
-include(FetchContent)
-FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/refs/tags/v1.17.0.tar.gz
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# ===== GoogleTest =====
+find_package(GTest REQUIRED)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
