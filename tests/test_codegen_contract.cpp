@@ -204,7 +204,7 @@ TEST_F(CodeGenTest, EnsureTupleDestructuring) {
 
 TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
     std::string src =
-        "fn greet():\n"
+        "fn greet() -> Unit:\n"
         "    ensure v:\n"
         "        v > 0\n"
         "    print(\"hello\")";

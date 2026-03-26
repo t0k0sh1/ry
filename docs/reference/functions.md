@@ -11,7 +11,8 @@ fn function_name(param_name: type, ...) -> return_type:
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
-- Return type is optional (defaults to `Unit` when omitted).
+- Return type is optional (defaults to `any` when omitted). Use `-> Unit` explicitly for functions that return no value.
+  > **Note**: Full `any`-return codegen is not yet implemented. Currently, lambdas with omitted return types still use type inference. Full support is tracked in [#219](https://github.com/t0k0sh1/ry/issues/219).
 - The body is an indented block.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
@@ -21,8 +22,8 @@ fn function_name(param_name: type, ...) -> return_type:
 fn add(a: int, b: int) -> int:
     return a + b
 
-fn greet(name: str):
-    print("Hello, " + name)   # Return type is Unit
+fn greet(name: str) -> Unit:
+    print("Hello, " + name)   # Return type is Unit (explicit)
 ```
 
 ---
@@ -32,11 +33,11 @@ fn greet(name: str):
 | Item | Description |
 |---|---|
 | Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted |
-| Return type | Optional. Defaults to `Unit` (equivalent to void) when omitted |
-| `Unit` | Return type for functions that return no value |
+| Return type | Optional. Defaults to `any` when omitted |
+| `Unit` | Return type for functions that return no value. Must be specified explicitly with `-> Unit` |
 
 ```python
-fn no_return(x: int):      # Return type Unit (omitted)
+fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
 fn get_value() -> int:     # Return type int
@@ -86,13 +87,10 @@ b = area(3, 4)    # 12
 
 ## Unit Type Functions
 
-Functions without a return value return `Unit`. The return type can be omitted.
+Functions without a return value return `Unit`. The return type must be explicitly specified as `-> Unit`.
 
 ```python
-fn log(msg: str):
-    print(msg)
-
-fn log_typed(msg: str) -> Unit:
+fn log(msg: str) -> Unit:
     print(msg)
 ```
 
@@ -133,7 +131,7 @@ Anonymous functions can be defined inline.
 ### Syntax
 
 ```python
-# Single expression (the expression value is returned; return type is inferred)
+# Single expression (the expression value is returned; return type defaults to any)
 fn(param_name: type, ...): expression
 
 # Parameter type can be omitted (defaults to any)

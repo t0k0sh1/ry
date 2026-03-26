@@ -11,7 +11,7 @@
 | `float` | f64 | `3.14`, `0.5` | 64-bit floating-point number |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
-| `Unit` | void | (no return value) | Implicit return type when return type is omitted |
+| `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
 | `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | A type that may or may not contain a value |
 | `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | Tuple type |
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
@@ -64,7 +64,7 @@ a: any = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
-| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`). Default return type when omitted (full any-return codegen is in progress, see [#219](https://github.com/t0k0sh1/ry/issues/219)) |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 

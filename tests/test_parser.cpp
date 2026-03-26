@@ -449,12 +449,12 @@ TEST(ParserTest, FnMissingArrowWithTypeThrows) {
 }
 
 TEST(ParserTest, FnReturnTypeOmitted) {
-    // fn f(): → return type defaults to "Unit"
+    // fn f(): → return type defaults to "any"
     Program prog = parseStr("fn f():\n    return");
     ASSERT_EQ(prog.size(), 1u);
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn.name, "f");
-    EXPECT_EQ(fn.return_type, "Unit");
+    EXPECT_EQ(fn.return_type, "any");
     ASSERT_EQ(fn.body.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
     const auto &ret = std::get<ReturnStmt>(fn.body[0]);
@@ -465,6 +465,24 @@ TEST(ParserTest, FnExplicitUnitReturn) {
     Program prog = parseStr("fn f() -> Unit:\n    return");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn.return_type, "Unit");
+}
+
+TEST(ParserTest, LambdaReturnTypeOmitted) {
+    // fn(x: int): x + 1 → return type defaults to "any"
+    Program prog = parseStr("f = fn(x: int): x + 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    EXPECT_EQ(lambda->return_type, "any");
+}
+
+TEST(ParserTest, LambdaExplicitReturnType) {
+    // fn(x: int) -> int: x + 1 → return type is "int"
+    Program prog = parseStr("f = fn(x: int) -> int: x + 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    EXPECT_EQ(lambda->return_type, "int");
 }
 
 TEST(ParserTest, TypeAnnotationOptionInt) {
