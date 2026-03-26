@@ -15,6 +15,11 @@ int64_t CodeGen::getAnyTypeTag(llvm::Type *ty) {
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     int64_t tag = getAnyTypeTag(val->getType());
 
+    // Bool (i1) must be zero-extended to i64 so that the runtime's 8-byte
+    // memcpy reads a well-defined 0/1 value instead of uninitialized bytes.
+    if (val->getType()->isIntegerTy(1))
+        val = builder_.CreateZExt(val, i64Ty_, "any.bool.zext");
+
     // alloca required: data field is [8 x i8], val type differs (type punning)
     llvm::AllocaInst *tmp = builder_.CreateAlloca(anyTy_, nullptr, "any.tmp");
     auto *tagPtr = builder_.CreateStructGEP(anyTy_, tmp, 0, "any.tag");

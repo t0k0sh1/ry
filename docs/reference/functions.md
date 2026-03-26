@@ -11,7 +11,7 @@ fn function_name(param_name: type, ...) -> return_type:
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
-- Return type is optional (defaults to `any` when omitted). Use `-> Unit` explicitly for functions that return no value. For named functions, omitting the return type means the function returns `any`. For lambdas, omitted return types are inferred from the body.
+- Return type is optional. For named functions, omitting the return type defaults to `any`. For lambdas, omitted return types are inferred from the body. Use `-> Unit` explicitly for functions that return no value.
 - The body is an indented block.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
