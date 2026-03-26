@@ -553,3 +553,30 @@ TEST_F(CodeGenTest, FloorDivNonZeroWorks) {
 TEST_F(CodeGenTest, ModNonZeroWorks) {
     EXPECT_EQ(runSource("print(7 % 3)"), "1\n");
 }
+
+// --- any type: reject non-str pointer types (#233) ---
+
+TEST_F(CodeGenTest, AnyRejectsListType) {
+    EXPECT_THROW(runSource("x: any = [1, 2, 3]"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AnyRejectsMapType) {
+    EXPECT_THROW(runSource("x: any = {\"a\": 1}"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AnyRejectsSetType) {
+    EXPECT_THROW(runSource("x: any = {1, 2, 3}"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AnyRejectsCollectionInFnParam) {
+    EXPECT_THROW(runSource(
+        "fn f(x):\n"
+        "    return x\n"
+        "f([1, 2, 3])"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AnyRejectsCollectionInFnReturn) {
+    EXPECT_THROW(runSource(
+        "fn f() -> any:\n"
+        "    return [1, 2, 3]"), std::runtime_error);
+}

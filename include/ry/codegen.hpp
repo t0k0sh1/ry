@@ -451,4 +451,5 @@ private:
     llvm::Value *buildUnitAny();
     llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy);
     bool isAnyType(llvm::Type *ty) const;
+    bool isNonStrPointer(llvm::Value *val);
 };
