@@ -30,6 +30,15 @@ fn http_cookie(req: HttpRequest, name: str) -> Option<str>
 fn http_cookies(req: HttpRequest) -> Map<str, str>
 
 @native
+fn http_form_field(req: HttpRequest, name: str) -> Option<str>
+
+@native
+fn http_form_file(req: HttpRequest, name: str) -> Map<str, str>
+
+@native
+fn http_form_fields(req: HttpRequest) -> Map<str, str>
+
+@native
 fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
 
 # HTTP client operations

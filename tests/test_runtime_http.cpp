@@ -19,6 +19,9 @@ const char *__ry_http_query(void *req, const char *key);
 void *__ry_http_query_all(void *req);
 const char *__ry_http_cookie(void *req, const char *name);
 void *__ry_http_cookies(void *req);
+const char *__ry_http_form_field(void *req, const char *name);
+void *__ry_http_form_file(void *req, const char *name);
+void *__ry_http_form_fields(void *req);
 void __ry_http_request_free(void *req);
 void *__ry_http_response_create(int64_t status, void *headers_map, const char *body);
 void __ry_http_send_response(void *stream, void *response);
@@ -1261,4 +1264,340 @@ TEST(RuntimeHttpClient, ChunkedClientResponseMultipleChunks) {
     __ry_http_client_response_free(resp);
 
     ::close(srv);
+}
+
+// --- Multipart form-data tests ---
+
+TEST(RuntimeHttp, FormFieldBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--boundary123\r\n"
+        "Content-Disposition: form-data; name=\"username\"\r\n"
+        "\r\n"
+        "alice\r\n"
+        "--boundary123\r\n"
+        "Content-Disposition: form-data; name=\"email\"\r\n"
+        "\r\n"
+        "alice@example.com\r\n"
+        "--boundary123--\r\n";
+
+    std::string req =
+        "POST /submit HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=boundary123\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_form_field(result, "username"), "alice");
+    EXPECT_STREQ(__ry_http_form_field(result, "email"), "alice@example.com");
+    EXPECT_EQ(__ry_http_form_field(result, "missing"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFieldQuotedBoundary) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--myboundary\r\n"
+        "Content-Disposition: form-data; name=\"field1\"\r\n"
+        "\r\n"
+        "value1\r\n"
+        "--myboundary--\r\n";
+
+    std::string req =
+        "POST /submit HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=\"myboundary\"\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(__ry_http_form_field(result, "field1"), "value1");
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFileBasic) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--fileboundary\r\n"
+        "Content-Disposition: form-data; name=\"avatar\"; filename=\"photo.png\"\r\n"
+        "Content-Type: image/png\r\n"
+        "\r\n"
+        "FAKE_PNG_DATA\r\n"
+        "--fileboundary--\r\n";
+
+    std::string req =
+        "POST /upload HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=fileboundary\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_form_file(result, "avatar");
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 3);
+
+    // Find values by key
+    const char *filename = nullptr;
+    const char *content_type = nullptr;
+    const char *data = nullptr;
+    for (int64_t i = 0; i < map->len; i++) {
+        if (strcmp(map->keys[i], "filename") == 0) filename = map->vals[i];
+        else if (strcmp(map->keys[i], "content_type") == 0) content_type = map->vals[i];
+        else if (strcmp(map->keys[i], "data") == 0) data = map->vals[i];
+    }
+    EXPECT_STREQ(filename, "photo.png");
+    EXPECT_STREQ(content_type, "image/png");
+    EXPECT_STREQ(data, "FAKE_PNG_DATA");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    // Missing file returns empty map
+    auto *empty_map = (MapHeader *)__ry_http_form_file(result, "missing");
+    ASSERT_NE(empty_map, nullptr);
+    EXPECT_EQ(empty_map->len, 0);
+    free(empty_map->buckets);
+    free(empty_map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormMixedFieldsAndFiles) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--mixbnd\r\n"
+        "Content-Disposition: form-data; name=\"title\"\r\n"
+        "\r\n"
+        "My Document\r\n"
+        "--mixbnd\r\n"
+        "Content-Disposition: form-data; name=\"doc\"; filename=\"readme.txt\"\r\n"
+        "Content-Type: text/plain\r\n"
+        "\r\n"
+        "Hello World\r\n"
+        "--mixbnd\r\n"
+        "Content-Disposition: form-data; name=\"description\"\r\n"
+        "\r\n"
+        "A test file\r\n"
+        "--mixbnd--\r\n";
+
+    std::string req =
+        "POST /upload HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=mixbnd\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    // Text fields
+    EXPECT_STREQ(__ry_http_form_field(result, "title"), "My Document");
+    EXPECT_STREQ(__ry_http_form_field(result, "description"), "A test file");
+
+    // File
+    auto *map = (MapHeader *)__ry_http_form_file(result, "doc");
+    ASSERT_NE(map, nullptr);
+    const char *data = nullptr;
+    for (int64_t i = 0; i < map->len; i++) {
+        if (strcmp(map->keys[i], "data") == 0) data = map->vals[i];
+    }
+    EXPECT_STREQ(data, "Hello World");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFieldsAll) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--bnd\r\n"
+        "Content-Disposition: form-data; name=\"a\"\r\n"
+        "\r\n"
+        "1\r\n"
+        "--bnd\r\n"
+        "Content-Disposition: form-data; name=\"b\"\r\n"
+        "\r\n"
+        "2\r\n"
+        "--bnd--\r\n";
+
+    std::string req =
+        "POST /form HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=bnd\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_form_fields(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 2);
+    EXPECT_STREQ(map->keys[0], "a");
+    EXPECT_STREQ(map->vals[0], "1");
+    EXPECT_STREQ(map->keys[1], "b");
+    EXPECT_STREQ(map->vals[1], "2");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFieldNonMultipart) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req =
+        "POST /data HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "\r\n{}";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(__ry_http_form_field(result, "anything"), nullptr);
+    auto *fmap = (MapHeader *)__ry_http_form_file(result, "anything");
+    ASSERT_NE(fmap, nullptr);
+    EXPECT_EQ(fmap->len, 0);
+    free(fmap->buckets);
+    free(fmap);
+
+    auto *map = (MapHeader *)__ry_http_form_fields(result);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->len, 0);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFieldNoBody) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string req = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(__ry_http_form_field(result, "anything"), nullptr);
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, FormFileDefaultContentType) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    std::string body =
+        "--bnd\r\n"
+        "Content-Disposition: form-data; name=\"file\"; filename=\"data.bin\"\r\n"
+        "\r\n"
+        "binary stuff\r\n"
+        "--bnd--\r\n";
+
+    std::string req =
+        "POST /upload HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=bnd\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n" + body;
+    send_and_close(fds[1], req);
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    auto *map = (MapHeader *)__ry_http_form_file(result, "file");
+    ASSERT_NE(map, nullptr);
+    const char *ct = nullptr;
+    for (int64_t i = 0; i < map->len; i++) {
+        if (strcmp(map->keys[i], "content_type") == 0) ct = map->vals[i];
+    }
+    EXPECT_STREQ(ct, "application/octet-stream");
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
 }
