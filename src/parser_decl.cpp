@@ -122,7 +122,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume '->'
         fnStmt->return_type = parseTypeName();
     } else {
-        fnStmt->return_type = "Unit";
+        fnStmt->return_type = "any";
     }
 
     // Validate operator parameter count

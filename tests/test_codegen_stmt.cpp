@@ -496,7 +496,7 @@ TEST_F(CodeGenTest, StructFieldArithmetic) {
 
 TEST_F(CodeGenTest, UnitFnNoReturnType) {
     std::string src =
-        "fn greet():\n"
+        "fn greet() -> Unit:\n"
         "    print(42)\n"
         "greet()";
     EXPECT_EQ(runSource(src), "42\n");
@@ -512,7 +512,7 @@ TEST_F(CodeGenTest, UnitFnExplicit) {
 
 TEST_F(CodeGenTest, UnitFnReturnVoid) {
     std::string src =
-        "fn noop():\n"
+        "fn noop() -> Unit:\n"
         "    return\n"
         "noop()";
     EXPECT_EQ(runSource(src), "");
@@ -520,7 +520,7 @@ TEST_F(CodeGenTest, UnitFnReturnVoid) {
 
 TEST_F(CodeGenTest, UnitFnReturnVoidEarly) {
     std::string src =
-        "fn maybe_print(x: int):\n"
+        "fn maybe_print(x: int) -> Unit:\n"
         "    if x > 0:\n"
         "        print(x)\n"
         "        return\n"
@@ -532,7 +532,7 @@ TEST_F(CodeGenTest, UnitFnReturnVoidEarly) {
 
 TEST_F(CodeGenTest, UnitFnReturnValueThrows) {
     std::string src =
-        "fn f():\n"
+        "fn f() -> Unit:\n"
         "    return 42\n"
         "f()";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -1521,7 +1521,7 @@ TEST_F(CodeGenTest, ParallelForRejectsChannelIteration) {
 
 TEST_F(CodeGenTest, SpawnUnitReturningCallRejected) {
     std::string src =
-        "fn log_value(x: int):\n"
+        "fn log_value(x: int) -> Unit:\n"
         "    print(x)\n"
         "t = spawn log_value(1)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -1864,7 +1864,7 @@ TEST_F(CodeGenTest, EllipsisNoOp) {
 
 TEST_F(CodeGenTest, EllipsisFnBody) {
     std::string src =
-        "fn stub():\n"
+        "fn stub() -> Unit:\n"
         "    ...\n"
         "stub()\n"
         "print(1)";

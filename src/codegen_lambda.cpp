@@ -117,8 +117,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
-    if (e->return_type.empty()) {
-        // 戻り値型を推論
+    if (e->return_type.empty() || e->return_type == "any") {
+        // Transitional: infer return type for omitted and explicit "any".
+        // #219 will replace this with proper any-type codegen.
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : e->params)
             paramTypeMap[p.name] = resolveType(p.type);

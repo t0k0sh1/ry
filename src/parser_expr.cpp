@@ -583,7 +583,7 @@ ExprPtr Parser::parseLambdaExpr() {
         lex_.next(); // consume '->'
         lambda->return_type = parseTypeName();
     } else {
-        lambda->return_type = "";  // infer
+        lambda->return_type = "any";
     }
 
     // Expect ':'
@@ -735,7 +735,7 @@ ExprPtr Parser::parseTrailingBlockAsLambda() {
     // ':' is already consumed. Parse the block and wrap it in a LambdaExpr.
     auto body = parseBlock();
     auto lambda = std::make_unique<LambdaExpr>();
-    lambda->return_type = "";
+    lambda->return_type = "any";
     lambda->body = std::move(body);
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(lambda);
