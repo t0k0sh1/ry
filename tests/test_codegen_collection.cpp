@@ -454,6 +454,19 @@ TEST_F(CodeGenTest, OverloadPrefersUnionOverAny) {
     EXPECT_EQ(runSource(src), "1\n1\n2\n");
 }
 
+TEST_F(CodeGenTest, OverloadPrefersUnionAliasOverAny) {
+    std::string src =
+        "type Num = int | float\n"
+        "fn f(x: Num) -> int:\n"
+        "    return 1\n"
+        "fn f(x) -> int:\n"
+        "    return 2\n"
+        "print(f(42))\n"
+        "print(f(3.14))\n"
+        "print(f(\"hello\"))";
+    EXPECT_EQ(runSource(src), "1\n1\n2\n");
+}
+
 TEST_F(CodeGenTest, OverloadPrefersExactOverUnion) {
     std::string src =
         "fn f(x: int | float) -> int:\n"
@@ -473,6 +486,16 @@ TEST_F(CodeGenTest, OverloadSameSpecificityRemainsAmbiguous) {
         "    return 2\n"
         "f(42)";
     EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OverloadWrapsUnionAliasArgument) {
+    std::string src =
+        "type Num = int | float\n"
+        "fn show(x: Num) -> Unit:\n"
+        "    print(x)\n"
+        "show(42)\n"
+        "show(3.14)";
+    EXPECT_EQ(runSource(src), "42\n3.14\n");
 }
 
 TEST_F(CodeGenTest, OverloadRecursive) {

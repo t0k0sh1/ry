@@ -304,6 +304,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         bool match = true;
         RankedCandidate candidate{&entry, 0, 0, 0};
         for (size_t i = 0; i < args.size(); ++i) {
+            std::string resolvedParamTypeName =
+                i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
             } else {
@@ -315,8 +317,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 if (isAnyType(entry.paramTypes[i])) {
                     // Match: any type accepts all primitives; wrapping deferred to arg building
                     candidate.anyMatches++;
-                } else if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
-                    std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
+                } else if (isUnionType(resolvedParamTypeName)) {
+                    std::string norm = normalizeUnionType(resolvedParamTypeName);
                     auto uIt = union_type_info_.find(norm);
                     if (uIt != union_type_info_.end()) {
                         bool found = false;
@@ -355,15 +357,16 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     // Build final arg values (fill in None args with proper Option type, wrap union args)
     outArgVals.clear();
     for (size_t i = 0; i < args.size(); ++i) {
+        std::string resolvedParamTypeName =
+            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
         if (isNone[i]) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isAnyType(chosen->paramTypes[i])) {
             outArgVals.push_back(wrapInAny(emittedArgs[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   i < chosen->paramTypeNames.size() &&
-                   isUnionType(chosen->paramTypeNames[i])) {
-            outArgVals.push_back(wrapInUnion(emittedArgs[i], chosen->paramTypeNames[i]));
+                   isUnionType(resolvedParamTypeName)) {
+            outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
         } else {
             outArgVals.push_back(emittedArgs[i]);
         }
