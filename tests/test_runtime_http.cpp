@@ -42,14 +42,14 @@ struct TcpStreamHandle {
     int fd;
 };
 
-// --- Unit tests for __ry_http_reason_phrase ---
+// --- Merged unit test for __ry_http_reason_phrase ---
 
-TEST(RuntimeHttp, ReasonPhrase1xx) {
+TEST(RuntimeHttp, ReasonPhraseAll) {
+    // 1xx
     EXPECT_STREQ(__ry_http_reason_phrase(100), "Continue");
     EXPECT_STREQ(__ry_http_reason_phrase(101), "Switching Protocols");
-}
 
-TEST(RuntimeHttp, ReasonPhrase2xx) {
+    // 2xx
     EXPECT_STREQ(__ry_http_reason_phrase(200), "OK");
     EXPECT_STREQ(__ry_http_reason_phrase(201), "Created");
     EXPECT_STREQ(__ry_http_reason_phrase(202), "Accepted");
@@ -57,9 +57,8 @@ TEST(RuntimeHttp, ReasonPhrase2xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(204), "No Content");
     EXPECT_STREQ(__ry_http_reason_phrase(205), "Reset Content");
     EXPECT_STREQ(__ry_http_reason_phrase(206), "Partial Content");
-}
 
-TEST(RuntimeHttp, ReasonPhrase3xx) {
+    // 3xx
     EXPECT_STREQ(__ry_http_reason_phrase(300), "Multiple Choices");
     EXPECT_STREQ(__ry_http_reason_phrase(301), "Moved Permanently");
     EXPECT_STREQ(__ry_http_reason_phrase(302), "Found");
@@ -67,9 +66,8 @@ TEST(RuntimeHttp, ReasonPhrase3xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(304), "Not Modified");
     EXPECT_STREQ(__ry_http_reason_phrase(307), "Temporary Redirect");
     EXPECT_STREQ(__ry_http_reason_phrase(308), "Permanent Redirect");
-}
 
-TEST(RuntimeHttp, ReasonPhrase4xx) {
+    // 4xx
     EXPECT_STREQ(__ry_http_reason_phrase(400), "Bad Request");
     EXPECT_STREQ(__ry_http_reason_phrase(401), "Unauthorized");
     EXPECT_STREQ(__ry_http_reason_phrase(402), "Payment Required");
@@ -97,9 +95,8 @@ TEST(RuntimeHttp, ReasonPhrase4xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(429), "Too Many Requests");
     EXPECT_STREQ(__ry_http_reason_phrase(431), "Request Header Fields Too Large");
     EXPECT_STREQ(__ry_http_reason_phrase(451), "Unavailable For Legal Reasons");
-}
 
-TEST(RuntimeHttp, ReasonPhrase5xx) {
+    // 5xx
     EXPECT_STREQ(__ry_http_reason_phrase(500), "Internal Server Error");
     EXPECT_STREQ(__ry_http_reason_phrase(501), "Not Implemented");
     EXPECT_STREQ(__ry_http_reason_phrase(502), "Bad Gateway");
@@ -109,44 +106,38 @@ TEST(RuntimeHttp, ReasonPhrase5xx) {
     EXPECT_STREQ(__ry_http_reason_phrase(507), "Insufficient Storage");
     EXPECT_STREQ(__ry_http_reason_phrase(508), "Loop Detected");
     EXPECT_STREQ(__ry_http_reason_phrase(511), "Network Authentication Required");
-}
 
-TEST(RuntimeHttp, ReasonPhraseUnknown) {
+    // Unknown
     EXPECT_STREQ(__ry_http_reason_phrase(0), "Unknown");
     EXPECT_STREQ(__ry_http_reason_phrase(999), "Unknown");
     EXPECT_STREQ(__ry_http_reason_phrase(299), "Unknown");
 }
 
-// --- Unit tests for __ry_http_parse_content_length ---
+// --- Merged unit test for __ry_http_parse_content_length ---
 
-TEST(RuntimeHttp, ParseContentLengthValid) {
+TEST(RuntimeHttp, ParseContentLength) {
+    // Valid
     EXPECT_EQ(__ry_http_parse_content_length("0"), 0);
     EXPECT_EQ(__ry_http_parse_content_length("42"), 42);
     EXPECT_EQ(__ry_http_parse_content_length("1024"), 1024);
-}
 
-TEST(RuntimeHttp, ParseContentLengthNull) {
+    // Null
     EXPECT_EQ(__ry_http_parse_content_length(nullptr), -1);
-}
 
-TEST(RuntimeHttp, ParseContentLengthInvalid) {
+    // Invalid
     EXPECT_EQ(__ry_http_parse_content_length("abc"), -2);
     EXPECT_EQ(__ry_http_parse_content_length("-1"), -2);
     EXPECT_EQ(__ry_http_parse_content_length("12abc"), -2);
     EXPECT_EQ(__ry_http_parse_content_length(""), -2);
-}
 
-TEST(RuntimeHttp, ParseContentLengthExceedsMax) {
+    // Exceeds max
     EXPECT_EQ(__ry_http_parse_content_length("10485761"), -3);
     EXPECT_EQ(__ry_http_parse_content_length("999999999999"), -3);
-}
 
-TEST(RuntimeHttp, ParseContentLengthBoundary) {
-    // Exactly MAX_BODY_SIZE (10 MB) should be valid
+    // Boundary: exactly MAX_BODY_SIZE (10 MB) should be valid
     EXPECT_EQ(__ry_http_parse_content_length("10485760"), 10485760);
-}
 
-TEST(RuntimeHttp, ParseContentLengthWhitespace) {
+    // Whitespace
     EXPECT_EQ(__ry_http_parse_content_length(" 42"), 42);
     EXPECT_EQ(__ry_http_parse_content_length("42 "), 42);
     EXPECT_EQ(__ry_http_parse_content_length("  100  "), 100);
@@ -544,117 +535,106 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
 // --- ParsedUrl struct for tests (must match runtime_http.cpp layout) ---
 struct ParsedUrl { char *host; int64_t port; char *path; bool is_https; };
 
-// --- URL parsing tests ---
+// --- Merged URL parsing tests ---
 
-TEST(RuntimeHttpClient, ParseUrlBasic) {
+TEST(RuntimeHttpClient, ParseUrlValid) {
+    // Basic
     auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/path");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 80);
     EXPECT_STREQ(u->path, "/path");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlWithPort) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://localhost:8080/api/data");
+    // With port
+    u = (ParsedUrl *)__ry_http_parse_url("http://localhost:8080/api/data");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "localhost");
     EXPECT_EQ(u->port, 8080);
     EXPECT_STREQ(u->path, "/api/data");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlNoPath) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
+    // No path
+    u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 80);
     EXPECT_STREQ(u->path, "/");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlTrailingSlash) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/");
+    // Trailing slash
+    u = (ParsedUrl *)__ry_http_parse_url("http://example.com/");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 80);
     EXPECT_STREQ(u->path, "/");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlWithQuery) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com/search?q=hello");
+    // With query
+    u = (ParsedUrl *)__ry_http_parse_url("http://example.com/search?q=hello");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_STREQ(u->path, "/search?q=hello");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlHttpsAccepted) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("https://example.com");
+    // HTTPS accepted
+    u = (ParsedUrl *)__ry_http_parse_url("https://example.com");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 443);
     EXPECT_STREQ(u->path, "/");
     EXPECT_TRUE(u->is_https);
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlHttpsWithPort) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("https://example.com:8443/api");
+    // HTTPS with port
+    u = (ParsedUrl *)__ry_http_parse_url("https://example.com:8443/api");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 8443);
     EXPECT_STREQ(u->path, "/api");
     EXPECT_TRUE(u->is_https);
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlHttpNotHttps) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
+    // HTTP is not HTTPS
+    u = (ParsedUrl *)__ry_http_parse_url("http://example.com");
     ASSERT_NE(u, nullptr);
     EXPECT_FALSE(u->is_https);
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlNoScheme) {
-    EXPECT_EQ(__ry_http_parse_url("example.com/path"), nullptr);
-}
-
-TEST(RuntimeHttpClient, ParseUrlEmptyString) {
-    EXPECT_EQ(__ry_http_parse_url(""), nullptr);
-}
-
-TEST(RuntimeHttpClient, ParseUrlNull) {
-    EXPECT_EQ(__ry_http_parse_url(nullptr), nullptr);
-}
-
-TEST(RuntimeHttpClient, ParseUrlEmptyHost) {
-    EXPECT_EQ(__ry_http_parse_url("http:///path"), nullptr);
-}
-
-TEST(RuntimeHttpClient, ParseUrlBadPort) {
-    EXPECT_EQ(__ry_http_parse_url("http://example.com:99999/path"), nullptr);
-    EXPECT_EQ(__ry_http_parse_url("http://example.com:0/path"), nullptr);
-    EXPECT_EQ(__ry_http_parse_url("http://example.com:abc/path"), nullptr);
-}
-
-TEST(RuntimeHttpClient, ParseUrlPortNoPath) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://localhost:3000");
+    // Port no path
+    u = (ParsedUrl *)__ry_http_parse_url("http://localhost:3000");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "localhost");
     EXPECT_EQ(u->port, 3000);
     EXPECT_STREQ(u->path, "/");
     __ry_http_parsed_url_free(u);
-}
 
-TEST(RuntimeHttpClient, ParseUrlQueryWithoutPath) {
-    auto *u = (ParsedUrl *)__ry_http_parse_url("http://example.com?x=1&y=2");
+    // Query without path
+    u = (ParsedUrl *)__ry_http_parse_url("http://example.com?x=1&y=2");
     ASSERT_NE(u, nullptr);
     EXPECT_STREQ(u->host, "example.com");
     EXPECT_EQ(u->port, 80);
     EXPECT_STREQ(u->path, "/?x=1&y=2");
     __ry_http_parsed_url_free(u);
+}
+
+TEST(RuntimeHttpClient, ParseUrlInvalid) {
+    // No scheme
+    EXPECT_EQ(__ry_http_parse_url("example.com/path"), nullptr);
+
+    // Empty string
+    EXPECT_EQ(__ry_http_parse_url(""), nullptr);
+
+    // Null
+    EXPECT_EQ(__ry_http_parse_url(nullptr), nullptr);
+
+    // Empty host
+    EXPECT_EQ(__ry_http_parse_url("http:///path"), nullptr);
+
+    // Bad port
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:99999/path"), nullptr);
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:0/path"), nullptr);
+    EXPECT_EQ(__ry_http_parse_url("http://example.com:abc/path"), nullptr);
 }
 
 // --- HTTP client integration tests ---

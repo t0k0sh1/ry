@@ -81,41 +81,368 @@ TEST_F(RuntimeAnyDeathTest, TypeErrorDifferentOps) {
 
 // ===== Arithmetic: add (#221) =====
 
-TEST(RuntimeAnyAdd, IntPlusInt) {
-    RyAny a = mkInt(3), b = mkInt(4), r;
-    __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 7);
+TEST(RuntimeAnyArith, AddVariants) {
+    // IntPlusInt
+    {
+        RyAny a = mkInt(3), b = mkInt(4), r;
+        __ry_any_add(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), 7);
+    }
+    // FloatPlusFloat
+    {
+        RyAny a = mkFloat(1.5), b = mkFloat(2.5), r;
+        __ry_any_add(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 4.0);
+    }
+    // IntPlusFloat
+    {
+        RyAny a = mkInt(3), b = mkFloat(0.5), r;
+        __ry_any_add(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+    }
+    // FloatPlusInt
+    {
+        RyAny a = mkFloat(1.5), b = mkInt(2), r;
+        __ry_any_add(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+    }
+    // StrPlusStr
+    {
+        RyAny a = mkStr("hello"), b = mkStr(" world"), r;
+        __ry_any_add(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_STREQ(getStr(&r), "hello world");
+        free(const_cast<char *>(getStr(&r)));
+    }
 }
 
-TEST(RuntimeAnyAdd, FloatPlusFloat) {
-    RyAny a = mkFloat(1.5), b = mkFloat(2.5), r;
-    __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 4.0);
+// ===== Arithmetic: sub =====
+
+TEST(RuntimeAnyArith, SubVariants) {
+    // IntMinusInt
+    {
+        RyAny a = mkInt(10), b = mkInt(3), r;
+        __ry_any_sub(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), 7);
+    }
+    // IntMinusFloat
+    {
+        RyAny a = mkInt(5), b = mkFloat(1.5), r;
+        __ry_any_sub(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+    }
 }
 
-TEST(RuntimeAnyAdd, IntPlusFloat) {
-    RyAny a = mkInt(3), b = mkFloat(0.5), r;
-    __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+// ===== Arithmetic: mul =====
+
+TEST(RuntimeAnyArith, MulVariants) {
+    // IntTimesInt
+    {
+        RyAny a = mkInt(6), b = mkInt(7), r;
+        __ry_any_mul(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), 42);
+    }
+    // StrTimesInt
+    {
+        RyAny a = mkStr("ab"), b = mkInt(3), r;
+        __ry_any_mul(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_STREQ(getStr(&r), "ababab");
+        free(const_cast<char *>(getStr(&r)));
+    }
+    // IntTimesStr
+    {
+        RyAny a = mkInt(2), b = mkStr("xy"), r;
+        __ry_any_mul(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_STREQ(getStr(&r), "xyxy");
+        free(const_cast<char *>(getStr(&r)));
+    }
+    // StrTimesZero
+    {
+        RyAny a = mkStr("abc"), b = mkInt(0), r;
+        __ry_any_mul(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_STREQ(getStr(&r), "");
+        free(const_cast<char *>(getStr(&r)));
+    }
+    // StrTimesNegative
+    {
+        RyAny a = mkStr("abc"), b = mkInt(-5), r;
+        __ry_any_mul(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_STR);
+        EXPECT_STREQ(getStr(&r), "");
+        free(const_cast<char *>(getStr(&r)));
+    }
 }
 
-TEST(RuntimeAnyAdd, FloatPlusInt) {
-    RyAny a = mkFloat(1.5), b = mkInt(2), r;
-    __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+// ===== Arithmetic: div =====
+
+TEST(RuntimeAnyArith, DivVariants) {
+    // IntDivInt
+    {
+        RyAny a = mkInt(10), b = mkInt(3), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 10.0 / 3.0);
+    }
+    // FloatDivFloat
+    {
+        RyAny a = mkFloat(7.0), b = mkFloat(2.0), r;
+        __ry_any_div(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
+    }
 }
 
-TEST(RuntimeAnyAdd, StrPlusStr) {
-    RyAny a = mkStr("hello"), b = mkStr(" world"), r;
-    __ry_any_add(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
-    EXPECT_STREQ(getStr(&r), "hello world");
-    free(const_cast<char *>(getStr(&r)));
+// ===== Arithmetic: mod =====
+
+TEST(RuntimeAnyArith, ModVariants) {
+    // IntModInt
+    {
+        RyAny a = mkInt(10), b = mkInt(3), r;
+        __ry_any_mod(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), 1);
+    }
+    // FloatModFloat
+    {
+        RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
+        __ry_any_mod(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 1.5);
+    }
 }
+
+// ===== Arithmetic: floordiv =====
+
+TEST(RuntimeAnyArith, FloordivVariants) {
+    // IntFloorDivInt
+    {
+        RyAny a = mkInt(7), b = mkInt(2), r;
+        __ry_any_floordiv(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), 3);
+    }
+    // NegativeFloorDiv
+    {
+        RyAny a = mkInt(-7), b = mkInt(2), r;
+        __ry_any_floordiv(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), -4);
+    }
+    // FloatFloorDiv
+    {
+        RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
+        __ry_any_floordiv(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
+    }
+    // IntFloordivFloat
+    {
+        RyAny a = mkInt(7), b = mkFloat(2.0), r;
+        __ry_any_floordiv(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
+    }
+}
+
+// ===== Arithmetic: pow =====
+
+TEST(RuntimeAnyArith, PowVariants) {
+    // IntPowInt
+    {
+        RyAny a = mkInt(2), b = mkInt(10), r;
+        __ry_any_pow(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 1024.0);
+    }
+    // IntPowNegative
+    {
+        RyAny a = mkInt(2), b = mkInt(-1), r;
+        __ry_any_pow(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 0.5);
+    }
+    // FloatPowFloat
+    {
+        RyAny a = mkFloat(4.0), b = mkFloat(0.5), r;
+        __ry_any_pow(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 2.0);
+    }
+    // FloatPowInt
+    {
+        RyAny a = mkFloat(2.0), b = mkInt(3), r;
+        __ry_any_pow(&r, &a, &b);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), 8.0);
+    }
+}
+
+// ===== Arithmetic: neg =====
+
+TEST(RuntimeAnyArith, NegVariants) {
+    // NegInt
+    {
+        RyAny a = mkInt(42), r;
+        __ry_any_neg(&r, &a);
+        EXPECT_EQ(r.tag, TAG_INT);
+        EXPECT_EQ(getInt(&r), -42);
+    }
+    // NegFloat
+    {
+        RyAny a = mkFloat(3.14), r;
+        __ry_any_neg(&r, &a);
+        EXPECT_EQ(r.tag, TAG_FLOAT);
+        EXPECT_DOUBLE_EQ(getFloat(&r), -3.14);
+    }
+}
+
+// ===== Comparison: eq/ne (#222) =====
+
+TEST(RuntimeAnyCmp, EqNeVariants) {
+    // IntEqInt
+    {
+        RyAny a = mkInt(42), b = mkInt(42);
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+        EXPECT_EQ(__ry_any_ne(&a, &b), 0);
+    }
+    // IntNeInt
+    {
+        RyAny a = mkInt(1), b = mkInt(2);
+        EXPECT_EQ(__ry_any_eq(&a, &b), 0);
+        EXPECT_EQ(__ry_any_ne(&a, &b), 1);
+    }
+    // FloatEqFloat
+    {
+        RyAny a = mkFloat(3.14), b = mkFloat(3.14);
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+    }
+    // IntEqFloat
+    {
+        RyAny a = mkInt(5), b = mkFloat(5.0);
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+    }
+    // StrEqStr
+    {
+        RyAny a = mkStr("hello"), b = mkStr("hello");
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+    }
+    // StrNeStr
+    {
+        RyAny a = mkStr("hello"), b = mkStr("world");
+        EXPECT_EQ(__ry_any_eq(&a, &b), 0);
+    }
+    // BoolEqBool
+    {
+        RyAny a = mkBool(true), b = mkBool(true);
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+    }
+    // DifferentTypesNotEqual
+    {
+        RyAny a = mkInt(1), b = mkStr("1");
+        EXPECT_EQ(__ry_any_eq(&a, &b), 0);
+    }
+    // UnitEqUnit
+    {
+        RyAny a, b;
+        a.tag = TAG_UNIT;
+        b.tag = TAG_UNIT;
+        EXPECT_EQ(__ry_any_eq(&a, &b), 1);
+    }
+}
+
+// ===== Comparison: ordering (#222) =====
+
+TEST(RuntimeAnyCmp, OrdVariants) {
+    // IntLtInt
+    {
+        RyAny a = mkInt(1), b = mkInt(2);
+        EXPECT_EQ(__ry_any_lt(&a, &b), 1);
+        EXPECT_EQ(__ry_any_le(&a, &b), 1);
+        EXPECT_EQ(__ry_any_gt(&a, &b), 0);
+        EXPECT_EQ(__ry_any_ge(&a, &b), 0);
+    }
+    // IntGeInt
+    {
+        RyAny a = mkInt(5), b = mkInt(5);
+        EXPECT_EQ(__ry_any_le(&a, &b), 1);
+        EXPECT_EQ(__ry_any_ge(&a, &b), 1);
+        EXPECT_EQ(__ry_any_lt(&a, &b), 0);
+        EXPECT_EQ(__ry_any_gt(&a, &b), 0);
+    }
+    // FloatLtFloat
+    {
+        RyAny a = mkFloat(1.5), b = mkFloat(2.5);
+        EXPECT_EQ(__ry_any_lt(&a, &b), 1);
+        EXPECT_EQ(__ry_any_gt(&a, &b), 0);
+    }
+    // IntLtFloat
+    {
+        RyAny a = mkInt(3), b = mkFloat(3.5);
+        EXPECT_EQ(__ry_any_lt(&a, &b), 1);
+    }
+    // StrLtStr
+    {
+        RyAny a = mkStr("apple"), b = mkStr("banana");
+        EXPECT_EQ(__ry_any_lt(&a, &b), 1);
+        EXPECT_EQ(__ry_any_gt(&a, &b), 0);
+    }
+}
+
+// ===== NaN comparisons =====
+
+TEST(RuntimeAnyCmp, NaNComparisons) {
+    RyAny nan = mkFloat(NAN), one = mkFloat(1.0), iVal = mkInt(42);
+
+    // EqNaN
+    EXPECT_EQ(__ry_any_eq(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_eq(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_eq(&nan, &nan), 0);
+
+    // NeNaN
+    EXPECT_EQ(__ry_any_ne(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_ne(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_ne(&nan, &nan), 0);
+
+    // LtNaN
+    EXPECT_EQ(__ry_any_lt(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_lt(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_lt(&nan, &nan), 0);
+
+    // LeNaN
+    EXPECT_EQ(__ry_any_le(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_le(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_le(&nan, &nan), 0);
+
+    // GtNaN
+    EXPECT_EQ(__ry_any_gt(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_gt(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_gt(&nan, &nan), 0);
+
+    // GeNaN
+    EXPECT_EQ(__ry_any_ge(&nan, &one), 0);
+    EXPECT_EQ(__ry_any_ge(&one, &nan), 0);
+    EXPECT_EQ(__ry_any_ge(&nan, &nan), 0);
+
+    // MixedIntNaN
+    EXPECT_EQ(__ry_any_eq(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_ne(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_lt(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_le(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_gt(&nan, &iVal), 0);
+    EXPECT_EQ(__ry_any_ge(&nan, &iVal), 0);
+}
+
+// ===== Death tests: arithmetic errors =====
 
 TEST_F(RuntimeAnyDeathTest, AddIntPlusStrError) {
     RyAny a = mkInt(1), b = mkStr("x");
@@ -126,158 +453,34 @@ TEST_F(RuntimeAnyDeathTest, AddIntPlusStrError) {
     );
 }
 
-// ===== Arithmetic: sub =====
-
-TEST(RuntimeAnySub, IntMinusInt) {
-    RyAny a = mkInt(10), b = mkInt(3), r;
-    __ry_any_sub(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 7);
-}
-
-TEST(RuntimeAnySub, IntMinusFloat) {
-    RyAny a = mkInt(5), b = mkFloat(1.5), r;
-    __ry_any_sub(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
-}
-
-// ===== Arithmetic: mul =====
-
-TEST(RuntimeAnyMul, IntTimesInt) {
-    RyAny a = mkInt(6), b = mkInt(7), r;
-    __ry_any_mul(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 42);
-}
-
-TEST(RuntimeAnyMul, StrTimesInt) {
-    RyAny a = mkStr("ab"), b = mkInt(3), r;
-    __ry_any_mul(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
-    EXPECT_STREQ(getStr(&r), "ababab");
-    free(const_cast<char *>(getStr(&r)));
-}
-
-TEST(RuntimeAnyMul, IntTimesStr) {
-    RyAny a = mkInt(2), b = mkStr("xy"), r;
-    __ry_any_mul(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
-    EXPECT_STREQ(getStr(&r), "xyxy");
-    free(const_cast<char *>(getStr(&r)));
-}
-
-TEST(RuntimeAnyMul, StrTimesZero) {
-    RyAny a = mkStr("abc"), b = mkInt(0), r;
-    __ry_any_mul(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
-    EXPECT_STREQ(getStr(&r), "");
-    free(const_cast<char *>(getStr(&r)));
-}
-
-// ===== Arithmetic: div =====
-
-TEST(RuntimeAnyDiv, IntDivInt) {
-    RyAny a = mkInt(10), b = mkInt(3), r;
-    __ry_any_div(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 10.0 / 3.0);
-}
-
-TEST(RuntimeAnyDiv, FloatDivFloat) {
-    RyAny a = mkFloat(7.0), b = mkFloat(2.0), r;
-    __ry_any_div(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.5);
-}
-
-TEST_F(RuntimeAnyDeathTest, DivByZero) {
-    RyAny a = mkInt(1), b = mkInt(0);
-    EXPECT_EXIT(
-        { RyAny r; __ry_any_div(&r, &a, &b); },
-        ::testing::ExitedWithCode(1),
-        "division by zero"
-    );
-}
-
-// ===== Arithmetic: mod =====
-
-TEST(RuntimeAnyMod, IntModInt) {
-    RyAny a = mkInt(10), b = mkInt(3), r;
-    __ry_any_mod(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 1);
-}
-
-TEST_F(RuntimeAnyDeathTest, ModByZero) {
-    RyAny a = mkInt(5), b = mkInt(0);
-    EXPECT_EXIT(
-        { RyAny r; __ry_any_mod(&r, &a, &b); },
-        ::testing::ExitedWithCode(1),
-        "modulo by zero"
-    );
-}
-
-// ===== Arithmetic: floordiv =====
-
-TEST(RuntimeAnyFloordiv, IntFloorDivInt) {
-    RyAny a = mkInt(7), b = mkInt(2), r;
-    __ry_any_floordiv(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), 3);
-}
-
-TEST(RuntimeAnyFloordiv, NegativeFloorDiv) {
-    RyAny a = mkInt(-7), b = mkInt(2), r;
-    __ry_any_floordiv(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), -4);
-}
-
-TEST(RuntimeAnyFloordiv, FloatFloorDiv) {
-    RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
-    __ry_any_floordiv(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
-}
-
-// ===== Arithmetic: pow =====
-
-TEST(RuntimeAnyPow, IntPowInt) {
-    RyAny a = mkInt(2), b = mkInt(10), r;
-    __ry_any_pow(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 1024.0);
-}
-
-TEST(RuntimeAnyPow, IntPowNegative) {
-    RyAny a = mkInt(2), b = mkInt(-1), r;
-    __ry_any_pow(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 0.5);
-}
-
-TEST(RuntimeAnyPow, FloatPowFloat) {
-    RyAny a = mkFloat(4.0), b = mkFloat(0.5), r;
-    __ry_any_pow(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 2.0);
-}
-
-// ===== Arithmetic: neg =====
-
-TEST(RuntimeAnyNeg, NegInt) {
-    RyAny a = mkInt(42), r;
-    __ry_any_neg(&r, &a);
-    EXPECT_EQ(r.tag, TAG_INT);
-    EXPECT_EQ(getInt(&r), -42);
-}
-
-TEST(RuntimeAnyNeg, NegFloat) {
-    RyAny a = mkFloat(3.14), r;
-    __ry_any_neg(&r, &a);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), -3.14);
+TEST_F(RuntimeAnyDeathTest, ArithDivisionAndModByZero) {
+    // DivByZero
+    {
+        RyAny a = mkInt(1), b = mkInt(0);
+        EXPECT_EXIT(
+            { RyAny r; __ry_any_div(&r, &a, &b); },
+            ::testing::ExitedWithCode(1),
+            "division by zero"
+        );
+    }
+    // ModByZero
+    {
+        RyAny a = mkInt(5), b = mkInt(0);
+        EXPECT_EXIT(
+            { RyAny r; __ry_any_mod(&r, &a, &b); },
+            ::testing::ExitedWithCode(1),
+            "modulo by zero"
+        );
+    }
+    // FloordivByZero
+    {
+        RyAny a = mkInt(5), b = mkInt(0);
+        EXPECT_EXIT(
+            { RyAny r; __ry_any_floordiv(&r, &a, &b); },
+            ::testing::ExitedWithCode(1),
+            "division by zero"
+        );
+    }
 }
 
 TEST_F(RuntimeAnyDeathTest, NegStrError) {
@@ -289,91 +492,7 @@ TEST_F(RuntimeAnyDeathTest, NegStrError) {
     );
 }
 
-// ===== Comparison: eq/ne (#222) =====
-
-TEST(RuntimeAnyEq, IntEqInt) {
-    RyAny a = mkInt(42), b = mkInt(42);
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-    EXPECT_EQ(__ry_any_ne(&a, &b), 0);
-}
-
-TEST(RuntimeAnyEq, IntNeInt) {
-    RyAny a = mkInt(1), b = mkInt(2);
-    EXPECT_EQ(__ry_any_eq(&a, &b), 0);
-    EXPECT_EQ(__ry_any_ne(&a, &b), 1);
-}
-
-TEST(RuntimeAnyEq, FloatEqFloat) {
-    RyAny a = mkFloat(3.14), b = mkFloat(3.14);
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-}
-
-TEST(RuntimeAnyEq, IntEqFloat) {
-    RyAny a = mkInt(5), b = mkFloat(5.0);
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-}
-
-TEST(RuntimeAnyEq, StrEqStr) {
-    RyAny a = mkStr("hello"), b = mkStr("hello");
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-}
-
-TEST(RuntimeAnyEq, StrNeStr) {
-    RyAny a = mkStr("hello"), b = mkStr("world");
-    EXPECT_EQ(__ry_any_eq(&a, &b), 0);
-}
-
-TEST(RuntimeAnyEq, BoolEqBool) {
-    RyAny a = mkBool(true), b = mkBool(true);
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-}
-
-TEST(RuntimeAnyEq, DifferentTypesNotEqual) {
-    RyAny a = mkInt(1), b = mkStr("1");
-    EXPECT_EQ(__ry_any_eq(&a, &b), 0);
-}
-
-TEST(RuntimeAnyEq, UnitEqUnit) {
-    RyAny a, b;
-    a.tag = TAG_UNIT;
-    b.tag = TAG_UNIT;
-    EXPECT_EQ(__ry_any_eq(&a, &b), 1);
-}
-
-// ===== Comparison: ordering (#222) =====
-
-TEST(RuntimeAnyOrd, IntLtInt) {
-    RyAny a = mkInt(1), b = mkInt(2);
-    EXPECT_EQ(__ry_any_lt(&a, &b), 1);
-    EXPECT_EQ(__ry_any_le(&a, &b), 1);
-    EXPECT_EQ(__ry_any_gt(&a, &b), 0);
-    EXPECT_EQ(__ry_any_ge(&a, &b), 0);
-}
-
-TEST(RuntimeAnyOrd, IntGeInt) {
-    RyAny a = mkInt(5), b = mkInt(5);
-    EXPECT_EQ(__ry_any_le(&a, &b), 1);
-    EXPECT_EQ(__ry_any_ge(&a, &b), 1);
-    EXPECT_EQ(__ry_any_lt(&a, &b), 0);
-    EXPECT_EQ(__ry_any_gt(&a, &b), 0);
-}
-
-TEST(RuntimeAnyOrd, FloatLtFloat) {
-    RyAny a = mkFloat(1.5), b = mkFloat(2.5);
-    EXPECT_EQ(__ry_any_lt(&a, &b), 1);
-    EXPECT_EQ(__ry_any_gt(&a, &b), 0);
-}
-
-TEST(RuntimeAnyOrd, IntLtFloat) {
-    RyAny a = mkInt(3), b = mkFloat(3.5);
-    EXPECT_EQ(__ry_any_lt(&a, &b), 1);
-}
-
-TEST(RuntimeAnyOrd, StrLtStr) {
-    RyAny a = mkStr("apple"), b = mkStr("banana");
-    EXPECT_EQ(__ry_any_lt(&a, &b), 1);
-    EXPECT_EQ(__ry_any_gt(&a, &b), 0);
-}
+// ===== Death tests: ordering type errors =====
 
 TEST_F(RuntimeAnyDeathTest, OrdDifferentTypesError) {
     RyAny a = mkInt(1), b = mkStr("x");
@@ -393,99 +512,7 @@ TEST_F(RuntimeAnyDeathTest, OrdGtReportsCorrectOp) {
     );
 }
 
-// ===== Additional coverage =====
-
-TEST(RuntimeAnyMod, FloatModFloat) {
-    RyAny a = mkFloat(7.5), b = mkFloat(2.0), r;
-    __ry_any_mod(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 1.5);
-}
-
-TEST(RuntimeAnyFloordiv, IntFloordivFloat) {
-    RyAny a = mkInt(7), b = mkFloat(2.0), r;
-    __ry_any_floordiv(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 3.0);
-}
-
-TEST(RuntimeAnyPow, FloatPowInt) {
-    RyAny a = mkFloat(2.0), b = mkInt(3), r;
-    __ry_any_pow(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_FLOAT);
-    EXPECT_DOUBLE_EQ(getFloat(&r), 8.0);
-}
-
-TEST(RuntimeAnyMul, StrTimesNegative) {
-    RyAny a = mkStr("abc"), b = mkInt(-5), r;
-    __ry_any_mul(&r, &a, &b);
-    EXPECT_EQ(r.tag, TAG_STR);
-    EXPECT_STREQ(getStr(&r), "");
-    free(const_cast<char *>(getStr(&r)));
-}
-
-TEST_F(RuntimeAnyDeathTest, FloordivByZero) {
-    RyAny a = mkInt(5), b = mkInt(0);
-    EXPECT_EXIT(
-        { RyAny r; __ry_any_floordiv(&r, &a, &b); },
-        ::testing::ExitedWithCode(1),
-        "division by zero"
-    );
-}
-
-// ===== NaN comparison tests =====
-
-TEST(RuntimeAnyNaN, EqNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_eq(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_eq(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_eq(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, NeNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_ne(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_ne(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_ne(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, LtNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_lt(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_lt(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_lt(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, LeNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_le(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_le(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_le(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, GtNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_gt(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_gt(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_gt(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, GeNaN) {
-    RyAny nan = mkFloat(NAN), one = mkFloat(1.0);
-    EXPECT_EQ(__ry_any_ge(&nan, &one), 0);
-    EXPECT_EQ(__ry_any_ge(&one, &nan), 0);
-    EXPECT_EQ(__ry_any_ge(&nan, &nan), 0);
-}
-
-TEST(RuntimeAnyNaN, MixedIntNaN) {
-    RyAny nan = mkFloat(NAN), iVal = mkInt(42);
-    EXPECT_EQ(__ry_any_eq(&nan, &iVal), 0);
-    EXPECT_EQ(__ry_any_ne(&nan, &iVal), 0);
-    EXPECT_EQ(__ry_any_lt(&nan, &iVal), 0);
-    EXPECT_EQ(__ry_any_le(&nan, &iVal), 0);
-    EXPECT_EQ(__ry_any_gt(&nan, &iVal), 0);
-    EXPECT_EQ(__ry_any_ge(&nan, &iVal), 0);
-}
+// ===== Death tests: NaN ordering with incompatible types =====
 
 TEST_F(RuntimeAnyDeathTest, NaNOrderingWithBool) {
     RyAny nan = mkFloat(NAN);
