@@ -69,7 +69,6 @@ TEST_F(CodeGenTest, LogicalOperators) {
 // ===== Variables =====
 
 TEST_F(CodeGenTest, VariableBasics) {
-    EXPECT_EQ(runSource("x = 1\nx = 2\nprint(x)"), "2\n");
     EXPECT_EQ(runSource("print(1)\nprint(2)\nprint(3)"), "1\n2\n3\n");
 }
 

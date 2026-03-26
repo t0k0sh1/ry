@@ -2,6 +2,13 @@
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+
+// RAII helper to prevent JSON handle leaks when ASSERT_* aborts a test
+struct JsonDeleter {
+    void operator()(void *p) const { if (p) __ry_json_free(p); }
+};
+using JsonPtr = std::unique_ptr<void, JsonDeleter>;
 
 // ===== Merged parse type tests =====
 
@@ -115,63 +122,57 @@ TEST(RuntimeJson, ParseErrors) {
 TEST(RuntimeJson, AccessTests) {
     // GetObjectField
     {
-        void *v = __ry_json_parse("{\"name\": \"Alice\"}");
-        ASSERT_NE(v, nullptr);
-        void *field = __ry_json_get(v, "name");
+        JsonPtr v(__ry_json_parse("{\"name\": \"Alice\"}"));
+        ASSERT_NE(v.get(), nullptr);
+        void *field = __ry_json_get(v.get(), "name");
         ASSERT_NE(field, nullptr);
         const char *s = __ry_json_str(field);
         ASSERT_NE(s, nullptr);
         EXPECT_STREQ(s, "Alice");
         free((void*)s);
-        __ry_json_free(v);
     }
 
     // GetMissingKey
     {
-        void *v = __ry_json_parse("{\"a\": 1}");
-        ASSERT_NE(v, nullptr);
-        void *field = __ry_json_get(v, "missing");
+        JsonPtr v(__ry_json_parse("{\"a\": 1}"));
+        ASSERT_NE(v.get(), nullptr);
+        void *field = __ry_json_get(v.get(), "missing");
         EXPECT_EQ(field, nullptr);
-        __ry_json_free(v);
     }
 
     // AtArrayIndex
     {
-        void *v = __ry_json_parse("[10, 20, 30]");
-        ASSERT_NE(v, nullptr);
-        void *elem = __ry_json_at(v, 1);
+        JsonPtr v(__ry_json_parse("[10, 20, 30]"));
+        ASSERT_NE(v.get(), nullptr);
+        void *elem = __ry_json_at(v.get(), 1);
         ASSERT_NE(elem, nullptr);
         int64_t out;
         EXPECT_EQ(__ry_json_int(elem, &out), 0);
         EXPECT_EQ(out, 20);
-        __ry_json_free(v);
     }
 
     // AtOutOfBounds
     {
-        void *v = __ry_json_parse("[1, 2]");
-        ASSERT_NE(v, nullptr);
-        void *elem = __ry_json_at(v, 5);
+        JsonPtr v(__ry_json_parse("[1, 2]"));
+        ASSERT_NE(v.get(), nullptr);
+        void *elem = __ry_json_at(v.get(), 5);
         EXPECT_EQ(elem, nullptr);
-        __ry_json_free(v);
     }
 
     // TypeMismatchInt
     {
-        void *v = __ry_json_parse("\"hello\"");
-        ASSERT_NE(v, nullptr);
+        JsonPtr v(__ry_json_parse("\"hello\""));
+        ASSERT_NE(v.get(), nullptr);
         int64_t out;
-        EXPECT_NE(__ry_json_int(v, &out), 0);
-        __ry_json_free(v);
+        EXPECT_NE(__ry_json_int(v.get(), &out), 0);
     }
 
     // TypeMismatchBool
     {
-        void *v = __ry_json_parse("42");
-        ASSERT_NE(v, nullptr);
+        JsonPtr v(__ry_json_parse("42"));
+        ASSERT_NE(v.get(), nullptr);
         int64_t out;
-        EXPECT_NE(__ry_json_bool(v, &out), 0);
-        __ry_json_free(v);
+        EXPECT_NE(__ry_json_bool(v.get(), &out), 0);
     }
 }
 
