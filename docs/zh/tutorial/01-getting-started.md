@@ -75,6 +75,16 @@ print("Hello, World!")
 Hello, World!
 ```
 
+也可以透過管道或 Here-document 從標準輸入執行程式碼：
+
+```bash
+echo 'print("Hello, World!")' | ./build/ry
+
+./build/ry <<'RY'
+print("Hello, World!")
+RY
+```
+
 ---
 
 ## 註解的寫法

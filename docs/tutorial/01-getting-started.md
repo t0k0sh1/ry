@@ -75,6 +75,16 @@ Output:
 Hello, World!
 ```
 
+You can also run code from stdin using a pipe or here-document:
+
+```bash
+echo 'print("Hello, World!")' | ./build/ry
+
+./build/ry <<'RY'
+print("Hello, World!")
+RY
+```
+
 ---
 
 ## Writing Comments
