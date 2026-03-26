@@ -109,6 +109,7 @@ private:
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
         std::vector<llvm::Type*> paramTypes;
+        std::vector<std::string> paramTypeNames;
         llvm::Type *returnType;
         std::vector<std::string> capturedVars;   // for closure support
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
@@ -431,6 +432,9 @@ private:
     void emitExit(const std::vector<ExprPtr> &args);
 
     // Lambda call helper: invoke a lambda/closure value with given args
+    std::vector<llvm::Value*> coerceCallArgs(const FnTypeInfo &info,
+                                             std::vector<llvm::Value*> args,
+                                             const std::string &context);
     llvm::Value *emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                 std::vector<llvm::Value*> args, const std::string &name);
 

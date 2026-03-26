@@ -891,6 +891,7 @@ CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
                 if (s != std::string::npos)
                     p = p.substr(s, e - s + 1);
                 info.paramTypes.push_back(resolveType(p));
+                info.paramTypeNames.push_back(p);
                 start = i + 1;
             }
         }

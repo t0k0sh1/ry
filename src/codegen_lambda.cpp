@@ -223,6 +223,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Register fn_type_info for the function pointer value
     FnTypeInfo info;
     info.paramTypes = paramTypes;  // only the user-visible params
+    for (auto &p : e->params)
+        info.paramTypeNames.push_back(p.type);
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;
