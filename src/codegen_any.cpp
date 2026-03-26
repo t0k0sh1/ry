@@ -85,7 +85,8 @@ llvm::Value *CodeGen::emitAnyBinaryOp(const std::string &op,
             i64Ty_, {ptrTy_, ptrTy_}, false);
         llvm::FunctionCallee fn = mod_->getOrInsertFunction(cit->second, fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {lhsPtr, rhsPtr}, "any.cmp");
-        return builder_.CreateTrunc(result, i1Ty_, "any.cmp.bool");
+        llvm::Value *zero = builder_.getInt64(0);
+        return builder_.CreateICmpNE(result, zero, "any.cmp.bool");
     }
 
     codegenError("operator '" + op + "' not supported for any type");
