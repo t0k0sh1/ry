@@ -1,0 +1,67 @@
+from http import http_listen, http_form_field, http_form_file, http_form_fields, http_response, http_request, http_client_status, http_client_body
+
+describe("http_form_field", fn():
+  it("parses text fields from multipart/form-data", fn():
+    fn server(ready: Channel<int>) -> str:
+      send(ready, 1)
+      http_listen("127.0.0.1", 18960, fn(req: HttpRequest) -> HttpResponse:
+        username = http_form_field(req, "username")
+        match username:
+          case Some(val):
+            return http_response(200, {"Content-Type": "text/plain"}, val)
+          case None:
+            return http_response(400, {"Content-Type": "text/plain"}, "missing")
+      , 1)
+      return "done"
+
+    ready: Channel<int> = channel[int]()
+    t: Task<str> = spawn server(ready)
+    recv(ready)
+    sleep(100)
+
+    body = "--boundary\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--boundary--\r\n"
+    headers = {"Content-Type": "multipart/form-data; boundary=boundary"}
+
+    match http_request("POST", "http://127.0.0.1:18960/submit", headers, body):
+      case Ok(resp):
+        expect(http_client_status(resp)).to_eq(200)
+        expect(http_client_body(resp)).to_eq("alice")
+      case Err(e):
+        fail("unexpected error")
+
+    result = join(t)
+    expect(result).to_eq("done")
+  )
+)
+
+describe("http_form_fields", fn():
+  it("returns all text fields as a map", fn():
+    fn server_fields(ready: Channel<int>) -> str:
+      send(ready, 1)
+      http_listen("127.0.0.1", 18961, fn(req: HttpRequest) -> HttpResponse:
+        fields = http_form_fields(req)
+        a = fields["a"]
+        b = fields["b"]
+        return http_response(200, {"Content-Type": "text/plain"}, a + "," + b)
+      , 1)
+      return "done"
+
+    ready: Channel<int> = channel[int]()
+    t: Task<str> = spawn server_fields(ready)
+    recv(ready)
+    sleep(100)
+
+    body = "--bnd\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--bnd\r\nContent-Disposition: form-data; name=\"b\"\r\n\r\n2\r\n--bnd--\r\n"
+    headers = {"Content-Type": "multipart/form-data; boundary=bnd"}
+
+    match http_request("POST", "http://127.0.0.1:18961/form", headers, body):
+      case Ok(resp):
+        expect(http_client_status(resp)).to_eq(200)
+        expect(http_client_body(resp)).to_eq("1,2")
+      case Err(e):
+        fail("unexpected error")
+
+    result = join(t)
+    expect(result).to_eq("done")
+  )
+)

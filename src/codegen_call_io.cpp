@@ -385,6 +385,60 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
+    // http_form_field(req, name) -> Option<str>
+    if (e.callee == "http_form_field") {
+        if (e.args.size() != 2)
+            codegenError("http_form_field() takes exactly 2 arguments");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_field() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_form_field() name must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_field", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ff");
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_ff_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(result, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        return builder_.CreateSelect(isNull, noneVal, someVal, "http_ff_opt");
+    }
+
+    // http_form_file(req, name) -> Map<str, str>
+    if (e.callee == "http_form_file") {
+        if (e.args.size() != 2)
+            codegenError("http_form_file() takes exactly 2 arguments");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_file() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_form_file() name must be str");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
+        map_key_types_[result] = ptrTy_;
+        map_value_types_[result] = ptrTy_;
+        return result;
+    }
+
+    // http_form_fields(req) -> Map<str, str>
+    if (e.callee == "http_form_fields") {
+        if (e.args.size() != 1)
+            codegenError("http_form_fields() takes exactly 1 argument");
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_fields() requires HttpRequest argument");
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_fields", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_ffields");
+        map_key_types_[result] = ptrTy_;
+        map_value_types_[result] = ptrTy_;
+        return result;
+    }
+
     // http_listen(host, port, handler[, max_requests]) -> Unit
     if (e.callee == "http_listen") {
         if (e.args.size() < 3 || e.args.size() > 4)

@@ -15,6 +15,9 @@ const char *__ry_http_query(void *req, const char *key);
 void       *__ry_http_query_all(void *req);
 const char *__ry_http_cookie(void *req, const char *name);
 void       *__ry_http_cookies(void *req);
+const char *__ry_http_form_field(void *req, const char *name);
+void       *__ry_http_form_file(void *req, const char *name);
+void       *__ry_http_form_fields(void *req);
 void        __ry_http_request_free(void *req);
 void        __ry_http_response_free(void *resp);
 
