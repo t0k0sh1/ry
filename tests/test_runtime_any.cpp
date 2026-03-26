@@ -43,6 +43,13 @@ static RyAny mkBool(bool v) {
     return a;
 }
 
+static RyAny mkUnit() {
+    RyAny a;
+    a.tag = TAG_UNIT;
+    memset(a.data, 0, sizeof(a.data));
+    return a;
+}
+
 static int64_t getInt(const RyAny *a) {
     int64_t v;
     memcpy(&v, a->data, sizeof(v));
@@ -353,9 +360,7 @@ TEST(RuntimeAnyCmp, EqNeVariants) {
     }
     // UnitEqUnit
     {
-        RyAny a, b;
-        a.tag = TAG_UNIT;
-        b.tag = TAG_UNIT;
+        RyAny a = mkUnit(), b = mkUnit();
         EXPECT_EQ(__ry_any_eq(&a, &b), 1);
     }
 }
@@ -542,4 +547,52 @@ TEST_F(RuntimeAnyDeathTest, NaNOrderingWithString) {
     EXPECT_EXIT(__ry_any_le(&str, &nan), ::testing::ExitedWithCode(1), ".*");
     EXPECT_EXIT(__ry_any_gt(&str, &nan), ::testing::ExitedWithCode(1), ".*");
     EXPECT_EXIT(__ry_any_ge(&str, &nan), ::testing::ExitedWithCode(1), ".*");
+}
+
+// ===== __ry_any_to_string =====
+
+TEST(RuntimeAnyToString, IntToString) {
+    RyAny a = mkInt(42);
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "42");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToString, NegativeIntToString) {
+    RyAny a = mkInt(-123);
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "-123");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToString, FloatToString) {
+    RyAny a = mkFloat(3.14);
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "3.14");
+    free(const_cast<char*>(s));
+}
+
+TEST(RuntimeAnyToString, BoolTrueToString) {
+    RyAny a = mkBool(true);
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "true");
+}
+
+TEST(RuntimeAnyToString, BoolFalseToString) {
+    RyAny a = mkBool(false);
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "false");
+}
+
+TEST(RuntimeAnyToString, StrToString) {
+    RyAny a = mkStr("hello");
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "hello");
+}
+
+TEST(RuntimeAnyToString, UnitToString) {
+    RyAny a = mkUnit();
+    const char *s = __ry_any_to_string(&a);
+    EXPECT_STREQ(s, "Unit");
+    // s points to a string literal — no free needed
 }

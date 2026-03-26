@@ -64,7 +64,7 @@ a: any = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
-| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit` (for value-less/implicit returns). Default return type for named functions when omitted |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit` (for value-less/implicit returns). Default return type for named functions when omitted. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 

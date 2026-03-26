@@ -292,6 +292,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return i1Ty_;
             llvm::Type *lhsTy = inferExprType(*v->lhs, paramTypeMap);
             llvm::Type *rhsTy = inferExprType(*v->rhs, paramTypeMap);
+            if (isAnyType(lhsTy) || isAnyType(rhsTy))
+                return anyTy_;
             if (op == "+") {
                 if (lhsTy == ptrTy_ || rhsTy == ptrTy_)
                     return ptrTy_;
@@ -302,7 +304,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
             if (v->op == "not")
                 return i1Ty_;
-            return inferExprType(*v->operand, paramTypeMap);
+            llvm::Type *opTy = inferExprType(*v->operand, paramTypeMap);
+            if (isAnyType(opTy)) return anyTy_;
+            return opTy;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             // Look up the function return type
             auto it = functions_.find(v->callee);

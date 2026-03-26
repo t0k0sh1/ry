@@ -180,6 +180,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(annotTy)) {
                     val = wrapInAny(val);
                     newTy = anyTy_;
+                } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
+                    val = unwrapFromAny(val, annotTy);
+                    newTy = annotTy;
                 } else if (isUnionType(*type_annotation)) {
                     val = wrapInUnion(val, *type_annotation);
                     newTy = val->getType();
@@ -390,6 +393,9 @@ void CodeGen::emitStmt(AssignStmt &s) {
             val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
         } else if (isAnyType(ptr->getAllocatedType())) {
             val = wrapInAny(val);
+            newTy = val->getType();
+        } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
+            val = unwrapFromAny(val, ptr->getAllocatedType());
             newTy = val->getType();
         } else {
             auto uvIt = union_value_types_.find(ptr);

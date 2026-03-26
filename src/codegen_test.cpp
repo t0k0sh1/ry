@@ -511,6 +511,10 @@ void CodeGen::emitStmt(ExpectStmt &s) {
                    (actualTy == f64Ty_ && expectedTy == i64Ty_)) {
             auto [lf, rf] = promoteToFloat(actualVal, expectedVal);
             eqResult = builder_.CreateFCmpOEQ(lf, rf, "eq");
+        } else if (isAnyType(actualTy) || isAnyType(expectedTy)) {
+            if (!isAnyType(actualTy)) actualVal = wrapInAny(actualVal);
+            if (!isAnyType(expectedTy)) expectedVal = wrapInAny(expectedVal);
+            eqResult = emitAnyBinaryOp("==", actualVal, expectedVal);
         } else if (isOptionType(actualTy) && isOptionType(expectedTy) && actualTy == expectedTy) {
             // Option<T> == Option<T>: both None or both Some with equal inner
             llvm::Value *aHas = builder_.CreateExtractValue(actualVal, 0, "opt_a_has");
@@ -804,6 +808,10 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         } else if (ty == ptrTy_) {
             // Assume string pointer, return directly
             return val;
+        } else if (isAnyType(ty)) {
+            llvm::Value *anyStr = emitAnyToString(val);
+            llvm::Value *fmt = builder_.CreateGlobalString("%s", ".fmt_any");
+            builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, anyStr});
         } else if (isOptionType(ty)) {
             llvm::Value *hasVal = builder_.CreateExtractValue(val, 0, "fmt_opt_has");
             llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "fmt_opt_inner");
