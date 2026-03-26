@@ -227,6 +227,48 @@ doubled = map_list([1, 2, 3], fn(x: int): x * 2)
 
 ---
 
+## Generic Functions
+
+Functions can have type parameters, enabling type-safe reuse without code duplication.
+
+### Syntax
+
+```python
+fn name<T, U>(param1: T, param2: U) -> T:
+    # body using T, U as types
+```
+
+### Example
+
+```python
+fn identity<T>(x: T) -> T:
+    return x
+
+# Explicit type argument
+result = identity[int](42)      # 42
+result = identity[str]("hello") # "hello"
+
+# Type inference (type argument deduced from actual argument)
+result = identity(42)           # T = int, result = 42
+result = identity("hello")     # T = str, result = "hello"
+```
+
+### Multiple Type Parameters
+
+```python
+fn pick_first<T, U>(a: T, b: U) -> T:
+    return a
+
+result = pick_first(1, "x")       # T = int, U = str, result = 1
+result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
+```
+
+### How It Works
+
+Generic functions use **monomorphization**: a specialized version of the function is generated for each unique combination of type arguments. The same instantiation is cached and reused across multiple calls.
+
+---
+
 ## UFCS (Uniform Function Call Syntax)
 
 `a.f(b)` can be used to call `f(a, b)`. Useful for method chaining.

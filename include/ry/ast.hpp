@@ -317,6 +317,7 @@ struct SelectStmt {
 
 struct FnStmt {
     std::string name;
+    std::vector<std::string> type_params;  // for generics: <T, U>
     std::vector<FnParam> params;
     std::string return_type;
     std::vector<StmtNode> body;
