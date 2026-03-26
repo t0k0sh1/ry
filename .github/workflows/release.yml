@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install LLVM 21 and OpenSSL
         run: |
-          brew install llvm@21 openssl@3 ninja
+          brew install llvm@21 openssl@3 ninja googletest
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
