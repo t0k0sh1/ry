@@ -153,6 +153,18 @@ TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
     ));
 }
 
+TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
+    EXPECT_EQ(runSource(
+        "fn describe(x: int) -> str:\n"
+        "    match x:\n"
+        "        case 1:\n"
+        "            return \"one\"\n"
+        "        case n:\n"
+        "            return \"other\"\n"
+        "print(describe(1))\n"
+    ), "one\n");
+}
+
 TEST_F(CodeGenTest, NestedIfElseAllReturn) {
     EXPECT_EQ(runSource(
         "fn classify(x: int) -> str:\n"

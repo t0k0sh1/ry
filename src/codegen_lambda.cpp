@@ -138,7 +138,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Check that block-bodied lambdas with explicit non-any/Unit return type
     // return on all paths
     if (!e->expr_body && !e->return_type.empty()
-        && e->return_type != "any" && e->return_type != "Unit") {
+        && !isAnyType(retTy) && !retTy->isVoidTy()) {
         if (!allPathsReturn(e->body))
             codegenError("lambda with return type '" + e->return_type +
                          "' does not return a value on all code paths");
