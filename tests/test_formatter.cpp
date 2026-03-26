@@ -8,286 +8,332 @@ static std::string fmt(const std::string &src) {
     return Formatter::formatSource(src);
 }
 
-// ===== Expression Tests =====
+// ===== Literal Formatting =====
 
-TEST(Formatter, NumberLiteral) {
+TEST(Formatter, LiteralFormatting) {
+    // Number
     EXPECT_EQ(fmt("x = 42\n"), "x = 42\n");
-}
-
-TEST(Formatter, FloatLiteral) {
+    // Float
     EXPECT_EQ(fmt("x = 3.14\n"), "x = 3.14\n");
-}
-
-TEST(Formatter, BoolLiteral) {
+    // Bool
     EXPECT_EQ(fmt("x = true\n"), "x = true\n");
     EXPECT_EQ(fmt("y = false\n"), "y = false\n");
-}
-
-TEST(Formatter, StringLiteral) {
+    // String
     EXPECT_EQ(fmt("x = \"hello\"\n"), "x = \"hello\"\n");
-}
-
-TEST(Formatter, StringEscape) {
+    // String escape
     EXPECT_EQ(fmt("x = \"a\\nb\"\n"), "x = \"a\\nb\"\n");
-}
-
-TEST(Formatter, NoneLiteral) {
+    // None
     EXPECT_EQ(fmt("x = none\n"), "x = none\n");
 }
 
-TEST(Formatter, BinaryExprSpacing) {
+// ===== Expression Formatting =====
+
+TEST(Formatter, ExpressionFormatting) {
+    // Binary expression spacing
     EXPECT_EQ(fmt("x = 1 + 2\n"), "x = 1 + 2\n");
     EXPECT_EQ(fmt("x = a * b + c\n"), "x = a * b + c\n");
-}
-
-TEST(Formatter, UnaryExpr) {
+    // Unary expression
     EXPECT_EQ(fmt("x = -5\n"), "x = -5\n");
     EXPECT_EQ(fmt("x = not true\n"), "x = not true\n");
-}
-
-TEST(Formatter, CallExpr) {
+    // Call expression
     EXPECT_EQ(fmt("x = f(1, 2)\n"), "x = f(1, 2)\n");
 }
 
-TEST(Formatter, ListExpr) {
+// ===== Complex Expression Formatting =====
+
+TEST(Formatter, ComplexExprFormatting) {
+    // List
     EXPECT_EQ(fmt("x = [1, 2, 3]\n"), "x = [1, 2, 3]\n");
-}
-
-TEST(Formatter, MapExpr) {
+    // Map
     EXPECT_EQ(fmt("x = {\"a\": 1, \"b\": 2}\n"), "x = {\"a\": 1, \"b\": 2}\n");
-}
-
-TEST(Formatter, TernaryExpr) {
+    // Ternary
     EXPECT_EQ(fmt("x = a > 0 ? 1 : 0\n"), "x = a > 0 ? 1 : 0\n");
-}
-
-TEST(Formatter, RangeExpr) {
+    // Range
     EXPECT_EQ(fmt("x = 1..10\n"), "x = 1..10\n");
-}
-
-TEST(Formatter, EnumAccess) {
-    auto src = "enum Color:\n    Red\n    Green\nx = Color::Red\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("x = Color::Red"), std::string::npos);
-}
-
-TEST(Formatter, CastExpr) {
+    // Enum access
+    {
+        auto src = "enum Color:\n    Red\n    Green\nx = Color::Red\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("x = Color::Red"), std::string::npos);
+    }
+    // Cast
     EXPECT_EQ(fmt("x = y as int\n"), "x = y as int\n");
 }
 
-// ===== Statement Tests =====
+// ===== Statement Formatting =====
 
-TEST(Formatter, AssignWithType) {
+TEST(Formatter, StatementFormatting) {
+    // Assign with type
     EXPECT_EQ(fmt("x: int = 42\n"), "x: int = 42\n");
-}
-
-TEST(Formatter, ImportStatement) {
+    // Import
     EXPECT_EQ(fmt("from io import print, println\n"), "from io import print, println\n");
+    // Return
+    {
+        auto src = "fn f() -> int:\n    return 42\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("  return 42"), std::string::npos);
+    }
+    // Break / Continue
+    {
+        auto src = "while true:\n    break\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("  break"), std::string::npos);
+    }
+    // Type alias
+    EXPECT_EQ(fmt("type Num = int\n"), "type Num = int\n");
+    // Index assignment
+    {
+        auto src = "xs = [1, 2, 3]\nxs[0] = 99\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("xs[0] = 99"), std::string::npos);
+    }
+    // Field assignment
+    {
+        auto src = "record Point:\n    x: int\n    y: int\n\np = Point(1, 2)\np.x = 100\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("p.x = 100"), std::string::npos);
+    }
 }
 
-TEST(Formatter, ReturnStatement) {
-    auto src = "fn f() -> int:\n    return 42\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("  return 42"), std::string::npos);
-}
+// ===== Indentation Levels =====
 
-TEST(Formatter, BreakContinue) {
-    auto src = "while true:\n    break\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("  break"), std::string::npos);
-}
-
-// ===== Indentation Tests =====
-
-TEST(Formatter, FunctionIndent2Space) {
-    auto src = "fn add(a: int, b: int) -> int:\n    return a + b\n";
-    auto expected = "fn add(a: int, b: int) -> int:\n  return a + b\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, NestedIndent) {
-    auto src =
-        "fn f(x: int) -> int:\n"
-        "    if x > 0:\n"
-        "        return x\n"
-        "    return 0\n";
-    auto expected =
-        "fn f(x: int) -> int:\n"
-        "  if x > 0:\n"
-        "    return x\n"
-        "  return 0\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, DeeplyNested) {
-    auto src =
-        "fn f() -> int:\n"
-        "    if true:\n"
-        "        while true:\n"
-        "            return 1\n"
-        "    return 0\n";
-    auto expected =
-        "fn f() -> int:\n"
-        "  if true:\n"
-        "    while true:\n"
-        "      return 1\n"
-        "  return 0\n";
-    EXPECT_EQ(fmt(src), expected);
+TEST(Formatter, IndentationLevels) {
+    // Function indent (2-space)
+    {
+        auto src = "fn add(a: int, b: int) -> int:\n    return a + b\n";
+        auto expected = "fn add(a: int, b: int) -> int:\n  return a + b\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Nested indent
+    {
+        auto src =
+            "fn f(x: int) -> int:\n"
+            "    if x > 0:\n"
+            "        return x\n"
+            "    return 0\n";
+        auto expected =
+            "fn f(x: int) -> int:\n"
+            "  if x > 0:\n"
+            "    return x\n"
+            "  return 0\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Deeply nested
+    {
+        auto src =
+            "fn f() -> int:\n"
+            "    if true:\n"
+            "        while true:\n"
+            "            return 1\n"
+            "    return 0\n";
+        auto expected =
+            "fn f() -> int:\n"
+            "  if true:\n"
+            "    while true:\n"
+            "      return 1\n"
+            "  return 0\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
 }
 
 // ===== Record/Enum Tests =====
 
-TEST(Formatter, RecordDef) {
-    auto src = "record Point:\n    x: int\n    y: int\n";
-    auto expected = "record Point:\n  x: int\n  y: int\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, EnumDef) {
-    auto src = "enum Color:\n    Red\n    Green\n    Blue\n";
-    auto expected = "enum Color:\n  Red\n  Green\n  Blue\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, EnumWithAssociatedData) {
-    auto src = "enum Shape:\n    Circle(float)\n    Rect(float, float)\n    Point\n";
-    auto expected = "enum Shape:\n  Circle(float)\n  Rect(float, float)\n  Point\n";
-    EXPECT_EQ(fmt(src), expected);
+TEST(Formatter, RecordEnumDef) {
+    // Record
+    {
+        auto src = "record Point:\n    x: int\n    y: int\n";
+        auto expected = "record Point:\n  x: int\n  y: int\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Enum
+    {
+        auto src = "enum Color:\n    Red\n    Green\n    Blue\n";
+        auto expected = "enum Color:\n  Red\n  Green\n  Blue\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Enum with associated data
+    {
+        auto src = "enum Shape:\n    Circle(float)\n    Rect(float, float)\n    Point\n";
+        auto expected = "enum Shape:\n  Circle(float)\n  Rect(float, float)\n  Point\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
 }
 
 // ===== Control Flow Tests =====
 
-TEST(Formatter, IfElifElse) {
-    auto src =
-        "if x > 10:\n"
-        "    res = 1\n"
-        "elif x == 5:\n"
-        "    res = 2\n"
-        "else:\n"
-        "    res = 3\n";
-    auto expected =
-        "if x > 10:\n"
-        "  res = 1\n"
-        "elif x == 5:\n"
-        "  res = 2\n"
-        "else:\n"
-        "  res = 3\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, ForLoop) {
-    // += is desugared by parser to x = x + expr
-    auto src = "for i in range(5):\n    sum += i\n";
-    auto expected = "for i in range(5):\n  sum = sum + i\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, ForLoopTwoVars) {
-    auto src = "for k, v in m:\n    total += v\n";
-    auto expected = "for k, v in m:\n  total = total + v\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-TEST(Formatter, WhileLoop) {
-    auto src = "while i < 5:\n    i += 1\n";
-    auto expected = "while i < 5:\n  i = i + 1\n";
-    EXPECT_EQ(fmt(src), expected);
-}
-
-// ===== Match Tests =====
-
-TEST(Formatter, MatchStatement) {
-    auto src =
-        "match x:\n"
-        "    case 1:\n"
-        "        res = 10\n"
-        "    case _:\n"
-        "        res = 0\n";
-    auto expected =
-        "match x:\n"
-        "  case 1:\n"
-        "    res = 10\n"
-        "  case _:\n"
-        "    res = 0\n";
-    EXPECT_EQ(fmt(src), expected);
+TEST(Formatter, ControlFlow) {
+    // If / elif / else
+    {
+        auto src =
+            "if x > 10:\n"
+            "    res = 1\n"
+            "elif x == 5:\n"
+            "    res = 2\n"
+            "else:\n"
+            "    res = 3\n";
+        auto expected =
+            "if x > 10:\n"
+            "  res = 1\n"
+            "elif x == 5:\n"
+            "  res = 2\n"
+            "else:\n"
+            "  res = 3\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // For loop
+    {
+        auto src = "for i in range(5):\n    sum += i\n";
+        auto expected = "for i in range(5):\n  sum = sum + i\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // For loop with two vars
+    {
+        auto src = "for k, v in m:\n    total += v\n";
+        auto expected = "for k, v in m:\n  total = total + v\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // While loop
+    {
+        auto src = "while i < 5:\n    i += 1\n";
+        auto expected = "while i < 5:\n  i = i + 1\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Match statement
+    {
+        auto src =
+            "match x:\n"
+            "    case 1:\n"
+            "        res = 10\n"
+            "    case _:\n"
+            "        res = 0\n";
+        auto expected =
+            "match x:\n"
+            "  case 1:\n"
+            "    res = 10\n"
+            "  case _:\n"
+            "    res = 0\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
 }
 
 // ===== Function Tests =====
 
-TEST(Formatter, AsyncFunction) {
-    auto src = "async fn fetch() -> int:\n    return 42\n";
-    auto expected = "async fn fetch() -> int:\n  return 42\n";
-    EXPECT_EQ(fmt(src), expected);
+TEST(Formatter, FunctionVariants) {
+    // Async function
+    {
+        auto src = "async fn fetch() -> int:\n    return 42\n";
+        auto expected = "async fn fetch() -> int:\n  return 42\n";
+        EXPECT_EQ(fmt(src), expected);
+    }
+    // Operator overload
+    {
+        auto src =
+            "record Vec2:\n    x: float\n    y: float\n\n"
+            "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+            "    return Vec2(a.x + b.x, a.y + b.y)\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("fn operator+(a: Vec2, b: Vec2) -> Vec2:"), std::string::npos);
+        EXPECT_NE(out.find("  return Vec2(a.x + b.x, a.y + b.y)"), std::string::npos);
+    }
 }
 
-TEST(Formatter, OperatorOverload) {
-    auto src =
-        "record Vec2:\n    x: float\n    y: float\n\n"
-        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
-        "    return Vec2(a.x + b.x, a.y + b.y)\n";
-    auto out = fmt(src);
-    // Parser stores name as "operator+", so fn name is "operator+"
-    EXPECT_NE(out.find("fn operator+(a: Vec2, b: Vec2) -> Vec2:"), std::string::npos);
-    EXPECT_NE(out.find("  return Vec2(a.x + b.x, a.y + b.y)"), std::string::npos);
+// ===== Comment Formatting =====
+
+TEST(Formatter, CommentFormatting) {
+    // Standalone comment
+    {
+        auto src = "# this is a comment\nx = 42\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("# this is a comment"), std::string::npos);
+        EXPECT_NE(out.find("x = 42"), std::string::npos);
+    }
+    // Inline comment
+    {
+        auto src = "x = 42  # inline\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("x = 42  # inline"), std::string::npos);
+    }
+    // Comment between functions
+    {
+        auto src =
+            "fn a() -> int:\n"
+            "    return 1\n"
+            "\n"
+            "# separator\n"
+            "\n"
+            "fn b() -> int:\n"
+            "    return 2\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("# separator"), std::string::npos);
+    }
+    // Comment extraction via Formatter object
+    {
+        Formatter f("# comment\nx = 1\n");
+        Lexer lex("# comment\nx = 1\n");
+        Parser parser(lex);
+        auto prog = parser.parseProgram();
+        auto result = f.format(prog);
+        EXPECT_NE(result.find("# comment"), std::string::npos);
+    }
 }
 
-// ===== Directive Tests =====
+// ===== Native Directive Formatting =====
 
-TEST(Formatter, NativeDirective) {
-    auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("@native"), std::string::npos);
-    EXPECT_NE(out.find("fn append("), std::string::npos);
-}
-
-TEST(Formatter, NativeBangFunction) {
-    auto src = "@native\nfn sort!(values: List<int>) -> Unit\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("@native"), std::string::npos);
-    EXPECT_NE(out.find("fn sort!(values: List<int>) -> Unit"), std::string::npos);
-}
-
-TEST(Formatter, NativeFunctionNoColon) {
-    auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("fn append(values: List<int>, value: int) -> Unit\n"), std::string::npos);
-    // Must NOT have a colon after native function declaration
-    EXPECT_EQ(out.find("-> Unit:"), std::string::npos);
-}
-
-TEST(Formatter, NativeFunctionNoBody) {
-    auto src = "@native\nfn pop(values: List<int>) -> Option<int>\n";
-    auto out = fmt(src);
-    EXPECT_EQ(out.find("-> Option<int>:"), std::string::npos);
-    EXPECT_NE(out.find("-> Option<int>\n"), std::string::npos);
-}
-
-// ===== Comment Tests =====
-
-TEST(Formatter, StandaloneComment) {
-    auto src = "# this is a comment\nx = 42\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("# this is a comment"), std::string::npos);
-    EXPECT_NE(out.find("x = 42"), std::string::npos);
-}
-
-TEST(Formatter, InlineComment) {
-    auto src = "x = 42  # inline\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("x = 42  # inline"), std::string::npos);
-}
-
-TEST(Formatter, CommentBetweenFunctions) {
-    auto src =
-        "fn a() -> int:\n"
-        "    return 1\n"
-        "\n"
-        "# separator\n"
-        "\n"
-        "fn b() -> int:\n"
-        "    return 2\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("# separator"), std::string::npos);
+TEST(Formatter, NativeDirectiveFormatting) {
+    // Basic native directive
+    {
+        auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@native"), std::string::npos);
+        EXPECT_NE(out.find("fn append("), std::string::npos);
+    }
+    // Native bang function
+    {
+        auto src = "@native\nfn sort!(values: List<int>) -> Unit\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("@native"), std::string::npos);
+        EXPECT_NE(out.find("fn sort!(values: List<int>) -> Unit"), std::string::npos);
+    }
+    // Native function has no colon
+    {
+        auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("fn append(values: List<int>, value: int) -> Unit\n"), std::string::npos);
+        EXPECT_EQ(out.find("-> Unit:"), std::string::npos);
+    }
+    // Native function has no body
+    {
+        auto src = "@native\nfn pop(values: List<int>) -> Option<int>\n";
+        auto out = fmt(src);
+        EXPECT_EQ(out.find("-> Option<int>:"), std::string::npos);
+        EXPECT_NE(out.find("-> Option<int>\n"), std::string::npos);
+    }
+    // Native const declaration
+    EXPECT_EQ(fmt("@native\n@const\nPI: float\n"), "@native\n@const\nPI: float\n");
+    // Native const multiple declarations
+    {
+        std::string src = "@native\n@const\nPI: float\n\n@native\n@const\nE: float\n";
+        EXPECT_EQ(fmt(src), src);
+    }
+    // Native def followed by section comment
+    {
+        auto src =
+            "@native\n"
+            "fn read_all() -> str\n"
+            "\n"
+            "# File I/O\n"
+            "@native\n"
+            "fn read_text(path: str) -> str\n";
+        std::string out = fmt(src);
+        EXPECT_EQ(out.find("\n\n\n"), std::string::npos)
+            << "Found triple newline (double blank line) in:\n" << out;
+        EXPECT_NE(out.find("-> str\n\n# File I/O"), std::string::npos)
+            << "Expected single blank line before comment in:\n" << out;
+        // Idempotent
+        std::string second = fmt(out);
+        EXPECT_EQ(out, second)
+            << "Formatting is not idempotent:\nFirst:\n" << out << "\nSecond:\n" << second;
+    }
 }
 
 // ===== Blank Line Tests =====
@@ -299,161 +345,91 @@ TEST(Formatter, BlankLineBetweenDefs) {
         "fn b() -> int:\n"
         "    return 2\n";
     auto out = fmt(src);
-    // Should have blank line between functions
     EXPECT_NE(out.find("  return 1\n\nfn b"), std::string::npos);
 }
 
 // ===== Lambda / Trailing Block Tests =====
 
-TEST(Formatter, SingleLineLambda) {
-    auto src = "double = fn(x: int): x * 2\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("double = fn(x: int): x * 2"), std::string::npos);
+TEST(Formatter, LambdaAndTrailingBlock) {
+    // Single-line lambda
+    {
+        auto src = "double = fn(x: int): x * 2\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("double = fn(x: int): x * 2"), std::string::npos);
+    }
+    // Trailing block call
+    {
+        auto src =
+            "describe(\"test\", fn():\n"
+            "    it(\"case\", fn():\n"
+            "        expect(1 + 1).to_eq(2)\n"
+            "    )\n"
+            ")\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("describe(\"test\", fn():"), std::string::npos);
+        EXPECT_NE(out.find("  it(\"case\", fn():"), std::string::npos);
+    }
+    // Expect statement
+    {
+        auto src =
+            "fn id(x: int) -> int:\n"
+            "    return x\n"
+            "\n"
+            "describe(\"t\", fn():\n"
+            "    it(\"c\", fn():\n"
+            "        expect(id(5)).to_eq(5)\n"
+            "    )\n"
+            ")\n";
+        auto out = fmt(src);
+        EXPECT_NE(out.find("expect(id(5)).to_eq(5)"), std::string::npos);
+    }
 }
 
-TEST(Formatter, TrailingBlockCall) {
-    auto src =
-        "describe(\"test\", fn():\n"
-        "    it(\"case\", fn():\n"
-        "        expect(1 + 1).to_eq(2)\n"
-        "    )\n"
-        ")\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("describe(\"test\", fn():"), std::string::npos);
-    EXPECT_NE(out.find("  it(\"case\", fn():"), std::string::npos);
-}
+// ===== Round-Trip / Idempotency Tests =====
 
-// ===== Expect Statement =====
-
-TEST(Formatter, ExpectStatement) {
-    auto src =
-        "fn id(x: int) -> int:\n"
-        "    return x\n"
-        "\n"
-        "describe(\"t\", fn():\n"
-        "    it(\"c\", fn():\n"
-        "        expect(id(5)).to_eq(5)\n"
-        "    )\n"
-        ")\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("expect(id(5)).to_eq(5)"), std::string::npos);
-}
-
-// ===== Idempotency Test =====
-
-TEST(Formatter, Idempotent) {
-    auto src =
-        "fn add(a: int, b: int) -> int:\n"
-        "  return a + b\n"
-        "\n"
-        "fn sub(a: int, b: int) -> int:\n"
-        "  return a - b\n";
-    auto first = fmt(src);
-    auto second = fmt(first);
-    EXPECT_EQ(first, second);
-}
-
-// ===== Type Alias =====
-
-TEST(Formatter, TypeAlias) {
-    auto src = "type Num = int\n";
-    EXPECT_EQ(fmt(src), "type Num = int\n");
-}
-
-// ===== Tuple Destructuring =====
-
-// TupleDestruct is tested indirectly since it requires specific parser context
-
-// ===== Index Assignment =====
-
-TEST(Formatter, IndexAssign) {
-    auto src = "xs = [1, 2, 3]\nxs[0] = 99\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("xs[0] = 99"), std::string::npos);
-}
-
-// ===== Field Assignment =====
-
-TEST(Formatter, FieldAssign) {
-    auto src = "record Point:\n    x: int\n    y: int\n\np = Point(1, 2)\np.x = 100\n";
-    auto out = fmt(src);
-    EXPECT_NE(out.find("p.x = 100"), std::string::npos);
-}
-
-// ===== Comment Extraction =====
-
-TEST(FormatterComments, ExtractsStandalone) {
-    Formatter f("# comment\nx = 1\n");
-    Lexer lex("# comment\nx = 1\n");
-    Parser parser(lex);
-    auto prog = parser.parseProgram();
-    auto result = f.format(prog);
-    EXPECT_NE(result.find("# comment"), std::string::npos);
-}
-
-// ===== Native Const Declaration =====
-
-TEST(Formatter, NativeConstDeclaration) {
-    EXPECT_EQ(fmt("@native\n@const\nPI: float\n"), "@native\n@const\nPI: float\n");
-}
-
-TEST(Formatter, NativeConstMultipleDeclarations) {
-    std::string src = "@native\n@const\nPI: float\n\n@native\n@const\nE: float\n";
-    EXPECT_EQ(fmt(src), src);
-}
-
-// ===== Blank Line Before Section Comment After Definition =====
-
-static const char *kNativeDefWithSectionComment =
-    "@native\n"
-    "fn read_all() -> str\n"
-    "\n"
-    "# File I/O\n"
-    "@native\n"
-    "fn read_text(path: str) -> str\n";
-
-TEST(Formatter, NativeDefFollowedBySectionComment) {
-    std::string out = fmt(kNativeDefWithSectionComment);
-    EXPECT_EQ(out.find("\n\n\n"), std::string::npos) << "Found triple newline (double blank line) in:\n" << out;
-    EXPECT_NE(out.find("-> str\n\n# File I/O"), std::string::npos) << "Expected single blank line before comment in:\n" << out;
-}
-
-TEST(Formatter, NativeDefFollowedBySectionCommentIdempotent) {
-    std::string first = fmt(kNativeDefWithSectionComment);
-    std::string second = fmt(first);
-    EXPECT_EQ(first, second) << "Formatting is not idempotent:\nFirst:\n" << first << "\nSecond:\n" << second;
-}
-
-// ===== Round-Trip Verification =====
-
-TEST(Formatter, VerifyFormattingStable) {
-    auto src = "x: int = 1\n";
-    auto formatted = Formatter::formatSource(src);
-    std::string reason;
-    EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason));
-    EXPECT_TRUE(reason.empty());
-}
-
-TEST(Formatter, VerifyFormattingReParseFailure) {
-    std::string garbage = "{{{{totally broken syntax}}}}";
-    std::string reason;
-    EXPECT_FALSE(Formatter::verifyFormatting(garbage, reason));
-    EXPECT_NE(reason.find("failed to re-parse"), std::string::npos);
-}
-
-TEST(Formatter, RoundTripChannelGenericSyntax) {
-    auto src = "ch: Channel<int> = channel[int]()\n";
-    auto first = Formatter::formatSource(src);
-    EXPECT_NE(first.find("channel[int]()"), std::string::npos);
-    EXPECT_EQ(first.find("channel<int>()"), std::string::npos);
-    auto second = Formatter::formatSource(first);
-    EXPECT_EQ(first, second);
-}
-
-TEST(Formatter, RoundTripGroupedExpression) {
-    auto src = "x: int = (1 + 2) * 3\n";
-    auto first = Formatter::formatSource(src);
-    EXPECT_EQ(first, "x: int = (1 + 2) * 3\n");
-    auto second = Formatter::formatSource(first);
-    EXPECT_EQ(first, second);
+TEST(Formatter, RoundTripAndIdempotency) {
+    // Basic idempotency
+    {
+        auto src =
+            "fn add(a: int, b: int) -> int:\n"
+            "  return a + b\n"
+            "\n"
+            "fn sub(a: int, b: int) -> int:\n"
+            "  return a - b\n";
+        auto first = fmt(src);
+        auto second = fmt(first);
+        EXPECT_EQ(first, second);
+    }
+    // Verify formatting stable
+    {
+        auto src = "x: int = 1\n";
+        auto formatted = Formatter::formatSource(src);
+        std::string reason;
+        EXPECT_TRUE(Formatter::verifyFormatting(formatted, reason));
+        EXPECT_TRUE(reason.empty());
+    }
+    // Verify formatting re-parse failure
+    {
+        std::string garbage = "{{{{totally broken syntax}}}}";
+        std::string reason;
+        EXPECT_FALSE(Formatter::verifyFormatting(garbage, reason));
+        EXPECT_NE(reason.find("failed to re-parse"), std::string::npos);
+    }
+    // Channel generic syntax round-trip
+    {
+        auto src = "ch: Channel<int> = channel[int]()\n";
+        auto first = Formatter::formatSource(src);
+        EXPECT_NE(first.find("channel[int]()"), std::string::npos);
+        EXPECT_EQ(first.find("channel<int>()"), std::string::npos);
+        auto second = Formatter::formatSource(first);
+        EXPECT_EQ(first, second);
+    }
+    // Grouped expression round-trip
+    {
+        auto src = "x: int = (1 + 2) * 3\n";
+        auto first = Formatter::formatSource(src);
+        EXPECT_EQ(first, "x: int = (1 + 2) * 3\n");
+        auto second = Formatter::formatSource(first);
+        EXPECT_EQ(first, second);
+    }
 }
