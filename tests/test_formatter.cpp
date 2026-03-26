@@ -308,7 +308,7 @@ TEST(Formatter, BlankLineBetweenDefs) {
 TEST(Formatter, SingleLineLambda) {
     auto src = "double = fn(x: int): x * 2\n";
     auto out = fmt(src);
-    EXPECT_NE(out.find("double = fn(x: int) -> any: x * 2"), std::string::npos);
+    EXPECT_NE(out.find("double = fn(x: int): x * 2"), std::string::npos);
 }
 
 TEST(Formatter, TrailingBlockCall) {
@@ -319,8 +319,8 @@ TEST(Formatter, TrailingBlockCall) {
         "    )\n"
         ")\n";
     auto out = fmt(src);
-    EXPECT_NE(out.find("describe(\"test\", fn() -> any:"), std::string::npos);
-    EXPECT_NE(out.find("  it(\"case\", fn() -> any:"), std::string::npos);
+    EXPECT_NE(out.find("describe(\"test\", fn():"), std::string::npos);
+    EXPECT_NE(out.find("  it(\"case\", fn():"), std::string::npos);
 }
 
 // ===== Expect Statement =====

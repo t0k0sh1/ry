@@ -446,6 +446,7 @@ private:
 
     int64_t getAnyTypeTag(llvm::Type *ty);
     llvm::Value *wrapInAny(llvm::Value *val);
+    llvm::Value *buildUnitAny();
     llvm::Value *unwrapFromAny(llvm::Value *anyVal, llvm::Type *targetTy);
     bool isAnyType(llvm::Type *ty) const;
 };

@@ -117,9 +117,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
-    if (e->return_type.empty() || e->return_type == "any") {
-        // Transitional: infer return type for omitted and explicit "any".
-        // #219 will replace this with proper any-type codegen.
+    if (e->return_type == "any") {
+        retTy = anyTy_;
+    } else if (e->return_type.empty()) {
+        // Infer return type when omitted
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : e->params)
             paramTypeMap[p.name] = resolveType(p.type);
@@ -142,6 +143,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     {
         FnScope guard(*this);
         fn_ = func;
+        current_fn_return_type_ = e->return_type;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
@@ -178,6 +180,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         // Emit body
         if (e->expr_body) {
             llvm::Value *val = emitExpr(*e->expr_body);
+            if (isAnyType(retTy) && !isAnyType(val->getType()))
+                val = wrapInAny(val);
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
@@ -186,6 +190,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             if (!builder_.GetInsertBlock()->getTerminator()) {
                 if (retTy->isVoidTy())
                     builder_.CreateRetVoid();
+                else if (isAnyType(retTy))
+                    builder_.CreateRet(buildUnitAny());
                 else if (retTy == i64Ty_)
                     builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
                 else if (retTy == f64Ty_)

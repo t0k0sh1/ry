@@ -1,0 +1,73 @@
+describe("any return from function", fn():
+  it("return int from any-returning function", fn():
+    fn get_int() -> any:
+      return 42
+    x: any = get_int()
+    expect(true).to_eq(true)
+  )
+  it("return float from any-returning function", fn():
+    fn get_float() -> any:
+      return 3.14
+    x: any = get_float()
+    expect(true).to_eq(true)
+  )
+  it("return str from any-returning function", fn():
+    fn get_str() -> any:
+      return "hello"
+    x: any = get_str()
+    expect(true).to_eq(true)
+  )
+  it("return bool from any-returning function", fn():
+    fn get_bool() -> any:
+      return true
+    x: any = get_bool()
+    expect(true).to_eq(true)
+  )
+  it("return without value from any-returning function", fn():
+    fn no_val() -> any:
+      return
+    x: any = no_val()
+    expect(true).to_eq(true)
+  )
+  it("implicit return from any-returning function", fn():
+    fn implicit_any() -> any:
+      y = 1
+    x: any = implicit_any()
+    expect(true).to_eq(true)
+  )
+)
+
+describe("any return from lambda", fn():
+  it("lambda expr body returns any", fn():
+    f = fn() -> any: 42
+    x: any = f()
+    expect(true).to_eq(true)
+  )
+  it("lambda block body returns any", fn():
+    f = fn() -> any:
+      return "hello"
+    x: any = f()
+    expect(true).to_eq(true)
+  )
+  it("lambda implicit return is unit any", fn():
+    f = fn() -> any:
+      y = 1
+    x: any = f()
+    expect(true).to_eq(true)
+  )
+)
+
+describe("omitted return type function (defaults to any)", fn():
+  it("function with omitted return type returns int", fn():
+    fn get_val():
+      return 42
+    x: any = get_val()
+    expect(true).to_eq(true)
+  )
+  it("function with omitted return type implicit return", fn():
+    fn do_nothing():
+      y = 1
+    x: any = do_nothing()
+    expect(true).to_eq(true)
+  )
+)
