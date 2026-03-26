@@ -23,9 +23,10 @@ private:
     struct RecursionGuard {
         Parser &p_;
         explicit RecursionGuard(Parser &p) : p_(p) {
-            if (++p_.recursion_depth_ > MAX_RECURSION_DEPTH)
+            if (p_.recursion_depth_ >= MAX_RECURSION_DEPTH)
                 p_.parseError("expression nesting too deep (limit: " +
                               std::to_string(MAX_RECURSION_DEPTH) + ")");
+            ++p_.recursion_depth_;
         }
         ~RecursionGuard() { --p_.recursion_depth_; }
         RecursionGuard(const RecursionGuard &) = delete;

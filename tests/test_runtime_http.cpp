@@ -41,10 +41,26 @@ const char *__ry_http_client_header(void *resp, const char *key);
 void __ry_http_client_response_free(void *resp);
 }
 
-// Allow private/loopback connections in HTTP client tests
-static struct AllowPrivateHTTP {
-    AllowPrivateHTTP() { setenv("RY_ALLOW_PRIVATE_HTTP", "1", 1); }
-} allow_private_http_init;
+// RAII guard to temporarily allow private/loopback connections for tests
+// that need localhost access, restoring the original env on destruction.
+class AllowPrivateHTTPGuard {
+public:
+    AllowPrivateHTTPGuard() {
+        const char *prev = std::getenv("RY_ALLOW_PRIVATE_HTTP");
+        had_prev_ = (prev != nullptr);
+        if (had_prev_) prev_value_ = prev;
+        ::setenv("RY_ALLOW_PRIVATE_HTTP", "1", 1);
+    }
+    ~AllowPrivateHTTPGuard() {
+        if (had_prev_)
+            ::setenv("RY_ALLOW_PRIVATE_HTTP", prev_value_.c_str(), 1);
+        else
+            ::unsetenv("RY_ALLOW_PRIVATE_HTTP");
+    }
+private:
+    bool had_prev_ = false;
+    std::string prev_value_;
+};
 
 // TcpStreamHandle layout must match runtime_http.cpp
 struct TcpStreamHandle {
@@ -710,7 +726,12 @@ struct JoinGuard {
     ~JoinGuard() { if (t.joinable()) t.join(); }
 };
 
-TEST(RuntimeHttpClient, HttpGetBasic) {
+class RuntimeHttpClientTest : public ::testing::Test {
+protected:
+    AllowPrivateHTTPGuard allow_private_;
+};
+
+TEST_F(RuntimeHttpClientTest, HttpGetBasic) {
     std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Custom: test-value\r\n\r\nhello";
     int srv = start_mock_server();
     if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
@@ -736,7 +757,7 @@ TEST(RuntimeHttpClient, HttpGetBasic) {
     ::close(srv);
 }
 
-TEST(RuntimeHttpClient, HttpPostWithBody) {
+TEST_F(RuntimeHttpClientTest, HttpPostWithBody) {
     std::string response = "HTTP/1.1 201 Created\r\nContent-Length: 2\r\n\r\nok";
     int srv = start_mock_server();
     if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
@@ -765,12 +786,12 @@ TEST(RuntimeHttpClient, HttpPostWithBody) {
     EXPECT_NE(captured_request.find("Content-Length: 9"), std::string::npos);
 }
 
-TEST(RuntimeHttpClient, HttpGetConnectionRefused) {
+TEST_F(RuntimeHttpClientTest, HttpGetConnectionRefused) {
     void *resp = __ry_http_get("http://127.0.0.1:1/nonexistent");
     EXPECT_EQ(resp, nullptr);
 }
 
-TEST(RuntimeHttpClient, HttpGetNoContentLength) {
+TEST_F(RuntimeHttpClientTest, HttpGetNoContentLength) {
     std::string response = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nno content length body";
     int srv = start_mock_server();
     if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
@@ -794,7 +815,7 @@ TEST(RuntimeHttpClient, HttpGetNoContentLength) {
     ::close(srv);
 }
 
-TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
+TEST_F(RuntimeHttpClientTest, HttpRequestCustomMethod) {
     std::string response = "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
     int srv = start_mock_server();
     if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
@@ -821,7 +842,7 @@ TEST(RuntimeHttpClient, HttpRequestCustomMethod) {
     EXPECT_NE(captured_request.find("DELETE /resource HTTP/1.1"), std::string::npos);
 }
 
-TEST(RuntimeHttpClient, HttpClientHeaderCaseInsensitive) {
+TEST_F(RuntimeHttpClientTest, HttpClientHeaderCaseInsensitive) {
     std::string response = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nContent-Length: 2\r\n\r\n{}";
     int srv = start_mock_server();
     if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
@@ -1211,7 +1232,7 @@ TEST(RuntimeHttp, ChunkedResponseSend) {
     free(handle);
 }
 
-TEST(RuntimeHttpClient, ChunkedClientResponse) {
+TEST_F(RuntimeHttpClientTest, ChunkedClientResponse) {
     std::string response =
         "HTTP/1.1 200 OK\r\n"
         "Transfer-Encoding: chunked\r\n"
@@ -1241,7 +1262,7 @@ TEST(RuntimeHttpClient, ChunkedClientResponse) {
     ::close(srv);
 }
 
-TEST(RuntimeHttpClient, ChunkedClientResponseMultipleChunks) {
+TEST_F(RuntimeHttpClientTest, ChunkedClientResponseMultipleChunks) {
     std::string response =
         "HTTP/1.1 200 OK\r\n"
         "Transfer-Encoding: chunked\r\n"

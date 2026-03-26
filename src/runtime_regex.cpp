@@ -712,6 +712,7 @@ public:
             ++generation_;
 
             for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return {bestStart, bestEnd};
                 if (s == matchState_) continue;
                 if (stateMatchesChar(s, c) && s->out1) {
                     addState(next_, s->out1, text, textLen, i + 1,

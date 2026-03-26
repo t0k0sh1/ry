@@ -122,12 +122,18 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         std::string base_str = fs::canonical(fs::path(dir), ec).string();
         if (ec) return "";
 
+        auto is_within_base = [&](const std::string &resolved) -> bool {
+            if (resolved.compare(0, base_str.size(), base_str) != 0)
+                return false;
+            return resolved.size() == base_str.size() ||
+                   resolved[base_str.size()] == '/';
+        };
+
         // 1. Directory (package)
         fs::path dir_candidate = fs::path(dir) / package_path;
         if (fs::is_directory(dir_candidate)) {
             std::string resolved = fs::canonical(dir_candidate).string();
-            if (resolved.compare(0, base_str.size(), base_str) != 0)
-                return "";
+            if (!is_within_base(resolved)) return "";
             return resolved;
         }
 
@@ -135,8 +141,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         fs::path file_candidate = fs::path(dir) / (package_path + ".ry");
         if (fs::is_regular_file(file_candidate)) {
             std::string resolved = fs::canonical(file_candidate).string();
-            if (resolved.compare(0, base_str.size(), base_str) != 0)
-                return "";
+            if (!is_within_base(resolved)) return "";
             return resolved;
         }
 

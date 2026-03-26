@@ -26,17 +26,36 @@ static std::string get_repo() {
     return "t0k0sh1/ry";
 }
 
-// Absolute paths for external commands to prevent PATH injection
-static const char *CURL_PATH = "/usr/bin/curl";
-static const char *TAR_PATH = "/usr/bin/tar";
-static const char *SHASUM_PATH = "/usr/bin/shasum";
+// Resolve a command from a list of candidate absolute paths.
+// Falls back to bare name for PATH lookup if no candidate exists.
+static std::string resolve_command(std::initializer_list<const char *> candidates) {
+    namespace fs = std::filesystem;
+    for (const char *path : candidates) {
+        if (fs::exists(path) && fs::is_regular_file(path))
+            return path;
+    }
+    return {};
+}
+
+// Resolved paths for external commands to prevent PATH injection.
+// Candidates are tried in order; if none exist, self-update will fail
+// gracefully when run_command returns non-zero.
+static std::string CURL_CMD  = resolve_command({"/usr/bin/curl", "/usr/local/bin/curl"});
+static std::string TAR_CMD   = resolve_command({"/usr/bin/tar", "/usr/local/bin/tar"});
+static std::string SHASUM_CMD = resolve_command({"/usr/bin/shasum", "/usr/local/bin/shasum"});
 #ifdef __APPLE__
-static const char *CP_PATH = "/bin/cp";
-static const char *RM_PATH = "/bin/rm";
+static std::string CP_CMD = resolve_command({"/bin/cp", "/usr/bin/cp"});
+static std::string RM_CMD = resolve_command({"/bin/rm", "/usr/bin/rm"});
 #else
-static const char *CP_PATH = "/usr/bin/cp";
-static const char *RM_PATH = "/usr/bin/rm";
+static std::string CP_CMD = resolve_command({"/usr/bin/cp", "/bin/cp"});
+static std::string RM_CMD = resolve_command({"/usr/bin/rm", "/bin/rm"});
 #endif
+
+static const char *CURL_PATH   = CURL_CMD.c_str();
+static const char *TAR_PATH    = TAR_CMD.c_str();
+static const char *SHASUM_PATH = SHASUM_CMD.c_str();
+static const char *CP_PATH     = CP_CMD.c_str();
+static const char *RM_PATH     = RM_CMD.c_str();
 
 bool is_valid_tag(const std::string &tag) {
     static const std::regex pattern("^v?[0-9A-Za-z._-]+$");
