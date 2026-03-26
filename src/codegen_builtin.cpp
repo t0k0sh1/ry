@@ -111,28 +111,29 @@ void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) 
 }
 
 void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
-    if (auto it = list_element_types_.find(src); it != list_element_types_.end())
-        list_element_types_[dst] = it->second;
-    if (auto it = nested_list_element_types_.find(src); it != nested_list_element_types_.end())
-        nested_list_element_types_[dst] = it->second;
-    if (auto it = map_key_types_.find(src); it != map_key_types_.end())
-        map_key_types_[dst] = it->second;
-    if (auto it = map_value_types_.find(src); it != map_value_types_.end())
-        map_value_types_[dst] = it->second;
-    if (auto it = set_element_types_.find(src); it != set_element_types_.end())
-        set_element_types_[dst] = it->second;
-    if (auto it = fn_type_info_.find(src); it != fn_type_info_.end())
-        fn_type_info_[dst] = it->second;
-    if (auto it = task_result_types_.find(src); it != task_result_types_.end())
-        task_result_types_[dst] = it->second;
-    if (auto it = union_value_types_.find(src); it != union_value_types_.end())
-        union_value_types_[dst] = it->second;
-    if (auto it = enum_value_types_.find(src); it != enum_value_types_.end())
-        enum_value_types_[dst] = it->second;
-    if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
-        channel_element_types_[dst] = it->second;
-    if (auto it = iterator_element_types_.find(src); it != iterator_element_types_.end())
-        iterator_element_types_[dst] = it->second;
+    // Resolve through LoadInst to find metadata on the pointer operand
+    llvm::Value *resolved = src;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(src))
+        resolved = load->getPointerOperand();
+    auto tryPropagate = [&](auto &map) {
+        auto it = map.find(src);
+        if (it != map.end()) { map[dst] = it->second; return; }
+        if (resolved != src) {
+            it = map.find(resolved);
+            if (it != map.end()) map[dst] = it->second;
+        }
+    };
+    tryPropagate(list_element_types_);
+    tryPropagate(nested_list_element_types_);
+    tryPropagate(map_key_types_);
+    tryPropagate(map_value_types_);
+    tryPropagate(set_element_types_);
+    tryPropagate(fn_type_info_);
+    tryPropagate(task_result_types_);
+    tryPropagate(union_value_types_);
+    tryPropagate(enum_value_types_);
+    tryPropagate(channel_element_types_);
+    tryPropagate(iterator_element_types_);
 }
 
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
@@ -1091,7 +1092,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                     llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                     builder_.CreateStore(inner, varAlloca);
-                    propagateResourceTracking(subjectAlloca, varAlloca);
+                    propagateAllMetadata(subjectAlloca, varAlloca);
                 } else if constexpr (std::is_same_v<T, OkPattern>) {
                     if (pat.binding != "_") {
                         llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -1138,7 +1139,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
                 llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
                 builder_.CreateStore(inner, varAlloca);
-                propagateResourceTracking(subjectAlloca, varAlloca);
+                propagateAllMetadata(subjectAlloca, varAlloca);
             } else if constexpr (std::is_same_v<T, OkPattern>) {
                 if (pat.binding != "_") {
                     llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");

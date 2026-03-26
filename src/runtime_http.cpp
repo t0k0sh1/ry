@@ -936,8 +936,8 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
             return build_str_map(keys, vals, 3);
         }
     }
-    // Return empty map when file not found
-    return build_str_map(nullptr, nullptr, 0);
+    // Return nullptr when file not found (Option<Map> None)
+    return nullptr;
 }
 
 extern "C" void *__ry_http_form_fields(void *r) {

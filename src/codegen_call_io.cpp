@@ -406,7 +406,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return builder_.CreateSelect(isNull, noneVal, someVal, "http_ff_opt");
     }
 
-    // http_form_file(req, name) -> Map<str, str>
+    // http_form_file(req, name) -> Option<Map<str, str>>
     if (e.callee == "http_form_file") {
         if (e.args.size() != 2)
             codegenError("http_form_file() takes exactly 2 arguments");
@@ -419,9 +419,15 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
-        map_key_types_[result] = ptrTy_;
-        map_value_types_[result] = ptrTy_;
-        return result;
+        llvm::Value *isNull = builder_.CreateICmpEQ(result,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_ffile_null");
+        llvm::StructType *optTy = getOptionType(ptrTy_);
+        llvm::Value *someVal = buildSomeValue(result, optTy);
+        llvm::Value *noneVal = buildNoneValue(optTy);
+        llvm::Value *optResult = builder_.CreateSelect(isNull, noneVal, someVal, "http_ffile_opt");
+        map_key_types_[optResult] = ptrTy_;
+        map_value_types_[optResult] = ptrTy_;
+        return optResult;
     }
 
     // http_form_fields(req) -> Map<str, str>

@@ -129,6 +129,7 @@ public:
 
     const Token& peek() const { return current_; }
     Token next();
+    bool consumeGreaterInTypeContext();
 
     // State save/restore for backtracking (used by lambda parsing)
     struct State {

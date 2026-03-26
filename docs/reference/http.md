@@ -40,7 +40,7 @@ from http import http_listen, http_method, http_path, http_header, http_body, ht
 | `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
 | `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
 | `http_form_field` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a multipart form text field. Returns `None` if not found. |
-| `http_form_file` | `(req: HttpRequest, name: str) -> Map<str, str>` | Returns file upload info as a map with keys `"filename"`, `"content_type"`, `"data"`. Returns an empty map if not found. |
+| `http_form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `None` if not found. |
 | `http_form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
 
 ### Response Builder
@@ -151,9 +151,12 @@ from http import http_listen, http_form_field, http_form_file, http_response
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     match http_form_field(req, "username"):
         case Some(name):
-            file_info = http_form_file(req, "avatar")
-            filename = file_info["filename"]
-            return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+            match http_form_file(req, "avatar"):
+                case Some(file_info):
+                    filename = file_info["filename"]
+                    return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+                case None:
+                    return http_response(400, {"Content-Type": "text/plain"}, "No file uploaded")
         case None:
             return http_response(400, {"Content-Type": "text/plain"}, "Missing username")
 )
@@ -195,8 +198,8 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - The `boundary` parameter is extracted from the `Content-Type` header and supports both quoted and unquoted values.
 - Parts with a `filename` in `Content-Disposition` are treated as file uploads; parts without are treated as text fields.
 - For duplicate field/file names, the first value is returned.
-- `http_form_file()` returns a map with keys `"filename"`, `"content_type"`, and `"data"`. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
-- For non-multipart requests, form functions return `None` (for `http_form_field`) or an empty map (for `http_form_file`, `http_form_fields`).
+- `http_form_file()` returns `Some(map)` with keys `"filename"`, `"content_type"`, and `"data"`, or `None` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
+- For non-multipart requests, form functions return `None` (for `http_form_field`, `http_form_file`) or an empty map (for `http_form_fields`).
 
 ## Supported Status Codes
 
