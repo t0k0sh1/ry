@@ -21,8 +21,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // parse(text) -> Result<JsonValue, Error>
     if (e.callee == "parse") {
-        if (e.args.size() != 1)
-            codegenError("parse() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *text = emitExpr(*e.args[0]);
         if (text->getType() != ptrTy_)
             codegenError("parse() requires a str argument");
@@ -57,8 +56,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_type(value) -> str
     if (e.callee == "json_type") {
-        if (e.args.size() != 1)
-            codegenError("json_type() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_type() requires a JsonValue argument");
@@ -69,8 +67,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_get(value, key) -> Result<JsonValue, Error>
     if (e.callee == "json_get") {
-        if (e.args.size() != 2)
-            codegenError("json_get() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_get() requires a JsonValue as first argument");
@@ -85,8 +82,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_at(value, index) -> Result<JsonValue, Error>
     if (e.callee == "json_at") {
-        if (e.args.size() != 2)
-            codegenError("json_at() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_at() requires a JsonValue as first argument");
@@ -99,8 +95,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_str(value) -> Result<str, Error>
     if (e.callee == "json_str") {
-        if (e.args.size() != 1)
-            codegenError("json_str() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_str() requires a JsonValue argument");
@@ -112,8 +107,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_int(value) -> Result<int, Error>
     if (e.callee == "json_int") {
-        if (e.args.size() != 1)
-            codegenError("json_int() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_int() requires a JsonValue argument");
@@ -135,8 +129,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_float(value) -> Result<float, Error>
     if (e.callee == "json_float") {
-        if (e.args.size() != 1)
-            codegenError("json_float() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_float() requires a JsonValue argument");
@@ -157,8 +150,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_bool(value) -> Result<bool, Error>
     if (e.callee == "json_bool") {
-        if (e.args.size() != 1)
-            codegenError("json_bool() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_bool() requires a JsonValue argument");
@@ -180,8 +172,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_len(value) -> int
     if (e.callee == "json_len") {
-        if (e.args.size() != 1)
-            codegenError("json_len() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_len() requires a JsonValue argument");
@@ -192,8 +183,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_keys(value) -> List<str>
     if (e.callee == "json_keys") {
-        if (e.args.size() != 1)
-            codegenError("json_keys() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_keys() requires a JsonValue argument");
@@ -206,8 +196,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
 
     // json_free(value) -> Unit
     if (e.callee == "json_free") {
-        if (e.args.size() != 1)
-            codegenError("json_free() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_free() requires a JsonValue argument");

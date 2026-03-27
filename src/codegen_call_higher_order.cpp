@@ -7,8 +7,7 @@
 llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     // filter(list, predicate) → new list with elements matching predicate
     if (e.callee == "filter") {
-        if (e.args.size() != 2)
-            codegenError("filter() takes exactly 2 arguments");
+        requireArgs(e, 2);
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
@@ -31,10 +30,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             codegenError("filter() predicate must take 1 argument and return bool");
 
         // Read source list
-        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "filter_src_len_ptr");
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "filter_src_len");
-        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "filter_src_data_field");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "filter_src_data");
+        auto lf = loadListHeader(listVal, "filter_src");
 
         // Allocate new list header + data (capacity = source length)
         auto mallocFn = getStdlibMalloc();
@@ -44,14 +40,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "filter_header");
 
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
-        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "filter_data_size");
+        llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "filter_data_size");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "filter_data");
 
         // Set up data pointer in header
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "filter_data_field");
         builder_.CreateStore(newData, newDataField);
         llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "filter_cap_ptr");
-        builder_.CreateStore(srcLen, newCapPtr);
+        builder_.CreateStore(lf.len, newCapPtr);
 
         // Loop counter and output counter
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "filter_i");
@@ -70,13 +66,13 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         // Condition: i < srcLen
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "fi");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "filter_cond");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "filter_cond");
         builder_.CreateCondBr(cond, bodyBB, endBB);
 
         // Body: load element, call predicate
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "fi_cur");
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "filter_elem_ptr");
+        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "filter_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "filter_elem");
         llvm::Value *pred = emitLambdaCall(lambdaVal, info, {elem}, "filter_pred");
         builder_.CreateCondBr(pred, storeBB, nextBB);
@@ -109,8 +105,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // map(list, transform) → new list with transformed elements
     if (e.callee == "map") {
-        if (e.args.size() != 2)
-            codegenError("map() takes exactly 2 arguments");
+        requireArgs(e, 2);
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
@@ -134,10 +129,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Type *outElemTy = info.returnType;
 
         // Read source list
-        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "map_src_len_ptr");
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "map_src_len");
-        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "map_src_data_field");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "map_src_data");
+        auto lf = loadListHeader(listVal, "map_src");
 
         // Allocate new list
         auto mallocFn = getStdlibMalloc();
@@ -147,14 +139,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
 
         uint64_t outElemSize = dl.getTypeAllocSize(outElemTy);
-        llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, outElemSize), "map_data_size");
+        llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, outElemSize), "map_data_size");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "map_data");
 
         // Set header fields
         llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "map_len_ptr");
-        builder_.CreateStore(srcLen, newLenPtr);
+        builder_.CreateStore(lf.len, newLenPtr);
         llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "map_cap_ptr");
-        builder_.CreateStore(srcLen, newCapPtr);
+        builder_.CreateStore(lf.len, newCapPtr);
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "map_data_field");
         builder_.CreateStore(newData, newDataField);
 
@@ -170,12 +162,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "mi");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "map_cond");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "map_cond");
         builder_.CreateCondBr(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "mi_cur");
-        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "map_src_elem_ptr");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "map_src_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "map_src_elem");
         llvm::Value *mapped = emitLambdaCall(lambdaVal, info, {srcElem}, "map_result");
         llvm::Value *dstElemPtr = builder_.CreateGEP(outElemTy, newData, {iCur}, "map_dst_elem_ptr");
@@ -216,15 +208,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto memcpyFn = getStdlibMemcpy();
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 0), "sortm_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listPtr, 2), "sortm_data");
-        llvm::Value *sortedData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, sorted, 2), "sortm_sorted");
-        llvm::Value *copySize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
-        builder_.CreateCall(memcpyFn, {srcData, sortedData, copySize});
+        auto lf = loadListHeader(listPtr, "sortm");
+        auto sf = loadListHeader(sorted, "sortm_sorted");
+        llvm::Value *copySize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
+        builder_.CreateCall(memcpyFn, {lf.data, sf.data, copySize});
 
         // Free the temporary sorted list
         auto freeFn = getStdlibFree();
-        builder_.CreateCall(freeFn, {sortedData});
+        builder_.CreateCall(freeFn, {sf.data});
         builder_.CreateCall(freeFn, {sorted});
 
         return llvm::ConstantInt::get(i64Ty_, 0);
@@ -232,8 +223,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== reduce(list, fn(a, b) -> a op b) =====
     if (e.callee == "reduce") {
-        if (e.args.size() != 2)
-            codegenError("reduce() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
@@ -246,8 +236,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             codegenError("reduce() requires a function");
         auto &info = fnIt->second;
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "reduce_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "reduce_data");
+        auto lf = loadListHeader(listVal, "reduce");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         // Check empty list
         llvm::Value *isEmptyR = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "reduce_empty");
@@ -286,8 +277,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== fold(list, init, fn(a, b) -> a op b) =====
     if (e.callee == "fold") {
-        if (e.args.size() != 3)
-            codegenError("fold() takes exactly 3 arguments");
+        requireArgs(e, 3);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *initVal = emitExpr(*e.args[1]);
         llvm::Value *lambdaVal = emitExpr(*e.args[2]);
@@ -305,8 +295,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (info.returnType != initVal->getType())
             codegenError("fold() initial value type must match function return type");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "fold_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "fold_data");
+        auto lf = loadListHeader(listVal, "fold");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::AllocaInst *accVar = builder_.CreateAlloca(info.returnType, nullptr, "fold_acc");
         builder_.CreateStore(initVal, accVar);
@@ -334,8 +325,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== any(list, pred) =====
     if (e.callee == "any") {
-        if (e.args.size() != 2)
-            codegenError("any() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
@@ -352,8 +342,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (info.returnType != i1Ty_)
             codegenError("any() predicate must return bool");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "any_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "any_data");
+        auto lf = loadListHeader(listVal, "any");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, "any_result");
         builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 0), resultVar);
@@ -383,8 +374,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== all(list, pred) =====
     if (e.callee == "all") {
-        if (e.args.size() != 2)
-            codegenError("all() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
@@ -401,8 +391,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (info.returnType != i1Ty_)
             codegenError("all() predicate must return bool");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "all_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "all_data");
+        auto lf = loadListHeader(listVal, "all");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::AllocaInst *resultVar = builder_.CreateAlloca(i1Ty_, nullptr, "all_result");
         builder_.CreateStore(llvm::ConstantInt::get(i1Ty_, 1), resultVar);
@@ -432,16 +423,16 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== sum(list) =====
     if (e.callee == "sum") {
-        if (e.args.size() != 1)
-            codegenError("sum() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("sum() requires a list");
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
             codegenError("sum() requires a numeric list (int, float, or byte)");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "sum_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "sum_data");
+        auto lf = loadListHeader(listVal, "sum");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::AllocaInst *accVar = builder_.CreateAlloca(elemTy, nullptr, "sum_acc");
         if (elemTy == f64Ty_)
@@ -476,8 +467,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // ===== min(list) / max(list) =====
     if (e.callee == "min" || e.callee == "max") {
-        if (e.args.size() != 1)
-            codegenError(e.callee + "() takes exactly 1 argument");
+        requireArgs(e, 1);
         bool isMax = (e.callee == "max");
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
@@ -485,8 +475,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (elemTy != i64Ty_ && elemTy != f64Ty_)
             codegenError(e.callee + "() requires a numeric list (int or float)");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "mm_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "mm_data");
+        auto lf = loadListHeader(listVal, "mm");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         // Check empty list
         llvm::Value *isEmptyMM = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "mm_empty");
@@ -537,8 +528,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
     // tap(list, fn) → call fn on each element, return original list
     if (e.callee == "tap") {
-        if (e.args.size() != 2)
-            codegenError("tap() takes exactly 2 arguments");
+        requireArgs(e, 2);
 
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
@@ -560,10 +550,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
             codegenError("tap() function must take exactly 1 argument");
 
         // Read source list
-        llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "tap_src_len_ptr");
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "tap_src_len");
-        llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "tap_src_data_field");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "tap_src_data");
+        auto lf = loadListHeader(listVal, "tap_src");
 
         // Loop: call fn on each element
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "tap_i");
@@ -577,12 +564,12 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
 
         builder_.SetInsertPoint(condBB);
         llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "tap_iv");
-        llvm::Value *cond = builder_.CreateICmpSLT(iVal, srcLen, "tap_cond");
+        llvm::Value *cond = builder_.CreateICmpSLT(iVal, lf.len, "tap_cond");
         builder_.CreateCondBr(cond, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
         llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "tap_ic");
-        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, srcData, {iCur}, "tap_elem_ptr");
+        llvm::Value *srcElemPtr = builder_.CreateGEP(elemTy, lf.data, {iCur}, "tap_elem_ptr");
         llvm::Value *srcElem = builder_.CreateLoad(elemTy, srcElemPtr, "tap_elem");
         emitLambdaCall(lambdaVal, info, {srcElem}, "tap_call");
         llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "tap_next");
@@ -619,10 +606,9 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     }
 
     // Read source list
-    llvm::Value *srcLenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, "sort_src_len_ptr");
-    llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, srcLenPtr, "sort_src_len");
-    llvm::Value *srcDataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, "sort_src_data_field");
-    llvm::Value *srcData = builder_.CreateLoad(ptrTy_, srcDataPtr, "sort_src_data");
+    auto lf = loadListHeader(listVal, "sort_src");
+    llvm::Value *srcLen = lf.len;
+    llvm::Value *srcData = lf.data;
 
     // Allocate new list and copy data
     auto mallocFn = getStdlibMalloc();

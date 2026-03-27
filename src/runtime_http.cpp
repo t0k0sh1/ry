@@ -1,5 +1,6 @@
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_net_types.hpp"
 #include "ry/runtime_tls.hpp"
 
 #include <openssl/ssl.h>
@@ -18,6 +19,8 @@
 
 static const int64_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 static const int MAX_REDIRECTS = 10;
+static constexpr size_t kRecvBufSize = 4096;
+static constexpr size_t kMaxHeaderSize = 8192;
 
 // OOM-safe allocation helpers — abort on failure rather than returning null
 [[noreturn]] static void oom_abort() {
@@ -40,10 +43,6 @@ static void *checked_malloc(size_t n) {
     return r;
 }
 
-// Forward declaration: TcpStreamHandle from runtime_net.cpp has fd at offset 0
-struct TcpStreamHandle {
-    int fd;
-};
 
 struct HttpRequestHandle {
     char *method;
@@ -398,7 +397,7 @@ static std::string recv_all(HttpTransport &t, size_t max_bytes) {
 
 // Append data from transport into buf. Returns false on connection close/error.
 static bool recv_into_buf(HttpTransport &t, std::string &buf) {
-    char tmp[4096];
+    char tmp[kRecvBufSize];
     ssize_t n = t.do_recv(tmp, sizeof(tmp));
     if (n <= 0) return false;
     buf.append(tmp, (size_t)n);
@@ -439,39 +438,48 @@ static bool te_value_is_chunked(const char *value) {
     return len == 7 && strncasecmp(last_token, "chunked", 7) == 0;
 }
 
-// Check if Transfer-Encoding header is present (regardless of value).
-static bool has_transfer_encoding(char **keys, int64_t count) {
+// Template implementations for header utility functions to avoid duplication.
+namespace {
+template <typename GetKey>
+bool has_transfer_encoding_impl(int64_t count, GetKey get_key) {
     for (int64_t i = 0; i < count; i++) {
-        if (strcasecmp(keys[i], "Transfer-Encoding") == 0)
+        if (strcasecmp(get_key(i), "Transfer-Encoding") == 0)
             return true;
     }
     return false;
+}
+
+template <typename GetKey, typename GetVal>
+bool has_chunked_encoding_impl(int64_t count, GetKey get_key, GetVal get_val) {
+    for (int64_t i = 0; i < count; i++) {
+        if (strcasecmp(get_key(i), "Transfer-Encoding") == 0 &&
+            te_value_is_chunked(get_val(i)))
+            return true;
+    }
+    return false;
+}
+} // namespace
+
+// Check if Transfer-Encoding header is present (regardless of value).
+static bool has_transfer_encoding(char **keys, int64_t count) {
+    return has_transfer_encoding_impl(count, [keys](int64_t i) { return keys[i]; });
 }
 
 static bool has_transfer_encoding(const std::vector<HeaderPair> &headers) {
-    for (auto &h : headers) {
-        if (strcasecmp(h.key, "Transfer-Encoding") == 0)
-            return true;
-    }
-    return false;
+    return has_transfer_encoding_impl((int64_t)headers.size(),
+        [&headers](int64_t i) { return headers[(size_t)i].key; });
 }
 
 static bool has_chunked_encoding(char **keys, char **values, int64_t count) {
-    for (int64_t i = 0; i < count; i++) {
-        if (strcasecmp(keys[i], "Transfer-Encoding") == 0 &&
-            te_value_is_chunked(values[i]))
-            return true;
-    }
-    return false;
+    return has_chunked_encoding_impl(count,
+        [keys](int64_t i) { return keys[i]; },
+        [values](int64_t i) { return values[i]; });
 }
 
 static bool has_chunked_encoding(const std::vector<HeaderPair> &headers) {
-    for (auto &h : headers) {
-        if (strcasecmp(h.key, "Transfer-Encoding") == 0 &&
-            te_value_is_chunked(h.val))
-            return true;
-    }
-    return false;
+    return has_chunked_encoding_impl((int64_t)headers.size(),
+        [&headers](int64_t i) { return headers[(size_t)i].key; },
+        [&headers](int64_t i) { return headers[(size_t)i].val; });
 }
 
 // Decode a chunked transfer-encoded body from fd.
@@ -565,7 +573,7 @@ extern "C" void *__ry_http_read_request(void *stream) {
     auto *handle = (TcpStreamHandle *)stream;
     struct timeval tv = {5, 0};
     ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    std::string raw = recv_all(handle->fd, 8192);
+    std::string raw = recv_all(handle->fd, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
 
     auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
@@ -1255,7 +1263,7 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
     __ry_apply_default_recv_timeout(t.fd);
 
     // Read headers
-    std::string raw = recv_all(t, 8192);
+    std::string raw = recv_all(t, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
 
     // Find header/body boundary
@@ -1344,7 +1352,7 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
             if ((int64_t)body_data.size() > content_length)
                 body_data.resize((size_t)content_length);
         } else {
-            char buf[4096];
+            char buf[kRecvBufSize];
             while (true) {
                 ssize_t n = t.do_recv(buf, sizeof(buf));
                 if (n <= 0) break;

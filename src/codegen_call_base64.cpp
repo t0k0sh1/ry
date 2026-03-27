@@ -6,8 +6,7 @@ llvm::Value *CodeGen::emitBuiltinBase64(const CallExpr &e) {
 
     // Helper: call a __ry_base64_* function with 1 str arg, returning str
     auto emitBase64Call = [&](const std::string &rtName) -> llvm::Value * {
-        if (e.args.size() != 1)
-            codegenError(e.callee + "() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *input = emitExpr(*e.args[0]);
         if (input->getType() != ptrTy_)
             codegenError(e.callee + "() requires str argument");

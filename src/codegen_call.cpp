@@ -6,8 +6,7 @@
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
     // to_int(s) → int
     if (e.callee == "to_int") {
-        if (e.args.size() != 1)
-            codegenError("to_int() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
@@ -18,8 +17,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
 
     // to_float(s) → float
     if (e.callee == "to_float") {
-        if (e.args.size() != 1)
-            codegenError("to_float() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_float() requires str argument");
@@ -30,8 +28,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
 
     // to_str(v) → str (int/float/bool/str → str)
     if (e.callee == "to_str") {
-        if (e.args.size() != 1)
-            codegenError("to_str() takes exactly 1 argument");
+        requireArgs(e, 1);
         return valueToString(emitExpr(*e.args[0]));
     }
 
@@ -43,14 +40,14 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
     // ===== keys(map) =====
     if (e.callee == "keys") {
-        if (e.args.size() != 1)
-            codegenError("keys() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *mapVal = emitExpr(*e.args[0]);
         llvm::Type *keyTy = getMapKeyType(mapVal);
         if (!keyTy) codegenError("keys() requires a map");
 
-        llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "keys_len");
-        llvm::Value *keysData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2), "keys_data");
+        auto mf = loadMapHeader(mapVal, "keys");
+        llvm::Value *mapLen = mf.len;
+        llvm::Value *keysData = mf.keys;
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -71,14 +68,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== values(map) =====
     if (e.callee == "values") {
-        if (e.args.size() != 1)
-            codegenError("values() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *mapVal = emitExpr(*e.args[0]);
         llvm::Type *valTy = getMapValueType(mapVal);
         if (!valTy) codegenError("values() requires a map");
 
-        llvm::Value *mapLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0), "vals_len");
-        llvm::Value *valsData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3), "vals_data");
+        auto mf = loadMapHeader(mapVal, "vals");
+        llvm::Value *mapLen = mf.len;
+        llvm::Value *valsData = mf.vals;
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -99,14 +96,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== first(list) → Option<T> =====
     if (e.callee == "first") {
-        if (e.args.size() != 1)
-            codegenError("first() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("first() requires a list");
         llvm::StructType *optTy = getOptionType(elemTy);
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "first_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "first_data");
+        auto lf = loadListHeader(listVal, "first");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::Value *isEmptyF = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "first_empty");
         llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "first.empty", fn_);
@@ -134,14 +131,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== last(list) → Option<T> =====
     if (e.callee == "last") {
-        if (e.args.size() != 1)
-            codegenError("last() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("last() requires a list");
         llvm::StructType *optTy = getOptionType(elemTy);
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "last_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "last_data");
+        auto lf = loadListHeader(listVal, "last");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::Value *isEmptyL = builder_.CreateICmpEQ(srcLen, llvm::ConstantInt::get(i64Ty_, 0), "last_empty");
         llvm::BasicBlock *emptyBBL = llvm::BasicBlock::Create(*ctx_, "last.empty", fn_);
@@ -171,8 +168,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== is_empty(list/map/set) =====
     if (e.callee == "is_empty") {
-        if (e.args.size() != 1)
-            codegenError("is_empty() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         llvm::Type *headerTy = nullptr;
         if (getListElementType(val)) headerTy = listHeaderTy_;
@@ -186,14 +182,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== enumerate(list) =====
     if (e.callee == "enumerate") {
-        if (e.args.size() != 1)
-            codegenError("enumerate() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("enumerate() requires a list");
 
-        llvm::Value *srcLen = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, listVal, 0), "enum_len");
-        llvm::Value *srcData = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, listVal, 2), "enum_data");
+        auto lf = loadListHeader(listVal, "enum");
+        llvm::Value *srcLen = lf.len;
+        llvm::Value *srcData = lf.data;
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
         auto mallocFn = getStdlibMalloc();
@@ -234,18 +230,19 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
     // ===== zip(list1, list2) =====
     if (e.callee == "zip") {
-        if (e.args.size() != 2)
-            codegenError("zip() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *list1 = emitExpr(*e.args[0]);
         llvm::Value *list2 = emitExpr(*e.args[1]);
         llvm::Type *elemTy1 = getListElementType(list1);
         llvm::Type *elemTy2 = getListElementType(list2);
         if (!elemTy1 || !elemTy2) codegenError("zip() requires two lists");
 
-        llvm::Value *len1 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list1, 0), "zip_len1");
-        llvm::Value *len2 = builder_.CreateLoad(i64Ty_, builder_.CreateStructGEP(listHeaderTy_, list2, 0), "zip_len2");
-        llvm::Value *data1 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, list1, 2), "zip_data1");
-        llvm::Value *data2 = builder_.CreateLoad(ptrTy_, builder_.CreateStructGEP(listHeaderTy_, list2, 2), "zip_data2");
+        auto lf1 = loadListHeader(list1, "zip1");
+        auto lf2 = loadListHeader(list2, "zip2");
+        llvm::Value *len1 = lf1.len;
+        llvm::Value *len2 = lf2.len;
+        llvm::Value *data1 = lf1.data;
+        llvm::Value *data2 = lf2.data;
 
         llvm::Value *minLen = builder_.CreateSelect(builder_.CreateICmpSLT(len1, len2), len1, len2, "zip_minlen");
 
@@ -407,8 +404,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // sleep(duration_ms) -> Unit
     if (e.callee == "sleep") {
-        if (e.args.size() != 1)
-            codegenError("sleep() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *duration = emitExpr(*e.args[0]);
         if (duration->getType() != i64Ty_)
             codegenError("sleep() requires int argument");
@@ -434,10 +430,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
                 llvm::cast<llvm::PointerType>(ptrTy_)), "env_null");
 
         if (e.args.size() == 1) {
-            llvm::StructType *optTy = getOptionType(ptrTy_);
-            llvm::Value *someVal = buildSomeValue(result, optTy);
-            llvm::Value *noneVal = buildNoneValue(optTy);
-            return builder_.CreateSelect(isNull, noneVal, someVal, "env_opt");
+            return wrapPtrAsOption(result, "env");
         } else {
             llvm::Value *def = emitExpr(*e.args[1]);
             if (def->getType() != ptrTy_)
@@ -574,8 +567,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "cancel") {
-        if (e.args.size() != 1)
-            codegenError("cancel() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *taskVal = emitExpr(*e.args[0]);
         llvm::FunctionType *cancelTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -592,8 +584,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "send") {
-        if (e.args.size() != 2)
-            codegenError("send() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *firstArg = emitExpr(*e.args[0]);
         if (isTcpStream(firstArg) || isTlsStream(firstArg)) {
             llvm::Value *data = emitExpr(*e.args[1]);
@@ -633,8 +624,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "try_send") {
-        if (e.args.size() != 2)
-            codegenError("try_send() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *channelVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getChannelElementType(channelVal);
         if (!elemTy)
@@ -699,8 +689,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "recv_opt") {
-        if (e.args.size() != 1)
-            codegenError("recv_opt() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *channelVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getChannelElementType(channelVal);
         if (!elemTy)
@@ -730,8 +719,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "try_recv") {
-        if (e.args.size() != 1)
-            codegenError("try_recv() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *channelVal = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getChannelElementType(channelVal);
         if (!elemTy)
@@ -761,8 +749,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     }
 
     if (e.callee == "close") {
-        if (e.args.size() != 1)
-            codegenError("close() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         auto *voidPtrFnTy = llvm::FunctionType::get(
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
@@ -893,27 +880,20 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // length(xs) → list/map length
     if (e.callee == "length") {
-        if (e.args.size() != 1)
-            codegenError("length() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
             codegenError("length() requires list, map, or str argument");
         // Check if it's a set
-        if (getSetElementType(ptr)) {
-            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, ptr, 0, "set_len_ptr");
-            return builder_.CreateLoad(i64Ty_, lenPtr, "set_len");
-        }
+        if (getSetElementType(ptr))
+            return loadSetHeader(ptr, "set").len;
         // Check if it's a map
         llvm::Type *mapKeyTy = getMapKeyType(ptr);
-        if (mapKeyTy) {
-            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, ptr, 0, "map_len_ptr");
-            return builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-        }
+        if (mapKeyTy)
+            return loadMapHeader(ptr, "map").len;
         // Check if it's a list
-        if (getListElementType(ptr)) {
-            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, ptr, 0, "len_ptr");
-            return builder_.CreateLoad(i64Ty_, lenPtr, "len");
-        }
+        if (getListElementType(ptr))
+            return loadListHeader(ptr, "list").len;
         // String: call __ry_utf8_len (character count)
         auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
         auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
@@ -922,8 +902,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // byte_len(str) → int (byte length)
     if (e.callee == "byte_len") {
-        if (e.args.size() != 1)
-            codegenError("byte_len() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
         if (ptr->getType() != ptrTy_)
             codegenError("byte_len() requires str argument");
@@ -933,8 +912,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // Some(x) → Option<T> constructor
     if (e.callee == "Some") {
-        if (e.args.size() != 1)
-            codegenError("Some() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
         llvm::StructType *optTy = getOptionType(inner->getType());
         return buildSomeValue(inner, optTy);
@@ -942,8 +920,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // Ok(value) → Result<V, Error> constructor
     if (e.callee == "Ok") {
-        if (e.args.size() != 1)
-            codegenError("Ok() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
         // Determine the error type from the enclosing function's return type
         llvm::Type *errTy = errorTy_;
@@ -960,8 +937,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // Err(error) → Result<V, E> constructor
     if (e.callee == "Err") {
-        if (e.args.size() != 1)
-            codegenError("Err() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
         // Determine the ok type from the enclosing function's return type
         llvm::Type *okTy = i8Ty_; // default: Unit (i8 dummy)
@@ -1004,8 +980,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     // has_key(map, key) → bool
     if (e.callee == "has_key") {
-        if (e.args.size() != 2)
-            codegenError("has_key() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *mapPtr = emitExpr(*e.args[0]);
         if (mapPtr->getType() != ptrTy_)
             codegenError("has_key() requires map as first argument");
@@ -1343,6 +1318,67 @@ llvm::Value *CodeGen::wrapStatusAsResult(llvm::Value *status, const char *errFnN
         [&]() { return buildErrValue(buildErrorFromRuntime(errFnName), resTy); });
 }
 
+// ===== Codegen helpers =====
+
+void CodeGen::requireArgs(const CallExpr &e, size_t expected) {
+    requireArgs(e.callee, e.args.size(), expected);
+}
+
+void CodeGen::requireArgs(const std::string &callee, size_t actual, size_t expected) {
+    if (actual != expected)
+        codegenError(callee + "() takes exactly " + std::to_string(expected) +
+                     " argument" + (expected == 1 ? "" : "s"));
+}
+
+CodeGen::ListFields CodeGen::loadListHeader(llvm::Value *listVal, const std::string &prefix) {
+    ListFields f;
+    llvm::Twine p(prefix);
+    f.lenPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 0, p + "_len_ptr");
+    f.len = builder_.CreateLoad(i64Ty_, f.lenPtr, p + "_len");
+    f.capPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 1, p + "_cap_ptr");
+    f.cap = builder_.CreateLoad(i64Ty_, f.capPtr, p + "_cap");
+    f.dataPtr = builder_.CreateStructGEP(listHeaderTy_, listVal, 2, p + "_data_ptr");
+    f.data = builder_.CreateLoad(ptrTy_, f.dataPtr, p + "_data");
+    return f;
+}
+
+CodeGen::SetFields CodeGen::loadSetHeader(llvm::Value *setVal, const std::string &prefix) {
+    SetFields f;
+    llvm::Twine p(prefix);
+    f.lenPtr = builder_.CreateStructGEP(setHeaderTy_, setVal, 0, p + "_len_ptr");
+    f.len = builder_.CreateLoad(i64Ty_, f.lenPtr, p + "_len");
+    f.capPtr = builder_.CreateStructGEP(setHeaderTy_, setVal, 1, p + "_cap_ptr");
+    f.cap = builder_.CreateLoad(i64Ty_, f.capPtr, p + "_cap");
+    f.elemsPtr = builder_.CreateStructGEP(setHeaderTy_, setVal, 2, p + "_elems_ptr");
+    f.elems = builder_.CreateLoad(ptrTy_, f.elemsPtr, p + "_elems");
+    return f;
+}
+
+CodeGen::MapFields CodeGen::loadMapHeader(llvm::Value *mapVal, const std::string &prefix) {
+    MapFields f;
+    llvm::Twine p(prefix);
+    f.lenPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 0, p + "_len_ptr");
+    f.len = builder_.CreateLoad(i64Ty_, f.lenPtr, p + "_len");
+    f.capPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 1, p + "_cap_ptr");
+    f.cap = builder_.CreateLoad(i64Ty_, f.capPtr, p + "_cap");
+    f.keysPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 2, p + "_keys_ptr");
+    f.keys = builder_.CreateLoad(ptrTy_, f.keysPtr, p + "_keys");
+    f.valsPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3, p + "_vals_ptr");
+    f.vals = builder_.CreateLoad(ptrTy_, f.valsPtr, p + "_vals");
+    return f;
+}
+
+llvm::Value *CodeGen::wrapPtrAsOption(llvm::Value *ptr, const std::string &hint) {
+    llvm::Twine h(hint);
+    llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+        h + "_null");
+    llvm::StructType *optTy = getOptionType(ptrTy_);
+    llvm::Value *someVal = buildSomeValue(ptr, optTy);
+    llvm::Value *noneVal = buildNoneValue(optTy);
+    return builder_.CreateSelect(isNull, noneVal, someVal, h + "_opt");
+}
+
 // ===== Native constant registry & emission =====
 
 enum class NativeConstantKind { Value, Infinity, NaN };
@@ -1390,8 +1426,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
 
     // abs(int) -> int, abs(float) -> float
     if (e.callee == "abs") {
-        if (e.args.size() != 1)
-            codegenError("abs() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *x = emitExpr(*e.args[0]);
         if (x->getType() == f64Ty_)
             return builder_.CreateCall(getFabs(), {x}, "abs");
@@ -1405,8 +1440,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
 
     // floor/ceil/round(float) -> int
     if (e.callee == "floor" || e.callee == "ceil" || e.callee == "round") {
-        if (e.args.size() != 1)
-            codegenError(e.callee + "() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *x = emitExpr(*e.args[0]);
         if (x->getType() != f64Ty_)
             codegenError(e.callee + "() requires float argument");
@@ -1442,8 +1476,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
             "sin", "cos", "tan", "asin", "acos", "atan"
         };
         if (oneArgFloat.count(e.callee)) {
-            if (e.args.size() != 1)
-                codegenError(e.callee + "() takes exactly 1 argument");
+            requireArgs(e, 1);
             llvm::Value *x = emitExpr(*e.args[0]);
             if (x->getType() != f64Ty_)
                 codegenError(e.callee + "() requires float argument");
@@ -1459,8 +1492,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
             "pow", "atan2", "hypot"
         };
         if (twoArgFloat.count(e.callee)) {
-            if (e.args.size() != 2)
-                codegenError(e.callee + "() takes exactly 2 arguments");
+            requireArgs(e, 2);
             llvm::Value *x = emitExpr(*e.args[0]);
             llvm::Value *y = emitExpr(*e.args[1]);
             if (x->getType() != f64Ty_ || y->getType() != f64Ty_)
@@ -1473,8 +1505,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
 
     // is_nan(float) -> bool
     if (e.callee == "is_nan") {
-        if (e.args.size() != 1)
-            codegenError("is_nan() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *x = emitExpr(*e.args[0]);
         if (x->getType() != f64Ty_)
             codegenError("is_nan() requires float argument");
@@ -1483,8 +1514,7 @@ llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
 
     // is_inf(float) -> bool
     if (e.callee == "is_inf") {
-        if (e.args.size() != 1)
-            codegenError("is_inf() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *x = emitExpr(*e.args[0]);
         if (x->getType() != f64Ty_)
             codegenError("is_inf() requires float argument");

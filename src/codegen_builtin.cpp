@@ -195,11 +195,11 @@ llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::Struc
 }
 
 llvm::Value *CodeGen::emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy) {
-    return emitHashTableLookup(setPtr, setHeaderTy_, {0, 3, 4, 2}, elem, elemTy);
+    return emitHashTableLookup(setPtr, setHeaderTy_, kSetLayout, elem, elemTy);
 }
 
 llvm::Value *CodeGen::emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy) {
-    return emitHashTableLookup(mapPtr, mapHeaderTy_, {0, 4, 5, 2}, key, keyTy);
+    return emitHashTableLookup(mapPtr, mapHeaderTy_, kMapLayout, key, keyTy);
 }
 
 // Helper: initialize bucket array fields in a header

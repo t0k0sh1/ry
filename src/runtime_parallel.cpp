@@ -430,8 +430,13 @@ struct TaskGroupHandle {
     std::exception_ptr first_error;
 };
 
+inline TaskHandle *as_task(void *p) { return static_cast<TaskHandle*>(p); }
+inline ChannelHandle *as_channel(void *p) { return static_cast<ChannelHandle*>(p); }
+inline SelectState *as_select(void *p) { return static_cast<SelectState*>(p); }
+inline TaskGroupHandle *as_group(void *p) { return static_cast<TaskGroupHandle*>(p); }
+
 void checkCancellation() {
-    auto *task = static_cast<TaskHandle *>(g_current_task);
+    auto *task = as_task(g_current_task);
     if (task && task->cancelled.load(std::memory_order_relaxed))
         throw CancellationError();
 }
@@ -439,49 +444,52 @@ void checkCancellation() {
 } // namespace
 
 extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t result_size) {
-    auto *task = new TaskHandle;
+    auto task = std::make_unique<TaskHandle>();
     if (result_size > 0)
         task->result.resize(static_cast<size_t>(result_size));
 
-    scheduler().registerTask(task);
-    scheduler().submit([entry, env, task]() {
+    TaskHandle *raw = task.get();
+    scheduler().registerTask(raw);
+    scheduler().submit([entry, env, raw]() {
         std::unique_ptr<void, decltype(&std::free)> env_guard(env, &std::free);
         void *prev_task = g_current_task;
-        g_current_task = task;
+        g_current_task = raw;
         try {
-            entry(env, task->result.empty() ? nullptr : task->result.data());
+            entry(env, raw->result.empty() ? nullptr : raw->result.data());
         } catch (...) {
             g_current_task = prev_task;
-            std::lock_guard<std::mutex> lock(task->mu);
-            task->error = std::current_exception();
-            task->done = true;
-            task->cv.notify_all();
+            std::lock_guard<std::mutex> lock(raw->mu);
+            raw->error = std::current_exception();
+            raw->done = true;
+            raw->cv.notify_all();
             return;
         }
 
         g_current_task = prev_task;
-        std::lock_guard<std::mutex> lock(task->mu);
-        task->done = true;
-        task->cv.notify_all();
+        std::lock_guard<std::mutex> lock(raw->mu);
+        raw->done = true;
+        raw->cv.notify_all();
     });
-    return task;
+    return task.release();
 }
 
 extern "C" void __ry_task_join(void *task_ptr, void *out_buf) {
-    auto *task = static_cast<TaskHandle *>(task_ptr);
+    auto *task = as_task(task_ptr);
 
     if (!scheduler().unregisterTask(task))
         throw std::runtime_error("runtime error: join() on already-joined task");
 
-    std::unique_lock<std::mutex> lock(task->mu);
-    waitWithWorkerHelp(lock, task->cv, [&]() { return task->done; });
-    std::exception_ptr error = task->error;
-    bool was_cancelled = task->cancelled.load(std::memory_order_relaxed);
-    if (out_buf && !task->result.empty())
-        std::memcpy(out_buf, task->result.data(), task->result.size());
+    // Take ownership only after confirming the task is still registered
+    std::unique_ptr<TaskHandle> owned(task);
+
+    std::unique_lock<std::mutex> lock(owned->mu);
+    waitWithWorkerHelp(lock, owned->cv, [&]() { return owned->done; });
+    std::exception_ptr error = owned->error;
+    bool was_cancelled = owned->cancelled.load(std::memory_order_relaxed);
+    if (out_buf && !owned->result.empty())
+        std::memcpy(out_buf, owned->result.data(), owned->result.size());
     lock.unlock();
 
-    delete task;
     // Don't rethrow CancellationError — cancellation is a normal termination.
     // Only rethrow real errors (non-cancellation).
     if (error && !was_cancelled)
@@ -556,7 +564,7 @@ extern "C" int64_t __ry_available_parallelism() {
 extern "C" void __ry_sleep(int64_t duration_ms) {
     if (duration_ms <= 0)
         return;
-    auto *task = static_cast<TaskHandle *>(g_current_task);
+    auto *task = as_task(g_current_task);
     if (task) {
         std::unique_lock<std::mutex> lock(task->mu);
         if (task->cancelled.load(std::memory_order_relaxed))
@@ -572,7 +580,7 @@ extern "C" void __ry_sleep(int64_t duration_ms) {
 }
 
 extern "C" void __ry_task_cancel(void *task_ptr) {
-    auto *task = static_cast<TaskHandle *>(task_ptr);
+    auto *task = as_task(task_ptr);
     task->cancelled.store(true, std::memory_order_relaxed);
     // Acquire/release task->mu as a memory fence: ensures any thread
     // inside cv.wait() re-evaluates its predicate after seeing cancelled=true.
@@ -584,27 +592,27 @@ extern "C" void __ry_task_cancel(void *task_ptr) {
 }
 
 extern "C" bool __ry_current_task_is_cancelled() {
-    auto *task = static_cast<TaskHandle *>(g_current_task);
+    auto *task = as_task(g_current_task);
     if (!task)
         return false;
     return task->cancelled.load(std::memory_order_relaxed);
 }
 
 extern "C" void *__ry_channel_new(int64_t elem_size, int64_t capacity) {
-    auto *ch = new ChannelHandle(
+    auto ch = std::make_unique<ChannelHandle>(
         elem_size <= 0 ? static_cast<size_t>(0) : static_cast<size_t>(elem_size),
         capacity);
-    scheduler().registerChannel(ch);
-    return ch;
+    scheduler().registerChannel(ch.get());
+    return ch.release();
 }
 
 extern "C" void __ry_channel_send(void *channel_ptr, void *value_ptr) {
     checkCancellation();
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
     auto is_cancelled = [&]() {
-        auto *t = static_cast<TaskHandle *>(g_current_task);
+        auto *t = as_task(g_current_task);
         return t && t->cancelled.load(std::memory_order_relaxed);
     };
 
@@ -649,7 +657,7 @@ extern "C" void __ry_channel_send(void *channel_ptr, void *value_ptr) {
 }
 
 extern "C" bool __ry_channel_try_send(void *channel_ptr, void *value_ptr) {
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
     if (channel->closed)
@@ -684,11 +692,11 @@ extern "C" bool __ry_channel_try_send(void *channel_ptr, void *value_ptr) {
 
 extern "C" void __ry_channel_recv(void *channel_ptr, void *out_buf) {
     checkCancellation();
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
     auto is_cancelled = [&]() {
-        auto *t = static_cast<TaskHandle *>(g_current_task);
+        auto *t = as_task(g_current_task);
         return t && t->cancelled.load(std::memory_order_relaxed);
     };
 
@@ -744,7 +752,7 @@ extern "C" void __ry_channel_recv(void *channel_ptr, void *out_buf) {
 }
 
 extern "C" bool __ry_channel_try_recv(void *channel_ptr, void *out_buf) {
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
     if (channel->capacity > 0) {
@@ -775,11 +783,11 @@ extern "C" bool __ry_channel_try_recv(void *channel_ptr, void *out_buf) {
 
 extern "C" bool __ry_channel_recv_opt(void *channel_ptr, void *out_buf) {
     checkCancellation();
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::unique_lock<std::mutex> lock(channel->mu);
 
     auto is_cancelled = [&]() {
-        auto *t = static_cast<TaskHandle *>(g_current_task);
+        auto *t = as_task(g_current_task);
         return t && t->cancelled.load(std::memory_order_relaxed);
     };
 
@@ -836,7 +844,7 @@ extern "C" bool __ry_channel_recv_opt(void *channel_ptr, void *out_buf) {
 }
 
 extern "C" void __ry_channel_close(void *channel_ptr) {
-    auto *channel = static_cast<ChannelHandle *>(channel_ptr);
+    auto *channel = as_channel(channel_ptr);
     std::lock_guard<std::mutex> lock(channel->mu);
     if (channel->closed)
         throw std::runtime_error("runtime error: close() on closed channel");
@@ -846,30 +854,30 @@ extern "C" void __ry_channel_close(void *channel_ptr) {
 }
 
 extern "C" void *__ry_select_begin(int64_t case_count) {
-    auto *state = new SelectState;
+    auto state = std::make_unique<SelectState>();
     if (case_count > 0)
         state->cases.reserve(static_cast<size_t>(case_count));
-    return state;
+    return state.release();
 }
 
 extern "C" void __ry_select_add_recv(void *select_state_ptr, void *channel_ptr, void *out_buf) {
-    auto *state = static_cast<SelectState *>(select_state_ptr);
-    state->cases.push_back({SelectCaseKind::Recv, static_cast<ChannelHandle *>(channel_ptr), nullptr, out_buf, nullptr});
+    auto *state = as_select(select_state_ptr);
+    state->cases.push_back({SelectCaseKind::Recv, as_channel(channel_ptr), nullptr, out_buf, nullptr});
 }
 
 extern "C" void __ry_select_add_recv_opt(void *select_state_ptr, void *channel_ptr, void *out_buf, void *flag_ptr) {
-    auto *state = static_cast<SelectState *>(select_state_ptr);
-    state->cases.push_back({SelectCaseKind::RecvOpt, static_cast<ChannelHandle *>(channel_ptr), nullptr, out_buf, flag_ptr});
+    auto *state = as_select(select_state_ptr);
+    state->cases.push_back({SelectCaseKind::RecvOpt, as_channel(channel_ptr), nullptr, out_buf, flag_ptr});
 }
 
 extern "C" void __ry_select_add_send(void *select_state_ptr, void *channel_ptr, void *value_ptr) {
-    auto *state = static_cast<SelectState *>(select_state_ptr);
-    state->cases.push_back({SelectCaseKind::Send, static_cast<ChannelHandle *>(channel_ptr), value_ptr, nullptr, nullptr});
+    auto *state = as_select(select_state_ptr);
+    state->cases.push_back({SelectCaseKind::Send, as_channel(channel_ptr), value_ptr, nullptr, nullptr});
 }
 
 extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_index, int64_t timeout_ms, int64_t timeout_index) {
     checkCancellation();
-    auto *state = static_cast<SelectState *>(select_state_ptr);
+    auto *state = as_select(select_state_ptr);
     if (state->cases.empty())
         throw std::runtime_error("runtime error: select requires at least one case");
     if (timeout_index >= 0 && timeout_ms < 0)
@@ -946,7 +954,7 @@ extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_inde
             }
             // Check cancellation before blocking
             {
-                auto *task = static_cast<TaskHandle *>(g_current_task);
+                auto *task = as_task(g_current_task);
                 if (task && task->cancelled.load(std::memory_order_relaxed)) {
                     lock.unlock();
                     unregisterChannels();
@@ -976,17 +984,17 @@ extern "C" int64_t __ry_select_wait(void *select_state_ptr, int64_t default_inde
 }
 
 extern "C" void __ry_select_destroy(void *select_state_ptr) {
-    delete static_cast<SelectState *>(select_state_ptr);
+    std::unique_ptr<SelectState> guard(as_select(select_state_ptr));
 }
 
 extern "C" void *__ry_task_group_new() {
-    return new TaskGroupHandle;
+    return std::make_unique<TaskGroupHandle>().release();
 }
 
 extern "C" void *__ry_task_group_spawn(void *group_ptr, __ry_task_entry_fn entry, void *env, int64_t result_size) {
-    auto *group = static_cast<TaskGroupHandle *>(group_ptr);
+    auto *group = as_group(group_ptr);
     void *task_ptr = __ry_task_spawn(entry, env, result_size);
-    auto *task = static_cast<TaskHandle *>(task_ptr);
+    auto *task = as_task(task_ptr);
 
     // If group is already cancelled, cancel the new child immediately
     if (group->cancelled.load(std::memory_order_relaxed))
@@ -998,7 +1006,7 @@ extern "C" void *__ry_task_group_spawn(void *group_ptr, __ry_task_entry_fn entry
 }
 
 extern "C" void __ry_task_group_await(void *group_ptr) {
-    auto *group = static_cast<TaskGroupHandle *>(group_ptr);
+    auto *group = as_group(group_ptr);
 
     std::vector<TaskHandle *> children;
     {
@@ -1039,9 +1047,8 @@ extern "C" void __ry_task_group_await(void *group_ptr) {
         }
     }
 
-    // Second pass: delete all task handles
     for (TaskHandle *task : children) {
-        if (task) delete task;
+        std::unique_ptr<TaskHandle> guard(task);
     }
 
     {
@@ -1054,7 +1061,7 @@ extern "C" void __ry_task_group_await(void *group_ptr) {
 }
 
 extern "C" void __ry_task_group_destroy(void *group_ptr) {
-    delete static_cast<TaskGroupHandle *>(group_ptr);
+    std::unique_ptr<TaskGroupHandle> guard(as_group(group_ptr));
 }
 
 extern "C" void __ry_task_group_await_and_destroy(void *group_ptr) {
