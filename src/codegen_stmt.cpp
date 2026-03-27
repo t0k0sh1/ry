@@ -390,16 +390,6 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (taskTy)
             task_result_types_[ptr] = taskTy;
 
-        // --- Channel tracking ---
-        llvm::Type *channelTy = getChannelElementType(val);
-        if (!channelTy && type_annotation && type_annotation->size() > 8 &&
-            type_annotation->substr(0, 8) == "Channel<" && type_annotation->back() == '>') {
-            std::string inner = type_annotation->substr(8, type_annotation->size() - 9);
-            channelTy = resolveType(inner);
-        }
-        if (channelTy)
-            channel_element_types_[ptr] = channelTy;
-
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
@@ -534,9 +524,6 @@ void CodeGen::emitStmt(AssignStmt &s) {
         llvm::Type *taskTy = getTaskResultType(val);
         if (taskTy)
             task_result_types_[ptr] = taskTy;
-        llvm::Type *channelTy = getChannelElementType(val);
-        if (channelTy)
-            channel_element_types_[ptr] = channelTy;
     }
     // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
     propagateResourceTrackingWide(val, ptr);
@@ -613,16 +600,9 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     // Evaluate iterable
     llvm::Value *iterable = emitExpr(*s->iterable);
 
-    // Check if this is a pointer-backed iterable (list/set/map/channel)
+    // Check if this is a pointer-backed iterable (list/set/map)
     if (iterable->getType() != ptrTy_)
-        codegenError("for loop requires list, set, map, channel, or iterator iterable");
-
-    if (llvm::Type *channelElemTy = getChannelElementType(iterable)) {
-        if (s->var_name2.has_value())
-            codegenError("channel iteration does not support destructuring");
-        emitChannelForLoop(*s, iterable, channelElemTy);
-        return;
-    }
+        codegenError("for loop requires list, set, map, or iterator iterable");
 
     // Check if iterable is an iterator
     llvm::Type *iterElemTy = getIteratorElementType(iterable);
@@ -760,50 +740,6 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
         builder_.CreateStore(elem, loopVar);
     });
-}
-
-void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy) {
-    llvm::FunctionType *recvOptTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee recvOptFn = mod_->getOrInsertFunction("__ry_channel_recv_opt", recvOptTy);
-
-    llvm::AllocaInst *recvSlot = nullptr;
-    llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*ctx_));
-    if (!elemTy->isVoidTy()) {
-        recvSlot = builder_.CreateAlloca(elemTy, nullptr, "for_channel_recv");
-        outPtr = recvSlot;
-    } else if (s.var_name != "_") {
-        codegenError(s.loc, "for x in Channel<Unit> requires '_' loop variable");
-    }
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.channel.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.channel.body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "for.channel.end", fn_);
-
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *hasValue = builder_.CreateCall(recvOptFn, {channel, outPtr}, "for_channel_has_value");
-    builder_.CreateCondBr(hasValue, bodyBB, endBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({condBB, endBB});
-    pushScope();
-
-    if (s.var_name != "_" && recvSlot) {
-        llvm::AllocaInst *loopVar = getOrCreateVar(s.var_name, elemTy);
-        llvm::Value *elem = builder_.CreateLoad(elemTy, recvSlot, "for_channel_elem");
-        builder_.CreateStore(elem, loopVar);
-    }
-
-    for (auto &stmt : s.body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-    popScope();
-    loop_stack_.pop_back();
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(endBB);
 }
 
 void CodeGen::emitIndexedForLoop(llvm::Value *length,

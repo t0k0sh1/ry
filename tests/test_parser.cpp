@@ -1104,29 +1104,6 @@ TEST(ParserTest, ParallelForDirectiveParsing) {
     EXPECT_EQ(fs->directives[0].name, "parallel");
 }
 
-TEST(ParserTest, SpawnExprParsing) {
-    Program prog = parseStr("t = spawn add(1, 2)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<AssignStmt>(prog[0]);
-    auto *spawn = std::get_if<std::unique_ptr<SpawnExpr>>(&let.value->data);
-    ASSERT_NE(spawn, nullptr);
-    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*spawn)->operand->data);
-    ASSERT_NE(call, nullptr);
-    EXPECT_EQ((*call)->callee, "add");
-}
-
-TEST(ParserTest, GenericChannelBuiltinParsing) {
-    Program prog = parseStr("ch: Channel<int> = channel[int](4)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(let.type_annotation.has_value());
-    EXPECT_EQ(*let.type_annotation, "Channel<int>");
-    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&let.value->data);
-    ASSERT_NE(call, nullptr);
-    EXPECT_EQ((*call)->callee, "channel<int>");
-    ASSERT_EQ((*call)->args.size(), 1u);
-}
-
 TEST(ParserTest, AsyncFnParsing) {
     Program prog = parseStr("async fn add(a: int, b: int) -> int:\n    return a + b");
     ASSERT_EQ(prog.size(), 1u);
@@ -1155,73 +1132,6 @@ TEST(ParserTest, AwaitStatementParsing) {
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&await.operand->data);
     ASSERT_NE(call, nullptr);
     EXPECT_EQ((*call)->callee, "fetch");
-}
-
-TEST(ParserTest, SelectStatementParsing) {
-    Program prog = parseStr(
-        "select:\n"
-        "    case let x = recv_opt(ch):\n"
-        "        print(x)\n"
-        "    case send(out, 1):\n"
-        "        print(1)\n"
-        "    else:\n"
-        "        print(0)");
-    ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SelectStmt>>(prog[0]));
-    auto &select = std::get<std::unique_ptr<SelectStmt>>(prog[0]);
-    ASSERT_EQ(select->cases.size(), 2u);
-    ASSERT_EQ(select->else_body.size(), 1u);
-    auto *recvCase = std::get_if<SelectRecvCase>(&select->cases[0]);
-    ASSERT_NE(recvCase, nullptr);
-    EXPECT_EQ(recvCase->name, "x");
-    EXPECT_EQ(recvCase->mode, SelectRecvMode::Optional);
-    auto *sendCase = std::get_if<SelectSendCase>(&select->cases[1]);
-    ASSERT_NE(sendCase, nullptr);
-}
-
-TEST(ParserTest, SelectTimeoutParsing) {
-    Program prog = parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    timeout 100:\n"
-        "        print(0)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &select = std::get<std::unique_ptr<SelectStmt>>(prog[0]);
-    ASSERT_EQ(select->cases.size(), 1u);
-    ASSERT_NE(select->timeout_ms, nullptr);
-    ASSERT_EQ(select->timeout_body.size(), 1u);
-}
-
-TEST(ParserTest, SelectElseMustBeLast) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    else:\n"
-        "        print(0)\n"
-        "    case send(out, 1):\n"
-        "        print(1)"), std::runtime_error);
-}
-
-TEST(ParserTest, SelectTimeoutMustBeLast) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    timeout 0:\n"
-        "        print(0)\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)"), std::runtime_error);
-}
-
-TEST(ParserTest, SelectElseAndTimeoutAreExclusive) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    else:\n"
-        "        print(0)\n"
-        "    timeout 0:\n"
-        "        print(1)"), std::runtime_error);
 }
 
 TEST(ParserTest, ParallelDirectiveRejectedOnWhile) {

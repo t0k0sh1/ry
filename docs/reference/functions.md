@@ -143,8 +143,6 @@ print(join(add(1, 2)))  # 3
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
 - `async` lambdas and `async @native fn` are not supported in v1.
 
-`Channel<T>` is the built-in handle type for blocking message passing between tasks. Create channels with `channel[T]()` or `channel[T](capacity)`, send values with `send(ch, value)`, use `try_send(ch, value)` for a non-blocking send attempt, use `recv(ch)` for strict receive, use `recv_opt(ch)` for close-aware receive, use `try_recv(ch)` for a non-blocking receive attempt, iterate consumers with `for x in ch:`, and terminate a channel with `close(ch)`.
-
 ---
 
 ## Lambda Functions

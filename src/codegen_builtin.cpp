@@ -38,10 +38,6 @@ llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
     return lookupCollectionType(nested_list_element_types_, listVal);
 }
 
-llvm::Type *CodeGen::getChannelElementType(llvm::Value *channelVal) {
-    return lookupCollectionType(channel_element_types_, channelVal);
-}
-
 llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
     return lookupCollectionType(iterator_element_types_, iterVal);
 }
@@ -132,7 +128,6 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     tryPropagate(task_result_types_);
     tryPropagate(union_value_types_);
     tryPropagate(enum_value_types_);
-    tryPropagate(channel_element_types_);
     tryPropagate(iterator_element_types_);
 }
 

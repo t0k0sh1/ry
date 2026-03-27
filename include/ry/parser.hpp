@@ -61,7 +61,6 @@ private:
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
-    StmtNode parseSelectStatement();
     Pattern parsePattern();
     std::string parseTypeName();
     std::string parseTypeNameSingle();
@@ -96,7 +95,6 @@ private:
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
     ExprPtr parseLambdaExpr();
-    ExprPtr parseSpawnExpr();
     ExprPtr parseAwaitExpr();
 };
 

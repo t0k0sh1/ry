@@ -486,7 +486,6 @@ Token Lexer::readToken() {
         if (id == "enum")     return {TokenKind::Enum,     "enum",     line_, startCol};
         if (id == "match")    return {TokenKind::Match,    "match",    line_, startCol};
         if (id == "case")     return {TokenKind::Case,     "case",     line_, startCol};
-        if (id == "select")   return {TokenKind::Select,   "select",   line_, startCol};
         if (id == "expect")   return {TokenKind::Expect,   "expect",   line_, startCol};
         if (id == "require")   return {TokenKind::Require,   "require",   line_, startCol};
         if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_, startCol};
@@ -494,7 +493,6 @@ Token Lexer::readToken() {
         if (id == "none")      return {TokenKind::NoneKw,    "none",      line_, startCol};
         if (id == "as")        return {TokenKind::As,        "as",        line_, startCol};
         if (id == "Error")     return {TokenKind::ErrorKw,   "Error",     line_, startCol};
-        if (id == "spawn")     return {TokenKind::Spawn,     "spawn",     line_, startCol};
         if (id == "async")     return {TokenKind::Async,     "async",     line_, startCol};
         if (id == "await")     return {TokenKind::Await,     "await",     line_, startCol};
         return {TokenKind::Ident, std::move(id), line_, startCol};

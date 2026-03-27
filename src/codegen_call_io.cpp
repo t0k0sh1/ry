@@ -409,7 +409,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_listen(host, port, handler[, max_requests[, port_channel]]) -> Unit
+    // http_listen(host, port, handler[, max_requests[, port_callback]]) -> Unit
     if (e.callee == "http_listen") {
         if (e.args.size() < 3 || e.args.size() > 5)
             codegenError("http_listen() takes 3 to 5 arguments");
@@ -462,13 +462,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             }
         }
 
-        // Optional 5th argument: port_channel (Channel<int>)
-        llvm::Value *portChannel = nullptr;
+        // Optional 5th argument: port_callback (fn(int) -> Unit)
+        llvm::Value *portCallback = nullptr;
         if (e.args.size() == 5) {
-            portChannel = emitExpr(*e.args[4]);
-            llvm::Type *elemTy = getChannelElementType(portChannel);
-            if (!elemTy || elemTy != i64Ty_)
-                codegenError("http_listen() port_channel must be Channel<int>");
+            portCallback = emitExpr(*e.args[4]);
+            if (portCallback->getType() != ptrTy_)
+                codegenError("http_listen() port_callback must be fn(int) -> Unit");
         }
 
         // 1. bind(host, port)
@@ -505,21 +504,15 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
                           ".http_listen_err_" + std::to_string(httpListenErrCounter++));
         builder_.SetInsertPoint(listenOkBB);
 
-        // If port_channel provided, send the actual bound port after bind+listen
-        if (portChannel) {
+        // If port_callback provided, call it with the actual bound port after bind+listen
+        if (portCallback) {
             auto portFnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
             auto portFn = mod_->getOrInsertFunction("__ry_listener_port", portFnTy);
             llvm::Value *actualPort = builder_.CreateCall(portFn, {listener}, "actual_port");
 
-            llvm::IRBuilder<> entryBuilder(&fn_->getEntryBlock(),
-                                            fn_->getEntryBlock().begin());
-            llvm::AllocaInst *portSlot = entryBuilder.CreateAlloca(i64Ty_, nullptr, "port_slot");
-            builder_.CreateStore(actualPort, portSlot);
-
-            auto chanSendFnTy = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-            auto chanSendFn = mod_->getOrInsertFunction("__ry_channel_send", chanSendFnTy);
-            builder_.CreateCall(chanSendFn, {portChannel, portSlot});
+            auto callbackFnTy = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(*ctx_), {i64Ty_}, false);
+            builder_.CreateCall(callbackFnTy, portCallback, {actualPort});
         }
 
         bool hasMaxRequests = (e.args.size() >= 4);
