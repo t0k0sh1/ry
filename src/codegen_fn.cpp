@@ -427,6 +427,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 channel_element_types_[alloca] = resolveType(inner);
             }
             registerResourceByTypeName(ptype, alloca);
+            // Track low-level type metadata for parameters
+            if (isLowLevelTypeName(ptype))
+                low_level_type_names_[alloca] = ptype;
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
@@ -745,6 +748,10 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 // ===== Generic function type inference =====
 
 std::string CodeGen::reverseResolveType(llvm::Value *val) {
+    // Check low-level type metadata first (resolves ambiguous LLVM types)
+    std::string llName = getLowLevelTypeName(val);
+    if (!llName.empty()) return llName;
+
     llvm::Type *ty = val->getType();
     if (ty == i64Ty_) return "int";
     if (ty == f64Ty_) return "float";
@@ -944,6 +951,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 if (vTy) map_value_types_[alloca] = vTy;
             }
             registerResourceByTypeName(ptype, alloca);
+            // Track low-level type metadata for parameters
+            if (isLowLevelTypeName(ptype))
+                low_level_type_names_[alloca] = ptype;
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(")

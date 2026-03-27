@@ -154,29 +154,60 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::Type *annotTy = resolveType(*type_annotation);
             if (annotTy != newTy) {
                 if (annotTy == i8Ty_ && newTy == i64Ty_) {
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                        int64_t v = ci->getSExtValue();
-                        if (v < 0 || v > 255)
-                            codegenError(
-                                "byte value out of range (0-255): " + std::to_string(v));
+                    const std::string &ann = *type_annotation;
+                    if (ann == "i8") {
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < INT8_MIN || v > INT8_MAX)
+                                codegenError(
+                                    "i8 value out of range: " + std::to_string(v));
+                        }
+                    } else {
+                        // byte or u8: unsigned 0-255 range
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < 0 || v > 255)
+                                codegenError(
+                                    ann + " value out of range (0-255): " + std::to_string(v));
+                        }
                     }
-                    val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
+                    val = builder_.CreateTrunc(val, i8Ty_, "i8trunc");
                     newTy = i8Ty_;
                 } else if (annotTy == i32Ty_ && newTy == i64Ty_) {
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                        int64_t v = ci->getSExtValue();
-                        if (v < INT32_MIN || v > INT32_MAX)
-                            codegenError(
-                                "i32 value out of range: " + std::to_string(v));
+                    const std::string &ann = *type_annotation;
+                    if (ann == "u32") {
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < 0 || v > (int64_t)UINT32_MAX)
+                                codegenError(
+                                    "u32 value out of range: " + std::to_string(v));
+                        }
+                    } else {
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < INT32_MIN || v > INT32_MAX)
+                                codegenError(
+                                    ann + " value out of range: " + std::to_string(v));
+                        }
                     }
                     val = builder_.CreateTrunc(val, i32Ty_, "i32trunc");
                     newTy = i32Ty_;
                 } else if (annotTy == i16Ty_ && newTy == i64Ty_) {
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                        int64_t v = ci->getSExtValue();
-                        if (v < INT16_MIN || v > INT16_MAX)
-                            codegenError(
-                                "i16 value out of range: " + std::to_string(v));
+                    const std::string &ann = *type_annotation;
+                    if (ann == "u16") {
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < 0 || v > (int64_t)UINT16_MAX)
+                                codegenError(
+                                    "u16 value out of range: " + std::to_string(v));
+                        }
+                    } else {
+                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                            int64_t v = ci->getSExtValue();
+                            if (v < INT16_MIN || v > INT16_MAX)
+                                codegenError(
+                                    ann + " value out of range: " + std::to_string(v));
+                        }
                     }
                     val = builder_.CreateTrunc(val, i16Ty_, "i16trunc");
                     newTy = i16Ty_;
@@ -218,6 +249,18 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
+
+    // Track low-level type metadata
+    if (type_annotation) {
+        const std::string &ann = *type_annotation;
+        if (isLowLevelTypeName(ann))
+            low_level_type_names_[ptr] = ann;
+    } else {
+        // Propagate metadata from initializer expression (e.g., y = x as u32)
+        std::string valName = getLowLevelTypeName(val);
+        if (!valName.empty())
+            low_level_type_names_[ptr] = valName;
+    }
 
     // Track type constraint for reassignment checks
     if (constraint)

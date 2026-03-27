@@ -73,8 +73,14 @@ Ry also provides low-level numeric types for precise control over memory layout.
 
 | Type | Description | Example |
 |------|-------------|---------|
+| `i8` | 8-bit signed integer | `x: i8 = 42` |
 | `i16` | 16-bit signed integer | `x: i16 = 100` |
 | `i32` | 32-bit signed integer | `x: i32 = 42` |
+| `i64` | 64-bit signed integer | `x: i64 = 100` |
+| `u8` | 8-bit unsigned integer | `x: u8 = 200` |
+| `u16` | 16-bit unsigned integer | `x: u16 = 60000` |
+| `u32` | 32-bit unsigned integer | `x: u32 = 3000000000` |
+| `u64` | 64-bit unsigned integer | `x: u64 = 100` |
 | `f32` | 32-bit floating-point | `x: f32 = 3.14` |
 
 ```python
@@ -87,11 +93,16 @@ d = 42
 
 y = a as int       # Explicit cast to int
 z = d as i32       # Explicit cast to i32
+
+# Unsigned types use unsigned operations
+x: u32 = 3000000000
+y: u32 = 7
+q = x / y          # Unsigned division (UDiv)
 ```
 
-> **Note**: `/` on low-level integers performs integer division (like Rust), not float division.
+> **Note**: `/` on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`, unsigned types use `UDiv`.
 >
-> **Note**: Arithmetic on low-level integers wraps on overflow (two's complement). Use `int` if overflow is a concern.
+> **Note**: Arithmetic on low-level integers wraps on overflow. Signed types use two's complement, unsigned types use modular arithmetic. Use the high-level `int` type (64-bit) if overflow is a concern.
 
 ---
 

@@ -69,6 +69,7 @@ private:
     std::vector<llvm::Value*> task_group_stack_;
     std::unordered_map<llvm::Value*, llvm::Type*> channel_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
+    std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
     int iterator_fn_counter_ = 0;
 
     struct UnionTypeInfo {
@@ -269,10 +270,16 @@ private:
     llvm::Value *toBool(llvm::Value *v);
 
     // Low-level type helpers
+    const std::string &getLowLevelTypeName(llvm::Value *val) const;
+    bool isUnsignedLowLevel(llvm::Value *val) const;
+    static bool isUnsignedLowLevelName(const std::string &name);
+    static bool isLowLevelTypeName(const std::string &name);
     bool isLowLevelIntTy(llvm::Type *ty) const;
+    bool isLowLevelIntTy(llvm::Value *val) const;
     bool isLowLevelFloatTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Type *ty) const;
-    void checkLowLevelTypeMix(llvm::Type *lhsTy, llvm::Type *rhsTy, const std::string &op);
+    bool isLowLevelTy(llvm::Value *val) const;
+    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
 
     // Type promotion helpers (B1)
     llvm::Value *promoteToInt(llvm::Value *v);
