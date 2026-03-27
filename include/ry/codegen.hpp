@@ -274,6 +274,7 @@ private:
     bool isUnsignedLowLevel(llvm::Value *val) const;
     static bool isUnsignedLowLevelName(const std::string &name);
     static bool isLowLevelTypeName(const std::string &name);
+    static std::string getExprLowLevelSuffix(const ExprNode &node);
     bool isLowLevelIntTy(llvm::Type *ty) const;
     bool isLowLevelIntTy(llvm::Value *val) const;
     bool isLowLevelFloatTy(llvm::Type *ty) const;
@@ -319,9 +320,12 @@ private:
                                       llvm::Value *operand);
 
     // BinaryExpr sub-dispatchers (B2)
-    llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                   const std::string &llNameHint = "");
+    llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                const std::string &llNameHint = "");
+    llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                   const std::string &llNameHint = "");
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 

@@ -258,6 +258,10 @@ void CodeGen::emitVarDecl(const std::string &name,
     } else {
         // Propagate metadata from initializer expression (e.g., y = x as u32)
         std::string valName = getLowLevelTypeName(val);
+        // Fall back to AST suffix for literal constants, since ConstantInt/ConstantFP
+        // pointers are shared by LLVM and cannot carry per-use metadata (#311).
+        if (valName.empty())
+            valName = getExprLowLevelSuffix(value);
         if (!valName.empty())
             low_level_type_names_[ptr] = valName;
     }
