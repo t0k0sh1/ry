@@ -353,9 +353,9 @@ TEST(Formatter, BlankLineBetweenDefs) {
 TEST(Formatter, LambdaAndTrailingBlock) {
     // Single-line lambda
     {
-        auto src = "double = fn(x: int): x * 2\n";
+        auto src = "double = fn(x: int) => x * 2\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("double = fn(x: int): x * 2"), std::string::npos);
+        EXPECT_NE(out.find("double = fn(x: int) => x * 2"), std::string::npos);
     }
     // Trailing block call
     {

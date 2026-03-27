@@ -147,10 +147,10 @@ fn log_typed(msg: str) -> Unit:
 
 ```python
 # 單一運算式（運算式的值作為回傳值。回傳型別自動推論）
-fn(引數名: 型別, ...): 運算式
+fn(引數名: 型別, ...) => 運算式
 
 # 引數型別可省略（預設為 any）
-fn(引數名, ...): 運算式
+fn(引數名, ...) => 運算式
 
 # 多行區塊
 fn(引數名: 型別, ...):
@@ -158,16 +158,16 @@ fn(引數名: 型別, ...):
     return 值
 
 # 明確指定回傳型別（可省略）
-fn(引數名: 型別, ...) -> 回傳型別: 運算式
+fn(引數名: 型別, ...) -> 回傳型別 => 運算式
 ```
 
 ### 範例
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 result = double(5)   # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 sum = add(3, 4)      # 7
 
 # 多行 lambda
@@ -185,7 +185,7 @@ Lambda 函式會以**值捕獲**定義時外層作用域的變數。
 
 ```python
 base = 10
-add_base = fn(x: int): x + base   # 以值捕獲 base
+add_base = fn(x: int) => x + base   # 以值捕獲 base
 
 base = 99          # 不影響已捕獲的值
 r = add_base(5)   # 15（使用捕獲時的 base = 10）
@@ -214,8 +214,8 @@ fn(引數型別1, 引數型別2, ...) -> 回傳型別
 ### 範例
 
 ```python
-f: fn(int) -> int = fn(x: int): x * 2
-g: fn(int, int) -> int = fn(a: int, b: int): a + b
+f: fn(int) -> int = fn(x: int) => x * 2
+g: fn(int, int) -> int = fn(a: int, b: int) => a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
@@ -236,7 +236,7 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], fn(x: int): x * 2)
+doubled = map_list([1, 2, 3], fn(x: int) => x * 2)
 # [2, 4, 6]
 ```
 

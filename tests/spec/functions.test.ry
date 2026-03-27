@@ -54,7 +54,7 @@ describe("overloading", fn():
 
 describe("lambda", fn():
   it("single expression", fn():
-    double = fn(x: int): x * 2
+    double = fn(x: int) => x * 2
     expect(double(5)).to_eq(10)
   )
   it("multi-line", fn():
@@ -69,7 +69,7 @@ describe("lambda", fn():
 describe("closure", fn():
   it("captures by value", fn():
     base = 10
-    add_base = fn(x: int): x + base
+    add_base = fn(x: int) => x + base
     base = 99
     expect(add_base(5)).to_eq(15)
   )
@@ -77,7 +77,7 @@ describe("closure", fn():
 
 describe("higher-order function", fn():
   it("function as argument", fn():
-    res = apply(fn(x: int): x * 3, 5)
+    res = apply(fn(x: int) => x * 3, 5)
     expect(res).to_eq(15)
   )
 )

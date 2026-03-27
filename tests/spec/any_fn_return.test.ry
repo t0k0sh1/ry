@@ -39,7 +39,7 @@ describe("any return from function", fn():
 
 describe("any return from lambda", fn():
   it("lambda expr body returns any", fn():
-    f = fn() -> any: 42
+    f = fn() -> any => 42
     x: any = f()
     expect(true).to_eq(true)
   )

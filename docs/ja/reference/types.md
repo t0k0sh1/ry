@@ -17,7 +17,7 @@
 | `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
-| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int): x * 2` | 関数型 |
+| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int) => x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 組み込みエラー型 |
@@ -42,7 +42,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int): x * 2
+fn_val: fn(int) -> int = fn(x: int) => x * 2
 u: int | str = 42
 a: any = 42
 ```
@@ -90,7 +90,7 @@ names: StringList = ["Alice", "Bob"]
 ```python
 type Callback = fn(int, int) -> int
 
-add: Callback = fn(a: int, b: int): a + b
+add: Callback = fn(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 

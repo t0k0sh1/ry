@@ -632,40 +632,34 @@ ExprPtr Parser::parseLambdaExpr() {
         lambda->return_type = "";  // inferred at codegen time
     }
 
-    // Expect ':'
-    if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after lambda parameters");
-    lex_.next(); // consume ':'
-
-    // Body: multi-line (newline + indent) or single expression
-    if (lex_.peek().kind == TokenKind::Newline) {
-        auto saved = lex_.saveState();
+    if (lex_.peek().kind == TokenKind::FatArrow) {
+        // Single-expression lambda: fn(params) => expr
+        lex_.next(); // consume '=>'
+        lambda->expr_body = parseTernary();
+    } else if (lex_.peek().kind == TokenKind::Colon) {
+        // Block lambda: fn(params):
+        lex_.next(); // consume ':'
+        if (lex_.peek().kind != TokenKind::Newline)
+            parseError("expected newline after ':' in block lambda");
         lex_.next(); // consume newline
         skipNewlines();
-        if (lex_.peek().kind == TokenKind::Indent) {
-            lex_.restoreState(std::move(saved));
-            lex_.next(); // consume newline
-            skipNewlines();
-            lex_.next(); // consume Indent
+        if (lex_.peek().kind != TokenKind::Indent)
+            parseError("expected indented block after ':' in block lambda");
+        lex_.next(); // consume Indent
 
-            while (lex_.peek().kind != TokenKind::Dedent &&
-                   lex_.peek().kind != TokenKind::Eof) {
-                lambda->body.push_back(parseStatement());
-                if (lex_.peek().kind == TokenKind::Newline)
-                    lex_.next();
-                skipNewlines();
-            }
-            if (lambda->body.empty())
-                parseError("empty lambda body is not allowed");
-            if (lex_.peek().kind == TokenKind::Dedent)
-                lex_.next(); // consume Dedent
-        } else {
-            lex_.restoreState(std::move(saved));
-            lambda->expr_body = parseTernary();
+        while (lex_.peek().kind != TokenKind::Dedent &&
+               lex_.peek().kind != TokenKind::Eof) {
+            lambda->body.push_back(parseStatement());
+            if (lex_.peek().kind == TokenKind::Newline)
+                lex_.next();
+            skipNewlines();
         }
+        if (lambda->body.empty())
+            parseError("empty lambda body is not allowed");
+        if (lex_.peek().kind == TokenKind::Dedent)
+            lex_.next(); // consume Dedent
     } else {
-        // Single expression lambda
-        lambda->expr_body = parseTernary();
+        parseError("expected '=>' or ':' after lambda parameters");
     }
 
     auto node = std::make_unique<ExprNode>();

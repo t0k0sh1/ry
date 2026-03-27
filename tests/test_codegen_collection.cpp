@@ -1009,7 +1009,7 @@ TEST_F(CodeGenTest, ListPopVariants) {
     {
         std::string src =
             "xs: List<int> = [1]\n"
-            "ys = xs.filter(fn(x: int): x > 10)\n"
+            "ys = xs.filter(fn(x: int) => x > 10)\n"
             "print(ys.pop())";
         EXPECT_EQ(runSource(src), "None\n");
     }
@@ -1046,7 +1046,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = filter(xs, fn(x: int): x > 3)\n"
+            "ys = filter(xs, fn(x: int) => x > 3)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[4, 5]\n");
     }
@@ -1054,7 +1054,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = filter(xs, fn(x: int): x > 10)\n"
+            "ys = filter(xs, fn(x: int) => x > 10)\n"
             "print(length(ys))";
         EXPECT_EQ(runSource(src), "0\n");
     }
@@ -1062,7 +1062,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = filter(xs, fn(x: int): x > 0)\n"
+            "ys = filter(xs, fn(x: int) => x > 0)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1, 2, 3]\n");
     }
@@ -1070,7 +1070,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [1.5, 2.5, 0.5]\n"
-            "ys = filter(xs, fn(x: float): x > 1.0)\n"
+            "ys = filter(xs, fn(x: float) => x > 1.0)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
     }
@@ -1078,7 +1078,7 @@ TEST_F(CodeGenTest, FilterBasics) {
     {
         std::string src =
             "xs = [\"hello\", \"hi\", \"hey\"]\n"
-            "ys = filter(xs, fn(s: str): s.starts_with(\"he\"))\n"
+            "ys = filter(xs, fn(s: str) => s.starts_with(\"he\"))\n"
             "print(length(ys))";
         EXPECT_EQ(runSource(src), "2\n");
     }
@@ -1090,7 +1090,7 @@ TEST_F(CodeGenTest, FilterClosureAndUntyped) {
         std::string src =
             "threshold = 3\n"
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = filter(xs, fn(x: int): x > threshold)\n"
+            "ys = filter(xs, fn(x: int) => x > threshold)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[4, 5]\n");
     }
@@ -1098,7 +1098,7 @@ TEST_F(CodeGenTest, FilterClosureAndUntyped) {
     {
         std::string src =
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = filter(xs, fn(x): x > 3)\n"
+            "ys = filter(xs, fn(x) => x > 3)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[4, 5]\n");
     }
@@ -1109,14 +1109,14 @@ TEST_F(CodeGenTest, FilterUFCSAndErrors) {
     {
         std::string src =
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = xs.filter(fn(x: int): x > 3)\n"
+            "ys = xs.filter(fn(x: int) => x > 3)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[4, 5]\n");
     }
     // FilterStillRejectsTypedMismatch
     EXPECT_THROW(runSource(
         "xs = [1, 2, 3]\n"
-        "ys = filter(xs, fn(x: str): true)\n"
+        "ys = filter(xs, fn(x: str) => true)\n"
         "print(ys)"
     ), std::runtime_error);
 }
@@ -1128,7 +1128,7 @@ TEST_F(CodeGenTest, MapBasics) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = map(xs, fn(x: int): x * 2)\n"
+            "ys = map(xs, fn(x: int) => x * 2)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
     }
@@ -1136,7 +1136,7 @@ TEST_F(CodeGenTest, MapBasics) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = map(xs, fn(x: int): x * 1.5)\n"
+            "ys = map(xs, fn(x: int) => x * 1.5)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1.5, 3, 4.5]\n");
     }
@@ -1144,7 +1144,7 @@ TEST_F(CodeGenTest, MapBasics) {
     {
         std::string src =
             "xs = [\"hello\", \"hi\"]\n"
-            "ys = map(xs, fn(s: str): length(s))\n"
+            "ys = map(xs, fn(s: str) => length(s))\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[5, 2]\n");
     }
@@ -1152,7 +1152,7 @@ TEST_F(CodeGenTest, MapBasics) {
     {
         std::string src =
             "xs = [1.0, 2.0]\n"
-            "ys = map(xs, fn(x: float): x + 0.5)\n"
+            "ys = map(xs, fn(x: float) => x + 0.5)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1.5, 2.5]\n");
     }
@@ -1160,7 +1160,7 @@ TEST_F(CodeGenTest, MapBasics) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = map(xs, fn(x: int): x * 2)\n"
+            "ys = map(xs, fn(x: int) => x * 2)\n"
             "print(xs)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[1, 2, 3]\n[2, 4, 6]\n");
@@ -1173,7 +1173,7 @@ TEST_F(CodeGenTest, MapClosureAndUntyped) {
         std::string src =
             "factor = 10\n"
             "xs = [1, 2, 3]\n"
-            "ys = map(xs, fn(x: int): x * factor)\n"
+            "ys = map(xs, fn(x: int) => x * factor)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[10, 20, 30]\n");
     }
@@ -1181,7 +1181,7 @@ TEST_F(CodeGenTest, MapClosureAndUntyped) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = map(xs, fn(x) -> int: 7)\n"
+            "ys = map(xs, fn(x) -> int => 7)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[7, 7, 7]\n");
     }
@@ -1194,7 +1194,7 @@ TEST_F(CodeGenTest, FilterMapChains) {
     {
         std::string src =
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = xs.filter(fn(x: int): x > 2).map(fn(x: int): x * 10)\n"
+            "ys = xs.filter(fn(x: int) => x > 2).map(fn(x: int) => x * 10)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[30, 40, 50]\n");
     }
@@ -1202,7 +1202,7 @@ TEST_F(CodeGenTest, FilterMapChains) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "ys = xs.map(fn(x: int): x * 2).filter(fn(x: int): x > 4)\n"
+            "ys = xs.map(fn(x: int) => x * 2).filter(fn(x: int) => x > 4)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[6]\n");
     }
@@ -1210,7 +1210,7 @@ TEST_F(CodeGenTest, FilterMapChains) {
     {
         std::string src =
             "xs = [1, 2, 3, 4, 5]\n"
-            "ys = xs.filter(fn(x: int): x > 1).filter(fn(x: int): x < 5)\n"
+            "ys = xs.filter(fn(x: int) => x > 1).filter(fn(x: int) => x < 5)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[2, 3, 4]\n");
     }
@@ -1272,7 +1272,7 @@ TEST_F(CodeGenTest, SortBasics) {
     {
         std::string src =
             "xs: List<int> = [1]\n"
-            "ys = xs.filter(fn(x: int): x > 10)\n"
+            "ys = xs.filter(fn(x: int) => x > 10)\n"
             "print(sort(ys))";
         EXPECT_EQ(runSource(src), "[]\n");
     }
@@ -1291,7 +1291,7 @@ TEST_F(CodeGenTest, SortUFCSAndComparator) {
     {
         std::string src =
             "xs = [3, 1, 2]\n"
-            "ys = sort(xs, fn(a: int, b: int): a > b)\n"
+            "ys = sort(xs, fn(a: int, b: int) => a > b)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
     }
@@ -1299,7 +1299,7 @@ TEST_F(CodeGenTest, SortUFCSAndComparator) {
     {
         std::string src =
             "xs = [3, 1, 2]\n"
-            "ys = xs.sort(fn(a: int, b: int): a > b)\n"
+            "ys = xs.sort(fn(a: int, b: int) => a > b)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[3, 2, 1]\n");
     }
@@ -1312,7 +1312,7 @@ TEST_F(CodeGenTest, SortChains) {
     {
         std::string src =
             "xs = [5, 3, 1, 4, 2]\n"
-            "ys = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()\n"
+            "ys = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[20, 30, 40, 50]\n");
     }
@@ -1320,7 +1320,7 @@ TEST_F(CodeGenTest, SortChains) {
     {
         std::string src =
             "xs = [3, 1, 2]\n"
-            "ys = xs.sort().filter(fn(x: int): x > 1)\n"
+            "ys = xs.sort().filter(fn(x: int) => x > 1)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[2, 3]\n");
     }
@@ -1328,7 +1328,7 @@ TEST_F(CodeGenTest, SortChains) {
     {
         std::string src =
             "xs = [3, 1, 2]\n"
-            "ys = xs.sort().map(fn(x: int): x * 2)\n"
+            "ys = xs.sort().map(fn(x: int) => x * 2)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[2, 4, 6]\n");
     }
@@ -1385,15 +1385,15 @@ TEST_F(CodeGenTest, SortStability) {
     {
         std::string src =
             "xs = [201, 102, 303, 104, 205]\n"
-            "ys = sort(xs, fn(a: int, b: int): a / 100 < b / 100)\n"
+            "ys = sort(xs, fn(a: int, b: int) => a / 100 < b / 100)\n"
             "print(ys)";
         EXPECT_EQ(runSource(src), "[102, 104, 201, 205, 303]\n");
     }
     // SortStabilityLarger
     {
         std::string src =
-            "xs = range(40).map(fn(i: int): (i % 5) * 1000 + i)\n"
-            "ys = sort(xs, fn(a: int, b: int): a / 1000 < b / 1000)\n"
+            "xs = range(40).map(fn(i: int) => (i % 5) * 1000 + i)\n"
+            "ys = sort(xs, fn(a: int, b: int) => a / 1000 < b / 1000)\n"
             "stable = true\n"
             "for i in range(1, 40):\n"
             "    ka = ys[i - 1] / 1000\n"
@@ -1453,7 +1453,7 @@ TEST_F(CodeGenTest, ReduceVariants) {
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
-            "sum = reduce(xs, fn(a: int, b: int): a + b)\n"
+            "sum = reduce(xs, fn(a: int, b: int) => a + b)\n"
             "print(sum)";
         EXPECT_EQ(runSource(src), "10\n");
     }
@@ -1461,14 +1461,14 @@ TEST_F(CodeGenTest, ReduceVariants) {
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
-            "print(xs.reduce(fn(a: int, b: int): a + b))";
+            "print(xs.reduce(fn(a: int, b: int) => a + b))";
         EXPECT_EQ(runSource(src), "10\n");
     }
     // ReduceUntypedLambdaParams
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
-            "sum = reduce(xs, fn(a, b) -> int: 99)\n"
+            "sum = reduce(xs, fn(a, b) -> int => 99)\n"
             "print(sum)";
         EXPECT_EQ(runSource(src), "99\n");
     }
@@ -1479,7 +1479,7 @@ TEST_F(CodeGenTest, FoldVariants) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "sum = fold(xs, 10, fn(a: int, b: int): a + b)\n"
+            "sum = fold(xs, 10, fn(a: int, b: int) => a + b)\n"
             "print(sum)";
         EXPECT_EQ(runSource(src), "16\n");
     }
@@ -1487,7 +1487,7 @@ TEST_F(CodeGenTest, FoldVariants) {
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "print(xs.fold(0, fn(a: int, b: int): a + b))";
+            "print(xs.fold(0, fn(a: int, b: int) => a + b))";
         EXPECT_EQ(runSource(src), "6\n");
     }
 }
@@ -1517,28 +1517,28 @@ TEST_F(CodeGenTest, AnyAllPredicates) {
     {
         std::string src =
             "xs = [1, 2, 3, 4]\n"
-            "print(any(xs, fn(x: int): x > 3))";
+            "print(any(xs, fn(x: int) => x > 3))";
         EXPECT_EQ(runSource(src), "true\n");
     }
     // AnyFalse
     {
         std::string src =
             "xs = [1, 2, 3]\n"
-            "print(any(xs, fn(x: int): x > 10))";
+            "print(any(xs, fn(x: int) => x > 10))";
         EXPECT_EQ(runSource(src), "false\n");
     }
     // AllTrue
     {
         std::string src =
             "xs = [2, 4, 6]\n"
-            "print(all(xs, fn(x: int): x > 0))";
+            "print(all(xs, fn(x: int) => x > 0))";
         EXPECT_EQ(runSource(src), "true\n");
     }
     // AllFalse
     {
         std::string src =
             "xs = [2, 4, 6]\n"
-            "print(all(xs, fn(x: int): x > 3))";
+            "print(all(xs, fn(x: int) => x > 3))";
         EXPECT_EQ(runSource(src), "false\n");
     }
 }
@@ -1601,7 +1601,7 @@ TEST_F(CodeGenTest, FirstLastIsEmpty) {
     {
         std::string src =
             "xs: List<int> = [1]\n"
-            "ys = xs.filter(fn(x: int): x > 10)\n"
+            "ys = xs.filter(fn(x: int) => x > 10)\n"
             "print(is_empty(ys))";
         EXPECT_EQ(runSource(src), "true\n");
     }
