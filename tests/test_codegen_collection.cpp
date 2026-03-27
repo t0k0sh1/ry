@@ -806,6 +806,95 @@ TEST_F(CodeGenTest, OperatorOverloadStruct) {
     }
 }
 
+// ===== Compound assignment operator overloading =====
+
+TEST_F(CodeGenTest, CompoundAssignWithOperatorPlusEq) {
+    // operator+= defined → called directly
+    std::string src =
+        "record Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return Vec2(a.x + b.x, a.y + b.y)\n"
+        "v = Vec2(1, 2)\n"
+        "v += Vec2(3, 4)\n"
+        "print(v.x)\n"
+        "print(v.y)";
+    EXPECT_EQ(runSource(src), "4\n6\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignFallbackToOperatorPlus) {
+    // operator+= NOT defined, operator+ defined → fallback
+    std::string src =
+        "record Vec2:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return Vec2(a.x + b.x, a.y + b.y)\n"
+        "v = Vec2(1, 2)\n"
+        "v += Vec2(3, 4)\n"
+        "print(v.x)\n"
+        "print(v.y)";
+    EXPECT_EQ(runSource(src), "4\n6\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignBuiltinStillWorks) {
+    // Built-in int compound assignment
+    std::string src =
+        "x = 10\n"
+        "x += 5\n"
+        "x -= 3\n"
+        "x *= 2\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "24\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignPriorityOverPlus) {
+    // operator+= takes priority over operator+ when both are defined
+    std::string src =
+        "record Counter:\n"
+        "    val: int\n"
+        "fn operator+(a: Counter, b: Counter) -> Counter:\n"
+        "    return Counter(a.val + b.val + 100)\n"
+        "fn operator+=(a: Counter, b: Counter) -> Counter:\n"
+        "    return Counter(a.val + b.val)\n"
+        "c = Counter(1)\n"
+        "c += Counter(2)\n"
+        "print(c.val)";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, CompoundAssignAllBuiltinOps) {
+    std::string src =
+        "x = 100\n"
+        "x += 10\n"   // 110
+        "x -= 10\n"   // 100
+        "x *= 3\n"    // 300
+        "x //= 7\n"   // 42
+        "x %= 10\n"   // 2
+        "print(x)\n"
+        "z = 0b1100\n"
+        "z &= 0b1010\n"  // 0b1000 = 8
+        "z |= 0b0011\n"  // 0b1011 = 11
+        "z ^= 0b0001\n"  // 0b1010 = 10
+        "print(z)\n"
+        "w = 1\n"
+        "w <<= 3\n"   // 8
+        "w >>= 1\n"   // 4
+        "print(w)";
+    EXPECT_EQ(runSource(src), "2\n10\n4\n");
+}
+
+TEST_F(CodeGenTest, IncrementDecrementStillWorks) {
+    std::string src =
+        "x = 5\n"
+        "x++\n"
+        "x++\n"
+        "x--\n"
+        "print(x)";
+    EXPECT_EQ(runSource(src), "6\n");
+}
+
 // ===== List element assignment =====
 
 TEST_F(CodeGenTest, ListIndexAssignTypes) {

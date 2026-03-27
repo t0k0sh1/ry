@@ -544,7 +544,11 @@ void Formatter::formatAssign(const AssignStmt &s) {
         return;
     }
 
-    emit(" = ");
+    if (s.compound_op) {
+        emit(" " + *s.compound_op + "= ");
+    } else {
+        emit(" = ");
+    }
 
     // Check if value is a multi-line lambda
     if (auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.value->data)) {

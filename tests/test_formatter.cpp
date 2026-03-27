@@ -183,19 +183,19 @@ TEST(Formatter, ControlFlow) {
     // For loop
     {
         auto src = "for i in range(5):\n    sum += i\n";
-        auto expected = "for i in range(5):\n  sum = sum + i\n";
+        auto expected = "for i in range(5):\n  sum += i\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // For loop with two vars
     {
         auto src = "for k, v in m:\n    total += v\n";
-        auto expected = "for k, v in m:\n  total = total + v\n";
+        auto expected = "for k, v in m:\n  total += v\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // While loop
     {
         auto src = "while i < 5:\n    i += 1\n";
-        auto expected = "while i < 5:\n  i = i + 1\n";
+        auto expected = "while i < 5:\n  i += 1\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // Match statement
