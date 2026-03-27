@@ -948,10 +948,22 @@ void CodeGen::emitStmt(EnumStmt &s) {
     }
     info.isADT = hasADT;
 
+    // Check if any variant has explicit values
+    bool hasExplicit = false;
+    for (auto &v : s.variants) {
+        if (v.explicit_value.has_value()) { hasExplicit = true; break; }
+    }
+    info.hasExplicitValues = hasExplicit;
+
     // Create global string array for variant names (for printing)
     std::vector<llvm::Constant*> nameStrings;
+    std::unordered_set<int64_t> seenValues;
     for (size_t i = 0; i < s.variants.size(); ++i) {
-        info.variants[s.variants[i].name] = static_cast<int64_t>(i);
+        int64_t val = s.variants[i].explicit_value.value_or(static_cast<int64_t>(i));
+        if (!seenValues.insert(val).second)
+            codegenError("duplicate enum value " + std::to_string(val) + " in enum '" + s.name + "'");
+        info.variants[s.variants[i].name] = val;
+        info.variantOrder.push_back(s.variants[i].name);
         llvm::Constant *str = cachedGlobalString(
             s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
         nameStrings.push_back(str);

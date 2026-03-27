@@ -98,9 +98,11 @@ private:
     struct EnumInfo {
         std::string name;
         std::unordered_map<std::string, int64_t> variants;
+        std::vector<std::string> variantOrder;
         llvm::GlobalVariable *nameArray;
         size_t variantCount;
         bool isADT = false;
+        bool hasExplicitValues = false;
         llvm::StructType *adtType = nullptr;   // { i64 tag, [N x i8] payload }
         size_t maxPayloadSize = 0;
         std::unordered_map<std::string, VariantFieldInfo> variantFields;

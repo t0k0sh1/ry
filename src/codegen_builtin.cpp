@@ -414,7 +414,47 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                 }
                 return;
             }
-            // Non-ADT enum: use tag directly as index
+            if (einfo.hasExplicitValues) {
+                // Explicit values: use switch to map value → name string
+                llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "enum.print.merge", fn_);
+                llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "enum.print.default", fn_);
+                auto *sw = builder_.CreateSwitch(val, defaultBB, einfo.variantCount);
+
+                // Build PHI node in merge block for the name string
+                builder_.SetInsertPoint(mergeBB);
+                auto *namePhi = builder_.CreatePHI(ptrTy_, einfo.variantCount, "enum.name");
+                llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+                builder_.CreateCall(printfFn, {fmt, namePhi});
+
+                // Create a case for each variant
+                for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
+                    const auto &vname = einfo.variantOrder[i];
+                    int64_t vval = einfo.variants.at(vname);
+                    llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "enum.print." + vname, fn_);
+                    sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vval, true)), caseBB);
+                    builder_.SetInsertPoint(caseBB);
+                    llvm::Value *namePtr = builder_.CreateGEP(
+                        llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                        einfo.nameArray,
+                        {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+                        "enum_name_ptr");
+                    llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+                    namePhi->addIncoming(nameStr, caseBB);
+                    builder_.CreateBr(mergeBB);
+                }
+
+                // Default block (unreachable in practice)
+                builder_.SetInsertPoint(defaultBB);
+                llvm::Value *unknownStr = builder_.CreateGlobalString("?", ".enum_unknown");
+                namePhi->addIncoming(unknownStr, defaultBB);
+                builder_.CreateBr(mergeBB);
+
+                // Continue after merge
+                builder_.SetInsertPoint(mergeBB);
+                // Move insert point after the print call
+                return;
+            }
+            // Non-ADT enum (sequential values): use tag directly as index
             llvm::Value *namePtr = builder_.CreateGEP(
                 llvm::ArrayType::get(ptrTy_, einfo.variantCount),
                 einfo.nameArray,
