@@ -11,7 +11,7 @@ fn 函式名(引數名: 型別, ...) -> 回傳型別:
 ```
 
 - 引數型別可省略。省略時視為 `any` 型別。
-- 回傳型別可省略（省略時為 `Unit`）。
+- 回傳型別可省略。省略時會從**主體推論**（若無 `return` 語句則推論為 `Unit`）。若要明確允許任意回傳型別，請指定 `-> any`。
 - 主體為縮排的區塊。
 - 具有明確回傳型別（`Unit` 和 `any` 除外）的函式，必須在所有控制流路徑中包含 `return` 語句。若缺少則會產生編譯錯誤。
 - 函式可以定義 `require`（前置條件）和 `ensure`（後置條件）。參閱 [契約式設計](contracts.md)。
@@ -33,11 +33,11 @@ fn greet(name: str):
 | 項目 | 說明 |
 |---|---|
 | 引數型別 | 可省略。省略 `: 型別` 時預設為 `any` |
-| 回傳型別 | 可省略。省略時為 `Unit`（相當於 void） |
+| 回傳型別 | 可省略。省略時從主體推論（若無 `return` 語句則為 `Unit`） |
 | `Unit` | 不回傳值的函式的回傳型別 |
 
 ```python
-fn no_return(x: int):      # 回傳型別 Unit（省略）
+fn no_return(x: int):      # 回傳型別 Unit（省略，無 return → 推論為 Unit）
     print(x)
 
 fn get_value() -> int:     # 回傳型別 int
@@ -45,6 +45,46 @@ fn get_value() -> int:     # 回傳型別 int
 
 fn identity(x) -> any:    # 引數型別 any（省略）
     return x
+```
+
+### 型別省略與 `any`
+
+當引數的型別標註被省略時，該引數被視為 `any` ——一種在執行時接受任意基本值的動態型別。這類似於 Python 的無型別引數。
+
+```python
+# 所有引數預設為 any
+fn add(a, b):
+    return a + b
+
+add(1, 2)              # 3（int + int）
+add("hello", " world") # "hello world"（str + str）
+add(1, 2.0)            # 3.0（int + float）
+```
+
+也可以在型別標註中明確使用 `any`：
+
+```python
+fn identity(x: any) -> any:
+    return x
+```
+
+### 回傳型別推論
+
+當回傳型別省略時，會從主體中的 `return` 語句推論：
+
+```python
+fn double(x: int):     # 回傳型別推論為 int
+    return x * 2
+
+fn greet(name: str):   # 回傳型別推論為 Unit（無 return）
+    print("Hello, " + name)
+```
+
+若要明確允許任意回傳型別，請使用 `-> any`：
+
+```python
+fn flexible(x: any) -> any:
+    return x    # 可以回傳 int、float、str 等
 ```
 
 ---
