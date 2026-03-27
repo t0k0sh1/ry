@@ -28,7 +28,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"enum",      TokenKind::Enum},
     {"match",     TokenKind::Match},
     {"case",      TokenKind::Case},
-    {"select",    TokenKind::Select},
     {"expect",    TokenKind::Expect},
     {"require",   TokenKind::Require},
     {"ensure",    TokenKind::Ensure},
@@ -36,7 +35,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"none",      TokenKind::NoneKw},
     {"as",        TokenKind::As},
     {"Error",     TokenKind::ErrorKw},
-    {"spawn",     TokenKind::Spawn},
     {"async",     TokenKind::Async},
     {"await",     TokenKind::Await},
 };

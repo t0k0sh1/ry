@@ -55,19 +55,6 @@ bool stmtReturnsOnAllPaths(const StmtNode &stmt) {
                 if (!allPathsReturn(arm.body)) return false;
             }
             return true;
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) {
-            // select is exhaustive if it has else or timeout to cover all paths
-            bool hasElseOrTimeout = !s->else_body.empty() || s->timeout_ms;
-            if (!hasElseOrTimeout) return false;
-            for (auto &c : s->cases) {
-                bool caseReturns = std::visit([](const auto &sc) -> bool {
-                    return allPathsReturn(sc.body);
-                }, c);
-                if (!caseReturns) return false;
-            }
-            if (!s->else_body.empty() && !allPathsReturn(s->else_body)) return false;
-            if (s->timeout_ms && !allPathsReturn(s->timeout_body)) return false;
-            return true;
         } else {
             return false;
         }

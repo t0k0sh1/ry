@@ -188,19 +188,15 @@ match x:
 
 ## Concurrency Basics
 
-`Task<T>` is the runtime handle for concurrent work. Use `spawn` for explicit task creation, `async fn` for task-returning functions, and `await` or `join(task)` to wait for completion.
+`Task<T>` is the runtime handle for concurrent work. Use `async fn` for task-returning functions and `await` or `join(task)` to wait for completion.
 
 ```python
-fn square(x: int) -> int:
-    return x * x
-
-t: Task<int> = spawn square(12)
-print(await t)   # 144
-
 async fn add(a: int, b: int) -> int:
     return a + b
 
-print(await add(20, 22))   # 42
+t: Task<int> = add(20, 22)
+print(await t)             # 42
+print(join(add(1, 2)))     # 3
 await add(1, 2)            # statement form also works
 ```
 
@@ -212,15 +208,13 @@ for i in range(8):
     print(i)
 ```
 
-In v1, `spawn` does not support `Unit`-returning calls, and `@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
-
-For channels, `recv(ch)` is the strict form and raises on a closed drained channel, while `recv_opt(ch)` returns `Some(value)` or `None` instead. `for x in ch:` is the close-aware consumer form and ends normally once the channel is closed and drained. For `Channel<Unit>`, `recv_opt(ch)` returns `bool` and `for _ in ch:` can be used to consume values.
+`@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
 
 ---
 
 ## Networking (TCP Sockets)
 
-Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
+Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions work with TCP sockets.
 
 ```python
 from net import bind, listen, accept, connect

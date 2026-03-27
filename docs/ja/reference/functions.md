@@ -163,8 +163,6 @@ print(join(add(1, 2)))  # 3
 - task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
 - `async` ラムダと `async @native fn` は v1 では未対応です。
 
-`Channel<T>` は task 間のブロッキングなメッセージ受け渡しに使う組み込みハンドル型です。`channel[T]()` または `channel[T](capacity)` で生成し、`send(ch, value)`、non-blocking な `try_send(ch, value)`、strict な `recv(ch)`、close-aware な `recv_opt(ch)`、non-blocking な `try_recv(ch)`、`for x in ch:` による反復、`close(ch)` で操作します。
-
 ---
 
 ## ラムダ関数

@@ -27,7 +27,6 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
     if (lookupCollectionType(map_value_types_, val)) return true;
     if (lookupCollectionType(set_element_types_, val)) return true;
     if (lookupCollectionType(nested_list_element_types_, val)) return true;
-    if (lookupCollectionType(channel_element_types_, val)) return true;
     if (lookupCollectionType(iterator_element_types_, val)) return true;
     if (lookupCollectionType(task_result_types_, val)) return true;
 

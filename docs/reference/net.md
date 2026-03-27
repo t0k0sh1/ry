@@ -35,7 +35,7 @@ from net import bind, listen, accept, connect, listener_port, shutdown, set_time
 
 ## Built-in Overloaded Functions
 
-These functions are built-in and work with both `Channel<T>` and TCP socket types. No import needed.
+These functions are built-in and work with TCP socket types. No import needed.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|

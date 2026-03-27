@@ -1,12 +1,3 @@
-describe("spawn and join", fn():
-  it("joins spawned computation", fn():
-    fn spawned_add(a: int, b: int) -> int:
-      return a + b
-    t: Task<int> = spawn spawned_add(20, 22)
-    expect(join(t)).to_eq(42)
-  )
-)
-
 describe("async and await", fn():
   it("awaits direct async call", fn():
     async fn async_add_direct(a: int, b: int) -> int:

@@ -80,7 +80,6 @@ struct TernaryExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
-struct SpawnExpr;
 struct AwaitExpr;
 
 struct ExprNode {
@@ -102,7 +101,6 @@ struct ExprNode {
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
-                 std::unique_ptr<SpawnExpr>,
                  std::unique_ptr<AwaitExpr>> data;
     SourceLocation loc;
 };
@@ -212,7 +210,6 @@ struct ForStmt;
 struct FnStmt;
 struct MatchStmt;
 struct AwaitStmt;
-struct SelectStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
@@ -230,8 +227,7 @@ using StmtNode = std::variant<AssignStmt, CallStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<MatchStmt>,
-                              std::unique_ptr<SelectStmt>>;
+                              std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -285,47 +281,12 @@ struct ErrorPropagateExpr {
     ExprPtr operand;
 };
 
-struct SpawnExpr {
-    ExprPtr operand;
-};
-
 struct AwaitExpr {
     ExprPtr operand;
 };
 
 struct AwaitStmt {
     ExprPtr operand;
-    SourceLocation loc;
-};
-
-enum class SelectRecvMode {
-    Strict,
-    Optional,
-};
-
-struct SelectRecvCase {
-    std::string name;
-    ExprPtr channel;
-    SelectRecvMode mode = SelectRecvMode::Strict;
-    std::vector<StmtNode> body;
-    SourceLocation loc;
-};
-
-struct SelectSendCase {
-    ExprPtr channel;
-    ExprPtr value;
-    std::vector<StmtNode> body;
-    SourceLocation loc;
-};
-
-using SelectCase = std::variant<SelectRecvCase, SelectSendCase>;
-
-struct SelectStmt {
-    std::vector<SelectCase> cases;
-    std::vector<StmtNode> else_body;
-    ExprPtr timeout_ms;
-    std::vector<StmtNode> timeout_body;
-    SourceLocation timeout_loc;
     SourceLocation loc;
 };
 

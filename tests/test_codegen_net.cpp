@@ -28,6 +28,8 @@ fn set_timeout(stream: TcpStream, ms: int) -> Unit
 fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
 @native
 fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
+@native
+fn sleep(ms: int) -> Unit
 )";
 
 // ============================================================
@@ -80,8 +82,8 @@ match bind("127.0.0.1", 0):
 }
 
 // ============================================================
-// Echo round-trip: server and client via spawn
-// Uses dynamic port allocation (port 0 + listener_port) to avoid conflicts.
+// Echo round-trip: server and client via async fn
+// Binds in main scope, passes listener to async fn for accept.
 // ============================================================
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
@@ -89,36 +91,26 @@ TEST_F(CodeGenTest, NetEchoRoundTrip) {
 @native
 fn listener_port(listener: TcpListener) -> int
 
-fn run_server(ready: Channel<int>) -> str:
-    match bind("127.0.0.1", 0):
-        case Ok(server):
-            match listen(server, 1):
-                case Ok(_):
-                    port = listener_port(server)
-                    send(ready, port)
-                    match accept(server):
-                        case Ok(conn):
-                            match recv(conn, 4096):
-                                case Ok(data):
-                                    match bytes_to_str(data):
-                                        case Ok(msg):
-                                            match send(conn, str_to_bytes("echo:" + msg)):
-                                                case Ok(_):
-                                                    ...
-                                                case Err(e):
-                                                    ...
-                                        case Err(e):
-                                            ...
+async fn run_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match bytes_to_str(data):
+                        case Ok(msg):
+                            match send(conn, str_to_bytes("echo:" + msg)):
+                                case Ok(_):
+                                    ...
                                 case Err(e):
                                     ...
-                            close(conn)
                         case Err(e):
                             ...
                 case Err(e):
-                    send(ready, 0)
-            close(server)
+                    ...
+            close(conn)
         case Err(e):
-            send(ready, 0)
+            ...
+    close(server)
     return "done"
 
 fn run_client(port: int) -> str:
@@ -144,32 +136,20 @@ fn run_client(port: int) -> str:
         case Err(e):
             return "fail"
 
-ready: Channel<int> = channel[int]()
-t: Task<str> = spawn run_server(ready)
-port = recv(ready)
-resp_msg = run_client(port)
-print(resp_msg)
-join(t)
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = run_server(server)
+                resp_msg = run_client(port)
+                print(resp_msg)
+                await t
+            case Err(e):
+                ...
+    case Err(e):
+        ...
 )"), "echo:hello\n");
-}
-
-// ============================================================
-// send/recv/close overload coexistence with Channel
-// ============================================================
-
-TEST_F(CodeGenTest, NetSendRecvCloseOverloadWithChannel) {
-    EXPECT_EQ(runSource(NET_DECLS + R"(
-fn producer(ch: Channel<int>) -> int:
-    send(ch, 42)
-    return 0
-
-ch: Channel<int> = channel[int]()
-t: Task<int> = spawn producer(ch)
-val = recv(ch)
-print(val)
-close(ch)
-join(t)
-)"), "42\n");
 }
 
 // ============================================================
@@ -350,42 +330,39 @@ TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
 @native
 fn listener_port(listener: TcpListener) -> int
 
-fn server_task(ready: Channel<int>) -> str:
-    match bind("127.0.0.1", 0):
-        case Ok(server):
-            match listen(server, 1):
-                case Ok(_):
-                    port = listener_port(server)
-                    send(ready, port)
-                    match accept(server):
-                        case Ok(conn):
-                            # Don't send anything — let client timeout
-                            sleep(500)
-                            close(conn)
-                        case Err(e):
-                            ...
-                case Err(e):
-                    send(ready, 0)
-            close(server)
+async fn server_task(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            # Don't send anything - let client timeout
+            sleep(500)
+            close(conn)
         case Err(e):
-            send(ready, 0)
+            ...
+    close(server)
     return "done"
 
-ready: Channel<int> = channel[int]()
-t: Task<str> = spawn server_task(ready)
-port = recv(ready)
-match connect("127.0.0.1", port):
-    case Ok(conn):
-        set_recv_timeout(conn, 100)
-        match recv(conn, 4096):
-            case Ok(data):
-                print("got data")
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = server_task(server)
+                match connect("127.0.0.1", port):
+                    case Ok(conn):
+                        set_recv_timeout(conn, 100)
+                        match recv(conn, 4096):
+                            case Ok(data):
+                                print("got data")
+                            case Err(e):
+                                print("timeout")
+                        close(conn)
+                    case Err(e):
+                        print("connect failed")
+                await t
             case Err(e):
-                print("timeout")
-        close(conn)
+                ...
     case Err(e):
-        print("connect failed")
-join(t)
+        ...
 )"), "timeout\n");
 }
 

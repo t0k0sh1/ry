@@ -195,9 +195,8 @@ bool Formatter::needsParens(const ExprNode &child, const std::string &parent_op,
     if (auto *tern = std::get_if<std::unique_ptr<TernaryExpr>>(&child.data)) {
         return true; // always parenthesize ternary inside binary
     }
-    if (std::get_if<std::unique_ptr<AwaitExpr>>(&child.data) ||
-        std::get_if<std::unique_ptr<SpawnExpr>>(&child.data)) {
-        return true; // parenthesize await/spawn inside binary
+    if (std::get_if<std::unique_ptr<AwaitExpr>>(&child.data)) {
+        return true; // parenthesize await inside binary
     }
     return false;
 }
@@ -297,8 +296,6 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return formatExpr(*v->start) + ".." + formatExpr(*v->end);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ErrorPropagateExpr>>) {
             return formatExpr(*v->operand) + "?";
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<SpawnExpr>>) {
-            return "spawn " + formatExpr(*v->operand);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
             return "await " + formatExpr(*v->operand);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
@@ -472,7 +469,6 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             return v->loc.line;
         }
         else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) return v->loc.line;
-        else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, AssignStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -529,7 +525,6 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) formatFor(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) formatFn(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) formatMatch(*v);
-        else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) formatSelect(*v);
     }, stmt);
 }
 
@@ -851,50 +846,6 @@ void Formatter::formatMatch(const MatchStmt &s) {
         emit(":");
         emitNewline();
         formatBlock(arm.body);
-    }
-    dedent();
-}
-
-void Formatter::formatSelect(const SelectStmt &s) {
-    emit("select:");
-    emitNewline();
-    last_emitted_line_ = s.loc.line;
-    indent();
-    for (const auto &c : s.cases) {
-        std::visit([this](const auto &v) {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, SelectRecvCase>) {
-                emitIndent();
-                emit("case let " + v.name + " = ");
-                if (v.mode == SelectRecvMode::Optional)
-                    emit("recv_opt(");
-                else
-                    emit("recv(");
-                emit(formatExpr(*v.channel) + "):");
-                emitNewline();
-                last_emitted_line_ = v.loc.line;
-                formatBlock(v.body);
-            } else if constexpr (std::is_same_v<T, SelectSendCase>) {
-                emitIndent();
-                emit("case send(");
-                emit(formatExpr(*v.channel) + ", " + formatExpr(*v.value) + "):");
-                emitNewline();
-                last_emitted_line_ = v.loc.line;
-                formatBlock(v.body);
-            }
-        }, c);
-    }
-    if (!s.else_body.empty()) {
-        emitIndent();
-        emit("else:");
-        emitNewline();
-        formatBlock(s.else_body);
-    }
-    if (s.timeout_ms) {
-        emitIndent();
-        emit("timeout " + formatExpr(*s.timeout_ms) + ":");
-        emitNewline();
-        formatBlock(s.timeout_body);
     }
     dedent();
 }

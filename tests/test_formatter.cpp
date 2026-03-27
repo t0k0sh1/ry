@@ -415,15 +415,6 @@ TEST(Formatter, RoundTripAndIdempotency) {
         EXPECT_FALSE(Formatter::verifyFormatting(garbage, reason));
         EXPECT_NE(reason.find("failed to re-parse"), std::string::npos);
     }
-    // Channel generic syntax round-trip
-    {
-        auto src = "ch: Channel<int> = channel[int]()\n";
-        auto first = Formatter::formatSource(src);
-        EXPECT_NE(first.find("channel[int]()"), std::string::npos);
-        EXPECT_EQ(first.find("channel<int>()"), std::string::npos);
-        auto second = Formatter::formatSource(first);
-        EXPECT_EQ(first, second);
-    }
     // Grouped expression round-trip
     {
         auto src = "x: int = (1 + 2) * 3\n";
