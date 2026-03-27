@@ -374,6 +374,8 @@ private:
         llvm::Type *hashArgTy;
     };
     HashFnInfo resolveHashFn(llvm::Type *keyTy);
+    llvm::Value *coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
+                               llvm::Type *hashArgTy, const llvm::Twine &prefix);
 
     // Collection type lookup helper (Step 2)
     static llvm::Type *lookupCollectionType(
