@@ -163,8 +163,6 @@ print(join(add(1, 2)))  # 3
 - task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
 - `async` ラムダと `async @native fn` は v1 では未対応です。
 
-`Channel<T>` は task 間のブロッキングなメッセージ受け渡しに使う組み込みハンドル型です。`channel[T]()` または `channel[T](capacity)` で生成し、`send(ch, value)`、non-blocking な `try_send(ch, value)`、strict な `recv(ch)`、close-aware な `recv_opt(ch)`、non-blocking な `try_recv(ch)`、`for x in ch:` による反復、`close(ch)` で操作します。
-
 ---
 
 ## ラムダ関数
@@ -332,6 +330,27 @@ fn operator<op>(a: 型) -> 戻り値型:
 | ビット（二項） | `&` `\|` `^` `<<` `>>` |
 | 論理（二項） | `and` `or` |
 | 単項 | `-` `~` `not` |
+
+### 戻り値型の制約
+
+比較演算子と論理演算子は `bool` を返す必要がある:
+
+| 種別 | 演算子 | 必須戻り値型 |
+|---|---|---|
+| 比較 | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| 論理 | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# エラー: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+算術演算子・ビット演算子には戻り値型の制約はない。
 
 ### 二項 / 単項の区別
 

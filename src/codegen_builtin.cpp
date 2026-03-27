@@ -38,10 +38,6 @@ llvm::Type *CodeGen::getNestedListElementType(llvm::Value *listVal) {
     return lookupCollectionType(nested_list_element_types_, listVal);
 }
 
-llvm::Type *CodeGen::getChannelElementType(llvm::Value *channelVal) {
-    return lookupCollectionType(channel_element_types_, channelVal);
-}
-
 llvm::Type *CodeGen::getIteratorElementType(llvm::Value *iterVal) {
     return lookupCollectionType(iterator_element_types_, iterVal);
 }
@@ -132,7 +128,6 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     tryPropagate(task_result_types_);
     tryPropagate(union_value_types_);
     tryPropagate(enum_value_types_);
-    tryPropagate(channel_element_types_);
     tryPropagate(iterator_element_types_);
 }
 
@@ -353,7 +348,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                         auto fit = einfo.variantFields.find(vname);
                         if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
                             // Print "VariantName("
-                            llvm::Constant *openFmt = builder_.CreateGlobalString("%s(", ".fmt_adt_open");
+                            llvm::Constant *openFmt = cachedGlobalString("%s(", ".fmt_adt_open");
                             builder_.CreateCall(printfFn, {openFmt, nameStr});
 
                             const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -369,37 +364,37 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                                 llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "field_val");
 
                                 if (fi > 0) {
-                                    llvm::Constant *commaFmt = builder_.CreateGlobalString(", ", ".fmt_comma");
+                                    llvm::Constant *commaFmt = cachedGlobalString(", ", ".fmt_comma");
                                     builder_.CreateCall(printfFn, {commaFmt});
                                 }
 
                                 if (fieldTy == i64Ty_) {
-                                    llvm::Constant *fmt = builder_.CreateGlobalString("%lld", ".fmt_adt_int");
+                                    llvm::Constant *fmt = cachedGlobalString("%lld", ".fmt_adt_int");
                                     builder_.CreateCall(printfFn, {fmt, fieldVal});
                                 } else if (fieldTy == f64Ty_) {
-                                    llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_adt_float");
+                                    llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_adt_float");
                                     builder_.CreateCall(printfFn, {fmt, fieldVal});
                                 } else if (fieldTy == ptrTy_) {
-                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_str");
+                                    llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_adt_str");
                                     builder_.CreateCall(printfFn, {fmt, fieldVal});
                                 } else if (fieldTy == i1Ty_) {
                                     llvm::Value *ext = builder_.CreateZExt(fieldVal, i64Ty_);
-                                    llvm::Value *trueStr = builder_.CreateGlobalString("true", ".true");
-                                    llvm::Value *falseStr = builder_.CreateGlobalString("false", ".false");
+                                    llvm::Value *trueStr = cachedGlobalString("true", ".true");
+                                    llvm::Value *falseStr = cachedGlobalString("false", ".false");
                                     llvm::Value *str = builder_.CreateSelect(
                                         builder_.CreateICmpNE(ext, llvm::ConstantInt::get(i64Ty_, 0)),
                                         trueStr, falseStr);
-                                    llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_adt_bool");
+                                    llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_adt_bool");
                                     builder_.CreateCall(printfFn, {fmt, str});
                                 }
                                 offset += dl.getTypeAllocSize(fieldTy);
                             }
 
-                            llvm::Constant *closeFmt = builder_.CreateGlobalString(")\n", ".fmt_adt_close");
+                            llvm::Constant *closeFmt = cachedGlobalString(")\n", ".fmt_adt_close");
                             builder_.CreateCall(printfFn, {closeFmt});
                         } else {
                             // No data — just print variant name
-                            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum_nodata");
+                            llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_enum_nodata");
                             builder_.CreateCall(printfFn, {fmt, nameStr});
                         }
                         builder_.CreateBr(endBB);
@@ -409,7 +404,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                     builder_.CreateBr(endBB);
                     builder_.SetInsertPoint(endBB);
                 } else {
-                    llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+                    llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_enum");
                     builder_.CreateCall(printfFn, {fmt, nameStr});
                 }
                 return;
@@ -461,7 +456,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
                 {llvm::ConstantInt::get(i64Ty_, 0), val},
                 "enum_name_ptr");
             llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_enum");
+            llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_enum");
             builder_.CreateCall(printfFn, {fmt, nameStr});
             return;
         }
@@ -478,7 +473,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
         // None branch
         builder_.SetInsertPoint(noneBB);
-        llvm::Constant *noneFmt = builder_.CreateGlobalString("None\n", ".fmt_none");
+        llvm::Constant *noneFmt = cachedGlobalString("None\n", ".fmt_none");
         builder_.CreateCall(printfFn, {noneFmt});
         builder_.CreateBr(endBB);
 
@@ -487,12 +482,12 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "opt_value");
         llvm::Type *innerTy = innerVal->getType();
 
-        llvm::Constant *somePrefix = builder_.CreateGlobalString("Some(", ".fmt_some_pre");
+        llvm::Constant *somePrefix = cachedGlobalString("Some(", ".fmt_some_pre");
         builder_.CreateCall(printfFn, {somePrefix});
 
         emitPrintValue(innerVal, innerTy, printfFn, "_opt");
 
-        llvm::Constant *someSuffix = builder_.CreateGlobalString(")\n", ".fmt_some_post");
+        llvm::Constant *someSuffix = cachedGlobalString(")\n", ".fmt_some_post");
         builder_.CreateCall(printfFn, {someSuffix});
         builder_.CreateBr(endBB);
 
@@ -510,9 +505,9 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, val, 2, "set_elems_ptr");
             llvm::Value *elemsPtr = builder_.CreateLoad(ptrTy_, elemsPtrField, "set_elems");
 
-            llvm::Constant *lbrace = builder_.CreateGlobalString("{", ".fmt_set_lb");
-            llvm::Constant *rbrace = builder_.CreateGlobalString("}\n", ".fmt_set_rb");
-            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_set_comma");
+            llvm::Constant *lbrace = cachedGlobalString("{", ".fmt_set_lb");
+            llvm::Constant *rbrace = cachedGlobalString("}\n", ".fmt_set_rb");
+            llvm::Constant *comma = cachedGlobalString(", ", ".fmt_set_comma");
             builder_.CreateCall(printfFn, {lbrace});
 
             llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "print_set.cond", fn_);
@@ -567,10 +562,10 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, val, 3, "map_vals_ptr");
             llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
 
-            llvm::Constant *lbrace = builder_.CreateGlobalString("{", ".fmt_lbrace");
-            llvm::Constant *rbrace = builder_.CreateGlobalString("}\n", ".fmt_rbrace");
-            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_comma_m");
-            llvm::Constant *colon = builder_.CreateGlobalString(": ", ".fmt_colon");
+            llvm::Constant *lbrace = cachedGlobalString("{", ".fmt_lbrace");
+            llvm::Constant *rbrace = cachedGlobalString("}\n", ".fmt_rbrace");
+            llvm::Constant *comma = cachedGlobalString(", ", ".fmt_comma_m");
+            llvm::Constant *colon = cachedGlobalString(": ", ".fmt_colon");
             builder_.CreateCall(printfFn, {lbrace});
 
             // Loop through entries
@@ -634,9 +629,9 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
             llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, val, 2, "data_ptr");
             llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
 
-            llvm::Constant *lbracket = builder_.CreateGlobalString("[", ".fmt_lb");
-            llvm::Constant *rbracketNl = builder_.CreateGlobalString("]\n", ".fmt_rb");
-            llvm::Constant *comma = builder_.CreateGlobalString(", ", ".fmt_comma");
+            llvm::Constant *lbracket = cachedGlobalString("[", ".fmt_lb");
+            llvm::Constant *rbracketNl = cachedGlobalString("]\n", ".fmt_rb");
+            llvm::Constant *comma = cachedGlobalString(", ", ".fmt_comma");
             builder_.CreateCall(printfFn, {lbracket});
 
             // Loop through elements
@@ -718,7 +713,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
                 emitPrintValue(innerVal, info.componentTypes[i], printfFn, "_union" + std::to_string(i));
 
-                llvm::Constant *nl = builder_.CreateGlobalString("\n", ".fmt_nl_union" + std::to_string(i));
+                llvm::Constant *nl = cachedGlobalString("\n", ".fmt_nl_union" + std::to_string(i));
                 builder_.CreateCall(printfFn, {nl});
                 builder_.CreateBr(endBB);
             }
@@ -730,14 +725,14 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
     if (val->getType() == errorTy_) {
         emitPrintValue(val, errorTy_, printfFn, "_err");
-        llvm::Constant *nl = builder_.CreateGlobalString("\n", ".fmt_nl_err");
+        llvm::Constant *nl = cachedGlobalString("\n", ".fmt_nl_err");
         builder_.CreateCall(printfFn, {nl});
         return;
     }
 
     if (val->getType() == anyTy_) {
         llvm::Value *str = emitAnyToString(val);
-        llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_any");
+        llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_any");
         builder_.CreateCall(printfFn, {fmt, str});
         return;
     }
@@ -746,7 +741,7 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         std::string name = structTy->getName().str();
         if (struct_types_.count(name)) {
             llvm::Value *str = structToString(val);
-            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_struct");
+            llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_struct");
             builder_.CreateCall(printfFn, {fmt, str});
             return;
         }
@@ -754,15 +749,15 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     }
 
     if (val->getType() == i1Ty_) {
-        llvm::Constant *trueStr  = builder_.CreateGlobalString("true\n",  ".fmt_true");
-        llvm::Constant *falseStr = builder_.CreateGlobalString("false\n", ".fmt_false");
+        llvm::Constant *trueStr  = cachedGlobalString("true\n",  ".fmt_true");
+        llvm::Constant *falseStr = cachedGlobalString("false\n", ".fmt_false");
         llvm::Value *fmtPtr = builder_.CreateSelect(val, trueStr, falseStr, "bool_fmt");
         builder_.CreateCall(printfFn, {fmtPtr});
         return;
     }
 
     if (val->getType()->isPointerTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_s");
+        llvm::Constant *fmt = cachedGlobalString("%s\n", ".fmt_s");
         builder_.CreateCall(printfFn, {fmt, val});
         return;
     }
@@ -770,24 +765,24 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
     llvm::Type *valTy = val->getType();
     if (valTy == f32Ty_) {
         val = builder_.CreateFPExt(val, f64Ty_, "f32_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g\n", ".fmt_f32");
+        llvm::Constant *fmt = cachedGlobalString("%g\n", ".fmt_f32");
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (valTy->isDoubleTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g\n", ".fmt_f");
+        llvm::Constant *fmt = cachedGlobalString("%g\n", ".fmt_f");
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (valTy == i16Ty_) {
         val = builder_.CreateSExt(val, i32Ty_, "i16_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_i16");
+        llvm::Constant *fmt = cachedGlobalString("%d\n", ".fmt_i16");
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (valTy == i32Ty_) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_i32");
+        llvm::Constant *fmt = cachedGlobalString("%d\n", ".fmt_i32");
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (valTy == i8Ty_) {
         val = builder_.CreateZExt(val, i32Ty_, "byte_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_b");
+        llvm::Constant *fmt = cachedGlobalString("%d\n", ".fmt_b");
         builder_.CreateCall(printfFn, {fmt, val});
     } else {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%ld\n", ".fmt_i");
+        llvm::Constant *fmt = cachedGlobalString("%ld\n", ".fmt_i");
         builder_.CreateCall(printfFn, {fmt, val});
     }
 }

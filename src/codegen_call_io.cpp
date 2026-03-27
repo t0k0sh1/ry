@@ -11,7 +11,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
             codegenError("regex_match() requires str arguments");
-        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_regex_match", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_match");
         return builder_.CreateTrunc(result, i1Ty_, "regex_match_bool");
@@ -24,7 +24,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
             codegenError("regex_search() requires str arguments");
-        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_regex_search", fnTy);
         return builder_.CreateCall(fn, {pattern, text}, "regex_search");
     }
@@ -38,7 +38,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_ ||
             replacement->getType() != ptrTy_)
             codegenError("regex_replace() requires str arguments");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy);
         return builder_.CreateCall(fn, {pattern, text, replacement}, "regex_replace");
     }
@@ -50,7 +50,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
             codegenError("regex_split() requires str arguments");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_split");
         list_element_types_[result] = ptrTy_;
@@ -64,7 +64,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
             codegenError("regex_find_all() requires str arguments");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_regex_find_all", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
         list_element_types_[result] = ptrTy_;
@@ -180,7 +180,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_bind", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "bind_result");
         return emitPtrToResult(result, "bind", "bind failed", tcp_listener_values_);
@@ -211,7 +211,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("listener_port() requires TcpListener argument");
-        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_listener_port", fnTy);
         return builder_.CreateCall(fn, {listener}, "listener_port");
     }
@@ -222,8 +222,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isTcpListener(val))
             codegenError("shutdown() requires TcpListener argument");
-        auto *voidPtrFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto *voidPtrFnTy = fnTy_ptr_to_void_;
         auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", voidPtrFnTy);
         return builder_.CreateCall(fn, {val});
     }
@@ -234,7 +233,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("accept() requires TcpListener argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_accept", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {listener}, "accept_result");
         return emitPtrToResult(result, "accept", "accept failed", tcp_stream_values_);
@@ -245,7 +244,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
         return emitPtrToResult(result, "connect", "connection failed", tcp_stream_values_);
@@ -256,7 +255,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_tls_connect", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {host, port}, "tls_connect_result");
         return emitPtrToResult(result, "tls_connect", "TLS connection failed", tls_stream_values_);
@@ -310,7 +309,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
         return builder_.CreateCall(fn, {req}, e.callee);
     }
@@ -326,7 +325,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             std::string param = (e.callee == "http_cookie") ? "name" : "key";
             codegenError(e.callee + "() " + param + " must be str");
         }
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
         std::string hint = (e.callee == "http_header") ? "http_hdr"
                          : (e.callee == "http_query") ? "http_qry" : "http_ck";
@@ -340,7 +339,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_query_all() requires HttpRequest argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_query_all", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_qry_all");
         map_key_types_[result] = ptrTy_;
@@ -354,7 +353,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_cookies() requires HttpRequest argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_cookies", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_cookies");
         map_key_types_[result] = ptrTy_;
@@ -371,7 +370,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_form_field() requires HttpRequest argument");
         if (key->getType() != ptrTy_)
             codegenError("http_form_field() name must be str");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_field", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ff");
         return wrapPtrAsOption(result, "http_ff");
@@ -386,7 +385,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_form_file() requires HttpRequest argument");
         if (key->getType() != ptrTy_)
             codegenError("http_form_file() name must be str");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
         llvm::Value *optResult = wrapPtrAsOption(result, "http_ffile");
@@ -401,7 +400,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_form_fields() requires HttpRequest argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_fields", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_ffields");
         map_key_types_[result] = ptrTy_;
@@ -409,7 +408,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_listen(host, port, handler[, max_requests[, port_channel]]) -> Unit
+    // http_listen(host, port, handler[, max_requests[, port_callback]]) -> Unit
     if (e.callee == "http_listen") {
         if (e.args.size() < 3 || e.args.size() > 5)
             codegenError("http_listen() takes 3 to 5 arguments");
@@ -462,17 +461,16 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             }
         }
 
-        // Optional 5th argument: port_channel (Channel<int>)
-        llvm::Value *portChannel = nullptr;
+        // Optional 5th argument: port_callback (fn(int) -> Unit)
+        llvm::Value *portCallback = nullptr;
         if (e.args.size() == 5) {
-            portChannel = emitExpr(*e.args[4]);
-            llvm::Type *elemTy = getChannelElementType(portChannel);
-            if (!elemTy || elemTy != i64Ty_)
-                codegenError("http_listen() port_channel must be Channel<int>");
+            portCallback = emitExpr(*e.args[4]);
+            if (portCallback->getType() != ptrTy_)
+                codegenError("http_listen() port_callback must be fn(int) -> Unit");
         }
 
         // 1. bind(host, port)
-        auto bindFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        auto bindFnTy = fnTy_ptr_i64_to_ptr_;
         auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
         llvm::Value *listener = builder_.CreateCall(bindFn, {host, port}, "http_listener");
 
@@ -505,21 +503,15 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
                           ".http_listen_err_" + std::to_string(httpListenErrCounter++));
         builder_.SetInsertPoint(listenOkBB);
 
-        // If port_channel provided, send the actual bound port after bind+listen
-        if (portChannel) {
+        // If port_callback provided, call it with the actual bound port after bind+listen
+        if (portCallback) {
             auto portFnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
             auto portFn = mod_->getOrInsertFunction("__ry_listener_port", portFnTy);
             llvm::Value *actualPort = builder_.CreateCall(portFn, {listener}, "actual_port");
 
-            llvm::IRBuilder<> entryBuilder(&fn_->getEntryBlock(),
-                                            fn_->getEntryBlock().begin());
-            llvm::AllocaInst *portSlot = entryBuilder.CreateAlloca(i64Ty_, nullptr, "port_slot");
-            builder_.CreateStore(actualPort, portSlot);
-
-            auto chanSendFnTy = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-            auto chanSendFn = mod_->getOrInsertFunction("__ry_channel_send", chanSendFnTy);
-            builder_.CreateCall(chanSendFn, {portChannel, portSlot});
+            auto callbackFnTy = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(*ctx_), {i64Ty_}, false);
+            builder_.CreateCall(callbackFnTy, portCallback, {actualPort});
         }
 
         bool hasMaxRequests = (e.args.size() >= 4);
@@ -529,7 +521,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), counterAlloca);
         }
 
-        auto voidPtrFnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto voidPtrFnTy = fnTy_ptr_to_void_;
         auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
         auto listenerCloseFn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
         auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
@@ -544,7 +536,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         builder_.SetInsertPoint(loopBB);
 
         // accept(listener) -> conn
-        auto acceptFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto acceptFnTy = fnTy_ptr_to_ptr_;
         auto acceptFn = mod_->getOrInsertFunction("__ry_accept", acceptFnTy);
         llvm::Value *conn = builder_.CreateCall(acceptFn, {listener}, "http_conn");
 
@@ -557,7 +549,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         builder_.SetInsertPoint(loopBodyBB);
 
         // __ry_http_read_request(conn) -> req
-        auto readReqFnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto readReqFnTy = fnTy_ptr_to_ptr_;
         auto readReqFn = mod_->getOrInsertFunction("__ry_http_read_request", readReqFnTy);
         llvm::Value *req = builder_.CreateCall(readReqFn, {conn}, "http_req");
         http_request_values_.insert(req);
@@ -618,7 +610,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *url = emitExpr(*e.args[0]);
         if (url->getType() != ptrTy_)
             codegenError("http_get() url must be str");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_get", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {url}, "http_get_result");
         return emitPtrToResult(result, "http_get", "HTTP request failed", http_client_response_values_);
@@ -636,7 +628,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_post() body must be str");
         if (headers->getType() != ptrTy_)
             codegenError("http_post() headers must be Map<str, str>");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_post", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
         return emitPtrToResult(result, "http_post", "HTTP request failed", http_client_response_values_);
@@ -669,7 +661,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_status() requires HttpClientResponse argument");
-        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_http_client_status", fnTy);
         return builder_.CreateCall(fn, {resp}, "http_client_status");
     }
@@ -680,7 +672,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_body() requires HttpClientResponse argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_client_body", fnTy);
         return builder_.CreateCall(fn, {resp}, "http_client_body");
     }
@@ -694,7 +686,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             codegenError("http_client_header() requires HttpClientResponse argument");
         if (key->getType() != ptrTy_)
             codegenError("http_client_header() key must be str");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {resp, key}, "http_client_hdr");
         return wrapPtrAsOption(result, "http_client_hdr");
@@ -706,7 +698,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_response_free() requires HttpClientResponse argument");
-        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_void_;
         auto fn = mod_->getOrInsertFunction("__ry_http_client_response_free", fnTy);
         builder_.CreateCall(fn, {resp});
         return llvm::ConstantInt::get(i64Ty_, 0);

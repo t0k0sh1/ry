@@ -319,9 +319,6 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Match)
         return parseMatchStatement();
 
-    if (first.kind == TokenKind::Select)
-        return parseSelectStatement();
-
     if (first.kind == TokenKind::If)
         return parseIfStatement();
 
@@ -356,7 +353,7 @@ StmtNode Parser::parseStatement() {
 
     // identifier-leading statements: assignment, index assignment, or function call
     if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'select', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
+        parseError(first.line, "expected 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
     lex_.next(); // consume ident
 
     Token next = lex_.peek();

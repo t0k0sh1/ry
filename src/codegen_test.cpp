@@ -230,7 +230,7 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 
     llvm::Value *fmtBuf = builder_.CreateAlloca(
         llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 256), nullptr, "fmt_buf");
-    llvm::Value *fmtGlobal = builder_.CreateGlobalString(cFmt, ".each_fmt");
+    llvm::Value *fmtGlobal = cachedGlobalString(cFmt, ".each_fmt");
 
     for (unsigned idx : fieldOrder) {
         if (idx >= fieldStrs.size())
@@ -383,7 +383,7 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
         }
         ceFmt += ")\033[0m\n";
 
-        llvm::Value *ceFmtStr = builder_.CreateGlobalString(ceFmt, ".prop_ce_fmt");
+        llvm::Value *ceFmtStr = cachedGlobalString(ceFmt, ".prop_ce_fmt");
         std::vector<llvm::Value*> ceArgs = {ceFmtStr};
         for (unsigned i = 0; i < randVals.size(); ++i)
             ceArgs.push_back(valueToString(randVals[i]));
@@ -473,7 +473,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
 
     // Cache global string per function name
     auto &nameStr = mock_name_strings_[fnName];
-    if (!nameStr) nameStr = builder_.CreateGlobalString(fnName, ".mock." + fnName);
+    if (!nameStr) nameStr = cachedGlobalString(fnName, ".mock." + fnName);
     builder_.CreateCall(mockSetFn, {nameStr, replacement});
 }
 
@@ -796,21 +796,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Value *bufSize = llvm::ConstantInt::get(i64Ty_, 64);
 
         if (ty == i64Ty_) {
-            llvm::Value *fmt = builder_.CreateGlobalString("%ld", ".fmt_i");
+            llvm::Value *fmt = cachedGlobalString("%ld", ".fmt_i");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
         } else if (ty == f64Ty_) {
-            llvm::Value *fmt = builder_.CreateGlobalString("%g", ".fmt_f");
+            llvm::Value *fmt = cachedGlobalString("%g", ".fmt_f");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, val});
         } else if (ty == i1Ty_) {
-            llvm::Value *trueStr = builder_.CreateGlobalString("true", ".true");
-            llvm::Value *falseStr = builder_.CreateGlobalString("false", ".false");
+            llvm::Value *trueStr = cachedGlobalString("true", ".true");
+            llvm::Value *falseStr = cachedGlobalString("false", ".false");
             return builder_.CreateSelect(val, trueStr, falseStr, "bool_str");
         } else if (ty == ptrTy_) {
             // Assume string pointer, return directly
             return val;
         } else if (isAnyType(ty)) {
             llvm::Value *anyStr = emitAnyToString(val);
-            llvm::Value *fmt = builder_.CreateGlobalString("%s", ".fmt_any");
+            llvm::Value *fmt = cachedGlobalString("%s", ".fmt_any");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, anyStr});
         } else if (isOptionType(ty)) {
             llvm::Value *hasVal = builder_.CreateExtractValue(val, 0, "fmt_opt_has");
@@ -825,34 +825,34 @@ void CodeGen::emitStmt(ExpectStmt &s) {
             builder_.SetInsertPoint(someBB);
             // Format as "Some(<inner>)"
             if (innerTy == i64Ty_) {
-                llvm::Value *fmt = builder_.CreateGlobalString("Some(%ld)", ".fmt_opt_i");
+                llvm::Value *fmt = cachedGlobalString("Some(%ld)", ".fmt_opt_i");
                 builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
             } else if (innerTy == f64Ty_) {
-                llvm::Value *fmt = builder_.CreateGlobalString("Some(%g)", ".fmt_opt_f");
+                llvm::Value *fmt = cachedGlobalString("Some(%g)", ".fmt_opt_f");
                 builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
             } else if (innerTy == i1Ty_) {
-                llvm::Value *trueStr = builder_.CreateGlobalString("Some(true)", ".fmt_opt_bt");
-                llvm::Value *falseStr = builder_.CreateGlobalString("Some(false)", ".fmt_opt_bf");
+                llvm::Value *trueStr = cachedGlobalString("Some(true)", ".fmt_opt_bt");
+                llvm::Value *falseStr = cachedGlobalString("Some(false)", ".fmt_opt_bf");
                 llvm::Value *boolFmt = builder_.CreateSelect(innerVal, trueStr, falseStr, "opt_bool_fmt");
                 builder_.CreateCall(snprintfFn, {buf, bufSize, boolFmt});
             } else if (innerTy == ptrTy_) {
-                llvm::Value *fmt = builder_.CreateGlobalString("Some(%s)", ".fmt_opt_s");
+                llvm::Value *fmt = cachedGlobalString("Some(%s)", ".fmt_opt_s");
                 builder_.CreateCall(snprintfFn, {buf, bufSize, fmt, innerVal});
             } else {
-                llvm::Value *fmt = builder_.CreateGlobalString("Some(...)", ".fmt_opt_u");
+                llvm::Value *fmt = cachedGlobalString("Some(...)", ".fmt_opt_u");
                 builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
             }
             builder_.CreateBr(endBB);
 
             builder_.SetInsertPoint(noneBB);
-            llvm::Value *noneFmt = builder_.CreateGlobalString("None", ".fmt_opt_none");
+            llvm::Value *noneFmt = cachedGlobalString("None", ".fmt_opt_none");
             builder_.CreateCall(snprintfFn, {buf, bufSize, noneFmt});
             builder_.CreateBr(endBB);
 
             builder_.SetInsertPoint(endBB);
             return buf;
         } else {
-            llvm::Value *fmt = builder_.CreateGlobalString("<value>", ".fmt_val");
+            llvm::Value *fmt = cachedGlobalString("<value>", ".fmt_val");
             builder_.CreateCall(snprintfFn, {buf, bufSize, fmt});
         }
         return buf;
@@ -864,21 +864,21 @@ void CodeGen::emitStmt(ExpectStmt &s) {
     if (s.matcher == "to_eq" || s.matcher == "to_not_eq") {
         expectedStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
     } else if (s.matcher == "to_be_true") {
-        expectedStr = builder_.CreateGlobalString("true", ".exp_true");
+        expectedStr = cachedGlobalString("true", ".exp_true");
     } else if (s.matcher == "to_be_false") {
-        expectedStr = builder_.CreateGlobalString("false", ".exp_false");
+        expectedStr = cachedGlobalString("false", ".exp_false");
     } else if (s.matcher == "to_be_some") {
-        expectedStr = builder_.CreateGlobalString("Some(...)", ".exp_some");
+        expectedStr = cachedGlobalString("Some(...)", ".exp_some");
     } else if (s.matcher == "to_be_ok") {
-        expectedStr = builder_.CreateGlobalString("Ok(...)", ".exp_ok");
+        expectedStr = cachedGlobalString("Ok(...)", ".exp_ok");
     } else if (s.matcher == "to_be_err") {
-        expectedStr = builder_.CreateGlobalString("Err(...)", ".exp_err");
+        expectedStr = cachedGlobalString("Err(...)", ".exp_err");
     } else if (s.matcher == "to_contain" || s.matcher == "to_not_contain") {
         if (s.matcher == "to_not_contain") {
             llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
             llvm::Value *buf = builder_.CreateAlloca(
                 llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "nc_buf");
-            llvm::Value *fmt = builder_.CreateGlobalString("not contain %s", ".fmt_nc");
+            llvm::Value *fmt = cachedGlobalString("not contain %s", ".fmt_nc");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, valStr});
             expectedStr = buf;
         } else {
@@ -894,31 +894,31 @@ void CodeGen::emitStmt(ExpectStmt &s) {
         llvm::Value *valStr = formatValue(savedExpectedVal, savedExpectedVal->getType(), "expected_buf");
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "cmp_buf");
-        llvm::Value *fmt = builder_.CreateGlobalString(op + "%s", ".fmt_cmp");
+        llvm::Value *fmt = cachedGlobalString(op + "%s", ".fmt_cmp");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, valStr});
         expectedStr = buf;
     } else if (s.matcher == "to_have_length") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "len_buf");
-        llvm::Value *fmt = builder_.CreateGlobalString("length %ld", ".fmt_len");
+        llvm::Value *fmt = cachedGlobalString("length %ld", ".fmt_len");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
         expectedStr = buf;
     } else if (s.matcher == "to_be_empty") {
-        expectedStr = builder_.CreateGlobalString("empty", ".exp_empty");
+        expectedStr = cachedGlobalString("empty", ".exp_empty");
     } else if (s.matcher == "to_start_with") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "sw_buf");
-        llvm::Value *fmt = builder_.CreateGlobalString("start with \"%s\"", ".fmt_sw");
+        llvm::Value *fmt = cachedGlobalString("start with \"%s\"", ".fmt_sw");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
         expectedStr = buf;
     } else if (s.matcher == "to_end_with") {
         llvm::Value *buf = builder_.CreateAlloca(
             llvm::ArrayType::get(llvm::Type::getInt8Ty(*ctx_), 128), nullptr, "ew_buf");
-        llvm::Value *fmt = builder_.CreateGlobalString("end with \"%s\"", ".fmt_ew");
+        llvm::Value *fmt = cachedGlobalString("end with \"%s\"", ".fmt_ew");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 128), fmt, savedExpectedVal});
         expectedStr = buf;
     } else {
-        expectedStr = builder_.CreateGlobalString("None", ".exp_none");
+        expectedStr = cachedGlobalString("None", ".exp_none");
     }
 
     builder_.CreateCall(failFn, {llvm::ConstantInt::get(i32Ty_, s.loc.line), actualStr, expectedStr});
@@ -948,7 +948,7 @@ void CodeGen::emitFailCall(CallStmt &s) {
             codegenError("fail() argument must be a string");
     } else {
         if (!fail_empty_msg_)
-            fail_empty_msg_ = builder_.CreateGlobalString("", ".fail_empty");
+            fail_empty_msg_ = cachedGlobalString("", ".fail_empty");
         msg = fail_empty_msg_;
     }
 

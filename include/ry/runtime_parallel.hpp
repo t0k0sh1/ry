@@ -13,27 +13,5 @@ void __ry_parallel_for_i64(int64_t begin, int64_t end, int64_t step,
                            void *env, __ry_parallel_for_fn fn);
 int64_t __ry_available_parallelism();
 void __ry_sleep(int64_t duration_ms);
-void *__ry_channel_new(int64_t elem_size, int64_t capacity);
-void __ry_channel_send(void *channel, void *value_ptr);
-bool __ry_channel_try_send(void *channel, void *value_ptr);
-void __ry_channel_recv(void *channel, void *out_buf);
-bool __ry_channel_recv_opt(void *channel, void *out_buf);
-bool __ry_channel_try_recv(void *channel, void *out_buf);
-void __ry_channel_close(void *channel);
-void *__ry_select_begin(int64_t case_count);
-void __ry_select_add_recv(void *select_state, void *channel, void *out_buf);
-void __ry_select_add_recv_opt(void *select_state, void *channel, void *out_buf, void *flag_ptr);
-void __ry_select_add_send(void *select_state, void *channel, void *value_ptr);
-int64_t __ry_select_wait(void *select_state, int64_t default_index, int64_t timeout_ms, int64_t timeout_index);
-void __ry_select_destroy(void *select_state);
-
-void __ry_task_cancel(void *task);
-bool __ry_current_task_is_cancelled();
-
-void *__ry_task_group_new();
-void *__ry_task_group_spawn(void *group, __ry_task_entry_fn entry, void *env, int64_t result_size);
-void __ry_task_group_await(void *group);
-void __ry_task_group_destroy(void *group);
-void __ry_task_group_await_and_destroy(void *group);
 
 }

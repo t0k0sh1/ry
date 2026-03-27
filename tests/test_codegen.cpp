@@ -90,6 +90,32 @@ TEST_F(CodeGenTest, UnknownFunctionThrows) {
     EXPECT_THROW(runSource("foo(42)"), std::runtime_error);
 }
 
+// ===== Operator return type constraint =====
+
+TEST_F(CodeGenTest, OperatorEqInferredNonBoolThrows) {
+    EXPECT_THROW(runSource(
+        "record Pt:\n"
+        "    x: int\n"
+        "fn operator==(a: Pt, b: Pt):\n"
+        "    return 42\n"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OperatorAndExplicitNonBoolThrows) {
+    EXPECT_THROW(runSource(
+        "record Pt:\n"
+        "    x: int\n"
+        "fn operator and(a: Pt, b: Pt) -> int:\n"
+        "    return 1\n"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OperatorOrExplicitNonBoolThrows) {
+    EXPECT_THROW(runSource(
+        "record Pt:\n"
+        "    x: int\n"
+        "fn operator or(a: Pt, b: Pt) -> int:\n"
+        "    return 1\n"), std::runtime_error);
+}
+
 // ===== Bitwise operators =====
 
 TEST_F(CodeGenTest, BitwiseOperators) {

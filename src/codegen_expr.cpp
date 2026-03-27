@@ -69,7 +69,7 @@ llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
-    return builder_.CreateGlobalString(e.value, ".str");
+    return cachedGlobalString(e.value, ".str");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
@@ -794,6 +794,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements)
         vals.push_back(emitExpr(*el));
 
@@ -867,6 +868,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     // Evaluate all keys and values
     std::vector<llvm::Value*> keyVals, valVals;
+    keyVals.reserve(e->keys.size());
+    valVals.reserve(e->values.size());
     for (auto &k : e->keys) keyVals.push_back(emitExpr(*k));
     for (auto &v : e->values) valVals.push_back(emitExpr(*v));
 
@@ -970,6 +973,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements)
         vals.push_back(emitExpr(*el));
 
@@ -1239,13 +1243,13 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     auto snprintfFn = getStdlibSnprintf();
 
     if (ty == i1Ty_) {
-        llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".vts_true");
-        llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".vts_false");
+        llvm::Constant *trueStr = cachedGlobalString("true", ".vts_true");
+        llvm::Constant *falseStr = cachedGlobalString("false", ".vts_false");
         return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
     }
     if (ty->isDoubleTy()) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_float_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_float_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
         return buf;
     }
@@ -1255,16 +1259,16 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i8Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "i8") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i8_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i8_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else if (llName == "u8") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u8_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else {
             // byte (default)
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_byte_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         }
@@ -1273,11 +1277,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i16Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u16") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u16_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u16_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i16_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i16_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         }
@@ -1286,17 +1290,17 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i32Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u32") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u32_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u32_fmt");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i32_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i32_fmt");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
         }
         return buf;
     }
     if (ty == f32Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_f32_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_f32_fmt");
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
         return buf;
@@ -1304,10 +1308,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     // default: int (i64) or i64/u64
     llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
     if (llName == "u64") {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%lu", ".vts_u64_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%lu", ".vts_u64_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
     } else {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%ld", ".vts_int_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
     }
     return buf;
@@ -1342,7 +1346,7 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
     std::vector<StringPart> parts;
 
     auto addLiteral = [&](const std::string &s, const char *label) {
-        parts.push_back({builder_.CreateGlobalString(s, label),
+        parts.push_back({cachedGlobalString(s, label),
                          llvm::ConstantInt::get(i64Ty_, s.size())});
     };
 
@@ -1598,7 +1602,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
     std::vector<llvm::Value*> strParts;
     for (size_t i = 0; i < e->parts.size(); ++i) {
         if (!e->parts[i].empty())
-            strParts.push_back(builder_.CreateGlobalString(e->parts[i], ".fstr_lit"));
+            strParts.push_back(cachedGlobalString(e->parts[i], ".fstr_lit"));
         else
             strParts.push_back(nullptr); // empty literal segment
         if (i < e->exprs.size()) {
@@ -1675,7 +1679,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
             if (list_element_types_.count(v)) return SemanticKind::List;
             if (map_key_types_.count(v)) return SemanticKind::Map;
             if (set_element_types_.count(v)) return SemanticKind::Set;
-            if (channel_element_types_.count(v)) return SemanticKind::Other;
             if (task_result_types_.count(v)) return SemanticKind::Other;
             return SemanticKind::Str;
         };
@@ -1819,147 +1822,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     return okVal;
 }
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SpawnExpr> &e) {
-    auto *callPtr = std::get_if<std::unique_ptr<CallExpr>>(&e->operand->data);
-    if (!callPtr)
-        codegenError("spawn requires a function call expression");
-
-    const CallExpr &callExpr = *(*callPtr);
-    llvm::Function *directFunc = nullptr;
-    llvm::Value *calleeVal = nullptr;
-    FnTypeInfo calleeInfo;
-    std::vector<llvm::Value*> argVals;
-
-    auto namedIt = functions_.find(callExpr.callee);
-    if (namedIt != functions_.end()) {
-        directFunc = resolveOverload(callExpr.callee, callExpr.args, argVals);
-        if (!directFunc)
-            codegenError("spawn requires a resolvable user function call");
-    } else if (llvm::AllocaInst *varPtr = findVar(callExpr.callee)) {
-        auto fnIt = fn_type_info_.find(varPtr);
-        if (fnIt == fn_type_info_.end())
-            codegenError("spawn requires a function or lambda call");
-        calleeInfo = fnIt->second;
-        for (auto &arg : callExpr.args)
-            argVals.push_back(emitExpr(*arg));
-        calleeVal = builder_.CreateLoad(ptrTy_, varPtr, callExpr.callee + ".spawn_fn");
-    } else {
-        codegenError("spawn requires a user-defined function or lambda call");
-    }
-
-    llvm::Type *resultTy = directFunc ? directFunc->getReturnType() : calleeInfo.returnType;
-    if (resultTy->isVoidTy())
-        codegenError("spawn does not support Unit-returning calls");
-
-    std::vector<llvm::Type*> envFields;
-    if (!directFunc)
-        envFields.push_back(ptrTy_);
-    for (auto *argVal : argVals)
-        envFields.push_back(argVal->getType());
-    if (envFields.empty())
-        envFields.push_back(i8Ty_);
-    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
-
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    llvm::Value *envPtr = builder_.CreateCall(
-        mallocFn,
-        {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
-        "spawn_env");
-
-    unsigned fieldIndex = 0;
-    if (directFunc && argVals.empty()) {
-        llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "spawn_env_dummy");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
-    } else if (!directFunc) {
-        llvm::Value *calleeField = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawn_env_fn");
-        builder_.CreateStore(calleeVal, calleeField);
-    }
-    for (size_t i = 0; i < argVals.size(); ++i) {
-        llvm::Value *argField = builder_.CreateStructGEP(
-            envTy, envPtr, fieldIndex++, "spawn_env_arg." + std::to_string(i));
-        builder_.CreateStore(argVals[i], argField);
-    }
-
-    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    llvm::Function *thunk = llvm::Function::Create(
-        thunkTy, llvm::Function::InternalLinkage,
-        "__ry_spawn." + std::to_string(lambda_counter_++), *mod_);
-
-    {
-        FnScope guard(*this);
-        fn_ = thunk;
-        pushScope();
-
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-        builder_.SetInsertPoint(entry);
-
-        auto argIt = thunk->arg_begin();
-        llvm::Value *envRaw = &*argIt++;
-        envRaw->setName("env_raw");
-        llvm::Value *outRaw = &*argIt;
-        outRaw->setName("out_raw");
-
-        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "spawn_env_typed");
-
-        std::vector<llvm::Value*> thunkArgs;
-        fieldIndex = 0;
-        llvm::Value *thunkCallee = nullptr;
-        if (!directFunc) {
-            llvm::Value *calleeField = builder_.CreateStructGEP(envTy, typedEnv, fieldIndex++, "spawn_fn_field");
-            thunkCallee = builder_.CreateLoad(ptrTy_, calleeField, "spawn_fn");
-        }
-        for (size_t i = 0; i < argVals.size(); ++i) {
-            llvm::Type *argTy = argVals[i]->getType();
-            llvm::Value *argField = builder_.CreateStructGEP(
-                envTy, typedEnv, fieldIndex++, "spawn_arg_field." + std::to_string(i));
-            thunkArgs.push_back(builder_.CreateLoad(argTy, argField, "spawn_arg." + std::to_string(i)));
-        }
-
-        llvm::Value *result = nullptr;
-        if (directFunc) {
-            result = builder_.CreateCall(directFunc, thunkArgs, "spawn_call");
-        } else {
-            result = emitLambdaCall(thunkCallee, calleeInfo, thunkArgs, "spawn_call");
-        }
-
-        llvm::Value *outTyped = builder_.CreateBitCast(outRaw, ptrTy_, "spawn_out_typed");
-        builder_.CreateStore(result, outTyped);
-        builder_.CreateRetVoid();
-    }
-
-    llvm::Value *task = nullptr;
-    if (!task_group_stack_.empty()) {
-        llvm::FunctionType *groupSpawnTy = llvm::FunctionType::get(
-            ptrTy_, {ptrTy_, ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee groupSpawnFn = mod_->getOrInsertFunction("__ry_task_group_spawn", groupSpawnTy);
-        task = builder_.CreateCall(
-            groupSpawnFn,
-            {
-                task_group_stack_.back(),
-                builder_.CreateBitCast(thunk, ptrTy_),
-                envPtr,
-                llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
-            },
-            "task");
-    } else {
-        llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
-        task = builder_.CreateCall(
-            spawnFn,
-            {
-                builder_.CreateBitCast(thunk, ptrTy_),
-                envPtr,
-                llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))
-            },
-            "task");
-    }
-    task_result_types_[task] = resultTy;
-    return task;
-}
-
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
     llvm::Value *taskVal = emitExpr(*e->operand);
     llvm::Type *resultTy = getTaskResultType(taskVal);
@@ -2000,7 +1862,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     // Empty case: return ""
     builder_.SetInsertPoint(emptyBB);
-    llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
+    llvm::Value *emptyStr = cachedGlobalString("", ".empty_str");
     builder_.CreateBr(mergeBB);
 
     // Repeat case

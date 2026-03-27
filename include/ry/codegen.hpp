@@ -28,12 +28,22 @@ private:
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
+    llvm::FunctionType *fnTy_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_to_i64_;
+    llvm::FunctionType *fnTy_ptr_to_void_;
+    llvm::FunctionType *fnTy_ptr_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_ptr_to_i64_;
+    llvm::FunctionType *fnTy_ptr_i64_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_ptr_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_void_to_ptr_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
+    std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
+    llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     static constexpr int64_t TAG_INT   = 0;
     static constexpr int64_t TAG_FLOAT = 1;
     static constexpr int64_t TAG_BOOL  = 2;
@@ -66,8 +76,6 @@ private:
     std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> task_result_types_;
-    std::vector<llvm::Value*> task_group_stack_;
-    std::unordered_map<llvm::Value*, llvm::Type*> channel_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
     int iterator_fn_counter_ = 0;
@@ -196,7 +204,6 @@ private:
                             std::function<void(llvm::Value *iCur)> bindVars);
     void emitTupleDestructure(const std::vector<std::string> &var_names,
                               llvm::Value *tupleVal, llvm::StructType *structTy);
-    void emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy);
     void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
     void validateParallelFor(const ForStmt &s);
 
@@ -252,7 +259,6 @@ private:
     void emitStmt(ExpectStmt &s);
     void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
-    void emitStmt(std::unique_ptr<SelectStmt> &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
@@ -267,7 +273,6 @@ private:
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
     void emitMockCall(CallStmt &s);
     void emitFailCall(CallStmt &s);
-    void emitTaskGroupCall(CallStmt &s);
     std::unordered_set<std::string> mocked_functions_;
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Constant *fail_empty_msg_ = nullptr;
@@ -313,7 +318,6 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<SpawnExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
     llvm::Value *structToString(llvm::Value *val);
@@ -389,7 +393,6 @@ private:
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
-    llvm::Type *getChannelElementType(llvm::Value *channelVal);
 
     // Hash function resolution helper (Step 1)
     struct HashFnInfo {
