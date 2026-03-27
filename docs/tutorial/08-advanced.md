@@ -290,16 +290,20 @@ b = true as int       # 1
 
 ## Enum with Associated Data (ADT)
 
-Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data.
+Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data. You can optionally name the fields for documentation clarity.
 
 ```python
 enum Shape:
-    Circle(float)
-    Rectangle(float, float)
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
     Point
 ```
 
+Named fields are documentation-only — they make definitions self-describing. Unnamed syntax (`Circle(float)`) is also valid.
+
 ### Constructing ADT Variants
+
+Construction is always positional, regardless of whether fields are named.
 
 ```python
 c = Shape::Circle(3.14)
@@ -309,7 +313,7 @@ p = Shape::Point
 
 ### Matching ADT Variants
 
-Use `case` with a binding pattern to extract the associated data.
+Use `case` with a binding pattern to extract the associated data. Bindings use your chosen variable names, not the field names.
 
 ```python
 fn describe(s: Shape) -> str:

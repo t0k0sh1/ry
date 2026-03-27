@@ -282,9 +282,25 @@ enum Shape:
     Point
 ```
 
+### Named Fields
+
+Variants can optionally use named fields for documentation clarity. Named fields make variant definitions self-describing but do not change runtime behavior — construction and pattern matching remain positional.
+
+```python
+enum Shape:
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
+    Point
+```
+
+Rules:
+- Field names must be `snake_case`.
+- Within a single variant, all fields must be either named or unnamed (no mixing).
+- Duplicate field names within a variant are a compile error.
+
 ### Constructor
 
-Use the `EnumName::Variant(value)` syntax to construct a variant with data.
+Use the `EnumName::Variant(value)` syntax to construct a variant with data. Arguments are always positional, even when fields are named.
 
 ```python
 c = Shape::Circle(3.14)
@@ -294,7 +310,7 @@ p = Shape::Point
 
 ### Pattern Matching with Binding
 
-Use `case EnumName::Variant(binding):` to extract the associated data.
+Use `case EnumName::Variant(binding):` to extract the associated data. Bindings use user-chosen variable names, not field names.
 
 ```python
 match c:
