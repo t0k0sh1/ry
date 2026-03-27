@@ -752,8 +752,9 @@ void Formatter::formatFor(const ForStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();
 
-    emit("for " + s.var_name);
-    if (s.var_name2) emit(", " + *s.var_name2);
+    emit("for " + s.var_names[0]);
+    for (size_t i = 1; i < s.var_names.size(); ++i)
+        emit(", " + s.var_names[i]);
     emit(" in " + formatExpr(*s.iterable) + ":");
     emitInlineComment(s.loc.line);
     emitNewline();

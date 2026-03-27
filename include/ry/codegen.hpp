@@ -202,6 +202,8 @@ private:
     void emitIndexedForLoop(llvm::Value *length,
                             std::vector<StmtNode> &body,
                             std::function<void(llvm::Value *iCur)> bindVars);
+    void emitTupleDestructure(const std::vector<std::string> &var_names,
+                              llvm::Value *tupleVal, llvm::StructType *structTy);
     void emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step);
     void validateParallelFor(const ForStmt &s);
 

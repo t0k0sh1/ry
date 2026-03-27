@@ -113,7 +113,7 @@ for k, v in map_expr:
 
 ### 元組解構
 
-走訪 2 元素元組的列表（例如 `enumerate()` 或 `zip()` 的回傳值）時，可以解構為兩個變數。使用 `_` 捨棄值。
+走訪元組列表時，可以將元組解構為 N 個變數（需與元組元素數量匹配）。使用 `_` 捨棄值。
 
 ```python
 xs = [10, 20, 30]
@@ -126,6 +126,14 @@ for a, b in zip([1, 2], [10, 20]):
 
 for _, x in enumerate(xs):
     print(x)              # 捨棄索引
+
+# N 元素解構（3 個以上的變數）
+triples = [(1, 2, 3), (4, 5, 6)]
+for a, b, c in triples:
+    print(a + b + c)      # 6, 15
+
+for a, _, c in triples:
+    print(a + c)          # 4, 10（捨棄中間元素）
 ```
 
 ### 範圍運算子（`..`）

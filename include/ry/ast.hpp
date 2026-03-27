@@ -248,8 +248,7 @@ struct WhileStmt {
 };
 
 struct ForStmt {
-    std::string var_name;
-    std::optional<std::string> var_name2;
+    std::vector<std::string> var_names; // 1+ variable names; "_" = wildcard
     ExprPtr iterable;
     std::vector<StmtNode> body;
     std::vector<Directive> directives;
