@@ -28,12 +28,22 @@ private:
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
     llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
+    llvm::FunctionType *fnTy_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_to_i64_;
+    llvm::FunctionType *fnTy_ptr_to_void_;
+    llvm::FunctionType *fnTy_ptr_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_ptr_to_i64_;
+    llvm::FunctionType *fnTy_ptr_i64_to_ptr_;
+    llvm::FunctionType *fnTy_ptr_ptr_ptr_to_ptr_;
+    llvm::FunctionType *fnTy_void_to_ptr_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
+    std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
+    llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     static constexpr int64_t TAG_INT   = 0;
     static constexpr int64_t TAG_FLOAT = 1;
     static constexpr int64_t TAG_BOOL  = 2;
@@ -86,9 +96,11 @@ private:
     struct EnumInfo {
         std::string name;
         std::unordered_map<std::string, int64_t> variants;
+        std::vector<std::string> variantOrder;
         llvm::GlobalVariable *nameArray;
         size_t variantCount;
         bool isADT = false;
+        bool hasExplicitValues = false;
         llvm::StructType *adtType = nullptr;   // { i64 tag, [N x i8] payload }
         size_t maxPayloadSize = 0;
         std::unordered_map<std::string, VariantFieldInfo> variantFields;

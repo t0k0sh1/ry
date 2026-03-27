@@ -149,6 +149,15 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
+    // Validate return type for comparison/logical operators
+    if (fnStmt->is_operator && !fnStmt->return_type.empty()) {
+        if (isBoolConstrainedOperator(fnStmt->name) && fnStmt->return_type != "bool") {
+            parseError(fnTok.line,
+                "operator '" + operatorSymbol(fnStmt->name) + "' must return 'bool', but returns '" +
+                fnStmt->return_type + "'");
+        }
+    }
+
     // @native fn: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
@@ -428,6 +437,25 @@ StmtNode Parser::parseEnumStatement() {
             lex_.next(); // consume ')'
         }
 
+        // Explicit value: Variant = 200
+        if (lex_.peek().kind == TokenKind::Equals) {
+            lex_.next(); // consume '='
+            if (!variant.field_types.empty())
+                parseError(variantName.line, "explicit values are not allowed on ADT enum variants with associated data");
+            bool negative = false;
+            if (lex_.peek().kind == TokenKind::Minus) {
+                negative = true;
+                lex_.next(); // consume '-'
+            }
+            Token valTok = lex_.peek();
+            if (valTok.kind != TokenKind::Number)
+                parseError(valTok.line, "expected integer literal for enum variant value");
+            lex_.next(); // consume number
+            int64_t val = std::stoll(valTok.value);
+            if (negative) val = -val;
+            variant.explicit_value = val;
+        }
+
         es.variants.push_back(std::move(variant));
         seenVariants.insert(variantName.value);
 
@@ -438,6 +466,15 @@ StmtNode Parser::parseEnumStatement() {
 
     if (es.variants.empty())
         parseError("enum definition must have at least one variant");
+
+    // Validate: explicit values must be all-or-nothing
+    bool anyExplicit = false, anyImplicit = false;
+    for (auto &v : es.variants) {
+        if (v.explicit_value.has_value()) anyExplicit = true;
+        else anyImplicit = true;
+    }
+    if (anyExplicit && anyImplicit)
+        parseError("enum variants must either all have explicit values or none");
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent

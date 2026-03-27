@@ -11,7 +11,7 @@ fn function_name(param_name: type, ...) -> return_type:
 ```
 
 - Parameter types are optional. When omitted, the parameter is treated as `any` type.
-- Return type is optional. For named functions, omitting the return type defaults to `any`. For lambdas, omitted return types are inferred from the body. Use `-> Unit` explicitly for functions that return no value.
+- Return type is optional. When omitted, the return type is **inferred from the body** (both named functions and lambdas). If the function has no `return` statement, the return type is inferred as `Unit`. Use `-> any` explicitly for functions that should accept any return type.
 - The body is an indented block.
 - Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
@@ -33,8 +33,8 @@ fn greet(name: str) -> Unit:
 | Item | Description |
 |---|---|
 | Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted |
-| Return type | Optional. Defaults to `any` when omitted |
-| `Unit` | Return type for functions that return no value. Must be specified explicitly with `-> Unit` |
+| Return type | Optional. Inferred from the body when omitted (inferred as `Unit` if no `return` statement) |
+| `Unit` | Return type for functions that return no value |
 
 > **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
 
@@ -47,6 +47,46 @@ fn get_value() -> int:     # Return type int
 
 fn identity(x) -> any:    # Parameter type any (omitted)
     return x
+```
+
+### Type Omission and `any`
+
+When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime. This is similar to Python's untyped parameters.
+
+```python
+# All parameters default to any
+fn add(a, b):
+    return a + b
+
+add(1, 2)              # 3 (int + int)
+add("hello", " world") # "hello world" (str + str)
+add(1, 2.0)            # 3.0 (int + float)
+```
+
+You can also use `any` explicitly in type annotations:
+
+```python
+fn identity(x: any) -> any:
+    return x
+```
+
+### Return Type Inference
+
+When the return type is omitted, it is inferred from the `return` statements in the body:
+
+```python
+fn double(x: int):     # return type inferred as int
+    return x * 2
+
+fn greet(name: str):   # return type inferred as Unit (no return)
+    print("Hello, " + name)
+```
+
+To explicitly allow any return type, use `-> any`:
+
+```python
+fn flexible(x: any) -> any:
+    return x    # can return int, float, str, etc.
 ```
 
 ---
@@ -110,7 +150,7 @@ process("hello")  # "any" — no exact match for str, falls back to any
 
 ## Unit Type Functions
 
-Functions without a return value return `Unit`. The return type must be explicitly specified as `-> Unit`.
+Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
 ```python
 fn log(msg: str) -> Unit:
@@ -152,7 +192,7 @@ Anonymous functions can be defined inline.
 ### Syntax
 
 ```python
-# Single expression (the expression value is returned; return type defaults to any)
+# Single expression (return type inferred from expression)
 fn(param_name: type, ...): expression
 
 # Parameter type can be omitted (defaults to any)
@@ -352,6 +392,27 @@ fn operator<op>(a: type) -> return_type:
 | Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
 | Logical (binary) | `and` `or` |
 | Unary | `-` `~` `not` |
+
+### Return Type Constraints
+
+Comparison and logical operators must return `bool`:
+
+| Category | Operators | Required Return Type |
+|---|---|---|
+| Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| Logical | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# Error: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+Arithmetic and bitwise operators have no return type constraint.
 
 ### Distinguishing Binary and Unary
 

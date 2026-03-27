@@ -69,7 +69,7 @@ llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
-    return builder_.CreateGlobalString(e.value, ".str");
+    return cachedGlobalString(e.value, ".str");
 }
 
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
@@ -794,6 +794,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements)
         vals.push_back(emitExpr(*el));
 
@@ -867,6 +868,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     // Evaluate all keys and values
     std::vector<llvm::Value*> keyVals, valVals;
+    keyVals.reserve(e->keys.size());
+    valVals.reserve(e->values.size());
     for (auto &k : e->keys) keyVals.push_back(emitExpr(*k));
     for (auto &v : e->values) valVals.push_back(emitExpr(*v));
 
@@ -970,6 +973,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     // Evaluate all elements
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements)
         vals.push_back(emitExpr(*el));
 
@@ -1169,6 +1173,54 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == anyTy_)
         return emitAnyToString(val);
 
+    // Enum value → variant name string
+    {
+        auto evIt = enum_value_types_.find(val);
+        if (evIt == enum_value_types_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                evIt = enum_value_types_.find(load->getPointerOperand());
+        }
+        if (evIt != enum_value_types_.end()) {
+            auto &einfo = enum_types_[evIt->second];
+            if (!einfo.isADT) {
+                if (einfo.hasExplicitValues) {
+                    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
+                    llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.default", fn_);
+                    auto *sw = builder_.CreateSwitch(val, defaultBB, einfo.variantCount);
+                    builder_.SetInsertPoint(mergeBB);
+                    auto *namePhi = builder_.CreatePHI(ptrTy_, einfo.variantCount + 1, "vts.enum.name");
+                    for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
+                        const auto &vname = einfo.variantOrder[i];
+                        int64_t vval = einfo.variants.at(vname);
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.enum." + vname, fn_);
+                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vval, true)), caseBB);
+                        builder_.SetInsertPoint(caseBB);
+                        llvm::Value *namePtr = builder_.CreateGEP(
+                            llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                            einfo.nameArray,
+                            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+                            "enum_name_ptr");
+                        llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+                        namePhi->addIncoming(nameStr, caseBB);
+                        builder_.CreateBr(mergeBB);
+                    }
+                    builder_.SetInsertPoint(defaultBB);
+                    llvm::Value *unknownStr = builder_.CreateGlobalString("?", ".enum_unknown");
+                    namePhi->addIncoming(unknownStr, defaultBB);
+                    builder_.CreateBr(mergeBB);
+                    builder_.SetInsertPoint(mergeBB);
+                    return namePhi;
+                }
+                llvm::Value *namePtr = builder_.CreateGEP(
+                    llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                    einfo.nameArray,
+                    {llvm::ConstantInt::get(i64Ty_, 0), val},
+                    "enum_name_ptr");
+                return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+            }
+        }
+    }
+
     if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
@@ -1191,13 +1243,13 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     auto snprintfFn = getStdlibSnprintf();
 
     if (ty == i1Ty_) {
-        llvm::Constant *trueStr = builder_.CreateGlobalString("true", ".vts_true");
-        llvm::Constant *falseStr = builder_.CreateGlobalString("false", ".vts_false");
+        llvm::Constant *trueStr = cachedGlobalString("true", ".vts_true");
+        llvm::Constant *falseStr = cachedGlobalString("false", ".vts_false");
         return builder_.CreateSelect(val, trueStr, falseStr, "vts_bool");
     }
     if (ty->isDoubleTy()) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_float_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_float_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
         return buf;
     }
@@ -1207,16 +1259,16 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i8Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "i8") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i8_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i8_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else if (llName == "u8") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u8_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u8_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else {
             // byte (default)
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_byte_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         }
@@ -1225,11 +1277,11 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i16Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u16") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u16_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u16_fmt");
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i16_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i16_fmt");
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         }
@@ -1238,17 +1290,17 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == i32Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
         if (llName == "u32") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u32_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".vts_u32_fmt");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i32_fmt");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".vts_i32_fmt");
             builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
         }
         return buf;
     }
     if (ty == f32Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_f32_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%g", ".vts_f32_fmt");
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
         return buf;
@@ -1256,10 +1308,10 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     // default: int (i64) or i64/u64
     llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
     if (llName == "u64") {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%lu", ".vts_u64_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%lu", ".vts_u64_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
     } else {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
+        llvm::Constant *fmt = cachedGlobalString("%ld", ".vts_int_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
     }
     return buf;
@@ -1294,7 +1346,7 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
     std::vector<StringPart> parts;
 
     auto addLiteral = [&](const std::string &s, const char *label) {
-        parts.push_back({builder_.CreateGlobalString(s, label),
+        parts.push_back({cachedGlobalString(s, label),
                          llvm::ConstantInt::get(i64Ty_, s.size())});
     };
 
@@ -1550,7 +1602,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
     std::vector<llvm::Value*> strParts;
     for (size_t i = 0; i < e->parts.size(); ++i) {
         if (!e->parts[i].empty())
-            strParts.push_back(builder_.CreateGlobalString(e->parts[i], ".fstr_lit"));
+            strParts.push_back(cachedGlobalString(e->parts[i], ".fstr_lit"));
         else
             strParts.push_back(nullptr); // empty literal segment
         if (i < e->exprs.size()) {
@@ -1810,7 +1862,7 @@ llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
 
     // Empty case: return ""
     builder_.SetInsertPoint(emptyBB);
-    llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
+    llvm::Value *emptyStr = cachedGlobalString("", ".empty_str");
     builder_.CreateBr(mergeBB);
 
     // Repeat case

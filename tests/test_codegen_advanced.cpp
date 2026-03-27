@@ -1087,6 +1087,67 @@ TEST_F(CodeGenTest, GenericEnumFloat) {
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
+// ===== Explicit enum values =====
+
+TEST_F(CodeGenTest, EnumExplicitValuePrint) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::Ok\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "Ok\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueComparison) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::NotFound\n"
+        "print(s == HttpStatus::NotFound)\n"
+        "print(s != HttpStatus::Ok)";
+    EXPECT_EQ(runSource(src), "true\ntrue\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueMatch) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::InternalError\n"
+        "match s:\n"
+        "    case HttpStatus::Ok:\n"
+        "        print(\"ok\")\n"
+        "    case HttpStatus::NotFound:\n"
+        "        print(\"not found\")\n"
+        "    case HttpStatus::InternalError:\n"
+        "        print(\"error\")";
+    EXPECT_EQ(runSource(src), "error\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueDuplicateError) {
+    std::string src =
+        "enum Bad:\n"
+        "    A = 1\n"
+        "    B = 1\n"
+        "x = Bad::A";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueNegative) {
+    std::string src =
+        "enum Temp:\n"
+        "    Cold = -10\n"
+        "    Hot = 40\n"
+        "t = Temp::Cold\n"
+        "print(t)";
+    EXPECT_EQ(runSource(src), "Cold\n");
+}
+
 // ===== r-string =====
 
 TEST_F(CodeGenTest, RawStringPrint) {

@@ -39,6 +39,19 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     return false;
 }
 
+// Returns true for operator names whose return type must be bool.
+inline bool isBoolConstrainedOperator(const std::string &name) {
+    return name == "operator==" || name == "operator!=" ||
+           name == "operator<"  || name == "operator<=" ||
+           name == "operator>"  || name == "operator>=" ||
+           name == "operatornot" || name == "operatorand" || name == "operatoror";
+}
+
+// Strips the "operator" prefix from an operator function name.
+inline std::string operatorSymbol(const std::string &name) {
+    return name.substr(8);
+}
+
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
@@ -166,6 +179,7 @@ struct EllipsisStmt { SourceLocation loc; };
 struct EnumVariant {
     std::string name;
     std::vector<std::string> field_types;  // empty = no associated data
+    std::optional<int64_t> explicit_value;
 };
 
 struct EnumStmt {

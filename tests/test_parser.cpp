@@ -783,6 +783,76 @@ TEST(ParserTest, OperatorFnInvalidParamCount) {
     EXPECT_THROW(parseStr(src), std::runtime_error);
 }
 
+// ===== Operator return type constraint =====
+
+TEST(ParserTest, OperatorEqMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator==(a: int, b: int) -> int:\n"
+        "    return 42\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorNeqMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator!=(a: int, b: int) -> str:\n"
+        "    return \"no\"\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorLessMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator<(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorLessEqMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator<=(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorGreaterMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator>(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorGreaterEqMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator>=(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorNotMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator not(a: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorAndMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator and(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorOrMustReturnBool) {
+    EXPECT_THROW(parseStr(
+        "fn operator or(a: int, b: int) -> int:\n"
+        "    return 0\n"), std::runtime_error);
+}
+
+TEST(ParserTest, OperatorEqReturnBoolOk) {
+    Program prog = parseStr(
+        "fn operator==(a: int, b: int) -> bool:\n"
+        "    return true\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
+TEST(ParserTest, OperatorPlusReturnsNonBoolOk) {
+    Program prog = parseStr(
+        "fn operator+(a: int, b: int) -> int:\n"
+        "    return a + b\n");
+    EXPECT_EQ(prog.size(), 1u);
+}
+
 // ===== Set パーサーテスト =====
 
 TEST(ParserTest, SetLiteral) {
@@ -1209,6 +1279,43 @@ TEST(ParserTest, PascalCaseEnumRequired) {
 
 TEST(ParserTest, PascalCaseEnumVariantRequired) {
     EXPECT_THROW(parseStr("enum Color:\n    red\n    Green"), std::runtime_error);
+}
+
+// ===== Explicit enum value parser tests =====
+
+TEST(ParserTest, EnumExplicitValues) {
+    Program prog = parseStr("enum HttpStatus:\n    Ok = 200\n    NotFound = 404\n    InternalError = 500");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EnumStmt>(prog[0]));
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.name, "HttpStatus");
+    ASSERT_EQ(es.variants.size(), 3u);
+    EXPECT_EQ(es.variants[0].name, "Ok");
+    ASSERT_TRUE(es.variants[0].explicit_value.has_value());
+    EXPECT_EQ(es.variants[0].explicit_value.value(), 200);
+    EXPECT_EQ(es.variants[1].name, "NotFound");
+    ASSERT_TRUE(es.variants[1].explicit_value.has_value());
+    EXPECT_EQ(es.variants[1].explicit_value.value(), 404);
+    EXPECT_EQ(es.variants[2].name, "InternalError");
+    ASSERT_TRUE(es.variants[2].explicit_value.has_value());
+    EXPECT_EQ(es.variants[2].explicit_value.value(), 500);
+}
+
+TEST(ParserTest, EnumExplicitNegativeValue) {
+    Program prog = parseStr("enum Temp:\n    Cold = -10\n    Hot = 40");
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    ASSERT_TRUE(es.variants[0].explicit_value.has_value());
+    EXPECT_EQ(es.variants[0].explicit_value.value(), -10);
+    ASSERT_TRUE(es.variants[1].explicit_value.has_value());
+    EXPECT_EQ(es.variants[1].explicit_value.value(), 40);
+}
+
+TEST(ParserTest, EnumExplicitValueMixedError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    A = 1\n    B\n    C = 3"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumExplicitValueOnADTError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    A(int) = 1\n    B = 2"), std::runtime_error);
 }
 
 TEST(ParserTest, PascalCaseTypeAliasRequired) {

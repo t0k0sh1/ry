@@ -10,7 +10,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
-        auto atolTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto atolTy = fnTy_ptr_to_i64_;
         auto atolFn = mod_->getOrInsertFunction("atol", atolTy);
         return builder_.CreateCall(atolFn, {s}, "to_int");
     }
@@ -601,7 +601,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (getListElementType(ptr))
             return loadListHeader(ptr, "list").len;
         // String: call __ry_utf8_len (character count)
-        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto utf8LenTy = fnTy_ptr_to_i64_;
         auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
         return builder_.CreateCall(utf8LenFn, {ptr}, "str_len");
     }
@@ -794,9 +794,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             codegenError("verify(): unknown function '" + strExpr->value + "'");
         if (vit->second.size() != 1)
             codegenError("verify(): overloaded functions are not supported");
-        llvm::FunctionType *getCountTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto *getCountTy = fnTy_ptr_to_i64_;
         llvm::FunctionCallee getCountFn = mod_->getOrInsertFunction("__ry_mock_get_call_count", getCountTy);
-        llvm::Value *nameStr = builder_.CreateGlobalString(strExpr->value, ".verify_name");
+        llvm::Value *nameStr = cachedGlobalString(strExpr->value, ".verify_name");
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 

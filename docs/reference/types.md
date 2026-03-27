@@ -73,7 +73,7 @@ a: any = 42
 | `Set<T>` | Generic set type |
 | `fn(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
-| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit` (for value-less/implicit returns). Default return type for named functions when omitted. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported |
+| `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit`. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
 | `i8` | Low-level 8-bit signed integer (no implicit conversion) |
 | `i16` | Low-level 16-bit signed integer (no implicit conversion) |
@@ -433,6 +433,136 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 - Assigning a type not included in the union causes a compile error
 - `int | str` and `str | int` are the same type (normalized)
 - When printing a union value with `print()`, the value is displayed using the appropriate type based on the runtime tag
+
+## any Type
+
+The `any` type is a built-in dynamic type that can hold any primitive value. It follows Python's approach of allowing flexible typing — when you don't need static type guarantees, `any` lets you write code that works with multiple types without explicit generics or union types.
+
+### Supported Types
+
+`any` can hold the following types:
+
+| Type | Tag | Description |
+|------|-----|-------------|
+| `int` | 0 | 64-bit signed integer |
+| `float` | 1 | 64-bit floating-point number |
+| `bool` | 2 | Boolean value |
+| `str` | 3 | String |
+| `Unit` | 4 | Unit value (for functions with no return value) |
+
+`any` **cannot** hold collection types (`List`, `Map`, `Set`), resource types (`TcpListener`, `TcpStream`, etc.), function pointers, or user-defined types (`record`, `enum`).
+
+### Internal Representation
+
+`any` is implemented as a tagged union:
+
+```
+{ i64 tag, [8 x i8] data }   // 16 bytes total
+```
+
+The `tag` field identifies the stored type, and the `data` field holds the value (up to 8 bytes).
+
+### Wrapping and Unwrapping
+
+Concrete values are automatically **wrapped** when assigned to `any`, and `any` values are automatically **unwrapped** when assigned to a concrete type.
+
+```python
+# Wrapping: concrete → any
+x: any = 42          # int is wrapped into any
+x = "hello"          # reassignment with a different type is allowed
+
+# Unwrapping: any → concrete
+fn get_value() -> any:
+    return 42
+n: int = get_value()  # any(int) is unwrapped to int
+
+# int → float auto-promotion during unwrap
+f: float = get_value()  # any(int) is unwrapped and promoted to float
+```
+
+If the runtime type does not match the target type (e.g., unwrapping `any(str)` into an `int` variable), a **runtime error** occurs.
+
+### Reassignment
+
+An `any` variable can be reassigned to a value of any supported type:
+
+```python
+x: any = 42
+x = 3.14       # OK: now holds float
+x = "hello"    # OK: now holds str
+x = true       # OK: now holds bool
+```
+
+### Arithmetic Operations
+
+When both operands are `any`, arithmetic operations dispatch at runtime based on the actual types:
+
+| Operation | Types | Result |
+|-----------|-------|--------|
+| `+` | int + int | int |
+| `+` | float + float | float |
+| `+` | int + float | float |
+| `+` | str + str | str (concatenation) |
+| `-` | numeric | int or float |
+| `*` | numeric | int or float |
+| `*` | str * int / int * str | str (repetition) |
+| `/` | numeric | float (always) |
+| `//` | int // int | int |
+| `//` | with float | float |
+| `%` | numeric | int or float |
+| `**` | numeric | float (always) |
+| unary `-` | int | int |
+| unary `-` | float | float |
+
+When one operand is `any` and the other is a concrete type, the concrete value is automatically wrapped before the operation.
+
+```python
+x: any = 10
+y: any = x + 20    # 20 is auto-wrapped; result is any(int) = 30
+```
+
+Incompatible type combinations (e.g., `str - int`) cause a **runtime error**.
+
+### Comparison Operations
+
+| Operation | Behavior |
+|-----------|----------|
+| `==`, `!=` | Works for same types; int/float mixing is allowed |
+| `<`, `<=`, `>`, `>=` | Numeric (int/float mixing allowed) and string (lexicographic) |
+
+```python
+x: any = 3
+y: any = 3.0
+print(x == y)    # true (int/float comparison)
+```
+
+Type mismatches in comparison (e.g., `int < str`) cause a **runtime error**.
+
+### String Conversion
+
+`any` values support `print()` and f-string interpolation:
+
+```python
+x: any = 42
+print(x)              # 42
+print(f"value: {x}")  # value: 42
+```
+
+Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → `"true"`/`"false"`, `str` → as-is, `Unit` → `"Unit"`.
+
+### Passing any to Typed Functions
+
+An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
+
+```python
+fn add_one(x: int) -> int:
+    return x + 1
+
+v: any = 42
+result = add_one(v)   # any(int) is unwrapped to int; result is 43
+```
+
+---
 
 ## Type Rules (Type Conversion in Operations)
 

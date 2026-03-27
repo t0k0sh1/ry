@@ -11,7 +11,7 @@ fn 関数名(引数名: 型, ...) -> 戻り値型:
 ```
 
 - 引数の型は省略可能。省略時は `any` 型として扱われる。
-- 戻り値型は省略可能（省略時は `Unit`）。
+- 戻り値型は省略可能。省略時は**ボディから推論**される（`return` 文がなければ `Unit`）。明示的に任意の戻り値型を許容するには `-> any` を指定する。
 - 本体はインデントされたブロック。
 - 明示的な戻り値型（`Unit` と `any` を除く）を持つ関数は、すべての制御フローパスで `return` 文が必要です。不足している場合はコンパイルエラーになります。
 - 関数には `require`（事前条件）と `ensure`（事後条件）を定義できます。[契約による設計](contracts.md) を参照。
@@ -33,11 +33,11 @@ fn greet(name: str):
 | 項目 | 説明 |
 |---|---|
 | 引数型 | 省略可能。`: 型` を省略すると `any` になる |
-| 戻り値型 | 省略可能。省略時は `Unit`（void相当） |
+| 戻り値型 | 省略可能。省略時はボディから推論される（`return` 文がなければ `Unit`） |
 | `Unit` | 値を返さない関数の戻り値型 |
 
 ```python
-fn no_return(x: int):      # 戻り値型 Unit（省略）
+fn no_return(x: int):      # 戻り値型 Unit（省略、return なし → Unit に推論）
     print(x)
 
 fn get_value() -> int:     # 戻り値型 int
@@ -45,6 +45,46 @@ fn get_value() -> int:     # 戻り値型 int
 
 fn identity(x) -> any:    # 引数型 any（省略）
     return x
+```
+
+### 型省略と `any`
+
+引数の型アノテーションを省略すると、その引数は `any` として扱われます。`any` は実行時に任意のプリミティブ値を受け入れる動的型です。Python の型なし引数と同様の仕組みです。
+
+```python
+# すべての引数が any
+fn add(a, b):
+    return a + b
+
+add(1, 2)              # 3（int + int）
+add("hello", " world") # "hello world"（str + str）
+add(1, 2.0)            # 3.0（int + float）
+```
+
+型アノテーションに `any` を明示的に書くこともできます:
+
+```python
+fn identity(x: any) -> any:
+    return x
+```
+
+### 戻り値型の推論
+
+戻り値型を省略すると、ボディ内の `return` 文から推論されます:
+
+```python
+fn double(x: int):     # 戻り値型は int に推論
+    return x * 2
+
+fn greet(name: str):   # 戻り値型は Unit に推論（return なし）
+    print("Hello, " + name)
+```
+
+明示的に任意の戻り値型を許容するには `-> any` を指定します:
+
+```python
+fn flexible(x: any) -> any:
+    return x    # int、float、str 等を返せる
 ```
 
 ---
@@ -290,6 +330,27 @@ fn operator<op>(a: 型) -> 戻り値型:
 | ビット（二項） | `&` `\|` `^` `<<` `>>` |
 | 論理（二項） | `and` `or` |
 | 単項 | `-` `~` `not` |
+
+### 戻り値型の制約
+
+比較演算子と論理演算子は `bool` を返す必要がある:
+
+| 種別 | 演算子 | 必須戻り値型 |
+|---|---|---|
+| 比較 | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| 論理 | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# エラー: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+算術演算子・ビット演算子には戻り値型の制約はない。
 
 ### 二項 / 単項の区別
 
