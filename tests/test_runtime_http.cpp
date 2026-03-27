@@ -866,6 +866,81 @@ TEST_F(RuntimeHttpClientTest, HttpClientHeaderCaseInsensitive) {
     ::close(srv);
 }
 
+TEST_F(RuntimeHttpClientTest, HopByHopHeadersFiltered) {
+    std::string response = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
+    int port = get_server_port(srv);
+
+    std::string captured_request;
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        captured_request = mock_http_server_capture(conn, response);
+    });
+    JoinGuard jg(server_thread);
+
+    // Build a MapHeader with hop-by-hop headers and a normal custom header
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    memset(map, 0, sizeof(MapHeader));
+    map->len = 8;
+    map->cap = 8;
+    map->keys = (char **)malloc(sizeof(char *) * 8);
+    map->vals = (char **)malloc(sizeof(char *) * 8);
+    map->keys[0] = strdup("Host");
+    map->vals[0] = strdup("evil.com");
+    map->keys[1] = strdup("Connection");
+    map->vals[1] = strdup("keep-alive");
+    map->keys[2] = strdup("Keep-Alive");
+    map->vals[2] = strdup("timeout=5");
+    map->keys[3] = strdup("Transfer-Encoding");
+    map->vals[3] = strdup("chunked");
+    map->keys[4] = strdup("TE");
+    map->vals[4] = strdup("trailers");
+    map->keys[5] = strdup("Upgrade");
+    map->vals[5] = strdup("websocket");
+    map->keys[6] = strdup("Proxy-Connection");
+    map->vals[6] = strdup("keep-alive");
+    map->keys[7] = strdup("X-Custom");
+    map->vals[7] = strdup("allowed-value");
+    map->bucket_count = 16;
+    map->buckets = calloc(16, sizeof(int64_t));
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/test";
+    void *resp = __ry_http_client_request("GET", url.c_str(), map, "");
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+    __ry_http_client_response_free(resp);
+
+    ::close(srv);
+    server_thread.join();
+
+    // Hop-by-hop headers must NOT appear in the request
+    EXPECT_EQ(captured_request.find("Host: evil.com"), std::string::npos);
+    EXPECT_EQ(captured_request.find("Connection: keep-alive"), std::string::npos);
+    EXPECT_EQ(captured_request.find("Keep-Alive:"), std::string::npos);
+    EXPECT_EQ(captured_request.find("Transfer-Encoding:"), std::string::npos);
+    EXPECT_EQ(captured_request.find("TE:"), std::string::npos);
+    EXPECT_EQ(captured_request.find("Upgrade:"), std::string::npos);
+    EXPECT_EQ(captured_request.find("Proxy-Connection:"), std::string::npos);
+
+    // The auto-generated Host header should be present (not the user-injected one)
+    EXPECT_NE(captured_request.find("Host: 127.0.0.1:"), std::string::npos);
+
+    // Normal custom header must still be present
+    EXPECT_NE(captured_request.find("X-Custom: allowed-value"), std::string::npos);
+
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+}
+
 // --- Cookie tests ---
 
 TEST(RuntimeHttp, CookieBasic) {

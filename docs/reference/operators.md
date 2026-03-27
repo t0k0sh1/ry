@@ -62,6 +62,7 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
+- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Struct Reference](structs.md#comparison--)).
 - The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.

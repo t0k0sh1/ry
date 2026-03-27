@@ -323,6 +323,8 @@ private:
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &llNameHint = "");
+    llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
+                                       llvm::Value *rhs, const StructInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                 const std::string &llNameHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

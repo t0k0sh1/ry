@@ -125,6 +125,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
             if (isUnsignedLowLevelName(ne->suffix))
                 codegenError("cannot negate unsigned type '" + ne->suffix + "'");
         }
+        if (isUnsignedLowLevel(val))
+            codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
         val = promoteToInt(val);
         return builder_.CreateNeg(val, "neg");
     }
@@ -201,6 +203,18 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         return builder_.CreateICmpNE(lhsFlag, rhsFlag, "opt_ne");
     }
 
+    // Record (struct) type comparison: field-by-field (only == and != supported)
+    if (op == "==" || op == "!=") {
+        auto *lhsST = llvm::dyn_cast<llvm::StructType>(lhs->getType());
+        auto *rhsST = llvm::dyn_cast<llvm::StructType>(rhs->getType());
+        if (lhsST && rhsST && lhsST == rhsST) {
+            std::string typeName = lhsST->getName().str();
+            auto it = struct_types_.find(typeName);
+            if (it != struct_types_.end())
+                return emitStructComparison(op, lhs, rhs, it->second);
+        }
+    }
+
     // String comparison via strcmp
     if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
         auto strcmpFn = getStdlibStrcmp();
@@ -265,6 +279,20 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     else if (op == ">")  pred = llvm::CmpInst::ICMP_SGT;
     else                 pred = llvm::CmpInst::ICMP_SGE;
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
+}
+
+llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *lhs,
+                                            llvm::Value *rhs, const StructInfo &info) {
+    llvm::Value *result = llvm::ConstantInt::getTrue(*ctx_);
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        llvm::Value *fieldL = builder_.CreateExtractValue(lhs, i, "l." + info.fields[i].name);
+        llvm::Value *fieldR = builder_.CreateExtractValue(rhs, i, "r." + info.fields[i].name);
+        llvm::Value *fieldEq = emitComparisonOp("==", fieldL, fieldR, "");
+        result = builder_.CreateAnd(result, fieldEq, "and.eq");
+    }
+    if (op == "!=")
+        return builder_.CreateNot(result, "struct_ne");
+    return result;
 }
 
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

@@ -451,6 +451,31 @@ TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange) {
     EXPECT_THROW(runSource("x = -1u32"), std::runtime_error);
 }
 
+// ===== Unsigned variable negation error (#312) =====
+
+TEST_F(CodeGenTest, UnsignedVariableNegation_u8) {
+    EXPECT_THROW(runSource("x: u8 = 5\ny = -x"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, UnsignedVariableNegation_u16) {
+    EXPECT_THROW(runSource("x: u16 = 100\ny = -x"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, UnsignedVariableNegation_u32) {
+    EXPECT_THROW(runSource("x: u32 = 42\ny = -x"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, UnsignedVariableNegation_u64) {
+    EXPECT_THROW(runSource("x: u64 = 999\ny = -x"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
+    EXPECT_THROW(runSource(
+        "fn get_u32() -> u32:\n"
+        "    return 42u32\n"
+        "y = -get_u32()"), std::runtime_error);
+}
+
 // ===== Return type inference for named functions =====
 
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
