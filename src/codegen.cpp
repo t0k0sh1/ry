@@ -248,6 +248,16 @@ bool CodeGen::isLowLevelTypeName(const std::string &name) {
            name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "f32";
 }
 
+std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {
+    if (auto *ne = std::get_if<NumberExpr>(&node.data)) {
+        if (isLowLevelTypeName(ne->suffix)) return ne->suffix;
+    }
+    if (auto *fe = std::get_if<FloatExpr>(&node.data)) {
+        if (isLowLevelTypeName(fe->suffix)) return fe->suffix;
+    }
+    return "";
+}
+
 bool CodeGen::isLowLevelIntTy(llvm::Type *ty) const {
     return ty == i16Ty_ || ty == i32Ty_;
 }

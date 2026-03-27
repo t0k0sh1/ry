@@ -48,7 +48,10 @@ llvm::Value *CodeGen::emitExprVariant(const NumberExpr &e) {
     llvm::Type *ty = resolveType(e.suffix);
     bool isSigned = !isUnsignedLowLevelName(e.suffix);
     auto *result = llvm::ConstantInt::get(ty, static_cast<uint64_t>(e.value), isSigned);
-    low_level_type_names_[result] = e.suffix;
+    // Do NOT set low_level_type_names_ on ConstantInt: LLVM's constant uniquing
+    // shares the same pointer for identical (type, value) pairs, causing metadata
+    // corruption when different suffixes map to the same constant (#311).
+    // Suffix info is propagated via AST (getExprLowLevelSuffix) instead.
     return result;
 }
 
@@ -57,7 +60,7 @@ llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
         return llvm::ConstantFP::get(f64Ty_, e.value);
     // suffix == "f32"
     auto *result = llvm::ConstantFP::get(f32Ty_, e.value);
-    low_level_type_names_[result] = "f32";
+    // Do NOT set low_level_type_names_ on ConstantFP (same reason as NumberExpr, #311).
     return result;
 }
 
@@ -182,7 +185,8 @@ llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
 
 // ===== B2: BinaryExpr sub-dispatchers =====
 
-llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                        const std::string &llNameHint) {
     // Option type comparison with none: check has_value flag only
     // Only allowed when at least one side is Option and both sides are Option
     // (none is also an Option value with has_value=false)
@@ -226,7 +230,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             else                 pred = llvm::CmpInst::FCMP_OGE;
             return builder_.CreateFCmp(pred, lhs, rhs, "fcmp_ll");
         }
-        bool isUnsigned = isUnsignedLowLevel(lhs);
+        bool isUnsigned = isUnsignedLowLevel(lhs) || isUnsignedLowLevelName(llNameHint);
         llvm::CmpInst::Predicate pred;
         if      (op == "==") pred = llvm::CmpInst::ICMP_EQ;
         else if (op == "!=") pred = llvm::CmpInst::ICMP_NE;
@@ -263,7 +267,8 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     return builder_.CreateICmp(pred, lhs, rhs, "icmp");
 }
 
-llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                     const std::string &llNameHint) {
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy() ||
         isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
@@ -273,6 +278,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
         std::string llName = getLowLevelTypeName(lhs);
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
+        if (llName.empty()) llName = llNameHint;
         auto propagate = [&](llvm::Value *result) -> llvm::Value* {
             if (!llName.empty()) low_level_type_names_[result] = llName;
             return result;
@@ -282,7 +288,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         if (op == "^")  return propagate(builder_.CreateXor(lhs, rhs,  "bxor_ll"));
         if (op == "<<") return propagate(builder_.CreateShl(lhs,  rhs, "shl_ll"));
         if (op == ">>") {
-            if (isUnsignedLowLevel(lhs))
+            if (isUnsignedLowLevel(lhs) || isUnsignedLowLevelName(llNameHint))
                 return propagate(builder_.CreateLShr(lhs, rhs, "lshr_ll"));
             return propagate(builder_.CreateAShr(lhs, rhs, "ashr_ll"));
         }
@@ -300,7 +306,8 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     codegenError("unknown bitwise operator: " + op);
 }
 
-llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                        const std::string &llNameHint) {
     // Low-level type mix check (must come first)
     checkLowLevelTypeMix(lhs, rhs, op);
 
@@ -312,6 +319,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         // Propagate low-level type metadata to result
         std::string llName = getLowLevelTypeName(lhs);
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
+        if (llName.empty()) llName = llNameHint;
         auto propagate = [&](llvm::Value *result) -> llvm::Value* {
             if (!llName.empty()) low_level_type_names_[result] = llName;
             return result;
@@ -327,7 +335,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             codegenError("unknown operator: " + op);
         }
         // Low-level integer
-        bool isUnsigned = isUnsignedLowLevel(lhs);
+        bool isUnsigned = isUnsignedLowLevel(lhs) || isUnsignedLowLevelName(llNameHint);
         if (op == "/" || op == "//") {
             if (isUnsigned) return propagate(builder_.CreateUDiv(lhs, rhs, "udiv_ll"));
             return propagate(builder_.CreateSDiv(lhs, rhs, "sdiv_ll"));
@@ -634,15 +642,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         return emitAnyBinaryOp(op, lhs, rhs);
     }
 
+    // Compute low-level type name hint from AST suffixes for constant operands (#311).
+    std::string llHint = getExprLowLevelSuffix(*e->lhs);
+    if (llHint.empty()) llHint = getExprLowLevelSuffix(*e->rhs);
+
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
-        return emitComparisonOp(op, lhs, rhs);
+        return emitComparisonOp(op, lhs, rhs, llHint);
 
     if (op == "&" || op == "|" || op == "^" ||
         op == "<<" || op == ">>" || op == ">>>")
-        return emitBitwiseOp(op, lhs, rhs);
+        return emitBitwiseOp(op, lhs, rhs, llHint);
 
-    return emitArithmeticOp(op, lhs, rhs);
+    return emitArithmeticOp(op, lhs, rhs, llHint);
 }
 
 void CodeGen::emitStmt(RecordStmt &s) {
@@ -1291,8 +1303,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         codegenError("cannot cast to byte");
     }
     // Low-level type casts — helper lambda for metadata
+    // Skip metadata for Constant values to avoid ConstantInt sharing corruption (#311).
     auto withMeta = [&](llvm::Value *result, const std::string &name) -> llvm::Value* {
-        low_level_type_names_[result] = name;
+        if (!llvm::isa<llvm::Constant>(result))
+            low_level_type_names_[result] = name;
         return result;
     };
 
