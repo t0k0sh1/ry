@@ -53,7 +53,7 @@ describe("Length and empty matchers", fn():
   )
   it("to_be_empty with empty list", fn():
     xs: List<int> = [1]
-    ys = filter(xs, fn(x: int): x > 10)
+    ys = filter(xs, fn(x: int) => x > 10)
     expect(ys).to_be_empty()
   )
   it("to_be_empty with empty string", fn():

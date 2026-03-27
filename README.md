@@ -62,7 +62,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums

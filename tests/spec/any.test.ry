@@ -34,7 +34,7 @@ describe("optional param type", fn():
     expect(mixed(10, "hello")).to_eq(10)
   )
   it("lambda without type annotation", fn():
-    f = fn(x) -> bool: true
+    f = fn(x) -> bool => true
     expect(f(42)).to_eq(true)
   )
   it("param accepts int", fn():

@@ -8,22 +8,22 @@
 
 ## Lambda Functions
 
-Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters): expression`. The return type is automatically inferred.
+Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters) => expression`. The return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-answer = fn(): 42
+answer = fn() => 42
 print(answer())  # 42
 ```
 
@@ -49,7 +49,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 offset = 10
-add_offset = fn(x: int): x + offset
+add_offset = fn(x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int): n + 1, 10))    # 11
+print(apply(fn(n: int) => n + 1, 10))    # 11
 ```
 
 ---

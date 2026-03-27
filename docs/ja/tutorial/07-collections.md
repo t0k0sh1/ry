@@ -119,11 +119,11 @@ fn first(xs: List<int>) -> int:
 xs = [1, 2, 3, 4, 5]
 
 # filter: 条件に一致する要素だけを残す
-evens = xs.filter(fn(x: int): x > 3)
+evens = xs.filter(fn(x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: 各要素を変換する
-doubled = xs.map(fn(x: int): x * 2)
+doubled = xs.map(fn(x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: 昇順ソート（デフォルト）
@@ -131,7 +131,7 @@ sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # チェーン
-result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +143,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: 最初の要素から開始
-total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: 明示的な初期値を指定
-total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +158,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int): x > 4))   # true
-print(any(xs, fn(x: int): x > 9))   # false
+print(any(xs, fn(x: int) => x > 4))   # true
+print(any(xs, fn(x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int): x > 0))   # true
-print(all(xs, fn(x: int): x > 3))   # false
+print(all(xs, fn(x: int) => x > 0))   # true
+print(all(xs, fn(x: int) => x > 3))   # false
 ```
 
 ### sum, min, max

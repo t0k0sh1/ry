@@ -1112,20 +1112,20 @@ TEST_F(CodeGenTest, TypeAliasFnType) {
     // TypeAliasFnType
     EXPECT_EQ(runSource(
         "type Callback = fn(int, int) -> int\n"
-        "add: Callback = fn(a: int, b: int): a + b\n"
+        "add: Callback = fn(a: int, b: int) => a + b\n"
         "print(add(3, 4))"), "7\n");
     // TypeAliasFnTypeParam
     EXPECT_EQ(runSource(
         "type BinOp = fn(int, int) -> int\n"
         "fn apply(f: BinOp, a: int, b: int) -> int:\n"
         "    return f(a, b)\n"
-        "res = apply(fn(x: int, y: int): x + y, 10, 20)\n"
+        "res = apply(fn(x: int, y: int) => x + y, 10, 20)\n"
         "print(res)"), "30\n");
     // TypeAliasFnTypeLambdaParam
     EXPECT_EQ(runSource(
         "type Mapper = fn(int) -> int\n"
-        "apply = fn(f: Mapper, x: int): f(x)\n"
-        "print(apply(fn(n: int): n * 3, 7))"), "21\n");
+        "apply = fn(f: Mapper, x: int) => f(x)\n"
+        "print(apply(fn(n: int) => n * 3, 7))"), "21\n");
     // TypeAliasFnTypeNamedFn
     EXPECT_EQ(runSource(
         "type BinOp = fn(int, int) -> int\n"

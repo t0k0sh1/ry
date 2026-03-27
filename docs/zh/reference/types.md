@@ -17,7 +17,7 @@
 | `List<T>` | ptr（堆積） | `[1, 2, 3]` | 動態陣列 |
 | `Map<K, V>` | ptr（堆積） | `{"a": 1}` | 雜湊映射 |
 | `Set<T>` | ptr（堆積） | `{1, 2, 3}` | 不重複的集合 |
-| `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int): x * 2` | 函式型別 |
+| `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int) => x * 2` | 函式型別 |
 | 使用者定義型別 | LLVM StructType (named) | `record Point: ...` | 以 `record` 關鍵字定義的結構體 |
 | `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 內建錯誤型別 |
@@ -42,7 +42,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int): x * 2
+fn_val: fn(int) -> int = fn(x: int) => x * 2
 u: int | str = 42
 a: any = 42
 ```
@@ -90,7 +90,7 @@ names: StringList = ["Alice", "Bob"]
 ```python
 type Callback = fn(int, int) -> int
 
-add: Callback = fn(a: int, b: int): a + b
+add: Callback = fn(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 

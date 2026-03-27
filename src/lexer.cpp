@@ -271,6 +271,9 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::EqEq, "==", line_, startCol};
         }
+        if (pos_ < src_.size() && src_[pos_] == '>') {
+            ++pos_; ++col_; return {TokenKind::FatArrow, "=>", line_, startCol};
+        }
         return {TokenKind::Equals, "=", line_, startCol};
     }
     if (c == '(') { ++pos_; ++col_; return {TokenKind::LParen, "(", line_, startCol}; }

@@ -393,7 +393,7 @@ print(xs.take(0))    # []
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 # 輸出 1, 2, 3，然後 ys = [2, 4, 6]
 ```
 
@@ -407,7 +407,7 @@ ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 ```
@@ -422,7 +422,7 @@ print(xs)   # [1, 2, 3, 4, 5]  （未修改）
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -439,7 +439,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 

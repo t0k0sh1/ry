@@ -8,22 +8,22 @@
 
 ## ラムダ関数
 
-ラムダ関数は、関数を式として記述する構文です。`fn(引数): 式` の形で書きます。戻り値型は自動推論されます。
+ラムダ関数は、関数を式として記述する構文です。`fn(引数) => 式` の形で書きます。戻り値型は自動推論されます。
 
 ### 単一式ラムダ
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
 ### 引数なしラムダ
 
 ```python
-answer = fn(): 42
+answer = fn() => 42
 print(answer())  # 42
 ```
 
@@ -49,7 +49,7 @@ print(abs(3))   # 3
 
 ```python
 offset = 10
-add_offset = fn(x: int): x + offset
+add_offset = fn(x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int): n + 1, 10))    # 11
+print(apply(fn(n: int) => n + 1, 10))    # 11
 ```
 
 ---

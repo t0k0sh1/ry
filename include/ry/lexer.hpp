@@ -42,6 +42,7 @@ enum class TokenKind {
     Fn,             // fn
     Return,         // return
     Arrow,          // ->
+    FatArrow,       // =>
     // --- import ---
     From,           // from
     Import,         // import

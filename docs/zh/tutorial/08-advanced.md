@@ -8,22 +8,22 @@
 
 ## Lambda 函式
 
-Lambda 函式是將函式以表達式形式撰寫的語法，以 `fn(參數): 表達式` 的形式書寫。回傳值型別會自動推論。
+Lambda 函式是將函式以表達式形式撰寫的語法，以 `fn(參數) => 表達式` 的形式書寫。回傳值型別會自動推論。
 
 ### 單一表達式 Lambda
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
 ### 無參數 Lambda
 
 ```python
-answer = fn(): 42
+answer = fn() => 42
 print(answer())  # 42
 ```
 
@@ -49,7 +49,7 @@ Lambda 函式可以捕獲定義時作用域中的變數。
 
 ```python
 offset = 10
-add_offset = fn(x: int): x + offset
+add_offset = fn(x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ print(add_offset(5))  # 15
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int): n + 1, 10))    # 11
+print(apply(fn(n: int) => n + 1, 10))    # 11
 ```
 
 ---

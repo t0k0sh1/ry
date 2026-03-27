@@ -17,7 +17,7 @@
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
-| `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int): x * 2` | Function type |
+| `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int) => x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
@@ -51,7 +51,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int): x * 2
+fn_val: fn(int) -> int = fn(x: int) => x * 2
 u: int | str = 42
 a: any = 42
 ```
@@ -105,7 +105,7 @@ Type aliases also work with function types, literal types, and range types:
 ```python
 type Callback = fn(int, int) -> int
 
-add: Callback = fn(a: int, b: int): a + b
+add: Callback = fn(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
