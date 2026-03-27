@@ -421,12 +421,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             scope_stack_.back()[s->params[idx].name] = alloca;
             // Track list element type for list parameters
             const std::string &ptype = s->params[idx].type;
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "List<" && ptype.back() == '>') {
+            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 list_element_types_[alloca] = resolveType(inner);
             }
             // Track set element type for set parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Set<" && ptype.back() == '>') {
+            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(4, ptype.size() - 5);
                 set_element_types_[alloca] = resolveType(inner);
             }
@@ -435,16 +435,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 enum_value_types_[alloca] = ptype;
             }
             // Track map key/value types for map parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Map<" && ptype.back() == '>') {
+            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
                 if (kTy) map_key_types_[alloca] = kTy;
                 if (vTy) map_value_types_[alloca] = vTy;
             }
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "Task<" && ptype.back() == '>') {
+            if (ptype.size() > 5 && ptype.compare(0, 5, "Task<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 task_result_types_[alloca] = resolveType(inner);
             }
-            if (ptype.size() > 8 && ptype.substr(0, 8) == "Channel<" && ptype.back() == '>') {
+            if (ptype.size() > 8 && ptype.compare(0, 8, "Channel<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(8, ptype.size() - 9);
                 channel_element_types_[alloca] = resolveType(inner);
             }
@@ -455,7 +455,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
+                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0) {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
                 auto constraint = parseTypeConstraint(resolvedPtype);
@@ -719,7 +719,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
     for (size_t i = 0; i < tmpl.variants.size(); ++i) {
         auto &v = tmpl.variants[i];
         info.variants[v.name] = static_cast<int64_t>(i);
-        llvm::Constant *str = builder_.CreateGlobalString(
+        llvm::Constant *str = cachedGlobalString(
             v.name, ".enum_" + fullName + "_" + v.name);
         nameStrings.push_back(str);
 
@@ -957,17 +957,17 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             std::string ptype = paramTypeNames[idx];
 
             // Track collection element types
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "List<" && ptype.back() == '>') {
+            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 list_element_types_[alloca] = resolveType(inner);
             }
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Set<" && ptype.back() == '>') {
+            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(4, ptype.size() - 5);
                 set_element_types_[alloca] = resolveType(inner);
             }
             if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Map<" && ptype.back() == '>') {
+            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
                 if (kTy) map_key_types_[alloca] = kTy;
                 if (vTy) map_value_types_[alloca] = vTy;
@@ -978,7 +978,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 low_level_type_names_[alloca] = ptype;
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(")
+                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0)
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 if (isUnionType(ptype))
                     union_value_types_[alloca] = normalizeUnionType(ptype);

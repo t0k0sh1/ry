@@ -57,20 +57,16 @@ static IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
 // ===== Standard input =====
 
 extern "C" const char *__ry_read_line() {
-    size_t cap = 256;
+    char *line = NULL;
     size_t len = 0;
-    char *buf = (char *)malloc(cap);
-
-    int ch;
-    while ((ch = fgetc(stdin)) != EOF && ch != '\n') {
-        if (len + 1 >= cap) {
-            cap *= 2;
-            buf = (char *)realloc(buf, cap);
-        }
-        buf[len++] = (char)ch;
+    ssize_t nread = getline(&line, &len, stdin);
+    if (nread == -1) {
+        free(line);
+        return strdup("");
     }
-    buf[len] = '\0';
-    return buf;
+    if (nread > 0 && line[nread - 1] == '\n')
+        line[nread - 1] = '\0';
+    return line;
 }
 
 extern "C" const char *__ry_read_all() {

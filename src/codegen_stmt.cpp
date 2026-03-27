@@ -964,7 +964,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
             codegenError("duplicate enum value " + std::to_string(val) + " in enum '" + s.name + "'");
         info.variants[s.variants[i].name] = val;
         info.variantOrder.push_back(s.variants[i].name);
-        llvm::Constant *str = builder_.CreateGlobalString(
+        llvm::Constant *str = cachedGlobalString(
             s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
         nameStrings.push_back(str);
 

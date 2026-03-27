@@ -77,8 +77,7 @@ std::vector<Comment> Formatter::extractComments(const std::string &source) {
 
 void Formatter::emit(const std::string &s) { out_ += s; }
 void Formatter::emitIndent() {
-    for (int i = 0; i < indent_level_ * indent_width_; ++i)
-        out_ += ' ';
+    out_.append(indent_level_ * indent_width_, ' ');
 }
 void Formatter::emitNewline() { out_ += '\n'; }
 void Formatter::indent() { ++indent_level_; }
@@ -975,6 +974,7 @@ void Formatter::formatTupleDestruct(const TupleDestructStmt &s) {
 
 std::string Formatter::format(const Program &prog) {
     out_.clear();
+    out_.reserve(source_.size());
     indent_level_ = 0;
     last_emitted_line_ = 0;
     next_comment_idx_ = 0;
