@@ -36,6 +36,8 @@ fn greet(name: str) -> Unit:
 | Return type | Optional. Defaults to `any` when omitted |
 | `Unit` | Return type for functions that return no value. Must be specified explicitly with `-> Unit` |
 
+> **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
+
 ```python
 fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
@@ -81,6 +83,27 @@ fn area(w: int, h: int) -> int:
 
 a = area(5)       # 25
 b = area(3, 4)    # 12
+```
+
+### Resolution Priority
+
+When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
+
+1. **Exact type match** — argument type matches parameter type exactly
+2. **Union type match** — argument type is a member of a union parameter type
+3. **`any` type match** — parameter type is `any` (accepts anything)
+
+The overload with the most exact matches wins. If two or more overloads have equal specificity, the compiler reports an ambiguity error.
+
+```python
+fn process(x: int) -> str:
+    return "int"
+
+fn process(x) -> str:          # x: any
+    return "any"
+
+process(42)       # "int" — exact match (int) beats any
+process("hello")  # "any" — no exact match for str, falls back to any
 ```
 
 ---

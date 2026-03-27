@@ -450,12 +450,12 @@ TEST(ParserTest, FnMissingArrowWithTypeThrows) {
 }
 
 TEST(ParserTest, FnReturnTypeOmitted) {
-    // fn f(): → return type defaults to "any"
+    // fn f(): → return type defaults to "" (inferred at codegen)
     Program prog = parseStr("fn f():\n    return");
     ASSERT_EQ(prog.size(), 1u);
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn.name, "f");
-    EXPECT_EQ(fn.return_type, "any");
+    EXPECT_EQ(fn.return_type, "");
     ASSERT_EQ(fn.body.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
     const auto &ret = std::get<ReturnStmt>(fn.body[0]);

@@ -411,3 +411,73 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     // ** on low-level types → error
     EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
 }
+
+// ===== Return type inference for named functions =====
+
+TEST_F(CodeGenTest, ReturnTypeInference_Int) {
+    // Omitted return type with return int → inferred as int
+    EXPECT_EQ(runSource(
+        "fn get_val():\n"
+        "    return 42\n"
+        "x = get_val()\n"
+        "print(x + 1)"), "43\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
+    // Omitted return type with no return → inferred as Unit
+    EXPECT_EQ(runSource(
+        "fn side_effect():\n"
+        "    print(\"hi\")\n"
+        "side_effect()"), "hi\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Float) {
+    EXPECT_EQ(runSource(
+        "fn get_pi():\n"
+        "    return 3.14\n"
+        "print(get_pi())"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Str) {
+    EXPECT_EQ(runSource(
+        "fn get_name():\n"
+        "    return \"hello\"\n"
+        "print(get_name())"), "hello\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
+    EXPECT_EQ(runSource(
+        "fn is_ok():\n"
+        "    return true\n"
+        "print(is_ok())"), "true\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
+    // Multiple return types → union type
+    EXPECT_EQ(runSource(
+        "fn mixed(flag: bool):\n"
+        "    if flag:\n"
+        "        return 42\n"
+        "    return 3.14\n"
+        "print(mixed(true))\n"
+        "print(mixed(false))"), "42\n3.14\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
+    EXPECT_EQ(runSource(
+        "fn mixed(flag: bool):\n"
+        "    if flag:\n"
+        "        return \"hello\"\n"
+        "    return 42\n"
+        "print(mixed(true))\n"
+        "print(mixed(false))"), "hello\n42\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
+    // Explicit -> any still works as before
+    EXPECT_EQ(runSource(
+        "fn get_val() -> any:\n"
+        "    return 42\n"
+        "x: any = get_val()\n"
+        "print(x)"), "42\n");
+}

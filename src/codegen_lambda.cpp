@@ -349,25 +349,65 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
 
 llvm::Type *CodeGen::inferReturnType(const std::vector<StmtNode> &body,
     const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
-    // Scan for ReturnStmt with a value
+    std::vector<llvm::Type*> types;
+    collectReturnTypes(body, paramTypeMap, types);
+    return deduceReturnType(types);
+}
+
+void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    std::vector<llvm::Type*> &out) {
     for (auto &stmt : body) {
-        auto result = std::visit([&](const auto &s) -> llvm::Type* {
+        std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value)
-                    return inferExprType(*s.value, paramTypeMap);
+                    out.push_back(inferExprType(*s.value, paramTypeMap));
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches) {
-                    auto *ty = inferReturnType(br.body, paramTypeMap);
-                    if (ty) return ty;
-                }
-                auto *ty = inferReturnType(s->else_body, paramTypeMap);
-                if (ty) return ty;
+                for (auto &br : s->branches)
+                    collectReturnTypes(br.body, paramTypeMap, out);
+                collectReturnTypes(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypes(arm.body, paramTypeMap, out);
             }
-            return static_cast<llvm::Type*>(nullptr);
         }, stmt);
-        if (result) return result;
     }
-    // No return found → void
-    return llvm::Type::getVoidTy(*ctx_);
+}
+
+llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
+    if (types.empty())
+        return llvm::Type::getVoidTy(*ctx_);
+
+    // Deduplicate types
+    std::vector<llvm::Type*> unique;
+    for (auto *ty : types) {
+        if (std::find(unique.begin(), unique.end(), ty) == unique.end())
+            unique.push_back(ty);
+    }
+
+    if (unique.size() == 1)
+        return unique[0];
+
+    // Build union type name from component types
+    std::string unionName;
+    for (size_t i = 0; i < unique.size(); ++i) {
+        if (i > 0) unionName += " | ";
+        unionName += reverseResolveTypeName(unique[i]);
+    }
+    return resolveType(unionName);
+}
+
+std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
+    if (ty == i64Ty_) return "int";
+    if (ty == f64Ty_) return "float";
+    if (ty == i1Ty_)  return "bool";
+    if (ty == i8Ty_)  return "byte";
+    if (ty == i16Ty_) return "i16";
+    if (ty == i32Ty_) return "i32";
+    if (ty == f32Ty_) return "f32";
+    if (ty == ptrTy_) return "str";
+    if (isAnyType(ty)) return "any";
+    if (ty->isVoidTy()) return "Unit";
+    return "any"; // fallback
 }

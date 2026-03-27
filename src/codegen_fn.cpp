@@ -310,7 +310,35 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type));
-    llvm::Type *bodyRetTy = resolveType(s->return_type);
+
+    llvm::Type *bodyRetTy;
+    if (s->return_type.empty()) {
+        // Infer return type from body
+        std::unordered_map<std::string, llvm::Type*> paramTypeMap;
+        for (auto &p : s->params)
+            paramTypeMap[p.name] = resolveType(p.type);
+        std::vector<llvm::Type*> retTypes;
+        collectReturnTypes(s->body, paramTypeMap, retTypes);
+        bodyRetTy = deduceReturnType(retTypes);
+        // Build return type name string
+        // Deduplicate for name construction
+        std::vector<llvm::Type*> unique;
+        for (auto *ty : retTypes)
+            if (std::find(unique.begin(), unique.end(), ty) == unique.end())
+                unique.push_back(ty);
+        if (unique.size() <= 1) {
+            s->return_type = reverseResolveTypeName(bodyRetTy);
+        } else {
+            std::string unionName;
+            for (size_t i = 0; i < unique.size(); ++i) {
+                if (i > 0) unionName += " | ";
+                unionName += reverseResolveTypeName(unique[i]);
+            }
+            s->return_type = unionName;
+        }
+    } else {
+        bodyRetTy = resolveType(s->return_type);
+    }
 
     // Check that non-Unit, non-any functions return on all paths
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
