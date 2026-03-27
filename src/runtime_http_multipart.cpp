@@ -56,12 +56,22 @@ static void free_header_pairs(std::vector<HeaderPair> &headers) {
 static void parse_multipart_form_data(HttpRequestHandle *req) {
     if (req->form_parsed) return;
     req->form_parsed = true;
+    req->form_field_count = 0;
+    req->form_field_keys = nullptr;
+    req->form_field_values = nullptr;
+    req->form_file_count = 0;
+    req->form_file_keys = nullptr;
+    req->form_file_filenames = nullptr;
+    req->form_file_types = nullptr;
+    req->form_file_data = nullptr;
 
     if (!req->body || !req->body[0]) return;
 
     const char *content_type = find_request_header(req, "Content-Type");
     if (!content_type) return;
     if (strncasecmp(content_type, "multipart/form-data", 19) != 0) return;
+    char next = content_type[19];
+    if (next != '\0' && next != ';' && next != ' ' && next != '\t') return;
 
     std::string boundary = extract_param(content_type, "boundary");
     if (boundary.empty()) return;
