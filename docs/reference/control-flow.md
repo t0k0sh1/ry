@@ -113,7 +113,7 @@ for k, v in map_expr:
 
 ### Tuple Destructuring
 
-When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
+When iterating over a list of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
 
 ```python
 xs = [10, 20, 30]
@@ -126,6 +126,14 @@ for a, b in zip([1, 2], [10, 20]):
 
 for _, x in enumerate(xs):
     print(x)              # index discarded
+
+# N-element destructuring (3+ variables)
+triples = [(1, 2, 3), (4, 5, 6)]
+for a, b, c in triples:
+    print(a + b + c)      # 6, 15
+
+for a, _, c in triples:
+    print(a + c)          # 4, 10 (middle element discarded)
 ```
 
 ### Range Operator (`..`)
@@ -173,89 +181,28 @@ for i in 1 .. 3:
 
 ---
 
-## spawn / await
+## async / await
 
-`spawn` starts a user-defined function or lambda call on the runtime worker pool and returns `Task<T>`. `await` and `join(task)` both wait for a task to complete.
-
-```python
-fn square(x: int) -> int:
-    return x * x
-
-t: Task<int> = spawn square(12)
-print(await t)          # 144
-u: Task<int> = spawn square(3)
-print(join(u))          # 9, function-form equivalent of await
-```
-
-### Constraints
-
-- `spawn` only accepts a function-call expression.
-- The callee must be a user-defined function or lambda.
-- `spawn` does not support `Unit`-returning calls in v1.
-- Spawned work runs as lightweight runtime jobs rather than one OS thread per task.
-- `await` requires a `Task<T>` value.
-- `await expr` can be used as either an expression or a statement.
-
-## channels
-
-`Channel<T>` is the built-in blocking communication primitive for passing values between tasks.
+`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` or `join(task)` to wait for the result.
 
 ```python
-fn worker(ch: Channel<int>) -> int:
-    send(ch, 42)
-    close(ch)
-    return 0
+async fn add(a: int, b: int) -> int:
+    return a + b
 
-ch: Channel<int> = channel[int]()
-t: Task<int> = spawn worker(ch)
-for x in ch:
-    print(x)
-print(join(t))
+t: Task<int> = add(20, 22)
+print(await t)          # 42
+print(join(add(1, 2)))  # 3
 ```
 
 ### Rules
 
-- `channel[T]()` creates an unbuffered channel.
-- `channel[T](n)` creates a buffered channel with capacity `n`.
-- `send(ch, value)` blocks until the value is accepted.
-- `try_send(ch, value)` attempts an immediate send and returns `bool`.
-- `recv(ch)` blocks until a value is available and remains the strict receive API.
-- `recv_opt(ch)` blocks until a value is available or the channel is closed and drained.
-- `try_recv(ch)` attempts an immediate receive and returns `Option<T>` or `bool` for `Channel<Unit>`.
-- `for x in ch:` iterates values until the channel is closed and drained.
-- `close(ch)` closes the channel.
-- In v1, `send` on a closed channel and `recv` on an empty closed channel raise a runtime error.
-- `recv_opt(ch: Channel<T>) -> Option<T>` returns `Some(v)` for received values and `None` once the channel is closed and drained.
-- `recv_opt(ch: Channel<Unit>) -> bool` returns `true` for a received `Unit` value and `false` once the channel is closed and drained.
-- `try_recv(ch: Channel<T>) -> Option<T>` returns `Some(v)` if a value is immediately available and `None` otherwise, including closed-and-drained channels.
-- `try_recv(ch: Channel<Unit>) -> bool` returns `true` if a `Unit` value is immediately available and `false` otherwise.
-- `for _ in ch:` can be used to consume `Channel<Unit>`.
-
-## select
-
-`select` waits on multiple channel operations and executes exactly one ready branch.
-
-```python
-select:
-    case let x = recv(inbox):
-        print(x)
-    case send(outbox, 42):
-        print("sent")
-    else:
-        print("idle")
-```
-
-### Rules
-
-- `select` is a statement, not an expression.
-- Cases must be `case let name = recv(ch):`, `case let name = recv_opt(ch):`, or `case send(ch, value):`.
-- Use `let _ = recv(ch)` to discard a received value.
-- `recv_opt` cases bind `Option<T>` or `bool` for `Channel<Unit>`.
-- `else:` is optional, and if present it must be the last branch.
-- `timeout n:` is an optional last branch that waits up to `n` milliseconds for the whole `select`.
-- `else` and `timeout` cannot be used together.
-- Without `else`, `select` blocks until one case becomes ready.
-- In v1, closed-channel errors are preserved inside `select`: `send` on a closed channel and `recv` on an empty closed channel still raise runtime errors.
+- `async fn name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async fn` immediately returns `Task<T>`.
+- `await expr` requires `expr` to be `Task<T>` and produces `T`.
+- `await` is allowed anywhere an expression is allowed, and `await expr` is also allowed as a statement.
+- `async fn ... -> Unit` is supported; `await task` is the primary way to wait when no value is produced.
+- Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
+- `async` lambdas and `async @native fn` are not supported in v1.
 
 ---
 
@@ -278,43 +225,6 @@ for i in range(8):
 - Indexed assignment and field assignment inside the loop body are rejected in v1.
 
 Use `available_parallelism()` to inspect the runtime worker count.
-
----
-
-## Task Cancellation
-
-`cancel(task)` requests cooperative cancellation of a spawned task. The task is interrupted at the next cancellation point (channel operations, `sleep`, `select`).
-
-```python
-async fn long_work() -> int:
-    sleep(60000)
-    return 42
-
-t: Task<int> = long_work()
-cancel(t)
-result = join(t)   # returns zero value (0 for int)
-```
-
-Use `is_cancelled()` inside a task to poll for cancellation in CPU-bound loops.
-
----
-
-## Structured Concurrency (task_group)
-
-`task_group` creates a scope that guarantees all spawned tasks complete before execution continues. Tasks spawned inside a `task_group` lambda are auto-joined at scope exit.
-
-```python
-fn compute(x: int) -> int:
-    return x * 10
-
-task_group(fn():
-    t1 = spawn compute(3)
-    t2 = spawn compute(4)
-)
-# both tasks guaranteed complete here
-```
-
-If a child task throws an error, remaining children are cancelled and the error propagates to the parent.
 
 ---
 

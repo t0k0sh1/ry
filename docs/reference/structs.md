@@ -252,6 +252,22 @@ Rules:
 - Duplicate values are a compile error.
 - `print()` displays the variant name, not the integer value.
 
+### Named Fields in ADT Variants
+
+ADT variant fields can optionally include names for documentation purposes. Named fields make definitions self-describing without changing construction or pattern matching semantics.
+
+```python
+enum Shape:
+    Circle(radius: float)
+    Rect(width: float, height: float)
+    Point
+```
+
+- Construction is always positional: `Shape::Circle(3.14)`, not `Shape::Circle(radius: 3.14)`.
+- Pattern matching binds user-chosen variable names: `case Shape::Circle(r):`.
+- Field names must be `snake_case`. Mixing named and unnamed fields within a single variant is not allowed.
+- Unnamed syntax (`Circle(float)`) remains valid.
+
 ### Constraints and Errors
 
 | Constraint | Details |
@@ -259,3 +275,4 @@ Rules:
 | Variant access requires `EnumName::VariantName` | The `::` operator is required |
 | Variant values | Auto-assigned (0, 1, 2, ...) by default, or explicitly specified with `= value` |
 | Comparison uses integer comparison | `==`, `!=` can be used |
+| Named field names | Must be `snake_case`; no duplicates within a variant; no mixing named/unnamed |

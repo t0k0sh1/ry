@@ -156,6 +156,38 @@ describe("ADT enum", fn():
   )
 )
 
+enum NamedShape:
+  Circle(radius: float)
+  Rect(width: float, height: float)
+  Point
+
+describe("ADT enum with named fields", fn():
+  it("construction is positional", fn():
+    s = NamedShape::Circle(3.14)
+    res = 0.0
+    match s:
+      case NamedShape::Circle(r):
+        res = r
+      case NamedShape::Rect(w, h):
+        res = w * h
+      case NamedShape::Point:
+        res = 0.0
+    expect(res).to_eq(3.14)
+  )
+  it("multi-field named variant", fn():
+    s = NamedShape::Rect(4.0, 5.0)
+    res = 0.0
+    match s:
+      case NamedShape::Circle(r):
+        res = r
+      case NamedShape::Rect(w, h):
+        res = w * h
+      case NamedShape::Point:
+        res = 0.0
+    expect(res).to_eq(20.0)
+  )
+)
+
 enum HttpStatus:
   Ok = 200
   NotFound = 404

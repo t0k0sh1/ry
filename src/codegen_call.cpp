@@ -291,31 +291,6 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 // ===== Builtin Core =====
 
 llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
-    if (e.callee.size() > 8 && e.callee.substr(0, 8) == "channel<" && e.callee.back() == '>') {
-        if (e.args.size() > 1)
-            codegenError("channel[T]() takes 0 or 1 arguments");
-
-        std::string inner = e.callee.substr(8, e.callee.size() - 9);
-        llvm::Type *elemTy = resolveType(inner);
-        llvm::Value *capacity = llvm::ConstantInt::get(i64Ty_, 0);
-        if (e.args.size() == 1) {
-            capacity = emitExpr(*e.args[0]);
-            if (capacity->getType() != i64Ty_)
-                codegenError("channel[T](capacity) requires int capacity");
-        }
-
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        int64_t elemSize = elemTy->isVoidTy() ? 0 : static_cast<int64_t>(dl.getTypeAllocSize(elemTy));
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(ptrTy_, {i64Ty_, i64Ty_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_new", fnTy);
-        llvm::Value *result = builder_.CreateCall(
-            fn,
-            {llvm::ConstantInt::get(i64Ty_, elemSize), capacity},
-            "channel");
-        channel_element_types_[result] = elemTy;
-        return result;
-    }
-
     // exit(code) as expression — emit exit, then create dead block for subsequent IR
     if (e.callee == "exit") {
         emitExit(e.args);
@@ -439,313 +414,47 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         }
     }
 
-    if (e.callee == "join" && e.args.size() == 1) {
-        llvm::Value *taskVal = emitExpr(*e.args[0]);
-        llvm::Type *resultTy = getTaskResultType(taskVal);
-        if (!resultTy)
-            codegenError("join() requires Task<T>");
-
-        llvm::FunctionType *joinTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee joinFn = mod_->getOrInsertFunction("__ry_task_join", joinTy);
-        if (resultTy->isVoidTy())
-            return builder_.CreateCall(joinFn, {taskVal, llvm::ConstantPointerNull::get(
-                llvm::cast<llvm::PointerType>(ptrTy_))});
-        llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, "join_result");
-        builder_.CreateCall(joinFn, {taskVal, resultSlot});
-        return builder_.CreateLoad(resultTy, resultSlot, "joined");
-    }
-
-    if (e.callee == "spawn_in") {
-        if (e.args.size() != 2)
-            codegenError("spawn_in() requires exactly 2 arguments: spawn_in(group, fn(args...))");
-
-        llvm::Value *groupVal = emitExpr(*e.args[0]);
-
-        auto *innerCallPtr = std::get_if<std::unique_ptr<CallExpr>>(&e.args[1]->data);
-        if (!innerCallPtr)
-            codegenError("spawn_in() second argument must be a function call, e.g. spawn_in(g, compute(1))");
-
-        task_group_stack_.push_back(groupVal);
-        const CallExpr &innerCall = **innerCallPtr;
-
-        llvm::Function *directFunc = nullptr;
-        llvm::Value *calleeVal = nullptr;
-        FnTypeInfo calleeInfo;
-        std::vector<llvm::Value*> argVals;
-
-        auto namedIt = functions_.find(innerCall.callee);
-        if (namedIt != functions_.end()) {
-            directFunc = resolveOverload(innerCall.callee, innerCall.args, argVals);
-        } else if (llvm::AllocaInst *varPtr = findVar(innerCall.callee)) {
-            auto fnIt = fn_type_info_.find(varPtr);
-            if (fnIt == fn_type_info_.end())
-                codegenError("spawn_in requires a function or lambda call");
-            calleeInfo = fnIt->second;
-            for (auto &arg : innerCall.args)
-                argVals.push_back(emitExpr(*arg));
-            calleeVal = builder_.CreateLoad(ptrTy_, varPtr, innerCall.callee + ".spawn_fn");
-        } else {
-            codegenError("spawn_in requires a user-defined function or lambda call");
-        }
-
-        llvm::Type *resultTy = directFunc ? directFunc->getReturnType() : calleeInfo.returnType;
-        if (resultTy->isVoidTy())
-            codegenError("spawn_in does not support Unit-returning calls");
-
-        std::vector<llvm::Type*> envFields;
-        if (!directFunc) envFields.push_back(ptrTy_);
-        for (auto *argVal : argVals) envFields.push_back(argVal->getType());
-        if (envFields.empty()) envFields.push_back(i8Ty_);
-        llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
-
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        llvm::Value *envPtr = builder_.CreateCall(
-            mallocFn,
-            {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
-            "spawni_env");
-
-        unsigned fieldIndex = 0;
-        if (directFunc && argVals.empty()) {
-            llvm::Value *df = builder_.CreateStructGEP(envTy, envPtr, 0, "spawni_env_dummy");
-            builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), df);
-        } else if (!directFunc) {
-            llvm::Value *cf = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawni_env_fn");
-            builder_.CreateStore(calleeVal, cf);
-        }
-        for (size_t i = 0; i < argVals.size(); ++i) {
-            llvm::Value *af = builder_.CreateStructGEP(envTy, envPtr, fieldIndex++, "spawni_env_arg." + std::to_string(i));
-            builder_.CreateStore(argVals[i], af);
-        }
-
-        llvm::FunctionType *thunkTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::Function *thunk = llvm::Function::Create(
-            thunkTy, llvm::Function::InternalLinkage,
-            "__ry_spawn_in." + std::to_string(lambda_counter_++), *mod_);
-        {
-            FnScope guard(*this);
-            fn_ = thunk;
-            pushScope();
-            llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-            builder_.SetInsertPoint(entry);
-            auto argIt = thunk->arg_begin();
-            llvm::Value *envRaw = &*argIt++; envRaw->setName("env_raw");
-            llvm::Value *outRaw = &*argIt; outRaw->setName("out_raw");
-
-            std::vector<llvm::Value*> thunkArgs;
-            fieldIndex = 0;
-            llvm::Value *thunkCallee = nullptr;
-            if (!directFunc) {
-                llvm::Value *cf = builder_.CreateStructGEP(envTy, envRaw, fieldIndex++, "spawni_fn_field");
-                thunkCallee = builder_.CreateLoad(ptrTy_, cf, "spawni_fn");
-            }
-            for (size_t i = 0; i < argVals.size(); ++i) {
-                llvm::Type *argTy = argVals[i]->getType();
-                llvm::Value *af = builder_.CreateStructGEP(envTy, envRaw, fieldIndex++, "spawni_arg." + std::to_string(i));
-                thunkArgs.push_back(builder_.CreateLoad(argTy, af, "spawni_arg_val." + std::to_string(i)));
-            }
-
-            llvm::Value *result = directFunc
-                ? builder_.CreateCall(directFunc, thunkArgs, "spawni_call")
-                : emitLambdaCall(thunkCallee, calleeInfo, thunkArgs, "spawni_call");
-            builder_.CreateStore(result, outRaw);
-            builder_.CreateRetVoid();
-        }
-
-        llvm::FunctionType *groupSpawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee groupSpawnFn = mod_->getOrInsertFunction("__ry_task_group_spawn", groupSpawnTy);
-        llvm::Value *task = builder_.CreateCall(
-            groupSpawnFn,
-            {groupVal, builder_.CreateBitCast(thunk, ptrTy_), envPtr,
-             llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(resultTy))},
-            "task");
-        task_result_types_[task] = resultTy;
-        task_group_stack_.pop_back();
-        return task;
-    }
-
-    if (e.callee == "cancel") {
-        requireArgs(e, 1);
-        llvm::Value *taskVal = emitExpr(*e.args[0]);
-        llvm::FunctionType *cancelTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        llvm::FunctionCallee cancelFn = mod_->getOrInsertFunction("__ry_task_cancel", cancelTy);
-        return builder_.CreateCall(cancelFn, {taskVal});
-    }
-
-    if (e.callee == "is_cancelled") {
-        if (!e.args.empty())
-            codegenError("is_cancelled() takes no arguments");
-        llvm::FunctionType *isCancelledTy = llvm::FunctionType::get(i1Ty_, {}, false);
-        llvm::FunctionCallee isCancelledFn = mod_->getOrInsertFunction("__ry_current_task_is_cancelled", isCancelledTy);
-        return builder_.CreateCall(isCancelledFn, {}, "is_cancelled");
-    }
-
     if (e.callee == "send") {
         requireArgs(e, 2);
         llvm::Value *firstArg = emitExpr(*e.args[0]);
-        if (isTcpStream(firstArg) || isTlsStream(firstArg)) {
-            llvm::Value *data = emitExpr(*e.args[1]);
-            if (!getListElementType(data) || getListElementType(data) != i8Ty_)
-                codegenError("send() with TcpStream/TlsStream requires List<byte> as second argument");
-            auto fnTy = fnTy_ptr_ptr_to_i64_;
-            std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
-            auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
-            llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
-            // Wrap in Result<int, Error>
-            llvm::Value *isErr = builder_.CreateICmpSLT(sent,
-                llvm::ConstantInt::get(i64Ty_, 0), "send_err");
-            llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
-            llvm::Value *okVal = buildOkValue(sent, resTy);
-            llvm::Value *errVal = buildErrValue(buildStaticError("send failed", ".send_err_msg"), resTy);
-            return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
-        }
-        llvm::Value *channelVal = firstArg;
-        llvm::Type *elemTy = getChannelElementType(channelVal);
-        if (!elemTy)
-            codegenError("send() requires Channel<T> or TcpStream as first argument");
-        llvm::Value *valueVal = emitExpr(*e.args[1]);
-        if (valueVal->getType() != elemTy)
-            codegenError("send() value type does not match channel element type");
-
-        llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        if (!elemTy->isVoidTy()) {
-            llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "send_value");
-            builder_.CreateStore(valueVal, valueSlot);
-            valuePtr = valueSlot;
-        }
-
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_send", fnTy);
-        return builder_.CreateCall(fn, {channelVal, valuePtr});
-    }
-
-    if (e.callee == "try_send") {
-        requireArgs(e, 2);
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getChannelElementType(channelVal);
-        if (!elemTy)
-            codegenError("try_send() requires Channel<T> as first argument");
-        llvm::Value *valueVal = emitExpr(*e.args[1]);
-        if (valueVal->getType() != elemTy)
-            codegenError("try_send() value type does not match channel element type");
-
-        llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        if (!elemTy->isVoidTy()) {
-            llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "try_send_value");
-            builder_.CreateStore(valueVal, valueSlot);
-            valuePtr = valueSlot;
-        }
-
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_try_send", fnTy);
-        return builder_.CreateCall(fn, {channelVal, valuePtr}, "try_send_ok");
+        if (!isTcpStream(firstArg) && !isTlsStream(firstArg))
+            codegenError("send() requires TcpStream or TlsStream as first argument");
+        llvm::Value *data = emitExpr(*e.args[1]);
+        if (!getListElementType(data) || getListElementType(data) != i8Ty_)
+            codegenError("send() with TcpStream/TlsStream requires List<byte> as second argument");
+        auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+        std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
+        auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
+        llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
+        // Wrap in Result<int, Error>
+        llvm::Value *isErr = builder_.CreateICmpSLT(sent,
+            llvm::ConstantInt::get(i64Ty_, 0), "send_err");
+        llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
+        llvm::Value *okVal = buildOkValue(sent, resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError("send failed", ".send_err_msg"), resTy);
+        return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
     }
 
     if (e.callee == "recv") {
-        if (e.args.size() == 2) {
-            // TCP/TLS recv(stream, max_bytes) -> Result<List<byte>, Error>
-            llvm::Value *streamVal = emitExpr(*e.args[0]);
-            if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
-                codegenError("recv() with 2 arguments requires TcpStream or TlsStream as first argument");
-            llvm::Value *maxBytes = emitExpr(*e.args[1]);
-            auto fnTy = fnTy_ptr_i64_to_ptr_;
-            std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
-            auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
-            llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
-            // Wrap in Result<List<byte>, Error>: nullptr = Err, non-null = Ok
-            llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
-            llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
-            llvm::Value *okVal = buildOkValue(ptr, resTy);
-            llvm::Value *errVal = buildErrValue(buildStaticError("recv failed", ".recv_err_msg"), resTy);
-            llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
-            list_element_types_[result] = i8Ty_;
-            return result;
-        }
-        if (e.args.size() != 1)
-            codegenError("recv() takes 1 or 2 arguments");
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getChannelElementType(channelVal);
-        if (!elemTy)
-            codegenError("recv() requires Channel<T> argument");
-
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_recv", fnTy);
-        if (elemTy->isVoidTy()) {
-            return builder_.CreateCall(fn, {
-                channelVal,
-                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_))
-            });
-        }
-
-        llvm::AllocaInst *resultSlot = builder_.CreateAlloca(elemTy, nullptr, "recv_result");
-        builder_.CreateCall(fn, {channelVal, resultSlot});
-        return builder_.CreateLoad(elemTy, resultSlot, "received");
-    }
-
-    if (e.callee == "recv_opt") {
-        requireArgs(e, 1);
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getChannelElementType(channelVal);
-        if (!elemTy)
-            codegenError("recv_opt() requires Channel<T> argument");
-
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_recv_opt", fnTy);
-        llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        llvm::AllocaInst *resultSlot = nullptr;
-        if (!elemTy->isVoidTy()) {
-            resultSlot = builder_.CreateAlloca(elemTy, nullptr, "recv_opt_result");
-            builder_.CreateStore(llvm::Constant::getNullValue(elemTy), resultSlot);
-            outPtr = resultSlot;
-        }
-
-        llvm::Value *hasValue = builder_.CreateCall(fn, {channelVal, outPtr}, "recv_opt_has_value");
-        if (elemTy->isVoidTy())
-            return hasValue;
-
-        llvm::StructType *optTy = getOptionType(elemTy);
-        llvm::Value *inner = builder_.CreateLoad(elemTy, resultSlot, "recv_opt_loaded");
-        llvm::Value *optInner = builder_.CreateSelect(hasValue, inner, llvm::UndefValue::get(elemTy), "recv_opt_inner");
-        llvm::Value *opt = llvm::UndefValue::get(optTy);
-        opt = builder_.CreateInsertValue(opt, hasValue, 0, "recv_opt_has");
-        opt = builder_.CreateInsertValue(opt, optInner, 1, "recv_opt_value");
-        return opt;
-    }
-
-    if (e.callee == "try_recv") {
-        requireArgs(e, 1);
-        llvm::Value *channelVal = emitExpr(*e.args[0]);
-        llvm::Type *elemTy = getChannelElementType(channelVal);
-        if (!elemTy)
-            codegenError("try_recv() requires Channel<T> argument");
-
-        llvm::FunctionType *fnTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
-        llvm::FunctionCallee fn = mod_->getOrInsertFunction("__ry_channel_try_recv", fnTy);
-        llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-        llvm::AllocaInst *resultSlot = nullptr;
-        if (!elemTy->isVoidTy()) {
-            resultSlot = builder_.CreateAlloca(elemTy, nullptr, "try_recv_result");
-            builder_.CreateStore(llvm::Constant::getNullValue(elemTy), resultSlot);
-            outPtr = resultSlot;
-        }
-
-        llvm::Value *hasValue = builder_.CreateCall(fn, {channelVal, outPtr}, "try_recv_has_value");
-        if (elemTy->isVoidTy())
-            return hasValue;
-
-        llvm::StructType *optTy = getOptionType(elemTy);
-        llvm::Value *inner = builder_.CreateLoad(elemTy, resultSlot, "try_recv_loaded");
-        llvm::Value *optInner = builder_.CreateSelect(hasValue, inner, llvm::UndefValue::get(elemTy), "try_recv_inner");
-        llvm::Value *opt = llvm::UndefValue::get(optTy);
-        opt = builder_.CreateInsertValue(opt, hasValue, 0, "try_recv_has");
-        opt = builder_.CreateInsertValue(opt, optInner, 1, "try_recv_value");
-        return opt;
+        requireArgs(e, 2);
+        // TCP/TLS recv(stream, max_bytes) -> Result<List<byte>, Error>
+        llvm::Value *streamVal = emitExpr(*e.args[0]);
+        if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
+            codegenError("recv() requires TcpStream or TlsStream as first argument");
+        llvm::Value *maxBytes = emitExpr(*e.args[1]);
+        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+        std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
+        auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
+        llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+        // Wrap in Result<List<byte>, Error>: nullptr = Err, non-null = Ok
+        llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
+        llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+        llvm::Value *okVal = buildOkValue(ptr, resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError("recv failed", ".recv_err_msg"), resTy);
+        llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
+        list_element_types_[result] = i8Ty_;
+        return result;
     }
 
     if (e.callee == "close") {
@@ -765,10 +474,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             auto fn = mod_->getOrInsertFunction("__ry_tls_close", voidPtrFnTy);
             return builder_.CreateCall(fn, {val});
         }
-        if (!getChannelElementType(val))
-            codegenError("close() requires Channel<T>, TcpStream, TlsStream, or TcpListener argument");
-        auto fn = mod_->getOrInsertFunction("__ry_channel_close", voidPtrFnTy);
-        return builder_.CreateCall(fn, {val});
+        codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
     }
 
     // range(n), range(start, end), or range(start, end, step) → List<int>

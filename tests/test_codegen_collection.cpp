@@ -1962,3 +1962,37 @@ TEST_F(CodeGenTest, ForTwoVarNonTupleError) {
         "    print(a)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+TEST_F(CodeGenTest, ForThreeVarTupleDestructuring) {
+    std::string src =
+        "pairs = [(1, 2, 3), (4, 5, 6)]\n"
+        "sum_a = 0\n"
+        "sum_b = 0\n"
+        "sum_c = 0\n"
+        "for a, b, c in pairs:\n"
+        "    sum_a = sum_a + a\n"
+        "    sum_b = sum_b + b\n"
+        "    sum_c = sum_c + c\n"
+        "print(sum_a)\n"
+        "print(sum_b)\n"
+        "print(sum_c)";
+    EXPECT_EQ(runSource(src), "5\n7\n9\n");
+}
+
+TEST_F(CodeGenTest, ForThreeVarWildcardMiddle) {
+    std::string src =
+        "pairs = [(1, 2, 3), (4, 5, 6)]\n"
+        "sum = 0\n"
+        "for a, _, c in pairs:\n"
+        "    sum = sum + a + c\n"
+        "print(sum)";
+    EXPECT_EQ(runSource(src), "14\n");
+}
+
+TEST_F(CodeGenTest, ForThreeVarCountMismatch) {
+    std::string src =
+        "pairs = [(1, 2), (3, 4)]\n"
+        "for a, b, c in pairs:\n"
+        "    print(a)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}

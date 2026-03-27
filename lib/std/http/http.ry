@@ -6,7 +6,7 @@ fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -
 fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
 
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_channel: Channel<int>) -> Unit
+fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit
 
 @native
 fn http_method(req: HttpRequest) -> str

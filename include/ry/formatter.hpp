@@ -59,7 +59,6 @@ private:
     void formatFor(const ForStmt &s);
     void formatFn(const FnStmt &s);
     void formatMatch(const MatchStmt &s);
-    void formatSelect(const SelectStmt &s);
     void formatIndexAssign(const IndexAssignStmt &s);
     void formatFieldAssign(const FieldAssignStmt &s);
     void formatBreak(const BreakStmt &s);

@@ -166,14 +166,6 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) {
-                for (auto &selectCase : s->cases) {
-                    std::visit([&](const auto &c) {
-                        collectMockedFunctions(c.body, out);
-                    }, selectCase);
-                }
-                collectMockedFunctions(s->else_body, out);
-                collectMockedFunctions(s->timeout_body, out);
             }
         }, stmt);
         // Also scan lambda args (e.g., describe/it trailing blocks)
@@ -573,46 +565,11 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         task_result_types_[callResult] = resolveType(inner);
     }
 
-    if (matchedEntry && matchedEntry->returnTypeName.size() > 8 &&
-        matchedEntry->returnTypeName.compare(0, 8, "Channel<") == 0 &&
-        matchedEntry->returnTypeName.back() == '>') {
-        std::string inner = matchedEntry->returnTypeName.substr(8, matchedEntry->returnTypeName.size() - 9);
-        channel_element_types_[callResult] = resolveType(inner);
-    }
-
     // Propagate low-level type metadata from return type
     if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
         low_level_type_names_[callResult] = matchedEntry->returnTypeName;
 
     return callResult;
-}
-
-void CodeGen::emitTaskGroupCall(CallStmt &s) {
-    if (s.args.size() != 1)
-        codegenError("task_group() takes exactly 1 argument (a lambda)");
-
-    auto *lambda = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args.back()->data);
-    if (!lambda)
-        codegenError("task_group() argument must be a lambda");
-
-    LambdaExpr &lam = **lambda;
-
-    llvm::FunctionType *newTy = llvm::FunctionType::get(ptrTy_, {}, false);
-    llvm::FunctionCallee newFn = mod_->getOrInsertFunction("__ry_task_group_new", newTy);
-    llvm::Value *group = builder_.CreateCall(newFn, {}, "task_group");
-
-    task_group_stack_.push_back(group);
-
-    for (auto &stmt : lam.body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-    task_group_stack_.pop_back();
-
-    // __ry_task_group_await_and_destroy handles both await and cleanup,
-    // ensuring the group is freed even if a child error is rethrown.
-    llvm::FunctionType *awaitDestroyTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-    llvm::FunctionCallee awaitDestroyFn = mod_->getOrInsertFunction("__ry_task_group_await_and_destroy", awaitDestroyTy);
-    builder_.CreateCall(awaitDestroyFn, {group});
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
@@ -633,10 +590,6 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitFailCall(s);
         return;
     }
-    if (s.callee == "task_group") {
-        emitTaskGroupCall(s);
-        return;
-    }
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
         it->second(s.args);
@@ -647,17 +600,15 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
-    if (s.callee == "join" || s.callee == "available_parallelism" || s.callee == "args" ||
-        s.callee == "range" || s.callee == "send" || s.callee == "try_send" ||
-        s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
+    if (s.callee == "available_parallelism" || s.callee == "args" ||
+        s.callee == "range" || s.callee == "send" ||
+        s.callee == "recv" ||
         s.callee == "close" ||
         s.callee == "write_text" || s.callee == "append_text" ||
         s.callee == "delete_file" || s.callee == "write_bytes" ||
         s.callee == "listen" ||
         s.callee == "http_listen" ||
         s.callee == "sleep" ||
-        s.callee == "cancel" || s.callee == "is_cancelled" ||
-        s.callee == "spawn_in" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
         s.callee == "shutdown" ||
         s.callee == "json_free") {

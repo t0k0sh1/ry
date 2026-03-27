@@ -1150,17 +1150,27 @@ TEST(ParserTest, ForKVParsing) {
     Program prog = parseStr("for k, v in m:\n    print(k)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    EXPECT_EQ(fs->var_name, "k");
-    ASSERT_TRUE(fs->var_name2.has_value());
-    EXPECT_EQ(*fs->var_name2, "v");
+    ASSERT_EQ(fs->var_names.size(), 2u);
+    EXPECT_EQ(fs->var_names[0], "k");
+    EXPECT_EQ(fs->var_names[1], "v");
+}
+
+TEST(ParserTest, ForThreeVariableDestructuring) {
+    Program prog = parseStr("for a, b, c in xs:\n    print(a)");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
+    ASSERT_EQ(fs->var_names.size(), 3u);
+    EXPECT_EQ(fs->var_names[0], "a");
+    EXPECT_EQ(fs->var_names[1], "b");
+    EXPECT_EQ(fs->var_names[2], "c");
 }
 
 TEST(ParserTest, ForChannelParsing) {
     Program prog = parseStr("for x in ch:\n    print(x)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    EXPECT_EQ(fs->var_name, "x");
-    ASSERT_FALSE(fs->var_name2.has_value());
+    ASSERT_EQ(fs->var_names.size(), 1u);
+    EXPECT_EQ(fs->var_names[0], "x");
     auto *iter = std::get_if<VariableExpr>(&fs->iterable->data);
     ASSERT_NE(iter, nullptr);
     EXPECT_EQ(iter->name, "ch");
@@ -1172,29 +1182,6 @@ TEST(ParserTest, ParallelForDirectiveParsing) {
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
     ASSERT_EQ(fs->directives.size(), 1u);
     EXPECT_EQ(fs->directives[0].name, "parallel");
-}
-
-TEST(ParserTest, SpawnExprParsing) {
-    Program prog = parseStr("t = spawn add(1, 2)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<AssignStmt>(prog[0]);
-    auto *spawn = std::get_if<std::unique_ptr<SpawnExpr>>(&let.value->data);
-    ASSERT_NE(spawn, nullptr);
-    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*spawn)->operand->data);
-    ASSERT_NE(call, nullptr);
-    EXPECT_EQ((*call)->callee, "add");
-}
-
-TEST(ParserTest, GenericChannelBuiltinParsing) {
-    Program prog = parseStr("ch: Channel<int> = channel[int](4)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(let.type_annotation.has_value());
-    EXPECT_EQ(*let.type_annotation, "Channel<int>");
-    auto *call = std::get_if<std::unique_ptr<CallExpr>>(&let.value->data);
-    ASSERT_NE(call, nullptr);
-    EXPECT_EQ((*call)->callee, "channel<int>");
-    ASSERT_EQ((*call)->args.size(), 1u);
 }
 
 TEST(ParserTest, AsyncFnParsing) {
@@ -1225,73 +1212,6 @@ TEST(ParserTest, AwaitStatementParsing) {
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&await.operand->data);
     ASSERT_NE(call, nullptr);
     EXPECT_EQ((*call)->callee, "fetch");
-}
-
-TEST(ParserTest, SelectStatementParsing) {
-    Program prog = parseStr(
-        "select:\n"
-        "    case let x = recv_opt(ch):\n"
-        "        print(x)\n"
-        "    case send(out, 1):\n"
-        "        print(1)\n"
-        "    else:\n"
-        "        print(0)");
-    ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<SelectStmt>>(prog[0]));
-    auto &select = std::get<std::unique_ptr<SelectStmt>>(prog[0]);
-    ASSERT_EQ(select->cases.size(), 2u);
-    ASSERT_EQ(select->else_body.size(), 1u);
-    auto *recvCase = std::get_if<SelectRecvCase>(&select->cases[0]);
-    ASSERT_NE(recvCase, nullptr);
-    EXPECT_EQ(recvCase->name, "x");
-    EXPECT_EQ(recvCase->mode, SelectRecvMode::Optional);
-    auto *sendCase = std::get_if<SelectSendCase>(&select->cases[1]);
-    ASSERT_NE(sendCase, nullptr);
-}
-
-TEST(ParserTest, SelectTimeoutParsing) {
-    Program prog = parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    timeout 100:\n"
-        "        print(0)");
-    ASSERT_EQ(prog.size(), 1u);
-    auto &select = std::get<std::unique_ptr<SelectStmt>>(prog[0]);
-    ASSERT_EQ(select->cases.size(), 1u);
-    ASSERT_NE(select->timeout_ms, nullptr);
-    ASSERT_EQ(select->timeout_body.size(), 1u);
-}
-
-TEST(ParserTest, SelectElseMustBeLast) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    else:\n"
-        "        print(0)\n"
-        "    case send(out, 1):\n"
-        "        print(1)"), std::runtime_error);
-}
-
-TEST(ParserTest, SelectTimeoutMustBeLast) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    timeout 0:\n"
-        "        print(0)\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)"), std::runtime_error);
-}
-
-TEST(ParserTest, SelectElseAndTimeoutAreExclusive) {
-    EXPECT_THROW(parseStr(
-        "select:\n"
-        "    case let x = recv(ch):\n"
-        "        print(x)\n"
-        "    else:\n"
-        "        print(0)\n"
-        "    timeout 0:\n"
-        "        print(1)"), std::runtime_error);
 }
 
 TEST(ParserTest, ParallelDirectiveRejectedOnWhile) {
@@ -1406,6 +1326,64 @@ TEST(ParserTest, EnumExplicitValueMixedError) {
 
 TEST(ParserTest, EnumExplicitValueOnADTError) {
     EXPECT_THROW(parseStr("enum Bad:\n    A(int) = 1\n    B = 2"), std::runtime_error);
+}
+
+// ===== Named fields in ADT enum variants =====
+
+TEST(ParserTest, EnumNamedFields) {
+    Program prog = parseStr("enum Shape:\n    Circle(radius: float)\n    Rect(width: float, height: float)\n    Point");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.name, "Shape");
+    ASSERT_EQ(es.variants.size(), 3u);
+    // Circle
+    EXPECT_EQ(es.variants[0].name, "Circle");
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_types[0], "float");
+    ASSERT_EQ(es.variants[0].field_names.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_names[0], "radius");
+    // Rect
+    EXPECT_EQ(es.variants[1].name, "Rect");
+    ASSERT_EQ(es.variants[1].field_types.size(), 2u);
+    EXPECT_EQ(es.variants[1].field_types[0], "float");
+    EXPECT_EQ(es.variants[1].field_types[1], "float");
+    ASSERT_EQ(es.variants[1].field_names.size(), 2u);
+    EXPECT_EQ(es.variants[1].field_names[0], "width");
+    EXPECT_EQ(es.variants[1].field_names[1], "height");
+    // Point (no fields)
+    EXPECT_TRUE(es.variants[2].field_types.empty());
+    EXPECT_TRUE(es.variants[2].field_names.empty());
+}
+
+TEST(ParserTest, EnumUnnamedFieldsRegression) {
+    Program prog = parseStr("enum Shape:\n    Circle(float)\n    Rect(float, float)");
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_TRUE(es.variants[0].field_names.empty());
+    ASSERT_EQ(es.variants[1].field_types.size(), 2u);
+    EXPECT_TRUE(es.variants[1].field_names.empty());
+}
+
+TEST(ParserTest, EnumMixedFieldsError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(x: int, float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumDuplicateFieldNameError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(x: int, x: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumNonSnakeCaseFieldError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(Radius: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumNamedFieldsGeneric) {
+    Program prog = parseStr("enum Option<T>:\n    Some(value: T)\n    None");
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.variants[0].name, "Some");
+    ASSERT_EQ(es.variants[0].field_names.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_names[0], "value");
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_types[0], "T");
 }
 
 TEST(ParserTest, PascalCaseTypeAliasRequired) {

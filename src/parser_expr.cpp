@@ -169,22 +169,9 @@ ExprPtr Parser::parseLogicalNot() {
         node->loc = locFromToken(notTok);
         return node;
     }
-    if (lex_.peek().kind == TokenKind::Spawn)
-        return parseSpawnExpr();
     if (lex_.peek().kind == TokenKind::Await)
         return parseAwaitExpr();
     return parseComparison();
-}
-
-ExprPtr Parser::parseSpawnExpr() {
-    Token spawnTok = lex_.next(); // consume 'spawn'
-    ExprPtr operand = parseLogicalNot();
-    auto spawnExpr = std::make_unique<SpawnExpr>();
-    spawnExpr->operand = std::move(operand);
-    auto node = std::make_unique<ExprNode>();
-    node->data = std::move(spawnExpr);
-    node->loc = locFromToken(spawnTok);
-    return node;
 }
 
 ExprPtr Parser::parseAwaitExpr() {
@@ -703,7 +690,7 @@ ExprPtr Parser::parsePostfix() {
                  next == TokenKind::Not || next == TokenKind::Fn ||
                  next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
                  next == TokenKind::FStringStart ||
-                 next == TokenKind::Spawn || next == TokenKind::Await ||
+                 next == TokenKind::Await ||
                  next == TokenKind::LBracket)) {
                 lex_.restoreState(std::move(saved));
                 break; // delegate to parseTernary()

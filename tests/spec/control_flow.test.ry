@@ -116,6 +116,26 @@ describe("for", fn():
       sum = sum + (a + b)
     expect(sum).to_eq(33)
   )
+  it("3-element tuple destructuring", fn():
+    triples = [(1, 2, 3), (4, 5, 6)]
+    sum_a = 0
+    sum_b = 0
+    sum_c = 0
+    for a, b, c in triples:
+      sum_a = sum_a + a
+      sum_b = sum_b + b
+      sum_c = sum_c + c
+    expect(sum_a).to_eq(5)
+    expect(sum_b).to_eq(7)
+    expect(sum_c).to_eq(9)
+  )
+  it("3-element destructuring with wildcard", fn():
+    triples = [(1, 2, 3), (4, 5, 6)]
+    sum = 0
+    for a, _, c in triples:
+      sum = sum + a + c
+    expect(sum).to_eq(14)
+  )
 )
 
 describe("match", fn():
