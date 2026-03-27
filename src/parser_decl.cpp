@@ -412,15 +412,55 @@ StmtNode Parser::parseEnumStatement() {
         EnumVariant variant;
         variant.name = variantName.value;
 
-        // Associated data: Variant(type1, type2, ...)
+        // Associated data: Variant(type1, type2, ...) or Variant(name: type, ...)
         if (lex_.peek().kind == TokenKind::LParen) {
             lex_.next(); // consume '('
             if (lex_.peek().kind != TokenKind::RParen) {
+                bool hasNames = false;
+                bool firstField = true;
                 for (;;) {
+                    // Try to detect named field: name: type
+                    bool isNamed = false;
+                    if (lex_.peek().kind == TokenKind::Ident) {
+                        auto saved = lex_.saveState();
+                        lex_.next(); // consume potential field name
+                        if (lex_.peek().kind == TokenKind::Colon) {
+                            isNamed = true;
+                        }
+                        lex_.restoreState(saved);
+                    }
+
+                    if (firstField) {
+                        hasNames = isNamed;
+                        firstField = false;
+                    } else if (isNamed != hasNames) {
+                        parseError(lex_.peek().line,
+                            "cannot mix named and unnamed fields in enum variant");
+                    }
+
+                    if (isNamed) {
+                        Token fieldName = lex_.peek();
+                        lex_.next(); // consume field name
+                        if (!isSnakeCase(fieldName.value))
+                            parseError(fieldName.line,
+                                "enum variant field name '" + fieldName.value + "' must be snake_case");
+                        lex_.next(); // consume ':'
+                        variant.field_names.push_back(fieldName.value);
+                    }
+
                     variant.field_types.push_back(parseTypeName());
                     if (lex_.peek().kind != TokenKind::Comma)
                         break;
                     lex_.next(); // consume ','
+                }
+                // Check for duplicate field names
+                if (hasNames) {
+                    std::unordered_set<std::string> seen;
+                    for (auto &fn : variant.field_names) {
+                        if (!seen.insert(fn).second)
+                            parseError(variantName.line,
+                                "duplicate field name '" + fn + "' in enum variant '" + variantName.value + "'");
+                    }
                 }
             }
             if (lex_.peek().kind != TokenKind::RParen)

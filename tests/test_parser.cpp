@@ -1338,6 +1338,64 @@ TEST(ParserTest, EnumExplicitValueOnADTError) {
     EXPECT_THROW(parseStr("enum Bad:\n    A(int) = 1\n    B = 2"), std::runtime_error);
 }
 
+// ===== Named fields in ADT enum variants =====
+
+TEST(ParserTest, EnumNamedFields) {
+    Program prog = parseStr("enum Shape:\n    Circle(radius: float)\n    Rect(width: float, height: float)\n    Point");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.name, "Shape");
+    ASSERT_EQ(es.variants.size(), 3u);
+    // Circle
+    EXPECT_EQ(es.variants[0].name, "Circle");
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_types[0], "float");
+    ASSERT_EQ(es.variants[0].field_names.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_names[0], "radius");
+    // Rect
+    EXPECT_EQ(es.variants[1].name, "Rect");
+    ASSERT_EQ(es.variants[1].field_types.size(), 2u);
+    EXPECT_EQ(es.variants[1].field_types[0], "float");
+    EXPECT_EQ(es.variants[1].field_types[1], "float");
+    ASSERT_EQ(es.variants[1].field_names.size(), 2u);
+    EXPECT_EQ(es.variants[1].field_names[0], "width");
+    EXPECT_EQ(es.variants[1].field_names[1], "height");
+    // Point (no fields)
+    EXPECT_TRUE(es.variants[2].field_types.empty());
+    EXPECT_TRUE(es.variants[2].field_names.empty());
+}
+
+TEST(ParserTest, EnumUnnamedFieldsRegression) {
+    Program prog = parseStr("enum Shape:\n    Circle(float)\n    Rect(float, float)");
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_TRUE(es.variants[0].field_names.empty());
+    ASSERT_EQ(es.variants[1].field_types.size(), 2u);
+    EXPECT_TRUE(es.variants[1].field_names.empty());
+}
+
+TEST(ParserTest, EnumMixedFieldsError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(x: int, float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumDuplicateFieldNameError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(x: int, x: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumNonSnakeCaseFieldError) {
+    EXPECT_THROW(parseStr("enum Bad:\n    Bar(Radius: float)"), std::runtime_error);
+}
+
+TEST(ParserTest, EnumNamedFieldsGeneric) {
+    Program prog = parseStr("enum Option<T>:\n    Some(value: T)\n    None");
+    const auto &es = std::get<EnumStmt>(prog[0]);
+    EXPECT_EQ(es.variants[0].name, "Some");
+    ASSERT_EQ(es.variants[0].field_names.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_names[0], "value");
+    ASSERT_EQ(es.variants[0].field_types.size(), 1u);
+    EXPECT_EQ(es.variants[0].field_types[0], "T");
+}
+
 TEST(ParserTest, PascalCaseTypeAliasRequired) {
     EXPECT_THROW(parseStr("type my_int = int"), std::runtime_error);
 }
