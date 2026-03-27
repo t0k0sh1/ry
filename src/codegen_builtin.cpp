@@ -155,6 +155,13 @@ CodeGen::HashFnInfo CodeGen::resolveHashFn(llvm::Type *keyTy) {
     return {"__ry_hash_i64", "__ry_ht_rehash_i64", i64Ty_};
 }
 
+llvm::Value *CodeGen::coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
+                                     llvm::Type *hashArgTy, const llvm::Twine &prefix) {
+    if (keyTy != hashArgTy && keyTy->isIntegerTy() && hashArgTy->isIntegerTy())
+        return builder_.CreateZExt(key, hashArgTy, prefix + "_hash_zext");
+    return key;
+}
+
 // Step 3: Unified hash table lookup
 llvm::Value *CodeGen::emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
                                             const HashTableLayout &layout,
@@ -230,9 +237,7 @@ void CodeGen::emitBucketInsertAndRehashCheck(llvm::Value *headerPtr, llvm::Struc
     auto hfi = resolveHashFn(keyTy);
 
     // Coerce key to match hash function argument type (e.g. i1 → i64)
-    llvm::Value *hashKey = key;
-    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
-        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, "hash_key_zext");
+    llvm::Value *hashKey = coerceHashKey(key, keyTy, hfi.hashArgTy, "hash_key");
 
     // Compute hash
     llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
