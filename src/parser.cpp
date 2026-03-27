@@ -127,7 +127,7 @@ void Parser::skipStructuralTokens() {
 
 // ===== Directive parsing =====
 
-static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property", "const"};
+static const std::unordered_set<std::string> known_directives = {"deprecated", "native", "parallel", "each", "property", "const", "inline"};
 
 std::vector<Directive> Parser::parseDirectives() {
     std::vector<Directive> directives;

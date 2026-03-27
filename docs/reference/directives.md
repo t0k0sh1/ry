@@ -244,6 +244,46 @@ it("property name", fn(a: int, b: int):
 
 On failure, the counterexample (parameter values that caused the failure) is printed.
 
+### `@inline`
+
+Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
+
+**Basic usage (always inline):**
+
+```
+@inline
+fn add(a: int, b: int) -> int:
+    return a + b
+```
+
+**With mode parameter:**
+
+```
+@inline(mode="always")
+fn hot_path(x: int) -> int:
+    return x * 2 + 1
+
+@inline(mode="hint")
+fn medium_path(x: int) -> int:
+    return x + 1
+
+@inline(mode="never")
+fn cold_error_handler(msg: str):
+    print("ERROR: " + msg)
+```
+
+**Modes:**
+
+| Mode | LLVM Attribute | Description |
+|------|---------------|-------------|
+| `always` (default) | `AlwaysInline` | Always inline this function |
+| `hint` | `InlineHint` | Suggest inlining to the optimizer |
+| `never` | `NoInline` | Never inline this function |
+
+**Constraints:**
+- `@inline` cannot be used with `@native` (native functions have no body to inline).
+- An unknown mode value causes a compile error.
+
 ### Parameters (future extension)
 
 Directives support an optional parameter syntax for future extensions:

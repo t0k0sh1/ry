@@ -245,6 +245,46 @@ fn old_api() -> int:
 
 現時点では、パラメータはパースされますが `@deprecated` ディレクティブでは使用されません。
 
+### `@inline`
+
+LLVM オプティマイザにインライン化のヒントを与えます。デフォルトでは、関数を常にインライン化するよう指示します。
+
+**基本的な使い方（常にインライン化）：**
+
+```
+@inline
+fn add(a: int, b: int) -> int:
+    return a + b
+```
+
+**mode パラメータ付き：**
+
+```
+@inline(mode="always")
+fn hot_path(x: int) -> int:
+    return x * 2 + 1
+
+@inline(mode="hint")
+fn medium_path(x: int) -> int:
+    return x + 1
+
+@inline(mode="never")
+fn cold_error_handler(msg: str):
+    print("ERROR: " + msg)
+```
+
+**モード：**
+
+| モード | LLVM 属性 | 説明 |
+|--------|----------|------|
+| `always`（デフォルト） | `AlwaysInline` | 常にインライン化する |
+| `hint` | `InlineHint` | オプティマイザにインライン化を提案する |
+| `never` | `NoInline` | インライン化を禁止する |
+
+**制約：**
+- `@inline` は `@native` と併用できません（native 関数にはインライン化するボディがありません）。
+- 不明な mode 値はコンパイルエラーになります。
+
 ## 注意事項
 
 - 非推奨のエンティティは正常に動作します。警告が出力されるだけです。
