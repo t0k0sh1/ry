@@ -395,6 +395,23 @@ private:
                                       const HashTableLayout &layout,
                                       llvm::Value *key, llvm::Type *keyTy);
 
+    struct BucketContext {
+        llvm::Value *bucketsPtr;
+        llvm::Value *bucketMask;
+        llvm::Type *hashArgTy;
+        llvm::FunctionCallee hashFn;
+    };
+    BucketContext emitHashTableRemoveBucket(
+        llvm::Value *headerPtr, llvm::StructType *headerTy,
+        const HashTableLayout &layout,
+        llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex,
+        const std::string &prefix);
+    void emitHashTableUpdateIndex(
+        const BucketContext &bc,
+        llvm::Value *value, llvm::Type *valueTy,
+        llvm::Value *oldIndex, llvm::Value *newIndex,
+        const std::string &prefix);
+
     // Data structure field helpers
     struct ListFields {
         llvm::Value *lenPtr = nullptr;
@@ -437,6 +454,9 @@ private:
     // Collection operation handlers
     llvm::Value *emitCollOp_add(const CallExpr &e);
     llvm::Value *emitCollOp_remove(const CallExpr &e);
+    llvm::Value *emitSetRemove(llvm::Value *containerPtr, llvm::Value *elem, llvm::Type *elemTy);
+    llvm::Value *emitListRemove(llvm::Value *containerPtr, llvm::Value *val, llvm::Type *listElemTy);
+    llvm::Value *emitMapRemove(llvm::Value *containerPtr, llvm::Value *key, llvm::Type *keyTy, llvm::Type *valTy);
     llvm::Value *emitCollOp_append(const CallExpr &e);
     llvm::Value *emitCollOp_appended(const CallExpr &e);
     llvm::Value *emitCollOp_pop(const CallExpr &e);

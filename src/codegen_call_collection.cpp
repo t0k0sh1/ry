@@ -97,257 +97,247 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     return nullptr;
 }
 
+// ===== Hash table bucket helpers for remove operations =====
+
+CodeGen::BucketContext CodeGen::emitHashTableRemoveBucket(
+    llvm::Value *headerPtr, llvm::StructType *headerTy,
+    const HashTableLayout &layout,
+    llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex,
+    const std::string &prefix) {
+    llvm::Twine p(prefix);
+    auto hfi = resolveHashFn(keyTy);
+    llvm::Value *hashKey = key;
+    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
+        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, p + "_hash_zext");
+    llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
+    llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
+    llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, p + "_hash");
+
+    llvm::Value *bucketsField = builder_.CreateStructGEP(headerTy, headerPtr, layout.bucketsPtrIdx, p + "_bp");
+    llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, p + "_buckets");
+    llvm::Value *bcField = builder_.CreateStructGEP(headerTy, headerPtr, layout.bucketCountIdx, p + "_bc_field");
+    llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, p + "_bc");
+    llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), p + "_bmask");
+
+    llvm::FunctionType *removeTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionCallee removeFn = mod_->getOrInsertFunction("__ry_ht_remove", removeTy);
+    builder_.CreateCall(removeFn, {bucketsPtr, bucketMask, hashVal, denseIndex});
+
+    return {bucketsPtr, bucketMask, hfi.hashArgTy, hashFn};
+}
+
+void CodeGen::emitHashTableUpdateIndex(
+    const BucketContext &bc,
+    llvm::Value *value, llvm::Type *valueTy,
+    llvm::Value *oldIndex, llvm::Value *newIndex,
+    const std::string &prefix) {
+    llvm::Twine p(prefix);
+    llvm::Value *hashValue = value;
+    if (valueTy != bc.hashArgTy && valueTy->isIntegerTy() && bc.hashArgTy->isIntegerTy())
+        hashValue = builder_.CreateZExt(value, bc.hashArgTy, p + "_hash_zext");
+    llvm::Value *hashVal = builder_.CreateCall(bc.hashFn, {hashValue}, p + "_hash");
+
+    llvm::FunctionType *updateTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
+    llvm::FunctionCallee updateFn = mod_->getOrInsertFunction("__ry_ht_update_index", updateTy);
+    builder_.CreateCall(updateFn, {bc.bucketsPtr, bc.bucketMask, hashVal, oldIndex, newIndex});
+}
+
+// ===== Per-type remove implementations =====
+
+llvm::Value *CodeGen::emitSetRemove(llvm::Value *containerPtr, llvm::Value *elem, llvm::Type *elemTy) {
+    llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
+    llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+
+    llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "set.remove_end", fn_);
+    builder_.CreateCondBr(found, removeBB, endBB);
+
+    builder_.SetInsertPoint(removeBB);
+    auto sf = loadSetHeader(containerPtr, "set");
+
+    auto bc = emitHashTableRemoveBucket(containerPtr, setHeaderTy_, kSetLayout,
+                                         elem, elemTy, idx, "rm");
+
+    // Swap-remove: move last element to idx position
+    llvm::Value *lastIdx = builder_.CreateSub(sf.len, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
+    llvm::Value *isNotLast = builder_.CreateICmpNE(idx, lastIdx, "is_not_last");
+
+    llvm::BasicBlock *swapBB = llvm::BasicBlock::Create(*ctx_, "set.swap", fn_);
+    llvm::BasicBlock *decBB = llvm::BasicBlock::Create(*ctx_, "set.dec", fn_);
+    builder_.CreateCondBr(isNotLast, swapBB, decBB);
+
+    builder_.SetInsertPoint(swapBB);
+    llvm::Value *lastPtr = builder_.CreateGEP(elemTy, sf.elems, {lastIdx}, "last_ptr");
+    llvm::Value *lastVal = builder_.CreateLoad(elemTy, lastPtr, "last_val");
+    llvm::Value *dstPtr = builder_.CreateGEP(elemTy, sf.elems, {idx}, "swap_dst");
+    builder_.CreateStore(lastVal, dstPtr);
+
+    emitHashTableUpdateIndex(bc, lastVal, elemTy, lastIdx, idx, "swap");
+    builder_.CreateBr(decBB);
+
+    builder_.SetInsertPoint(decBB);
+    llvm::Value *newLen = builder_.CreateSub(sf.len, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
+    builder_.CreateStore(newLen, sf.lenPtr);
+    builder_.CreateBr(endBB);
+
+    builder_.SetInsertPoint(endBB);
+    return llvm::ConstantInt::get(i64Ty_, 0);
+}
+
+llvm::Value *CodeGen::emitListRemove(llvm::Value *containerPtr, llvm::Value *val, llvm::Type *listElemTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
+
+    auto lf = loadListHeader(containerPtr, "lrem");
+
+    // Linear search for the value
+    llvm::AllocaInst *foundIdx = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_found_idx");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), foundIdx);
+    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_i");
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+
+    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lrem.cond", fn_);
+    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lrem.body", fn_);
+    llvm::BasicBlock *endSearchBB = llvm::BasicBlock::Create(*ctx_, "lrem.end_search", fn_);
+
+    builder_.CreateBr(condBB);
+    builder_.SetInsertPoint(condBB);
+    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "lrem_iv");
+    llvm::Value *notYetFound = builder_.CreateICmpSLT(
+        builder_.CreateLoad(i64Ty_, foundIdx, "lrem_fi"), llvm::ConstantInt::get(i64Ty_, 0), "lrem_not_found");
+    llvm::Value *inBounds = builder_.CreateICmpSLT(iVal, lf.len, "lrem_in_bounds");
+    llvm::Value *cont = builder_.CreateAnd(notYetFound, inBounds, "lrem_cont");
+    builder_.CreateCondBr(cont, bodyBB, endSearchBB);
+
+    builder_.SetInsertPoint(bodyBB);
+    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lrem_ic");
+    llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "lrem_elem_ptr");
+    llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "lrem_elem");
+
+    llvm::Value *match;
+    if (listElemTy == ptrTy_) {
+        if (getNestedListElementType(containerPtr))
+            codegenError("remove() is not supported for lists of non-string pointer elements");
+        auto strcmpFn = getStdlibStrcmp();
+        llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
+        match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
+    } else if (listElemTy->isDoubleTy()) {
+        match = builder_.CreateFCmpOEQ(val, listElem, "lrem_match");
+    } else {
+        match = builder_.CreateICmpEQ(val, listElem, "lrem_match");
+    }
+
+    llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "lrem.found", fn_);
+    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "lrem.next", fn_);
+    builder_.CreateCondBr(match, foundBB, nextBB);
+
+    builder_.SetInsertPoint(foundBB);
+    builder_.CreateStore(iCur, foundIdx);
+    builder_.CreateBr(condBB);
+
+    builder_.SetInsertPoint(nextBB);
+    llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "lrem_inext");
+    builder_.CreateStore(iNext, iVar);
+    builder_.CreateBr(condBB);
+
+    // After search: if found, memmove to close the gap
+    builder_.SetInsertPoint(endSearchBB);
+    llvm::Value *idx = builder_.CreateLoad(i64Ty_, foundIdx, "lrem_idx");
+    llvm::Value *wasFound = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "lrem_was_found");
+
+    llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "lrem.remove", fn_);
+    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "lrem.done", fn_);
+    builder_.CreateCondBr(wasFound, removeBB, doneBB);
+
+    builder_.SetInsertPoint(removeBB);
+    auto memmoveFn = getStdlibMemmove();
+    llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, lf.data, {idx}, "lrem_dst");
+    llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, lf.data,
+        {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
+    llvm::Value *moveCount = builder_.CreateSub(
+        builder_.CreateSub(lf.len, idx), llvm::ConstantInt::get(i64Ty_, 1), "lrem_move_count");
+    llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "lrem_move_bytes");
+    builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
+    llvm::Value *newLen = builder_.CreateSub(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "lrem_new_len");
+    builder_.CreateStore(newLen, lf.lenPtr);
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    return llvm::ConstantInt::get(i64Ty_, 0);
+}
+
+llvm::Value *CodeGen::emitMapRemove(llvm::Value *containerPtr, llvm::Value *key, llvm::Type *keyTy, llvm::Type *valTy) {
+    llvm::Value *idx = emitMapKeyLookup(containerPtr, key, keyTy);
+    llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "mrem_found");
+
+    llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "mrem.do", fn_);
+    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mrem.end", fn_);
+    builder_.CreateCondBr(found, removeBB, endBB);
+
+    builder_.SetInsertPoint(removeBB);
+    auto mf = loadMapHeader(containerPtr, "mrem");
+
+    auto bc = emitHashTableRemoveBucket(containerPtr, mapHeaderTy_, kMapLayout,
+                                         key, keyTy, idx, "mrem");
+
+    // Swap-remove from keys and values arrays
+    llvm::Value *lastIdx = builder_.CreateSub(mf.len, llvm::ConstantInt::get(i64Ty_, 1), "mrem_last_idx");
+    llvm::Value *isNotLast = builder_.CreateICmpNE(idx, lastIdx, "mrem_not_last");
+
+    llvm::BasicBlock *swapBB = llvm::BasicBlock::Create(*ctx_, "mrem.swap", fn_);
+    llvm::BasicBlock *decBB = llvm::BasicBlock::Create(*ctx_, "mrem.dec", fn_);
+    builder_.CreateCondBr(isNotLast, swapBB, decBB);
+
+    builder_.SetInsertPoint(swapBB);
+    llvm::Value *lastKeyPtr = builder_.CreateGEP(keyTy, mf.keys, {lastIdx}, "mrem_last_kp");
+    llvm::Value *lastKey = builder_.CreateLoad(keyTy, lastKeyPtr, "mrem_last_key");
+    llvm::Value *dstKeyPtr = builder_.CreateGEP(keyTy, mf.keys, {idx}, "mrem_dst_kp");
+    builder_.CreateStore(lastKey, dstKeyPtr);
+    llvm::Value *lastValPtr = builder_.CreateGEP(valTy, mf.vals, {lastIdx}, "mrem_last_vp");
+    llvm::Value *lastVal = builder_.CreateLoad(valTy, lastValPtr, "mrem_last_val");
+    llvm::Value *dstValPtr = builder_.CreateGEP(valTy, mf.vals, {idx}, "mrem_dst_vp");
+    builder_.CreateStore(lastVal, dstValPtr);
+
+    emitHashTableUpdateIndex(bc, lastKey, keyTy, lastIdx, idx, "mrem_swap");
+    builder_.CreateBr(decBB);
+
+    builder_.SetInsertPoint(decBB);
+    llvm::Value *newLen = builder_.CreateSub(mf.len, llvm::ConstantInt::get(i64Ty_, 1), "mrem_new_len");
+    builder_.CreateStore(newLen, mf.lenPtr);
+    builder_.CreateBr(endBB);
+
+    builder_.SetInsertPoint(endBB);
+    return llvm::ConstantInt::get(i64Ty_, 0);
+}
+
+// ===== Dispatcher =====
+
 llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
-    // remove(set, val) -> remove element from set
     llvm::Value *containerPtr = emitExpr(*e.args[0]);
-    llvm::Type *elemTy = getSetElementType(containerPtr);
-    if (elemTy) {
+
+    if (llvm::Type *elemTy = getSetElementType(containerPtr)) {
         llvm::Value *elem = emitExpr(*e.args[1]);
         if (elem->getType() != elemTy)
             codegenError("remove() element type mismatch");
-
-        llvm::Value *idx = emitSetElementLookup(containerPtr, elem, elemTy);
-        llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
-
-        llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "set.remove", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "set.remove_end", fn_);
-        builder_.CreateCondBr(found, removeBB, endBB);
-
-        builder_.SetInsertPoint(removeBB);
-        auto sf = loadSetHeader(containerPtr, "set");
-
-        // Remove from bucket: set tombstone for this element
-        {
-            auto hfi = resolveHashFn(elemTy);
-            llvm::Value *hashElem = elem;
-            if (elemTy != hfi.hashArgTy && elemTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
-                hashElem = builder_.CreateZExt(elem, hfi.hashArgTy, "rm_hash_zext");
-            llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
-            llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
-            llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashElem}, "rm_hash");
-
-            llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 4, "rm_bp");
-            llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "rm_buckets");
-            llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 3, "rm_bc_field");
-            llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "rm_bc");
-            llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "rm_bmask");
-
-            llvm::FunctionType *removeTy = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-            llvm::FunctionCallee removeFn = mod_->getOrInsertFunction("__ry_ht_remove", removeTy);
-            builder_.CreateCall(removeFn, {bucketsPtr, bucketMask, hashVal, idx});
-        }
-
-        // Swap-remove: move last element to idx position
-        llvm::Value *lastIdx = builder_.CreateSub(sf.len, llvm::ConstantInt::get(i64Ty_, 1), "last_idx");
-        llvm::Value *isNotLast = builder_.CreateICmpNE(idx, lastIdx, "is_not_last");
-
-        llvm::BasicBlock *swapBB = llvm::BasicBlock::Create(*ctx_, "set.swap", fn_);
-        llvm::BasicBlock *decBB = llvm::BasicBlock::Create(*ctx_, "set.dec", fn_);
-        builder_.CreateCondBr(isNotLast, swapBB, decBB);
-
-        builder_.SetInsertPoint(swapBB);
-        // Load last element
-        llvm::Value *lastPtr = builder_.CreateGEP(elemTy, sf.elems, {lastIdx}, "last_ptr");
-        llvm::Value *lastVal = builder_.CreateLoad(elemTy, lastPtr, "last_val");
-        // Store at idx position
-        llvm::Value *dstPtr = builder_.CreateGEP(elemTy, sf.elems, {idx}, "swap_dst");
-        builder_.CreateStore(lastVal, dstPtr);
-
-        // Update bucket for the moved element: change lastIdx -> idx
-        {
-            auto hfi2 = resolveHashFn(elemTy);
-            llvm::Value *hashLastVal = lastVal;
-            if (elemTy != hfi2.hashArgTy && elemTy->isIntegerTy() && hfi2.hashArgTy->isIntegerTy())
-                hashLastVal = builder_.CreateZExt(lastVal, hfi2.hashArgTy, "swap_hash_zext");
-            llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi2.hashArgTy}, false);
-            llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi2.hashFnName, hashTy);
-            llvm::Value *lastHash = builder_.CreateCall(hashFn, {hashLastVal}, "last_hash");
-
-            llvm::Value *bucketsField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 4, "swap_bp");
-            llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "swap_buckets");
-            llvm::Value *bcField = builder_.CreateStructGEP(setHeaderTy_, containerPtr, 3, "swap_bc_field");
-            llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "swap_bc");
-            llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "swap_bmask");
-
-            llvm::FunctionType *updateTy = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
-            llvm::FunctionCallee updateFn = mod_->getOrInsertFunction("__ry_ht_update_index", updateTy);
-            builder_.CreateCall(updateFn, {bucketsPtr, bucketMask, lastHash, lastIdx, idx});
-        }
-        builder_.CreateBr(decBB);
-
-        builder_.SetInsertPoint(decBB);
-        llvm::Value *newLen = builder_.CreateSub(sf.len, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
-        builder_.CreateStore(newLen, sf.lenPtr);
-        builder_.CreateBr(endBB);
-
-        builder_.SetInsertPoint(endBB);
-        return llvm::ConstantInt::get(i64Ty_, 0);
+        return emitSetRemove(containerPtr, elem, elemTy);
     }
-    // Not a set -- try list remove
-    llvm::Type *listElemTy = getListElementType(containerPtr);
-    if (listElemTy) {
+    if (llvm::Type *listElemTy = getListElementType(containerPtr)) {
         llvm::Value *val = emitExpr(*e.args[1]);
         if (val->getType() != listElemTy)
             codegenError("remove() value type mismatch with list element type");
-
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t elemSize = dl.getTypeAllocSize(listElemTy);
-
-        auto lf = loadListHeader(containerPtr, "lrem");
-
-        // Linear search for the value
-        llvm::AllocaInst *foundIdx = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_found_idx");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, -1), foundIdx);
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "lrem_i");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "lrem.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "lrem.body", fn_);
-        llvm::BasicBlock *endSearchBB = llvm::BasicBlock::Create(*ctx_, "lrem.end_search", fn_);
-
-        builder_.CreateBr(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "lrem_iv");
-        llvm::Value *notYetFound = builder_.CreateICmpSLT(
-            builder_.CreateLoad(i64Ty_, foundIdx, "lrem_fi"), llvm::ConstantInt::get(i64Ty_, 0), "lrem_not_found");
-        llvm::Value *inBounds = builder_.CreateICmpSLT(iVal, lf.len, "lrem_in_bounds");
-        llvm::Value *cont = builder_.CreateAnd(notYetFound, inBounds, "lrem_cont");
-        builder_.CreateCondBr(cont, bodyBB, endSearchBB);
-
-        builder_.SetInsertPoint(bodyBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "lrem_ic");
-        llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "lrem_elem_ptr");
-        llvm::Value *listElem = builder_.CreateLoad(listElemTy, elemPtr, "lrem_elem");
-
-        llvm::Value *match;
-        if (listElemTy == ptrTy_) {
-            if (getNestedListElementType(containerPtr))
-                codegenError("remove() is not supported for lists of non-string pointer elements");
-            auto strcmpFn = getStdlibStrcmp();
-            llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, listElem}, "lrem_strcmp");
-            match = builder_.CreateICmpEQ(cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "lrem_match");
-        } else if (listElemTy->isDoubleTy()) {
-            match = builder_.CreateFCmpOEQ(val, listElem, "lrem_match");
-        } else {
-            match = builder_.CreateICmpEQ(val, listElem, "lrem_match");
-        }
-
-        llvm::BasicBlock *foundBB = llvm::BasicBlock::Create(*ctx_, "lrem.found", fn_);
-        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "lrem.next", fn_);
-        builder_.CreateCondBr(match, foundBB, nextBB);
-
-        builder_.SetInsertPoint(foundBB);
-        builder_.CreateStore(iCur, foundIdx);
-        builder_.CreateBr(condBB);
-
-        builder_.SetInsertPoint(nextBB);
-        llvm::Value *iNext = builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "lrem_inext");
-        builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
-
-        // After search: if found, memmove to close the gap
-        builder_.SetInsertPoint(endSearchBB);
-        llvm::Value *idx = builder_.CreateLoad(i64Ty_, foundIdx, "lrem_idx");
-        llvm::Value *wasFound = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "lrem_was_found");
-
-        llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "lrem.remove", fn_);
-        llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "lrem.done", fn_);
-        builder_.CreateCondBr(wasFound, removeBB, doneBB);
-
-        builder_.SetInsertPoint(removeBB);
-        auto memmoveFn = getStdlibMemmove();
-        llvm::Value *dstPtr = builder_.CreateGEP(listElemTy, lf.data, {idx}, "lrem_dst");
-        llvm::Value *srcPtr = builder_.CreateGEP(listElemTy, lf.data,
-            {builder_.CreateAdd(idx, llvm::ConstantInt::get(i64Ty_, 1))}, "lrem_src");
-        llvm::Value *moveCount = builder_.CreateSub(
-            builder_.CreateSub(lf.len, idx), llvm::ConstantInt::get(i64Ty_, 1), "lrem_move_count");
-        llvm::Value *moveBytes = builder_.CreateMul(moveCount, llvm::ConstantInt::get(i64Ty_, elemSize), "lrem_move_bytes");
-        builder_.CreateCall(memmoveFn, {dstPtr, srcPtr, moveBytes});
-        llvm::Value *newLen = builder_.CreateSub(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "lrem_new_len");
-        builder_.CreateStore(newLen, lf.lenPtr);
-        builder_.CreateBr(doneBB);
-
-        builder_.SetInsertPoint(doneBB);
-        return llvm::ConstantInt::get(i64Ty_, 0);
+        return emitListRemove(containerPtr, val, listElemTy);
     }
-    // Not a set or list -- try map remove
     llvm::Type *keyTy = getMapKeyType(containerPtr);
     llvm::Type *valTy = getMapValueType(containerPtr);
     if (keyTy && valTy) {
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
             codegenError("remove() key type mismatch");
-        llvm::Value *idx = emitMapKeyLookup(containerPtr, key, keyTy);
-        llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "mrem_found");
-
-        llvm::BasicBlock *removeBB = llvm::BasicBlock::Create(*ctx_, "mrem.do", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "mrem.end", fn_);
-        builder_.CreateCondBr(found, removeBB, endBB);
-
-        builder_.SetInsertPoint(removeBB);
-        auto mf = loadMapHeader(containerPtr, "mrem");
-
-        // Remove from hash table
-        auto hfi = resolveHashFn(keyTy);
-        llvm::Value *hashKey = key;
-        if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
-            hashKey = builder_.CreateZExt(key, hfi.hashArgTy, "mrem_hash_zext");
-        llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
-        llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
-        llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, "mrem_hash");
-
-        llvm::Value *bucketsField = builder_.CreateStructGEP(mapHeaderTy_, containerPtr, 5, "mrem_bp");
-        llvm::Value *bucketsPtr = builder_.CreateLoad(ptrTy_, bucketsField, "mrem_buckets");
-        llvm::Value *bcField = builder_.CreateStructGEP(mapHeaderTy_, containerPtr, 4, "mrem_bc_field");
-        llvm::Value *bucketCount = builder_.CreateLoad(i64Ty_, bcField, "mrem_bc");
-        llvm::Value *bucketMask = builder_.CreateSub(bucketCount, llvm::ConstantInt::get(i64Ty_, 1), "mrem_bmask");
-
-        llvm::FunctionType *htRemoveTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-        llvm::FunctionCallee htRemoveFn = mod_->getOrInsertFunction("__ry_ht_remove", htRemoveTy);
-        builder_.CreateCall(htRemoveFn, {bucketsPtr, bucketMask, hashVal, idx});
-
-        // Swap-remove from keys and values arrays
-        llvm::Value *lastIdx = builder_.CreateSub(mf.len, llvm::ConstantInt::get(i64Ty_, 1), "mrem_last_idx");
-        llvm::Value *isNotLast = builder_.CreateICmpNE(idx, lastIdx, "mrem_not_last");
-
-        llvm::BasicBlock *swapBB = llvm::BasicBlock::Create(*ctx_, "mrem.swap", fn_);
-        llvm::BasicBlock *decBB = llvm::BasicBlock::Create(*ctx_, "mrem.dec", fn_);
-        builder_.CreateCondBr(isNotLast, swapBB, decBB);
-
-        builder_.SetInsertPoint(swapBB);
-        llvm::Value *lastKeyPtr = builder_.CreateGEP(keyTy, mf.keys, {lastIdx}, "mrem_last_kp");
-        llvm::Value *lastKey = builder_.CreateLoad(keyTy, lastKeyPtr, "mrem_last_key");
-        llvm::Value *dstKeyPtr = builder_.CreateGEP(keyTy, mf.keys, {idx}, "mrem_dst_kp");
-        builder_.CreateStore(lastKey, dstKeyPtr);
-        llvm::Value *lastValPtr = builder_.CreateGEP(valTy, mf.vals, {lastIdx}, "mrem_last_vp");
-        llvm::Value *lastVal = builder_.CreateLoad(valTy, lastValPtr, "mrem_last_val");
-        llvm::Value *dstValPtr = builder_.CreateGEP(valTy, mf.vals, {idx}, "mrem_dst_vp");
-        builder_.CreateStore(lastVal, dstValPtr);
-
-        // Update bucket for moved element
-        llvm::Value *hashLastKey = lastKey;
-        if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
-            hashLastKey = builder_.CreateZExt(lastKey, hfi.hashArgTy, "mrem_lk_hash_zext");
-        llvm::Value *lastKeyHash = builder_.CreateCall(hashFn, {hashLastKey}, "mrem_lk_hash");
-        llvm::FunctionType *updateTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_, i64Ty_}, false);
-        llvm::FunctionCallee updateFn = mod_->getOrInsertFunction("__ry_ht_update_index", updateTy);
-        builder_.CreateCall(updateFn, {bucketsPtr, bucketMask, lastKeyHash, lastIdx, idx});
-        builder_.CreateBr(decBB);
-
-        builder_.SetInsertPoint(decBB);
-        llvm::Value *newLen = builder_.CreateSub(mf.len, llvm::ConstantInt::get(i64Ty_, 1), "mrem_new_len");
-        builder_.CreateStore(newLen, mf.lenPtr);
-        builder_.CreateBr(endBB);
-
-        builder_.SetInsertPoint(endBB);
-        return llvm::ConstantInt::get(i64Ty_, 0);
+        return emitMapRemove(containerPtr, key, keyTy, valTy);
     }
-    // Not a set, list, or map -- fall through to user function resolution
     return nullptr;
 }
 
