@@ -125,6 +125,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
             if (isUnsignedLowLevelName(ne->suffix))
                 codegenError("cannot negate unsigned type '" + ne->suffix + "'");
         }
+        if (isUnsignedLowLevel(val))
+            codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
         val = promoteToInt(val);
         return builder_.CreateNeg(val, "neg");
     }
