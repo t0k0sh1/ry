@@ -382,6 +382,21 @@ TEST_F(CodeGenTest, LowLevelCast) {
     EXPECT_EQ(runSource("x: f32 = 3.14\ny = x as i32\nprint(y)"), "3\n");
 }
 
+TEST_F(CodeGenTest, LowLevelTypeInference) {
+    // i32 arithmetic result infers as i32 (propagation)
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nprint(c)"), "30\n");
+    // Inferred i32 variable can be reassigned with i32 value
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nc = a * b\nprint(c)"), "200\n");
+    // Inferred i32 variable cannot be mixed with int
+    EXPECT_THROW(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nd = 5\ne = c + d"), std::runtime_error);
+    // i16 inference propagation
+    EXPECT_EQ(runSource("a: i16 = 3\nb: i16 = 7\nc = a + b\nprint(c)"), "10\n");
+    // f32 inference propagation
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
+    // Inferred f32 variable cannot be mixed with float
+    EXPECT_THROW(runSource("a: f32 = 1.0\nb: f32 = 2.0\nc = a + b\nd = 3.0\ne = c + d"), std::runtime_error);
+}
+
 TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     // i32 + int → error
     EXPECT_THROW(runSource("a: i32 = 10\nb = 20\nc = a + b"), std::runtime_error);

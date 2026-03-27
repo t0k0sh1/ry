@@ -460,3 +460,4 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
 - **Low-level numeric types (`i16`, `i32`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division.
+- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types (`i16`, `i32`) uses two's complement wrapping on overflow. For example, `i32` max value `2147483647 + 1` wraps to `-2147483648`. This matches C behavior. Use the high-level `int` type (64-bit) if overflow is a concern.

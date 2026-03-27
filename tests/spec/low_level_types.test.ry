@@ -168,6 +168,41 @@ describe("as cast with low-level types", fn():
   )
 )
 
+describe("low-level type inference and propagation", fn():
+  it("i32 arithmetic result infers as i32", fn():
+    a: i32 = 10
+    b: i32 = 20
+    c = a + b
+    expect(c as int).to_eq(30)
+  )
+  it("inferred i32 can be reassigned with i32 expression", fn():
+    a: i32 = 10
+    b: i32 = 20
+    c = a + b
+    c = a * b
+    expect(c as int).to_eq(200)
+  )
+  it("i16 arithmetic result infers as i16", fn():
+    a: i16 = 3
+    b: i16 = 7
+    c = a + b
+    expect(c as int).to_eq(10)
+  )
+  it("f32 arithmetic result infers as f32", fn():
+    a: f32 = 1.5
+    b: f32 = 2.5
+    c = a + b
+    expect(c as float).to_eq(4.0)
+  )
+  it("chained i32 operations preserve type", fn():
+    a: i32 = 2
+    b: i32 = 3
+    c = a + b
+    d = c * a
+    expect(d as int).to_eq(10)
+  )
+)
+
 describe("low-level type print", fn():
   it("print i32", fn():
     x: i32 = 42

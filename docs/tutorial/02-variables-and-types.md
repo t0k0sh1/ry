@@ -90,6 +90,8 @@ z = d as i32       # Explicit cast to i32
 ```
 
 > **Note**: `/` on low-level integers performs integer division (like Rust), not float division.
+>
+> **Note**: Arithmetic on low-level integers wraps on overflow (two's complement). Use `int` if overflow is a concern.
 
 ---
 
