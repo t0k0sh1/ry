@@ -38,6 +38,19 @@ inline constexpr size_t kMaxHeaderSize = 8192;
 // Struct definitions — layouts must match codegen expectations
 // ---------------------------------------------------------------------------
 
+struct FormFieldEntry {
+    char *key;
+    char *value;
+};
+
+struct FormFileEntry {
+    char *name;
+    char *filename;
+    char *content_type;
+    char *data;
+    int64_t data_len;
+};
+
 struct HttpRequestHandle {
     char *method;
     char *path;
@@ -54,14 +67,9 @@ struct HttpRequestHandle {
     int64_t cookie_count;
     // Multipart form data (parsed lazily on first access)
     bool form_parsed;
-    char **form_field_keys;
-    char **form_field_values;
+    FormFieldEntry *form_fields;
     int64_t form_field_count;
-    char **form_file_keys;
-    char **form_file_filenames;
-    char **form_file_types;
-    char **form_file_data;
-    int64_t *form_file_data_lens;
+    FormFileEntry *form_files;
     int64_t form_file_count;
 };
 

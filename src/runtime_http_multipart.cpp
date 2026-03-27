@@ -57,13 +57,9 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     if (req->form_parsed) return;
     req->form_parsed = true;
     req->form_field_count = 0;
-    req->form_field_keys = nullptr;
-    req->form_field_values = nullptr;
+    req->form_fields = nullptr;
     req->form_file_count = 0;
-    req->form_file_keys = nullptr;
-    req->form_file_filenames = nullptr;
-    req->form_file_types = nullptr;
-    req->form_file_data = nullptr;
+    req->form_files = nullptr;
 
     if (!req->body || !req->body[0]) return;
 
@@ -81,9 +77,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     std::string crlf_delimiter = "\r\n" + delimiter;
     size_t body_len = (size_t)req->body_len;
 
-    std::vector<char *> field_keys, field_vals;
-    std::vector<char *> file_keys, file_filenames, file_types, file_data;
-    std::vector<int64_t> file_data_lens;
+    std::vector<FormFieldEntry> fields;
+    std::vector<FormFileEntry> files;
     std::unordered_set<std::string> seen_field_names, seen_file_names;
 
     // First delimiter appears at start of body (no preceding CRLF required)
@@ -135,16 +130,20 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
                 if (!filename.empty()) {
                     // First-value-wins deduplication
                     if (seen_file_names.insert(name).second) {
-                        file_keys.push_back(checked_strdup(name.c_str()));
-                        file_filenames.push_back(checked_strdup(filename.c_str()));
-                        file_types.push_back(checked_strdup(part_content_type ? part_content_type : "application/octet-stream"));
-                        file_data.push_back(checked_memdup(req->body + data_start, data_end - data_start));
-                        file_data_lens.push_back((int64_t)(data_end - data_start));
+                        files.push_back({
+                            checked_strdup(name.c_str()),
+                            checked_strdup(filename.c_str()),
+                            checked_strdup(part_content_type ? part_content_type : "application/octet-stream"),
+                            checked_memdup(req->body + data_start, data_end - data_start),
+                            (int64_t)(data_end - data_start)
+                        });
                     }
                 } else {
                     if (seen_field_names.insert(name).second) {
-                        field_keys.push_back(checked_strdup(name.c_str()));
-                        field_vals.push_back(checked_strndup(req->body + data_start, data_end - data_start));
+                        fields.push_back({
+                            checked_strdup(name.c_str()),
+                            checked_strndup(req->body + data_start, data_end - data_start)
+                        });
                     }
                 }
             }
@@ -157,30 +156,16 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
             break;
     }
 
-    req->form_field_count = (int64_t)field_keys.size();
+    req->form_field_count = (int64_t)fields.size();
     if (req->form_field_count > 0) {
-        req->form_field_keys = (char **)checked_malloc(sizeof(char *) * field_keys.size());
-        req->form_field_values = (char **)checked_malloc(sizeof(char *) * field_vals.size());
-        for (size_t i = 0; i < field_keys.size(); i++) {
-            req->form_field_keys[i] = field_keys[i];
-            req->form_field_values[i] = field_vals[i];
-        }
+        req->form_fields = (FormFieldEntry *)checked_malloc(sizeof(FormFieldEntry) * fields.size());
+        memcpy(req->form_fields, fields.data(), sizeof(FormFieldEntry) * fields.size());
     }
 
-    req->form_file_count = (int64_t)file_keys.size();
+    req->form_file_count = (int64_t)files.size();
     if (req->form_file_count > 0) {
-        req->form_file_keys = (char **)checked_malloc(sizeof(char *) * file_keys.size());
-        req->form_file_filenames = (char **)checked_malloc(sizeof(char *) * file_filenames.size());
-        req->form_file_types = (char **)checked_malloc(sizeof(char *) * file_types.size());
-        req->form_file_data = (char **)checked_malloc(sizeof(char *) * file_data.size());
-        req->form_file_data_lens = (int64_t *)checked_malloc(sizeof(int64_t) * file_data.size());
-        for (size_t i = 0; i < file_keys.size(); i++) {
-            req->form_file_keys[i] = file_keys[i];
-            req->form_file_filenames[i] = file_filenames[i];
-            req->form_file_types[i] = file_types[i];
-            req->form_file_data[i] = file_data[i];
-            req->form_file_data_lens[i] = file_data_lens[i];
-        }
+        req->form_files = (FormFileEntry *)checked_malloc(sizeof(FormFileEntry) * files.size());
+        memcpy(req->form_files, files.data(), sizeof(FormFileEntry) * files.size());
     }
 }
 
@@ -188,8 +173,8 @@ extern "C" const char *__ry_http_form_field(void *r, const char *name) {
     auto *req = (HttpRequestHandle *)r;
     parse_multipart_form_data(req);
     for (int64_t i = 0; i < req->form_field_count; i++) {
-        if (strcmp(req->form_field_keys[i], name) == 0)
-            return req->form_field_values[i];
+        if (strcmp(req->form_fields[i].key, name) == 0)
+            return req->form_fields[i].value;
     }
     return nullptr;
 }
@@ -198,16 +183,16 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
     auto *req = (HttpRequestHandle *)r;
     parse_multipart_form_data(req);
     for (int64_t i = 0; i < req->form_file_count; i++) {
-        if (strcmp(req->form_file_keys[i], name) == 0) {
+        if (strcmp(req->form_files[i].name, name) == 0) {
             // Build a Map<str, str> with keys: "filename", "content_type", "data"
             char **keys = (char **)checked_malloc(sizeof(char *) * 3);
             char **vals = (char **)checked_malloc(sizeof(char *) * 3);
             keys[0] = checked_strdup("filename");
-            vals[0] = checked_strdup(req->form_file_filenames[i]);
+            vals[0] = checked_strdup(req->form_files[i].filename);
             keys[1] = checked_strdup("content_type");
-            vals[1] = checked_strdup(req->form_file_types[i]);
+            vals[1] = checked_strdup(req->form_files[i].content_type);
             keys[2] = checked_strdup("data");
-            vals[2] = checked_memdup(req->form_file_data[i], (size_t)req->form_file_data_lens[i]);
+            vals[2] = checked_memdup(req->form_files[i].data, (size_t)req->form_files[i].data_len);
             return build_str_map(keys, vals, 3);
         }
     }
@@ -224,8 +209,8 @@ extern "C" void *__ry_http_form_fields(void *r) {
         dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->form_field_count);
         for (int64_t i = 0; i < req->form_field_count; i++) {
-            dup_keys[i] = checked_strdup(req->form_field_keys[i]);
-            dup_vals[i] = checked_strdup(req->form_field_values[i]);
+            dup_keys[i] = checked_strdup(req->form_fields[i].key);
+            dup_vals[i] = checked_strdup(req->form_fields[i].value);
         }
     }
     return build_str_map(dup_keys, dup_vals, req->form_field_count);
