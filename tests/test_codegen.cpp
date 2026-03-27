@@ -321,3 +321,202 @@ TEST_F(CodeGenTest, AnyTypeRejection) {
         "    return 42\n"
         "x: any = f"), std::runtime_error);
 }
+
+// ===== Low-level numeric types (i16, i32, f32) =====
+
+TEST_F(CodeGenTest, LowLevelI32Basics) {
+    EXPECT_EQ(runSource("x: i32 = 42\nprint(x)"), "42\n");
+    EXPECT_EQ(runSource("x: i32 = -10\nprint(x)"), "-10\n");
+    EXPECT_EQ(runSource("x: i32 = 0\nprint(x)"), "0\n");
+}
+
+TEST_F(CodeGenTest, LowLevelI16Basics) {
+    EXPECT_EQ(runSource("x: i16 = 100\nprint(x)"), "100\n");
+    EXPECT_EQ(runSource("x: i16 = -100\nprint(x)"), "-100\n");
+}
+
+TEST_F(CodeGenTest, LowLevelF32Basics) {
+    EXPECT_EQ(runSource("x: f32 = 2.5\nprint(x)"), "2.5\n");
+    EXPECT_EQ(runSource("x: f32 = 0.0\nprint(x)"), "0\n");
+}
+
+TEST_F(CodeGenTest, LowLevelI32Arithmetic) {
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: i32 = 50\nb: i32 = 20\nc = a - b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: i32 = 3\nb: i32 = 4\nc = a * b\nprint(c)"), "12\n");
+    // i32 / i32 → i32 (integer division, Rust-style)
+    EXPECT_EQ(runSource("a: i32 = 7\nb: i32 = 2\nc = a / b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: i32 = 7\nb: i32 = 2\nc = a // b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 3\nc = a % b\nprint(c)"), "1\n");
+}
+
+TEST_F(CodeGenTest, LowLevelF32Arithmetic) {
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
+    EXPECT_EQ(runSource("a: f32 = 5.0\nb: f32 = 2.0\nc = a - b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: f32 = 3.0\nb: f32 = 4.0\nc = a * b\nprint(c)"), "12\n");
+    EXPECT_EQ(runSource("a: f32 = 7.0\nb: f32 = 2.0\nc = a / b\nprint(c)"), "3.5\n");
+}
+
+TEST_F(CodeGenTest, LowLevelComparison) {
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 10\nprint(a == b)"), "true\n");
+    EXPECT_EQ(runSource("a: i32 = 5\nb: i32 = 10\nprint(a < b)"), "true\n");
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 5\nprint(a > b)"), "true\n");
+    EXPECT_EQ(runSource("a: f32 = 1.0\nb: f32 = 2.0\nprint(a < b)"), "true\n");
+}
+
+TEST_F(CodeGenTest, LowLevelCast) {
+    // i32 <-> int
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as int\nprint(y)"), "42\n");
+    EXPECT_EQ(runSource("x = 42\ny = x as i32\nprint(y)"), "42\n");
+    // i32 <-> i16
+    EXPECT_EQ(runSource("x: i32 = 100\ny = x as i16\nprint(y)"), "100\n");
+    EXPECT_EQ(runSource("x: i16 = 100\ny = x as i32\nprint(y)"), "100\n");
+    // i32 <-> float
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as float\nprint(y)"), "42\n");
+    EXPECT_EQ(runSource("x = 3.14\ny = x as i32\nprint(y)"), "3\n");
+    // f32 <-> float
+    EXPECT_EQ(runSource("x: f32 = 2.5\ny = x as float\nprint(y)"), "2.5\n");
+    EXPECT_EQ(runSource("x = 2.5\ny = x as f32\ny2 = y as float\nprint(y2)"), "2.5\n");
+    // i32 <-> f32
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as f32\ny2 = y as float\nprint(y2)"), "42\n");
+    EXPECT_EQ(runSource("x: f32 = 3.14\ny = x as i32\nprint(y)"), "3\n");
+}
+
+TEST_F(CodeGenTest, LowLevelTypeInference) {
+    // i32 arithmetic result infers as i32 (propagation)
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nprint(c)"), "30\n");
+    // Inferred i32 variable can be reassigned with i32 value
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nc = a * b\nprint(c)"), "200\n");
+    // Inferred i32 variable cannot be mixed with int
+    EXPECT_THROW(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nd = 5\ne = c + d"), std::runtime_error);
+    // i16 inference propagation
+    EXPECT_EQ(runSource("a: i16 = 3\nb: i16 = 7\nc = a + b\nprint(c)"), "10\n");
+    // f32 inference propagation
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
+    // Inferred f32 variable cannot be mixed with float
+    EXPECT_THROW(runSource("a: f32 = 1.0\nb: f32 = 2.0\nc = a + b\nd = 3.0\ne = c + d"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, LowLevelMixedTypeError) {
+    // i32 + int → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb = 20\nc = a + b"), std::runtime_error);
+    // i16 + i32 → error
+    EXPECT_THROW(runSource("a: i16 = 10\nb: i32 = 20\nc = a + b"), std::runtime_error);
+    // i32 + float → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb = 3.14\nc = a + b"), std::runtime_error);
+    // f32 + float → error
+    EXPECT_THROW(runSource("a: f32 = 1.0\nb = 2.0\nc = a + b"), std::runtime_error);
+    // i32 + f32 → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb: f32 = 2.0\nc = a + b"), std::runtime_error);
+    // ** on low-level types → error
+    EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
+}
+
+// ===== Numeric literal suffix =====
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_i32) {
+    EXPECT_EQ(runSource("x = 42i32\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_u8) {
+    EXPECT_EQ(runSource("x = 255u8\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_f32) {
+    EXPECT_EQ(runSource("x = 3.14f32\nprint(x)"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_IntWithF32) {
+    // Integer literal with f32 suffix becomes float
+    EXPECT_EQ(runSource("x = 42f32\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Hex) {
+    EXPECT_EQ(runSource("x = 0xFFu8\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Binary) {
+    EXPECT_EQ(runSource("x = 0b1010u8\nprint(x)"), "10\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Arithmetic) {
+    EXPECT_EQ(runSource("c = 10i32 + 20i32\nprint(c)"), "30\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange) {
+    EXPECT_THROW(runSource("x = 256u8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -1u8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = 129i8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -129i8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -1u32"), std::runtime_error);
+}
+
+// ===== Return type inference for named functions =====
+
+TEST_F(CodeGenTest, ReturnTypeInference_Int) {
+    // Omitted return type with return int → inferred as int
+    EXPECT_EQ(runSource(
+        "fn get_val():\n"
+        "    return 42\n"
+        "x = get_val()\n"
+        "print(x + 1)"), "43\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
+    // Omitted return type with no return → inferred as Unit
+    EXPECT_EQ(runSource(
+        "fn side_effect():\n"
+        "    print(\"hi\")\n"
+        "side_effect()"), "hi\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Float) {
+    EXPECT_EQ(runSource(
+        "fn get_pi():\n"
+        "    return 3.14\n"
+        "print(get_pi())"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Str) {
+    EXPECT_EQ(runSource(
+        "fn get_name():\n"
+        "    return \"hello\"\n"
+        "print(get_name())"), "hello\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
+    EXPECT_EQ(runSource(
+        "fn is_ok():\n"
+        "    return true\n"
+        "print(is_ok())"), "true\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
+    // Multiple return types → union type
+    EXPECT_EQ(runSource(
+        "fn mixed(flag: bool):\n"
+        "    if flag:\n"
+        "        return 42\n"
+        "    return 3.14\n"
+        "print(mixed(true))\n"
+        "print(mixed(false))"), "42\n3.14\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
+    EXPECT_EQ(runSource(
+        "fn mixed(flag: bool):\n"
+        "    if flag:\n"
+        "        return \"hello\"\n"
+        "    return 42\n"
+        "print(mixed(true))\n"
+        "print(mixed(false))"), "hello\n42\n");
+}
+
+TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
+    // Explicit -> any still works as before
+    EXPECT_EQ(runSource(
+        "fn get_val() -> any:\n"
+        "    return 42\n"
+        "x: any = get_val()\n"
+        "print(x)"), "42\n");
+}

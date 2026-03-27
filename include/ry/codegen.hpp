@@ -27,7 +27,7 @@ private:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
-    llvm::Type *i64Ty_, *i32Ty_, *i8Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
+    llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
@@ -69,6 +69,7 @@ private:
     std::vector<llvm::Value*> task_group_stack_;
     std::unordered_map<llvm::Value*, llvm::Type*> channel_element_types_;
     std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
+    std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
     int iterator_fn_counter_ = 0;
 
     struct UnionTypeInfo {
@@ -268,6 +269,19 @@ private:
     llvm::Constant *fail_empty_msg_ = nullptr;
     llvm::Value *toBool(llvm::Value *v);
 
+    // Low-level type helpers
+    const std::string &getLowLevelTypeName(llvm::Value *val) const;
+    bool isUnsignedLowLevel(llvm::Value *val) const;
+    static bool isUnsignedLowLevelName(const std::string &name);
+    static bool isLowLevelTypeName(const std::string &name);
+    static std::string getExprLowLevelSuffix(const ExprNode &node);
+    bool isLowLevelIntTy(llvm::Type *ty) const;
+    bool isLowLevelIntTy(llvm::Value *val) const;
+    bool isLowLevelFloatTy(llvm::Type *ty) const;
+    bool isLowLevelTy(llvm::Type *ty) const;
+    bool isLowLevelTy(llvm::Value *val) const;
+    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
+
     // Type promotion helpers (B1)
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
@@ -306,9 +320,12 @@ private:
                                       llvm::Value *operand);
 
     // BinaryExpr sub-dispatchers (B2)
-    llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
-    llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                   const std::string &llNameHint = "");
+    llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                const std::string &llNameHint = "");
+    llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                   const std::string &llNameHint = "");
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
@@ -564,11 +581,16 @@ private:
     llvm::Value *emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &info,
                                 std::vector<llvm::Value*> args, const std::string &name);
 
-    // Lambda return type inference
+    // Return type inference
     llvm::Type *inferExprType(const ExprNode &expr,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
     llvm::Type *inferReturnType(const std::vector<StmtNode> &body,
         const std::unordered_map<std::string, llvm::Type*> &paramTypeMap);
+    void collectReturnTypes(const std::vector<StmtNode> &body,
+        const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+        std::vector<llvm::Type*> &out);
+    llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
+    std::string reverseResolveTypeName(llvm::Type *ty);
 
     // Union type helpers
     std::vector<std::string> parseUnionComponents(const std::string &typeName);

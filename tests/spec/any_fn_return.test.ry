@@ -57,17 +57,16 @@ describe("any return from lambda", fn():
   )
 )
 
-describe("omitted return type function (defaults to any)", fn():
-  it("function with omitted return type returns int", fn():
+describe("omitted return type function (inferred)", fn():
+  it("function with omitted return type infers int", fn():
     fn get_val():
       return 42
-    x: any = get_val()
-    expect(true).to_eq(true)
+    expect(get_val()).to_eq(42)
   )
-  it("function with omitted return type implicit return", fn():
+  it("function with omitted return type infers Unit", fn():
     fn do_nothing():
       y = 1
-    x: any = do_nothing()
+    do_nothing()
     expect(true).to_eq(true)
   )
 )

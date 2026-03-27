@@ -159,4 +159,5 @@ private:
 
     Token readToken();
     Token readFStringSegment(bool isStart);
+    void tryConsumeNumericSuffix(TokenKind &kind);
 };

@@ -310,7 +310,35 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type));
-    llvm::Type *bodyRetTy = resolveType(s->return_type);
+
+    llvm::Type *bodyRetTy;
+    if (s->return_type.empty()) {
+        // Infer return type from body
+        std::unordered_map<std::string, llvm::Type*> paramTypeMap;
+        for (auto &p : s->params)
+            paramTypeMap[p.name] = resolveType(p.type);
+        std::vector<llvm::Type*> retTypes;
+        collectReturnTypes(s->body, paramTypeMap, retTypes);
+        bodyRetTy = deduceReturnType(retTypes);
+        // Build return type name string
+        // Deduplicate for name construction
+        std::vector<llvm::Type*> unique;
+        for (auto *ty : retTypes)
+            if (std::find(unique.begin(), unique.end(), ty) == unique.end())
+                unique.push_back(ty);
+        if (unique.size() <= 1) {
+            s->return_type = reverseResolveTypeName(bodyRetTy);
+        } else {
+            std::string unionName;
+            for (size_t i = 0; i < unique.size(); ++i) {
+                if (i > 0) unionName += " | ";
+                unionName += reverseResolveTypeName(unique[i]);
+            }
+            s->return_type = unionName;
+        }
+    } else {
+        bodyRetTy = resolveType(s->return_type);
+    }
 
     // Check that non-Unit, non-any functions return on all paths
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
@@ -399,6 +427,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 channel_element_types_[alloca] = resolveType(inner);
             }
             registerResourceByTypeName(ptype, alloca);
+            // Track low-level type metadata for parameters
+            if (isLowLevelTypeName(ptype))
+                low_level_type_names_[alloca] = ptype;
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
@@ -717,11 +748,18 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 // ===== Generic function type inference =====
 
 std::string CodeGen::reverseResolveType(llvm::Value *val) {
+    // Check low-level type metadata first (resolves ambiguous LLVM types)
+    std::string llName = getLowLevelTypeName(val);
+    if (!llName.empty()) return llName;
+
     llvm::Type *ty = val->getType();
     if (ty == i64Ty_) return "int";
     if (ty == f64Ty_) return "float";
     if (ty == i1Ty_)  return "bool";
     if (ty == i8Ty_)  return "byte";
+    if (ty == i16Ty_) return "i16";
+    if (ty == i32Ty_) return "i32";
+    if (ty == f32Ty_) return "f32";
     if (isAnyType(ty)) return "any";
 
     if (ty == ptrTy_) {
@@ -913,6 +951,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 if (vTy) map_value_types_[alloca] = vTy;
             }
             registerResourceByTypeName(ptype, alloca);
+            // Track low-level type metadata for parameters
+            if (isLowLevelTypeName(ptype))
+                low_level_type_names_[alloca] = ptype;
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(")

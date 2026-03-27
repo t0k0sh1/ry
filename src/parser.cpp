@@ -488,7 +488,7 @@ StmtNode Parser::parseStatement() {
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
         auto one = std::make_unique<ExprNode>();
-        one->data = NumberExpr{1};
+        one->data = NumberExpr{1, ""};
         one->loc = locFromToken(first);
         return makeDesugarAssign(first, opTok, op, std::move(one));
     } else if (next.kind == TokenKind::LParen) {

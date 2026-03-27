@@ -39,8 +39,8 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     return false;
 }
 
-struct NumberExpr   { int64_t value; };
-struct FloatExpr    { double value; };
+struct NumberExpr   { int64_t value; std::string suffix; };
+struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
 struct StringExpr   { std::string value; };
 struct VariableExpr { std::string name; };

@@ -91,6 +91,46 @@ describe("UFCS", fn():
   )
 )
 
+fn infer_int():
+  return 42
+
+fn infer_float():
+  return 3.14
+
+fn infer_str():
+  return "hello"
+
+fn infer_bool():
+  return true
+
+fn infer_unit():
+  print("")
+
+fn infer_union(flag: bool):
+  if flag:
+    return 42
+  return 3.14
+
+describe("return type inference", fn():
+  it("infers int", fn():
+    expect(infer_int()).to_eq(42)
+  )
+  it("infers float", fn():
+    expect(infer_float()).to_eq(3.14)
+  )
+  it("infers str", fn():
+    expect(infer_str()).to_eq("hello")
+  )
+  it("infers bool", fn():
+    expect(infer_bool()).to_be_true()
+  )
+  it("infers union type from mixed returns", fn():
+    x = infer_union(true)
+    y = infer_union(false)
+    expect(true).to_be_true()
+  )
+)
+
 describe("operator overloading", fn():
   it("binary +", fn():
     v1 = Vec2(1.0, 2.0)

@@ -4,7 +4,10 @@
 #include "ry/ast.hpp"
 #include "ry/source_manager.hpp"
 
+#include <cctype>
+#include <cstring>
 #include <initializer_list>
+#include <utility>
 
 class Parser {
 public:
@@ -96,3 +99,31 @@ private:
     ExprPtr parseSpawnExpr();
     ExprPtr parseAwaitExpr();
 };
+
+// --- Shared numeric literal helpers ---
+
+inline constexpr const char *kNumericSuffixes[] = {
+    "i8", "i16", "i32", "i64",
+    "u8", "u16", "u32", "u64",
+    "f32", "f64"
+};
+
+inline std::pair<std::string, std::string> splitNumericSuffix(const std::string &s) {
+    for (const char *suf : kNumericSuffixes) {
+        size_t len = std::strlen(suf);
+        if (s.size() > len && s.compare(s.size() - len, len, suf) == 0) {
+            char before = s[s.size() - len - 1];
+            if (std::isdigit(before))
+                return {s.substr(0, s.size() - len), suf};
+        }
+    }
+    return {s, ""};
+}
+
+inline int64_t parseIntLiteral(const std::string &s) {
+    if (s.size() > 2 && s[0] == '0') {
+        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
+        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
+    }
+    return std::stoll(s);
+}
