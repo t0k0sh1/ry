@@ -2,18 +2,17 @@ from http import http_listen, http_path, http_response, http_get, http_client_st
 
 describe("http_listen with max_requests", fn():
   it("stops after 1 request with max_requests=1", fn():
-    fn server(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18940, fn(req: HttpRequest) -> HttpResponse:
+    fn server(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         return http_response(200, {"Content-Type": "text/plain"}, "hello")
-      , 1)
+      , 1, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server(ready)
-    recv(ready)
-    sleep(100)
-    match http_get("http://127.0.0.1:18940/test"):
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server(port_ch)
+    port = recv(port_ch)
+    url = "http://127.0.0.1:" + to_str(port) + "/test"
+    match http_get(url):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("hello")
@@ -25,20 +24,19 @@ describe("http_listen with max_requests", fn():
   )
 
   it("stops after 2 requests with max_requests=2", fn():
-    fn server2(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18941, fn(req: HttpRequest) -> HttpResponse:
+    fn server2(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         path = http_path(req)
         return http_response(200, {"Content-Type": "text/plain"}, path)
-      , 2)
+      , 2, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server2(ready)
-    recv(ready)
-    sleep(100)
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server2(port_ch)
+    port = recv(port_ch)
 
-    match http_get("http://127.0.0.1:18941/first"):
+    url1 = "http://127.0.0.1:" + to_str(port) + "/first"
+    match http_get(url1):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("/first")
@@ -46,7 +44,8 @@ describe("http_listen with max_requests", fn():
       case Err(e):
         fail("unexpected error")
 
-    match http_get("http://127.0.0.1:18941/second"):
+    url2 = "http://127.0.0.1:" + to_str(port) + "/second"
+    match http_get(url2):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("/second")
