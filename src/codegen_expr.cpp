@@ -1169,6 +1169,12 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == anyTy_)
         return emitAnyToString(val);
 
+    if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string name = structTy->getName().str();
+        if (struct_types_.count(name))
+            return structToString(val);
+    }
+
     if (ty->isPointerTy()) {
         // Reject non-string pointer types (collections, function pointers)
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
@@ -1256,6 +1262,74 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
     }
+    return buf;
+}
+
+llvm::Value *CodeGen::structToString(llvm::Value *val) {
+    auto *structTy = llvm::cast<llvm::StructType>(val->getType());
+    std::string typeName = structTy->getName().str();
+    auto it = struct_types_.find(typeName);
+    if (it == struct_types_.end())
+        codegenError("structToString: unknown record type: " + typeName);
+
+    const auto &info = it->second;
+
+    // Check for user-defined to_str overload
+    auto fit = functions_.find("to_str");
+    if (fit != functions_.end()) {
+        for (auto &entry : fit->second) {
+            if (entry.paramTypes.size() == 1 && entry.paramTypes[0] == structTy) {
+                return builder_.CreateCall(entry.func, {val}, "user_to_str");
+            }
+        }
+    }
+
+    // Auto-generate: "TypeName(field1: val1, field2: val2)"
+    auto strlenFn = getStdlibStrlen();
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
+    // Build string parts with lengths (use constants for literals, strlen for dynamic values)
+    struct StringPart { llvm::Value *str; llvm::Value *len; };
+    std::vector<StringPart> parts;
+
+    auto addLiteral = [&](const std::string &s, const char *label) {
+        parts.push_back({builder_.CreateGlobalString(s, label),
+                         llvm::ConstantInt::get(i64Ty_, s.size())});
+    };
+
+    addLiteral(typeName + "(", ".sts_prefix");
+
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        if (i > 0)
+            addLiteral(", ", ".sts_sep");
+        addLiteral(info.fields[i].name + ": ", ".sts_fname");
+        llvm::Value *field = builder_.CreateExtractValue(val, i, info.fields[i].name);
+        llvm::Value *fieldStr = valueToString(field);
+        parts.push_back({fieldStr, builder_.CreateCall(strlenFn, {fieldStr}, "sts_len")});
+    }
+
+    addLiteral(")", ".sts_suffix");
+
+    // Compute total length
+    llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
+    for (auto &p : parts)
+        totalLen = builder_.CreateAdd(totalLen, p.len, "sts_total");
+
+    // Allocate and concatenate
+    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "sts_bufsize");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "sts_buf");
+    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
+    for (auto &p : parts) {
+        llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_dst");
+        builder_.CreateCall(memcpyFn, {dst, p.str, p.len});
+        offset = builder_.CreateAdd(offset, p.len, "sts_off");
+    }
+
+    // Null-terminate
+    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_end");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+
     return buf;
 }
 

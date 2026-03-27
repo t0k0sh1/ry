@@ -1209,6 +1209,13 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
         llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");
         llvm::Constant *fmt = builder_.CreateGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
         builder_.CreateCall(printfFn, {fmt, msg, code});
+    } else if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string name = st->getName().str();
+        if (struct_types_.count(name)) {
+            llvm::Value *str = structToString(val);
+            llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_struct" + suffix);
+            builder_.CreateCall(printfFn, {fmt, str});
+        }
     } else {
         std::string llName = getLowLevelTypeName(val);
         if (llName == "u64") {
