@@ -1600,6 +1600,185 @@ TEST(RuntimeHttp, FormFieldNoBody) {
     free(handle);
 }
 
+// --- NUL byte regression tests (#281) ---
+
+// Helper: write raw bytes (including NUL) to fd and close
+static void send_raw_and_close(int fd, const char *data, size_t len) {
+    size_t sent = 0;
+    while (sent < len) {
+        ssize_t n = ::write(fd, data + sent, len - sent);
+        if (n <= 0) break;
+        sent += (size_t)n;
+    }
+    ::close(fd);
+}
+
+TEST(RuntimeHttp, ReadRequestBodyWithNulByte) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // Body: "ab\0cd" (5 bytes)
+    std::string body_data("ab\0cd", 5);
+    std::string req =
+        "POST /data HTTP/1.1\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n";
+    req += body_data;
+    send_raw_and_close(fds[1], req.data(), req.size());
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    // __ry_http_body returns const char *, so C-string truncation at NUL is expected
+    const char *body = __ry_http_body(result);
+    EXPECT_STREQ(body, "ab");
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST(RuntimeHttp, ResponseSendBodyWithNulByte) {
+    // Verify body_len (not strlen) is used for Content-Length when sending responses.
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    memset(map, 0, sizeof(MapHeader));
+    map->bucket_count = 4;
+    map->buckets = calloc(4, sizeof(int64_t));
+
+    void *resp = __ry_http_response_create(200, map, "hello world");
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    __ry_http_send_response(handle, resp);
+    ::close(fds[0]);
+
+    char buf[4096];
+    std::string received;
+    while (true) {
+        ssize_t n = ::read(fds[1], buf, sizeof(buf));
+        if (n <= 0) break;
+        received.append(buf, (size_t)n);
+    }
+    ::close(fds[1]);
+
+    // Verify Content-Length is 11 (strlen("hello world"))
+    EXPECT_NE(received.find("Content-Length: 11"), std::string::npos);
+    // Verify body is present
+    EXPECT_NE(received.find("hello world"), std::string::npos);
+
+    __ry_http_response_free(resp);
+    free(map->buckets);
+    free(map);
+    free(handle);
+}
+
+TEST(RuntimeHttp, MultipartFileDataWithNulByte) {
+    int fds[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+    // File data: "X\0Y" (3 bytes) — contains embedded NUL
+    std::string file_content("X\0Y", 3);
+    std::string body =
+        "--bnd\r\n"
+        "Content-Disposition: form-data; name=\"file\"; filename=\"test.bin\"\r\n"
+        "Content-Type: application/octet-stream\r\n"
+        "\r\n" +
+        file_content +
+        "\r\n"
+        "--bnd\r\n"
+        "Content-Disposition: form-data; name=\"field1\"\r\n"
+        "\r\n"
+        "after_nul_field\r\n"
+        "--bnd--\r\n";
+
+    std::string req =
+        "POST /upload HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Type: multipart/form-data; boundary=bnd\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "\r\n";
+    req += body;
+    send_raw_and_close(fds[1], req.data(), req.size());
+
+    auto *handle = (TcpStreamHandle *)malloc(sizeof(TcpStreamHandle));
+    handle->fd = fds[0];
+    void *result = __ry_http_read_request(handle);
+    ASSERT_NE(result, nullptr);
+
+    // memmem (not strstr) allows boundary search past NUL bytes
+    EXPECT_STREQ(__ry_http_form_field(result, "field1"), "after_nul_field");
+
+    // The file should also be found
+    auto *file_map = (MapHeader *)__ry_http_form_file(result, "file");
+    ASSERT_NE(file_map, nullptr);
+    EXPECT_EQ(file_map->len, 3);
+
+    const char *data = nullptr;
+    for (int64_t i = 0; i < file_map->len; i++) {
+        if (strcmp(file_map->keys[i], "data") == 0) data = file_map->vals[i];
+    }
+    ASSERT_NE(data, nullptr);
+    EXPECT_EQ(data[0], 'X');
+
+    for (int64_t i = 0; i < file_map->len; i++) {
+        free(file_map->keys[i]);
+        free(file_map->vals[i]);
+    }
+    free(file_map->keys);
+    free(file_map->vals);
+    free(file_map->buckets);
+    free(file_map);
+
+    __ry_http_request_free(result);
+    ::close(fds[0]);
+    free(handle);
+}
+
+TEST_F(RuntimeHttpClientTest, ClientResponseBodyWithNulByte) {
+    // Server sends response with body containing a NUL byte.
+    // Body: "he\0lo" (5 bytes)
+    std::string body_bytes("he\0lo", 5);
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 5\r\n"
+        "\r\n" +
+        body_bytes;
+
+    int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        // Send raw bytes including NUL
+        size_t sent = 0;
+        while (sent < response.size()) {
+            ssize_t w = ::write(conn, response.data() + sent, response.size() - sent);
+            if (w <= 0) break;
+            sent += (size_t)w;
+        }
+        ::close(conn);
+    });
+    JoinGuard jg(server_thread);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+    EXPECT_EQ(__ry_http_client_status(resp), 200);
+
+    const char *body = __ry_http_client_body(resp);
+    EXPECT_STREQ(body, "he");  // C-string truncation at NUL
+    __ry_http_client_response_free(resp);
+    ::close(srv);
+}
+
 TEST(RuntimeHttp, FormFileDefaultContentType) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);

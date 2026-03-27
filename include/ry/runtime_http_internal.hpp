@@ -45,6 +45,7 @@ struct HttpRequestHandle {
     char **header_values;
     int64_t header_count;
     char *body;
+    int64_t body_len;
     char **query_keys;
     char **query_values;
     int64_t query_count;
@@ -60,6 +61,7 @@ struct HttpRequestHandle {
     char **form_file_filenames;
     char **form_file_types;
     char **form_file_data;
+    int64_t *form_file_data_lens;
     int64_t form_file_count;
 };
 
@@ -69,6 +71,7 @@ struct HttpResponseHandle {
     char **header_values;
     int64_t header_count;
     char *body;
+    int64_t body_len;
 };
 
 // MapHeader layout must match codegen: {len, cap, keys, vals, bucket_count, buckets}
@@ -89,6 +92,7 @@ struct HttpClientResponseHandle {
     char **header_values;
     int64_t header_count;
     char *body;
+    int64_t body_len;
 };
 
 struct ParsedUrl {
@@ -152,6 +156,14 @@ inline char *checked_strndup(const char *s, size_t n) {
 inline char *checked_strdup(const char *s) {
     char *r = strdup(s);
     if (!r) oom_abort();
+    return r;
+}
+
+inline char *checked_memdup(const void *src, size_t len) {
+    char *r = (char *)malloc(len + 1);
+    if (!r) oom_abort();
+    memcpy(r, src, len);
+    r[len] = '\0';  // NUL-terminate for str compatibility
     return r;
 }
 

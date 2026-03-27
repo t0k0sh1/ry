@@ -79,14 +79,16 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     std::string delimiter = "--" + boundary;
     // Line-boundary-aware delimiter for subsequent parts (RFC 2046: CRLF before delimiter)
     std::string crlf_delimiter = "\r\n" + delimiter;
-    size_t body_len = strlen(req->body);
+    size_t body_len = (size_t)req->body_len;
 
     std::vector<char *> field_keys, field_vals;
     std::vector<char *> file_keys, file_filenames, file_types, file_data;
+    std::vector<int64_t> file_data_lens;
     std::unordered_set<std::string> seen_field_names, seen_file_names;
 
     // First delimiter appears at start of body (no preceding CRLF required)
-    const char *delim_ptr = strstr(req->body, delimiter.c_str());
+    const char *delim_ptr = (const char *)memmem(req->body, body_len,
+                                                  delimiter.c_str(), delimiter.size());
     if (!delim_ptr) return;
     size_t pos = (size_t)(delim_ptr - req->body) + delimiter.size();
 
@@ -96,7 +98,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
         else
             break;
 
-        const char *hdr_end_ptr = strstr(req->body + pos, "\r\n\r\n");
+        const char *hdr_end_ptr = (const char *)memmem(req->body + pos, body_len - pos,
+                                                        "\r\n\r\n", 4);
         if (!hdr_end_ptr) break;
         size_t headers_end = (size_t)(hdr_end_ptr - req->body);
 
@@ -106,7 +109,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
         size_t data_start = headers_end + 4;
 
         // Search for CRLF + delimiter to avoid false matches inside part data
-        const char *next_ptr = strstr(req->body + data_start, crlf_delimiter.c_str());
+        const char *next_ptr = (const char *)memmem(req->body + data_start, body_len - data_start,
+                                                     crlf_delimiter.c_str(), crlf_delimiter.size());
         if (!next_ptr) { free_header_pairs(part_headers); break; }
         // next_delim points to the "--boundary" part (skip the leading CRLF)
         size_t next_delim = (size_t)(next_ptr - req->body) + 2;
@@ -134,7 +138,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
                         file_keys.push_back(checked_strdup(name.c_str()));
                         file_filenames.push_back(checked_strdup(filename.c_str()));
                         file_types.push_back(checked_strdup(part_content_type ? part_content_type : "application/octet-stream"));
-                        file_data.push_back(checked_strndup(req->body + data_start, data_end - data_start));
+                        file_data.push_back(checked_memdup(req->body + data_start, data_end - data_start));
+                        file_data_lens.push_back((int64_t)(data_end - data_start));
                     }
                 } else {
                     if (seen_field_names.insert(name).second) {
@@ -168,11 +173,13 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
         req->form_file_filenames = (char **)checked_malloc(sizeof(char *) * file_filenames.size());
         req->form_file_types = (char **)checked_malloc(sizeof(char *) * file_types.size());
         req->form_file_data = (char **)checked_malloc(sizeof(char *) * file_data.size());
+        req->form_file_data_lens = (int64_t *)checked_malloc(sizeof(int64_t) * file_data.size());
         for (size_t i = 0; i < file_keys.size(); i++) {
             req->form_file_keys[i] = file_keys[i];
             req->form_file_filenames[i] = file_filenames[i];
             req->form_file_types[i] = file_types[i];
             req->form_file_data[i] = file_data[i];
+            req->form_file_data_lens[i] = file_data_lens[i];
         }
     }
 }
@@ -200,7 +207,7 @@ extern "C" void *__ry_http_form_file(void *r, const char *name) {
             keys[1] = checked_strdup("content_type");
             vals[1] = checked_strdup(req->form_file_types[i]);
             keys[2] = checked_strdup("data");
-            vals[2] = checked_strdup(req->form_file_data[i]);
+            vals[2] = checked_memdup(req->form_file_data[i], (size_t)req->form_file_data_lens[i]);
             return build_str_map(keys, vals, 3);
         }
     }

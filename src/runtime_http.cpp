@@ -464,7 +464,8 @@ extern "C" void *__ry_http_read_request(void *stream) {
             __ry_http_request_free(req);
             return nullptr;
         }
-        req->body = checked_strdup(body_data.c_str());
+        req->body_len = (int64_t)body_data.size();
+        req->body = checked_memdup(body_data.data(), body_data.size());
         return req;
     }
 
@@ -500,7 +501,8 @@ extern "C" void *__ry_http_read_request(void *stream) {
     if (content_length >= 0 && (int64_t)body_data.size() > content_length)
         body_data.resize((size_t)content_length);
 
-    req->body = checked_strdup(body_data.c_str());
+    req->body_len = (int64_t)body_data.size();
+    req->body = checked_memdup(body_data.data(), body_data.size());
 
     return req;
 }
@@ -580,7 +582,9 @@ extern "C" void *__ry_http_cookies(void *r) {
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
     auto *resp = (HttpResponseHandle *)checked_malloc(sizeof(HttpResponseHandle));
     resp->status = status;
-    resp->body = checked_strdup(body ? body : "");
+    const char *b = body ? body : "";
+    resp->body_len = (int64_t)strlen(b);
+    resp->body = checked_memdup(b, (size_t)resp->body_len);
 
     auto *map = (MapHeader *)headers_map;
     resp->header_count = map->len;
@@ -663,8 +667,8 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
 
     const char *reason = __ry_http_reason_phrase(resp->status);
 
-    // Estimate response size to avoid repeated reallocations
-    size_t body_len = strlen(resp->body);
+    // Use stored body length (not strlen) to handle NUL bytes correctly
+    size_t body_len = (size_t)resp->body_len;
     size_t estimated = 64 + body_len; // status line + CRLF overhead
     for (int64_t i = 0; i < resp->header_count; i++)
         estimated += strlen(resp->header_keys[i]) + strlen(resp->header_values[i]) + 4;
@@ -756,6 +760,7 @@ extern "C" void __ry_http_request_free(void *r) {
     free(req->form_file_filenames);
     free(req->form_file_types);
     free(req->form_file_data);
+    free(req->form_file_data_lens);
     free(req->body);
     free(req);
 }

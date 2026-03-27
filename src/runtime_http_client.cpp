@@ -187,7 +187,8 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
     // Build response handle
     auto *resp = (HttpClientResponseHandle *)checked_malloc(sizeof(HttpClientResponseHandle));
     resp->status = (int64_t)status_code;
-    resp->body = checked_strdup(body_data.c_str());
+    resp->body_len = (int64_t)body_data.size();
+    resp->body = checked_memdup(body_data.data(), body_data.size());
 
     assign_headers(parsed_headers, &resp->header_keys, &resp->header_values, &resp->header_count);
 
