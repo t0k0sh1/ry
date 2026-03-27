@@ -297,6 +297,7 @@ fn operator-(a: MyType) -> MyType:
 | Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
 | Logical (binary) | `and` `or` |
 | Unary | `-` `~` `not` |
+| Compound assignment | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
 
 ### Return Type Constraints
 
@@ -332,3 +333,42 @@ fn operator-(a: Vec2, b: Vec2) -> Vec2:
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
+
+### Compound Assignment Operator Overloading
+
+Compound assignment operators (`+=`, `-=`, etc.) can be independently overloaded. This enables in-place optimization for large data structures.
+
+```python
+record Matrix:
+    data: List
+    rows: int
+    cols: int
+
+fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+    for i in range(len(a.data)):
+        a.data[i] = a.data[i] + b.data[i]
+    return a
+```
+
+#### Resolution Priority
+
+When `x += y` is evaluated:
+
+1. If `operator+=` is defined for the types → call it directly
+2. If `operator+=` is not defined but `operator+` is → fall back to `x = x + y`
+3. If neither is defined (for non-builtin types) → compile error
+
+```python
+record Vec2:
+    x: float
+    y: float
+
+fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+    return Vec2(a.x + b.x, a.y + b.y)
+
+v = Vec2(1.0, 2.0)
+v += Vec2(3.0, 4.0)  # calls operator+= directly
+# v.x == 4.0, v.y == 6.0
+```
+
+Compound assignment operators require exactly 2 parameters and have no return type constraint.

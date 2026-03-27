@@ -326,6 +326,10 @@ private:
     llvm::Value *tryUnaryOperatorCall(const std::string &opFnName,
                                       llvm::Value *operand);
 
+    // Binary operation dispatch (user-defined → any → built-in)
+    llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                               const std::string &llNameHint = "");
+
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &llNameHint = "");

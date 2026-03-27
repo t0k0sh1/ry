@@ -60,6 +60,14 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             case TokenKind::GreaterGreaterGreater:
             case TokenKind::And: case TokenKind::Or:
             case TokenKind::Not:
+            // Compound assignment operators
+            case TokenKind::PlusEq: case TokenKind::MinusEq:
+            case TokenKind::StarEq: case TokenKind::SlashEq:
+            case TokenKind::PercentEq: case TokenKind::SlashSlashEq:
+            case TokenKind::StarStarEq:
+            case TokenKind::AmpEq: case TokenKind::PipeEq:
+            case TokenKind::CaretEq:
+            case TokenKind::LessLessEq: case TokenKind::GreaterGreaterEq:
                 opName = opTok.value;
                 lex_.next(); // consume operator
                 break;
@@ -144,6 +152,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         if (opName == "operator~" || opName == "operatornot") {
             if (nParams != 1)
                 parseError("unary operator requires exactly 1 parameter");
+        } else if (isCompoundAssignOperator(opName)) {
+            if (nParams != 2)
+                parseError("compound assignment operator requires exactly 2 parameters");
         } else if (nParams != 1 && nParams != 2) {
             parseError("operator function requires 1 or 2 parameters");
         }

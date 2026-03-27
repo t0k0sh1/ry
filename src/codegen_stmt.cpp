@@ -467,6 +467,37 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
+    // Compound assignment resolution: operator+= → operator+ → built-in
+    if (s.compound_op) {
+        llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
+        llvm::Value *rhs = emitExpr(*s.value);
+
+        // Priority 1: user-defined compound assignment operator (e.g., operator+=)
+        std::string compoundOpName = "operator" + *s.compound_op + "=";
+        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
+
+        if (!result) {
+            // Priority 2: user-defined binary operator or built-in (e.g., operator+)
+            result = emitBinaryOp(*s.compound_op, currentVal, rhs);
+        }
+
+        // Type compatibility check (same as plain assignment path)
+        llvm::Type *varTy = ptr->getAllocatedType();
+        if (result->getType() != varTy) {
+            if (varTy == i8Ty_ && result->getType() == i64Ty_) {
+                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
+            } else if (isAnyType(varTy)) {
+                result = wrapInAny(result);
+            } else {
+                codegenError("type error: compound assignment on '" + s.name +
+                    "' produces incompatible type");
+            }
+        }
+
+        builder_.CreateStore(result, ptr);
+        return;
+    }
+
     // Handle None literal in assignment
     if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
         llvm::Type *varTy = ptr->getAllocatedType();

@@ -658,6 +658,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
 
+    // Compute low-level type name hint from AST suffixes for constant operands (#311).
+    std::string llHint = getExprLowLevelSuffix(*e->lhs);
+    if (llHint.empty()) llHint = getExprLowLevelSuffix(*e->rhs);
+
+    return emitBinaryOp(op, lhs, rhs, llHint);
+}
+
+llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
+                                    const std::string &llNameHint) {
     // Try user-defined binary operator first
     std::string opFnName = "operator" + op;
     if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
@@ -670,19 +679,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
         return emitAnyBinaryOp(op, lhs, rhs);
     }
 
-    // Compute low-level type name hint from AST suffixes for constant operands (#311).
-    std::string llHint = getExprLowLevelSuffix(*e->lhs);
-    if (llHint.empty()) llHint = getExprLowLevelSuffix(*e->rhs);
-
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
-        return emitComparisonOp(op, lhs, rhs, llHint);
+        return emitComparisonOp(op, lhs, rhs, llNameHint);
 
     if (op == "&" || op == "|" || op == "^" ||
         op == "<<" || op == ">>" || op == ">>>")
-        return emitBitwiseOp(op, lhs, rhs, llHint);
+        return emitBitwiseOp(op, lhs, rhs, llNameHint);
 
-    return emitArithmeticOp(op, lhs, rhs, llHint);
+    return emitArithmeticOp(op, lhs, rhs, llNameHint);
 }
 
 void CodeGen::emitStmt(RecordStmt &s) {

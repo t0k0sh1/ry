@@ -52,6 +52,17 @@ inline std::string operatorSymbol(const std::string &name) {
     return name.substr(8);
 }
 
+// Returns true for compound assignment operator names (operator+=, operator-=, etc.).
+inline bool isCompoundAssignOperator(const std::string &name) {
+    return name == "operator+=" || name == "operator-=" ||
+           name == "operator*=" || name == "operator/=" ||
+           name == "operator%=" || name == "operator//=" ||
+           name == "operator**=" ||
+           name == "operator&=" || name == "operator|=" ||
+           name == "operator^=" ||
+           name == "operator<<=" || name == "operator>>=";
+}
+
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
@@ -147,7 +158,7 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };
+struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };

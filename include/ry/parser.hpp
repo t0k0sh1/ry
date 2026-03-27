@@ -69,8 +69,8 @@ private:
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
     void parseEnsureClause(FnStmt &fn);
 
-    // Desugar helper: x = x op rhs
-    AssignStmt makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs);
+    // Compound assignment helper: x op= rhs
+    AssignStmt makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs);
 
     // Binary expression helper (left-associative)
     using ParseFn = ExprPtr (Parser::*)();

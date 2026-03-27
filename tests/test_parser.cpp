@@ -853,6 +853,84 @@ TEST(ParserTest, OperatorPlusReturnsNonBoolOk) {
     EXPECT_EQ(prog.size(), 1u);
 }
 
+// ===== Compound assignment operator tests =====
+
+TEST(ParserTest, CompoundAssignPreservesOp) {
+    Program prog = parseStr("x += 1\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
+TEST(ParserTest, CompoundAssignAllOperators) {
+    std::vector<std::pair<std::string, std::string>> cases = {
+        {"x += 1\n", "+"}, {"x -= 1\n", "-"}, {"x *= 1\n", "*"},
+        {"x /= 1\n", "/"}, {"x %= 1\n", "%"}, {"x //= 1\n", "//"},
+        {"x **= 1\n", "**"}, {"x &= 1\n", "&"}, {"x |= 1\n", "|"},
+        {"x ^= 1\n", "^"}, {"x <<= 1\n", "<<"}, {"x >>= 1\n", ">>"},
+    };
+    for (auto &[src, expected_op] : cases) {
+        Program prog = parseStr(src);
+        ASSERT_EQ(prog.size(), 1u) << "Failed for: " << src;
+        const auto &s = std::get<AssignStmt>(prog[0]);
+        ASSERT_TRUE(s.compound_op.has_value()) << "Failed for: " << src;
+        EXPECT_EQ(*s.compound_op, expected_op) << "Failed for: " << src;
+    }
+}
+
+TEST(ParserTest, IncrementPreservesCompoundOp) {
+    Program prog = parseStr("x++\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "+");
+    ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
+    EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 1);
+}
+
+TEST(ParserTest, DecrementPreservesCompoundOp) {
+    Program prog = parseStr("x--\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_EQ(s.name, "x");
+    ASSERT_TRUE(s.compound_op.has_value());
+    EXPECT_EQ(*s.compound_op, "-");
+}
+
+TEST(ParserTest, OperatorFnCompoundPlusEq) {
+    std::string src =
+        "fn operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
+        "    return a\n";
+    Program prog = parseStr(src);
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(fn->name, "operator+=");
+    EXPECT_TRUE(fn->is_operator);
+    ASSERT_EQ(fn->params.size(), 2u);
+    EXPECT_EQ(fn->params[0].name, "a");
+    EXPECT_EQ(fn->params[0].type, "Vec2");
+    EXPECT_EQ(fn->return_type, "Vec2");
+}
+
+TEST(ParserTest, OperatorFnCompoundAssignRequiresTwoParams) {
+    EXPECT_THROW(
+        parseStr("fn operator+=(a: Vec2) -> Vec2:\n    return a\n"),
+        std::runtime_error);
+}
+
+TEST(ParserTest, PlainAssignHasNoCompoundOp) {
+    Program prog = parseStr("x = 1\n");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    EXPECT_FALSE(s.compound_op.has_value());
+}
+
 // ===== Set パーサーテスト =====
 
 TEST(ParserTest, SetLiteral) {

@@ -34,22 +34,13 @@ static bool isSnakeCase(const std::string &name) {
     parseError(lex_.peek().line, msg);
 }
 
-// ===== Desugar helper: x = x op rhs =====
+// ===== Compound assignment helper: x op= rhs =====
 
-AssignStmt Parser::makeDesugarAssign(const Token &nameTok, const Token &opTok, const std::string &op, ExprPtr rhs) {
-    auto varRef = std::make_unique<ExprNode>();
-    varRef->data = VariableExpr{nameTok.value};
-    varRef->loc = locFromToken(nameTok);
-    auto bin = std::make_unique<BinaryExpr>();
-    bin->op = op;
-    bin->lhs = std::move(varRef);
-    bin->rhs = std::move(rhs);
-    auto binNode = std::make_unique<ExprNode>();
-    binNode->data = std::move(bin);
-    binNode->loc = locFromToken(opTok);
+AssignStmt Parser::makeCompoundAssign(const Token &nameTok, const std::string &op, ExprPtr rhs) {
     AssignStmt s;
     s.name = nameTok.value;
-    s.value = std::move(binNode);
+    s.value = std::move(rhs);
+    s.compound_op = op;
     s.loc = locFromToken(nameTok);
     return s;
 }
@@ -477,17 +468,17 @@ StmtNode Parser::parseStatement() {
                next.kind == TokenKind::LessLessEq || next.kind == TokenKind::GreaterGreaterEq) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on compound assignment");
-        // Compound assignment: desugar x += e → x = x + e
+        // Compound assignment: preserve compound_op for codegen resolution
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
-        return makeDesugarAssign(first, opTok, op, parseTernary());
+        return makeCompoundAssign(first, op, parseTernary());
     } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
         auto one = std::make_unique<ExprNode>();
         one->data = NumberExpr{1, ""};
         one->loc = locFromToken(first);
-        return makeDesugarAssign(first, opTok, op, std::move(one));
+        return makeCompoundAssign(first, op, std::move(one));
     } else if (next.kind == TokenKind::LParen) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on function calls");
