@@ -449,7 +449,6 @@ extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t re
         task->result.resize(static_cast<size_t>(result_size));
 
     TaskHandle *raw = task.get();
-    scheduler().registerTask(raw);
     scheduler().submit([entry, env, raw]() {
         std::unique_ptr<void, decltype(&std::free)> env_guard(env, &std::free);
         void *prev_task = g_current_task;
@@ -470,6 +469,7 @@ extern "C" void *__ry_task_spawn(__ry_task_entry_fn entry, void *env, int64_t re
         raw->done = true;
         raw->cv.notify_all();
     });
+    scheduler().registerTask(raw);
     return task.release();
 }
 
