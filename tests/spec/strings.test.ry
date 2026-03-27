@@ -63,6 +63,10 @@ describe("generation", fn():
   it("repeat", fn():
     expect(repeat("ab", 3)).to_eq("ababab")
     expect(repeat("ha", 3)).to_eq("hahaha")
+    expect(repeat("a", 0)).to_eq("")
+    expect(repeat("a", -1)).to_eq("")
+    expect(repeat("abc", -100)).to_eq("")
+    expect(repeat("hello", 1)).to_eq("hello")
   )
   it("reverse", fn():
     expect(reverse("hello")).to_eq("olleh")
