@@ -540,6 +540,23 @@ llvm::Value *CodeGen::emitStrOp_repeat(const CallExpr &e) {
     llvm::Value *n = emitExpr(*e.args[1]);
     if (s->getType() != ptrTy_)
         codegenError("repeat() requires str as first argument");
+    if (n->getType() != i64Ty_)
+        codegenError("repeat() requires int as second argument");
+
+    llvm::Value *nPos = builder_.CreateICmpSGT(
+        n, llvm::ConstantInt::get(i64Ty_, 0), "repeat_npos");
+
+    llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "repeat.empty", fn_);
+    llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "repeat.do", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "repeat.merge", fn_);
+
+    builder_.CreateCondBr(nPos, repeatBB, emptyBB);
+
+    builder_.SetInsertPoint(emptyBB);
+    llvm::Value *emptyStr = builder_.CreateGlobalString("", ".repeat_empty");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(repeatBB);
     auto strlenFn = getStdlibStrlen();
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
@@ -549,30 +566,33 @@ llvm::Value *CodeGen::emitStrOp_repeat(const CallExpr &e) {
     llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "repeat_bsize");
     llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "repeat_buf");
 
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "repeat_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+    llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "repeat.loop", fn_);
+    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "repeat.done", fn_);
 
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "repeat.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "repeat.body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "repeat.end", fn_);
+    builder_.CreateBr(loopBB);
+    builder_.SetInsertPoint(loopBB);
 
-    builder_.CreateBr(condBB);
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *i = builder_.CreateLoad(i64Ty_, iVar, "repeat_idx");
-    builder_.CreateCondBr(builder_.CreateICmpSLT(i, n, "repeat_cond"), bodyBB, endBB);
+    llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "repeat_i");
+    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
 
-    builder_.SetInsertPoint(bodyBB);
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "repeat_i_cur");
-    llvm::Value *offset = builder_.CreateMul(iCur, sLen, "repeat_offset");
+    llvm::Value *offset = builder_.CreateMul(i, sLen, "repeat_offset");
     llvm::Value *dstPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, offset, "repeat_dst");
     builder_.CreateCall(memcpyFn, {dstPtr, s, sLen});
-    builder_.CreateStore(builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1), "repeat_next"), iVar);
-    builder_.CreateBr(condBB);
 
-    builder_.SetInsertPoint(endBB);
+    llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "repeat_next");
+    i->addIncoming(iNext, loopBB);
+    builder_.CreateCondBr(builder_.CreateICmpSLT(iNext, n, "repeat_cond"), loopBB, doneBB);
+
+    builder_.SetInsertPoint(doneBB);
     llvm::Value *nullPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, totalLen, "repeat_null");
     builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), nullPtr);
-    return buf;
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "repeat_result");
+    result->addIncoming(emptyStr, emptyBB);
+    result->addIncoming(buf, doneBB);
+    return result;
 }
 
 // reverse(list) → new reversed list, or reverse(str) → str
