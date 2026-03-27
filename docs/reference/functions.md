@@ -395,6 +395,27 @@ fn operator<op>(a: type) -> return_type:
 | Logical (binary) | `and` `or` |
 | Unary | `-` `~` `not` |
 
+### Return Type Constraints
+
+Comparison and logical operators must return `bool`:
+
+| Category | Operators | Required Return Type |
+|---|---|---|
+| Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| Logical | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# Error: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+Arithmetic and bitwise operators have no return type constraint.
+
 ### Distinguishing Binary and Unary
 
 Distinguished by the number of parameters.

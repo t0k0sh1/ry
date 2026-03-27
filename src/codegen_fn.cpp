@@ -304,6 +304,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
 
+        // Validate return type for comparison/logical operators
+        if (s->is_operator && isBoolConstrainedOperator(s->name)) {
+            if (!s->return_type.empty() && s->return_type != "bool") {
+                codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
+                             s->return_type + "'");
+            }
+        }
+
         // Register argument count for native function overload
         native_fn_arg_counts_[s->name].push_back(s->params.size());
         return;
@@ -340,6 +348,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         }
     } else {
         bodyRetTy = resolveType(s->return_type);
+    }
+
+    // Validate return type for comparison/logical operators
+    if (s->is_operator && isBoolConstrainedOperator(s->name)) {
+        if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
+            codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
+                         s->return_type + "'");
+        }
     }
 
     // Check that non-Unit, non-any functions return on all paths
