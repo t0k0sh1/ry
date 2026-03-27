@@ -129,7 +129,7 @@ print(p)   # 錯誤
 
 ### 概述
 
-列舉型別是具名常數的集合。內部以 i64 整數（0, 1, 2, ...）表示。
+列舉型別是具名常數的集合。預設以 i64 整數（0, 1, 2, ...）的連續編號表示。也可以指定明確的整數值。
 
 ### 定義語法
 
@@ -200,10 +200,39 @@ c = Color::Blue
 print(c)   # Blue
 ```
 
+### 明確值指定
+
+simple enum 的變體可以指定明確的整數值。適用於 HTTP 狀態碼或位元遮罩模式等用途。
+
+```python
+enum HttpStatus:
+    Ok = 200
+    NotFound = 404
+    InternalError = 500
+
+s = HttpStatus::NotFound
+print(s)                              # NotFound
+print(s == HttpStatus::NotFound)      # true
+```
+
+```python
+enum Permission:
+    Read = 1
+    Write = 2
+    Execute = 4
+```
+
+規則：
+- 僅支援 simple enum（不含關聯資料的 ADT 變體）
+- 值必須為整數字面量（允許負值）
+- 若任一變體有明確值，則所有變體都必須有（不可混用）
+- 重複值會產生編譯錯誤
+- `print()` 顯示變體名稱（而非整數值）
+
 ### 限制與錯誤
 
 | 限制 | 詳細 |
 |------|------|
 | 變體存取為 `EnumName::VariantName` | 必須使用 `::` 運算子 |
-| 變體值為自動分配 | 0, 1, 2, ... 的連續編號（無法手動指定） |
+| 變體值 | 預設為自動分配（0, 1, 2, ...），可使用 `= 值` 明確指定 |
 | 比較為整數比較 | 可使用 `==`、`!=` |

@@ -129,7 +129,7 @@ print(p)   # Error
 
 ### Overview
 
-Enumerations are a set of named constants. Internally, they are represented as i64 integers (0, 1, 2, ...).
+Enumerations are a set of named constants. By default, they are represented as sequential i64 integers (0, 1, 2, ...). Explicit integer values can also be assigned.
 
 ### Definition Syntax
 
@@ -200,10 +200,39 @@ c = Color::Blue
 print(c)   # Blue
 ```
 
+### Explicit Values
+
+Simple enum variants can be assigned explicit integer values for use cases like HTTP status codes or bitmask patterns.
+
+```python
+enum HttpStatus:
+    Ok = 200
+    NotFound = 404
+    InternalError = 500
+
+s = HttpStatus::NotFound
+print(s)                              # NotFound
+print(s == HttpStatus::NotFound)      # true
+```
+
+```python
+enum Permission:
+    Read = 1
+    Write = 2
+    Execute = 4
+```
+
+Rules:
+- Only simple enums (no ADT variants with associated data) support explicit values.
+- Values must be integer literals (negative values are allowed).
+- If any variant has an explicit value, all variants must have explicit values (no mixing auto and manual).
+- Duplicate values are a compile error.
+- `print()` displays the variant name, not the integer value.
+
 ### Constraints and Errors
 
 | Constraint | Details |
 |------|------|
 | Variant access requires `EnumName::VariantName` | The `::` operator is required |
-| Variant values are auto-assigned | Sequential numbers 0, 1, 2, ... (manual specification is not supported) |
+| Variant values | Auto-assigned (0, 1, 2, ...) by default, or explicitly specified with `= value` |
 | Comparison uses integer comparison | `==`, `!=` can be used |

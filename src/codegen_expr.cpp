@@ -1143,6 +1143,54 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     if (ty == anyTy_)
         return emitAnyToString(val);
 
+    // Enum value → variant name string
+    {
+        auto evIt = enum_value_types_.find(val);
+        if (evIt == enum_value_types_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                evIt = enum_value_types_.find(load->getPointerOperand());
+        }
+        if (evIt != enum_value_types_.end()) {
+            auto &einfo = enum_types_[evIt->second];
+            if (!einfo.isADT) {
+                if (einfo.hasExplicitValues) {
+                    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.merge", fn_);
+                    llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.enum.default", fn_);
+                    auto *sw = builder_.CreateSwitch(val, defaultBB, einfo.variantCount);
+                    builder_.SetInsertPoint(mergeBB);
+                    auto *namePhi = builder_.CreatePHI(ptrTy_, einfo.variantCount + 1, "vts.enum.name");
+                    for (size_t i = 0; i < einfo.variantOrder.size(); ++i) {
+                        const auto &vname = einfo.variantOrder[i];
+                        int64_t vval = einfo.variants.at(vname);
+                        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.enum." + vname, fn_);
+                        sw->addCase(llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vval, true)), caseBB);
+                        builder_.SetInsertPoint(caseBB);
+                        llvm::Value *namePtr = builder_.CreateGEP(
+                            llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                            einfo.nameArray,
+                            {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)},
+                            "enum_name_ptr");
+                        llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+                        namePhi->addIncoming(nameStr, caseBB);
+                        builder_.CreateBr(mergeBB);
+                    }
+                    builder_.SetInsertPoint(defaultBB);
+                    llvm::Value *unknownStr = builder_.CreateGlobalString("?", ".enum_unknown");
+                    namePhi->addIncoming(unknownStr, defaultBB);
+                    builder_.CreateBr(mergeBB);
+                    builder_.SetInsertPoint(mergeBB);
+                    return namePhi;
+                }
+                llvm::Value *namePtr = builder_.CreateGEP(
+                    llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                    einfo.nameArray,
+                    {llvm::ConstantInt::get(i64Ty_, 0), val},
+                    "enum_name_ptr");
+                return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
+            }
+        }
+    }
+
     if (ty->isPointerTy()) {
         // Reject non-string pointer types (collections, function pointers)
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {

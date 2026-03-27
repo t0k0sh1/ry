@@ -168,6 +168,7 @@ struct EllipsisStmt { SourceLocation loc; };
 struct EnumVariant {
     std::string name;
     std::vector<std::string> field_types;  // empty = no associated data
+    std::optional<int64_t> explicit_value;
 };
 
 struct EnumStmt {
