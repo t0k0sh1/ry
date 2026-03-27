@@ -1,4 +1,5 @@
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_net_types.hpp"
 #include "ry/runtime_io.hpp"
 
 #include <cstdio>
@@ -23,9 +24,6 @@ struct TcpListenerHandle {
     std::atomic<bool> shutdown{false};
 };
 
-struct TcpStreamHandle {
-    int fd;
-};
 
 extern "C" void *__ry_bind(const char *host, int64_t port) {
     if (port < 0 || port > 65535)

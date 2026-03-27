@@ -6,8 +6,7 @@
 llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
     // regex_match(pattern, text) -> bool
     if (e.callee == "regex_match") {
-        if (e.args.size() != 2)
-            codegenError("regex_match() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *pattern = emitExpr(*e.args[0]);
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
@@ -20,8 +19,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     // regex_search(pattern, text) -> int
     if (e.callee == "regex_search") {
-        if (e.args.size() != 2)
-            codegenError("regex_search() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *pattern = emitExpr(*e.args[0]);
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
@@ -33,8 +31,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     // regex_replace(pattern, text, replacement) -> str
     if (e.callee == "regex_replace") {
-        if (e.args.size() != 3)
-            codegenError("regex_replace() takes exactly 3 arguments");
+        requireArgs(e, 3);
         llvm::Value *pattern = emitExpr(*e.args[0]);
         llvm::Value *text = emitExpr(*e.args[1]);
         llvm::Value *replacement = emitExpr(*e.args[2]);
@@ -48,8 +45,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     // regex_split(pattern, text) -> List<str>
     if (e.callee == "regex_split") {
-        if (e.args.size() != 2)
-            codegenError("regex_split() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *pattern = emitExpr(*e.args[0]);
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
@@ -63,8 +59,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
     // regex_find_all(pattern, text) -> List<str>
     if (e.callee == "regex_find_all") {
-        if (e.args.size() != 2)
-            codegenError("regex_find_all() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *pattern = emitExpr(*e.args[0]);
         llvm::Value *text = emitExpr(*e.args[1]);
         if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
@@ -182,8 +177,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // bind(host, port) -> Result<TcpListener, Error>
     if (e.callee == "bind") {
-        if (e.args.size() != 2)
-            codegenError("bind() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
@@ -194,8 +188,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // listen(listener, backlog) -> Result<Unit, Error>
     if (e.callee == "listen") {
-        if (e.args.size() != 2)
-            codegenError("listen() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("listen() requires TcpListener as first argument");
@@ -214,8 +207,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // listener_port(listener) -> int
     if (e.callee == "listener_port") {
-        if (e.args.size() != 1)
-            codegenError("listener_port() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("listener_port() requires TcpListener argument");
@@ -226,8 +218,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // shutdown(listener) -> Unit
     if (e.callee == "shutdown") {
-        if (e.args.size() != 1)
-            codegenError("shutdown() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isTcpListener(val))
             codegenError("shutdown() requires TcpListener argument");
@@ -239,8 +230,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // accept(listener) -> Result<TcpStream, Error>
     if (e.callee == "accept") {
-        if (e.args.size() != 1)
-            codegenError("accept() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("accept() requires TcpListener argument");
@@ -252,8 +242,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // connect(host, port) -> Result<TcpStream, Error>
     if (e.callee == "connect") {
-        if (e.args.size() != 2)
-            codegenError("connect() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
@@ -264,8 +253,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // tls_connect(host, port) -> Result<TlsStream, Error>
     if (e.callee == "tls_connect") {
-        if (e.args.size() != 2)
-            codegenError("tls_connect() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
@@ -276,8 +264,7 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
 
     // set_timeout / set_recv_timeout / set_send_timeout — works for both TcpStream and TlsStream
     if (e.callee == "set_timeout" || e.callee == "set_recv_timeout" || e.callee == "set_send_timeout") {
-        if (e.args.size() != 2)
-            codegenError(e.callee + "() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *stream = emitExpr(*e.args[0]);
         llvm::Value *ms = emitExpr(*e.args[1]);
         auto *voidTy = llvm::Type::getVoidTy(*ctx_);
@@ -300,8 +287,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_response(status, headers, body) -> HttpResponse
     if (e.callee == "http_response") {
-        if (e.args.size() != 3)
-            codegenError("http_response() takes exactly 3 arguments");
+        requireArgs(e, 3);
         llvm::Value *status = emitExpr(*e.args[0]);
         llvm::Value *headers = emitExpr(*e.args[1]);
         llvm::Value *body = emitExpr(*e.args[2]);
@@ -320,8 +306,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_method/http_path/http_body: single-arg HttpRequest accessors returning str
     if (e.callee == "http_method" || e.callee == "http_path" || e.callee == "http_body") {
-        if (e.args.size() != 1)
-            codegenError(e.callee + "() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
@@ -332,8 +317,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str> / http_cookie(req, name) -> Option<str>
     if (e.callee == "http_header" || e.callee == "http_query" || e.callee == "http_cookie") {
-        if (e.args.size() != 2)
-            codegenError(e.callee + "() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
@@ -347,18 +331,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         std::string hint = (e.callee == "http_header") ? "http_hdr"
                          : (e.callee == "http_query") ? "http_qry" : "http_ck";
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, hint);
-        llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), hint + "_null");
-        llvm::StructType *optTy = getOptionType(ptrTy_);
-        llvm::Value *someVal = buildSomeValue(result, optTy);
-        llvm::Value *noneVal = buildNoneValue(optTy);
-        return builder_.CreateSelect(isNull, noneVal, someVal, hint + "_opt");
+        return wrapPtrAsOption(result, hint);
     }
 
     // http_query_all(req) -> Map<str, str>
     if (e.callee == "http_query_all") {
-        if (e.args.size() != 1)
-            codegenError("http_query_all() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_query_all() requires HttpRequest argument");
@@ -372,8 +350,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_cookies(req) -> Map<str, str>
     if (e.callee == "http_cookies") {
-        if (e.args.size() != 1)
-            codegenError("http_cookies() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_cookies() requires HttpRequest argument");
@@ -387,8 +364,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_form_field(req, name) -> Option<str>
     if (e.callee == "http_form_field") {
-        if (e.args.size() != 2)
-            codegenError("http_form_field() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
@@ -398,18 +374,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_http_form_field", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ff");
-        llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_ff_null");
-        llvm::StructType *optTy = getOptionType(ptrTy_);
-        llvm::Value *someVal = buildSomeValue(result, optTy);
-        llvm::Value *noneVal = buildNoneValue(optTy);
-        return builder_.CreateSelect(isNull, noneVal, someVal, "http_ff_opt");
+        return wrapPtrAsOption(result, "http_ff");
     }
 
     // http_form_file(req, name) -> Option<Map<str, str>>
     if (e.callee == "http_form_file") {
-        if (e.args.size() != 2)
-            codegenError("http_form_file() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
@@ -419,12 +389,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
-        llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_ffile_null");
-        llvm::StructType *optTy = getOptionType(ptrTy_);
-        llvm::Value *someVal = buildSomeValue(result, optTy);
-        llvm::Value *noneVal = buildNoneValue(optTy);
-        llvm::Value *optResult = builder_.CreateSelect(isNull, noneVal, someVal, "http_ffile_opt");
+        llvm::Value *optResult = wrapPtrAsOption(result, "http_ffile");
         map_key_types_[optResult] = ptrTy_;
         map_value_types_[optResult] = ptrTy_;
         return optResult;
@@ -432,8 +397,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_form_fields(req) -> Map<str, str>
     if (e.callee == "http_form_fields") {
-        if (e.args.size() != 1)
-            codegenError("http_form_fields() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError("http_form_fields() requires HttpRequest argument");
@@ -624,8 +588,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_get(url) -> Result<HttpClientResponse, Error>
     if (e.callee == "http_get") {
-        if (e.args.size() != 1)
-            codegenError("http_get() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *url = emitExpr(*e.args[0]);
         if (url->getType() != ptrTy_)
             codegenError("http_get() url must be str");
@@ -637,8 +600,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_post(url, body, headers) -> Result<HttpClientResponse, Error>
     if (e.callee == "http_post") {
-        if (e.args.size() != 3)
-            codegenError("http_post() takes exactly 3 arguments");
+        requireArgs(e, 3);
         llvm::Value *url = emitExpr(*e.args[0]);
         llvm::Value *body = emitExpr(*e.args[1]);
         llvm::Value *headers = emitExpr(*e.args[2]);
@@ -656,8 +618,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_request(method, url, headers, body) -> Result<HttpClientResponse, Error>
     if (e.callee == "http_request") {
-        if (e.args.size() != 4)
-            codegenError("http_request() takes exactly 4 arguments");
+        requireArgs(e, 4);
         llvm::Value *method = emitExpr(*e.args[0]);
         llvm::Value *url = emitExpr(*e.args[1]);
         llvm::Value *headers = emitExpr(*e.args[2]);
@@ -678,8 +639,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_client_status(resp) -> int
     if (e.callee == "http_client_status") {
-        if (e.args.size() != 1)
-            codegenError("http_client_status() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_status() requires HttpClientResponse argument");
@@ -690,8 +650,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_client_body(resp) -> str
     if (e.callee == "http_client_body") {
-        if (e.args.size() != 1)
-            codegenError("http_client_body() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_body() requires HttpClientResponse argument");
@@ -702,8 +661,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
     // http_client_header(resp, key) -> Option<str>
     if (e.callee == "http_client_header") {
-        if (e.args.size() != 2)
-            codegenError("http_client_header() takes exactly 2 arguments");
+        requireArgs(e, 2);
         llvm::Value *resp = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpClientResponse(resp))
@@ -713,18 +671,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
         auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {resp, key}, "http_client_hdr");
-        llvm::Value *isNull = builder_.CreateICmpEQ(result,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "http_client_hdr_null");
-        llvm::StructType *optTy = getOptionType(ptrTy_);
-        llvm::Value *someVal = buildSomeValue(result, optTy);
-        llvm::Value *noneVal = buildNoneValue(optTy);
-        return builder_.CreateSelect(isNull, noneVal, someVal, "http_client_hdr_opt");
+        return wrapPtrAsOption(result, "http_client_hdr");
     }
 
     // http_client_response_free(resp) -> Unit
     if (e.callee == "http_client_response_free") {
-        if (e.args.size() != 1)
-            codegenError("http_client_response_free() takes exactly 1 argument");
+        requireArgs(e, 1);
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
             codegenError("http_client_response_free() requires HttpClientResponse argument");

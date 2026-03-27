@@ -218,6 +218,9 @@ private:
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
     [[noreturn]] void codegenError(const std::string &msg);
 
+    void requireArgs(const CallExpr &e, size_t expected);
+    void requireArgs(const std::string &callee, size_t actual, size_t expected);
+
     void pushScope();
     void popScope();
     llvm::AllocaInst *findVar(const std::string &name);
@@ -383,18 +386,104 @@ private:
         unsigned bucketsPtrIdx;
         unsigned keysPtrIdx;
     };
+    // Set header:  { len, cap, elems*, bucketCount, buckets* }
+    static constexpr HashTableLayout kSetLayout = {0, 3, 4, 2};
+    // Map header:  { len, cap, keys*, vals*, bucketCount, buckets* }
+    static constexpr HashTableLayout kMapLayout = {0, 4, 5, 2};
+
     llvm::Value *emitHashTableLookup(llvm::Value *containerPtr, llvm::StructType *headerTy,
                                       const HashTableLayout &layout,
                                       llvm::Value *key, llvm::Type *keyTy);
 
+    // Data structure field helpers
+    struct ListFields {
+        llvm::Value *lenPtr = nullptr;
+        llvm::Value *len = nullptr;
+        llvm::Value *capPtr = nullptr;
+        llvm::Value *cap = nullptr;
+        llvm::Value *dataPtr = nullptr;
+        llvm::Value *data = nullptr;
+    };
+    ListFields loadListHeader(llvm::Value *listVal, const std::string &prefix);
+
+    struct SetFields {
+        llvm::Value *lenPtr = nullptr;
+        llvm::Value *len = nullptr;
+        llvm::Value *capPtr = nullptr;
+        llvm::Value *cap = nullptr;
+        llvm::Value *elemsPtr = nullptr;
+        llvm::Value *elems = nullptr;
+    };
+    SetFields loadSetHeader(llvm::Value *setVal, const std::string &prefix);
+
+    struct MapFields {
+        llvm::Value *lenPtr = nullptr;
+        llvm::Value *len = nullptr;
+        llvm::Value *capPtr = nullptr;
+        llvm::Value *cap = nullptr;
+        llvm::Value *keysPtr = nullptr;
+        llvm::Value *keys = nullptr;
+        llvm::Value *valsPtr = nullptr;
+        llvm::Value *vals = nullptr;
+    };
+    MapFields loadMapHeader(llvm::Value *mapVal, const std::string &prefix);
+
+    llvm::Value *wrapPtrAsOption(llvm::Value *ptr, const std::string &hint);
+
     // Builtin dispatch helpers (Step 4)
     llvm::Value *emitBuiltinCore(const CallExpr &e);
     llvm::Value *emitBuiltinCollection(const CallExpr &e);
+
+    // Collection operation handlers
+    llvm::Value *emitCollOp_add(const CallExpr &e);
+    llvm::Value *emitCollOp_remove(const CallExpr &e);
+    llvm::Value *emitCollOp_append(const CallExpr &e);
+    llvm::Value *emitCollOp_appended(const CallExpr &e);
+    llvm::Value *emitCollOp_pop(const CallExpr &e);
+    llvm::Value *emitCollOp_slice(const CallExpr &e);
+    llvm::Value *emitCollOp_take(const CallExpr &e);
+    llvm::Value *emitCollOp_insert(const CallExpr &e);
+    llvm::Value *emitCollOp_remove_at(const CallExpr &e);
+    llvm::Value *emitCollOp_distinct(const CallExpr &e);
+    llvm::Value *emitCollOp_flatten(const CallExpr &e);
+    llvm::Value *emitCollOp_items(const CallExpr &e);
+    llvm::Value *emitCollOp_get(const CallExpr &e);
+    llvm::Value *emitCollOp_merge(const CallExpr &e);
+
     llvm::Value *emitBuiltinString(const CallExpr &e);
+
+    // String operation handlers
+    llvm::Value *emitStrOp_contains(const CallExpr &e);
+    llvm::Value *emitStrOp_starts_with(const CallExpr &e);
+    llvm::Value *emitStrOp_ends_with(const CallExpr &e);
+    llvm::Value *emitStrOp_find(const CallExpr &e);
+    llvm::Value *emitStrOp_substring(const CallExpr &e);
+    llvm::Value *emitStrOp_char_at(const CallExpr &e);
+    llvm::Value *emitStrOp_replace(const CallExpr &e);
+    llvm::Value *emitStrOp_to_upper(const CallExpr &e);
+    llvm::Value *emitStrOp_to_lower(const CallExpr &e);
+    llvm::Value *emitStrOp_trim(const CallExpr &e);
+    llvm::Value *emitStrOp_trim_start(const CallExpr &e);
+    llvm::Value *emitStrOp_trim_end(const CallExpr &e);
+    llvm::Value *emitStrOp_repeat(const CallExpr &e);
+    llvm::Value *emitStrOp_reverse(const CallExpr &e);
+    llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
+    llvm::Value *emitStrOp_split(const CallExpr &e);
+    llvm::Value *emitStrOp_join(const CallExpr &e);
+
     llvm::Value *emitBuiltinHigherOrder(const CallExpr &e);
     llvm::Value *emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args, const std::string &callee);
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
+    llvm::Value *emitSubsetCheck(llvm::Value *iterSet, llvm::Value *lookupSet,
+                                  const std::string &prefix);
+    // Set operation handlers
+    llvm::Value *emitSetOp_union(const CallExpr &e);
+    llvm::Value *emitSetOp_intersection(const CallExpr &e);
+    llvm::Value *emitSetOp_difference(const CallExpr &e);
+    llvm::Value *emitSetOp_symmetric_difference(const CallExpr &e);
+    llvm::Value *emitSetOp_is_subset(const CallExpr &e);
+    llvm::Value *emitSetOp_is_superset(const CallExpr &e);
     llvm::Value *emitBuiltinConversion(const CallExpr &e);
     llvm::Value *emitBuiltinRegex(const CallExpr &e);
     llvm::Value *emitBuiltinMath(const CallExpr &e);
