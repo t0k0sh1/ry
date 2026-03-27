@@ -25,6 +25,49 @@ describe("record", fn():
   )
 )
 
+record Mixed:
+  name: str
+  value: int
+  rate: float
+  active: bool
+
+record AlwaysEqual:
+  x: int
+
+fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
+  return true
+
+describe("record equality", fn():
+  it("equal records", fn():
+    expect(Point(1, 2) == Point(1, 2)).to_be_true()
+  )
+  it("unequal records", fn():
+    expect(Point(1, 2) == Point(3, 4)).to_be_false()
+  )
+  it("!= operator", fn():
+    expect(Point(1, 2) != Point(3, 4)).to_be_true()
+    expect(Point(1, 2) != Point(1, 2)).to_be_false()
+  )
+  it("mixed field types", fn():
+    a = Mixed("hello", 42, 3.14, true)
+    b = Mixed("hello", 42, 3.14, true)
+    c = Mixed("world", 42, 3.14, true)
+    expect(a == b).to_be_true()
+    expect(a != c).to_be_true()
+  )
+  it("nested record equality", fn():
+    c1 = Circle(Point(0, 0), 1.0)
+    c2 = Circle(Point(0, 0), 1.0)
+    c3 = Circle(Point(1, 0), 1.0)
+    expect(c1 == c2).to_be_true()
+    expect(c1 != c3).to_be_true()
+  )
+  it("user-defined operator== takes precedence", fn():
+    # AlwaysEqual always returns true regardless of field values
+    expect(AlwaysEqual(1) == AlwaysEqual(2)).to_be_true()
+  )
+)
+
 enum Color:
   Red
   Green
