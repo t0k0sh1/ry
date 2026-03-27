@@ -293,6 +293,27 @@ fn operator<op>(a: 型) -> 戻り値型:
 | 論理（二項） | `and` `or` |
 | 単項 | `-` `~` `not` |
 
+### 戻り値型の制約
+
+比較演算子と論理演算子は `bool` を返す必要がある:
+
+| 種別 | 演算子 | 必須戻り値型 |
+|---|---|---|
+| 比較 | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| 論理 | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# エラー: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+算術演算子・ビット演算子には戻り値型の制約はない。
+
 ### 二項 / 単項の区別
 
 引数の個数で区別する。

@@ -265,6 +265,27 @@ fn operator<op>(a: 型別) -> 回傳型別:
 | 邏輯（二元） | `and` `or` |
 | 一元 | `-` `~` `not` |
 
+### 回傳型別限制
+
+比較運算子和邏輯運算子必須回傳 `bool`：
+
+| 種類 | 運算子 | 必要回傳型別 |
+|---|---|---|
+| 比較 | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| 邏輯 | `and` `or` `not` | `bool` |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# 錯誤: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+算術運算子和位元運算子沒有回傳型別限制。
+
 ### 二元 / 一元的區別
 
 依引數個數區分。

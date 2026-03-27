@@ -149,6 +149,15 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
+    // Validate return type for comparison/logical operators
+    if (fnStmt->is_operator && !fnStmt->return_type.empty()) {
+        if (isBoolConstrainedOperator(fnStmt->name) && fnStmt->return_type != "bool") {
+            parseError(fnTok.line,
+                "operator '" + operatorSymbol(fnStmt->name) + "' must return 'bool', but returns '" +
+                fnStmt->return_type + "'");
+        }
+    }
+
     // @native fn: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
