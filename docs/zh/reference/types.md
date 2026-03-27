@@ -64,7 +64,7 @@ a: any = 42
 | `Set<T>` | 泛型集合型別 |
 | `fn(T1, ...) -> R` | 函式型別 |
 | `Error` | 內建錯誤型別（`message: str`、`code: int`） |
-| `any` | 可持有任意基本值（`int`, `float`, `bool`, `str`）或 `Unit` 的內建型別。具名函式省略回傳型別時的預設值。賦值給具體型別時會自動進行執行期型別檢查並 unwrap。支援 `any(int)` → `float` 的自動提升 |
+| `any` | 可持有任意基本值（`int`, `float`, `bool`, `str`）或 `Unit` 的內建型別。賦值給具體型別時會自動進行執行期型別檢查並 unwrap。支援 `any(int)` → `float` 的自動提升。詳見 [any 型別](#any-型別) |
 | `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
 | 使用者定義型別名稱 | 以 `record` 或 `enum` 關鍵字宣告的型別 |
 | int 字面量型別 | 以 int 字面量值限制（例：`42`、`0 \| 1`） |
@@ -393,6 +393,134 @@ union 型別以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各組成型�
 - 賦值不屬於 union 的型別會產生編譯錯誤
 - `int | str` 和 `str | int` 是相同的型別（會被正規化）
 - 使用 `print()` 輸出 union 值時，會根據執行時的 tag 以適當的型別顯示
+
+## any 型別
+
+`any` 型別是一種內建的動態型別，可以持有任意基本值。它採用類似 Python 的靈活型別方式——當不需要靜態型別保證時，`any` 讓您無需使用泛型或 union 型別即可處理多種型別。
+
+### 可持有的型別
+
+| 型別 | 標籤 | 說明 |
+|------|------|------|
+| `int` | 0 | 64 位元有號整數 |
+| `float` | 1 | 64 位元浮點數 |
+| `bool` | 2 | 布林值 |
+| `str` | 3 | 字串 |
+| `Unit` | 4 | Unit 值（用於無回傳值的函式） |
+
+`any` **無法**持有集合型別（`List`、`Map`、`Set`）、資源型別（`TcpListener`、`TcpStream` 等）、函式指標或使用者定義型別（`record`、`enum`）。
+
+### 內部表示
+
+`any` 以標籤聯合實作：
+
+```
+{ i64 tag, [8 x i8] data }   // 共 16 位元組
+```
+
+`tag` 欄位識別儲存的型別，`data` 欄位持有值（最多 8 位元組）。
+
+### 包裝與解包
+
+具體型別的值在賦值給 `any` 時自動**包裝**，`any` 的值在賦值給具體型別時自動**解包**。
+
+```python
+# 包裝：具體型別 → any
+x: any = 42          # int 被包裝成 any
+x = "hello"          # 可以重新賦值為不同型別
+
+# 解包：any → 具體型別
+fn get_value() -> any:
+    return 42
+n: int = get_value()  # any(int) 被解包為 int
+
+# 解包時的 int → float 自動提升
+f: float = get_value()  # any(int) 被解包並提升為 float
+```
+
+如果執行時型別與目標型別不符（例如將 `any(str)` 解包至 `int` 變數），會產生**執行時錯誤**。
+
+### 重新賦值
+
+`any` 變數可以重新賦值為任何可持有型別的值：
+
+```python
+x: any = 42
+x = 3.14       # OK：現在持有 float
+x = "hello"    # OK：現在持有 str
+x = true       # OK：現在持有 bool
+```
+
+### 算術運算
+
+當兩個運算元都是 `any` 時，運算會在執行時根據實際型別進行分派：
+
+| 運算 | 型別 | 結果 |
+|------|------|------|
+| `+` | int + int | int |
+| `+` | float + float | float |
+| `+` | int + float | float |
+| `+` | str + str | str（串接） |
+| `-` | 數值 | int 或 float |
+| `*` | 數值 | int 或 float |
+| `*` | str * int / int * str | str（重複） |
+| `/` | 數值 | float（總是） |
+| `//` | int // int | int |
+| `//` | 含 float | float |
+| `%` | 數值 | int 或 float |
+| `**` | 數值 | float（總是） |
+| 一元 `-` | int | int |
+| 一元 `-` | float | float |
+
+當一個運算元是 `any`、另一個是具體型別時，具體值會在運算前自動包裝。
+
+```python
+x: any = 10
+y: any = x + 20    # 20 被自動包裝；結果是 any(int) = 30
+```
+
+不相容的型別組合（例如 `str - int`）會導致**執行時錯誤**。
+
+### 比較運算
+
+| 運算 | 行為 |
+|------|------|
+| `==`、`!=` | 相同型別之間有效；int/float 混合比較可行 |
+| `<`、`<=`、`>`、`>=` | 數值（int/float 混合可）和字串（字典序） |
+
+```python
+x: any = 3
+y: any = 3.0
+print(x == y)    # true（int/float 比較）
+```
+
+比較時型別不符（例如 `int < str`）會導致**執行時錯誤**。
+
+### 字串轉換
+
+`any` 值支援 `print()` 和 f-string 插值：
+
+```python
+x: any = 42
+print(x)              # 42
+print(f"value: {x}")  # value: 42
+```
+
+轉換規則：`int` → 十進位字串、`float` → `%g` 格式、`bool` → `"true"`/`"false"`、`str` → 原樣、`Unit` → `"Unit"`。
+
+### 將 any 傳遞給具型別函式
+
+`any` 值可以傳遞給具有具體引數型別的函式。值會透過執行時型別檢查自動解包：
+
+```python
+fn add_one(x: int) -> int:
+    return x + 1
+
+v: any = 42
+result = add_one(v)   # any(int) 被解包為 int；結果是 43
+```
+
+---
 
 ## 型別規則（運算時的型別轉換）
 
