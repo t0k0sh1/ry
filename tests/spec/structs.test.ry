@@ -25,6 +25,77 @@ describe("record", fn():
   )
 )
 
+describe("record to_str", fn():
+  it("auto-generated to_str", fn():
+    p = Point(10, 20)
+    expect(to_str(p)).to_eq("Point(x: 10, y: 20)")
+  )
+  it("f-string interpolation", fn():
+    p = Point(3, 4)
+    expect(f"{p}").to_eq("Point(x: 3, y: 4)")
+  )
+  it("nested record to_str", fn():
+    c = Circle(Point(1, 2), 3.14)
+    expect(to_str(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
+  )
+  it("user-defined to_str overrides auto-generated", fn():
+    fn to_str(p: Point) -> str:
+      return f"({p.x}, {p.y})"
+    p = Point(5, 6)
+    expect(to_str(p)).to_eq("(5, 6)")
+  )
+  it("string field", fn():
+    record Person:
+      name: str
+      age: int
+    p = Person("Alice", 30)
+    expect(to_str(p)).to_eq("Person(name: Alice, age: 30)")
+  )
+)
+
+record Mixed:
+  name: str
+  value: int
+  rate: float
+  active: bool
+
+record AlwaysEqual:
+  x: int
+
+fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
+  return true
+
+describe("record equality", fn():
+  it("equal records", fn():
+    expect(Point(1, 2) == Point(1, 2)).to_be_true()
+  )
+  it("unequal records", fn():
+    expect(Point(1, 2) == Point(3, 4)).to_be_false()
+  )
+  it("!= operator", fn():
+    expect(Point(1, 2) != Point(3, 4)).to_be_true()
+    expect(Point(1, 2) != Point(1, 2)).to_be_false()
+  )
+  it("mixed field types", fn():
+    a = Mixed("hello", 42, 3.14, true)
+    b = Mixed("hello", 42, 3.14, true)
+    c = Mixed("world", 42, 3.14, true)
+    expect(a == b).to_be_true()
+    expect(a != c).to_be_true()
+  )
+  it("nested record equality", fn():
+    c1 = Circle(Point(0, 0), 1.0)
+    c2 = Circle(Point(0, 0), 1.0)
+    c3 = Circle(Point(1, 0), 1.0)
+    expect(c1 == c2).to_be_true()
+    expect(c1 != c3).to_be_true()
+  )
+  it("user-defined operator== takes precedence", fn():
+    # AlwaysEqual always returns true regardless of field values
+    expect(AlwaysEqual(1) == AlwaysEqual(2)).to_be_true()
+  )
+)
+
 enum Color:
   Red
   Green

@@ -299,6 +299,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (hasDirective(s->directives, "native")) {
         if (s->is_async)
             codegenError("async native functions are not supported");
+        if (hasDirective(s->directives, "inline"))
+            codegenError("@inline cannot be used with @native functions");
         if (hasDirective(s->directives, "deprecated"))
             deprecated_functions_.insert(s->name);
 
@@ -379,6 +381,26 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     if (hasDirective(s->directives, "deprecated"))
         deprecated_functions_.insert(s->name);
+
+    if (hasDirective(s->directives, "inline")) {
+        std::string mode = "always";
+        for (auto &d : s->directives) {
+            if (d.name == "inline") {
+                for (auto &p : d.params) {
+                    if (p.key == "mode") mode = p.value;
+                }
+            }
+        }
+        if (mode == "always")
+            func->addFnAttr(llvm::Attribute::AlwaysInline);
+        else if (mode == "never")
+            func->addFnAttr(llvm::Attribute::NoInline);
+        else if (mode == "hint")
+            func->addFnAttr(llvm::Attribute::InlineHint);
+        else
+            codegenError("unknown @inline mode: '" + mode +
+                         "' (expected 'always', 'never', or 'hint')");
+    }
 
     auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
                                 const std::string &returnTypeName, const std::string &fnNameForErrors) {

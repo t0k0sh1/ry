@@ -314,6 +314,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<SpawnExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
+    llvm::Value *structToString(llvm::Value *val);
 
     // Operator overload helpers
     llvm::Value *tryOperatorCall(const std::string &opFnName,
@@ -324,6 +325,8 @@ private:
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                    const std::string &llNameHint = "");
+    llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
+                                       llvm::Value *rhs, const StructInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
                                 const std::string &llNameHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

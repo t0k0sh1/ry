@@ -742,8 +742,16 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
-    if (llvm::isa<llvm::StructType>(val->getType()))
-        codegenError("print() does not support struct types");
+    if (auto *structTy = llvm::dyn_cast<llvm::StructType>(val->getType())) {
+        std::string name = structTy->getName().str();
+        if (struct_types_.count(name)) {
+            llvm::Value *str = structToString(val);
+            llvm::Constant *fmt = builder_.CreateGlobalString("%s\n", ".fmt_struct");
+            builder_.CreateCall(printfFn, {fmt, str});
+            return;
+        }
+        codegenError("print() does not support this struct type");
+    }
 
     if (val->getType() == i1Ty_) {
         llvm::Constant *trueStr  = builder_.CreateGlobalString("true\n",  ".fmt_true");

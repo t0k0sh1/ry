@@ -61,7 +61,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 |------|-----------|------|
 | `to_int` | `str -> int` | Convert string to integer |
 | `to_float` | `str -> float` | Convert string to floating-point number |
-| `to_str` | `int/float/bool/str -> str` | Convert value to string |
+| `to_str` | `int/float/bool/str/record -> str` | Convert value to string |
 
 ---
 
@@ -327,7 +327,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**Signature:** `to_str(v: int | float | bool | str) -> str`
+**Signature:** `to_str(v: int | float | bool | str | record) -> str`
 
 Converts a value to a string.
 
@@ -337,10 +337,22 @@ Converts a value to a string.
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | Returned as-is |
+| record | `TypeName(field1: val1, field2: val2)` |
+
+Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+record Point:
+    x: int
+    y: int
+
+p = Point(10, 20)
+print(to_str(p))          # Point(x: 10, y: 20)
+print(p)                  # Point(x: 10, y: 20)
+print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

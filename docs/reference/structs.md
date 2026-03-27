@@ -104,6 +104,29 @@ print(c.center.x)   # 0
 
 ---
 
+## Comparison (`==` / `!=`)
+
+Record types automatically support `==` and `!=` operators. Comparison is performed field-by-field (structural equality).
+
+```python
+record Point:
+    x: int
+    y: int
+
+p1 = Point(10, 20)
+p2 = Point(10, 20)
+p3 = Point(30, 40)
+
+print(p1 == p2)  # true
+print(p1 != p3)  # true
+```
+
+- All fields are compared in order. For `==`, all fields must be equal. For `!=`, at least one field must differ.
+- Nested records are compared recursively.
+- If a user-defined `operator==` or `operator!=` is provided, it takes precedence over the auto-generated version.
+
+---
+
 ## Constraints and Errors
 
 | Constraint | Details |

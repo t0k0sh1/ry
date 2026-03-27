@@ -222,6 +222,46 @@ fn old_api() -> int:
 
 目前，參數會被解析但不會被 `@deprecated` 指令使用。
 
+### `@inline`
+
+為 LLVM 優化器提供內聯提示。預設情況下，標記函數進行積極內聯。
+
+**基本用法（始終內聯）：**
+
+```
+@inline
+fn add(a: int, b: int) -> int:
+    return a + b
+```
+
+**帶 mode 參數：**
+
+```
+@inline(mode="always")
+fn hot_path(x: int) -> int:
+    return x * 2 + 1
+
+@inline(mode="hint")
+fn medium_path(x: int) -> int:
+    return x + 1
+
+@inline(mode="never")
+fn cold_error_handler(msg: str):
+    print("ERROR: " + msg)
+```
+
+**模式：**
+
+| 模式 | LLVM 屬性 | 說明 |
+|------|----------|------|
+| `always`（預設） | `AlwaysInline` | 始終內聯此函數 |
+| `hint` | `InlineHint` | 向優化器建議內聯 |
+| `never` | `NoInline` | 禁止內聯此函數 |
+
+**限制：**
+- `@inline` 不能與 `@native` 一起使用（native 函數沒有可內聯的函數體）。
+- 未知的 mode 值會導致編譯錯誤。
+
 ## 注意事項
 
 - 已棄用的實體仍然正常運作，僅會發出警告。
