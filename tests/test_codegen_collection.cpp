@@ -441,6 +441,10 @@ TEST_F(CodeGenTest, StringRepeatFn) {
     EXPECT_EQ(runSource("print(repeat(\"hello\", 0))"), "\n");
     // RepeatUFCS
     EXPECT_EQ(runSource("s = \"ha\"\nprint(s.repeat(3))"), "hahaha\n");
+    // RepeatNegative
+    EXPECT_EQ(runSource("print(repeat(\"hello\", -1))"), "\n");
+    // RepeatBoolTypeError
+    EXPECT_THROW(runSource("print(repeat(\"a\", true))"), std::exception);
 }
 
 TEST_F(CodeGenTest, StringReverse) {
