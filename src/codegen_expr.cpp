@@ -312,63 +312,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
                 intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
             else if (intVal->getType() == i8Ty_)
                 intVal = builder_.CreateZExt(intVal, i64Ty_, "n_ext");
-            auto strlenFn = getStdlibStrlen();
-            auto mallocFn = getStdlibMalloc();
-            auto memcpyFn = getStdlibMemcpy();
-
-            llvm::Value *strLen = builder_.CreateCall(strlenFn, {strVal}, "str_len");
-
-            // If n <= 0, return empty string
-            llvm::Value *nPos = builder_.CreateICmpSGT(intVal, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
-
-            llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
-            llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "str_rep.repeat", fn_);
-            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "str_rep.merge", fn_);
-
-            builder_.CreateCondBr(nPos, repeatBB, emptyBB);
-
-            // Empty case: return ""
-            builder_.SetInsertPoint(emptyBB);
-            llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
-            builder_.CreateBr(mergeBB);
-
-            // Repeat case
-            builder_.SetInsertPoint(repeatBB);
-            llvm::Value *totalLen = builder_.CreateMul(strLen, intVal, "total_len");
-            llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
-            llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rep_buf");
-
-            // Loop: copy strVal into buf n times
-            llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
-            llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "str_rep.done", fn_);
-
-            builder_.CreateBr(loopBB);
-            builder_.SetInsertPoint(loopBB);
-
-            llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
-            i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
-
-            llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
-            llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
-            builder_.CreateCall(memcpyFn, {dst, strVal, strLen});
-
-            llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
-            i->addIncoming(iNext, loopBB);
-            llvm::Value *cond = builder_.CreateICmpSLT(iNext, intVal, "loop_cond");
-            builder_.CreateCondBr(cond, loopBB, doneBB);
-
-            builder_.SetInsertPoint(doneBB);
-            // Null-terminate
-            llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {totalLen}, "end_ptr");
-            builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
-            builder_.CreateBr(mergeBB);
-
-            // Merge
-            builder_.SetInsertPoint(mergeBB);
-            llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
-            result->addIncoming(emptyStr, emptyBB);
-            result->addIncoming(buf, doneBB);
-            return result;
+            return emitStringRepeat(strVal, intVal);
         }
     }
 
@@ -1630,4 +1574,66 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
     llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, "await_result");
     builder_.CreateCall(joinFn, {taskVal, resultSlot});
     return builder_.CreateLoad(resultTy, resultSlot, "awaited");
+}
+
+// Common helper: emit IR for string repetition.
+// strVal must be ptr (i8*), n must be i64.
+llvm::Value *CodeGen::emitStringRepeat(llvm::Value *strVal, llvm::Value *n) {
+    auto strlenFn = getStdlibStrlen();
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
+    llvm::Value *strLen = builder_.CreateCall(strlenFn, {strVal}, "str_len");
+
+    // If n <= 0, return empty string
+    llvm::Value *nPos = builder_.CreateICmpSGT(n, llvm::ConstantInt::get(i64Ty_, 0), "n_pos");
+
+    llvm::BasicBlock *emptyBB = llvm::BasicBlock::Create(*ctx_, "str_rep.empty", fn_);
+    llvm::BasicBlock *repeatBB = llvm::BasicBlock::Create(*ctx_, "str_rep.repeat", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "str_rep.merge", fn_);
+
+    builder_.CreateCondBr(nPos, repeatBB, emptyBB);
+
+    // Empty case: return ""
+    builder_.SetInsertPoint(emptyBB);
+    llvm::Value *emptyStr = builder_.CreateGlobalString("", ".empty_str");
+    builder_.CreateBr(mergeBB);
+
+    // Repeat case
+    builder_.SetInsertPoint(repeatBB);
+    llvm::Value *totalLen = builder_.CreateMul(strLen, n, "total_len");
+    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "buf_size");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "rep_buf");
+
+    // Loop: copy strVal into buf n times
+    llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "str_rep.loop", fn_);
+    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "str_rep.done", fn_);
+
+    builder_.CreateBr(loopBB);
+    builder_.SetInsertPoint(loopBB);
+
+    llvm::PHINode *i = builder_.CreatePHI(i64Ty_, 2, "i");
+    i->addIncoming(llvm::ConstantInt::get(i64Ty_, 0), repeatBB);
+
+    llvm::Value *offset = builder_.CreateMul(i, strLen, "offset");
+    llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "dst");
+    builder_.CreateCall(memcpyFn, {dst, strVal, strLen});
+
+    llvm::Value *iNext = builder_.CreateAdd(i, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+    i->addIncoming(iNext, loopBB);
+    llvm::Value *cond = builder_.CreateICmpSLT(iNext, n, "loop_cond");
+    builder_.CreateCondBr(cond, loopBB, doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    // Null-terminate
+    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {totalLen}, "end_ptr");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
+    builder_.CreateBr(mergeBB);
+
+    // Merge
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "str_rep_result");
+    result->addIncoming(emptyStr, emptyBB);
+    result->addIncoming(buf, doneBB);
+    return result;
 }

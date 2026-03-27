@@ -380,6 +380,8 @@ private:
         llvm::Type *hashArgTy;
     };
     HashFnInfo resolveHashFn(llvm::Type *keyTy);
+    llvm::Value *coerceHashKey(llvm::Value *key, llvm::Type *keyTy,
+                               llvm::Type *hashArgTy, const llvm::Twine &prefix);
 
     // Collection type lookup helper (Step 2)
     static llvm::Type *lookupCollectionType(
@@ -492,6 +494,7 @@ private:
     llvm::Value *emitStrOp_trim_start(const CallExpr &e);
     llvm::Value *emitStrOp_trim_end(const CallExpr &e);
     llvm::Value *emitStrOp_repeat(const CallExpr &e);
+    llvm::Value *emitStringRepeat(llvm::Value *strVal, llvm::Value *n);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
     llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);

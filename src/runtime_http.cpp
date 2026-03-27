@@ -745,22 +745,17 @@ extern "C" void __ry_http_request_free(void *r) {
     free(req->cookie_keys);
     free(req->cookie_values);
     for (int64_t i = 0; i < req->form_field_count; i++) {
-        free(req->form_field_keys[i]);
-        free(req->form_field_values[i]);
+        free(req->form_fields[i].key);
+        free(req->form_fields[i].value);
     }
-    free(req->form_field_keys);
-    free(req->form_field_values);
+    free(req->form_fields);
     for (int64_t i = 0; i < req->form_file_count; i++) {
-        free(req->form_file_keys[i]);
-        free(req->form_file_filenames[i]);
-        free(req->form_file_types[i]);
-        free(req->form_file_data[i]);
+        free(req->form_files[i].name);
+        free(req->form_files[i].filename);
+        free(req->form_files[i].content_type);
+        free(req->form_files[i].data);
     }
-    free(req->form_file_keys);
-    free(req->form_file_filenames);
-    free(req->form_file_types);
-    free(req->form_file_data);
-    free(req->form_file_data_lens);
+    free(req->form_files);
     free(req->body);
     free(req);
 }

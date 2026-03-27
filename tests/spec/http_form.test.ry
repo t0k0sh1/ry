@@ -2,27 +2,26 @@ from http import http_listen, http_form_field, http_form_file, http_form_fields,
 
 describe("http_form_field", fn():
   it("parses text fields from multipart/form-data", fn():
-    fn server(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18960, fn(req: HttpRequest) -> HttpResponse:
+    fn server(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         username = http_form_field(req, "username")
         match username:
           case Some(val):
             return http_response(200, {"Content-Type": "text/plain"}, val)
           case None:
             return http_response(400, {"Content-Type": "text/plain"}, "missing")
-      , 1)
+      , 1, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server(ready)
-    recv(ready)
-    sleep(100)
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server(port_ch)
+    port = recv(port_ch)
 
     body = "--boundary\r\nContent-Disposition: form-data; name=\"username\"\r\n\r\nalice\r\n--boundary--\r\n"
     headers = {"Content-Type": "multipart/form-data; boundary=boundary"}
 
-    match http_request("POST", "http://127.0.0.1:18960/submit", headers, body):
+    url = "http://127.0.0.1:" + to_str(port) + "/submit"
+    match http_request("POST", url, headers, body):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("alice")
@@ -36,25 +35,24 @@ describe("http_form_field", fn():
 
 describe("http_form_fields", fn():
   it("returns all text fields as a map", fn():
-    fn server_fields(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18961, fn(req: HttpRequest) -> HttpResponse:
+    fn server_fields(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         fields = http_form_fields(req)
         a = fields["a"]
         b = fields["b"]
         return http_response(200, {"Content-Type": "text/plain"}, a + "," + b)
-      , 1)
+      , 1, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server_fields(ready)
-    recv(ready)
-    sleep(100)
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server_fields(port_ch)
+    port = recv(port_ch)
 
     body = "--bnd\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--bnd\r\nContent-Disposition: form-data; name=\"b\"\r\n\r\n2\r\n--bnd--\r\n"
     headers = {"Content-Type": "multipart/form-data; boundary=bnd"}
 
-    match http_request("POST", "http://127.0.0.1:18961/form", headers, body):
+    url = "http://127.0.0.1:" + to_str(port) + "/form"
+    match http_request("POST", url, headers, body):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("1,2")
@@ -68,27 +66,26 @@ describe("http_form_fields", fn():
 
 describe("http_form_file", fn():
   it("returns Some with file info for uploaded file", fn():
-    fn server_file(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18962, fn(req: HttpRequest) -> HttpResponse:
+    fn server_file(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         file = http_form_file(req, "avatar")
         match file:
           case Some(info):
             return http_response(200, {"Content-Type": "text/plain"}, info["filename"])
           case None:
             return http_response(404, {"Content-Type": "text/plain"}, "not found")
-      , 1)
+      , 1, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server_file(ready)
-    recv(ready)
-    sleep(100)
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server_file(port_ch)
+    port = recv(port_ch)
 
     body = "--fbnd\r\nContent-Disposition: form-data; name=\"avatar\"; filename=\"photo.png\"\r\nContent-Type: image/png\r\n\r\nFAKE\r\n--fbnd--\r\n"
     headers = {"Content-Type": "multipart/form-data; boundary=fbnd"}
 
-    match http_request("POST", "http://127.0.0.1:18962/upload", headers, body):
+    url = "http://127.0.0.1:" + to_str(port) + "/upload"
+    match http_request("POST", url, headers, body):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(200)
         expect(http_client_body(resp)).to_eq("photo.png")
@@ -100,27 +97,26 @@ describe("http_form_file", fn():
   )
 
   it("returns None for missing file", fn():
-    fn server_no_file(ready: Channel<int>) -> str:
-      send(ready, 1)
-      http_listen("127.0.0.1", 18963, fn(req: HttpRequest) -> HttpResponse:
+    fn server_no_file(port_ch: Channel<int>) -> str:
+      http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
         file = http_form_file(req, "missing")
         match file:
           case Some(info):
             return http_response(200, {"Content-Type": "text/plain"}, "found")
           case None:
             return http_response(404, {"Content-Type": "text/plain"}, "none")
-      , 1)
+      , 1, port_ch)
       return "done"
 
-    ready: Channel<int> = channel[int]()
-    t: Task<str> = spawn server_no_file(ready)
-    recv(ready)
-    sleep(100)
+    port_ch: Channel<int> = channel[int]()
+    t: Task<str> = spawn server_no_file(port_ch)
+    port = recv(port_ch)
 
     body = "--nbnd\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nhello\r\n--nbnd--\r\n"
     headers = {"Content-Type": "multipart/form-data; boundary=nbnd"}
 
-    match http_request("POST", "http://127.0.0.1:18963/upload", headers, body):
+    url = "http://127.0.0.1:" + to_str(port) + "/upload"
+    match http_request("POST", url, headers, body):
       case Ok(resp):
         expect(http_client_status(resp)).to_eq(404)
         expect(http_client_body(resp)).to_eq("none")

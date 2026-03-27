@@ -106,9 +106,7 @@ CodeGen::BucketContext CodeGen::emitHashTableRemoveBucket(
     const std::string &prefix) {
     llvm::Twine p(prefix);
     auto hfi = resolveHashFn(keyTy);
-    llvm::Value *hashKey = key;
-    if (keyTy != hfi.hashArgTy && keyTy->isIntegerTy() && hfi.hashArgTy->isIntegerTy())
-        hashKey = builder_.CreateZExt(key, hfi.hashArgTy, p + "_hash_zext");
+    llvm::Value *hashKey = coerceHashKey(key, keyTy, hfi.hashArgTy, p);
     llvm::FunctionType *hashTy = llvm::FunctionType::get(i64Ty_, {hfi.hashArgTy}, false);
     llvm::FunctionCallee hashFn = mod_->getOrInsertFunction(hfi.hashFnName, hashTy);
     llvm::Value *hashVal = builder_.CreateCall(hashFn, {hashKey}, p + "_hash");
@@ -133,9 +131,7 @@ void CodeGen::emitHashTableUpdateIndex(
     llvm::Value *oldIndex, llvm::Value *newIndex,
     const std::string &prefix) {
     llvm::Twine p(prefix);
-    llvm::Value *hashValue = value;
-    if (valueTy != bc.hashArgTy && valueTy->isIntegerTy() && bc.hashArgTy->isIntegerTy())
-        hashValue = builder_.CreateZExt(value, bc.hashArgTy, p + "_hash_zext");
+    llvm::Value *hashValue = coerceHashKey(value, valueTy, bc.hashArgTy, p);
     llvm::Value *hashVal = builder_.CreateCall(bc.hashFn, {hashValue}, p + "_hash");
 
     llvm::FunctionType *updateTy = llvm::FunctionType::get(
