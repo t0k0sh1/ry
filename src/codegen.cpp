@@ -34,6 +34,23 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
 
     anyTy_ = llvm::StructType::create(
         *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
+
+    fnTy_ptr_to_ptr_       = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+    fnTy_ptr_to_i64_       = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    fnTy_ptr_to_void_      = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    fnTy_ptr_ptr_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    fnTy_ptr_ptr_to_i64_   = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+    fnTy_ptr_i64_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+    fnTy_ptr_ptr_ptr_to_ptr_ = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+    fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
+}
+
+llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
+    auto it = global_string_cache_.find(str);
+    if (it != global_string_cache_.end()) return it->second;
+    auto *gs = builder_.CreateGlobalString(str, name);
+    global_string_cache_[str] = gs;
+    return gs;
 }
 
 // ===== B5: FnScope RAII =====
@@ -499,7 +516,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
 
         auto &nameStr = mock_name_strings_[callee];
-        if (!nameStr) nameStr = builder_.CreateGlobalString(callee, ".mock." + callee);
+        if (!nameStr) nameStr = cachedGlobalString(callee, ".mock." + callee);
         llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
         llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *isMocked = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
@@ -550,14 +567,14 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
     if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
-        matchedEntry->returnTypeName.substr(0, 5) == "Task<" &&
+        matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
         matchedEntry->returnTypeName.back() == '>') {
         std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
         task_result_types_[callResult] = resolveType(inner);
     }
 
     if (matchedEntry && matchedEntry->returnTypeName.size() > 8 &&
-        matchedEntry->returnTypeName.substr(0, 8) == "Channel<" &&
+        matchedEntry->returnTypeName.compare(0, 8, "Channel<") == 0 &&
         matchedEntry->returnTypeName.back() == '>') {
         std::string inner = matchedEntry->returnTypeName.substr(8, matchedEntry->returnTypeName.size() - 9);
         channel_element_types_[callResult] = resolveType(inner);
@@ -817,32 +834,32 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     }
 
     // fn(...) -> T function type → opaque pointer
-    if (typeName.size() > 3 && typeName.substr(0, 3) == "fn(") {
+    if (typeName.size() > 3 && typeName.compare(0, 3, "fn(") == 0) {
         return ptrTy_;
     }
 
     // List<T> parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "List<" && typeName.back() == '>') {
+    if (typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0 && typeName.back() == '>') {
         return ptrTy_;
     }
 
     // Map<K, V> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "Map<" && typeName.back() == '>') {
+    if (typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
         return ptrTy_;
     }
 
     // Set<T> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "Set<" && typeName.back() == '>') {
+    if (typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0 && typeName.back() == '>') {
         return ptrTy_;
     }
 
     // Task<T> parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "Task<" && typeName.back() == '>') {
+    if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
         return ptrTy_;
     }
 
     // Channel<T> parsing
-    if (typeName.size() > 8 && typeName.substr(0, 8) == "Channel<" && typeName.back() == '>') {
+    if (typeName.size() > 8 && typeName.compare(0, 8, "Channel<") == 0 && typeName.back() == '>') {
         return ptrTy_;
     }
 
@@ -860,14 +877,14 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "JsonValue") return ptrTy_;
 
     // Option<T> parsing
-    if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
+    if (typeName.size() > 7 && typeName.compare(0, 7, "Option<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
         llvm::Type *innerTy = resolveType(inner);
         return getOptionType(innerTy);
     }
 
     // Result<V, E> parsing
-    if (typeName.size() > 7 && typeName.substr(0, 7) == "Result<" && typeName.back() == '>') {
+    if (typeName.size() > 7 && typeName.compare(0, 7, "Result<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);
         // Find comma separating V and E, respecting nested angle brackets
         int depth = 0;
@@ -956,7 +973,7 @@ llvm::Value *CodeGen::buildErrValue(llvm::Value *inner, llvm::StructType *result
 }
 
 llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string &globalName) {
-    llvm::Value *errMsgStr = builder_.CreateGlobalString(msg, globalName);
+    llvm::Value *errMsgStr = cachedGlobalString(msg, globalName);
     llvm::Value *errStruct = llvm::UndefValue::get(errorTy_);
     errStruct = builder_.CreateInsertValue(errStruct, errMsgStr, 0, "err.msg");
     errStruct = builder_.CreateInsertValue(errStruct, llvm::ConstantInt::get(i64Ty_, 0), 1, "err.code");
@@ -1142,7 +1159,7 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
 #endif
     auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
     llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
-    llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
+    llvm::Constant *errMsg = cachedGlobalString(message, globalName);
     builder_.CreateCall(fprintfFn, {stderrVal, errMsg});
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
@@ -1152,77 +1169,77 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
 void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
                               llvm::FunctionCallee printfFn, const std::string &suffix) {
     if (ty == i1Ty_) {
-        llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true" + suffix);
-        llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false" + suffix);
+        llvm::Constant *t = cachedGlobalString("true", ".fmt_true" + suffix);
+        llvm::Constant *f = cachedGlobalString("false", ".fmt_false" + suffix);
         builder_.CreateCall(printfFn, {builder_.CreateSelect(val, t, f, "bool_fmt")});
     } else if (ty->isPointerTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_s" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (ty == i8Ty_) {
         std::string llName = getLowLevelTypeName(val);
         if (llName == "i8") {
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_print");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i8" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i8" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         } else if (llName == "u8") {
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u8" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         } else {
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_b" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         }
     } else if (ty == i16Ty_) {
         std::string llName = getLowLevelTypeName(val);
         if (llName == "u16") {
             llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_print");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u16" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u16" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         } else {
             llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i16" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i16" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         }
     } else if (ty == i32Ty_) {
         std::string llName = getLowLevelTypeName(val);
         if (llName == "u32") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u32" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u32" + suffix);
             builder_.CreateCall(printfFn, {fmt, val});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i32" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i32" + suffix);
             builder_.CreateCall(printfFn, {fmt, val});
         }
     } else if (ty == f32Ty_) {
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f32" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f32" + suffix);
         builder_.CreateCall(printfFn, {fmt, ext});
     } else if (ty->isDoubleTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (ty == anyTy_) {
         llvm::Value *str = emitAnyToString(val);
-        llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_any" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_any" + suffix);
         builder_.CreateCall(printfFn, {fmt, str});
     } else if (ty == errorTy_) {
         llvm::Value *msg = builder_.CreateExtractValue(val, 0, "err_msg");
         llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");
-        llvm::Constant *fmt = builder_.CreateGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
         builder_.CreateCall(printfFn, {fmt, msg, code});
     } else if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
         std::string name = st->getName().str();
         if (struct_types_.count(name)) {
             llvm::Value *str = structToString(val);
-            llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_struct" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_struct" + suffix);
             builder_.CreateCall(printfFn, {fmt, str});
         }
     } else {
         std::string llName = getLowLevelTypeName(val);
         if (llName == "u64") {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%lu", ".fmt_u64" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%lu", ".fmt_u64" + suffix);
             builder_.CreateCall(printfFn, {fmt, val});
         } else {
-            llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
+            llvm::Constant *fmt = cachedGlobalString("%ld", ".fmt_i" + suffix);
             builder_.CreateCall(printfFn, {fmt, val});
         }
     }
@@ -1429,7 +1446,7 @@ void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constr
 
         llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
         for (const auto &allowed : constraint.str_values) {
-            llvm::Constant *allowedStr = builder_.CreateGlobalString(
+            llvm::Constant *allowedStr = cachedGlobalString(
                 allowed, ".str_lit_" + std::to_string(constraint_err_counter_) + "_" + allowed);
             llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, allowedStr}, "strcmp_res");
             llvm::Value *isEq = builder_.CreateICmpEQ(

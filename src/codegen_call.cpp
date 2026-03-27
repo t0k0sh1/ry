@@ -10,7 +10,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         llvm::Value *s = emitExpr(*e.args[0]);
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
-        auto atolTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto atolTy = fnTy_ptr_to_i64_;
         auto atolFn = mod_->getOrInsertFunction("atol", atolTy);
         return builder_.CreateCall(atolFn, {s}, "to_int");
     }
@@ -590,7 +590,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Value *data = emitExpr(*e.args[1]);
             if (!getListElementType(data) || getListElementType(data) != i8Ty_)
                 codegenError("send() with TcpStream/TlsStream requires List<byte> as second argument");
-            auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+            auto fnTy = fnTy_ptr_ptr_to_i64_;
             std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
             auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
             llvm::Value *sent = builder_.CreateCall(fn, {firstArg, data}, "tcp_send");
@@ -652,7 +652,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
                 codegenError("recv() with 2 arguments requires TcpStream or TlsStream as first argument");
             llvm::Value *maxBytes = emitExpr(*e.args[1]);
-            auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+            auto fnTy = fnTy_ptr_i64_to_ptr_;
             std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
             auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
             llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
@@ -895,7 +895,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         if (getListElementType(ptr))
             return loadListHeader(ptr, "list").len;
         // String: call __ry_utf8_len (character count)
-        auto utf8LenTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto utf8LenTy = fnTy_ptr_to_i64_;
         auto utf8LenFn = mod_->getOrInsertFunction("__ry_utf8_len", utf8LenTy);
         return builder_.CreateCall(utf8LenFn, {ptr}, "str_len");
     }
@@ -1088,9 +1088,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             codegenError("verify(): unknown function '" + strExpr->value + "'");
         if (vit->second.size() != 1)
             codegenError("verify(): overloaded functions are not supported");
-        llvm::FunctionType *getCountTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+        auto *getCountTy = fnTy_ptr_to_i64_;
         llvm::FunctionCallee getCountFn = mod_->getOrInsertFunction("__ry_mock_get_call_count", getCountTy);
-        llvm::Value *nameStr = builder_.CreateGlobalString(strExpr->value, ".verify_name");
+        llvm::Value *nameStr = cachedGlobalString(strExpr->value, ".verify_name");
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 

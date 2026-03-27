@@ -10,7 +10,7 @@ llvm::Value *CodeGen::emitBuiltinBase64(const CallExpr &e) {
         llvm::Value *input = emitExpr(*e.args[0]);
         if (input->getType() != ptrTy_)
             codegenError(e.callee + "() requires str argument");
-        auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+        auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction(rtName, fnTy);
         return builder_.CreateCall(fn, {input}, e.callee);
     };

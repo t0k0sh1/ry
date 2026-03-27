@@ -952,7 +952,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
     std::vector<llvm::Constant*> nameStrings;
     for (size_t i = 0; i < s.variants.size(); ++i) {
         info.variants[s.variants[i].name] = static_cast<int64_t>(i);
-        llvm::Constant *str = builder_.CreateGlobalString(
+        llvm::Constant *str = cachedGlobalString(
             s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
         nameStrings.push_back(str);
 
