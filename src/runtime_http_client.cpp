@@ -269,6 +269,16 @@ static bool is_sensitive_header(const char *name) {
            strcasecmp(name, "Cookie") == 0;
 }
 
+static bool is_hop_by_hop_header(const char *name) {
+    return strcasecmp(name, "Host") == 0 ||
+           strcasecmp(name, "Connection") == 0 ||
+           strcasecmp(name, "Keep-Alive") == 0 ||
+           strcasecmp(name, "Transfer-Encoding") == 0 ||
+           strcasecmp(name, "TE") == 0 ||
+           strcasecmp(name, "Upgrade") == 0 ||
+           strcasecmp(name, "Proxy-Connection") == 0;
+}
+
 static bool is_cross_origin(const char *url_a, const char *url_b) {
     ParsedUrl *a = parse_url(url_a);
     ParsedUrl *b = parse_url(url_b);
@@ -370,6 +380,7 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
             for (int64_t i = 0; i < map->len; i++) {
                 if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
                 if (strcasecmp(map->keys[i], "Content-Length") == 0) continue;
+                if (is_hop_by_hop_header(map->keys[i])) continue;
                 if (strip_sensitive && is_sensitive_header(map->keys[i])) continue;
                 request += map->keys[i];
                 request += ": ";
