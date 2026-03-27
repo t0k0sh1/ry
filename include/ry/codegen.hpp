@@ -312,6 +312,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<SpawnExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
+    llvm::Value *structToString(llvm::Value *val);
 
     // Operator overload helpers
     llvm::Value *tryOperatorCall(const std::string &opFnName,

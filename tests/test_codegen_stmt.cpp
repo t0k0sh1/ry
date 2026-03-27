@@ -347,13 +347,76 @@ TEST_F(CodeGenTest, StructErrors) {
     EXPECT_THROW(runSource(
         "x = 42\n"
         "print(x.field)"), std::runtime_error);
-    // PrintStructThrows
-    EXPECT_THROW(runSource(
+    // PrintStruct — now works via auto-generated to_str
+    EXPECT_EQ(runSource(
         "record Point:\n"
         "    x: int\n"
         "    y: int\n"
         "p = Point(1, 2)\n"
-        "print(p)"), std::runtime_error);
+        "print(p)"), "Point(x: 1, y: 2)\n");
+}
+
+// ===== Record to_str =====
+
+TEST_F(CodeGenTest, StructToStr) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p = Point(1, 2)\n"
+        "print(to_str(p))"), "Point(x: 1, y: 2)\n");
+}
+
+TEST_F(CodeGenTest, StructFString) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "p = Point(3, 4)\n"
+        "print(f\"pos={p}\")"), "pos=Point(x: 3, y: 4)\n");
+}
+
+TEST_F(CodeGenTest, StructNestedToStr) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "record Circle:\n"
+        "    center: Point\n"
+        "    radius: float\n"
+        "c = Circle(Point(0, 0), 1.5)\n"
+        "print(c)"), "Circle(center: Point(x: 0, y: 0), radius: 1.5)\n");
+}
+
+TEST_F(CodeGenTest, StructUserDefinedToStr) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn to_str(p: Point) -> str:\n"
+        "    return f\"({p.x}, {p.y})\"\n"
+        "p = Point(5, 6)\n"
+        "print(to_str(p))"), "(5, 6)\n");
+}
+
+TEST_F(CodeGenTest, StructUserDefinedToStrWithPrint) {
+    EXPECT_EQ(runSource(
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "fn to_str(p: Point) -> str:\n"
+        "    return f\"({p.x}, {p.y})\"\n"
+        "p = Point(5, 6)\n"
+        "print(p)"), "(5, 6)\n");
+}
+
+TEST_F(CodeGenTest, StructStrField) {
+    EXPECT_EQ(runSource(
+        "record Person:\n"
+        "    name: str\n"
+        "    age: int\n"
+        "p = Person(\"Alice\", 30)\n"
+        "print(p)"), "Person(name: Alice, age: 30)\n");
 }
 
 TEST_F(CodeGenTest, UnknownTypeAnnotationThrows) {
