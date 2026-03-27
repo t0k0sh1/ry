@@ -486,6 +486,7 @@ private:
     llvm::Value *emitStrOp_trim_start(const CallExpr &e);
     llvm::Value *emitStrOp_trim_end(const CallExpr &e);
     llvm::Value *emitStrOp_repeat(const CallExpr &e);
+    llvm::Value *emitStringRepeat(llvm::Value *strVal, llvm::Value *n);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
     llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);
