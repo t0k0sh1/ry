@@ -80,6 +80,8 @@ add_library(ry_lib STATIC
     src/runtime_io.cpp
     src/runtime_net.cpp
     src/runtime_http.cpp
+    src/runtime_http_client.cpp
+    src/runtime_http_multipart.cpp
     src/runtime_json.cpp
     src/codegen_call_json.cpp
     src/formatter.cpp
