@@ -271,9 +271,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
     return std::visit([&](const auto &v) -> llvm::Type* {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, NumberExpr>) {
-            return i64Ty_;
+            return v.suffix.empty() ? i64Ty_ : resolveType(v.suffix);
         } else if constexpr (std::is_same_v<T, FloatExpr>) {
-            return f64Ty_;
+            return v.suffix.empty() ? f64Ty_ : resolveType(v.suffix);
         } else if constexpr (std::is_same_v<T, BoolExpr>) {
             return i1Ty_;
         } else if constexpr (std::is_same_v<T, StringExpr>) {

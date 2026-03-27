@@ -11,14 +11,6 @@ static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
     }
 }
 
-static int64_t parseIntLiteral(const std::string& s) {
-    if (s.size() > 2 && s[0] == '0') {
-        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
-        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
-    }
-    return std::stoll(s);
-}
-
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
 ExprPtr Parser::parseTernary() {
@@ -225,15 +217,22 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Number) {
         lex_.next();
+        auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        node->data = NumberExpr{parseIntLiteral(t.value)};
+        if (suffix == "f32" || suffix == "f64")
+            node->data = FloatExpr{std::stod(numStr), suffix};
+        else
+            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
         node->loc = locFromToken(t);
         return node;
     }
     if (t.kind == TokenKind::Float) {
         lex_.next();
+        auto [numStr, suffix] = splitNumericSuffix(t.value);
+        if (!suffix.empty() && suffix[0] != 'f')
+            parseError("cannot use integer suffix '" + suffix + "' on float literal");
         auto node = std::make_unique<ExprNode>();
-        node->data = FloatExpr{std::stod(t.value)};
+        node->data = FloatExpr{std::stod(numStr), suffix};
         node->loc = locFromToken(t);
         return node;
     }

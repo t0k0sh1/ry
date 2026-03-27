@@ -412,6 +412,45 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
 }
 
+// ===== Numeric literal suffix =====
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_i32) {
+    EXPECT_EQ(runSource("x = 42i32\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_u8) {
+    EXPECT_EQ(runSource("x = 255u8\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_f32) {
+    EXPECT_EQ(runSource("x = 3.14f32\nprint(x)"), "3.14\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_IntWithF32) {
+    // Integer literal with f32 suffix becomes float
+    EXPECT_EQ(runSource("x = 42f32\nprint(x)"), "42\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Hex) {
+    EXPECT_EQ(runSource("x = 0xFFu8\nprint(x)"), "255\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Binary) {
+    EXPECT_EQ(runSource("x = 0b1010u8\nprint(x)"), "10\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_Arithmetic) {
+    EXPECT_EQ(runSource("c = 10i32 + 20i32\nprint(c)"), "30\n");
+}
+
+TEST_F(CodeGenTest, NumericLiteralSuffix_OutOfRange) {
+    EXPECT_THROW(runSource("x = 256u8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -1u8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = 129i8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -129i8"), std::runtime_error);
+    EXPECT_THROW(runSource("x = -1u32"), std::runtime_error);
+}
+
 // ===== Return type inference for named functions =====
 
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {

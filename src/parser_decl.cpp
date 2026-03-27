@@ -31,13 +31,6 @@ static bool isPascalCase(const std::string &name) {
     return std::regex_match(name, pattern);
 }
 
-static int64_t parseIntLiteral(const std::string& s) {
-    if (s.size() > 2 && s[0] == '0') {
-        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
-        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
-    }
-    return std::stoll(s);
-}
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
     Token fnTok = lex_.next(); // consume 'fn'
@@ -650,14 +643,19 @@ Pattern Parser::parsePattern() {
     // Literal patterns: number, float, string, true, false
     if (t.kind == TokenKind::Number) {
         lex_.next();
+        auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        node->data = NumberExpr{parseIntLiteral(t.value)};
+        if (suffix == "f32" || suffix == "f64")
+            node->data = FloatExpr{std::stod(numStr), suffix};
+        else
+            node->data = NumberExpr{parseIntLiteral(numStr), suffix};
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::Float) {
         lex_.next();
+        auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        node->data = FloatExpr{std::stod(t.value)};
+        node->data = FloatExpr{std::stod(numStr), suffix};
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::String) {
@@ -679,14 +677,19 @@ Pattern Parser::parsePattern() {
         Token num = lex_.peek();
         if (num.kind == TokenKind::Number) {
             lex_.next();
+            auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            node->data = NumberExpr{-parseIntLiteral(num.value)};
+            if (suffix == "f32" || suffix == "f64")
+                node->data = FloatExpr{-std::stod(numStr), suffix};
+            else
+                node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
             return LiteralPattern{std::move(node)};
         }
         if (num.kind == TokenKind::Float) {
             lex_.next();
+            auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            node->data = FloatExpr{-std::stod(num.value)};
+            node->data = FloatExpr{-std::stod(numStr), suffix};
             return LiteralPattern{std::move(node)};
         }
         parseError(num.line, "expected number after '-' in pattern");

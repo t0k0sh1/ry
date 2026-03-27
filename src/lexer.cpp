@@ -1,5 +1,6 @@
 #include "ry/lexer.hpp"
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 
 Token Lexer::next() {
@@ -37,6 +38,33 @@ void Lexer::restoreState(State s) {
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
     fstring_brace_depth_ = s.fstring_brace_depth;
+}
+
+void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
+    if (pos_ >= src_.size()) return;
+    char ch = src_[pos_];
+    if (ch != 'i' && ch != 'u' && ch != 'f') return;
+
+    static const char *suffixes[] = {
+        "i8", "i16", "i32", "i64",
+        "u8", "u16", "u32", "u64",
+        "f32", "f64"
+    };
+    for (const char *suf : suffixes) {
+        size_t len = std::strlen(suf);
+        if (pos_ + len > src_.size()) continue;
+        if (src_.compare(pos_, len, suf) != 0) continue;
+        // Avoid matching partial identifiers like `42i32x`
+        if (pos_ + len < src_.size()) {
+            char after = src_[pos_ + len];
+            if (std::isalnum(after) || after == '_') continue;
+        }
+        pos_ += len;
+        col_ += static_cast<int>(len);
+        if (suf[0] == 'f' && kind == TokenKind::Number)
+            kind = TokenKind::Float;
+        return;
+    }
 }
 
 Token Lexer::readToken() {
@@ -391,6 +419,7 @@ Token Lexer::readToken() {
 
     if (std::isdigit(c)) {
         size_t start = pos_;
+        TokenKind numKind = TokenKind::Number;
         if (c == '0' && pos_ + 1 < src_.size()) {
             char next = src_[pos_ + 1];
             if (next == 'x' || next == 'X') {
@@ -398,14 +427,16 @@ Token Lexer::readToken() {
                 if (pos_ >= src_.size() || !std::isxdigit(src_[pos_]))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
                 while (pos_ < src_.size() && std::isxdigit(src_[pos_])) { ++pos_; ++col_; }
-                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+                tryConsumeNumericSuffix(numKind);
+                return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
             if (next == 'b' || next == 'B') {
                 pos_ += 2; col_ += 2;
                 if (pos_ >= src_.size() || (src_[pos_] != '0' && src_[pos_] != '1'))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid binary literal");
                 while (pos_ < src_.size() && (src_[pos_] == '0' || src_[pos_] == '1')) { ++pos_; ++col_; }
-                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+                tryConsumeNumericSuffix(numKind);
+                return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
         while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
@@ -413,9 +444,12 @@ Token Lexer::readToken() {
             pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])) {
             ++pos_; ++col_;
             while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
-            return {TokenKind::Float, std::string(src_, start, pos_ - start), line_, startCol};
+            numKind = TokenKind::Float;
+            tryConsumeNumericSuffix(numKind);
+            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
-        return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+        tryConsumeNumericSuffix(numKind);
+        return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 
     if (std::isalpha(c) || c == '_') {

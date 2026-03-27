@@ -1,5 +1,36 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include <climits>
+
+// Range check for suffixed integer literals.
+// Since `-128i8` is parsed as UnaryExpr("-", NumberExpr{128, "i8"}),
+// we allow positive values up to 2^(N-1) for signed types (= |MIN|).
+template<typename ErrorFn>
+static void validateIntRange(int64_t value, const std::string &suffix,
+                             ErrorFn error) {
+    if (suffix == "i8") {
+        if (value < INT8_MIN || value > (int64_t)(-((int64_t)INT8_MIN)))
+            error("i8 literal out of range: " + std::to_string(value));
+    } else if (suffix == "i16") {
+        if (value < INT16_MIN || value > (int64_t)(-((int64_t)INT16_MIN)))
+            error("i16 literal out of range: " + std::to_string(value));
+    } else if (suffix == "i32") {
+        if (value < INT32_MIN || value > (int64_t)(-((int64_t)INT32_MIN)))
+            error("i32 literal out of range: " + std::to_string(value));
+    } else if (suffix == "u8") {
+        if (value < 0 || value > UINT8_MAX)
+            error("u8 literal out of range: " + std::to_string(value));
+    } else if (suffix == "u16") {
+        if (value < 0 || value > UINT16_MAX)
+            error("u16 literal out of range: " + std::to_string(value));
+    } else if (suffix == "u32") {
+        if (value < 0 || value > (int64_t)UINT32_MAX)
+            error("u32 literal out of range: " + std::to_string(value));
+    } else if (suffix == "u64") {
+        if (value < 0)
+            error("u64 literal out of range: " + std::to_string(value));
+    }
+}
 
 llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
     if (node.loc.isValid()) current_loc_ = node.loc;
@@ -8,11 +39,26 @@ llvm::Value *CodeGen::emitExpr(const ExprNode &node) {
 }
 
 llvm::Value *CodeGen::emitExprVariant(const NumberExpr &e) {
-    return llvm::ConstantInt::get(i64Ty_, e.value, true);
+    if (e.suffix.empty())
+        return llvm::ConstantInt::get(i64Ty_, e.value, true);
+
+    validateIntRange(e.value, e.suffix,
+        [this](const std::string &msg) { codegenError(msg); });
+
+    llvm::Type *ty = resolveType(e.suffix);
+    bool isSigned = !isUnsignedLowLevelName(e.suffix);
+    auto *result = llvm::ConstantInt::get(ty, static_cast<uint64_t>(e.value), isSigned);
+    low_level_type_names_[result] = e.suffix;
+    return result;
 }
 
 llvm::Value *CodeGen::emitExprVariant(const FloatExpr &e) {
-    return llvm::ConstantFP::get(f64Ty_, e.value);
+    if (e.suffix.empty() || e.suffix == "f64")
+        return llvm::ConstantFP::get(f64Ty_, e.value);
+    // suffix == "f32"
+    auto *result = llvm::ConstantFP::get(f32Ty_, e.value);
+    low_level_type_names_[result] = "f32";
+    return result;
 }
 
 llvm::Value *CodeGen::emitExprVariant(const BoolExpr &e) {
@@ -69,8 +115,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         return val;
     }
     if (e->op == "-") {
-        if (val->getType()->isDoubleTy())
+        if (val->getType()->isDoubleTy() || val->getType()->isFloatTy())
             return builder_.CreateFNeg(val, "fneg");
+        // Check for unsigned suffix on the operand AST node
+        if (auto *ne = std::get_if<NumberExpr>(&e->operand->data)) {
+            if (isUnsignedLowLevelName(ne->suffix))
+                codegenError("cannot negate unsigned type '" + ne->suffix + "'");
+        }
         val = promoteToInt(val);
         return builder_.CreateNeg(val, "neg");
     }

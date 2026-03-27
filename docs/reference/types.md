@@ -26,15 +26,15 @@
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
 | Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
-| `i8` | i8 | `x: i8 = 42` | 8-bit signed integer (low-level, no implicit conversion) |
-| `i16` | i16 | `x: i16 = 100` | 16-bit signed integer (low-level, no implicit conversion) |
-| `i32` | i32 | `x: i32 = 42` | 32-bit signed integer (low-level, no implicit conversion) |
-| `i64` | i64 | `x: i64 = 100` | 64-bit signed integer (low-level, no implicit conversion) |
-| `u8` | i8 | `x: u8 = 200` | 8-bit unsigned integer (low-level, no implicit conversion) |
-| `u16` | i16 | `x: u16 = 60000` | 16-bit unsigned integer (low-level, no implicit conversion) |
-| `u32` | i32 | `x: u32 = 3000000000` | 32-bit unsigned integer (low-level, no implicit conversion) |
-| `u64` | i64 | `x: u64 = 100` | 64-bit unsigned integer (low-level, no implicit conversion) |
-| `f32` | float | `x: f32 = 3.14` | 32-bit floating-point (low-level, no implicit conversion) |
+| `i8` | i8 | `x: i8 = 42`, `x = 42i8` | 8-bit signed integer (low-level, no implicit conversion) |
+| `i16` | i16 | `x: i16 = 100`, `x = 100i16` | 16-bit signed integer (low-level, no implicit conversion) |
+| `i32` | i32 | `x: i32 = 42`, `x = 42i32` | 32-bit signed integer (low-level, no implicit conversion) |
+| `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64-bit signed integer (low-level, no implicit conversion) |
+| `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8-bit unsigned integer (low-level, no implicit conversion) |
+| `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16-bit unsigned integer (low-level, no implicit conversion) |
+| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
+| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
+| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
 
 ## Type Annotation Syntax
 
@@ -482,6 +482,7 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
+- **Numeric literal suffixes** -- Low-level types can be specified via literal suffixes: `42i32`, `255u8`, `3.14f32`, `0xFFu8`, `0b1010u8`. An integer literal with a float suffix (`42f32`) produces a float value. A float literal with an integer suffix (`3.14i32`) is a compile error. Out-of-range values (e.g., `256u8`, `129i8`) are also compile errors.
 - **Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`/`SRem`, unsigned types use `UDiv`/`URem`.
 - **Signed vs unsigned** -- Signed types (`i8`, `i16`, `i32`, `i64`) use signed comparison (`ICMP_SLT` etc.) and arithmetic right shift (`AShr`). Unsigned types (`u8`, `u16`, `u32`, `u64`) use unsigned comparison (`ICMP_ULT` etc.) and logical right shift (`LShr`). The `>>>` operator always performs logical shift regardless of signedness.
 - **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses two's complement wrapping on overflow (signed) or modular arithmetic (unsigned). For example, `i32` max value `2147483647 + 1` wraps to `-2147483648`. This matches C behavior. Use the high-level `int` type (64-bit) if overflow is a concern.

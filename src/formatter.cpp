@@ -214,9 +214,9 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         using T = std::decay_t<decltype(v)>;
 
         if constexpr (std::is_same_v<T, NumberExpr>) {
-            return std::to_string(v.value);
+            return std::to_string(v.value) + v.suffix;
         } else if constexpr (std::is_same_v<T, FloatExpr>) {
-            return formatFloat(v.value);
+            return formatFloat(v.value) + v.suffix;
         } else if constexpr (std::is_same_v<T, BoolExpr>) {
             return v.value ? "true" : "false";
         } else if constexpr (std::is_same_v<T, StringExpr>) {
