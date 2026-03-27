@@ -26,8 +26,14 @@
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
 | Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
+| `i8` | i8 | `x: i8 = 42` | 8-bit signed integer (low-level, no implicit conversion) |
 | `i16` | i16 | `x: i16 = 100` | 16-bit signed integer (low-level, no implicit conversion) |
 | `i32` | i32 | `x: i32 = 42` | 32-bit signed integer (low-level, no implicit conversion) |
+| `i64` | i64 | `x: i64 = 100` | 64-bit signed integer (low-level, no implicit conversion) |
+| `u8` | i8 | `x: u8 = 200` | 8-bit unsigned integer (low-level, no implicit conversion) |
+| `u16` | i16 | `x: u16 = 60000` | 16-bit unsigned integer (low-level, no implicit conversion) |
+| `u32` | i32 | `x: u32 = 3000000000` | 32-bit unsigned integer (low-level, no implicit conversion) |
+| `u64` | i64 | `x: u64 = 100` | 64-bit unsigned integer (low-level, no implicit conversion) |
 | `f32` | float | `x: f32 = 3.14` | 32-bit floating-point (low-level, no implicit conversion) |
 
 ## Type Annotation Syntax
@@ -69,8 +75,14 @@ a: any = 42
 | `Error` | Built-in error type (`message: str`, `code: int`) |
 | `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit` (for value-less/implicit returns). Default return type for named functions when omitted. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
+| `i8` | Low-level 8-bit signed integer (no implicit conversion) |
 | `i16` | Low-level 16-bit signed integer (no implicit conversion) |
 | `i32` | Low-level 32-bit signed integer (no implicit conversion) |
+| `i64` | Low-level 64-bit signed integer (no implicit conversion) |
+| `u8` | Low-level 8-bit unsigned integer (no implicit conversion) |
+| `u16` | Low-level 16-bit unsigned integer (no implicit conversion) |
+| `u32` | Low-level 32-bit unsigned integer (no implicit conversion) |
+| `u64` | Low-level 64-bit unsigned integer (no implicit conversion) |
 | `f32` | Low-level 32-bit floating-point (no implicit conversion) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
@@ -241,16 +253,21 @@ b = 255 as byte       # byte value 255
 | `int` | `byte` | Truncation (lower 8 bits) |
 | `byte` | `int` | Zero extension |
 
-| `int` | `i32` / `i16` | Truncation |
-| `i32` / `i16` | `int` | Sign extension (`SExt`) |
-| `i32` | `i16` | Truncation |
-| `i16` | `i32` | Sign extension (`SExt`) |
-| `i32` / `i16` | `float` | `SIToFP` then `f64` |
-| `float` | `i32` / `i16` | `FPToSI` (truncation) |
+| `int` | `i8` / `i16` / `i32` / `i64` | Truncation (or identity for i64) |
+| `i8` / `i16` / `i32` / `i64` | `int` | Sign extension (`SExt`) |
+| `int` | `u8` / `u16` / `u32` / `u64` | Truncation (or identity for u64) |
+| `u8` / `u16` / `u32` / `u64` | `int` | Zero extension (`ZExt`) |
+| signed | signed (wider) | Sign extension (`SExt`) |
+| signed | signed (narrower) | Truncation |
+| unsigned | unsigned/signed (wider) | Zero extension (`ZExt`) |
+| unsigned | unsigned/signed (narrower) | Truncation |
+| signed / unsigned int | `float` | `SIToFP` / `UIToFP` then `f64` |
+| `float` | signed / unsigned int | `FPToSI` / `FPToUI` |
 | `float` | `f32` | `FPTrunc` |
 | `f32` | `float` | `FPExt` |
-| `i32` / `i16` | `f32` | `SIToFP` |
-| `f32` | `i32` / `i16` | `FPToSI` |
+| signed int | `f32` | `SIToFP` |
+| unsigned int | `f32` | `UIToFP` |
+| `f32` | signed / unsigned int | `FPToSI` / `FPToUI` |
 
 Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
 
@@ -435,12 +452,18 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 | `in` | any | Set<T> | bool | Whether the element is in the set |
 | `&` `\|` `^` `~` `<<` `>>` | int | int | int | Error for float |
 | `+` `-` `*` | i32 | i32 | i32 | Low-level types: no implicit conversion, same type required |
-| `/` `//` | i32 | i32 | i32 | Integer division (Rust-style), NOT float |
-| `%` | i32 | i32 | i32 | |
+| `/` `//` | i32 | i32 | i32 | Signed integer division (`SDiv`) |
+| `/` `//` | u32 | u32 | u32 | Unsigned integer division (`UDiv`) |
+| `%` | i32 | i32 | i32 | Signed remainder (`SRem`) |
+| `%` | u32 | u32 | u32 | Unsigned remainder (`URem`) |
 | `+` `-` `*` `/` | f32 | f32 | f32 | |
-| `==` `!=` `<` `<=` `>` `>=` | i32 | i32 | bool | |
-| `**` | i32/i16/f32 | any | error | Power operator not supported for low-level types |
-| mixed | i32/i16/f32 | int/float | error | Mixing low-level and high-level types is a compile error |
+| `==` `!=` | i32/u32 | i32/u32 | bool | Sign-agnostic equality |
+| `<` `<=` `>` `>=` | i32 | i32 | bool | Signed comparison (`ICMP_SLT` etc.) |
+| `<` `<=` `>` `>=` | u32 | u32 | bool | Unsigned comparison (`ICMP_ULT` etc.) |
+| `>>` | i32 | i32 | i32 | Arithmetic right shift (sign-preserving) |
+| `>>` | u32 | u32 | u32 | Logical right shift (zero-fill) |
+| `**` | low-level | any | error | Power operator not supported for low-level types |
+| mixed | low-level | different | error | Mixing low-level and high-level types is a compile error |
 
 ### Escape Sequences (in str Literals)
 
@@ -459,5 +482,6 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
-- **Low-level numeric types (`i16`, `i32`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division.
-- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types (`i16`, `i32`) uses two's complement wrapping on overflow. For example, `i32` max value `2147483647 + 1` wraps to `-2147483648`. This matches C behavior. Use the high-level `int` type (64-bit) if overflow is a concern.
+- **Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`/`SRem`, unsigned types use `UDiv`/`URem`.
+- **Signed vs unsigned** -- Signed types (`i8`, `i16`, `i32`, `i64`) use signed comparison (`ICMP_SLT` etc.) and arithmetic right shift (`AShr`). Unsigned types (`u8`, `u16`, `u32`, `u64`) use unsigned comparison (`ICMP_ULT` etc.) and logical right shift (`LShr`). The `>>>` operator always performs logical shift regardless of signedness.
+- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses two's complement wrapping on overflow (signed) or modular arithmetic (unsigned). For example, `i32` max value `2147483647 + 1` wraps to `-2147483648`. This matches C behavior. Use the high-level `int` type (64-bit) if overflow is a concern.

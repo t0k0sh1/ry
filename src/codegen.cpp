@@ -223,8 +223,39 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
 
 // ===== Low-level type helpers =====
 
+const std::string &CodeGen::getLowLevelTypeName(llvm::Value *val) const {
+    static const std::string empty;
+    auto it = low_level_type_names_.find(val);
+    if (it != low_level_type_names_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto it2 = low_level_type_names_.find(load->getPointerOperand());
+        if (it2 != low_level_type_names_.end()) return it2->second;
+    }
+    return empty;
+}
+
+bool CodeGen::isUnsignedLowLevel(llvm::Value *val) const {
+    std::string name = getLowLevelTypeName(val);
+    return isUnsignedLowLevelName(name);
+}
+
+bool CodeGen::isUnsignedLowLevelName(const std::string &name) {
+    return !name.empty() && name[0] == 'u';
+}
+
+bool CodeGen::isLowLevelTypeName(const std::string &name) {
+    return name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+           name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "f32";
+}
+
 bool CodeGen::isLowLevelIntTy(llvm::Type *ty) const {
     return ty == i16Ty_ || ty == i32Ty_;
+}
+
+bool CodeGen::isLowLevelIntTy(llvm::Value *val) const {
+    const std::string &name = getLowLevelTypeName(val);
+    if (!name.empty()) return name != "f32";
+    return isLowLevelIntTy(val->getType());
 }
 
 bool CodeGen::isLowLevelFloatTy(llvm::Type *ty) const {
@@ -235,13 +266,25 @@ bool CodeGen::isLowLevelTy(llvm::Type *ty) const {
     return isLowLevelIntTy(ty) || isLowLevelFloatTy(ty);
 }
 
-void CodeGen::checkLowLevelTypeMix(llvm::Type *lhsTy, llvm::Type *rhsTy, const std::string &op) {
-    bool lhsLL = isLowLevelTy(lhsTy);
-    bool rhsLL = isLowLevelTy(rhsTy);
+bool CodeGen::isLowLevelTy(llvm::Value *val) const {
+    return isLowLevelIntTy(val) || isLowLevelFloatTy(val->getType());
+}
+
+void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op) {
+    std::string lhsName = getLowLevelTypeName(lhs);
+    std::string rhsName = getLowLevelTypeName(rhs);
+    bool lhsLL = !lhsName.empty() || isLowLevelTy(lhs->getType());
+    bool rhsLL = !rhsName.empty() || isLowLevelTy(rhs->getType());
     if (lhsLL || rhsLL) {
-        if (lhsTy != rhsTy)
+        if (lhs->getType() != rhs->getType()) {
             codegenError("type error: cannot mix types in operator '" + op +
                          "'; low-level numeric types require explicit 'as' cast");
+        }
+        // Both have metadata: must match (e.g., u32 vs i32 is an error)
+        if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName) {
+            codegenError("type error: cannot mix types in operator '" + op +
+                         "'; low-level numeric types require explicit 'as' cast");
+        }
     }
 }
 
@@ -250,19 +293,19 @@ void CodeGen::checkLowLevelTypeMix(llvm::Type *lhsTy, llvm::Type *rhsTy, const s
 llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
-    if (v->getType() == i8Ty_)
+    if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
         return builder_.CreateZExt(v, i64Ty_, "byteext");
     return v;
 }
 
 std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, llvm::Value *rhs) {
-    if (!lhs->getType()->isDoubleTy()) {
+    if (!lhs->getType()->isDoubleTy() && !isLowLevelTy(lhs)) {
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else
             lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
     }
-    if (!rhs->getType()->isDoubleTy()) {
+    if (!rhs->getType()->isDoubleTy() && !isLowLevelTy(rhs)) {
         if (rhs->getType() == i8Ty_)
             rhs = builder_.CreateUIToFP(rhs, f64Ty_, "rhs_f");
         else
@@ -510,6 +553,10 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         channel_element_types_[callResult] = resolveType(inner);
     }
 
+    // Propagate low-level type metadata from return type
+    if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
+        low_level_type_names_[callResult] = matchedEntry->returnTypeName;
+
     return callResult;
 }
 
@@ -671,8 +718,14 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "any")   return anyTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
     // Low-level numeric types
+    if (typeName == "i8")    return i8Ty_;
     if (typeName == "i16")   return i16Ty_;
     if (typeName == "i32")   return i32Ty_;
+    if (typeName == "i64")   return i64Ty_;
+    if (typeName == "u8")    return i8Ty_;
+    if (typeName == "u16")   return i16Ty_;
+    if (typeName == "u32")   return i32Ty_;
+    if (typeName == "u64")   return i64Ty_;
     if (typeName == "f32")   return f32Ty_;
 
     // Optional type suffix: "int?" -> Option<int>
@@ -1096,16 +1149,40 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
         llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (ty == i8Ty_) {
-        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
-        builder_.CreateCall(printfFn, {fmt, ext});
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "i8") {
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_print");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i8" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else if (llName == "u8") {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u8" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        }
     } else if (ty == i16Ty_) {
-        llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i16" + suffix);
-        builder_.CreateCall(printfFn, {fmt, ext});
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u16") {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_print");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u16" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else {
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i16" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        }
     } else if (ty == i32Ty_) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i32" + suffix);
-        builder_.CreateCall(printfFn, {fmt, val});
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u32") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".fmt_u32" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        } else {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i32" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        }
     } else if (ty == f32Ty_) {
         llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_print");
         llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f32" + suffix);
@@ -1123,8 +1200,14 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
         llvm::Constant *fmt = builder_.CreateGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
         builder_.CreateCall(printfFn, {fmt, msg, code});
     } else {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
-        builder_.CreateCall(printfFn, {fmt, val});
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u64") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%lu", ".fmt_u64" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        } else {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        }
     }
 }
 

@@ -161,10 +161,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Low-level type mix check
-    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+    checkLowLevelTypeMix(lhs, rhs, op);
 
     // Low-level type native-width comparison
-    if (isLowLevelTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
+    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
         if (isLowLevelFloatTy(lhs->getType())) {
             llvm::CmpInst::Predicate pred;
             if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
@@ -175,13 +175,14 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             else                 pred = llvm::CmpInst::FCMP_OGE;
             return builder_.CreateFCmp(pred, lhs, rhs, "fcmp_ll");
         }
+        bool isUnsigned = isUnsignedLowLevel(lhs);
         llvm::CmpInst::Predicate pred;
         if      (op == "==") pred = llvm::CmpInst::ICMP_EQ;
         else if (op == "!=") pred = llvm::CmpInst::ICMP_NE;
-        else if (op == "<")  pred = llvm::CmpInst::ICMP_SLT;
-        else if (op == "<=") pred = llvm::CmpInst::ICMP_SLE;
-        else if (op == ">")  pred = llvm::CmpInst::ICMP_SGT;
-        else                 pred = llvm::CmpInst::ICMP_SGE;
+        else if (op == "<")  pred = isUnsigned ? llvm::CmpInst::ICMP_ULT : llvm::CmpInst::ICMP_SLT;
+        else if (op == "<=") pred = isUnsigned ? llvm::CmpInst::ICMP_ULE : llvm::CmpInst::ICMP_SLE;
+        else if (op == ">")  pred = isUnsigned ? llvm::CmpInst::ICMP_UGT : llvm::CmpInst::ICMP_SGT;
+        else                 pred = isUnsigned ? llvm::CmpInst::ICMP_UGE : llvm::CmpInst::ICMP_SGE;
         return builder_.CreateICmp(pred, lhs, rhs, "icmp_ll");
     }
 
@@ -216,15 +217,25 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
-    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+    checkLowLevelTypeMix(lhs, rhs, op);
     // Low-level integer bitwise at native width
-    if (isLowLevelIntTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
-        if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band_ll");
-        if (op == "|")  return builder_.CreateOr(lhs,  rhs,  "bor_ll");
-        if (op == "^")  return builder_.CreateXor(lhs, rhs,  "bxor_ll");
-        if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl_ll");
-        if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr_ll");
-        if (op == ">>>") return builder_.CreateLShr(lhs, rhs, "lshr_ll");
+    if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
+        std::string llName = getLowLevelTypeName(lhs);
+        if (llName.empty()) llName = getLowLevelTypeName(rhs);
+        auto propagate = [&](llvm::Value *result) -> llvm::Value* {
+            if (!llName.empty()) low_level_type_names_[result] = llName;
+            return result;
+        };
+        if (op == "&")  return propagate(builder_.CreateAnd(lhs, rhs,  "band_ll"));
+        if (op == "|")  return propagate(builder_.CreateOr(lhs,  rhs,  "bor_ll"));
+        if (op == "^")  return propagate(builder_.CreateXor(lhs, rhs,  "bxor_ll"));
+        if (op == "<<") return propagate(builder_.CreateShl(lhs,  rhs, "shl_ll"));
+        if (op == ">>") {
+            if (isUnsignedLowLevel(lhs))
+                return propagate(builder_.CreateLShr(lhs, rhs, "lshr_ll"));
+            return propagate(builder_.CreateAShr(lhs, rhs, "ashr_ll"));
+        }
+        if (op == ">>>") return propagate(builder_.CreateLShr(lhs, rhs, "lshr_ll"));
         codegenError("unknown bitwise operator: " + op);
     }
     lhs = promoteToInt(lhs);
@@ -240,29 +251,43 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
     // Low-level type mix check (must come first)
-    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+    checkLowLevelTypeMix(lhs, rhs, op);
 
     // Low-level type native-width arithmetic
-    if (isLowLevelTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
+    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
         llvm::Type *ty = lhs->getType();
         if (op == "**")
             codegenError("operator '**' is not supported for low-level numeric types");
+        // Propagate low-level type metadata to result
+        std::string llName = getLowLevelTypeName(lhs);
+        if (llName.empty()) llName = getLowLevelTypeName(rhs);
+        auto propagate = [&](llvm::Value *result) -> llvm::Value* {
+            if (!llName.empty()) low_level_type_names_[result] = llName;
+            return result;
+        };
         if (isLowLevelFloatTy(ty)) {
             if (op == "//")
                 codegenError("operator '//' is not supported for f32");
-            if (op == "%")  return builder_.CreateFRem(lhs, rhs, "frem32");
-            if (op == "/")  return builder_.CreateFDiv(lhs, rhs, "fdiv32");
-            if (op == "+")  return builder_.CreateFAdd(lhs, rhs, "fadd32");
-            if (op == "-")  return builder_.CreateFSub(lhs, rhs, "fsub32");
-            if (op == "*")  return builder_.CreateFMul(lhs, rhs, "fmul32");
+            if (op == "%")  return propagate(builder_.CreateFRem(lhs, rhs, "frem32"));
+            if (op == "/")  return propagate(builder_.CreateFDiv(lhs, rhs, "fdiv32"));
+            if (op == "+")  return propagate(builder_.CreateFAdd(lhs, rhs, "fadd32"));
+            if (op == "-")  return propagate(builder_.CreateFSub(lhs, rhs, "fsub32"));
+            if (op == "*")  return propagate(builder_.CreateFMul(lhs, rhs, "fmul32"));
             codegenError("unknown operator: " + op);
         }
-        // Low-level integer (i16, i32)
-        if (op == "/" || op == "//") return builder_.CreateSDiv(lhs, rhs, "sdiv_ll");
-        if (op == "%")  return builder_.CreateSRem(lhs, rhs, "srem_ll");
-        if (op == "+")  return builder_.CreateAdd(lhs, rhs, "add_ll");
-        if (op == "-")  return builder_.CreateSub(lhs, rhs, "sub_ll");
-        if (op == "*")  return builder_.CreateMul(lhs, rhs, "mul_ll");
+        // Low-level integer
+        bool isUnsigned = isUnsignedLowLevel(lhs);
+        if (op == "/" || op == "//") {
+            if (isUnsigned) return propagate(builder_.CreateUDiv(lhs, rhs, "udiv_ll"));
+            return propagate(builder_.CreateSDiv(lhs, rhs, "sdiv_ll"));
+        }
+        if (op == "%") {
+            if (isUnsigned) return propagate(builder_.CreateURem(lhs, rhs, "urem_ll"));
+            return propagate(builder_.CreateSRem(lhs, rhs, "srem_ll"));
+        }
+        if (op == "+")  return propagate(builder_.CreateAdd(lhs, rhs, "add_ll"));
+        if (op == "-")  return propagate(builder_.CreateSub(lhs, rhs, "sub_ll"));
+        if (op == "*")  return propagate(builder_.CreateMul(lhs, rhs, "mul_ll"));
         codegenError("unknown operator: " + op);
     }
 
@@ -1079,24 +1104,49 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, val});
         return buf;
     }
+    // Check low-level type metadata for ambiguous LLVM types
+    std::string llName = getLowLevelTypeName(val);
+
     if (ty == i8Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
-        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        if (llName == "i8") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i8_fmt");
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        } else if (llName == "u8") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u8_fmt");
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        } else {
+            // byte (default)
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_byte_fmt");
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        }
         return buf;
     }
     if (ty == i16Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i16_fmt");
-        llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        if (llName == "u16") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u16_fmt");
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        } else {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i16_fmt");
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        }
         return buf;
     }
     if (ty == i32Ty_) {
         llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i32_fmt");
-        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+        if (llName == "u32") {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%u", ".vts_u32_fmt");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+        } else {
+            llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i32_fmt");
+            builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+        }
         return buf;
     }
     if (ty == f32Ty_) {
@@ -1106,10 +1156,15 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
         return buf;
     }
-    // default: int (i64)
+    // default: int (i64) or i64/u64
     llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
-    llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
-    builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+    if (llName == "u64") {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%lu", ".vts_u64_fmt");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+    } else {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+    }
     return buf;
 }
 
@@ -1122,9 +1177,28 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy->isDoubleTy()) return val;
         if (srcTy == f32Ty_) return builder_.CreateFPExt(val, f64Ty_, "cast_f");
         if (srcTy == i1Ty_) val = builder_.CreateZExt(val, i64Ty_, "bool_ext");
-        else if (srcTy == i8Ty_) val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
-        else if (srcTy == i16Ty_) val = builder_.CreateSExt(val, i64Ty_, "i16_ext");
-        else if (srcTy == i32Ty_) val = builder_.CreateSExt(val, i64Ty_, "i32_ext");
+        else if (srcTy == i8Ty_) {
+            if (isUnsignedLowLevel(val))
+                return builder_.CreateUIToFP(val, f64Ty_, "cast_f");
+            std::string name = getLowLevelTypeName(val);
+            if (name == "i8") {
+                val = builder_.CreateSExt(val, i64Ty_, "i8_ext");
+            } else {
+                val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
+            }
+        }
+        else if (srcTy == i16Ty_) {
+            if (isUnsignedLowLevel(val))
+                return builder_.CreateUIToFP(val, f64Ty_, "cast_f");
+            val = builder_.CreateSExt(val, i64Ty_, "i16_ext");
+        }
+        else if (srcTy == i32Ty_) {
+            if (isUnsignedLowLevel(val))
+                return builder_.CreateUIToFP(val, f64Ty_, "cast_f");
+            val = builder_.CreateSExt(val, i64Ty_, "i32_ext");
+        }
+        else if (srcTy == i64Ty_ && isUnsignedLowLevel(val))
+            return builder_.CreateUIToFP(val, f64Ty_, "cast_f");
         if (val->getType()->isIntegerTy())
             return builder_.CreateSIToFP(val, f64Ty_, "cast_f");
         codegenError("cannot cast to float");
@@ -1133,9 +1207,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy == i64Ty_) return val;
         if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
-        if (srcTy == i8Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
-        if (srcTy == i32Ty_) return builder_.CreateSExt(val, i64Ty_, "cast_i");
-        if (srcTy == i16Ty_) return builder_.CreateSExt(val, i64Ty_, "cast_i");
+        if (srcTy == i8Ty_) {
+            std::string name = getLowLevelTypeName(val);
+            if (name == "i8") return builder_.CreateSExt(val, i64Ty_, "cast_i");
+            return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        }
+        if (srcTy == i32Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+            return builder_.CreateSExt(val, i64Ty_, "cast_i");
+        }
+        if (srcTy == i16Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+            return builder_.CreateSExt(val, i64Ty_, "cast_i");
+        }
         if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         codegenError("cannot cast to int");
     }
@@ -1155,33 +1239,138 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
         codegenError("cannot cast to byte");
     }
-    // Low-level type casts
+    // Low-level type casts — helper lambda for metadata
+    auto withMeta = [&](llvm::Value *result, const std::string &name) -> llvm::Value* {
+        low_level_type_names_[result] = name;
+        return result;
+    };
+
     if (target == "i32") {
-        if (srcTy == i32Ty_) return val;
-        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i32Ty_, "cast_i32");
-        if (srcTy == i16Ty_) return builder_.CreateSExt(val, i32Ty_, "cast_i32");
-        if (srcTy == i8Ty_)  return builder_.CreateSExt(val, i32Ty_, "cast_i32");
-        if (srcTy == i1Ty_)  return builder_.CreateZExt(val, i32Ty_, "cast_i32");
-        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
-        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
-        codegenError("cannot cast to i32");
+        llvm::Value *r;
+        if (srcTy == i32Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i32Ty_, "cast_i32");
+        else if (srcTy == i16Ty_) r = builder_.CreateSExt(val, i32Ty_, "cast_i32");
+        else if (srcTy == i8Ty_) {
+            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i32Ty_, "cast_i32")
+                                        : builder_.CreateSExt(val, i32Ty_, "cast_i32");
+        }
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_i32");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
+        else codegenError("cannot cast to i32");
+        return withMeta(r, "i32");
     }
     if (target == "i16") {
-        if (srcTy == i16Ty_) return val;
-        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i16Ty_, "cast_i16");
-        if (srcTy == i32Ty_) return builder_.CreateTrunc(val, i16Ty_, "cast_i16");
-        if (srcTy == i8Ty_)  return builder_.CreateSExt(val, i16Ty_, "cast_i16");
-        if (srcTy == i1Ty_)  return builder_.CreateZExt(val, i16Ty_, "cast_i16");
-        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
-        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
-        codegenError("cannot cast to i16");
+        llvm::Value *r;
+        if (srcTy == i16Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_i16");
+        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_i16");
+        else if (srcTy == i8Ty_) {
+            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i16Ty_, "cast_i16")
+                                        : builder_.CreateSExt(val, i16Ty_, "cast_i16");
+        }
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_i16");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
+        else codegenError("cannot cast to i16");
+        return withMeta(r, "i16");
+    }
+    if (target == "i8") {
+        llvm::Value *r;
+        if (srcTy == i8Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
+        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
+        else if (srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_i8");
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i8Ty_, "cast_i8");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i8Ty_, "cast_i8");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i8Ty_, "cast_i8");
+        else codegenError("cannot cast to i8");
+        return withMeta(r, "i8");
+    }
+    if (target == "i64") {
+        llvm::Value *r;
+        if (srcTy == i64Ty_) r = val;
+        else if (srcTy == i32Ty_) {
+            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
+                                        : builder_.CreateSExt(val, i64Ty_, "cast_i64");
+        }
+        else if (srcTy == i16Ty_) {
+            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
+                                        : builder_.CreateSExt(val, i64Ty_, "cast_i64");
+        }
+        else if (srcTy == i8Ty_) {
+            r = isUnsignedLowLevel(val) ? builder_.CreateZExt(val, i64Ty_, "cast_i64")
+                                        : builder_.CreateSExt(val, i64Ty_, "cast_i64");
+        }
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_i64");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToSI(val, i64Ty_, "cast_i64");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToSI(val, i64Ty_, "cast_i64");
+        else codegenError("cannot cast to i64");
+        return withMeta(r, "i64");
+    }
+    if (target == "u8") {
+        llvm::Value *r;
+        if (srcTy == i8Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
+        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
+        else if (srcTy == i16Ty_) r = builder_.CreateTrunc(val, i8Ty_, "cast_u8");
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i8Ty_, "cast_u8");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i8Ty_, "cast_u8");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i8Ty_, "cast_u8");
+        else codegenError("cannot cast to u8");
+        return withMeta(r, "u8");
+    }
+    if (target == "u16") {
+        llvm::Value *r;
+        if (srcTy == i16Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_u16");
+        else if (srcTy == i32Ty_) r = builder_.CreateTrunc(val, i16Ty_, "cast_u16");
+        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_u16");
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i16Ty_, "cast_u16");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i16Ty_, "cast_u16");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i16Ty_, "cast_u16");
+        else codegenError("cannot cast to u16");
+        return withMeta(r, "u16");
+    }
+    if (target == "u32") {
+        llvm::Value *r;
+        if (srcTy == i32Ty_) r = val;
+        else if (srcTy == i64Ty_) r = builder_.CreateTrunc(val, i32Ty_, "cast_u32");
+        else if (srcTy == i16Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
+        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i32Ty_, "cast_u32");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i32Ty_, "cast_u32");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i32Ty_, "cast_u32");
+        else codegenError("cannot cast to u32");
+        return withMeta(r, "u32");
+    }
+    if (target == "u64") {
+        llvm::Value *r;
+        if (srcTy == i64Ty_) r = val;
+        else if (srcTy == i32Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
+        else if (srcTy == i16Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
+        else if (srcTy == i8Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
+        else if (srcTy == i1Ty_) r = builder_.CreateZExt(val, i64Ty_, "cast_u64");
+        else if (srcTy->isDoubleTy()) r = builder_.CreateFPToUI(val, i64Ty_, "cast_u64");
+        else if (srcTy == f32Ty_) r = builder_.CreateFPToUI(val, i64Ty_, "cast_u64");
+        else codegenError("cannot cast to u64");
+        return withMeta(r, "u64");
     }
     if (target == "f32") {
         if (srcTy == f32Ty_) return val;
         if (srcTy->isDoubleTy()) return builder_.CreateFPTrunc(val, f32Ty_, "cast_f32");
-        if (srcTy == i64Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
-        if (srcTy == i32Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
-        if (srcTy == i16Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i64Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        }
+        if (srcTy == i32Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        }
+        if (srcTy == i16Ty_) {
+            if (isUnsignedLowLevel(val)) return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+            return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        }
         if (srcTy == i8Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
         if (srcTy == i1Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
         codegenError("cannot cast to f32");

@@ -220,3 +220,251 @@ describe("low-level type print", fn():
     expect(s).to_eq("2.5")
   )
 )
+
+# ===== Phase 2: i8, i64, u8, u16, u32, u64 =====
+
+describe("i8 type", fn():
+  it("declaration with annotation", fn():
+    x: i8 = 42
+    expect(x as int).to_eq(42)
+  )
+  it("negative value", fn():
+    x: i8 = -10
+    expect(x as int).to_eq(-10)
+  )
+  it("addition", fn():
+    a: i8 = 10
+    b: i8 = 20
+    c = a + b
+    expect(c as int).to_eq(30)
+  )
+  it("signed division", fn():
+    a: i8 = -7
+    b: i8 = 2
+    c = a / b
+    expect(c as int).to_eq(-3)
+  )
+  it("signed comparison", fn():
+    a: i8 = -1
+    b: i8 = 1
+    expect(a < b).to_be_true()
+  )
+  it("string conversion", fn():
+    x: i8 = -5
+    s = x as str
+    expect(s).to_eq("-5")
+  )
+)
+
+describe("i64 type", fn():
+  it("declaration with annotation", fn():
+    x: i64 = 100000
+    expect(x as int).to_eq(100000)
+  )
+  it("negative value", fn():
+    x: i64 = -100000
+    expect(x as int).to_eq(-100000)
+  )
+  it("addition", fn():
+    a: i64 = 1000
+    b: i64 = 2000
+    c = a + b
+    expect(c as int).to_eq(3000)
+  )
+  it("signed division", fn():
+    a: i64 = -7
+    b: i64 = 2
+    c = a / b
+    expect(c as int).to_eq(-3)
+  )
+  it("string conversion", fn():
+    x: i64 = -999
+    s = x as str
+    expect(s).to_eq("-999")
+  )
+)
+
+describe("u8 type", fn():
+  it("declaration with annotation", fn():
+    x: u8 = 200
+    expect(x as int).to_eq(200)
+  )
+  it("addition", fn():
+    a: u8 = 100
+    b: u8 = 50
+    c = a + b
+    expect(c as int).to_eq(150)
+  )
+  it("unsigned division", fn():
+    a: u8 = 200
+    b: u8 = 3
+    c = a / b
+    expect(c as int).to_eq(66)
+  )
+  it("unsigned comparison", fn():
+    a: u8 = 200
+    b: u8 = 100
+    expect(a > b).to_be_true()
+  )
+  it("string conversion", fn():
+    x: u8 = 255
+    s = x as str
+    expect(s).to_eq("255")
+  )
+)
+
+describe("u16 type", fn():
+  it("declaration with annotation", fn():
+    x: u16 = 60000
+    expect(x as int).to_eq(60000)
+  )
+  it("addition", fn():
+    a: u16 = 10000
+    b: u16 = 20000
+    c = a + b
+    expect(c as int).to_eq(30000)
+  )
+  it("unsigned division", fn():
+    a: u16 = 50000
+    b: u16 = 3
+    c = a / b
+    expect(c as int).to_eq(16666)
+  )
+  it("unsigned comparison", fn():
+    a: u16 = 60000
+    b: u16 = 30000
+    expect(a > b).to_be_true()
+  )
+  it("string conversion", fn():
+    x: u16 = 65535
+    s = x as str
+    expect(s).to_eq("65535")
+  )
+)
+
+describe("u32 type", fn():
+  it("declaration with annotation", fn():
+    x: u32 = 3000000000
+    expect(x as int).to_eq(3000000000)
+  )
+  it("addition", fn():
+    a: u32 = 1000000
+    b: u32 = 2000000
+    c = a + b
+    expect(c as int).to_eq(3000000)
+  )
+  it("unsigned division", fn():
+    a: u32 = 3000000000
+    b: u32 = 7
+    c = a / b
+    expect(c as int).to_eq(428571428)
+  )
+  it("unsigned comparison", fn():
+    a: u32 = 3000000000
+    b: u32 = 1000000000
+    expect(a > b).to_be_true()
+  )
+  it("string conversion", fn():
+    x: u32 = 4000000000
+    s = x as str
+    expect(s).to_eq("4000000000")
+  )
+)
+
+describe("u64 type", fn():
+  it("declaration with annotation", fn():
+    x: u64 = 1000000
+    expect(x as int).to_eq(1000000)
+  )
+  it("addition", fn():
+    a: u64 = 100000
+    b: u64 = 200000
+    c = a + b
+    expect(c as int).to_eq(300000)
+  )
+  it("unsigned division", fn():
+    a: u64 = 1000000
+    b: u64 = 3
+    c = a / b
+    expect(c as int).to_eq(333333)
+  )
+  it("string conversion", fn():
+    x: u64 = 999999
+    s = x as str
+    expect(s).to_eq("999999")
+  )
+)
+
+describe("Phase 2 casts", fn():
+  it("int to i8", fn():
+    x = 42
+    y = x as i8
+    expect(y as int).to_eq(42)
+  )
+  it("int to i64", fn():
+    x = 42
+    y = x as i64
+    expect(y as int).to_eq(42)
+  )
+  it("int to u8", fn():
+    x = 200
+    y = x as u8
+    expect(y as int).to_eq(200)
+  )
+  it("int to u16", fn():
+    x = 60000
+    y = x as u16
+    expect(y as int).to_eq(60000)
+  )
+  it("int to u32", fn():
+    x = 3000000000
+    y = x as u32
+    expect(y as int).to_eq(3000000000)
+  )
+  it("int to u64", fn():
+    x = 42
+    y = x as u64
+    expect(y as int).to_eq(42)
+  )
+  it("u32 to float", fn():
+    x: u32 = 42
+    expect(x as float).to_eq(42.0)
+  )
+  it("u8 to u32", fn():
+    x: u8 = 200
+    y = x as u32
+    expect(y as int).to_eq(200)
+  )
+  it("u32 to u8 (truncation)", fn():
+    x: u32 = 300
+    y = x as u8
+    expect(y as int).to_eq(44)
+  )
+  it("i32 to u32", fn():
+    x: i32 = 42
+    y = x as u32
+    expect(y as int).to_eq(42)
+  )
+)
+
+describe("Phase 2 function with low-level params", fn():
+  fn add_u32(a: u32, b: u32) -> u32:
+    return a + b
+
+  it("function with u32 params and return", fn():
+    x: u32 = 100
+    y: u32 = 200
+    z = add_u32(x, y)
+    expect(z as int).to_eq(300)
+  )
+
+  fn negate_i8(x: i8) -> i8:
+    zero: i8 = 0
+    return zero - x
+
+  it("function with i8 params and return", fn():
+    x: i8 = 5
+    y = negate_i8(x)
+    expect(y as int).to_eq(-5)
+  )
+)
