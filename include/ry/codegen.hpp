@@ -27,7 +27,7 @@ private:
     std::unique_ptr<llvm::Module> mod_;
     llvm::IRBuilder<> builder_;
     llvm::Function *fn_ = nullptr;
-    llvm::Type *i64Ty_, *i32Ty_, *i8Ty_, *f64Ty_, *i1Ty_, *ptrTy_;
+    llvm::Type *i64Ty_, *i32Ty_, *i16Ty_, *i8Ty_, *f64Ty_, *f32Ty_, *i1Ty_, *ptrTy_;
     llvm::StructType *listHeaderTy_;
     llvm::StructType *mapHeaderTy_;
     llvm::StructType *setHeaderTy_;
@@ -267,6 +267,12 @@ private:
     std::unordered_map<std::string, llvm::Constant*> mock_name_strings_;
     llvm::Constant *fail_empty_msg_ = nullptr;
     llvm::Value *toBool(llvm::Value *v);
+
+    // Low-level type helpers
+    bool isLowLevelIntTy(llvm::Type *ty) const;
+    bool isLowLevelFloatTy(llvm::Type *ty) const;
+    bool isLowLevelTy(llvm::Type *ty) const;
+    void checkLowLevelTypeMix(llvm::Type *lhsTy, llvm::Type *rhsTy, const std::string &op);
 
     // Type promotion helpers (B1)
     llvm::Value *promoteToInt(llvm::Value *v);

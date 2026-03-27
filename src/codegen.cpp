@@ -15,8 +15,10 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
       sm_(sm) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
+    i16Ty_ = llvm::Type::getInt16Ty(*ctx_);
     i8Ty_  = llvm::Type::getInt8Ty(*ctx_);
     f64Ty_ = llvm::Type::getDoubleTy(*ctx_);
+    f32Ty_ = llvm::Type::getFloatTy(*ctx_);
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
@@ -217,6 +219,30 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
     llvm::AllocaInst *alloca = entryBuilder.CreateAlloca(ty, nullptr, name);
     current[name] = alloca;
     return alloca;
+}
+
+// ===== Low-level type helpers =====
+
+bool CodeGen::isLowLevelIntTy(llvm::Type *ty) const {
+    return ty == i16Ty_ || ty == i32Ty_;
+}
+
+bool CodeGen::isLowLevelFloatTy(llvm::Type *ty) const {
+    return ty == f32Ty_;
+}
+
+bool CodeGen::isLowLevelTy(llvm::Type *ty) const {
+    return isLowLevelIntTy(ty) || isLowLevelFloatTy(ty);
+}
+
+void CodeGen::checkLowLevelTypeMix(llvm::Type *lhsTy, llvm::Type *rhsTy, const std::string &op) {
+    bool lhsLL = isLowLevelTy(lhsTy);
+    bool rhsLL = isLowLevelTy(rhsTy);
+    if (lhsLL || rhsLL) {
+        if (lhsTy != rhsTy)
+            codegenError("type error: cannot mix types in operator '" + op +
+                         "'; low-level numeric types require explicit 'as' cast");
+    }
 }
 
 // ===== B1: Type promotion helpers =====
@@ -644,6 +670,10 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "Error") return errorTy_;
     if (typeName == "any")   return anyTy_;
     if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
+    // Low-level numeric types
+    if (typeName == "i16")   return i16Ty_;
+    if (typeName == "i32")   return i32Ty_;
+    if (typeName == "f32")   return f32Ty_;
 
     // Optional type suffix: "int?" -> Option<int>
     if (!typeName.empty() && typeName.back() == '?') {
@@ -1068,6 +1098,17 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     } else if (ty == i8Ty_) {
         llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
         llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
+        builder_.CreateCall(printfFn, {fmt, ext});
+    } else if (ty == i16Ty_) {
+        llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i16" + suffix);
+        builder_.CreateCall(printfFn, {fmt, ext});
+    } else if (ty == i32Ty_) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_i32" + suffix);
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty == f32Ty_) {
+        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f32" + suffix);
         builder_.CreateCall(printfFn, {fmt, ext});
     } else if (ty->isDoubleTy()) {
         llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);

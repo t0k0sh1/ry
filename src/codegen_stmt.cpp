@@ -162,6 +162,27 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                     val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
                     newTy = i8Ty_;
+                } else if (annotTy == i32Ty_ && newTy == i64Ty_) {
+                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                        int64_t v = ci->getSExtValue();
+                        if (v < INT32_MIN || v > INT32_MAX)
+                            codegenError(
+                                "i32 value out of range: " + std::to_string(v));
+                    }
+                    val = builder_.CreateTrunc(val, i32Ty_, "i32trunc");
+                    newTy = i32Ty_;
+                } else if (annotTy == i16Ty_ && newTy == i64Ty_) {
+                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                        int64_t v = ci->getSExtValue();
+                        if (v < INT16_MIN || v > INT16_MAX)
+                            codegenError(
+                                "i16 value out of range: " + std::to_string(v));
+                    }
+                    val = builder_.CreateTrunc(val, i16Ty_, "i16trunc");
+                    newTy = i16Ty_;
+                } else if (annotTy == f32Ty_ && newTy == f64Ty_) {
+                    val = builder_.CreateFPTrunc(val, f32Ty_, "f32trunc");
+                    newTy = f32Ty_;
                 } else if (isOptionType(annotTy) && isOptionType(newTy) &&
                            std::holds_alternative<NoneExpr>(value.data)) {
                     // Allow none coercion to target Option type

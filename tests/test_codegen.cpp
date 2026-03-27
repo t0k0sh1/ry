@@ -321,3 +321,78 @@ TEST_F(CodeGenTest, AnyTypeRejection) {
         "    return 42\n"
         "x: any = f"), std::runtime_error);
 }
+
+// ===== Low-level numeric types (i16, i32, f32) =====
+
+TEST_F(CodeGenTest, LowLevelI32Basics) {
+    EXPECT_EQ(runSource("x: i32 = 42\nprint(x)"), "42\n");
+    EXPECT_EQ(runSource("x: i32 = -10\nprint(x)"), "-10\n");
+    EXPECT_EQ(runSource("x: i32 = 0\nprint(x)"), "0\n");
+}
+
+TEST_F(CodeGenTest, LowLevelI16Basics) {
+    EXPECT_EQ(runSource("x: i16 = 100\nprint(x)"), "100\n");
+    EXPECT_EQ(runSource("x: i16 = -100\nprint(x)"), "-100\n");
+}
+
+TEST_F(CodeGenTest, LowLevelF32Basics) {
+    EXPECT_EQ(runSource("x: f32 = 2.5\nprint(x)"), "2.5\n");
+    EXPECT_EQ(runSource("x: f32 = 0.0\nprint(x)"), "0\n");
+}
+
+TEST_F(CodeGenTest, LowLevelI32Arithmetic) {
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 20\nc = a + b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: i32 = 50\nb: i32 = 20\nc = a - b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: i32 = 3\nb: i32 = 4\nc = a * b\nprint(c)"), "12\n");
+    // i32 / i32 → i32 (integer division, Rust-style)
+    EXPECT_EQ(runSource("a: i32 = 7\nb: i32 = 2\nc = a / b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: i32 = 7\nb: i32 = 2\nc = a // b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 3\nc = a % b\nprint(c)"), "1\n");
+}
+
+TEST_F(CodeGenTest, LowLevelF32Arithmetic) {
+    EXPECT_EQ(runSource("a: f32 = 1.5\nb: f32 = 2.5\nc = a + b\nprint(c)"), "4\n");
+    EXPECT_EQ(runSource("a: f32 = 5.0\nb: f32 = 2.0\nc = a - b\nprint(c)"), "3\n");
+    EXPECT_EQ(runSource("a: f32 = 3.0\nb: f32 = 4.0\nc = a * b\nprint(c)"), "12\n");
+    EXPECT_EQ(runSource("a: f32 = 7.0\nb: f32 = 2.0\nc = a / b\nprint(c)"), "3.5\n");
+}
+
+TEST_F(CodeGenTest, LowLevelComparison) {
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 10\nprint(a == b)"), "true\n");
+    EXPECT_EQ(runSource("a: i32 = 5\nb: i32 = 10\nprint(a < b)"), "true\n");
+    EXPECT_EQ(runSource("a: i32 = 10\nb: i32 = 5\nprint(a > b)"), "true\n");
+    EXPECT_EQ(runSource("a: f32 = 1.0\nb: f32 = 2.0\nprint(a < b)"), "true\n");
+}
+
+TEST_F(CodeGenTest, LowLevelCast) {
+    // i32 <-> int
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as int\nprint(y)"), "42\n");
+    EXPECT_EQ(runSource("x = 42\ny = x as i32\nprint(y)"), "42\n");
+    // i32 <-> i16
+    EXPECT_EQ(runSource("x: i32 = 100\ny = x as i16\nprint(y)"), "100\n");
+    EXPECT_EQ(runSource("x: i16 = 100\ny = x as i32\nprint(y)"), "100\n");
+    // i32 <-> float
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as float\nprint(y)"), "42\n");
+    EXPECT_EQ(runSource("x = 3.14\ny = x as i32\nprint(y)"), "3\n");
+    // f32 <-> float
+    EXPECT_EQ(runSource("x: f32 = 2.5\ny = x as float\nprint(y)"), "2.5\n");
+    EXPECT_EQ(runSource("x = 2.5\ny = x as f32\ny2 = y as float\nprint(y2)"), "2.5\n");
+    // i32 <-> f32
+    EXPECT_EQ(runSource("x: i32 = 42\ny = x as f32\ny2 = y as float\nprint(y2)"), "42\n");
+    EXPECT_EQ(runSource("x: f32 = 3.14\ny = x as i32\nprint(y)"), "3\n");
+}
+
+TEST_F(CodeGenTest, LowLevelMixedTypeError) {
+    // i32 + int → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb = 20\nc = a + b"), std::runtime_error);
+    // i16 + i32 → error
+    EXPECT_THROW(runSource("a: i16 = 10\nb: i32 = 20\nc = a + b"), std::runtime_error);
+    // i32 + float → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb = 3.14\nc = a + b"), std::runtime_error);
+    // f32 + float → error
+    EXPECT_THROW(runSource("a: f32 = 1.0\nb = 2.0\nc = a + b"), std::runtime_error);
+    // i32 + f32 → error
+    EXPECT_THROW(runSource("a: i32 = 10\nb: f32 = 2.0\nc = a + b"), std::runtime_error);
+    // ** on low-level types → error
+    EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
+}

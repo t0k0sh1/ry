@@ -1,0 +1,187 @@
+describe("i32 type", fn():
+  it("declaration with annotation", fn():
+    x: i32 = 42
+    expect(x as int).to_eq(42)
+  )
+  it("negative value", fn():
+    x: i32 = -10
+    expect(x as int).to_eq(-10)
+  )
+  it("zero", fn():
+    x: i32 = 0
+    expect(x as int).to_eq(0)
+  )
+  it("addition", fn():
+    a: i32 = 10
+    b: i32 = 20
+    c = a + b
+    expect(c as int).to_eq(30)
+  )
+  it("subtraction", fn():
+    a: i32 = 50
+    b: i32 = 20
+    c = a - b
+    expect(c as int).to_eq(30)
+  )
+  it("multiplication", fn():
+    a: i32 = 3
+    b: i32 = 4
+    c = a * b
+    expect(c as int).to_eq(12)
+  )
+  it("integer division", fn():
+    a: i32 = 7
+    b: i32 = 2
+    c = a / b
+    expect(c as int).to_eq(3)
+  )
+  it("floor division", fn():
+    a: i32 = 7
+    b: i32 = 2
+    c = a // b
+    expect(c as int).to_eq(3)
+  )
+  it("modulo", fn():
+    a: i32 = 10
+    b: i32 = 3
+    c = a % b
+    expect(c as int).to_eq(1)
+  )
+  it("comparison equal", fn():
+    a: i32 = 10
+    b: i32 = 10
+    expect(a == b).to_be_true()
+  )
+  it("comparison less than", fn():
+    a: i32 = 5
+    b: i32 = 10
+    expect(a < b).to_be_true()
+  )
+  it("comparison greater than", fn():
+    a: i32 = 10
+    b: i32 = 5
+    expect(a > b).to_be_true()
+  )
+)
+
+describe("i16 type", fn():
+  it("declaration with annotation", fn():
+    x: i16 = 100
+    expect(x as int).to_eq(100)
+  )
+  it("negative value", fn():
+    x: i16 = -100
+    expect(x as int).to_eq(-100)
+  )
+  it("addition", fn():
+    a: i16 = 10
+    b: i16 = 20
+    c = a + b
+    expect(c as int).to_eq(30)
+  )
+  it("comparison", fn():
+    a: i16 = 5
+    b: i16 = 10
+    expect(a < b).to_be_true()
+  )
+)
+
+describe("f32 type", fn():
+  it("declaration with annotation", fn():
+    x: f32 = 3.14
+    expect(x as float > 3.13).to_be_true()
+    expect(x as float < 3.15).to_be_true()
+  )
+  it("addition", fn():
+    a: f32 = 1.5
+    b: f32 = 2.5
+    c = a + b
+    expect(c as float).to_eq(4.0)
+  )
+  it("subtraction", fn():
+    a: f32 = 5.0
+    b: f32 = 2.0
+    c = a - b
+    expect(c as float).to_eq(3.0)
+  )
+  it("multiplication", fn():
+    a: f32 = 3.0
+    b: f32 = 4.0
+    c = a * b
+    expect(c as float).to_eq(12.0)
+  )
+  it("division", fn():
+    a: f32 = 7.0
+    b: f32 = 2.0
+    c = a / b
+    expect(c as float).to_eq(3.5)
+  )
+  it("comparison", fn():
+    a: f32 = 1.0
+    b: f32 = 2.0
+    expect(a < b).to_be_true()
+  )
+)
+
+describe("as cast with low-level types", fn():
+  it("i32 to int", fn():
+    x: i32 = 42
+    expect(x as int).to_eq(42)
+  )
+  it("int to i32", fn():
+    x = 42
+    y = x as i32
+    expect(y as int).to_eq(42)
+  )
+  it("i32 to i16", fn():
+    x: i32 = 100
+    y = x as i16
+    expect(y as int).to_eq(100)
+  )
+  it("i16 to i32", fn():
+    x: i16 = 100
+    y = x as i32
+    expect(y as int).to_eq(100)
+  )
+  it("i32 to float", fn():
+    x: i32 = 42
+    expect(x as float).to_eq(42.0)
+  )
+  it("float to f32", fn():
+    x = 3.14
+    y = x as f32
+    expect(y as float > 3.13).to_be_true()
+  )
+  it("f32 to float", fn():
+    x: f32 = 2.5
+    expect(x as float).to_eq(2.5)
+  )
+  it("i32 to f32", fn():
+    x: i32 = 42
+    y = x as f32
+    expect(y as float).to_eq(42.0)
+  )
+  it("f32 to i32", fn():
+    x: f32 = 3.14
+    y = x as i32
+    expect(y as int).to_eq(3)
+  )
+)
+
+describe("low-level type print", fn():
+  it("print i32", fn():
+    x: i32 = 42
+    s = x as str
+    expect(s).to_eq("42")
+  )
+  it("print i16", fn():
+    x: i16 = 100
+    s = x as str
+    expect(s).to_eq("100")
+  )
+  it("print f32", fn():
+    x: f32 = 2.5
+    s = x as str
+    expect(s).to_eq("2.5")
+  )
+)

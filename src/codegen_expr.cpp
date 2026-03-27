@@ -160,6 +160,31 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         codegenError("unsupported string comparison: " + op);
     }
 
+    // Low-level type mix check
+    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+
+    // Low-level type native-width comparison
+    if (isLowLevelTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
+        if (isLowLevelFloatTy(lhs->getType())) {
+            llvm::CmpInst::Predicate pred;
+            if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
+            else if (op == "!=") pred = llvm::CmpInst::FCMP_ONE;
+            else if (op == "<")  pred = llvm::CmpInst::FCMP_OLT;
+            else if (op == "<=") pred = llvm::CmpInst::FCMP_OLE;
+            else if (op == ">")  pred = llvm::CmpInst::FCMP_OGT;
+            else                 pred = llvm::CmpInst::FCMP_OGE;
+            return builder_.CreateFCmp(pred, lhs, rhs, "fcmp_ll");
+        }
+        llvm::CmpInst::Predicate pred;
+        if      (op == "==") pred = llvm::CmpInst::ICMP_EQ;
+        else if (op == "!=") pred = llvm::CmpInst::ICMP_NE;
+        else if (op == "<")  pred = llvm::CmpInst::ICMP_SLT;
+        else if (op == "<=") pred = llvm::CmpInst::ICMP_SLE;
+        else if (op == ">")  pred = llvm::CmpInst::ICMP_SGT;
+        else                 pred = llvm::CmpInst::ICMP_SGE;
+        return builder_.CreateICmp(pred, lhs, rhs, "icmp_ll");
+    }
+
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
 
@@ -187,9 +212,21 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
 }
 
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
-    if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy())
+    if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy() ||
+        isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
+    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+    // Low-level integer bitwise at native width
+    if (isLowLevelIntTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
+        if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band_ll");
+        if (op == "|")  return builder_.CreateOr(lhs,  rhs,  "bor_ll");
+        if (op == "^")  return builder_.CreateXor(lhs, rhs,  "bxor_ll");
+        if (op == "<<") return builder_.CreateShl(lhs,  rhs, "shl_ll");
+        if (op == ">>") return builder_.CreateAShr(lhs, rhs, "ashr_ll");
+        if (op == ">>>") return builder_.CreateLShr(lhs, rhs, "lshr_ll");
+        codegenError("unknown bitwise operator: " + op);
+    }
     lhs = promoteToInt(lhs);
     rhs = promoteToInt(rhs);
     if (op == "&")  return builder_.CreateAnd(lhs, rhs,  "band");
@@ -202,6 +239,33 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
 }
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs) {
+    // Low-level type mix check (must come first)
+    checkLowLevelTypeMix(lhs->getType(), rhs->getType(), op);
+
+    // Low-level type native-width arithmetic
+    if (isLowLevelTy(lhs->getType()) && lhs->getType() == rhs->getType()) {
+        llvm::Type *ty = lhs->getType();
+        if (op == "**")
+            codegenError("operator '**' is not supported for low-level numeric types");
+        if (isLowLevelFloatTy(ty)) {
+            if (op == "//")
+                codegenError("operator '//' is not supported for f32");
+            if (op == "%")  return builder_.CreateFRem(lhs, rhs, "frem32");
+            if (op == "/")  return builder_.CreateFDiv(lhs, rhs, "fdiv32");
+            if (op == "+")  return builder_.CreateFAdd(lhs, rhs, "fadd32");
+            if (op == "-")  return builder_.CreateFSub(lhs, rhs, "fsub32");
+            if (op == "*")  return builder_.CreateFMul(lhs, rhs, "fmul32");
+            codegenError("unknown operator: " + op);
+        }
+        // Low-level integer (i16, i32)
+        if (op == "/" || op == "//") return builder_.CreateSDiv(lhs, rhs, "sdiv_ll");
+        if (op == "%")  return builder_.CreateSRem(lhs, rhs, "srem_ll");
+        if (op == "+")  return builder_.CreateAdd(lhs, rhs, "add_ll");
+        if (op == "-")  return builder_.CreateSub(lhs, rhs, "sub_ll");
+        if (op == "*")  return builder_.CreateMul(lhs, rhs, "mul_ll");
+        codegenError("unknown operator: " + op);
+    }
+
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {
         if (lhs->getType() == i8Ty_)
@@ -1078,6 +1142,26 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
         return buf;
     }
+    if (ty == i16Ty_) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i16_fmt");
+        llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_ext");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, ext});
+        return buf;
+    }
+    if (ty == i32Ty_) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".vts_i32_fmt");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 32), fmt, val});
+        return buf;
+    }
+    if (ty == f32Ty_) {
+        llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 64)}, "vts_buf");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".vts_f32_fmt");
+        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_ext");
+        builder_.CreateCall(snprintfFn, {buf, llvm::ConstantInt::get(i64Ty_, 64), fmt, ext});
+        return buf;
+    }
     // default: int (i64)
     llvm::Value *buf = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, 32)}, "vts_buf");
     llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".vts_int_fmt");
@@ -1092,8 +1176,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
 
     if (target == "float") {
         if (srcTy->isDoubleTy()) return val;
+        if (srcTy == f32Ty_) return builder_.CreateFPExt(val, f64Ty_, "cast_f");
         if (srcTy == i1Ty_) val = builder_.CreateZExt(val, i64Ty_, "bool_ext");
         else if (srcTy == i8Ty_) val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
+        else if (srcTy == i16Ty_) val = builder_.CreateSExt(val, i64Ty_, "i16_ext");
+        else if (srcTy == i32Ty_) val = builder_.CreateSExt(val, i64Ty_, "i32_ext");
         if (val->getType()->isIntegerTy())
             return builder_.CreateSIToFP(val, f64Ty_, "cast_f");
         codegenError("cannot cast to float");
@@ -1103,6 +1190,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
         if (srcTy == i8Ty_) return builder_.CreateZExt(val, i64Ty_, "cast_i");
+        if (srcTy == i32Ty_) return builder_.CreateSExt(val, i64Ty_, "cast_i");
+        if (srcTy == i16Ty_) return builder_.CreateSExt(val, i64Ty_, "cast_i");
+        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i64Ty_, "cast_i");
         codegenError("cannot cast to int");
     }
     if (target == "bool") {
@@ -1120,6 +1210,37 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
         if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i8Ty_, "cast_byte");
         if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
         codegenError("cannot cast to byte");
+    }
+    // Low-level type casts
+    if (target == "i32") {
+        if (srcTy == i32Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i32Ty_, "cast_i32");
+        if (srcTy == i16Ty_) return builder_.CreateSExt(val, i32Ty_, "cast_i32");
+        if (srcTy == i8Ty_)  return builder_.CreateSExt(val, i32Ty_, "cast_i32");
+        if (srcTy == i1Ty_)  return builder_.CreateZExt(val, i32Ty_, "cast_i32");
+        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
+        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i32Ty_, "cast_i32");
+        codegenError("cannot cast to i32");
+    }
+    if (target == "i16") {
+        if (srcTy == i16Ty_) return val;
+        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i16Ty_, "cast_i16");
+        if (srcTy == i32Ty_) return builder_.CreateTrunc(val, i16Ty_, "cast_i16");
+        if (srcTy == i8Ty_)  return builder_.CreateSExt(val, i16Ty_, "cast_i16");
+        if (srcTy == i1Ty_)  return builder_.CreateZExt(val, i16Ty_, "cast_i16");
+        if (srcTy->isDoubleTy()) return builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
+        if (srcTy == f32Ty_) return builder_.CreateFPToSI(val, i16Ty_, "cast_i16");
+        codegenError("cannot cast to i16");
+    }
+    if (target == "f32") {
+        if (srcTy == f32Ty_) return val;
+        if (srcTy->isDoubleTy()) return builder_.CreateFPTrunc(val, f32Ty_, "cast_f32");
+        if (srcTy == i64Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i32Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i16Ty_) return builder_.CreateSIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i8Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+        if (srcTy == i1Ty_)  return builder_.CreateUIToFP(val, f32Ty_, "cast_f32");
+        codegenError("cannot cast to f32");
     }
     codegenError("unsupported cast target type: " + target);
 }

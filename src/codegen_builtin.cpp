@@ -714,13 +714,29 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
-    llvm::Constant *fmt;
-    if (val->getType()->isDoubleTy())
-        fmt = builder_.CreateGlobalString("%g\n", ".fmt_f");
-    else
-        fmt = builder_.CreateGlobalString("%ld\n", ".fmt_i");
-
-    builder_.CreateCall(printfFn, {fmt, val});
+    llvm::Type *valTy = val->getType();
+    if (valTy == f32Ty_) {
+        val = builder_.CreateFPExt(val, f64Ty_, "f32_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g\n", ".fmt_f32");
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (valTy->isDoubleTy()) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%g\n", ".fmt_f");
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (valTy == i16Ty_) {
+        val = builder_.CreateSExt(val, i32Ty_, "i16_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_i16");
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (valTy == i32Ty_) {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_i32");
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else if (valTy == i8Ty_) {
+        val = builder_.CreateZExt(val, i32Ty_, "byte_print");
+        llvm::Constant *fmt = builder_.CreateGlobalString("%d\n", ".fmt_b");
+        builder_.CreateCall(printfFn, {fmt, val});
+    } else {
+        llvm::Constant *fmt = builder_.CreateGlobalString("%ld\n", ".fmt_i");
+        builder_.CreateCall(printfFn, {fmt, val});
+    }
 }
 
 

@@ -26,6 +26,9 @@
 | Int literal | i64 | `42`, `0 \| 1` | Int literal type (value constraint) |
 | String literal | ptr | `"N" \| "S"` | String literal type (value constraint) |
 | Range | i64 | `1..12`, `-10..10` | Range type (inclusive integer range constraint) |
+| `i16` | i16 | `x: i16 = 100` | 16-bit signed integer (low-level, no implicit conversion) |
+| `i32` | i32 | `x: i32 = 42` | 32-bit signed integer (low-level, no implicit conversion) |
+| `f32` | float | `x: f32 = 3.14` | 32-bit floating-point (low-level, no implicit conversion) |
 
 ## Type Annotation Syntax
 
@@ -66,6 +69,9 @@ a: any = 42
 | `Error` | Built-in error type (`message: str`, `code: int`) |
 | `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit` (for value-less/implicit returns). Default return type for named functions when omitted. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
+| `i16` | Low-level 16-bit signed integer (no implicit conversion) |
+| `i32` | Low-level 32-bit signed integer (no implicit conversion) |
+| `f32` | Low-level 32-bit floating-point (no implicit conversion) |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
 ## Type Aliases
@@ -234,6 +240,17 @@ b = 255 as byte       # byte value 255
 | `int` / `float` / `bool` | `str` | String representation |
 | `int` | `byte` | Truncation (lower 8 bits) |
 | `byte` | `int` | Zero extension |
+
+| `int` | `i32` / `i16` | Truncation |
+| `i32` / `i16` | `int` | Sign extension (`SExt`) |
+| `i32` | `i16` | Truncation |
+| `i16` | `i32` | Sign extension (`SExt`) |
+| `i32` / `i16` | `float` | `SIToFP` then `f64` |
+| `float` | `i32` / `i16` | `FPToSI` (truncation) |
+| `float` | `f32` | `FPTrunc` |
+| `f32` | `float` | `FPExt` |
+| `i32` / `i16` | `f32` | `SIToFP` |
+| `f32` | `i32` / `i16` | `FPToSI` |
 
 Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
 
@@ -417,6 +434,13 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 | `==` `!=` `<` `<=` `>` `>=` | numeric or bool | numeric or bool | bool | |
 | `in` | any | Set<T> | bool | Whether the element is in the set |
 | `&` `\|` `^` `~` `<<` `>>` | int | int | int | Error for float |
+| `+` `-` `*` | i32 | i32 | i32 | Low-level types: no implicit conversion, same type required |
+| `/` `//` | i32 | i32 | i32 | Integer division (Rust-style), NOT float |
+| `%` | i32 | i32 | i32 | |
+| `+` `-` `*` `/` | f32 | f32 | f32 | |
+| `==` `!=` `<` `<=` `>` `>=` | i32 | i32 | bool | |
+| `**` | i32/i16/f32 | any | error | Power operator not supported for low-level types |
+| mixed | i32/i16/f32 | int/float | error | Mixing low-level and high-level types is a compile error |
 
 ### Escape Sequences (in str Literals)
 
@@ -435,3 +459,4 @@ A union type is represented as `{ i64 tag, [N x i8] data }`. The `tag` indicates
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
+- **Low-level numeric types (`i16`, `i32`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division.
