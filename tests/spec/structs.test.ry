@@ -156,6 +156,48 @@ describe("ADT enum", fn():
   )
 )
 
+enum HttpStatus:
+  Ok = 200
+  NotFound = 404
+  InternalError = 500
+
+enum Permission:
+  Read = 1
+  Write = 2
+  Execute = 4
+
+describe("explicit enum values", fn():
+  it("variant access with explicit value", fn():
+    s = HttpStatus::Ok
+    expect(s == HttpStatus::Ok).to_be_true()
+  )
+  it("comparison with explicit values", fn():
+    expect(HttpStatus::Ok == HttpStatus::Ok).to_be_true()
+    expect(HttpStatus::Ok != HttpStatus::NotFound).to_be_true()
+  )
+  it("match with explicit values", fn():
+    res = ""
+    s = HttpStatus::NotFound
+    match s:
+      case HttpStatus::Ok:
+        res = "ok"
+      case HttpStatus::NotFound:
+        res = "not found"
+      case HttpStatus::InternalError:
+        res = "error"
+    expect(res).to_eq("not found")
+  )
+  it("print shows variant name", fn():
+    s = HttpStatus::Ok
+    expect(to_str(s)).to_eq("Ok")
+  )
+  it("bitmask-style values", fn():
+    p = Permission::Execute
+    expect(p == Permission::Execute).to_be_true()
+    expect(p != Permission::Read).to_be_true()
+  )
+)
+
 enum MyOption<T>:
   MySome(T)
   MyNone
