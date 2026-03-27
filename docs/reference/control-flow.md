@@ -113,7 +113,7 @@ for k, v in map_expr:
 
 ### Tuple Destructuring
 
-When iterating over a list of 2-element tuples (e.g. from `enumerate()` or `zip()`), you can destructure into two variables. Use `_` to discard a value.
+When iterating over a list of tuples, you can destructure into N variables matching the tuple's element count. Use `_` to discard a value.
 
 ```python
 xs = [10, 20, 30]
@@ -126,6 +126,14 @@ for a, b in zip([1, 2], [10, 20]):
 
 for _, x in enumerate(xs):
     print(x)              # index discarded
+
+# N-element destructuring (3+ variables)
+triples = [(1, 2, 3), (4, 5, 6)]
+for a, b, c in triples:
+    print(a + b + c)      # 6, 15
+
+for a, _, c in triples:
+    print(a + c)          # 4, 10 (middle element discarded)
 ```
 
 ### Range Operator (`..`)

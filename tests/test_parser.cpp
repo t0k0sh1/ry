@@ -1080,17 +1080,27 @@ TEST(ParserTest, ForKVParsing) {
     Program prog = parseStr("for k, v in m:\n    print(k)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    EXPECT_EQ(fs->var_name, "k");
-    ASSERT_TRUE(fs->var_name2.has_value());
-    EXPECT_EQ(*fs->var_name2, "v");
+    ASSERT_EQ(fs->var_names.size(), 2u);
+    EXPECT_EQ(fs->var_names[0], "k");
+    EXPECT_EQ(fs->var_names[1], "v");
+}
+
+TEST(ParserTest, ForThreeVariableDestructuring) {
+    Program prog = parseStr("for a, b, c in xs:\n    print(a)");
+    ASSERT_EQ(prog.size(), 1u);
+    auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
+    ASSERT_EQ(fs->var_names.size(), 3u);
+    EXPECT_EQ(fs->var_names[0], "a");
+    EXPECT_EQ(fs->var_names[1], "b");
+    EXPECT_EQ(fs->var_names[2], "c");
 }
 
 TEST(ParserTest, ForChannelParsing) {
     Program prog = parseStr("for x in ch:\n    print(x)");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<ForStmt>>(prog[0]);
-    EXPECT_EQ(fs->var_name, "x");
-    ASSERT_FALSE(fs->var_name2.has_value());
+    ASSERT_EQ(fs->var_names.size(), 1u);
+    EXPECT_EQ(fs->var_names[0], "x");
     auto *iter = std::get_if<VariableExpr>(&fs->iterable->data);
     ASSERT_NE(iter, nullptr);
     EXPECT_EQ(iter->name, "ch");

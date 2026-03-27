@@ -572,7 +572,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
 void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     emitCoverage(s->loc);
     if (hasDirective(s->directives, "parallel")) {
-        if (s->var_name2.has_value())
+        if (s->var_names.size() > 1)
             codegenError(s->loc, "@parallel for does not support destructuring iteration");
 
         validateParallelFor(*s);
@@ -618,7 +618,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         codegenError("for loop requires list, set, map, channel, or iterator iterable");
 
     if (llvm::Type *channelElemTy = getChannelElementType(iterable)) {
-        if (s->var_name2.has_value())
+        if (s->var_names.size() > 1)
             codegenError("channel iteration does not support destructuring");
         emitChannelForLoop(*s, iterable, channelElemTy);
         return;
@@ -651,23 +651,13 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
 
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
 
-        // Handle two-variable destructuring for map iterators (tuple elements)
-        if (s->var_name2.has_value()) {
+        if (s->var_names.size() > 1) {
             auto *structTy = llvm::dyn_cast<llvm::StructType>(iterElemTy);
-            if (!structTy || structTy->getNumElements() != 2)
-                codegenError("for k, v over iterator requires tuple elements");
-            llvm::Value *first = builder_.CreateExtractValue(elem, 0, "foriter_first");
-            llvm::Value *second = builder_.CreateExtractValue(elem, 1, "foriter_second");
-            if (s->var_name != "_") {
-                llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, structTy->getElementType(0));
-                builder_.CreateStore(first, firstVar);
-            }
-            if (*s->var_name2 != "_") {
-                llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, structTy->getElementType(1));
-                builder_.CreateStore(second, secondVar);
-            }
+            if (!structTy)
+                codegenError("for loop destructuring requires tuple elements");
+            emitTupleDestructure(s->var_names, elem, structTy);
         } else {
-            llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, iterElemTy);
+            llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], iterElemTy);
             builder_.CreateStore(elem, loopVar);
         }
 
@@ -683,19 +673,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         return;
     }
 
-    // Two-variable iteration: for k, v in map  OR  for i, x in enumerate(xs)
-    if (s->var_name2.has_value()) {
+    // Multi-variable iteration: for k, v in map  OR  for a, b, c in list_of_tuples
+    if (s->var_names.size() > 1) {
         llvm::Type *keyTy = getMapKeyType(iterable);
         llvm::Type *valTy = getMapValueType(iterable);
         if (!keyTy || !valTy) {
-            // Try List<Tuple> (e.g. enumerate, zip)
             llvm::Type *elemTy = getListElementType(iterable);
             auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
-            if (!structTy || structTy->getNumElements() != 2)
-                codegenError("for k, v requires a map or list of 2-element tuples");
-
-            llvm::Type *firstTy = structTy->getElementType(0);
-            llvm::Type *secondTy = structTy->getElementType(1);
+            if (!structTy)
+                codegenError("for loop destructuring requires a list of tuples");
 
             llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
             llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
@@ -705,19 +691,15 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
                 llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
                 llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
-                llvm::Value *first = builder_.CreateExtractValue(tuple, 0, "for_first");
-                llvm::Value *second = builder_.CreateExtractValue(tuple, 1, "for_second");
-                if (s->var_name != "_") {
-                    llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, firstTy);
-                    builder_.CreateStore(first, firstVar);
-                }
-                if (*s->var_name2 != "_") {
-                    llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, secondTy);
-                    builder_.CreateStore(second, secondVar);
-                }
+                emitTupleDestructure(s->var_names, tuple, structTy);
             });
             return;
         }
+
+        // Map iteration: always exactly 2 variables (key, value)
+        if (s->var_names.size() != 2)
+            codegenError("map iteration requires exactly 2 variables (key, value), got " +
+                         std::to_string(s->var_names.size()));
 
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
         llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
@@ -731,9 +713,9 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
             llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
             llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
             llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
-            llvm::AllocaInst *keyVar = getOrCreateVar(s->var_name, keyTy);
+            llvm::AllocaInst *keyVar = getOrCreateVar(s->var_names[0], keyTy);
             builder_.CreateStore(key, keyVar);
-            llvm::AllocaInst *valVar = getOrCreateVar(*s->var_name2, valTy);
+            llvm::AllocaInst *valVar = getOrCreateVar(s->var_names[1], valTy);
             builder_.CreateStore(val, valVar);
         });
         return;
@@ -757,9 +739,25 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
     emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
         llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
         llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
-        llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
+        llvm::AllocaInst *loopVar = getOrCreateVar(s->var_names[0], elemTy);
         builder_.CreateStore(elem, loopVar);
     });
+}
+
+void CodeGen::emitTupleDestructure(const std::vector<std::string> &var_names,
+                                    llvm::Value *tupleVal, llvm::StructType *structTy) {
+    if (structTy->getNumElements() != var_names.size())
+        codegenError("for loop destructuring: expected " +
+                     std::to_string(var_names.size()) +
+                     "-element tuple, but got " +
+                     std::to_string(structTy->getNumElements()) +
+                     " elements");
+    for (size_t i = 0; i < var_names.size(); ++i) {
+        if (var_names[i] == "_") continue;
+        llvm::Value *v = builder_.CreateExtractValue(tupleVal, i, "for_elem_" + std::to_string(i));
+        llvm::AllocaInst *var = getOrCreateVar(var_names[i], structTy->getElementType(i));
+        builder_.CreateStore(v, var);
+    }
 }
 
 void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy) {
@@ -771,7 +769,7 @@ void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *e
     if (!elemTy->isVoidTy()) {
         recvSlot = builder_.CreateAlloca(elemTy, nullptr, "for_channel_recv");
         outPtr = recvSlot;
-    } else if (s.var_name != "_") {
+    } else if (s.var_names[0] != "_") {
         codegenError(s.loc, "for x in Channel<Unit> requires '_' loop variable");
     }
 
@@ -789,8 +787,8 @@ void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *e
     loop_stack_.push_back({condBB, endBB});
     pushScope();
 
-    if (s.var_name != "_" && recvSlot) {
-        llvm::AllocaInst *loopVar = getOrCreateVar(s.var_name, elemTy);
+    if (s.var_names[0] != "_" && recvSlot) {
+        llvm::AllocaInst *loopVar = getOrCreateVar(s.var_names[0], elemTy);
         llvm::Value *elem = builder_.CreateLoad(elemTy, recvSlot, "for_channel_elem");
         builder_.CreateStore(elem, loopVar);
     }
@@ -1079,9 +1077,8 @@ void CodeGen::emitStmt(ImportStmt &s) {
 
 void CodeGen::validateParallelFor(const ForStmt &s) {
     std::vector<std::unordered_set<std::string>> localScopes(1);
-    localScopes.back().insert(s.var_name);
-    if (s.var_name2)
-        localScopes.back().insert(*s.var_name2);
+    for (const auto &name : s.var_names)
+        localScopes.back().insert(name);
 
     auto isLocal = [&](const std::string &name) {
         for (auto it = localScopes.rbegin(); it != localScopes.rend(); ++it) {
@@ -1152,7 +1149,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
     std::unordered_set<std::string> seen;
     for (auto scopeIt = scope_stack_.rbegin(); scopeIt != scope_stack_.rend(); ++scopeIt) {
         for (const auto &[name, alloca] : *scopeIt) {
-            if (name == s.var_name || seen.count(name))
+            if (name == s.var_names[0] || seen.count(name))
                 continue;
             seen.insert(name);
             captures.push_back({name, alloca});
@@ -1226,7 +1223,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
             }
         }
 
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, s.var_name);
+        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, s.var_names[0]);
         builder_.CreateStore(chunkBegin, iVar);
 
         llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "parallel.cond", thunk);
@@ -1246,7 +1243,7 @@ void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *
 
         builder_.SetInsertPoint(bodyBB);
         pushScope();
-        scope_stack_.back()[s.var_name] = iVar;
+        scope_stack_.back()[s.var_names[0]] = iVar;
         for (auto &stmt : s.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
