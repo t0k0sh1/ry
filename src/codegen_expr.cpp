@@ -429,9 +429,12 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Auto-convert non-str to str for + operator (#393)
-    if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() != ptrTy_)
+    auto isScalarTy = [&](llvm::Value *v) {
+        return v->getType()->isIntegerTy() || v->getType()->isDoubleTy();
+    };
+    if (op == "+" && lhs->getType() == ptrTy_ && isScalarTy(rhs))
         rhs = valueToString(rhs);
-    else if (op == "+" && rhs->getType() == ptrTy_ && lhs->getType() != ptrTy_)
+    else if (op == "+" && rhs->getType() == ptrTy_ && isScalarTy(lhs))
         lhs = valueToString(lhs);
 
     // String concatenation

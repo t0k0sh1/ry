@@ -146,6 +146,10 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
         makeFloat(result, toFloat(a) + toFloat(b));
     } else if (a->tag == TAG_STR || b->tag == TAG_STR) {
+        if (a->tag != TAG_STR && a->tag != TAG_INT && a->tag != TAG_FLOAT && a->tag != TAG_BOOL)
+            __ry_any_type_error("+", a->tag, b->tag);
+        if (b->tag != TAG_STR && b->tag != TAG_INT && b->tag != TAG_FLOAT && b->tag != TAG_BOOL)
+            __ry_any_type_error("+", a->tag, b->tag);
         bool a_alloc = (a->tag == TAG_INT || a->tag == TAG_FLOAT);
         bool b_alloc = (b->tag == TAG_INT || b->tag == TAG_FLOAT);
         const char *sa = __ry_any_to_string(a);

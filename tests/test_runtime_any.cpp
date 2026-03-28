@@ -456,6 +456,7 @@ TEST(RuntimeAnyArith, AddIntPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, TAG_STR);
     EXPECT_STREQ(getStr(&r), "1x");
+    free(const_cast<char *>(getStr(&r)));
 }
 
 TEST(RuntimeAnyArith, AddStrPlusInt) {
@@ -463,6 +464,7 @@ TEST(RuntimeAnyArith, AddStrPlusInt) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, TAG_STR);
     EXPECT_STREQ(getStr(&r), "abc2");
+    free(const_cast<char *>(getStr(&r)));
 }
 
 TEST(RuntimeAnyArith, AddFloatPlusStr) {
@@ -470,6 +472,7 @@ TEST(RuntimeAnyArith, AddFloatPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, TAG_STR);
     EXPECT_STREQ(getStr(&r), "3.14 pi");
+    free(const_cast<char *>(getStr(&r)));
 }
 
 TEST(RuntimeAnyArith, AddBoolPlusStr) {
@@ -477,6 +480,7 @@ TEST(RuntimeAnyArith, AddBoolPlusStr) {
     __ry_any_add(&r, &a, &b);
     EXPECT_EQ(r.tag, TAG_STR);
     EXPECT_STREQ(getStr(&r), "true!");
+    free(const_cast<char *>(getStr(&r)));
 }
 
 TEST_F(RuntimeAnyDeathTest, ArithDivisionAndModByZero) {
