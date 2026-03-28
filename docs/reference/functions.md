@@ -102,6 +102,27 @@ fn factorial(n: int) -> int:
     return n * factorial(n - 1)
 ```
 
+### Tail Call Optimization
+
+The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
+
+```python
+fn sum_to(n: int, acc: int) -> int:
+    if n <= 0:
+        return acc
+    return sum_to(n - 1, acc + n)    # tail call → optimized
+
+sum_to(1000000, 0)    # works without stack overflow
+```
+
+**Conditions for TCO:**
+
+- The function calls itself directly in a `return` statement (`return f(args)`)
+- The call result is returned without any further computation (`return n * f(n-1)` is NOT a tail call)
+- The function has no `ensure` (postcondition) clauses
+
+Mutual recursion (A calls B, B calls A) is not currently optimized.
+
 ---
 
 ## Overloading

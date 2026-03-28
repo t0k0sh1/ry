@@ -154,3 +154,14 @@ describe("operator overloading", fn():
     expect(v.y).to_eq(6.0)
   )
 )
+
+fn sum_to(n: int, acc: int) -> int:
+  if n <= 0:
+    return acc
+  return sum_to(n - 1, acc + n)
+
+describe("tail call optimization", fn():
+  it("self-recursive tail call does not overflow", fn():
+    expect(sum_to(1000000, 0)).to_eq(500000500000)
+  )
+)
