@@ -624,7 +624,7 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 
 ## Type Safety Constraints
 
-- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in arithmetic is a compile error. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
+- **Implicit widening conversions** -- Safe widening conversions are supported in function calls: `u8` → `int`, `u8` → `float`, `int` → `float`. For binary operators, mixing `int` and `float` triggers float promotion. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in binary operators is a compile error. Narrowing conversions (e.g., `float` → `int`) are not allowed implicitly. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.

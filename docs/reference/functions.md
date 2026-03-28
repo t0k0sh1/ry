@@ -130,10 +130,13 @@ b = area(3, 4)    # 12
 When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
 
 1. **Exact type match** — argument type matches parameter type exactly
-2. **Union type match** — argument type is a member of a union parameter type
-3. **`any` type match** — parameter type is `any` (accepts anything)
+2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)
+3. **Union type match** — argument type is a member of a union parameter type
+4. **`any` type match** — parameter type is `any` (accepts anything)
 
 The overload with the most exact matches wins. If two or more overloads have equal specificity, the compiler reports an ambiguity error.
+
+Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **not** participate in implicit widening — they require explicit `as` casts.
 
 ```python
 fn process(x: int) -> str:
@@ -144,6 +147,13 @@ fn process(x) -> str:          # x: any
 
 process(42)       # "int" — exact match (int) beats any
 process("hello")  # "any" — no exact match for str, falls back to any
+```
+
+```python
+fn double(x: float) -> float:
+    return x * 2.0
+
+double(5)         # OK — int is implicitly widened to float, returns 10.0
 ```
 
 ---
