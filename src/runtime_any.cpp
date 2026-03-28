@@ -145,13 +145,21 @@ extern "C" void __ry_any_add(RyAny *result, const RyAny *a, const RyAny *b) {
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
         makeFloat(result, toFloat(a) + toFloat(b));
-    } else if (a->tag == TAG_STR && b->tag == TAG_STR) {
-        const char *sa = extractStr(a);
-        const char *sb = extractStr(b);
+    } else if (a->tag == TAG_STR || b->tag == TAG_STR) {
+        if (a->tag != TAG_STR && a->tag != TAG_INT && a->tag != TAG_FLOAT && a->tag != TAG_BOOL)
+            __ry_any_type_error("+", a->tag, b->tag);
+        if (b->tag != TAG_STR && b->tag != TAG_INT && b->tag != TAG_FLOAT && b->tag != TAG_BOOL)
+            __ry_any_type_error("+", a->tag, b->tag);
+        bool a_alloc = (a->tag == TAG_INT || a->tag == TAG_FLOAT);
+        bool b_alloc = (b->tag == TAG_INT || b->tag == TAG_FLOAT);
+        const char *sa = __ry_any_to_string(a);
+        const char *sb = __ry_any_to_string(b);
         size_t la = strlen(sa), lb = strlen(sb);
         char *buf = checkedMalloc(la + lb + 1);
         memcpy(buf, sa, la);
         memcpy(buf + la, sb, lb + 1);
+        if (a_alloc) free(const_cast<char *>(sa));
+        if (b_alloc) free(const_cast<char *>(sb));
         makeStr(result, buf);
     } else {
         __ry_any_type_error("+", a->tag, b->tag);

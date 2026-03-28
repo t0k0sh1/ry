@@ -59,6 +59,27 @@ describe("string operators", fn():
   )
 )
 
+describe("string auto concatenation", fn():
+  it("str + int", fn():
+    expect("abc" + 2).to_eq("abc2")
+  )
+  it("int + str", fn():
+    expect(1 + "abc").to_eq("1abc")
+  )
+  it("str + float", fn():
+    expect("pi=" + 3.14).to_eq("pi=3.14")
+  )
+  it("str + bool", fn():
+    expect("ok=" + true).to_eq("ok=true")
+  )
+  it("bool + str", fn():
+    expect(false + " is false").to_eq("false is false")
+  )
+  it("float + str", fn():
+    expect(3.14 + " is pi").to_eq("3.14 is pi")
+  )
+)
+
 describe("comparison", fn():
   it("equal", fn():
     expect(1 == 1).to_be_true()
