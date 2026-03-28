@@ -422,29 +422,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            if (index->getType() == i1Ty_)
-                index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
-
-            // Bounds check
-            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
-                int64_t idx = ci->getSExtValue();
-                if (idx < 0 || (uint64_t)idx >= arrSize)
-                    codegenError("array index " + std::to_string(idx) +
-                                 " out of bounds (size " + std::to_string(arrSize) + ")");
-            } else {
-                // Runtime bounds check
-                llvm::Value *negCheck = builder_.CreateICmpSLT(
-                    index, llvm::ConstantInt::get(i64Ty_, 0), "arr_neg");
-                llvm::Value *overCheck = builder_.CreateICmpSGE(
-                    index, llvm::ConstantInt::get(i64Ty_, arrSize), "arr_over");
-                llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "arr_oob");
-                llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "arr.oob", fn_);
-                llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "arr.ok", fn_);
-                builder_.CreateCondBr(oob, oobBB, okBB);
-                builder_.SetInsertPoint(oobBB);
-                emitRuntimeError("runtime error: array index out of range\n", ".arr_idx_err");
-                builder_.SetInsertPoint(okBB);
-            }
+            emitBoundsCheck(index, llvm::ConstantInt::get(i64Ty_, arrSize),
+                            "runtime error: array index out of range\n", ".arr_idx_err", "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
@@ -500,25 +479,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     if (!elemTy)
         codegenError("cannot determine list element type for index access");
 
-    if (index->getType() == i1Ty_)
-        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
-
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
-    llvm::Value *negCheck = builder_.CreateICmpSLT(index, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
-    llvm::Value *overCheck = builder_.CreateICmpSGE(index, length, "over_check");
-    llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
-
-    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "index.oob", fn_);
-    llvm::BasicBlock *okBB2 = llvm::BasicBlock::Create(*ctx_, "index.ok", fn_);
-
-    builder_.CreateCondBr(outOfBounds, oobBB, okBB2);
-
-    builder_.SetInsertPoint(oobBB);
-    emitRuntimeError("runtime error: list index out of range\n", ".idx_err");
-
-    builder_.SetInsertPoint(okBB2);
+    emitBoundsCheck(index, length,
+                    "runtime error: list index out of range\n", ".idx_err", "index");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");

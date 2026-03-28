@@ -295,6 +295,10 @@ private:
     bool isLowLevelTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Value *val) const;
     void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
+    llvm::Value *coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
+                                       const std::string &typeName,
+                                       const std::string &context,
+                                       const std::string &truncName);
 
     // Checked/Saturating/Wrapping arithmetic helpers
     void validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs, const std::string &callee);
@@ -380,6 +384,9 @@ private:
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
     void emitRuntimeError(const std::string &message, const std::string &globalName);
+    void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
+                         const std::string &errMsg, const std::string &globalName,
+                         const std::string &bbPrefix);
     void emitContractCheck(const std::string &kind, const std::string &fn_name,
                            const ExprPtr &cond);
     void emitEnsureChecks(llvm::Value *retVal);

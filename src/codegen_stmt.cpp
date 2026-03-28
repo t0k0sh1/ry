@@ -170,25 +170,11 @@ void CodeGen::emitVarDecl(const std::string &name,
         for (uint64_t i = 0; i < arrSize; ++i) {
             llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
             if (elemVal->getType() != elemTy) {
-                if (elemVal->getType() == i64Ty_ && (elemTy == i8Ty_ || elemTy == i16Ty_ || elemTy == i32Ty_)) {
-                    // Range check for constant int literals
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(elemVal)) {
-                        int64_t v = ci->getSExtValue();
-                        bool isUnsigned = (elemTypeName[0] == 'u');
-                        if (elemTy == i8Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > 255) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                            else { if (v < INT8_MIN || v > INT8_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                        } else if (elemTy == i16Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT16_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                            else { if (v < INT16_MIN || v > INT16_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                        } else if (elemTy == i32Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT32_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                            else { if (v < INT32_MIN || v > INT32_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
-                        }
-                    }
-                    elemVal = builder_.CreateTrunc(elemVal, elemTy, "arr_trunc");
-                } else if (elemVal->getType() == f64Ty_ && elemTy == f32Ty_) {
-                    elemVal = builder_.CreateFPTrunc(elemVal, f32Ty_, "arr_ftrunc");
+                llvm::Value *coerced = coerceToLowLevelType(
+                    elemVal, elemTy, elemTypeName,
+                    " at index " + std::to_string(i), "arr_trunc");
+                if (coerced) {
+                    elemVal = coerced;
                 } else {
                     codegenError("array element type mismatch at index " + std::to_string(i));
                 }
@@ -219,67 +205,10 @@ void CodeGen::emitVarDecl(const std::string &name,
         } else {
             llvm::Type *annotTy = resolveType(*annot);
             if (annotTy != newTy) {
-                if (annotTy == i8Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *annot;
-                    if (ann == "i8") {
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < INT8_MIN || v > INT8_MAX)
-                                codegenError(
-                                    "i8 value out of range: " + std::to_string(v));
-                        }
-                    } else {
-                        // u8: unsigned 0-255 range
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < 0 || v > 255)
-                                codegenError(
-                                    ann + " value out of range (0-255): " + std::to_string(v));
-                        }
-                    }
-                    val = builder_.CreateTrunc(val, i8Ty_, "i8trunc");
-                    newTy = i8Ty_;
-                } else if (annotTy == i32Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *annot;
-                    if (ann == "u32") {
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < 0 || v > (int64_t)UINT32_MAX)
-                                codegenError(
-                                    "u32 value out of range: " + std::to_string(v));
-                        }
-                    } else {
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < INT32_MIN || v > INT32_MAX)
-                                codegenError(
-                                    ann + " value out of range: " + std::to_string(v));
-                        }
-                    }
-                    val = builder_.CreateTrunc(val, i32Ty_, "i32trunc");
-                    newTy = i32Ty_;
-                } else if (annotTy == i16Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *annot;
-                    if (ann == "u16") {
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < 0 || v > (int64_t)UINT16_MAX)
-                                codegenError(
-                                    "u16 value out of range: " + std::to_string(v));
-                        }
-                    } else {
-                        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                            int64_t v = ci->getSExtValue();
-                            if (v < INT16_MIN || v > INT16_MAX)
-                                codegenError(
-                                    ann + " value out of range: " + std::to_string(v));
-                        }
-                    }
-                    val = builder_.CreateTrunc(val, i16Ty_, "i16trunc");
-                    newTy = i16Ty_;
-                } else if (annotTy == f32Ty_ && newTy == f64Ty_) {
-                    val = builder_.CreateFPTrunc(val, f32Ty_, "f32trunc");
-                    newTy = f32Ty_;
+                if (llvm::Value *coerced = coerceToLowLevelType(
+                        val, annotTy, *annot, "", *annot + "trunc")) {
+                    val = coerced;
+                    newTy = annotTy;
                 } else if (isOptionType(annotTy) && isOptionType(newTy) &&
                            std::holds_alternative<NoneExpr>(value.data)) {
                     // Allow none coercion to target Option type
@@ -578,25 +507,10 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Type *newTy = val->getType();
 
     if (ptr->getAllocatedType() != newTy) {
-        // i8/u8 variable assigned from int expression
-        if (ptr->getAllocatedType() == i8Ty_ && newTy == i64Ty_) {
-            std::string tname = getLowLevelTypeName(ptr);
-            if (tname == "i8") {
-                if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                    int64_t v = ci->getSExtValue();
-                    if (v < INT8_MIN || v > INT8_MAX)
-                        codegenError(
-                            "i8 value out of range: " + std::to_string(v));
-                }
-            } else {
-                if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                    int64_t v = ci->getSExtValue();
-                    if (v < 0 || v > 255)
-                        codegenError(
-                            "u8 value out of range (0-255): " + std::to_string(v));
-                }
-            }
-            val = builder_.CreateTrunc(val, i8Ty_, "i8trunc");
+        if (llvm::Value *coerced = coerceToLowLevelType(
+                val, ptr->getAllocatedType(), getLowLevelTypeName(ptr),
+                "", "i8trunc")) {
+            val = coerced;
         } else if (isAnyType(ptr->getAllocatedType())) {
             val = wrapInAny(val);
             newTy = val->getType();
@@ -856,50 +770,16 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             llvm::Type *elemTy = arrTy->getElementType();
             uint64_t arrSize = arrTy->getNumElements();
 
-            if (key->getType() == i1Ty_)
-                key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
-
-            // Bounds check
-            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(key)) {
-                int64_t idx = ci->getSExtValue();
-                if (idx < 0 || (uint64_t)idx >= arrSize)
-                    codegenError("array index " + std::to_string(idx) +
-                                 " out of bounds (size " + std::to_string(arrSize) + ")");
-            } else {
-                llvm::Value *negCheck = builder_.CreateICmpSLT(
-                    key, llvm::ConstantInt::get(i64Ty_, 0), "arr_neg");
-                llvm::Value *overCheck = builder_.CreateICmpSGE(
-                    key, llvm::ConstantInt::get(i64Ty_, arrSize), "arr_over");
-                llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "arr_oob");
-                llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "arr_assign.oob", fn_);
-                llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "arr_assign.ok", fn_);
-                builder_.CreateCondBr(oob, oobBB, okBB);
-                builder_.SetInsertPoint(oobBB);
-                emitRuntimeError("runtime error: array index out of range\n", ".arr_assign_err");
-                builder_.SetInsertPoint(okBB);
-            }
+            emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
+                            "runtime error: array index out of range\n", ".arr_assign_err", "arr_assign");
 
             if (val->getType() != elemTy) {
-                if (val->getType() == i64Ty_ && (elemTy == i8Ty_ || elemTy == i16Ty_ || elemTy == i32Ty_)) {
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                        int64_t v = ci->getSExtValue();
-                        auto nit = array_elem_type_names_.find(ai);
-                        std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
-                        bool isUnsigned = (tn[0] == 'u');
-                        if (elemTy == i8Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > 255) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                            else { if (v < INT8_MIN || v > INT8_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                        } else if (elemTy == i16Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT16_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                            else { if (v < INT16_MIN || v > INT16_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                        } else if (elemTy == i32Ty_) {
-                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT32_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                            else { if (v < INT32_MIN || v > INT32_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
-                        }
-                    }
-                    val = builder_.CreateTrunc(val, elemTy, "arr_assign_trunc");
-                } else if (val->getType() == f64Ty_ && elemTy == f32Ty_) {
-                    val = builder_.CreateFPTrunc(val, f32Ty_, "arr_assign_ftrunc");
+                auto nit = array_elem_type_names_.find(ai);
+                std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
+                llvm::Value *coerced = coerceToLowLevelType(
+                    val, elemTy, tn, "", "arr_assign_trunc");
+                if (coerced) {
+                    val = coerced;
                 } else {
                     codegenError("array element type mismatch in index assignment");
                 }
@@ -1031,24 +911,11 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (!elemTy)
         codegenError("cannot determine list element type for index assignment");
 
-    if (key->getType() == i1Ty_)
-        key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
-
-    // Bounds check
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
-    llvm::Value *negCheck = builder_.CreateICmpSLT(key, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
-    llvm::Value *overCheck = builder_.CreateICmpSGE(key, length, "over_check");
-    llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
 
-    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.oob", fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.ok", fn_);
-    builder_.CreateCondBr(outOfBounds, oobBB, okBB);
-
-    builder_.SetInsertPoint(oobBB);
-    emitRuntimeError("runtime error: list index out of range\n", ".idx_assign_err");
-
-    builder_.SetInsertPoint(okBB);
+    emitBoundsCheck(key, length,
+                    "runtime error: list index out of range\n", ".idx_assign_err", "idx_assign");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
