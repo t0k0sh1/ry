@@ -188,16 +188,20 @@ match x:
 
 ## Concurrency Basics
 
-`Task<T>` is the runtime handle for concurrent work. Use `async fn` for task-returning functions and `await` or `join(task)` to wait for completion.
+`Task<T>` is the runtime handle for concurrent work. Use `async fn` for task-returning functions, `await` inside another `async fn`, and `block_on(task)` from synchronous context to wait for completion.
 
 ```python
 async fn add(a: int, b: int) -> int:
     return a + b
 
+# From synchronous context, use block_on()
 t: Task<int> = add(20, 22)
-print(await t)             # 42
-print(join(add(1, 2)))     # 3
-await add(1, 2)            # statement form also works
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
+    return (await add(a, b)) * 2
 ```
 
 `@parallel` can be applied to counted `for` loops over `range(...)` or integer `..` ranges:

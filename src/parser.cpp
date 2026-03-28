@@ -336,6 +336,8 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::Await) {
         Token awaitTok = lex_.next(); // consume 'await'
+        if (!in_async_fn_)
+            parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
         AwaitStmt s;
         s.operand = parseLogicalNot();
         s.loc = locFromToken(awaitTok);

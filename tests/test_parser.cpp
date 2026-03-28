@@ -1295,9 +1295,16 @@ TEST(ParserTest, AsyncFnParsing) {
 }
 
 TEST(ParserTest, AwaitExprParsing) {
-    Program prog = parseStr("x = await fetch()");
+    // await inside async fn should parse successfully
+    Program prog = parseStr(
+        "async fn do_fetch() -> int:\n"
+        "    x = await fetch()\n"
+        "    return x");
     ASSERT_EQ(prog.size(), 1u);
-    auto &let = std::get<AssignStmt>(prog[0]);
+    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_TRUE(fn.is_async);
+    ASSERT_GE(fn.body.size(), 1u);
+    auto &let = std::get<AssignStmt>(fn.body[0]);
     auto *await = std::get_if<std::unique_ptr<AwaitExpr>>(&let.value->data);
     ASSERT_NE(await, nullptr);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*await)->operand->data);
@@ -1306,13 +1313,30 @@ TEST(ParserTest, AwaitExprParsing) {
 }
 
 TEST(ParserTest, AwaitStatementParsing) {
-    Program prog = parseStr("await fetch()");
+    // await as statement inside async fn
+    Program prog = parseStr(
+        "async fn do_fetch() -> Unit:\n"
+        "    await fetch()");
     ASSERT_EQ(prog.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<AwaitStmt>(prog[0]));
-    auto &await = std::get<AwaitStmt>(prog[0]);
+    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_TRUE(fn.is_async);
+    ASSERT_EQ(fn.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AwaitStmt>(fn.body[0]));
+    auto &await = std::get<AwaitStmt>(fn.body[0]);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&await.operand->data);
     ASSERT_NE(call, nullptr);
     EXPECT_EQ((*call)->callee, "fetch");
+}
+
+TEST(ParserTest, AwaitOutsideAsyncFnRejected) {
+    // await outside async fn should fail
+    EXPECT_THROW(parseStr("x = await fetch()"), std::runtime_error);
+    EXPECT_THROW(parseStr("await fetch()"), std::runtime_error);
+    // await inside lambda within async fn should also fail (lambda is not async)
+    EXPECT_THROW(parseStr(
+        "async fn foo() -> int:\n"
+        "    f = fn(x: int) => await bar()\n"
+        "    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, ParallelDirectiveRejectedOnWhile) {

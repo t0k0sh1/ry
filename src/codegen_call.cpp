@@ -377,6 +377,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateCall(fn, {}, "available_parallelism");
     }
 
+    // block_on(task) -> T — block the current thread until the Task<T> completes
+    if (e.callee == "block_on") {
+        requireArgs(e, 1);
+        return emitTaskWait(emitExpr(*e.args[0]), "__ry_block_on", "block_on");
+    }
+
     // sleep(duration_ms) -> Unit
     if (e.callee == "sleep") {
         requireArgs(e, 1);

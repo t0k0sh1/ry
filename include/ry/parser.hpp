@@ -21,6 +21,7 @@ private:
     const SourceManager *sm_ = nullptr;
     int file_id_ = 0;
     int recursion_depth_ = 0;
+    bool in_async_fn_ = false;
     static constexpr int MAX_RECURSION_DEPTH = 256;
 
     struct RecursionGuard {

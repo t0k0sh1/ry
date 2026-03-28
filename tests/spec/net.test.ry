@@ -65,7 +65,7 @@ describe("TCP socket API", fn():
                 close(conn)
               case Err(e):
                 fail("unexpected error")
-            await t
+            block_on(t)
           case Err(e):
             fail("unexpected error")
       case Err(e):
@@ -123,7 +123,7 @@ describe("TCP socket API", fn():
             t = run_server(server)
             resp_msg = run_client(port)
             expect(resp_msg).to_eq("echo:hello")
-            await t
+            block_on(t)
           case Err(e):
             fail("unexpected error")
       case Err(e):

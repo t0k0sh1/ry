@@ -221,6 +221,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         parseEnsureClause(*fnStmt);
     }
 
+    // Track async context for await restriction
+    bool prev_in_async = in_async_fn_;
+    in_async_fn_ = is_async;
+
     // Parse body statements
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
@@ -232,6 +236,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 
     if (fnStmt->body.empty())
         parseError("empty function body is not allowed");
+
+    // Restore async context
+    in_async_fn_ = prev_in_async;
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent

@@ -144,7 +144,7 @@ match bind("127.0.0.1", 0):
                 t = run_server(server)
                 resp_msg = run_client(port)
                 print(resp_msg)
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):
@@ -358,7 +358,7 @@ match bind("127.0.0.1", 0):
                         close(conn)
                     case Err(e):
                         print("connect failed")
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):

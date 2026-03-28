@@ -751,6 +751,7 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "listen" ||
         s.callee == "http_listen" ||
         s.callee == "sleep" ||
+        s.callee == "block_on" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
         s.callee == "shutdown" ||
         s.callee == "json_free") {

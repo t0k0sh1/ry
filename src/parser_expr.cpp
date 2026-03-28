@@ -176,6 +176,8 @@ ExprPtr Parser::parseLogicalNot() {
 
 ExprPtr Parser::parseAwaitExpr() {
     Token awaitTok = lex_.next(); // consume 'await'
+    if (!in_async_fn_)
+        parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
     ExprPtr operand = parseLogicalNot();
     auto awaitExpr = std::make_unique<AwaitExpr>();
     awaitExpr->operand = std::move(operand);
@@ -623,6 +625,10 @@ ExprPtr Parser::parseLambdaExpr() {
         lambda->return_type = nullptr;  // inferred at codegen time
     }
 
+    // Lambda is not an async context — save and reset
+    bool prev_in_async = in_async_fn_;
+    in_async_fn_ = false;
+
     if (lex_.peek().kind == TokenKind::FatArrow) {
         // Single-expression lambda: fn(params) => expr
         lex_.next(); // consume '=>'
@@ -652,6 +658,8 @@ ExprPtr Parser::parseLambdaExpr() {
     } else {
         parseError("expected '=>' or ':' after lambda parameters");
     }
+
+    in_async_fn_ = prev_in_async;
 
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(lambda);

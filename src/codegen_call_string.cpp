@@ -753,8 +753,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 // join(list, sep) → str
 llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     if (e.args.size() != 2) {
-        if (e.args.size() != 1)
-            codegenError("join() expects 1 argument (Task<T>) or 2 arguments (List<str>, str)");
+        codegenError("join() expects 2 arguments (List<str>, str)");
         return nullptr;
     }
     llvm::Value *listPtr = emitExpr(*e.args[0]);

@@ -299,6 +299,12 @@ extern "C" void __ry_task_join(void *task_ptr, void *out_buf) {
         std::rethrow_exception(error);
 }
 
+// Separate entry point from __ry_task_join so block_on and await
+// can diverge when coroutine-based scheduling is added (#362).
+extern "C" void __ry_block_on(void *task_ptr, void *out_buf) {
+    __ry_task_join(task_ptr, out_buf);
+}
+
 extern "C" void __ry_parallel_for_i64(int64_t begin, int64_t end, int64_t step,
                                       void *env, __ry_parallel_for_fn fn) {
     if (step == 0)
