@@ -24,6 +24,12 @@ find_package(OpenSSL 3.0 REQUIRED)
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
