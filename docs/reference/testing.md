@@ -75,6 +75,8 @@ foo("arg", fn():
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
 | `to_be_some()` | Asserts Option is `Some` | Option |
+| `to_be_ok()` | Asserts Result is `Ok` | Result |
+| `to_be_err()` | Asserts Result is `Err` | Result |
 | `to_contain(val)` | Asserts container includes value | List, Set, Map, str |
 | `to_not_contain(val)` | Asserts container does not include value | List, Set, Map, str |
 | `to_be_greater_than(v)` | Asserts `actual > v` | int, float |
