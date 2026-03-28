@@ -163,6 +163,35 @@ TEST_F(CodeGenTest, StringTypeMismatch) {
     EXPECT_THROW(runSource("s: int = \"hello\""), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, StringBinaryOpTypeMismatch) {
+    // Arithmetic: str op int
+    EXPECT_THROW(runSource("print(\"abc\" + 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" - 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" / 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" // 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" % 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" ** 2)"), std::runtime_error);
+    // Reverse: int op str
+    EXPECT_THROW(runSource("print(2 + \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 - \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 / \"abc\")"), std::runtime_error);
+    // str op float
+    EXPECT_THROW(runSource("print(\"abc\" + 1.5)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" - 1.5)"), std::runtime_error);
+    // Comparison: str vs int
+    EXPECT_THROW(runSource("print(\"abc\" == 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" < 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 == \"abc\")"), std::runtime_error);
+    // Bitwise: str & int
+    EXPECT_THROW(runSource("print(\"abc\" & 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" | 2)"), std::runtime_error);
+    // Valid operations still work
+    EXPECT_EQ(runSource("print(\"ab\" + \"cd\")"), "abcd\n");
+    EXPECT_EQ(runSource("print(\"ab\" * 3)"), "ababab\n");
+    EXPECT_EQ(runSource("print(\"ab\" == \"ab\")"), "true\n");
+    EXPECT_EQ(runSource("print(\"ab\" < \"cd\")"), "true\n");
+}
+
 // ===== Type change throws =====
 
 TEST_F(CodeGenTest, TypeChangeThrows) {

@@ -255,6 +255,10 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         codegenError("unsupported string comparison: " + op);
     }
 
+    // Reject str with non-str operands
+    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+        codegenError("type error: operator '" + op + "' not supported between str and non-str types");
+
     // Low-level type mix check
     checkLowLevelTypeMix(lhs, rhs, op);
 
@@ -327,6 +331,9 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
+    // Reject str operands
+    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+        codegenError("type error: bitwise operator '" + op + "' not supported for str type");
     checkLowLevelTypeMix(lhs, rhs, op);
     // Low-level integer bitwise at native width
     if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
@@ -406,6 +413,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {
+        if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+            codegenError("type error: operator '**' not supported between str and non-str types");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())
@@ -453,6 +462,10 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             return emitStringRepeat(strVal, intVal);
         }
     }
+
+    // Reject str with non-str operands (must come after string concat/repeat checks)
+    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+        codegenError("type error: operator '" + op + "' not supported between str and non-str types");
 
     // // floor division (toward -∞)
     if (op == "//") {
