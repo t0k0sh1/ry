@@ -141,6 +141,7 @@ public:
         std::queue<Token> pending;
         Token current;
         int fstring_brace_depth;
+        TokenKind prev_kind;
     };
     State saveState() const;
     void restoreState(State s);
@@ -156,6 +157,7 @@ private:
     std::vector<int> indent_stack_ = {0};
     std::queue<Token> pending_;
     int fstring_brace_depth_ = 0;
+    TokenKind prev_kind_ = TokenKind::Newline;
 
     Token readToken();
     Token readFStringSegment(bool isStart);
