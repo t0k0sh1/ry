@@ -500,6 +500,83 @@ static void applyRyEnv(const char *value) {
         g_skip_global_lib = true;
 }
 
+static bool isHelpFlag(const char *arg) {
+    return std::strcmp(arg, "-h") == 0 || std::strcmp(arg, "--help") == 0;
+}
+
+static bool hasHelpFlag(int argc, char *argv[], int start = 1) {
+    for (int i = start; i < argc; ++i)
+        if (isHelpFlag(argv[i])) return true;
+    return false;
+}
+
+static bool isKnownSubcommand(const char *arg) {
+    static const char *known[] = {
+        "test", "init", "new", "fmt", "self-update", nullptr
+    };
+    for (const char **p = known; *p; ++p)
+        if (std::strcmp(arg, *p) == 0) return true;
+    return false;
+}
+
+static void printMainHelp() {
+    llvm::outs() << "ry " << RY_VERSION << "\n\n";
+    llvm::outs() << "Usage:\n";
+    llvm::outs() << "  ry <file.ry> [args...]              Run a Ry script\n";
+    llvm::outs() << "  echo '<code>' | ry                  Run code from stdin\n";
+    llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
+    llvm::outs() << "  ry init                              Initialize a project\n";
+    llvm::outs() << "  ry new <project-name>                Create a new project\n";
+    llvm::outs() << "  ry fmt [options] [<file> | <dir>]    Format source files\n";
+    llvm::outs() << "  ry self-update [options]              Update ry itself\n";
+    llvm::outs() << "\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  -h, --help       Show this help\n";
+    llvm::outs() << "  -v, --version    Show version\n";
+    llvm::outs() << "  --env=<env>      Set environment (production|development|internal)\n";
+    llvm::outs() << "\n";
+    llvm::outs() << "Run 'ry <command> --help' for more information on a command.\n";
+}
+
+static void printTestHelp() {
+    llvm::outs() << "Usage: ry test [options] [<file.ry> | <dir>]\n\n";
+    llvm::outs() << "Run test files (*.test.ry).\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  -p, --parallel       Run tests in parallel\n";
+    llvm::outs() << "  -w, --watch          Watch for changes and re-run\n";
+    llvm::outs() << "  --coverage, --cov    Collect coverage information\n";
+    llvm::outs() << "  -h, --help           Show this help\n";
+}
+
+static void printInitHelp() {
+    llvm::outs() << "Usage: ry init\n\n";
+    llvm::outs() << "Initialize a new Ry project in the current directory.\n";
+    llvm::outs() << "Creates a package.toml and basic project structure.\n";
+}
+
+static void printNewHelp() {
+    llvm::outs() << "Usage: ry new <project-name>\n\n";
+    llvm::outs() << "Create a new Ry project in a new directory.\n";
+}
+
+static void printFmtHelp() {
+    llvm::outs() << "Usage: ry fmt [options] [<file> | <dir>]\n\n";
+    llvm::outs() << "Format Ry source files.\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  --check      Check formatting without modifying files\n";
+    llvm::outs() << "  -h, --help   Show this help\n";
+}
+
+static void printSelfUpdateHelp() {
+    llvm::outs() << "Usage: ry self-update [--nightly | <version>]\n\n";
+    llvm::outs() << "Update ry to a newer version.\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  (no args)    Update to latest stable release\n";
+    llvm::outs() << "  --nightly    Update to latest nightly/prerelease\n";
+    llvm::outs() << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
+    llvm::outs() << "  -h, --help   Show this help\n";
+}
+
 static void parseRyEnv(int &argc, char **&argv) {
     // --env=<value> CLI flag takes precedence over RY_ENV env var
     if (argc >= 2 && std::strncmp(argv[1], "--env=", 6) == 0) {
@@ -515,6 +592,26 @@ static void parseRyEnv(int &argc, char **&argv) {
 
 int main(int argc, char *argv[]) {
     parseRyEnv(argc, argv);
+
+    // Help flag handling: -h/--help takes priority over other options
+    if (argc >= 2) {
+        if (isKnownSubcommand(argv[1])) {
+            // Subcommand help: ry <subcmd> ... -h/--help
+            if (hasHelpFlag(argc, argv, 2)) {
+                if (std::strcmp(argv[1], "test") == 0) { printTestHelp(); return 0; }
+                if (std::strcmp(argv[1], "init") == 0) { printInitHelp(); return 0; }
+                if (std::strcmp(argv[1], "new") == 0) { printNewHelp(); return 0; }
+                if (std::strcmp(argv[1], "fmt") == 0) { printFmtHelp(); return 0; }
+                if (std::strcmp(argv[1], "self-update") == 0) { printSelfUpdateHelp(); return 0; }
+            }
+        } else {
+            // Main help: ry -h, ry --help, ry --env=internal -h, etc.
+            if (hasHelpFlag(argc, argv)) {
+                printMainHelp();
+                return 0;
+            }
+        }
+    }
 
     if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
         llvm::outs() << "ry " << RY_VERSION << "\n";
@@ -545,6 +642,14 @@ int main(int argc, char *argv[]) {
     const char *filename = nullptr;
 
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
+        // Unknown subcommand detection: if the argument is not an existing file,
+        // show an error and help message
+        std::string arg1 = argv[1];
+        if (!fs::exists(arg1)) {
+            errs() << "Error: unknown command '" << arg1 << "'\n\n";
+            printMainHelp();
+            return 1;
+        }
         filename = argv[1];
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
     } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
@@ -643,16 +748,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
     } else {
-        errs() << "Usage: ry [--env=<env>] <file.ry> [args...]\n";
-        errs() << "       echo '<code>' | ry\n";
-        errs() << "       ry [--env=<env>] test [-p | --parallel] [-w | --watch] [--coverage | --cov] [<file.ry> | <dir>]\n";
-        errs() << "       ry init\n";
-        errs() << "       ry fmt [--check] [<file|dir>]\n";
-        errs() << "       ry new <project-name>\n";
-        errs() << "       ry self-update [--nightly | <version>]\n";
-        errs() << "       ry --version\n";
-        errs() << "\n";
-        errs() << "Environment: RY_ENV=production|development|internal (default: production)\n";
+        printMainHelp();
         return 1;
     }
 
