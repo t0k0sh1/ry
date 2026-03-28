@@ -1,17 +1,8 @@
-#include "ry/runtime_http_internal.hpp"
+#include "ry/runtime_http_types.hpp"
 
 #include <unordered_set>
 
 // ===== Multipart form-data parsing =====
-
-// Looks up a header value by name (case-insensitive) in the request's header arrays.
-static const char *find_request_header(HttpRequestHandle *req, const char *name) {
-    for (int64_t i = 0; i < req->header_count; i++) {
-        if (strcasecmp(req->header_keys[i], name) == 0)
-            return req->header_values[i];
-    }
-    return nullptr;
-}
 
 // Extract a parameter value from a header value string, working directly on C strings.
 // e.g., extract_param("form-data; name=\"field1\"", "name") -> "field1"
@@ -53,6 +44,48 @@ static void free_header_pairs(std::vector<HeaderPair> &headers) {
     for (auto &h : headers) { free(h.key); free(h.val); }
 }
 
+// Process a single multipart part: extract Content-Disposition, categorize as
+// field or file, and append to the appropriate vector with deduplication.
+static void process_multipart_part(const char *body, size_t data_start, size_t data_end,
+                                     const std::vector<HeaderPair> &part_headers,
+                                     std::vector<FormFieldEntry> &fields,
+                                     std::vector<FormFileEntry> &files,
+                                     std::unordered_set<std::string> &seen_field_names,
+                                     std::unordered_set<std::string> &seen_file_names) {
+    const char *disposition = nullptr;
+    const char *part_content_type = nullptr;
+    for (auto &h : part_headers) {
+        if (strcasecmp(h.key, "Content-Disposition") == 0)
+            disposition = h.val;
+        else if (strcasecmp(h.key, "Content-Type") == 0)
+            part_content_type = h.val;
+    }
+    if (!disposition) return;
+
+    std::string name = extract_param(disposition, "name");
+    if (name.empty()) return;
+
+    std::string filename = extract_param(disposition, "filename");
+    if (!filename.empty()) {
+        if (seen_file_names.insert(name).second) {
+            files.push_back({
+                checked_strdup(name.c_str()),
+                checked_strdup(filename.c_str()),
+                checked_strdup(part_content_type ? part_content_type : "application/octet-stream"),
+                checked_memdup(body + data_start, data_end - data_start),
+                (int64_t)(data_end - data_start)
+            });
+        }
+    } else {
+        if (seen_field_names.insert(name).second) {
+            fields.push_back({
+                checked_strdup(name.c_str()),
+                checked_strndup(body + data_start, data_end - data_start)
+            });
+        }
+    }
+}
+
 static void parse_multipart_form_data(HttpRequestHandle *req) {
     if (req->form_parsed) return;
     req->form_parsed = true;
@@ -63,7 +96,8 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 
     if (!req->body || !req->body[0]) return;
 
-    const char *content_type = find_request_header(req, "Content-Type");
+    const char *content_type = find_in_kv_pairs_ci(
+        req->header_keys, req->header_values, req->header_count, "Content-Type");
     if (!content_type) return;
     if (strncasecmp(content_type, "multipart/form-data", 19) != 0) return;
     char next = content_type[19];
@@ -73,7 +107,6 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     if (boundary.empty()) return;
 
     std::string delimiter = "--" + boundary;
-    // Line-boundary-aware delimiter for subsequent parts (RFC 2046: CRLF before delimiter)
     std::string crlf_delimiter = "\r\n" + delimiter;
     size_t body_len = (size_t)req->body_len;
 
@@ -81,7 +114,6 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
     std::vector<FormFileEntry> files;
     std::unordered_set<std::string> seen_field_names, seen_file_names;
 
-    // First delimiter appears at start of body (no preceding CRLF required)
     const char *delim_ptr = (const char *)memmem(req->body, body_len,
                                                   delimiter.c_str(), delimiter.size());
     if (!delim_ptr) return;
@@ -103,51 +135,14 @@ static void parse_multipart_form_data(HttpRequestHandle *req) {
 
         size_t data_start = headers_end + 4;
 
-        // Search for CRLF + delimiter to avoid false matches inside part data
         const char *next_ptr = (const char *)memmem(req->body + data_start, body_len - data_start,
                                                      crlf_delimiter.c_str(), crlf_delimiter.size());
         if (!next_ptr) { free_header_pairs(part_headers); break; }
-        // next_delim points to the "--boundary" part (skip the leading CRLF)
         size_t next_delim = (size_t)(next_ptr - req->body) + 2;
-
-        // Part data ends at the CRLF that precedes the delimiter
         size_t data_end = (size_t)(next_ptr - req->body);
 
-        const char *disposition = nullptr;
-        const char *part_content_type = nullptr;
-        for (auto &h : part_headers) {
-            if (strcasecmp(h.key, "Content-Disposition") == 0)
-                disposition = h.val;
-            else if (strcasecmp(h.key, "Content-Type") == 0)
-                part_content_type = h.val;
-        }
-
-        if (disposition) {
-            std::string name = extract_param(disposition, "name");
-            std::string filename = extract_param(disposition, "filename");
-
-            if (!name.empty()) {
-                if (!filename.empty()) {
-                    // First-value-wins deduplication
-                    if (seen_file_names.insert(name).second) {
-                        files.push_back({
-                            checked_strdup(name.c_str()),
-                            checked_strdup(filename.c_str()),
-                            checked_strdup(part_content_type ? part_content_type : "application/octet-stream"),
-                            checked_memdup(req->body + data_start, data_end - data_start),
-                            (int64_t)(data_end - data_start)
-                        });
-                    }
-                } else {
-                    if (seen_field_names.insert(name).second) {
-                        fields.push_back({
-                            checked_strdup(name.c_str()),
-                            checked_strndup(req->body + data_start, data_end - data_start)
-                        });
-                    }
-                }
-            }
-        }
+        process_multipart_part(req->body, data_start, data_end, part_headers,
+                                fields, files, seen_field_names, seen_file_names);
 
         free_header_pairs(part_headers);
 

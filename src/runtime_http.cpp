@@ -55,6 +55,20 @@ void *build_str_map(char **keys, char **vals, int64_t count) {
     return map;
 }
 
+void *build_str_map_copy(char **keys, char **vals, int64_t count) {
+    char **dup_keys = nullptr;
+    char **dup_vals = nullptr;
+    if (count > 0) {
+        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)count);
+        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)count);
+        for (int64_t i = 0; i < count; i++) {
+            dup_keys[i] = checked_strdup(keys[i]);
+            dup_vals[i] = checked_strdup(vals[i]);
+        }
+    }
+    return build_str_map(dup_keys, dup_vals, count);
+}
+
 static int hex_digit(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -373,34 +387,20 @@ std::string read_chunked_body(HttpTransport &t, std::string &buf, size_t pos, bo
     return body;
 }
 
-extern "C" void *__ry_http_read_request(void *stream) {
-    auto *handle = (TcpStreamHandle *)stream;
-    struct timeval tv = {5, 0};
-    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    std::string raw = recv_all(handle->fd, kMaxHeaderSize);
-    if (raw.empty()) return nullptr;
-
-    auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
-    memset(req, 0, sizeof(HttpRequestHandle));
-
-    // Parse request line: METHOD PATH HTTP/x.x\r\n
+// Parse "METHOD PATH HTTP/x.x" request line and populate req->method, path, query.
+// On success, sets line_end_out to the position of the first \r\n.
+static bool parse_request_line(const std::string &raw, HttpRequestHandle *req,
+                                 size_t &line_end_out) {
     size_t line_end = raw.find("\r\n");
-    if (line_end == std::string::npos) {
-        free(req);
-        return nullptr;
-    }
+    if (line_end == std::string::npos) return false;
+
     std::string request_line = raw.substr(0, line_end);
 
-    // Parse method
     size_t sp1 = request_line.find(' ');
-    if (sp1 == std::string::npos) {
-        free(req);
-        return nullptr;
-    }
-    std::string method = request_line.substr(0, sp1);
-    req->method = checked_strdup(method.c_str());
+    if (sp1 == std::string::npos) return false;
 
-    // Parse path and query string
+    req->method = checked_strdup(request_line.substr(0, sp1).c_str());
+
     size_t sp2 = request_line.find(' ', sp1 + 1);
     std::string full_path;
     if (sp2 != std::string::npos)
@@ -416,65 +416,35 @@ extern "C" void *__ry_http_read_request(void *stream) {
         req->path = checked_strdup(full_path.c_str());
         parse_query_string("", req);
     }
+    line_end_out = line_end;
+    return true;
+}
 
-    // Parse headers
-    size_t headers_start = line_end + 2;
-    size_t headers_end = raw.find("\r\n\r\n", headers_start);
-    if (headers_end == std::string::npos) {
-        __ry_http_request_free(req);
-        return nullptr;
-    }
-
-    // Parse headers using shared helper
-    auto parsed_headers = parse_raw_headers(raw, headers_start, headers_end);
-    assign_headers(parsed_headers, &req->header_keys, &req->header_values, &req->header_count);
-
-    // Pre-parse Cookie header into req->cookie_keys/values/count
-    parse_cookie_header(req);
-
-    size_t body_start = headers_end + 4;
-    const char *cl_value = nullptr;
-    for (int64_t i = 0; i < req->header_count; i++) {
-        if (strcasecmp(req->header_keys[i], "Content-Length") == 0) {
-            cl_value = req->header_values[i];
-            break;
-        }
-    }
+// Read request body based on Content-Length or chunked Transfer-Encoding.
+static bool read_request_body(int fd, std::string &raw, size_t body_start,
+                                HttpRequestHandle *req) {
+    const char *cl_value = find_in_kv_pairs_ci(
+        req->header_keys, req->header_values, req->header_count, "Content-Length");
     bool has_te = has_transfer_encoding(req->header_keys, req->header_count);
     bool is_chunked = has_te && has_chunked_encoding(
         req->header_keys, req->header_values, req->header_count);
 
     // RFC 9112 §6.1: reject if both Transfer-Encoding and Content-Length are present
-    if (is_chunked && cl_value != nullptr) {
-        __ry_http_request_free(req);
-        return nullptr;
-    }
-
+    if (is_chunked && cl_value != nullptr) return false;
     // Reject unsupported transfer codings (e.g. gzip without chunked)
-    if (has_te && !is_chunked) {
-        __ry_http_request_free(req);
-        return nullptr;
-    }
+    if (has_te && !is_chunked) return false;
 
     if (is_chunked) {
-        // Chunked transfer encoding
         bool ok;
-        std::string body_data = read_chunked_body(handle->fd, raw, body_start, ok);
-        if (!ok) {
-            __ry_http_request_free(req);
-            return nullptr;
-        }
+        std::string body_data = read_chunked_body(fd, raw, body_start, ok);
+        if (!ok) return false;
         req->body_len = (int64_t)body_data.size();
         req->body = checked_memdup(body_data.data(), body_data.size());
-        return req;
+        return true;
     }
 
-    // Content-Length based body parsing
     int64_t content_length = __ry_http_parse_content_length(cl_value);
-    if (content_length == -2 || content_length == -3) {
-        __ry_http_request_free(req);
-        return nullptr;
-    }
+    if (content_length == -2 || content_length == -3) return false;
 
     std::string body_data;
     if (body_start < raw.size())
@@ -485,17 +455,14 @@ extern "C" void *__ry_http_read_request(void *stream) {
         char *extra = (char *)checked_malloc(remaining);
         size_t got = 0;
         while (got < remaining) {
-            ssize_t n = ::recv(handle->fd, extra + got, remaining - got, 0);
+            ssize_t n = ::recv(fd, extra + got, remaining - got, 0);
             if (n <= 0) break;
             got += (size_t)n;
         }
         body_data.append(extra, got);
         free(extra);
 
-        if ((int64_t)body_data.size() < content_length) {
-            __ry_http_request_free(req);
-            return nullptr;
-        }
+        if ((int64_t)body_data.size() < content_length) return false;
     }
 
     if (content_length >= 0 && (int64_t)body_data.size() > content_length)
@@ -503,6 +470,41 @@ extern "C" void *__ry_http_read_request(void *stream) {
 
     req->body_len = (int64_t)body_data.size();
     req->body = checked_memdup(body_data.data(), body_data.size());
+    return true;
+}
+
+extern "C" void *__ry_http_read_request(void *stream) {
+    auto *handle = (TcpStreamHandle *)stream;
+    struct timeval tv = {5, 0};
+    ::setsockopt(handle->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    std::string raw = recv_all(handle->fd, kMaxHeaderSize);
+    if (raw.empty()) return nullptr;
+
+    auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
+    memset(req, 0, sizeof(HttpRequestHandle));
+
+    size_t line_end;
+    if (!parse_request_line(raw, req, line_end)) {
+        free(req);
+        return nullptr;
+    }
+
+    size_t headers_start = line_end + 2;
+    size_t headers_end = raw.find("\r\n\r\n", headers_start);
+    if (headers_end == std::string::npos) {
+        __ry_http_request_free(req);
+        return nullptr;
+    }
+
+    auto parsed_headers = parse_raw_headers(raw, headers_start, headers_end);
+    assign_headers(parsed_headers, &req->header_keys, &req->header_values, &req->header_count);
+    parse_cookie_header(req);
+
+    size_t body_start = headers_end + 4;
+    if (!read_request_body(handle->fd, raw, body_start, req)) {
+        __ry_http_request_free(req);
+        return nullptr;
+    }
 
     return req;
 }
@@ -519,11 +521,7 @@ extern "C" const char *__ry_http_path(void *r) {
 
 extern "C" const char *__ry_http_header(void *r, const char *key) {
     auto *req = (HttpRequestHandle *)r;
-    for (int64_t i = 0; i < req->header_count; i++) {
-        if (strcasecmp(req->header_keys[i], key) == 0)
-            return req->header_values[i];
-    }
-    return nullptr;
+    return find_in_kv_pairs_ci(req->header_keys, req->header_values, req->header_count, key);
 }
 
 extern "C" const char *__ry_http_body(void *r) {
@@ -533,50 +531,22 @@ extern "C" const char *__ry_http_body(void *r) {
 
 extern "C" const char *__ry_http_query(void *r, const char *key) {
     auto *req = (HttpRequestHandle *)r;
-    for (int64_t i = 0; i < req->query_count; i++) {
-        if (strcmp(req->query_keys[i], key) == 0)
-            return req->query_values[i];
-    }
-    return nullptr;
+    return find_in_kv_pairs(req->query_keys, req->query_values, req->query_count, key);
 }
 
 extern "C" void *__ry_http_query_all(void *r) {
     auto *req = (HttpRequestHandle *)r;
-    char **dup_keys = nullptr;
-    char **dup_vals = nullptr;
-    if (req->query_count > 0) {
-        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->query_count);
-        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->query_count);
-        for (int64_t i = 0; i < req->query_count; i++) {
-            dup_keys[i] = checked_strdup(req->query_keys[i]);
-            dup_vals[i] = checked_strdup(req->query_values[i]);
-        }
-    }
-    return build_str_map(dup_keys, dup_vals, req->query_count);
+    return build_str_map_copy(req->query_keys, req->query_values, req->query_count);
 }
 
 extern "C" const char *__ry_http_cookie(void *r, const char *name) {
     auto *req = (HttpRequestHandle *)r;
-    for (int64_t i = 0; i < req->cookie_count; i++) {
-        if (strcmp(req->cookie_keys[i], name) == 0)
-            return req->cookie_values[i];
-    }
-    return nullptr;
+    return find_in_kv_pairs(req->cookie_keys, req->cookie_values, req->cookie_count, name);
 }
 
 extern "C" void *__ry_http_cookies(void *r) {
     auto *req = (HttpRequestHandle *)r;
-    char **dup_keys = nullptr;
-    char **dup_vals = nullptr;
-    if (req->cookie_count > 0) {
-        dup_keys = (char **)checked_malloc(sizeof(char *) * (size_t)req->cookie_count);
-        dup_vals = (char **)checked_malloc(sizeof(char *) * (size_t)req->cookie_count);
-        for (int64_t i = 0; i < req->cookie_count; i++) {
-            dup_keys[i] = checked_strdup(req->cookie_keys[i]);
-            dup_vals[i] = checked_strdup(req->cookie_values[i]);
-        }
-    }
-    return build_str_map(dup_keys, dup_vals, req->cookie_count);
+    return build_str_map_copy(req->cookie_keys, req->cookie_values, req->cookie_count);
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
@@ -726,24 +696,9 @@ extern "C" void __ry_http_request_free(void *r) {
     auto *req = (HttpRequestHandle *)r;
     free(req->method);
     free(req->path);
-    for (int64_t i = 0; i < req->header_count; i++) {
-        free(req->header_keys[i]);
-        free(req->header_values[i]);
-    }
-    free(req->header_keys);
-    free(req->header_values);
-    for (int64_t i = 0; i < req->query_count; i++) {
-        free(req->query_keys[i]);
-        free(req->query_values[i]);
-    }
-    free(req->query_keys);
-    free(req->query_values);
-    for (int64_t i = 0; i < req->cookie_count; i++) {
-        free(req->cookie_keys[i]);
-        free(req->cookie_values[i]);
-    }
-    free(req->cookie_keys);
-    free(req->cookie_values);
+    free_kv_pairs(req->header_keys, req->header_values, req->header_count);
+    free_kv_pairs(req->query_keys, req->query_values, req->query_count);
+    free_kv_pairs(req->cookie_keys, req->cookie_values, req->cookie_count);
     for (int64_t i = 0; i < req->form_field_count; i++) {
         free(req->form_fields[i].key);
         free(req->form_fields[i].value);
@@ -763,12 +718,7 @@ extern "C" void __ry_http_request_free(void *r) {
 extern "C" void __ry_http_response_free(void *r) {
     if (!r) return;
     auto *resp = (HttpResponseHandle *)r;
-    for (int64_t i = 0; i < resp->header_count; i++) {
-        free(resp->header_keys[i]);
-        free(resp->header_values[i]);
-    }
-    free(resp->header_keys);
-    free(resp->header_values);
+    free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
     free(resp->body);
     free(resp);
 }

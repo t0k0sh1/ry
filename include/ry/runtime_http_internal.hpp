@@ -1,15 +1,10 @@
 #pragma once
 
-// Internal shared header for runtime_http*.cpp files.
-// NOT part of the public API — do not include from codegen or other modules.
+// Internal shared header for runtime_http*.cpp files that need network transport.
+// Includes OpenSSL and HttpTransport. For code that only needs struct definitions
+// and helpers (e.g., multipart parsing), use runtime_http_types.hpp instead.
 
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <string>
-#include <strings.h>
-#include <vector>
+#include "ry/runtime_http_types.hpp"
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -19,96 +14,14 @@
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_tls.hpp"
 
-// Forward declarations for runtime functions used by HTTP code
-extern "C" {
-int64_t __ry_http_parse_content_length(const char *value);
-int64_t *__ry_ht_rehash_str(const char **keys, int64_t count,
-                             int64_t newBucketCount);
-}
-
 // ---------------------------------------------------------------------------
-// Constants
+// Constants (transport-specific)
 // ---------------------------------------------------------------------------
-inline constexpr int64_t MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 inline constexpr int MAX_REDIRECTS = 10;
-inline constexpr size_t kRecvBufSize = 4096;
-inline constexpr size_t kMaxHeaderSize = 8192;
 
 // ---------------------------------------------------------------------------
-// Struct definitions — layouts must match codegen expectations
+// Network transport abstraction
 // ---------------------------------------------------------------------------
-
-struct FormFieldEntry {
-    char *key;
-    char *value;
-};
-
-struct FormFileEntry {
-    char *name;
-    char *filename;
-    char *content_type;
-    char *data;
-    int64_t data_len;
-};
-
-struct HttpRequestHandle {
-    char *method;
-    char *path;
-    char **header_keys;
-    char **header_values;
-    int64_t header_count;
-    char *body;
-    int64_t body_len;
-    char **query_keys;
-    char **query_values;
-    int64_t query_count;
-    char **cookie_keys;
-    char **cookie_values;
-    int64_t cookie_count;
-    // Multipart form data (parsed lazily on first access)
-    bool form_parsed;
-    FormFieldEntry *form_fields;
-    int64_t form_field_count;
-    FormFileEntry *form_files;
-    int64_t form_file_count;
-};
-
-struct HttpResponseHandle {
-    int64_t status;
-    char **header_keys;
-    char **header_values;
-    int64_t header_count;
-    char *body;
-    int64_t body_len;
-};
-
-// MapHeader layout must match codegen: {len, cap, keys, vals, bucket_count, buckets}
-struct MapHeader {
-    int64_t len;
-    int64_t cap;
-    char **keys;
-    char **vals;
-    int64_t bucket_count;
-    void *buckets;
-};
-
-struct HeaderPair { char *key; char *val; };
-
-struct HttpClientResponseHandle {
-    int64_t status;
-    char **header_keys;
-    char **header_values;
-    int64_t header_count;
-    char *body;
-    int64_t body_len;
-};
-
-struct ParsedUrl {
-    char *host;
-    int64_t port;
-    char *path;
-    bool is_https;
-};
 
 struct HttpTransport {
     int fd;
@@ -145,89 +58,6 @@ struct HttpTransport {
         }
     }
 };
-
-// ---------------------------------------------------------------------------
-// OOM-safe allocation helpers
-// ---------------------------------------------------------------------------
-
-[[noreturn]] inline void oom_abort() {
-    fprintf(stderr, "ry: out of memory\n");
-    abort();
-}
-
-inline char *checked_strndup(const char *s, size_t n) {
-    char *r = strndup(s, n);
-    if (!r) oom_abort();
-    return r;
-}
-
-inline char *checked_strdup(const char *s) {
-    char *r = strdup(s);
-    if (!r) oom_abort();
-    return r;
-}
-
-inline char *checked_memdup(const void *src, size_t len) {
-    char *r = (char *)malloc(len + 1);
-    if (!r) oom_abort();
-    memcpy(r, src, len);
-    r[len] = '\0';  // NUL-terminate for str compatibility
-    return r;
-}
-
-inline void *checked_malloc(size_t n) {
-    void *r = malloc(n);
-    if (!r) oom_abort();
-    return r;
-}
-
-// ---------------------------------------------------------------------------
-// Header parsing helpers
-// ---------------------------------------------------------------------------
-
-std::vector<HeaderPair> parse_raw_headers(const std::string &raw,
-                                           size_t start, size_t end);
-
-inline void assign_headers(const std::vector<HeaderPair> &headers,
-                           char ***keys_out, char ***values_out,
-                           int64_t *count_out) {
-    int64_t count = (int64_t)headers.size();
-    *count_out = count;
-    if (count > 0) {
-        *keys_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
-        *values_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
-        for (int64_t i = 0; i < count; i++) {
-            (*keys_out)[i] = headers[(size_t)i].key;
-            (*values_out)[i] = headers[(size_t)i].val;
-        }
-    } else {
-        *keys_out = nullptr;
-        *values_out = nullptr;
-    }
-}
-
-// Assign parallel key/value arrays from a vector, using accessor lambdas.
-template <typename T, typename KeyFn, typename ValFn>
-inline void assign_kv_pairs(const std::vector<T> &items,
-                            char ***keys_out, char ***values_out,
-                            int64_t *count_out,
-                            KeyFn get_key, ValFn get_val) {
-    auto count = (int64_t)items.size();
-    *count_out = count;
-    if (count > 0) {
-        *keys_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
-        *values_out = (char **)checked_malloc(sizeof(char *) * (size_t)count);
-        for (size_t i = 0; i < items.size(); i++) {
-            (*keys_out)[i] = get_key(items[i]);
-            (*values_out)[i] = get_val(items[i]);
-        }
-    } else {
-        *keys_out = nullptr;
-        *values_out = nullptr;
-    }
-}
-
-void *build_str_map(char **keys, char **vals, int64_t count);
 
 // ---------------------------------------------------------------------------
 // Network I/O helpers
