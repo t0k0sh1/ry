@@ -21,6 +21,7 @@
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
+- **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code

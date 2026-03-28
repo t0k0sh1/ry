@@ -593,6 +593,7 @@ private:
     llvm::Value *emitBuiltinHttp(const CallExpr &e);
     llvm::Value *emitBuiltinJson(const CallExpr &e);
     llvm::Value *emitBuiltinBase64(const CallExpr &e);
+    llvm::Value *emitBuiltinThread(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);
@@ -600,6 +601,13 @@ private:
     bool isHttpResponse(llvm::Value *val);
     bool isHttpClientResponse(llvm::Value *val);
     bool isJsonValue(llvm::Value *val);
+    bool isThread(llvm::Value *val);
+    bool isLock(llvm::Value *val);
+    bool isRWLock(llvm::Value *val);
+    bool isSemaphore(llvm::Value *val);
+    bool isBarrier(llvm::Value *val);
+    bool isAtomicInt(llvm::Value *val);
+    bool isAtomicBool(llvm::Value *val);
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
     void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
@@ -616,7 +624,9 @@ private:
 
     enum ResourceKind : int {
         RK_TcpListener, RK_TcpStream, RK_TlsStream,
-        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue, RK_COUNT
+        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
+        RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
+        RK_AtomicInt, RK_AtomicBool, RK_COUNT
     };
     std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
 

@@ -6,7 +6,8 @@
     X(net,    "lib/std/net/net.ry",       emitBuiltinNet) \
     X(http,   "lib/std/http/http.ry",     emitBuiltinHttp) \
     X(json,   "lib/std/json/json.ry",     emitBuiltinJson) \
-    X(base64, "lib/std/base64/base64.ry", emitBuiltinBase64)
+    X(base64, "lib/std/base64/base64.ry", emitBuiltinBase64) \
+    X(thread, "lib/std/thread/thread.ry", emitBuiltinThread)
 
 #define RY_BUILTIN_STDLIB_CONSTANTS(X) \
     X(math, PI,  Value,    3.141592653589793) \

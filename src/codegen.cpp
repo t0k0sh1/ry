@@ -810,6 +810,15 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (tryCallOperator(s.callee, s.args))
         return;
+    // Route @native function calls through the full CallExpr dispatch chain
+    // so that stdlib dispatchers (emitBuiltinThread, etc.) can handle them.
+    if (native_fn_arg_counts_.count(s.callee)) {
+        auto ce = std::make_unique<CallExpr>();
+        ce->callee = s.callee;
+        ce->args = std::move(s.args);
+        emitExprVariant(ce);
+        return;
+    }
     emitUserFnCall(s.callee, s.args);
 }
 
