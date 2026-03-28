@@ -183,15 +183,21 @@ for i in 1 .. 3:
 
 ## async / await
 
-`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` or `join(task)` to wait for the result.
+`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` inside another `async fn` or `block_on()` from synchronous context to wait for the result.
 
 ```python
 async fn add(a: int, b: int) -> int:
     return a + b
 
+# From synchronous context, use block_on()
 t: Task<int> = add(20, 22)
-print(await t)          # 42
-print(join(add(1, 2)))  # 3
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
+    result = await add(a, b)
+    return result * 2
 ```
 
 ### Rules
@@ -199,8 +205,9 @@ print(join(add(1, 2)))  # 3
 - `async fn name(...) -> T:` is declared with the awaited result type `T`.
 - Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` is allowed anywhere an expression is allowed, and `await expr` is also allowed as a statement.
-- `async fn ... -> Unit` is supported; `await task` is the primary way to wait when no value is produced.
+- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
+- `block_on(task)` blocks the current thread until the task completes and returns the result.
+- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
 - `async` lambdas and `async @native fn` are not supported in v1.
 

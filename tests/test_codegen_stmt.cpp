@@ -939,47 +939,52 @@ TEST_F(CodeGenTest, RangeExprVariants) {
 // ===== Concurrency: async/await =====
 
 TEST_F(CodeGenTest, AsyncAwaitBasics) {
-    // AsyncAwaitDirectCall
+    // block_on awaits direct async call
     EXPECT_EQ(runSource(
         "async fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
-        "print(await add(20, 22))"), "42\n");
-    // AsyncAwaitTaskVariable
+        "print(block_on(add(20, 22)))"), "42\n");
+    // block_on awaits task variable
     EXPECT_EQ(runSource(
         "async fn add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "t: Task<int> = add(7, 8)\n"
-        "print(await t)"), "15\n");
-    // AsyncAwaitChain
+        "print(block_on(t))"), "15\n");
+    // await chains inside async fn, block_on at top level
     EXPECT_EQ(runSource(
         "async fn inner() -> int:\n"
         "    return 21\n"
         "async fn outer() -> int:\n"
         "    return (await inner()) * 2\n"
-        "print(await outer())"), "42\n");
+        "print(block_on(outer()))"), "42\n");
 }
 
 TEST_F(CodeGenTest, AsyncStatementForms) {
-    // AsyncUnitAwaitStatement
+    // block_on Unit-returning async
     EXPECT_EQ(runSource(
         "async fn bump() -> Unit:\n"
         "    print(\"done\")\n"
-        "await bump()\n"
+        "block_on(bump())\n"
         "print(\"after\")"), "done\nafter\n");
-    // AsyncAwaitStatementDiscardsValue
+    // block_on discards value
     EXPECT_EQ(runSource(
         "async fn add(a: int, b: int) -> int:\n"
         "    print(a + b)\n"
         "    return a + b\n"
-        "await add(20, 22)\n"
+        "block_on(add(20, 22))\n"
         "print(\"after\")"), "42\nafter\n");
 }
 
 TEST_F(CodeGenTest, AwaitErrors) {
-    // AwaitRequiresTask
-    EXPECT_THROW(runSource("x = await 123\nprint(x)"), std::runtime_error);
-    // AwaitStatementRequiresTask
-    EXPECT_THROW(runSource("await 123"), std::runtime_error);
+    // await outside async fn is a parse error
+    EXPECT_THROW(runSource("async fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "x = await add(1, 2)\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("async fn bump() -> Unit:\n"
+        "    print(\"done\")\n"
+        "await bump()"), std::runtime_error);
+    // block_on requires Task
+    EXPECT_THROW(runSource("x = block_on(123)\nprint(x)"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, AvailableParallelismBuiltin) {

@@ -831,22 +831,25 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     return okVal;
 }
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
-    llvm::Value *taskVal = emitExpr(*e->operand);
+llvm::Value *CodeGen::emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label) {
     llvm::Type *resultTy = getTaskResultType(taskVal);
     if (!resultTy)
-        codegenError("await requires a Task value");
+        codegenError(std::string(label) + "() requires a Task value");
 
-    llvm::FunctionType *joinTy = llvm::FunctionType::get(
+    llvm::FunctionType *fnTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee joinFn = mod_->getOrInsertFunction("__ry_task_join", joinTy);
+    llvm::FunctionCallee fn = mod_->getOrInsertFunction(runtimeFn, fnTy);
 
     if (resultTy->isVoidTy()) {
-        return builder_.CreateCall(joinFn, {taskVal, llvm::ConstantPointerNull::get(
+        return builder_.CreateCall(fn, {taskVal, llvm::ConstantPointerNull::get(
             llvm::cast<llvm::PointerType>(ptrTy_))});
     }
 
-    llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, "await_result");
-    builder_.CreateCall(joinFn, {taskVal, resultSlot});
-    return builder_.CreateLoad(resultTy, resultSlot, "awaited");
+    llvm::AllocaInst *resultSlot = builder_.CreateAlloca(resultTy, nullptr, std::string(label) + "_result");
+    builder_.CreateCall(fn, {taskVal, resultSlot});
+    return builder_.CreateLoad(resultTy, resultSlot, std::string(label) + "_val");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
+    return emitTaskWait(emitExpr(*e->operand), "__ry_task_join", "await");
 }

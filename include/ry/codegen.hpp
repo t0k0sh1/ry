@@ -440,6 +440,7 @@ private:
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
+    llvm::Value *emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label);
 
     // Hash function resolution helper (Step 1)
     struct HashFnInfo {

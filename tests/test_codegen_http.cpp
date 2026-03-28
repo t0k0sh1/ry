@@ -74,7 +74,7 @@ match bind("127.0.0.1", 0):
                         close(conn)
                     case Err(e):
                         print("connect failed")
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):
@@ -132,7 +132,7 @@ match bind("127.0.0.1", 0):
                         close(conn)
                     case Err(e):
                         print("false")
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):
@@ -190,7 +190,7 @@ match bind("127.0.0.1", 0):
                         close(conn)
                     case Err(e):
                         print("false")
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):
@@ -248,7 +248,7 @@ match bind("127.0.0.1", 0):
                         close(conn)
                     case Err(e):
                         print("false")
-                await t
+                block_on(t)
             case Err(e):
                 ...
     case Err(e):
@@ -258,7 +258,7 @@ match bind("127.0.0.1", 0):
 
 // ============================================================
 // http_listen with max_requests: server exits after N requests
-// Uses async fn + port_callback + await to verify server lifecycle.
+// Uses async fn + port_callback + block_on to verify server lifecycle.
 // ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
@@ -309,7 +309,7 @@ match connect("127.0.0.1", 18932):
     case Err(e):
         print("false")
         print("false")
-result = await t
+result = block_on(t)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
@@ -368,7 +368,7 @@ match connect("127.0.0.1", 18933):
     case Err(e):
         print("false")
 
-result = await t
+result = block_on(t)
 print(result)
 )"), "true\ntrue\ndone\n");
 }
@@ -432,7 +432,7 @@ match connect("127.0.0.1", 18934):
         print("false")
         print("false")
 
-result = await t
+result = block_on(t)
 print(result)
 )"), "true\ntrue\ntrue\ntrue\ndone\n");
 }
@@ -494,7 +494,7 @@ match connect("127.0.0.1", 18935):
     case Err(e):
         print("false")
 
-result = await t
+result = block_on(t)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }
@@ -567,7 +567,7 @@ match connect("127.0.0.1", 18936):
         print("false")
         print("false")
 
-result = await t
+result = block_on(t)
 print(result)
 )"), "true\ntrue\ntrue\ndone\n");
 }
