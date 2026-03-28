@@ -30,7 +30,7 @@ RY_ENV=internal ./build/ry test tests/spec/<file>.test.ry # 個別ファイル�
 - **Plan モードとの接続**: issue の内容を仕様として Plan に反映する
 - **ラベル運用**:
   - issue に着手する時点で `wip` ラベルを付与する
-  - 作業完了時に `wip` ラベルを外し、`fixed` ラベルを付与する
+  - 作業完了時に `wip` ラベルを外し、issue をクローズする
 
 ## Plan モードのルール
 
@@ -182,5 +182,5 @@ cmake --preset default && cmake --build build && ./build/ry_tests && RY_ENV=inte
 ### 3. ラベル整理
 
 **セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ時に行う:
-- PR が `vx.x.x` ブランチにマージされた時点で、対象 issue の `wip` ラベルを外し `fixed` ラベルを付与する
-- PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、ラベルが issue の修正状態を示す唯一の手段となる
+- PR が `vx.x.x` ブランチにマージされた時点で、対象 issue の `wip` ラベルを外し issue をクローズする
+- PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、手動で issue をクローズすること
