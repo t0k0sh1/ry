@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cerrno>
+#include <climits>
 #include <string>
 #include <vector>
 
@@ -56,14 +57,19 @@ static ListHeader *makeStringList(const std::vector<std::string> &items) {
 }
 
 // Iterative directory walk using lstat to avoid following symlinks into cycles.
-static void walkIterative(const std::string &root, std::vector<std::string> &out) {
+// Returns 0 on success, -1 if any opendir failed (errno preserved).
+static int walkIterative(const std::string &root, std::vector<std::string> &out) {
+    int firstError = 0;
     std::vector<std::string> stack;
     stack.push_back(root);
     while (!stack.empty()) {
         std::string dir = std::move(stack.back());
         stack.pop_back();
         DIR *dp = opendir(dir.c_str());
-        if (!dp) continue;
+        if (!dp) {
+            if (firstError == 0) firstError = errno;
+            continue;
+        }
         struct dirent *ent;
         while ((ent = readdir(dp)) != nullptr) {
             if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
@@ -89,6 +95,8 @@ static void walkIterative(const std::string &root, std::vector<std::string> &out
         }
         closedir(dp);
     }
+    if (firstError != 0) { errno = firstError; return -1; }
+    return 0;
 }
 
 static int mkdirAll(const char *path, mode_t mode) {
@@ -136,7 +144,9 @@ void *__ry_filesystem_list_dir(const char *path) {
         entries.emplace_back(ent->d_name);
     }
     closedir(dp);
-    return makeStringList(entries);
+    void *result = makeStringList(entries);
+    if (!result) setLastError("list_dir: memory allocation failed");
+    return result;
 }
 
 void *__ry_filesystem_walk(const char *path) {
@@ -150,8 +160,13 @@ void *__ry_filesystem_walk(const char *path) {
         return nullptr;
     }
     std::vector<std::string> files;
-    walkIterative(path, files);
-    return makeStringList(files);
+    if (walkIterative(path, files) != 0 && files.empty()) {
+        setLastError("walk: error traversing '%s': %s", path, strerror(errno));
+        return nullptr;
+    }
+    void *result = makeStringList(files);
+    if (!result) setLastError("walk: memory allocation failed");
+    return result;
 }
 
 void *__ry_filesystem_glob_files(const char *pattern) {
@@ -173,7 +188,9 @@ void *__ry_filesystem_glob_files(const char *pattern) {
         matches.emplace_back(gl.gl_pathv[i]);
     }
     globfree(&gl);
-    return makeStringList(matches);
+    void *result = makeStringList(matches);
+    if (!result) setLastError("glob_files: memory allocation failed");
+    return result;
 }
 
 int64_t __ry_filesystem_copy(const char *src, const char *dst) {

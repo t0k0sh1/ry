@@ -7,9 +7,9 @@ File and directory manipulation. All functions require explicit import from `fil
 The `filesystem` package handles operations on files and directories themselves (copy, move, remove, etc.), while the `io` package handles reading and writing file contents.
 
 ```python
-from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all,
-                       make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink,
-                       chmod, symlink, read_link
+from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all
+from filesystem import make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink
+from filesystem import chmod, symlink, read_link
 ```
 
 ## Function List
