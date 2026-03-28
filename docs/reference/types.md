@@ -624,7 +624,7 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 
 ## Type Safety Constraints
 
-- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `byte` is automatically promoted to `int` during operations (ZExt). Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `b: byte = 42`.
+- **Implicit widening conversions** -- Safe widening conversions are supported in function calls: `byte` → `int`, `byte` → `float`, `int` → `float`. For binary operators, mixing `int` and `float` triggers float promotion, and `byte` is automatically promoted to `int` (ZExt). Narrowing conversions (e.g., `float` → `int`) are not allowed implicitly. Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `b: byte = 42`.
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
