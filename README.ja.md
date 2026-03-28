@@ -1,8 +1,13 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# Ry
+<p align="center">
+  <img src="docs/logo.png" alt="Ry" width="200">
+</p>
 
-LLVM JIT ベースのシンプルなプログラミング言語。ソースコードを読み込み、LLVM ORC JIT でネイティブコードにコンパイル・即時実行します。
+<p align="center">
+  LLVM JIT ベースのシンプルなプログラミング言語。<br>
+  ソースコードを読み込み、LLVM ORC JIT でネイティブコードにコンパイルし、即時実行します。
+</p>
 
 ## 特徴
 
@@ -11,7 +16,7 @@ LLVM JIT ベースのシンプルなプログラミング言語。ソースコ�
 - **演算子** — 算術・比較・論理・ビット演算（`>>>` 論理右シフト）・複合代入・`in` / `not in`・文字列繰り返し（`"ab" * 3`）・`as` 型キャスト（演算子オーバーロード対応）
 - **f-string** — `f"Hello {name}"` による文字列補間
 - **契約による設計** — `require`（事前条件）・`ensure`（事後条件）・`invariant`（構造体不変条件）・`old()`・`result`
-- **ディレクティブ** — `@deprecated` コンパイル時メタデータ
+- **ディレクティブ** — `@deprecated` コンパイル時メタデータアノテーション
 - **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
 - **制御構文** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **ファイル I/O** — ファイル読み書き・バイト操作・標準入力（`std.io`）
@@ -62,7 +67,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # ストリーム操作 (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 列挙型
@@ -75,8 +80,8 @@ c = Color::Red
 print(c)               # Red
 
 # パッケージインポート
-from math import add
-print(add(1, 2))
+from math import sqrt, PI
+print(sqrt(PI))
 ```
 
 ## インストール
@@ -109,13 +114,31 @@ cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-## 実行
+## 使い方
 
 ```bash
-ry <file.ry>
+ry <file.ry>              # Ry スクリプトを実行
+echo '<code>' | ry         # 標準入力からコードを実行
+ry test [options] [path]   # テストを実行 (*.test.ry)
+ry init                    # カレントディレクトリでプロジェクトを初期化
+ry new <name>              # 新しいプロジェクトを作成
+ry fmt [options] [path]    # ソースファイルをフォーマット
+ry self-update             # ry 自体を更新
 ```
 
-## テスト
+ヒアドキュメントにも対応しています:
+
+```bash
+ry <<'RY'
+a = 1
+b = 2
+print(a + b)
+RY
+```
+
+各コマンドの詳細は `ry <command> --help` で確認できます。
+
+## 開発
 
 ```bash
 cd build && ctest --output-on-failure

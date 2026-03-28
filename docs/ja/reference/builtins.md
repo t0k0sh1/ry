@@ -10,14 +10,17 @@
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
 | `length(value)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
-| `range(count)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
 | `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
 | `env(key)` | 環境変数を `Option<str>` で返す |
 | `env(key, default)` | 環境変数を返す。未設定なら `default` を返す |
-| `join(task)` | `Task<T>` の完了を待ち、結果を返す |
+| `send(stream, data)` | `TcpStream` を通じて `List<u8>` を送信し、送信バイト数を返す |
+| `recv(stream, max)` | `TcpStream` から最大 `max` バイトを `List<u8>` として受信 |
+| `close(handle)` | `TcpStream` または `TcpListener` を閉じる |
+| `block_on(task)` | 現在のスレッドを `Task<T>` の完了までブロックし、結果を返す |
 
 ### Option
 
@@ -42,9 +45,9 @@
 | `tap(list, fn)` | 各要素に fn を呼び出し、元のリストを返す |
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
 | `map(list, fn)` | 各要素を変換した新しいリストを返す |
-| `sort(list)` / `sort(list, comparator)` | ソート済みの新しいリストを返す（デフォルト昇順） |
-| `sort!(list)` / `sort!(list, comparator)` | リストをその場でソートする（ミューテーション操作） |
-| `insert(list, i, value)` | インデックス i に要素を挿入 |
+| `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
+| `sort!(list)` / `sort!(list, comp)` | リストをその場でソートする（ミューテーション操作） |
+| `insert(list, i, val)` | インデックス i に要素を挿入 |
 | `remove_at(list, i)` | インデックス i の要素を削除して返す |
 | `items(map)` | (キー, 値) タプルのリストを返す |
 | `remove(map, key)` | 指定したキーのエントリを削除 |
@@ -56,6 +59,17 @@
 | `symmetric_difference(set, set)` | 2つのセットの対称差を返す |
 | `is_subset(set, set)` | 最初のセットが2番目の部分集合かを返す |
 | `is_superset(set, set)` | 最初のセットが2番目の上位集合かを返す |
+
+### イテレータ
+
+| 関数 | 説明 |
+|------|------|
+| `iter(collection)` | List、Set、Map から遅延イテレータを作成 |
+| `next(iter)` | 次の要素を `Option<T>` として返す。使い切った場合は `None` |
+| `to_list(iter)` | イテレータの残りの要素をすべて `List<T>` に収集 |
+| `filter(iter, pred)` | 述語にマッチする要素のみを返す遅延イテレータを返す |
+| `map(iter, fn)` | 各要素を変換する遅延イテレータを返す |
+| `take(iter, n)` | 最大 n 要素を返す遅延イテレータを返す |
 
 ### [文字列操作](builtins-string.md)
 
@@ -75,9 +89,9 @@
 | `reverse(string)` | 文字列を逆順にする |
 | `split(string, delimiter)` | 文字列を分割してリストを返す |
 | `join(list, sep)` | リストの文字列をセパレータで結合 |
-| `to_int(string)` / `to_float(string)` / `to_str(v)` | 型変換 |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換 |
 
-→ 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
+-> 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
 
 ---
 
@@ -131,7 +145,7 @@ print(x)   # Some(42)
 
 ## length
 
-**シグネチャ:** `length(value: List<T> | Map<K, V> | Set<T> | str) -> int`
+**シグネチャ:** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 リスト・マップ・セットの要素数、または文字列の UTF-8 文字数を返します。バイト長が必要な場合は `byte_len()` を使用してください。
 
@@ -147,7 +161,7 @@ print(length("あいう"))           # 3 (UTF-8 文字数)
 
 ## has_key
 
-**シグネチャ:** `has_key(map: Map<K, V>, key: K) -> bool`
+**シグネチャ:** `has_key(m: Map<K, V>, key: K) -> bool`
 
 マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
 
@@ -161,7 +175,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 ## add
 
-**シグネチャ:** `add(set: Set<T>, value: T)`
+**シグネチャ:** `add(s: Set<T>, value: T)`
 
 セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
 
@@ -177,7 +191,7 @@ print(length(s))     # 5
 
 ## remove
 
-**シグネチャ:** `remove(set: Set<T>, value: T)`
+**シグネチャ:** `remove(s: Set<T>, value: T)`
 
 セットから要素を削除します。UFCS記法も使用可能です。
 
@@ -191,19 +205,20 @@ print(2 in s)     # false
 
 ## range
 
-**シグネチャ:** `range(count: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
+**シグネチャ:** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
 整数のリストを生成します。
 
 | 形式 | 生成される値 |
 |------|------------|
-| `range(count)` | `[0, 1, ..., count-1]` |
+| `range(n)` | `[0, 1, ..., n-1]` |
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
 | `range(start, end, step)` | `[start, start+step, start+2*step, ...]` (`end` は含まない) |
 
 - `step > 0` の場合、`start` から昇順に `end` に向かって生成します。
 - `step < 0` の場合、`start` から降順に `end` に向かって生成します。
 - `step == 0` の場合、ランタイムエラーになります。
+- 範囲が空の場合（例: `range(0, 10, -1)`）、空リストを返します。
 
 ```python
 print(range(3))           # [0, 1, 2]
@@ -237,7 +252,7 @@ exit(1)        # エラー終了
 
 **シグネチャ:** `args() -> List<str>`
 
-スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません — スクリプトパスの後の引数のみです。
+スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません -- スクリプトパスの後の引数のみです。
 
 ```python
 # 実行: ry script.ry hello world
@@ -273,7 +288,7 @@ sleep(0)       # 即座に返る
 
 プロジェクトルート（`package.toml` が存在するディレクトリ）に `.env` ファイルがある場合、起動時に自動的に読み込まれます。既存の環境変数は `.env` の値で上書きされません。
 
-> **警告:** `.env` ファイルにはパスワードや API キーなどの機密情報を含めるのが一般的です。誤ってバージョン管理システム（例: Git）にコミットしないよう、`.gitignore` などで除外してください。
+> **セキュリティ上の注意:** `.env` ファイルには通常シークレット（API キー、データベースパスワード、トークン等）が含まれます。`.env` をバージョン管理にコミット**しないでください**（`.gitignore` 等に追加してください）。その内容は機密情報として扱ってください。
 
 ```python
 # 1引数: Option<str> を返す
@@ -292,7 +307,7 @@ print(port)   # PORT 未設定なら "8080"
 ### `.env` ファイルの書式
 
 ```env
-# コメント
+# コメントは # で始まる
 DATABASE_URL=postgres://localhost/mydb
 API_KEY="secret-key-123"
 EMPTY_VALUE=
@@ -372,9 +387,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 
 ## take
 
-**シグネチャ:** `take(list: List<T>, count: int) -> List<T>`
+**シグネチャ:** `take(list: List<T>, n: int) -> List<T>`
 
-先頭 `count` 要素の新しいリストを返します。`count` がリストの長さを超える場合はリスト全体のコピーを返します。`count <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -431,7 +446,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comparator: fn(T, T) -> bool) -> List<T>`
+**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
 ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。UFCS記法も使用可能です。
 
@@ -448,7 +463,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comparator: fn(T, T) -> bool)`
+**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
 
 リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS記法も使用可能です。
 
@@ -523,7 +538,7 @@ print(last([10, 20, 30]))   # Some(30)
 
 ## get (Map)
 
-**シグネチャ:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default_value: V) -> V`
+**シグネチャ:** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
 
 2引数形式はキーの値を `Option<V>` として返します。3引数形式はキーの値またはデフォルト値を返します。
 
@@ -532,4 +547,54 @@ m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**シグネチャ:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+コレクションから遅延イテレータを作成します。イテレータはデータをコピーせず、元のコレクションを参照します。UFCS記法も使用可能です。
+
+- `List<T>` と `Set<T>` の場合、要素型は `T`。
+- `Map<K, V>` の場合、要素型はタプル `(K, V)`。
+
+```python
+xs = [1, 2, 3]
+it = xs.iter()           # Iterator<int>
+ys = it.to_list()        # [1, 2, 3]
+
+m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**シグネチャ:** `next(iter: Iterator<T>) -> Option<T>`
+
+イテレータから次の要素を `Option<T>` として返します。イテレータが使い切られた場合は `None` を返します。呼び出しごとにイテレータの内部状態が進みます。UFCS記法も使用可能です。
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**シグネチャ:** `to_list(iter: Iterator<T>) -> List<T>`
+
+イテレータの残りの要素をすべて新しいリストに収集します。UFCS記法も使用可能です。
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```

@@ -57,6 +57,7 @@
 ```ry
 print(regex_match("[a-z]+", "hello"))   # true
 print(regex_match("[0-9]+", "hello"))   # false
+print(regex_match("[a-zA-Z_]\\w*", "my_var"))  # true
 ```
 
 ### regex_search

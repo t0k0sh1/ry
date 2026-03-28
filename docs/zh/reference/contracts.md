@@ -1,14 +1,14 @@
 [English](../../reference/contracts.md) | [日本語](../../ja/reference/contracts.md) | [繁體中文](contracts.md)
 
-# 契約式設計 (Design by Contract)
+# 契约式设计 (Design by Contract)
 
-Ry 支援 Eiffel 風格的契約式設計，包含前置條件（`require`）、後置條件（`ensure`）和結構體不變量（`invariant`）。契約違反時，程式將以 `exit(1)` 終止。
+Ry 支持 Eiffel 风格的契约式设计，包含前置条件（`require`）、后置条件（`ensure`）和结构体不变量（`invariant`）。契约违反时，程序将以 `exit(1)` 终止。
 
 ---
 
-## 前置條件 (`require`)
+## 前置条件 (`require`)
 
-前置條件在函式進入時檢查。它們指定函式被正確呼叫所需滿足的條件。
+前置条件在函数入口处检查。它们指定函数被正确调用所需满足的条件。
 
 ```python
 fn deposit(amount: int, balance: int) -> int:
@@ -19,20 +19,20 @@ fn deposit(amount: int, balance: int) -> int:
     return new_balance
 ```
 
-若前置條件未滿足，程式將輸出以下訊息並終止：
+若前置条件未满足，程序将输出以下消息并终止：
 ```
 Contract violation: require failed in deposit()
 ```
 
 ---
 
-## 後置條件 (`ensure`)
+## 后置条件 (`ensure`)
 
-後置條件在每個 `return` 之前檢查。它們指定函式對其回傳值的保證。
+后置条件在每个 `return` 之前检查。它们指定函数对其返回值的保证。
 
-### 變數綁定
+### 变量绑定
 
-`ensure` 需要一個變數名來綁定回傳值。此變數可在後置條件表達式中使用。
+`ensure` 需要一个变量名来绑定返回值。此变量可在后置条件表达式中使用。
 
 ```python
 fn abs(x: int) -> int:
@@ -43,7 +43,7 @@ fn abs(x: int) -> int:
     return x
 ```
 
-由於 Ry 的函式參數是不可變的，可以在 `ensure` 區塊中直接引用參數來與進入時的值比較：
+由于 Ry 的函数参数是不可变的，可以在 `ensure` 块中直接引用参数来与入口值比较：
 
 ```python
 fn increment(x: int) -> int:
@@ -52,9 +52,9 @@ fn increment(x: int) -> int:
     return x + 1
 ```
 
-### 元組解構
+### 元组解构
 
-對於回傳元組的函式，可以用逗號分隔指定多個變數名：
+对于返回元组的函数，可以用逗号分隔指定多个变量名：
 
 ```python
 fn divide(a: int, b: int) -> (int, int):
@@ -64,11 +64,11 @@ fn divide(a: int, b: int) -> (int, int):
     return (a // b, a % b)
 ```
 
-綁定變數的數量必須與元組元素數量一致。
+绑定变量的数量必须与元组元素数量一致。
 
 ---
 
-## 組合範例
+## 组合示例
 
 ```python
 fn deposit(amount: int, balance: int) -> int:
@@ -84,11 +84,11 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## 結構體不變量 (`invariant`)
+## 结构体不变量 (`invariant`)
 
-不變量是結構體實例必須始終滿足的條件。在以下時機檢查：
-- 建構時
-- 每次欄位賦值後
+不变量是结构体实例必须始终满足的条件。在以下时机检查：
+- 构造时
+- 每次字段赋值后
 
 ```python
 record BankAccount:
@@ -105,11 +105,11 @@ a.balance = -1                  # Contract violation: invariant failed
 
 ---
 
-## 規則
+## 规则
 
-- `require` 和 `ensure` 區塊為選用，寫在函式本體之前。
-- 同時使用時，`require` 必須在 `ensure` 之前。
-- `ensure` 需要變數綁定來命名回傳值（例：`ensure v:`）。
-- 對於元組回傳值，可指定多個綁定變數（例：`ensure q, r:`）。
-- `invariant` 寫在 `record` 定義的末尾，所有欄位宣告之後。
-- 所有契約違反以 `exit(1)` 終止程式並輸出診斷訊息。
+- `require` 和 `ensure` 块为可选，写在函数体之前。
+- 同时使用时，`require` 必须在 `ensure` 之前。
+- `ensure` 需要变量绑定来命名返回值（例：`ensure v:`）。
+- 对于元组返回值，可指定多个绑定变量（例：`ensure q, r:`）。
+- `invariant` 写在 `record` 定义的末尾，所有字段声明之后。
+- 所有契约违反以 `exit(1)` 终止程序并输出诊断消息。

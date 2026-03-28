@@ -2,34 +2,35 @@
 
 # 指令
 
-指令是可以附加到宣告上的編譯時元資料。使用 `@name` 語法。
+指令是可以附加到声明上的编译时元数据注解。使用 `@name` 语法，类似于 Java 注解。
 
-## 語法
+## 语法
 
 ```
 @name
 @name(key=value, ...)
 ```
 
-指令放置在目標宣告之前。可以堆疊多個指令。
+指令放置在目标声明之前。可以堆叠多个指令。
 
-## 支援的目標
+## 支持的目标
 
-指令可以套用到以下宣告:
+指令可以应用到以下声明:
 
-- `fn` - 函式定義
-- `record` - 結構體定義
-- 變數宣告（使用 `@const` 或一般賦值）
-- `record` 定義內的欄位
-- `it` - 測試案例定義（僅限 `@each` 和 `@property`）
+- `fn` - 函数定义
+- `record` - 结构体定义
+- 变量声明（使用 `@const` 或普通赋值）
+- `record` 定义内的字段
+- `for` - 仅限计数循环，用于 `@parallel`
+- `it` - 测试用例定义（仅限 `@each` 和 `@property`）
 
-## 內建指令
+## 内建指令
 
 ### `@deprecated`
 
-將宣告標記為已棄用。當已棄用的實體被使用（呼叫、參照或存取）時，會發出編譯時警告。
+将声明标记为已弃用。当已弃用的实体被使用（调用、引用或访问）时，会发出编译时警告。
 
-**套用於函式:**
+**应用于函数:**
 
 ```
 @deprecated
@@ -39,7 +40,7 @@ fn old_function() -> int:
 print(old_function())   # warning: 'old_function' is deprecated
 ```
 
-**套用於型別:**
+**应用于类型:**
 
 ```
 @deprecated
@@ -51,7 +52,7 @@ record OldPoint:
 p = OldPoint(1, 2)  # warning: 'OldPoint' is deprecated
 ```
 
-**套用於變數:**
+**应用于变量:**
 
 ```
 @deprecated
@@ -61,7 +62,7 @@ old_value = 99
 print(old_value)         # warning: 'old_value' is deprecated
 ```
 
-**套用於欄位:**
+**应用于字段:**
 
 ```
 record Config:
@@ -72,27 +73,27 @@ record Config:
 @const
 c = Config(1, 2)
 print(c.old_setting)     # warning: 'Config.old_setting' is deprecated
-print(c.new_setting)     # 無警告
+print(c.new_setting)     # no warning
 ```
 
 ### `@const`
 
-將變數標記為不可變。使用 `@const` 宣告的變數在初始化後無法重新賦值。未使用 `@const` 時，變數預設為可變。
+将变量标记为不可变。使用 `@const` 声明的变量在初始化后无法重新赋值。未使用 `@const` 时，变量默认为可变。
 
 ```
 @const
 x = 42
-# x = 10   # 錯誤：無法重新賦值 @const 變數
+# x = 10   # Error: cannot reassign @const variable
 ```
 
-**搭配型別標註:**
+**搭配类型注解:**
 
 ```
 @const
 name: str = "hello"
 ```
 
-**元組解構:**
+**元组解构:**
 
 ```
 @const
@@ -101,9 +102,9 @@ a, b = (1, 2)
 
 ### `@native`
 
-宣告由執行環境（內建）提供實作的函式。該函式不能有函式本體。
+声明由运行时（内建）提供实现的函数。该函数不能有函数体。
 
-**基本語法:**
+**基本语法:**
 
 ```
 @native
@@ -112,7 +113,7 @@ fn contains(string: str, substring: str) -> bool
 print(contains("hello world", "world"))  # true
 ```
 
-**運算子多載:**
+**运算符重载:**
 
 ```
 @native
@@ -121,7 +122,7 @@ fn operator+(a: str, b: str) -> str
 print("hello" + " world")  # hello world
 ```
 
-**與 UFCS 搭配使用:**
+**与 UFCS 搭配使用:**
 
 ```
 @native
@@ -130,15 +131,26 @@ fn to_upper(string: str) -> str
 print("hello".to_upper())  # HELLO
 ```
 
-**參數數量驗證:**
+**参数数量验证:**
 
-當 `@native` 宣告包含型別簽名時，編譯器會在呼叫處驗證參數數量。支援重載函式（例如：1、2、3 個參數的 `range`），只要任一重載匹配即通過驗證。
+当 `@native` 声明包含类型签名时，编译器会在调用处验证参数数量。支持重载函数（例如：1、2、3 个参数的 `range`），只要任一重载匹配即通过验证。
 
-**標準函式庫宣告 (`core/`):**
+```
+@native
+fn range(n: int) -> List<int>
+@native
+fn range(start: int, end: int) -> List<int>
 
-`core/` 目錄包含所有內建函式的 `@native` 宣告，按類別組織：
+print(length(range(5)))       # OK: matches 1-arg overload
+print(length(range(1, 10)))   # OK: matches 2-arg overload
+print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
+```
 
-| 檔案 | 內容 |
+**标准库声明 (`core/`):**
+
+`core/` 目录包含所有内建函数的 `@native` 声明，按类别组织：
+
+| 文件 | 内容 |
 |---|---|
 | `core/builtins.ry` | `print`, `length`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism`, `sleep` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
@@ -148,85 +160,95 @@ print("hello".to_upper())  # HELLO
 | `core/set.ry` | `add`, `remove`, `union`, `intersection`, `difference`, `symmetric_difference`, `is_subset`, `is_superset` |
 | `core/higher_order.ry` | `filter`, `map`, `reduce`, `fold`, `any`, `all`, `sum`, `min`, `max` |
 
-當 `ry` 執行檔附近存在 `core/` 目錄時，這些檔案會作為前導自動載入。前導機制使得內建函式呼叫時的參數數量驗證生效。
+当 `ry` 可执行文件附近存在 `core/` 目录时，这些文件会作为前置自动加载。前置机制使得内建函数调用时的参数数量验证生效。
 
-**限制事項:**
-- `@native` 函式不能有本體（簽名後不能加 `:`）。
-- 加上本體會導致解析錯誤: `@native function must not have a body`。
-- 宣告的函式必須對應到現有的內建函式，否則在編譯時會發生錯誤。
+**约束:**
+- `@native` 函数不能有函数体（签名后不能加 `:`）。
+- 提供函数体会导致解析错误: `@native function must not have a body`。
+- 声明的函数必须对应到现有的内建函数，否则在编译时会发生错误。
 
-**未來擴充方向:**
-- `@native("libfoo.so")` — 綁定外部共享函式庫的 FFI。
+**未来扩展方向:**
+- `@native("libfoo.so")` — 绑定外部共享库的 FFI。
+
+### `@parallel`
+
+将计数 `for` 循环标记为并行执行。
+
+```
+@parallel
+for i in range(8):
+    work(i)
+```
+
+**支持的目标:**
+
+- 仅限 `for` 语句
+
+**约束:**
+
+- 一个 `for` 语句上只允许使用一个 `@parallel` 指令。
+- 可迭代对象必须是 `range(...)` 或整数 `..` 范围。
+- 不支持解构迭代。
+- 禁止对外部可变变量赋值。
+- v1 中禁止在循环体内使用 `break`、`continue`、索引赋值和字段赋值。
 
 ### `@each`
 
-啟用參數化測試，以不同參數多次執行 `it` 區塊。
+启用参数化测试，以不同参数多次运行 `it` 块。
 
-**語法:**
+**语法:**
 
 ```
-@each([(引數1, 引數2, ...), ...])
-it("描述 {0} 和 {1}", fn(param1: 型別, param2: 型別):
-    # 測試主體
+@each([(arg1, arg2, ...), ...])
+it("description with {0} and {1}", fn(param1: type, param2: type):
+    # test body
 )
 ```
 
-**支援的目標:** 僅限 `it` 呼叫
+**支持的目标:** 仅限 `it` 调用
 
-**限制事項:**
-- 引數必須是元組列表
-- 元組的元素數量必須與 lambda 參數數量匹配
-- 描述字串中的 `{0}`, `{1}`, ... 會被替換為參數的字串表示
+**约束:**
+- 参数必须是元组列表
+- 元组的元素数量必须与 lambda 参数数量匹配
+- 描述字符串中的 `{0}`, `{1}`, ... 会被替换为参数的字符串表示
 
 ### `@property`
 
-啟用基於屬性的測試，為 `it` 區塊生成隨機輸入。
+启用基于属性的测试，为 `it` 块生成随机输入。
 
-**語法:**
+**语法:**
 
 ```
 @property(count=100)
-it("屬性名稱", fn(a: int, b: int):
-    # 使用隨機值的測試主體
+it("property name", fn(a: int, b: int):
+    # test body with random values
 )
 ```
 
-**支援的目標:** 僅限 `it` 呼叫
+**支持的目标:** 仅限 `it` 调用
 
-**參數:**
+**参数:**
 
-| 參數 | 型別 | 預設值 | 說明 |
+| 参数 | 类型 | 默认值 | 说明 |
 |-----------|------|---------|-------------|
-| `count` | int | 100 | 隨機試驗次數 |
+| `count` | int | 100 | 随机试验次数 |
 
-**支援的參數型別:**
+**支持的参数类型:**
 
-| 型別 | 範圍 |
+| 类型 | 范围 |
 |------|-------|
 | `int` | -1000 到 1000 |
 | `float` | -1000.0 到 1000.0 |
 | `bool` | true 或 false |
-| `str` | 隨機 ASCII、0-20 字元 |
+| `str` | 随机 ASCII、0-20 字符 |
 
-失敗時會顯示反例（導致失敗的參數值）。
-
-### 參數（未來擴充）
-
-指令支援可選的參數語法，為未來擴充做準備:
-
-```
-@deprecated(reason="use new_api instead")
-fn old_api() -> int:
-    return 0
-```
-
-目前，參數會被解析但不會被 `@deprecated` 指令使用。
+失败时会显示反例（导致失败的参数值）。
 
 ### `@inline`
 
-為 LLVM 優化器提供內聯提示。預設情況下，標記函數進行積極內聯。
+为 LLVM 优化器提供内联提示。默认情况下，标记函数进行积极内联。
 
-**基本用法（始終內聯）：**
+**基本用法（始终内联）：**
 
 ```
 @inline
@@ -234,7 +256,7 @@ fn add(a: int, b: int) -> int:
     return a + b
 ```
 
-**帶 mode 參數：**
+**带 mode 参数：**
 
 ```
 @inline(mode="always")
@@ -252,20 +274,32 @@ fn cold_error_handler(msg: str):
 
 **模式：**
 
-| 模式 | LLVM 屬性 | 說明 |
+| 模式 | LLVM 属性 | 说明 |
 |------|----------|------|
-| `always`（預設） | `AlwaysInline` | 始終內聯此函數 |
-| `hint` | `InlineHint` | 向優化器建議內聯 |
-| `never` | `NoInline` | 禁止內聯此函數 |
+| `always`（默认） | `AlwaysInline` | 始终内联此函数 |
+| `hint` | `InlineHint` | 向优化器建议内联 |
+| `never` | `NoInline` | 禁止内联此函数 |
 
-**限制：**
-- `@inline` 不能與 `@native` 一起使用（native 函數沒有可內聯的函數體）。
-- 未知的 mode 值會導致編譯錯誤。
+**约束：**
+- `@inline` 不能与 `@native` 一起使用（native 函数没有可内联的函数体）。
+- 未知的 mode 值会导致编译错误。
 
-## 注意事項
+### 参数（未来扩展）
 
-- 已棄用的實體仍然正常運作，僅會發出警告。
-- 警告在使用點發出，不在定義點發出。
-- 定義已棄用的實體但不使用它，不會產生警告。
-- 未知的指令名稱會導致解析錯誤。
-- 在不支援的目標（如 `if`、`while`）上使用指令會導致解析錯誤。
+指令支持可选的参数语法，为未来扩展做准备:
+
+```
+@deprecated(reason="use new_api instead")
+fn old_api() -> int:
+    return 0
+```
+
+目前，参数会被解析但不会被 `@deprecated` 指令使用。
+
+## 注意事项
+
+- 已弃用的实体仍然正常运作，仅会发出警告。
+- 警告在使用点发出，不在定义点发出。
+- 定义已弃用的实体但不使用它，不会产生警告。
+- 未知的指令名称会导致解析错误。
+- 在不支持的目标（如 `if`、`while`）上使用指令会导致解析错误。`@parallel` 是唯一支持在 `for` 上使用的指令。

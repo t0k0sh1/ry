@@ -2,7 +2,7 @@
 
 # ディレクティブ
 
-ディレクティブは宣言に付与できるコンパイル時メタデータです。`@name` 構文を使用します。
+ディレクティブは宣言に付与できるコンパイル時メタデータアノテーションです。Java のアノテーションと同様の `@name` 構文を使用します。
 
 ## 構文
 
@@ -21,7 +21,7 @@
 - `record` - 構造体定義
 - 変数宣言（`@const` 付きまたは通常代入）
 - `record` 定義内のフィールド
-- `for` - `@parallel` のみ対応
+- `for` - カウント付きループのみ（`@parallel` 用）
 - `it` - テストケース定義（`@each` / `@property` のみ）
 
 ## 組み込みディレクティブ
@@ -135,6 +135,17 @@ print("hello".to_upper())  # HELLO
 
 `@native` 宣言に型シグネチャが含まれている場合、コンパイラは呼び出し時に引数の数を検証します。オーバーロードされた関数（例: 1, 2, 3 引数の `range`）もサポートされ、いずれかのオーバーロードにマッチすれば検証を通過します。
 
+```
+@native
+fn range(n: int) -> List<int>
+@native
+fn range(start: int, end: int) -> List<int>
+
+print(length(range(5)))       # OK: 1引数のオーバーロードにマッチ
+print(length(range(1, 10)))   # OK: 2引数のオーバーロードにマッチ
+print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
+```
+
 **標準ライブラリ宣言 (`core/`):**
 
 `core/` ディレクトリにはすべての組み込み関数の `@native` 宣言がカテゴリ別に格納されています:
@@ -161,7 +172,7 @@ print("hello".to_upper())  # HELLO
 
 ### `@parallel`
 
-counted `for` ループを並列実行対象としてマークします。
+カウント付き `for` ループを並列実行対象としてマークします。
 
 ```
 @parallel
@@ -176,7 +187,7 @@ for i in range(8):
 **制約事項:**
 
 - `for` 文には 1 つの `@parallel` だけ指定できます。
-- 反復対象は `range(...)` または整数 `..` に限られます。
+- 反復対象は `range(...)` または整数 `..` レンジに限られます。
 - 分解代入付きの反復は未対応です。
 - 外側の可変変数への代入は拒否されます。
 - v1 ではループ本体内の `break`、`continue`、インデックス代入、フィールド代入は拒否されます。
@@ -188,8 +199,8 @@ for i in range(8):
 **構文:**
 
 ```
-@each([(引数1, 引数2, ...), ...])
-it("{0} と {1} の説明", fn(param1: 型, param2: 型):
+@each([(arg1, arg2, ...), ...])
+it("description with {0} and {1}", fn(param1: type, param2: type):
     # テスト本体
 )
 ```
@@ -209,7 +220,7 @@ it("{0} と {1} の説明", fn(param1: 型, param2: 型):
 
 ```
 @property(count=100)
-it("プロパティ名", fn(a: int, b: int):
+it("property name", fn(a: int, b: int):
     # ランダム値によるテスト本体
 )
 ```
@@ -233,23 +244,11 @@ it("プロパティ名", fn(a: int, b: int):
 
 失敗時は反例（失敗を引き起こしたパラメータ値）が表示されます。
 
-### パラメータ（将来拡張）
-
-ディレクティブは将来の拡張に備え、パラメータ構文をサポートしています:
-
-```
-@deprecated(reason="use new_api instead")
-fn old_api() -> int:
-    return 0
-```
-
-現時点では、パラメータはパースされますが `@deprecated` ディレクティブでは使用されません。
-
 ### `@inline`
 
-LLVM オプティマイザにインライン化のヒントを与えます。デフォルトでは、関数を常にインライン化するよう指示します。
+LLVM オプティマイザにインライン化のヒントを与えます。デフォルトでは、関数を積極的にインライン化するよう指示します。
 
-**基本的な使い方（常にインライン化）：**
+**基本的な使い方（常にインライン化）:**
 
 ```
 @inline
@@ -257,7 +256,7 @@ fn add(a: int, b: int) -> int:
     return a + b
 ```
 
-**mode パラメータ付き：**
+**mode パラメータ付き:**
 
 ```
 @inline(mode="always")
@@ -273,7 +272,7 @@ fn cold_error_handler(msg: str):
     print("ERROR: " + msg)
 ```
 
-**モード：**
+**モード:**
 
 | モード | LLVM 属性 | 説明 |
 |--------|----------|------|
@@ -281,9 +280,21 @@ fn cold_error_handler(msg: str):
 | `hint` | `InlineHint` | オプティマイザにインライン化を提案する |
 | `never` | `NoInline` | インライン化を禁止する |
 
-**制約：**
+**制約:**
 - `@inline` は `@native` と併用できません（native 関数にはインライン化するボディがありません）。
 - 不明な mode 値はコンパイルエラーになります。
+
+### パラメータ（将来拡張）
+
+ディレクティブは将来の拡張に備え、パラメータ構文をサポートしています:
+
+```
+@deprecated(reason="use new_api instead")
+fn old_api() -> int:
+    return 0
+```
+
+現時点では、パラメータはパースされますが `@deprecated` ディレクティブでは使用されません。
 
 ## 注意事項
 

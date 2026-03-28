@@ -1,117 +1,117 @@
 [English](../../reference/packages.md) | [日本語](../../ja/reference/packages.md) | [繁體中文](packages.md)
 
-# 套件參考
+# 包参考
 
 ## 概述
 
-Ry 使用套件系統來組織程式碼。**套件**可以是單一的 `.ry` 檔案，或是包含多個 `.ry` 檔案的目錄。使用 `from` 陳述式匯入套件。
+Ry 使用包系统来组织代码。**包**可以是单个 `.ry` 文件，或是包含多个 `.ry` 文件的目录。使用 `from` 语句导入包。
 
-`std` 套件（標準函式庫）會自動匯入到每個程式中。
+`std` 包（标准库）会自动导入到每个程序中。
 
 ---
 
-## 匯入語法
+## 导入语法
 
-### 匯入全部定義
+### 导入全部定义
 
 ```python
 from math
 ```
 
-匯入套件內的所有函式與型別。
+导入包内的所有函数与类型。
 
-### 選擇性匯入
-
-```python
-from math import add
-```
-
-僅匯入指定的定義。
-
-### 多重選擇性匯入
+### 选择性导入
 
 ```python
-from math import add, sub
+from math import sqrt
 ```
 
-以逗號分隔選擇性匯入多個定義。
+仅导入指定的定义。
+
+### 多重选择性导入
+
+```python
+from math import sqrt, PI
+```
+
+以逗号分隔选择性导入多个定义。
 
 ---
 
-## 套件解析
+## 包解析
 
-以點號分隔的套件名稱按以下方式解析：
+以点号分隔的包名称按以下方式解析：
 
-| 匯入陳述式 | 解析結果 |
+| 导入语句 | 解析结果 |
 |---|---|
-| `from math` | `math/` 目錄（套件）或 `math.ry` 檔案 |
-| `from utils.math` | `utils/math/` 目錄或 `utils/math.ry` 檔案 |
-| `from str` | `str/` 目錄或 `str.ry` 檔案 |
+| `from math` | `math/` 目录（包）或 `math.ry` 文件 |
+| `from utils.math` | `utils/math/` 目录或 `utils/math.ry` 文件 |
+| `from str` | `str/` 目录或 `str.ry` 文件 |
 
-### 解析順序
+### 解析顺序
 
-對於每個搜尋路徑：
-1. **目錄** (`{path}/`) — 若存在，載入目錄內的所有 `.ry` 檔案（套件）
-2. **檔案** (`{path}.ry`) — 單一檔案（向後相容）
+对于每个搜索路径：
+1. **目录** (`{path}/`) — 若存在，加载目录内的所有 `.ry` 文件（包）
+2. **文件** (`{path}.ry`) — 单个文件（向后兼容）
 
-### 目錄套件
+### 目录包
 
-當套件解析為目錄時：
-- 目錄內的所有 `.ry` 檔案會自動載入
-- 以 `_` 開頭的檔案會被排除
-- 不需要特殊的入口檔案（如 `__init__.py`）
-- 目錄內檔案中定義的所有函式與型別都會被匯出
+当包解析为目录时：
+- 目录内的所有 `.ry` 文件会自动加载
+- 以 `_` 开头的文件会被排除
+- 不需要特殊的入口文件（如 `__init__.py`）
+- 目录内文件中定义的所有函数与类型都会被导出
 
-### 私有符號
+### 私有符号
 
-名稱以 `_`（底線）開頭的定義為套件內部的私有符號，無法被匯入：
+名称以 `_`（下划线）开头的定义为包内部的私有符号，无法被导入：
 
-- 萬用匯入（`from pkg`）會自動排除 `_` 前綴的符號
-- 具名匯入（`from pkg import _helper`）會產生編譯錯誤
+- 通配导入（`from pkg`）会自动排除 `_` 前缀的符号
+- 具名导入（`from pkg import _helper`）会产生编译错误
 
 ```python
 # mylib/internal.ry
-fn _helper() -> int:     # 私有 — 無法匯入
+fn _helper() -> int:     # 私有 — 无法导入
     return 42
-fn public_api() -> int:  # 公開 — 可匯入
+fn public_api() -> int:  # 公开 — 可导入
     return _helper()
 ```
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
 ```python
-from mypackage          # 匯入 add, sub, concat
-from mypackage import add   # 僅匯入 add
+from mypackage          # 导入 add, sub, concat
+from mypackage import add   # 仅导入 add
 ```
 
 ---
 
-## 標準函式庫 (`std`)
+## 标准库 (`std`)
 
-`std` 套件會自動匯入到每個程式中。提供的功能：
-- 內建函式（`print`, `length`, `range` 等）
-- 字串函式（`contains`, `find`, `replace` 等）
-- 型別轉換函式（`to_int`, `to_float`, `to_str`）
-- 集合函式（`map`, `filter`, `sort` 等）
+`std` 包会自动导入到每个程序中。提供的功能：
+- 内建函数（`print`, `length`, `range` 等）
+- 字符串函数（`contains`, `find`, `replace` 等）
+- 类型转换函数（`to_int`, `to_float`, `to_str`）
+- 集合函数（`map`, `filter`, `sort` 等）
 
-### 子套件
+### 子包
 
-以下子套件需要明確匯入：
+以下子包需要明确导入：
 
-| 套件 | 說明 |
+| 包 | 说明 |
 |------|------|
-| [`math`](math.md) | 數學常數與函式 |
-| [`io`](io.md) | 檔案 I/O、標準輸入、位元組轉換 |
+| [`math`](math.md) | 数学常量与函数 |
+| [`io`](io.md) | 文件 I/O、标准输入、字节转换 |
 
 ```python
 from math import sqrt, PI, sin
 ```
 
-也可以直接從標準函式庫的套件中明確匯入特定定義：
+也可以直接从标准库的包中明确导入特定定义：
 
 ```python
 from str import contains
@@ -119,62 +119,65 @@ from str import contains
 
 ### RY_HOME
 
-標準函式庫安裝於 `$RY_HOME/lib/std/`。`RY_HOME` 的預設值為 `~/.ry`。
+标准库安装于 `$RY_HOME/lib/std/`。`RY_HOME` 的默认值为 `~/.ry`。
 
 ```bash
-export RY_HOME="$HOME/.ry"   # 預設值
+export RY_HOME="$HOME/.ry"   # default
 ```
 
 ### RY_ENV
 
-`RY_ENV` 環境變數控制執行時環境模式。也可以使用 `--env=<value>` CLI 旗標。
+`RY_ENV` 环境变量控制运行时环境模式。也可以使用 `--env=<value>` CLI 标志。
 
-| 值 | 別名 | `.env` 載入 | lib 搜尋 |
+| 值 | 别名 | `.env` 加载 | lib 搜索 |
 |---|------|-----------|---------|
-| `prod` | `production` | 停用 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
-| `dev` | `development` | `.env.dev` → `.env` | 與 `prod` 相同 |
-| `test` | — | `.env.test` → `.env` | 與 `prod` 相同 |
-| `staging` | — | `.env.staging` → `.env` | 與 `prod` 相同 |
-| `internal` | — | `.env.internal` → `.env` | 僅 `exe/../lib` → `exe/lib`（跳過 `$RY_HOME`） |
-| （未設定）（預設） | — | 僅 `.env` | 與 `prod` 相同 |
+| `prod` | `production` | 禁用 | 仓库构建的项目覆盖 → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | 与 `prod` 相同 |
+| `test` | — | `.env.test` → `.env` | 与 `prod` 相同 |
+| `staging` | — | `.env.staging` → `.env` | 与 `prod` 相同 |
+| `internal` | — | `.env.internal` → `.env` | 仓库构建的项目覆盖 → `exe/../lib` → `exe/lib`（跳过 `$RY_HOME`） |
+| （未设置）（默认） | — | 仅 `.env` | 与 `prod` 相同 |
 
-別名會自動解析為正規形式。例如 `RY_ENV=production` 會被正規化為 `prod`。
+别名会自动解析为规范形式。例如 `RY_ENV=production` 会被规范化为 `prod`。
 
-在 `prod` 模式下，出於安全考量不會載入 `.env` 檔案。正式環境的機密資訊應透過基礎架構級別的環境變數管理（CI/CD、密鑰管理器等）來管理。
+在 `prod` 模式下，出于安全考虑不会加载 `.env` 文件——生产环境的机密信息应通过基础设施级别的环境变量管理（CI/CD、密钥管理器等）。
 
-其他模式下，先載入 `.env.<環境名>`（若存在），再載入 `.env`。由於不會覆蓋已存在的環境變數，環境專屬的值會優先生效。
+其他模式下，先加载 `.env.<env>`（若存在），再加载 `.env`。由于不会覆盖已存在的环境变量，环境专属的值会优先生效。
 
 ```bash
-# 簡寫形式（建議）
+# 简写形式（推荐）
 RY_ENV=dev ./build/ry app.ry
 
-# 完整名稱（向下相容）
+# 完整名称（向后兼容）
 RY_ENV=development ./build/ry app.ry
 
-# CLI 旗標
+# CLI 标志
 ./build/ry --env=dev test
 
-# prod 模式：不載入 .env
+# prod 模式：不加载 .env
 RY_ENV=prod ./build/ry app.ry
 
-# 僅使用執行檔相對的 stdlib（用於 Ry 語言開發）
+# 开发 Ry 自身时的额外隔离
 RY_ENV=internal ./build/ry test
 ```
 
----
-
-## 搜尋路徑的優先順序
-
-1. 匯入來源檔案所在的目錄
-2. `$RY_HOME/lib`（標準函式庫位置）
-3. 執行檔相對的 `lib/` 目錄
-4. `RY_PATH` 環境變數中包含的路徑（以冒號分隔）
+当在 Ry 源码树中构建 `ry` 可执行文件时，它可以使用项目 `package.toml` 中的仓库本地 stdlib 覆盖。这使得仓库构建与签出的 `lib/std` 保持一致，即使 `~/.ry/lib/std` 版本较旧。已安装的 `ry` 二进制文件会忽略该覆盖，继续使用 `$RY_HOME/lib/std`。
 
 ---
 
-## RY_PATH 環境變數
+## 搜索路径优先级
 
-在 `RY_PATH` 中以冒號分隔指定目錄，即可新增至套件搜尋路徑。
+1. 导入来源文件所在的目录
+2. 使用仓库构建的 `ry` 时，来自当前 Ry 签出的仓库本地 stdlib 覆盖
+3. `$RY_HOME/lib`（标准库位置）
+4. 可执行文件相对的 `lib/` 目录
+5. `RY_PATH` 环境变量中包含的路径（以冒号分隔）
+
+---
+
+## RY_PATH 环境变量
+
+在 `RY_PATH` 中以冒号分隔指定目录，即可添加到包搜索路径。
 
 ```bash
 export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
@@ -182,32 +185,32 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 
 ---
 
-## 限制
+## 约束
 
-| 限制 | 詳細 |
+| 约束 | 详细 |
 |------|------|
-| 可使用的位置 | 僅限頂層（函式或區塊內不可） |
-| 重複匯入 | 自動跳過（不會產生錯誤） |
-| 循環匯入 | 編譯錯誤 |
+| 可使用的位置 | 仅限顶层（函数或块内不可） |
+| 重复导入 | 自动跳过（不会产生错误） |
+| 循环导入 | 编译错误 |
 
 ```python
-# 錯誤範例：在區塊內匯入
+# 错误示例：在块内导入
 fn main():
-    from math   # 錯誤：僅能在頂層匯入
+    from math   # Error: imports only allowed at top level
 
-# OK：多次匯入相同套件不會產生錯誤
+# OK：多次导入相同包不会产生错误
 from math
-from math   # 被跳過
+from math   # Skipped
 ```
 
 ---
 
-## 建立套件檔案
+## 创建包文件
 
-### 單一檔案套件
+### 单文件包
 
 ```python
-# math.ry
+# calc.ry
 fn add(a: int, b: int) -> int:
     return a + b
 
@@ -217,17 +220,17 @@ fn sub(a: int, b: int) -> int:
 
 ```python
 # main.ry
-from math import add, sub
+from calc import add, sub
 
 print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
 ```
 
-### 目錄套件
+### 目录包
 
 ```
 mylib/
-  math.ry
+  calc.ry
   string.ry
 ```
 

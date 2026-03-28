@@ -23,7 +23,7 @@ from math
 ### 選択インポート
 
 ```python
-from math import add
+from math import sqrt
 ```
 
 指定した定義のみをインポートします。
@@ -31,7 +31,7 @@ from math import add
 ### 複数選択インポート
 
 ```python
-from math import add, sub
+from math import sqrt, PI
 ```
 
 カンマ区切りで複数の定義を選択インポートします。
@@ -79,7 +79,7 @@ fn public_api() -> int:  # パブリック — インポート可能
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
@@ -131,11 +131,11 @@ export RY_HOME="$HOME/.ry"   # デフォルト
 
 | 値 | エイリアス | `.env` 読み込み | lib 探索 |
 |---|----------|---------------|---------|
-| `prod` | `production` | 無効 | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | 無効 | リポジトリビルド用プロジェクトオーバーライド → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
 | `dev` | `development` | `.env.dev` → `.env` | `prod` と同じ |
 | `test` | — | `.env.test` → `.env` | `prod` と同じ |
 | `staging` | — | `.env.staging` → `.env` | `prod` と同じ |
-| `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` のみ（`$RY_HOME` スキップ） |
+| `internal` | — | `.env.internal` → `.env` | リポジトリビルド用プロジェクトオーバーライド → `exe/../lib` → `exe/lib`（`$RY_HOME` スキップ） |
 | （未設定）（デフォルト） | — | `.env` のみ | `prod` と同じ |
 
 エイリアスは自動的に正規形に解決されます。例えば `RY_ENV=production` は `prod` に正規化されます。
@@ -157,18 +157,21 @@ RY_ENV=development ./build/ry app.ry
 # prod モード: .env は読み込まれない
 RY_ENV=prod ./build/ry app.ry
 
-# 実行ファイル相対の stdlib のみ使用（Ry 言語開発用）
+# Ry 自体の開発時の追加 isolation
 RY_ENV=internal ./build/ry test
 ```
+
+Ry のソースツリー内でビルドされた `ry` 実行バイナリは、プロジェクトの `package.toml` からリポジトリローカルの stdlib オーバーライドを使用できます。これにより、`~/.ry/lib/std` が古い場合でも、チェックアウトされた `lib/std` とリポジトリビルドの整合性が保たれます。インストール済みの `ry` バイナリはこのオーバーライドを無視し、`$RY_HOME/lib/std` を引き続き使用します。
 
 ---
 
 ## 検索パスの優先順位
 
 1. インポート元ファイルのディレクトリ
-2. `$RY_HOME/lib`（標準ライブラリの場所）
-3. 実行ファイル相対の `lib/` ディレクトリ
-4. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
+2. 現在の Ry チェックアウトからのリポジトリローカル stdlib オーバーライド（リポジトリビルドの `ry` 使用時）
+3. `$RY_HOME/lib`（標準ライブラリの場所）
+4. 実行ファイル相対の `lib/` ディレクトリ
+5. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
 
 ---
 
@@ -207,7 +210,7 @@ from math   # スキップされる
 ### 単一ファイルパッケージ
 
 ```python
-# math.ry
+# calc.ry
 fn add(a: int, b: int) -> int:
     return a + b
 
@@ -217,7 +220,7 @@ fn sub(a: int, b: int) -> int:
 
 ```python
 # main.ry
-from math import add, sub
+from calc import add, sub
 
 print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
@@ -227,7 +230,7 @@ print(sub(5, 3))   # 2
 
 ```
 mylib/
-  math.ry
+  calc.ry
   string.ry
 ```
 

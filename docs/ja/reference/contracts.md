@@ -19,7 +19,7 @@ fn deposit(amount: int, balance: int) -> int:
     return new_balance
 ```
 
-事前条件が満たされない場合、以下のメッセージとともにプログラムが終了します：
+事前条件が満たされない場合、以下のメッセージとともにプログラムが終了します:
 ```
 Contract violation: require failed in deposit()
 ```
@@ -43,7 +43,7 @@ fn abs(x: int) -> int:
     return x
 ```
 
-Ry の関数引数はイミュータブルなので、`ensure` ブロック内で引数を直接参照して入口時の値と比較できます：
+Ry の関数引数はイミュータブルなので、`ensure` ブロック内で引数を直接参照して入口時の値と比較できます:
 
 ```python
 fn increment(x: int) -> int:
@@ -54,7 +54,7 @@ fn increment(x: int) -> int:
 
 ### タプル展開
 
-タプルを返す関数では、カンマ区切りで複数の変数名を指定できます：
+タプルを返す関数では、カンマ区切りで複数の変数名を指定できます:
 
 ```python
 fn divide(a: int, b: int) -> (int, int):
@@ -86,7 +86,7 @@ fn deposit(amount: int, balance: int) -> int:
 
 ## 構造体の不変条件 (`invariant`)
 
-不変条件は構造体のインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます：
+不変条件は構造体のインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます:
 - 構築時
 - フィールド代入後
 
@@ -109,7 +109,7 @@ a.balance = -1                  # Contract violation: invariant failed
 
 - `require` と `ensure` ブロックはオプションで、関数本体の前に記述します。
 - 両方を使う場合、`require` は `ensure` の前に記述する必要があります。
-- `ensure` には戻り値をバインドする変数名が必要です（例：`ensure v:`）。
-- タプル戻り値の場合、複数のバインド変数を指定できます（例：`ensure q, r:`）。
+- `ensure` には戻り値をバインドする変数名が必要です（例: `ensure v:`）。
+- タプル戻り値の場合、複数のバインド変数を指定できます（例: `ensure q, r:`）。
 - `invariant` は `record` 定義の末尾、全フィールド宣言の後に記述します。
 - すべての契約違反は `exit(1)` でプログラムを終了し、診断メッセージを出力します。
