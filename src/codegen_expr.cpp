@@ -789,8 +789,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
 
     llvm::StructType *operandResultTy = llvm::cast<llvm::StructType>(operandTy);
     llvm::StructType *retResultTy = llvm::cast<llvm::StructType>(fnRetTy);
-    if (operandResultTy->getElementType(2) != retResultTy->getElementType(2))
-        codegenError("'?' operator error type mismatch: operand and function return different error types");
+    llvm::Type *operandErrTy = operandResultTy->getElementType(2);
+    llvm::Type *retErrTy = retResultTy->getElementType(2);
 
     llvm::Value *isOk = builder_.CreateExtractValue(operandVal, 0, "is_ok");
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "try.ok", fn_);
@@ -800,6 +800,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     // Err path: extract error, wrap in function return type, return
     builder_.SetInsertPoint(errBB);
     llvm::Value *errVal = builder_.CreateExtractValue(operandVal, 2, "err_val");
+    if (operandErrTy != retErrTy) {
+        if (auto *sliced = tryEmitSubtypeCoerce(errVal, retErrTy))
+            errVal = sliced;
+        else
+            codegenError("'?' operator error type mismatch: operand and function return different error types");
+    }
     llvm::Value *retErr = buildErrValue(errVal, retResultTy);
     emitEnsureChecks(retErr);
     builder_.CreateRet(retErr);

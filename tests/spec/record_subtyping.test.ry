@@ -115,3 +115,36 @@ describe("non-Error subtyping", fn():
     expect(describe_animal(d)).to_eq("Rex has 4 legs")
   )
 )
+
+# --- #359: Field assignment subtype coercion ---
+record Owner:
+  pet: Animal
+
+describe("field assignment subtype coercion", fn():
+  it("assigns child type to parent-type field", fn():
+    o = Owner(Animal("cat", 4))
+    o.pet = Dog("Rex", 4, "Labrador")
+    expect(o.pet.name).to_eq("Rex")
+    expect(o.pet.legs).to_eq(4)
+  )
+)
+
+# --- #360: ? operator subtype coercion ---
+fn fetch_typed(url: str) -> Result<int, ApiError>:
+  return Err(ApiError("fail", 500, url))
+
+fn process_data(url: str) -> Result<int, Error>:
+  val = fetch_typed(url)?
+  return Ok(val)
+
+describe("? operator subtype coercion", fn():
+  it("propagates subtype error through ?", fn():
+    result = process_data("/api")
+    match result:
+      case Err(e):
+        expect(e.message).to_eq("fail")
+        expect(e.code).to_eq(500)
+      case Ok(_):
+        expect(false).to_be_true()
+  )
+)
