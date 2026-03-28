@@ -1,42 +1,91 @@
-from std.io import read_text, write_text, append_text, file_exists, delete_file, read_bytes, write_bytes, str_to_bytes, bytes_to_str
+from io import read_text, write_text, append_text, file_exists, delete_file, read_bytes, write_bytes, str_to_bytes, bytes_to_str
 
 describe("file I/O", fn():
-    it("write and read text", fn():
-        write_text("/tmp/ry_selftest_io.txt", "hello world")
-        s = read_text("/tmp/ry_selftest_io.txt")
+  it("write and read text", fn():
+    match write_text("/tmp/ry_selftest_io.txt", "hello world"):
+      case Ok(_):
+        match read_text("/tmp/ry_selftest_io.txt"):
+          case Ok(s):
+            expect(s).to_eq("hello world")
+          case Err(e):
+            fail("unexpected error")
+      case Err(e):
+        fail("unexpected error")
+    match delete_file("/tmp/ry_selftest_io.txt"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("append text", fn():
+    match write_text("/tmp/ry_selftest_io_append.txt", "hello"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+    match append_text("/tmp/ry_selftest_io_append.txt", " world"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+    match read_text("/tmp/ry_selftest_io_append.txt"):
+      case Ok(s):
         expect(s).to_eq("hello world")
-        delete_file("/tmp/ry_selftest_io.txt")
-    )
-
-    it("append text", fn():
-        write_text("/tmp/ry_selftest_io_append.txt", "hello")
-        append_text("/tmp/ry_selftest_io_append.txt", " world")
-        s = read_text("/tmp/ry_selftest_io_append.txt")
-        expect(s).to_eq("hello world")
-        delete_file("/tmp/ry_selftest_io_append.txt")
-    )
-
-    it("file_exists", fn():
-        write_text("/tmp/ry_selftest_io_exists.txt", "test")
-        expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(true)
-        delete_file("/tmp/ry_selftest_io_exists.txt")
-        expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(false)
-    )
-
-    it("byte conversions", fn():
-        bs = str_to_bytes("ABC")
-        expect(len(bs)).to_eq(3)
-        s = bytes_to_str(bs)
+      case Err(e):
+        fail("unexpected error")
+    match delete_file("/tmp/ry_selftest_io_append.txt"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("file_exists", fn():
+    match write_text("/tmp/ry_selftest_io_exists.txt", "test"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+    expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(true)
+    match delete_file("/tmp/ry_selftest_io_exists.txt"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+    expect(file_exists("/tmp/ry_selftest_io_exists.txt")).to_eq(false)
+  )
+  it("byte conversions", fn():
+    bs = str_to_bytes("ABC")
+    expect(length(bs)).to_eq(3)
+    match bytes_to_str(bs):
+      case Ok(s):
         expect(s).to_eq("ABC")
-    )
-
-    it("read/write bytes", fn():
-        data = str_to_bytes("binary test")
-        write_bytes("/tmp/ry_selftest_io_bytes.bin", data)
-        rb = read_bytes("/tmp/ry_selftest_io_bytes.bin")
-        expect(len(rb)).to_eq(11)
-        s = bytes_to_str(rb)
-        expect(s).to_eq("binary test")
-        delete_file("/tmp/ry_selftest_io_bytes.bin")
-    )
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("read/write bytes", fn():
+    data = str_to_bytes("binary test")
+    match write_bytes("/tmp/ry_selftest_io_bytes.bin", data):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+    match read_bytes("/tmp/ry_selftest_io_bytes.bin"):
+      case Ok(rb):
+        expect(length(rb)).to_eq(11)
+        match bytes_to_str(rb):
+          case Ok(s):
+            expect(s).to_eq("binary test")
+          case Err(e):
+            fail("unexpected error")
+      case Err(e):
+        fail("unexpected error")
+    match delete_file("/tmp/ry_selftest_io_bytes.bin"):
+      case Ok(_):
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("read_text returns Err for missing file", fn():
+    expect(read_text("/tmp/ry_selftest_nonexistent_file.txt")).to_be_err()
+  )
 )

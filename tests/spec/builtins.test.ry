@@ -1,61 +1,54 @@
-describe("len", fn():
-    it("List", fn():
-        expect([1, 2, 3]).to_have_length(3)
-
-    )
-    it("Map", fn():
-        expect({"a": 1, "b": 2}).to_have_length(2)
-
-    )
-    it("Set", fn():
-        expect({1, 2, 3}).to_have_length(3)
-
-    )
-    it("str", fn():
-        expect("hello").to_have_length(5)
-
-    )
+describe("length", fn():
+  it("List", fn():
+    expect([1, 2, 3]).to_have_length(3)
+  )
+  it("Map", fn():
+    expect({"a": 1, "b": 2}).to_have_length(2)
+  )
+  it("Set", fn():
+    expect({1, 2, 3}).to_have_length(3)
+  )
+  it("str", fn():
+    expect("hello").to_have_length(5)
+  )
 )
+
 describe("range", fn():
-    it("1 arg", fn():
-        xs = range(3)
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(0)
-        expect(xs[2]).to_eq(2)
-
-    )
-    it("2 args", fn():
-        xs = range(2, 5)
-        expect(xs).to_have_length(3)
-        expect(xs[0]).to_eq(2)
-        expect(xs[2]).to_eq(4)
-
-    )
-    it("3 args", fn():
-        xs = range(0, 10, 2)
-        expect(xs).to_have_length(5)
-        expect(xs[0]).to_eq(0)
-        expect(xs[4]).to_eq(8)
-
-    )
-    it("negative step", fn():
-        xs = range(10, 0, -3)
-        expect(xs).to_have_length(4)
-        expect(xs[0]).to_eq(10)
-        expect(xs[1]).to_eq(7)
-        expect(xs[2]).to_eq(4)
-        expect(xs[3]).to_eq(1)
-
-    )
+  it("1 arg", fn():
+    xs = range(3)
+    expect(xs).to_have_length(3)
+    expect(xs[0]).to_eq(0)
+    expect(xs[2]).to_eq(2)
+  )
+  it("2 args", fn():
+    xs = range(2, 5)
+    expect(xs).to_have_length(3)
+    expect(xs[0]).to_eq(2)
+    expect(xs[2]).to_eq(4)
+  )
+  it("3 args", fn():
+    xs = range(0, 10, 2)
+    expect(xs).to_have_length(5)
+    expect(xs[0]).to_eq(0)
+    expect(xs[4]).to_eq(8)
+  )
+  it("negative step", fn():
+    xs = range(10, 0, -3)
+    expect(xs).to_have_length(4)
+    expect(xs[0]).to_eq(10)
+    expect(xs[1]).to_eq(7)
+    expect(xs[2]).to_eq(4)
+    expect(xs[3]).to_eq(1)
+  )
 )
-describe("Some / Option", fn():
-    it("Some wraps value", fn():
-        x = Some(42)
-        expect(x).to_be_some()
 
-    )
-    it("None is none", fn():
-        x: Option<int> = None
-        expect(x).to_be_none()
-    )
+describe("Some / Option", fn():
+  it("Some wraps value", fn():
+    x = Some(42)
+    expect(x).to_be_some()
+  )
+  it("None is none", fn():
+    x: Option<int> = None
+    expect(x).to_be_none()
+  )
 )

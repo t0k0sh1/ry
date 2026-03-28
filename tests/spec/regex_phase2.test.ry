@@ -1,45 +1,39 @@
 describe("range quantifiers", fn():
-    it("{n} exact", fn():
-        expect(regex_match("a{3}", "aaa")).to_eq(true)
-        expect(regex_match("a{3}", "aa")).to_eq(false)
-
-    )
-    it("{n,m} range", fn():
-        expect(regex_match("a{2,4}", "aaa")).to_eq(true)
-        expect(regex_match("a{2,4}", "a")).to_eq(false)
-        expect(regex_match("a{2,4}", "aaaaa")).to_eq(false)
-
-    )
-    it("{n,} min only", fn():
-        expect(regex_match("a{2,}", "aa")).to_eq(true)
-        expect(regex_match("a{2,}", "aaaa")).to_eq(true)
-        expect(regex_match("a{2,}", "a")).to_eq(false)
-
-    )
-    it("digit pattern", fn():
-        expect(regex_match("\\d{3}-\\d{4}", "123-4567")).to_eq(true)
-        expect(regex_match("\\d{3}-\\d{4}", "12-4567")).to_eq(false)
-
-    )
+  it("{n} exact", fn():
+    expect(regex_match("a{3}", "aaa")).to_eq(true)
+    expect(regex_match("a{3}", "aa")).to_eq(false)
+  )
+  it("{n,m} range", fn():
+    expect(regex_match("a{2,4}", "aaa")).to_eq(true)
+    expect(regex_match("a{2,4}", "a")).to_eq(false)
+    expect(regex_match("a{2,4}", "aaaaa")).to_eq(false)
+  )
+  it("{n,} min only", fn():
+    expect(regex_match("a{2,}", "aa")).to_eq(true)
+    expect(regex_match("a{2,}", "aaaa")).to_eq(true)
+    expect(regex_match("a{2,}", "a")).to_eq(false)
+  )
+  it("digit pattern", fn():
+    expect(regex_match("\\d{3}-\\d{4}", "123-4567")).to_eq(true)
+    expect(regex_match("\\d{3}-\\d{4}", "12-4567")).to_eq(false)
+  )
 )
+
 describe("non-greedy match", fn():
-    it("lazy star replace", fn():
-        expect(regex_replace("\".*?\"", "\"a\" and \"b\"", "X")).to_eq("X and X")
-
-    )
-    it("lazy plus replace", fn():
-        expect(regex_replace("a+?", "aaa", "X")).to_eq("XXX")
-
-    )
-    it("lazy full match", fn():
-        expect(regex_match("a+?", "aaa")).to_eq(true)
-
-    )
-    it("lazy find_all", fn():
-        tags = regex_find_all("<.*?>", "<x> <yy> <zzz>")
-        expect(len(tags)).to_eq(3)
-        expect(tags[0]).to_eq("<x>")
-        expect(tags[1]).to_eq("<yy>")
-        expect(tags[2]).to_eq("<zzz>")
-    )
+  it("lazy star replace", fn():
+    expect(regex_replace("\".*?\"", "\"a\" and \"b\"", "X")).to_eq("X and X")
+  )
+  it("lazy plus replace", fn():
+    expect(regex_replace("a+?", "aaa", "X")).to_eq("XXX")
+  )
+  it("lazy full match", fn():
+    expect(regex_match("a+?", "aaa")).to_eq(true)
+  )
+  it("lazy find_all", fn():
+    tags = regex_find_all("<.*?>", "<x> <yy> <zzz>")
+    expect(length(tags)).to_eq(3)
+    expect(tags[0]).to_eq("<x>")
+    expect(tags[1]).to_eq("<yy>")
+    expect(tags[2]).to_eq("<zzz>")
+  )
 )

@@ -1,52 +1,51 @@
 # String operations
+@native
+fn contains(string: str, substring: str) -> bool
 
 @native
-fn contains(s: str, sub: str) -> bool
+fn starts_with(string: str, prefix: str) -> bool
 
 @native
-fn starts_with(s: str, prefix: str) -> bool
+fn ends_with(string: str, suffix: str) -> bool
 
 @native
-fn ends_with(s: str, suffix: str) -> bool
+fn find(string: str, substring: str) -> Option<int>
 
 @native
-fn find(s: str, sub: str) -> Option<int>
+fn byte_len(string: str) -> int
 
 @native
-fn byte_len(s: str) -> int
+fn substring(string: str, start: int, end: int) -> str
 
 @native
-fn substring(s: str, start: int, end: int) -> str
+fn char_at(string: str, index: int) -> str
 
 @native
-fn char_at(s: str, index: int) -> str
+fn replace(string: str, target: str, replacement: str) -> str
 
 @native
-fn replace(s: str, target: str, replacement: str) -> str
+fn to_upper(string: str) -> str
 
 @native
-fn to_upper(s: str) -> str
+fn to_lower(string: str) -> str
 
 @native
-fn to_lower(s: str) -> str
+fn trim(string: str) -> str
 
 @native
-fn trim(s: str) -> str
+fn trim_start(string: str) -> str
 
 @native
-fn trim_start(s: str) -> str
+fn trim_end(string: str) -> str
 
 @native
-fn trim_end(s: str) -> str
+fn repeat(string: str, count: int) -> str
 
 @native
-fn repeat(s: str, n: int) -> str
+fn reverse(string: str) -> str
 
 @native
-fn reverse(s: str) -> str
+fn split(string: str, delimiter: str) -> List<str>
 
 @native
-fn split(s: str, delim: str) -> List<str>
-
-@native
-fn join(xs: List<str>, delim: str) -> str
+fn join(values: List<str>, delimiter: str) -> str

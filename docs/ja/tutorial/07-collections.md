@@ -85,10 +85,10 @@ print(xs[i])   # 2
 xs[0] = 99
 ```
 
-### len
+### length
 
 ```python
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -119,11 +119,11 @@ fn first(xs: List<int>) -> int:
 xs = [1, 2, 3, 4, 5]
 
 # filter: 条件に一致する要素だけを残す
-evens = xs.filter(fn(x: int): x > 3)
+evens = xs.filter(fn(x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: 各要素を変換する
-doubled = xs.map(fn(x: int): x * 2)
+doubled = xs.map(fn(x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: 昇順ソート（デフォルト）
@@ -131,7 +131,7 @@ sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # チェーン
-result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +143,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: 最初の要素から開始
-total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: 明示的な初期値を指定
-total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +158,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int): x > 4))   # true
-print(any(xs, fn(x: int): x > 9))   # false
+print(any(xs, fn(x: int) => x > 4))   # true
+print(any(xs, fn(x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int): x > 0))   # true
-print(all(xs, fn(x: int): x > 3))   # false
+print(all(xs, fn(x: int) => x > 0))   # true
+print(all(xs, fn(x: int) => x > 3))   # false
 ```
 
 ### sum, min, max
@@ -240,10 +240,10 @@ m["c"] = 3    # 新規追加
 m["a"] = 99   # 更新
 ```
 
-### len
+### length
 
 ```python
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -318,10 +318,10 @@ s.remove(1)    # 要素削除
 s.add(2)       # 既に存在するため無視
 ```
 
-### len / print
+### length / print
 
 ```python
-print(len(s))  # 3
+print(length(s))  # 3
 print(s)       # {2, 3, 4}
 ```
 
@@ -344,6 +344,58 @@ empty: Set<int> = {}
 
 - 全要素が同じ型である必要があります。
 - 要素の型として `int`, `float`, `bool`, `str` をサポートしています。
+
+---
+
+## イテレータ
+
+イテレータはコレクションを**遅延的に**処理する方法を提供します。各ステップで中間リストを作成する代わりに、パイプラインを通じて要素を1つずつ処理します。
+
+### 生成と消費
+
+```python
+xs = [1, 2, 3]
+ys = xs.iter().to_list()   # [1, 2, 3]
+```
+
+### 操作のチェーン
+
+`filter`、`map`、`take` をチェーンしてパイプラインを構築できます:
+
+```python
+result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int) => x > 2)
+    .map(fn(x: int) => x * 2)
+    .take(2)
+    .to_list()
+print(result)   # [6, 8]
+```
+
+### next() による手動イテレーション
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### for ループ
+
+イテレータは `for` ループで直接使えます:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+    print(x)   # 2, 3
+```
+
+マップはタプル要素を生成します:
+
+```python
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```
 
 ---
 

@@ -8,33 +8,40 @@
 |------|-------------|
 | `TcpListener` | Opaque handle for a TCP server socket |
 | `TcpStream` | Opaque handle for a TCP connection |
+| `TlsStream` | Opaque handle for a TLS-encrypted TCP connection |
 
-Both types are opaque pointers. They cannot be constructed directly; use `bind()` or `connect()` to obtain them.
+Both types are opaque pointers. They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tls_connect()` for `TlsStream`.
 
-## Functions (from `std.net`)
+## Functions (from `net`)
 
 These functions require explicit import:
 
 ```python
-from std.net import bind, listen, accept, connect
+from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
 ```
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `bind` | `(host: str, port: int) -> Option<TcpListener>` | Creates a TCP server socket bound to the given address. Returns `None` on failure. |
-| `listen` | `(listener: TcpListener, backlog: int) -> Unit` | Starts listening for incoming connections. Runtime error on failure. |
-| `accept` | `(listener: TcpListener) -> Option<TcpStream>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `None` on timeout or failure. |
-| `connect` | `(host: str, port: int) -> Option<TcpStream>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `None` on timeout or failure. |
+| `bind` | `(host: str, port: int) -> Result<TcpListener, Error>` | Creates a TCP server socket bound to the given address. Returns `Err` on failure. Use port `0` for dynamic allocation. |
+| `listen` | `(listener: TcpListener, backlog: int) -> Result<Unit, Error>` | Starts listening for incoming connections. Returns `Err` on failure. |
+| `accept` | `(listener: TcpListener) -> Result<TcpStream, Error>` | Accepts a new connection. Waits up to 1 second for a client to connect. Returns `Err` on timeout or failure. |
+| `connect` | `(host: str, port: int) -> Result<TcpStream, Error>` | Connects to a remote TCP server. Times out after 5 seconds. Returns `Err` on timeout or failure. |
+| `listener_port` | `(listener: TcpListener) -> int` | Returns the actual port number the listener is bound to. Useful when binding to port `0` (OS-assigned port). |
+| `shutdown` | `(listener: TcpListener) -> Unit` | Signals the listener to stop accepting connections. Causes any pending `accept()` to return within at most 1 second. |
+| `tls_connect` | `(host: str, port: int) -> Result<TlsStream, Error>` | Connects to a remote server with TLS encryption. Validates the server certificate against the system CA bundle. Returns `Err` on connection or handshake failure. |
+| `set_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets both receive and send timeout in milliseconds. |
+| `set_recv_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the receive timeout in milliseconds. `recv()` returns `Err` if no data arrives within this time. |
+| `set_send_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | Sets the send timeout in milliseconds. |
 
 ## Built-in Overloaded Functions
 
-These functions are built-in and work with both `Channel<T>` and TCP socket types. No import needed.
+These functions are built-in and work with TCP socket types. No import needed.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `send` | `(stream: TcpStream, data: List<byte>) -> int` | Sends bytes through a TCP connection. Returns the number of bytes sent. Runtime error on failure. |
-| `recv` | `(stream: TcpStream, max: int) -> List<byte>` | Receives up to `max` bytes from a TCP connection. Returns an empty list on connection close. |
-| `close` | `(handle: TcpStream) -> Unit` | Closes a TCP stream. |
+| `send` | `(stream: TcpStream\|TlsStream, data: List<u8>) -> Result<int, Error>` | Sends bytes through a TCP or TLS connection. Returns `Ok` with the number of bytes sent, or `Err` on failure. |
+| `recv` | `(stream: TcpStream\|TlsStream, max: int) -> Result<List<u8>, Error>` | Receives up to `max` bytes. Returns `Ok` with an empty list on connection close, or `Err` on error. |
+| `close` | `(handle: TcpStream\|TlsStream) -> Unit` | Closes a TCP or TLS stream. |
 | `close` | `(handle: TcpListener) -> Unit` | Closes a TCP listener. |
 
 ## Usage Example
@@ -42,22 +49,32 @@ These functions are built-in and work with both `Channel<T>` and TCP socket type
 ### Echo Server
 
 ```python
-from std.net import bind, listen, accept, connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect
+from io import str_to_bytes, bytes_to_str
 
 # Server
 match bind("127.0.0.1", 8080):
-    case Some(server):
-        listen(server, 128)
-        match accept(server):
-            case Some(conn):
-                data: List<byte> = recv(conn, 4096)
-                send(conn, data)
-                close(conn)
-            case None:
-                ...
+    case Ok(server):
+        match listen(server, 128):
+            case Ok(_):
+                match accept(server):
+                    case Ok(conn):
+                        match recv(conn, 4096):
+                            case Ok(data):
+                                match send(conn, data):
+                                    case Ok(_):
+                                        ...
+                                    case Err(e):
+                                        print(e.message)
+                            case Err(e):
+                                print(e.message)
+                        close(conn)
+                    case Err(e):
+                        ...
+            case Err(e):
+                print("listen failed")
         close(server)
-    case None:
+    case Err(e):
         print("bind failed")
 ```
 
@@ -65,47 +82,92 @@ match bind("127.0.0.1", 8080):
 
 ```python
 match connect("127.0.0.1", 8080):
-    case Some(conn):
-        send(conn, str_to_bytes("hello"))
-        resp: List<byte> = recv(conn, 4096)
-        print(bytes_to_str(resp))
+    case Ok(conn):
+        match send(conn, str_to_bytes("hello")):
+            case Ok(_):
+                ...
+            case Err(e):
+                print(e.message)
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(s):
+                        print(s)
+                    case Err(e):
+                        print(e.message)
+            case Err(e):
+                print(e.message)
         close(conn)
-    case None:
+    case Err(e):
         print("connect failed")
 ```
 
-### Concurrent Echo Server with `spawn`
+### Concurrent Echo Server with `async fn`
 
 ```python
-fn echo_server(port: int) -> str:
-    match bind("127.0.0.1", port):
-        case Some(server):
-            listen(server, 1)
-            match accept(server):
-                case Some(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    send(conn, data)
-                    close(conn)
-                case None:
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
+
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
+                        case Err(e):
+                            ...
+                case Err(e):
                     ...
-            close(server)
-        case None:
+            close(conn)
+        case Err(e):
             ...
+    close(server)
     return "done"
 
-t: Task<str> = spawn echo_server(8080)
-# ... client code ...
-join(t)
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                # ... client code using port ...
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        ...
 ```
+
+## Timeout Configuration
+
+By default, `recv()` uses a 30-second timeout if no custom timeout is set. Use `set_timeout()`, `set_recv_timeout()`, or `set_send_timeout()` to override the default:
+
+```python
+from net import connect, set_recv_timeout
+
+match connect("127.0.0.1", 8080):
+    case Ok(conn):
+        set_recv_timeout(conn, 5000)  # 5-second timeout
+        match recv(conn, 4096):
+            case Ok(data):
+                ...
+            case Err(e):
+                print("timeout or error")
+        close(conn)
+    case Err(e):
+        print("connect failed")
+```
+
+Pass `0` to disable the timeout (wait indefinitely).
 
 ## Error Handling
 
-- `bind()` and `connect()` return `Option<T>` — use `match` to handle failure.
-- `listen()` raises a runtime error on failure.
-- `send()` raises a runtime error on failure.
-- `recv()` returns an empty `List<byte>` when the connection is closed or when a receive error occurs; unlike `listen()`/`send()`, it does not raise on failure.
+- All TCP functions except `close()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
+- `recv()` returns `Ok` with an empty `List<u8>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 
 ## Byte Conversion
 
-TCP operations work with `List<byte>`. Use `str_to_bytes()` and `bytes_to_str()` from `std.io` to convert between strings and byte lists.
+TCP operations work with `List<u8>`. Use `str_to_bytes()` and `bytes_to_str()` from `io` to convert between strings and byte lists.

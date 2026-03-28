@@ -1,116 +1,102 @@
 describe("f-string", fn():
-    it("int interpolation", fn():
-        x = 42
-        expect(f"value: {x}").to_eq("value: 42")
-
-    )
-    it("float interpolation", fn():
-        x = 3.14
-        expect(f"pi: {x}").to_eq("pi: 3.14")
-
-    )
-    it("bool interpolation", fn():
-        x = true
-        expect(f"flag: {x}").to_eq("flag: true")
-
-    )
-    it("expression interpolation", fn():
-        a = 1
-        b = 2
-        expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
-
-    )
-    it("escaped braces", fn():
-        expect(f"{{braces}}").to_eq("{braces}")
-
-    )
+  it("int interpolation", fn():
+    x = 42
+    expect(f"value: {x}").to_eq("value: 42")
+  )
+  it("float interpolation", fn():
+    x = 3.14
+    expect(f"pi: {x}").to_eq("pi: 3.14")
+  )
+  it("bool interpolation", fn():
+    x = true
+    expect(f"flag: {x}").to_eq("flag: true")
+  )
+  it("expression interpolation", fn():
+    a = 1
+    b = 2
+    expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
+  )
+  it("escaped braces", fn():
+    expect("{braces}").to_eq("{braces}")
+  )
 )
+
 describe("type cast as", fn():
-    it("int to float", fn():
-        expect(42 as float).to_eq(42.0)
-
-    )
-    it("float to int", fn():
-        expect(3.14 as int).to_eq(3)
-
-    )
-    it("int to bool", fn():
-        expect(1 as bool).to_be_true()
-        expect(0 as bool).to_be_false()
-
-    )
-    it("int to str", fn():
-        expect(42 as str).to_eq("42")
-
-    )
-    it("byte to int", fn():
-        b: byte = 200
-        expect(b as int).to_eq(200)
-
-    )
-    it("int to byte to int", fn():
-        b = 255 as byte
-        expect(b as int).to_eq(255)
-
-    )
+  it("int to float", fn():
+    expect(42 as float).to_eq(42.0)
+  )
+  it("float to int", fn():
+    expect(3.14 as int).to_eq(3)
+  )
+  it("int to bool", fn():
+    expect(1 as bool).to_be_true()
+    expect(0 as bool).to_be_false()
+  )
+  it("int to str", fn():
+    expect(42 as str).to_eq("42")
+  )
+  it("u8 to int", fn():
+    b: u8 = 200
+    expect(b as int).to_eq(200)
+  )
+  it("int to u8 to int", fn():
+    b = 255 as u8
+    expect(b as int).to_eq(255)
+  )
 )
+
 describe("type alias", fn():
-    it("basic alias", fn():
-        type Meters = float
-        d: Meters = 3.14
-        expect(d).to_eq(3.14)
-
-    )
+  it("basic alias", fn():
+    type Meters = float
+    d: Meters = 3.14
+    expect(d).to_eq(3.14)
+  )
 )
+
 describe("Error type", fn():
-    it("constructor with message", fn():
-        e = Error("something went wrong")
-        expect(e.message).to_eq("something went wrong")
-        expect(e.code).to_eq(0)
-
-    )
-    it("constructor with code", fn():
-        e = Error("not found", 404)
-        expect(e.message).to_eq("not found")
-        expect(e.code).to_eq(404)
-
-    )
+  it("constructor with message", fn():
+    e = Error("something went wrong")
+    expect(e.message).to_eq("something went wrong")
+    expect(e.code).to_eq(0)
+  )
+  it("constructor with code", fn():
+    e = Error("not found", 404)
+    expect(e.message).to_eq("not found")
+    expect(e.code).to_eq(404)
+  )
 )
-describe("!! error propagation", fn():
-    fn safe_divide(a: int, b: int) -> (int, Error?):
-        if b == 0:
-            return (0, Some(Error("division by zero")))
-        return (a // b, none)
 
-    fn use_divide() -> (int, Error?):
-        v = safe_divide(10, 2)!!
-        return (v, none)
-
-    fn use_divide_err() -> (int, Error?):
-        v = safe_divide(10, 0)!!
-        return (v, none)
-
-    it("propagates success", fn():
-        val, err = use_divide()
-        expect(val).to_eq(5)
-        expect(err).to_be_none()
-
-    )
-    it("propagates error", fn():
-        val, err = use_divide_err()
-        expect(err).to_be_some()
-
-    )
+describe("Result type", fn():
+  fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+      return Err(Error("division by zero"))
+    return Ok(a // b)
+  it("returns Ok on success", fn():
+    res = safe_divide(10, 2)
+    match res:
+      case Ok(v):
+        expect(v).to_eq(5)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("returns Err on failure", fn():
+    res = safe_divide(10, 0)
+    match res:
+      case Ok(v):
+        fail("expected Err but got Ok")
+      case Err(e):
+        expect(e.message).to_eq("division by zero")
+  )
 )
+
 fn accept_union(x: int | str) -> bool:
-    return true
+  return true
 
 describe("union type", fn():
-    it("accepts int", fn():
-        expect(accept_union(42)).to_be_true()
-
-    )
-    it("accepts str", fn():
-        expect(accept_union("hello")).to_be_true()
-    )
+  it("accepts int", fn():
+    expect(accept_union(42)).to_be_true()
+  )
+  it("accepts str", fn():
+    expect(accept_union("hello")).to_be_true()
+  )
 )

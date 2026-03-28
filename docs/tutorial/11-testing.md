@@ -14,11 +14,12 @@ Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. 
 ry test                       # Auto-discover and run all *.test.ry files
 ry test tests/spec            # Run all *.test.ry files under a directory (recursive)
 ry test tests/my_test.test.ry # Run a specific test file
+ry test -p                    # Run all tests in parallel (-p or --parallel)
 ```
 
 The exit code is `0` if all tests pass, `1` if any test fails.
 
-When run without arguments, `ry test` searches for `ry.toml` to find the project root, then recursively discovers all `*.test.ry` files.
+When run without arguments, `ry test` searches for `package.toml` to find the project root, then recursively discovers all `*.test.ry` files.
 
 ---
 
@@ -89,7 +90,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -106,7 +107,7 @@ Returns the number of times a mocked function was called.
 ```python
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)

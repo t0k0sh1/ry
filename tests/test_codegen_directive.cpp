@@ -216,9 +216,9 @@ TEST_F(DirectiveTest, NativeFnOverloadResolution) {
         "fn range(start: int, end_val: int) -> List<int>\n"
         "@native\n"
         "fn range(start: int, end_val: int, step: int) -> List<int>\n"
-        "print(len(range(5)))\n"
-        "print(len(range(1, 4)))\n"
-        "print(len(range(0, 10, 2)))\n"
+        "print(length(range(5)))\n"
+        "print(length(range(1, 4)))\n"
+        "print(length(range(0, 10, 2)))\n"
     );
     EXPECT_EQ(output, "5\n3\n5\n");
 }
@@ -244,4 +244,89 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
         "print(starts_with(\"hello\", \"hel\"))\n"
     );
     EXPECT_EQ(output, "HELLO\ntrue\ntrue\n");
+}
+
+// ===== @inline tests =====
+
+TEST_F(DirectiveTest, InlineDefault) {
+    std::string output = runSource(
+        "@inline\n"
+        "fn add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "print(add(3, 4))\n"
+    );
+    EXPECT_EQ(output, "7\n");
+}
+
+TEST_F(DirectiveTest, InlineModeAlways) {
+    std::string output = runSource(
+        "@inline(mode=\"always\")\n"
+        "fn mul(a: int, b: int) -> int:\n"
+        "    return a * b\n"
+        "print(mul(5, 6))\n"
+    );
+    EXPECT_EQ(output, "30\n");
+}
+
+TEST_F(DirectiveTest, InlineModeHint) {
+    std::string output = runSource(
+        "@inline(mode=\"hint\")\n"
+        "fn sub(a: int, b: int) -> int:\n"
+        "    return a - b\n"
+        "print(sub(10, 3))\n"
+    );
+    EXPECT_EQ(output, "7\n");
+}
+
+TEST_F(DirectiveTest, InlineModeNever) {
+    std::string output = runSource(
+        "@inline(mode=\"never\")\n"
+        "fn negate(a: int) -> int:\n"
+        "    return -a\n"
+        "print(negate(-5))\n"
+    );
+    EXPECT_EQ(output, "5\n");
+}
+
+TEST_F(DirectiveTest, InlineInvalidMode) {
+    EXPECT_THROW(runSource(
+        "@inline(mode=\"aggressive\")\n"
+        "fn bad() -> int:\n"
+        "    return 1\n"
+        "print(bad())\n"
+    ), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, InlineWithNativeError) {
+    EXPECT_THROW(runSource(
+        "@inline\n"
+        "@native\n"
+        "fn contains(s: str, sub: str) -> bool\n"
+        "print(contains(\"hello\", \"ell\"))\n"
+    ), std::runtime_error);
+}
+
+TEST_F(DirectiveTest, InlineWithDeprecated) {
+    auto [output, warnings] = runSourceWithWarnings(
+        "@inline\n"
+        "@deprecated\n"
+        "fn old_add(a: int, b: int) -> int:\n"
+        "    return a + b\n"
+        "print(old_add(1, 2))\n"
+    );
+    EXPECT_EQ(output, "3\n");
+    ASSERT_EQ(warnings.size(), 1);
+    EXPECT_EQ(warnings[0], "warning: 'old_add' is deprecated");
+}
+
+TEST_F(DirectiveTest, InlineRecursive) {
+    std::string output = runSource(
+        "@inline\n"
+        "fn fact(n: int) -> int:\n"
+        "    if n <= 1:\n"
+        "        return 1\n"
+        "    return n * fact(n - 1)\n"
+        "print(fact(5))\n"
+    );
+    EXPECT_EQ(output, "120\n");
 }

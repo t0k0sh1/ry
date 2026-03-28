@@ -23,7 +23,7 @@ Imports all functions and types from the package.
 ### Selective Import
 
 ```python
-from math import add
+from math import sqrt
 ```
 
 Imports only the specified definition.
@@ -31,7 +31,7 @@ Imports only the specified definition.
 ### Multiple Selective Import
 
 ```python
-from math import add, sub
+from math import sqrt, PI
 ```
 
 Imports multiple definitions separated by commas.
@@ -46,7 +46,7 @@ Packages are resolved using dot-separated notation:
 |---|---|
 | `from math` | `math/` directory (package) or `math.ry` file |
 | `from utils.math` | `utils/math/` directory or `utils/math.ry` file |
-| `from std.str` | `std/str/` directory or `std/str.ry` file |
+| `from str` | `str/` directory or `str.ry` file |
 
 ### Resolution Order
 
@@ -79,7 +79,7 @@ fn public_api() -> int:  # public — importable
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
@@ -93,7 +93,7 @@ from mypackage import add   # imports only add
 ## Standard Library (`std`)
 
 The `std` package is automatically imported into every program. It provides:
-- Built-in functions (`print`, `len`, `range`, etc.)
+- Built-in functions (`print`, `length`, `range`, etc.)
 - String functions (`contains`, `find`, `replace`, etc.)
 - Type conversion functions (`to_int`, `to_float`, `to_str`)
 - Collection functions (`map`, `filter`, `sort`, etc.)
@@ -104,17 +104,17 @@ The following sub-packages require explicit import:
 
 | Package | Description |
 |---------|-------------|
-| [`std.math`](math.md) | Mathematical constants and functions |
-| [`std.io`](io.md) | File I/O, standard input, and byte conversions |
+| [`math`](math.md) | Mathematical constants and functions |
+| [`io`](io.md) | File I/O, standard input, and byte conversions |
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
-You can also explicitly import specific definitions from `std`:
+You can also explicitly import specific definitions from standard library packages:
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME
@@ -125,14 +125,53 @@ The standard library is installed at `$RY_HOME/lib/std/`. The default value of `
 export RY_HOME="$HOME/.ry"   # default
 ```
 
+### RY_ENV
+
+The `RY_ENV` environment variable controls the runtime environment mode. You can also use the `--env=<value>` CLI flag.
+
+| Value | Alias | `.env` loading | Lib search |
+|-------|-------|---------------|------------|
+| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
+| `test` | — | `.env.test` → `.env` | Same as `prod` |
+| `staging` | — | `.env.staging` → `.env` | Same as `prod` |
+| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../lib` → `exe/lib` (`$RY_HOME` skipped) |
+| (unset) (default) | — | `.env` only | Same as `prod` |
+
+Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
+
+In `prod` mode, `.env` files are not loaded for security — production secrets should be managed via infrastructure-level environment variables (CI/CD, secret managers, etc.).
+
+For other modes, `.env.<env>` is loaded first (if it exists), then `.env`. Environment-specific values take precedence because existing variables are not overwritten.
+
+```bash
+# Short form (recommended)
+RY_ENV=dev ./build/ry app.ry
+
+# Long form (backward compatible)
+RY_ENV=development ./build/ry app.ry
+
+# CLI flag
+./build/ry --env=dev test
+
+# prod mode: .env is NOT loaded
+RY_ENV=prod ./build/ry app.ry
+
+# Additional isolation when developing Ry itself
+RY_ENV=internal ./build/ry test
+```
+
+When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `lib/std` even if `~/.ry/lib/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/lib/std`.
+
 ---
 
 ## Search Path Priority
 
 1. The directory of the importing file
-2. `$RY_HOME/lib` (standard library location)
-3. Executable-relative `lib/` directories
-4. Paths specified in the `RY_PATH` environment variable (colon-separated)
+2. Repo-local stdlib override from the current Ry checkout, when using a repo-built `ry`
+3. `$RY_HOME/lib` (standard library location)
+4. Executable-relative `lib/` directories
+5. Paths specified in the `RY_PATH` environment variable (colon-separated)
 
 ---
 
@@ -171,7 +210,7 @@ from math   # Skipped
 ### Single File Package
 
 ```python
-# math.ry
+# calc.ry
 fn add(a: int, b: int) -> int:
     return a + b
 
@@ -181,7 +220,7 @@ fn sub(a: int, b: int) -> int:
 
 ```python
 # main.ry
-from math import add, sub
+from calc import add, sub
 
 print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
@@ -191,7 +230,7 @@ print(sub(5, 3))   # 2
 
 ```
 mylib/
-  math.ry
+  calc.ry
   string.ry
 ```
 

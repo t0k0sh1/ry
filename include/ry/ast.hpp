@@ -13,6 +13,45 @@
 struct ExprNode;
 using ExprPtr = std::unique_ptr<ExprNode>;
 
+// ===== Type AST nodes =====
+
+struct TypeNode;
+using TypeNodePtr = std::unique_ptr<TypeNode>;
+
+struct BasicType    { std::string name; };
+struct GenericType  { std::string name; std::vector<TypeNodePtr> type_args; };
+struct ArrayType    { TypeNodePtr element_type; uint64_t size; };
+struct TupleType    { std::vector<TypeNodePtr> elements; };
+struct FnType       { std::vector<TypeNodePtr> param_types; TypeNodePtr return_type; };
+struct UnionType    { std::vector<TypeNodePtr> components; };
+struct OptionalType { TypeNodePtr inner; };
+struct RangeType    { std::string start; std::string end; };
+
+struct TypeNode {
+    std::variant<
+        BasicType,
+        GenericType,
+        ArrayType,
+        TupleType,
+        FnType,
+        UnionType,
+        OptionalType,
+        RangeType
+    > data;
+
+    std::string toString() const;
+
+    static TypeNodePtr makeBasic(std::string name);
+    static TypeNodePtr makeGeneric(std::string name, std::vector<TypeNodePtr> args);
+    static TypeNodePtr makeArray(TypeNodePtr elem, uint64_t size);
+    static TypeNodePtr makeTuple(std::vector<TypeNodePtr> elems);
+    static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret);
+    static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
+    static TypeNodePtr makeOptional(TypeNodePtr inner);
+    static TypeNodePtr makeRange(std::string start, std::string end);
+    static TypeNodePtr clone(const TypeNodePtr &src);
+};
+
 // ===== Directive =====
 
 struct DirectiveParam {
@@ -29,12 +68,8 @@ struct Directive {
     Directive() = default;
     Directive(Directive &&) = default;
     Directive &operator=(Directive &&) = default;
-    Directive(const Directive &o)
-        : name(o.name), params(o.params), expr(nullptr), loc(o.loc) {}
-    Directive &operator=(const Directive &o) {
-        if (this != &o) { name = o.name; params = o.params; expr = nullptr; loc = o.loc; }
-        return *this;
-    }
+    Directive(const Directive &) = delete;
+    Directive &operator=(const Directive &) = delete;
 };
 
 inline bool hasDirective(const std::vector<Directive> &directives, std::string_view name) {
@@ -43,8 +78,37 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     return false;
 }
 
-struct NumberExpr   { int64_t value; };
-struct FloatExpr    { double value; };
+// Returns true for operator names whose return type must be bool.
+inline bool isBoolConstrainedOperator(const std::string &name) {
+    return name == "operator==" || name == "operator!=" ||
+           name == "operator<"  || name == "operator<=" ||
+           name == "operator>"  || name == "operator>=" ||
+           name == "operatornot" || name == "operatorand" || name == "operatoror" ||
+           name == "operatorin";
+}
+
+// Strips the "operator" prefix from an operator function name.
+inline std::string operatorSymbol(const std::string &name) {
+    return name.substr(8);
+}
+
+// Returns true for compound assignment operator names (operator+=, operator-=, etc.).
+inline bool isCompoundAssignOperator(const std::string &name) {
+    return name == "operator+=" || name == "operator-=" ||
+           name == "operator*=" || name == "operator/=" ||
+           name == "operator%=" || name == "operator//=" ||
+           name == "operator**=" ||
+           name == "operator&=" || name == "operator|=" ||
+           name == "operator^=" ||
+           name == "operator<<=" || name == "operator>>=";
+}
+
+struct TypeParam {
+    std::string name;
+    std::optional<std::string> bound;    // record name constraint; validated at instantiation
+};
+struct NumberExpr   { int64_t value; std::string suffix; };
+struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
 struct StringExpr   { std::string value; };
 struct VariableExpr { std::string name; };
@@ -65,15 +129,12 @@ struct EnumAccessExpr {
     std::string variant_name;
 };
 
-struct OldExpr;
-struct ResultExpr {};
 struct CastExpr;
 struct InterpolatedStringExpr;
 struct TernaryExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
-struct SpawnExpr;
 struct AwaitExpr;
 
 struct ExprNode {
@@ -89,15 +150,12 @@ struct ExprNode {
                  std::unique_ptr<SetExpr>,
                  EnumAccessExpr,
                  std::unique_ptr<LambdaExpr>,
-                 std::unique_ptr<OldExpr>,
-                 ResultExpr,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
                  std::unique_ptr<TernaryExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
-                 std::unique_ptr<SpawnExpr>,
                  std::unique_ptr<AwaitExpr>> data;
     SourceLocation loc;
 };
@@ -132,7 +190,7 @@ struct ListExpr {
 
 struct IndexExpr {
     ExprPtr object;
-    ExprPtr index;
+    std::vector<ExprPtr> indices;
 };
 
 struct MapExpr {
@@ -144,11 +202,11 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::vector<Directive> directives; SourceLocation loc; };
+struct AssignStmt { std::string name; TypeNodePtr type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
-struct FnParam { std::string name; std::string type; };
+struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; };
 
 struct ImportStmt {
     std::string module_path;              // "utils/math" (resolved to dir or .ry file)
@@ -158,16 +216,16 @@ struct ImportStmt {
 
 struct IndexAssignStmt {
     ExprPtr object;
-    ExprPtr index;
+    std::vector<ExprPtr> indices;
     ExprPtr value;
     SourceLocation loc;
 };
 
-struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
+struct FieldDef { std::string name; TypeNodePtr type; std::vector<Directive> directives; };
 
-struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
+struct RecordStmt { std::string name; std::optional<std::string> parent_name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
-struct TypeAliasStmt { std::string name; std::string target_type; SourceLocation loc; };
+struct TypeAliasStmt { std::string name; TypeNodePtr target_type; SourceLocation loc; };
 
 struct BreakStmt { SourceLocation loc; };
 struct ContinueStmt { SourceLocation loc; };
@@ -175,12 +233,14 @@ struct EllipsisStmt { SourceLocation loc; };
 
 struct EnumVariant {
     std::string name;
-    std::vector<std::string> field_types;  // empty = no associated data
+    std::vector<TypeNodePtr> field_types;  // empty = no associated data
+    std::vector<std::string> field_names;  // parallel to field_types; empty when unnamed
+    std::optional<int64_t> explicit_value;
 };
 
 struct EnumStmt {
     std::string name;
-    std::vector<std::string> type_params;  // for generics
+    std::vector<TypeParam> type_params;  // for generics: <T, U> or <T: Bound>
     std::vector<EnumVariant> variants;
     SourceLocation loc;
 };
@@ -206,7 +266,6 @@ struct ForStmt;
 struct FnStmt;
 struct MatchStmt;
 struct AwaitStmt;
-struct SelectStmt;
 
 struct ExpectStmt {
     ExprPtr actual;
@@ -224,8 +283,7 @@ using StmtNode = std::variant<AssignStmt, CallStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<MatchStmt>,
-                              std::unique_ptr<SelectStmt>>;
+                              std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -246,19 +304,16 @@ struct WhileStmt {
 };
 
 struct ForStmt {
-    std::string var_name;
-    std::optional<std::string> var_name2;
+    std::vector<std::string> var_names; // 1+ variable names; "_" = wildcard
     ExprPtr iterable;
     std::vector<StmtNode> body;
     std::vector<Directive> directives;
     SourceLocation loc;
 };
 
-struct OldExpr { ExprPtr expr; };
-
 struct CastExpr {
     ExprPtr value;
-    std::string target_type;
+    TypeNodePtr target_type;
 };
 
 struct TernaryExpr {
@@ -281,10 +336,6 @@ struct ErrorPropagateExpr {
     ExprPtr operand;
 };
 
-struct SpawnExpr {
-    ExprPtr operand;
-};
-
 struct AwaitExpr {
     ExprPtr operand;
 };
@@ -294,53 +345,24 @@ struct AwaitStmt {
     SourceLocation loc;
 };
 
-enum class SelectRecvMode {
-    Strict,
-    Optional,
-};
-
-struct SelectRecvCase {
-    std::string name;
-    ExprPtr channel;
-    SelectRecvMode mode = SelectRecvMode::Strict;
-    std::vector<StmtNode> body;
-    SourceLocation loc;
-};
-
-struct SelectSendCase {
-    ExprPtr channel;
-    ExprPtr value;
-    std::vector<StmtNode> body;
-    SourceLocation loc;
-};
-
-using SelectCase = std::variant<SelectRecvCase, SelectSendCase>;
-
-struct SelectStmt {
-    std::vector<SelectCase> cases;
-    std::vector<StmtNode> else_body;
-    ExprPtr timeout_ms;
-    std::vector<StmtNode> timeout_body;
-    SourceLocation timeout_loc;
-    SourceLocation loc;
-};
-
 struct FnStmt {
     std::string name;
+    std::vector<TypeParam> type_params;  // for generics: <T, U> or <T: Bound>
     std::vector<FnParam> params;
-    std::string return_type;
+    TypeNodePtr return_type;
     std::vector<StmtNode> body;
     bool is_operator = false;
     bool is_async = false;
     std::vector<ExprPtr> preconditions;
     std::vector<ExprPtr> postconditions;
+    std::vector<std::string> ensure_bindings;
     std::vector<Directive> directives;
     SourceLocation loc;
 };
 
 struct LambdaExpr {
     std::vector<FnParam> params;
-    std::string return_type;
+    TypeNodePtr return_type;
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
 };
@@ -353,6 +375,8 @@ struct VariablePattern { std::string name; };
 struct EnumPattern { std::string enum_name; std::string variant_name; };
 struct SomePattern { std::string binding; };
 struct NonePattern {};
+struct OkPattern { std::string binding; };
+struct ErrPattern { std::string binding; };
 struct EnumConstructorPattern {
     std::string enum_name;
     std::string variant_name;
@@ -364,6 +388,7 @@ struct OrPattern;
 using Pattern = std::variant<
     WildcardPattern, LiteralPattern, VariablePattern,
     EnumPattern, SomePattern, NonePattern,
+    OkPattern, ErrPattern,
     EnumConstructorPattern,
     std::unique_ptr<OrPattern>
 >;

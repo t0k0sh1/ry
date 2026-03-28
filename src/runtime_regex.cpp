@@ -1,4 +1,6 @@
 #include "ry/runtime_regex.hpp"
+#include "ry/runtime_regex_internal.hpp"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
@@ -7,361 +9,7 @@
 #include <vector>
 #include <memory>
 
-// ============================================================
-// Regex AST
-// ============================================================
-
 namespace {
-
-enum class RegexNodeKind {
-    Literal,       // single character
-    Dot,           // .
-    CharClass,     // [abc], [a-z], [^0-9]
-    Anchor,        // ^ or $
-    WordBoundary,  // \b, \B
-    Concat,        // AB
-    Alternation,   // A|B
-    Repeat,        // A*, A+, A?
-    Group,         // (A)
-};
-
-struct RegexNode {
-    RegexNodeKind kind;
-
-    // Literal / Anchor
-    char ch = 0;
-
-    // CharClass
-    bool negated = false;
-    std::vector<std::pair<char, char>> ranges; // inclusive ranges
-
-    // Repeat
-    int repeatMin = 0;   // minimum repetitions
-    int repeatMax = -1;  // maximum repetitions (-1 = unlimited)
-    bool greedy = true;  // false = non-greedy (lazy)
-
-    // Children
-    std::vector<std::unique_ptr<RegexNode>> children;
-};
-
-using RegexNodePtr = std::unique_ptr<RegexNode>;
-
-// Shared word-character ranges used by \w, \W, \b, \B
-static const std::vector<std::pair<char, char>> WORD_CHAR_RANGES =
-    {{'a','z'},{'A','Z'},{'0','9'},{'_','_'}};
-
-// ============================================================
-// Regex Parser (recursive descent)
-// ============================================================
-
-class RegexParser {
-public:
-    explicit RegexParser(const char *pattern) : src_(pattern), len_(strlen(pattern)), pos_(0) {}
-
-    bool caseInsensitive() const { return caseInsensitive_; }
-
-    RegexNodePtr parse() {
-        auto node = parseAlternation();
-        if (pos_ < len_) {
-            fprintf(stderr, "regex error: unexpected character '%c' at position %zu in pattern '%s'\n",
-                    src_[pos_], pos_, src_);
-            exit(1);
-        }
-        return node;
-    }
-
-private:
-    const char *src_;
-    size_t len_;
-    size_t pos_;
-    bool caseInsensitive_ = false;
-
-    char peek() const {
-        if (pos_ >= len_) return '\0';
-        return src_[pos_];
-    }
-
-    char advance() {
-        return src_[pos_++];
-    }
-
-    bool atEnd() const {
-        return pos_ >= len_;
-    }
-
-    RegexNodePtr parseAlternation() {
-        auto left = parseConcat();
-        if (peek() == '|') {
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Alternation;
-            node->children.push_back(std::move(left));
-            while (peek() == '|') {
-                advance(); // consume '|'
-                node->children.push_back(parseConcat());
-            }
-            return node;
-        }
-        return left;
-    }
-
-    RegexNodePtr parseConcat() {
-        std::vector<RegexNodePtr> parts;
-        while (!atEnd() && peek() != '|' && peek() != ')') {
-            parts.push_back(parseRepeat());
-        }
-        if (parts.empty()) {
-            // Empty concat = match empty string (literal with special handling)
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Concat;
-            return node;
-        }
-        if (parts.size() == 1) return std::move(parts[0]);
-        auto node = std::make_unique<RegexNode>();
-        node->kind = RegexNodeKind::Concat;
-        for (auto &p : parts) node->children.push_back(std::move(p));
-        return node;
-    }
-
-    RegexNodePtr parseRepeat() {
-        auto atom = parseAtom();
-        if (atEnd()) return atom;
-
-        int rmin = -1, rmax = -1;
-        bool hasQuantifier = false;
-
-        char c = peek();
-        if (c == '*') {
-            advance();
-            rmin = 0; rmax = -1;
-            hasQuantifier = true;
-        } else if (c == '+') {
-            advance();
-            rmin = 1; rmax = -1;
-            hasQuantifier = true;
-        } else if (c == '?') {
-            advance();
-            rmin = 0; rmax = 1;
-            hasQuantifier = true;
-        } else if (c == '{') {
-            size_t saved = pos_;
-            if (parseQuantifierBrace(rmin, rmax)) {
-                hasQuantifier = true;
-            } else {
-                pos_ = saved; // fallback: treat '{' as literal
-            }
-        }
-
-        if (hasQuantifier) {
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Repeat;
-            node->repeatMin = rmin;
-            node->repeatMax = rmax;
-            node->greedy = true;
-            // Non-greedy suffix '?'
-            if (!atEnd() && peek() == '?') {
-                advance();
-                node->greedy = false;
-            }
-            node->children.push_back(std::move(atom));
-            return node;
-        }
-        return atom;
-    }
-
-    // Try to parse {n}, {n,}, {n,m}. Returns true on success.
-    bool parseQuantifierBrace(int &rmin, int &rmax) {
-        advance(); // consume '{'
-        if (atEnd() || !std::isdigit(static_cast<unsigned char>(peek()))) return false;
-        int n = parseNumber();
-        if (n > 1000) {
-            fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", n, src_);
-            exit(1);
-        }
-        if (atEnd()) return false;
-        if (peek() == '}') {
-            advance();
-            rmin = n; rmax = n;
-            return true;
-        }
-        if (peek() == ',') {
-            advance();
-            if (atEnd()) return false;
-            if (peek() == '}') {
-                advance();
-                rmin = n; rmax = -1;
-                return true;
-            }
-            if (!std::isdigit(static_cast<unsigned char>(peek()))) return false;
-            int m = parseNumber();
-            if (m > 1000) {
-                fprintf(stderr, "regex error: quantifier value %d exceeds maximum (1000) in pattern '%s'\n", m, src_);
-                exit(1);
-            }
-            if (atEnd() || peek() != '}') return false;
-            advance();
-            if (n > m) {
-                fprintf(stderr, "regex error: invalid quantifier {%d,%d} in pattern '%s'\n", n, m, src_);
-                exit(1);
-            }
-            rmin = n; rmax = m;
-            return true;
-        }
-        return false;
-    }
-
-    int parseNumber() {
-        int val = 0;
-        while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek()))) {
-            val = val * 10 + (advance() - '0');
-            if (val > 1000) return val; // early exit on overflow
-        }
-        return val;
-    }
-
-    RegexNodePtr parseAtom() {
-        char c = peek();
-        if (c == '(') {
-            advance(); // consume '('
-            // Check for inline flags (?i)
-            if (peek() == '?' && pos_ + 1 < len_ && src_[pos_ + 1] == 'i') {
-                advance(); // consume '?'
-                advance(); // consume 'i'
-                if (peek() != ')') {
-                    fprintf(stderr, "regex error: expected ')' after '(?i' in pattern '%s'\n", src_);
-                    exit(1);
-                }
-                advance(); // consume ')'
-                caseInsensitive_ = true;
-                // Return next atom (flag is stateful, not a node)
-                return parseAtom();
-            }
-            auto inner = parseAlternation();
-            if (peek() != ')') {
-                fprintf(stderr, "regex error: unmatched '(' in pattern '%s'\n", src_);
-                exit(1);
-            }
-            advance(); // consume ')'
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Group;
-            node->children.push_back(std::move(inner));
-            return node;
-        }
-        if (c == '[') {
-            return parseCharClass();
-        }
-        if (c == '.') {
-            advance();
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Dot;
-            return node;
-        }
-        if (c == '^' || c == '$') {
-            advance();
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Anchor;
-            node->ch = c;
-            return node;
-        }
-        if (c == '\\') {
-            advance(); // consume backslash
-            if (atEnd()) {
-                fprintf(stderr, "regex error: trailing backslash in pattern '%s'\n", src_);
-                exit(1);
-            }
-            char escaped = advance();
-            // Handle word boundary
-            if (escaped == 'b' || escaped == 'B') {
-                auto node = std::make_unique<RegexNode>();
-                node->kind = RegexNodeKind::WordBoundary;
-                node->negated = (escaped == 'B');
-                return node;
-            }
-            // Handle shorthand character classes
-            if (escaped == 'd' || escaped == 'D' ||
-                escaped == 'w' || escaped == 'W' ||
-                escaped == 's' || escaped == 'S') {
-                return parseShorthandClass(escaped);
-            }
-            auto node = std::make_unique<RegexNode>();
-            node->kind = RegexNodeKind::Literal;
-            node->ch = escaped;
-            return node;
-        }
-        if (c == '*' || c == '+' || c == '?') {
-            fprintf(stderr, "regex error: nothing to repeat at position %zu in pattern '%s'\n", pos_, src_);
-            exit(1);
-        }
-        if (atEnd() || c == '|' || c == ')') {
-            fprintf(stderr, "regex error: unexpected end or character in pattern '%s'\n", src_);
-            exit(1);
-        }
-        // Regular literal
-        advance();
-        auto node = std::make_unique<RegexNode>();
-        node->kind = RegexNodeKind::Literal;
-        node->ch = c;
-        return node;
-    }
-
-    RegexNodePtr parseShorthandClass(char code) {
-        auto node = std::make_unique<RegexNode>();
-        node->kind = RegexNodeKind::CharClass;
-        switch (code) {
-            case 'd': node->negated = false; node->ranges = {{'0','9'}}; break;
-            case 'D': node->negated = true;  node->ranges = {{'0','9'}}; break;
-            case 'w': node->negated = false; node->ranges = WORD_CHAR_RANGES; break;
-            case 'W': node->negated = true;  node->ranges = WORD_CHAR_RANGES; break;
-            case 's': node->negated = false; node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
-            case 'S': node->negated = true;  node->ranges = {{' ',' '},{'\t','\t'},{'\n','\n'},{'\r','\r'},{'\f','\f'}}; break;
-        }
-        return node;
-    }
-
-    RegexNodePtr parseCharClass() {
-        advance(); // consume '['
-        auto node = std::make_unique<RegexNode>();
-        node->kind = RegexNodeKind::CharClass;
-        node->negated = false;
-        if (peek() == '^') {
-            node->negated = true;
-            advance();
-        }
-        while (!atEnd() && peek() != ']') {
-            char lo = parseClassChar();
-            if (peek() == '-' && pos_ + 1 < len_ && src_[pos_ + 1] != ']') {
-                advance(); // consume '-'
-                char hi = parseClassChar();
-                node->ranges.push_back({lo, hi});
-            } else {
-                node->ranges.push_back({lo, lo});
-            }
-        }
-        if (peek() != ']') {
-            fprintf(stderr, "regex error: unmatched '[' in pattern '%s'\n", src_);
-            exit(1);
-        }
-        advance(); // consume ']'
-        return node;
-    }
-
-    char parseClassChar() {
-        if (peek() == '\\') {
-            advance();
-            if (atEnd()) {
-                fprintf(stderr, "regex error: trailing backslash in character class in pattern '%s'\n", src_);
-                exit(1);
-            }
-            char c = advance();
-            switch (c) {
-                case 'n': return '\n';
-                case 't': return '\t';
-                case 'r': return '\r';
-                default: return c;
-            }
-        }
-        return advance();
-    }
-};
 
 // ============================================================
 // NFA
@@ -383,7 +31,10 @@ struct NFAState {
     NFAState *out2 = nullptr; // only for Split
 
     // Generation counter for epsilon closure visited check (O(1) lookup)
-    int visitGeneration = 0;
+    int64_t visitGeneration = 0;
+
+    // For single-pass search: tracks the text position where this match attempt started
+    size_t matchStartPos = 0;
 };
 
 struct NFAFragment {
@@ -573,6 +224,8 @@ private:
 
 class NFASimulator {
 public:
+    static constexpr int64_t MAX_STEPS = 10'000'000;
+
     NFASimulator(NFAState *start, NFAState *matchState, bool caseInsensitive = false)
         : start_(start), matchState_(matchState), generation_(0), caseInsensitive_(caseInsensitive) {}
 
@@ -599,32 +252,16 @@ public:
             }
         }
 
+        int64_t steps = 0;
         for (size_t i = startPos; i < textLen; ++i) {
             char c = text[i];
             next_.clear();
             ++generation_;
 
             for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return -1;
                 if (s == matchState_) continue;
-                bool matches = false;
-                switch (s->kind) {
-                case NFAState::Char:
-                    if (caseInsensitive_) {
-                        matches = (std::tolower((unsigned char)s->ch) == std::tolower((unsigned char)c));
-                    } else {
-                        matches = (s->ch == c);
-                    }
-                    break;
-                case NFAState::Dot:
-                    matches = (c != '\n');
-                    break;
-                case NFAState::CharClass:
-                    matches = charClassMatches(s, c, caseInsensitive_);
-                    break;
-                default:
-                    break;
-                }
-                if (matches && s->out1) {
+                if (stateMatchesChar(s, c) && s->out1) {
                     addState(next_, s->out1, text, textLen, i + 1);
                 }
             }
@@ -647,29 +284,232 @@ public:
         return lastMatch;
     }
 
+    // Single-pass search: find the first (leftmost) match in O(n*s) time
+    // instead of O(n^2) by injecting start state at every position during
+    // a single forward scan.
+    std::pair<int64_t, int64_t> searchSinglePass(
+            const char *text, size_t textLen, bool preferShortest) {
+        current_.clear();
+        next_.clear();
+        int64_t bestStart = -1, bestEnd = -1;
+        int64_t steps = 0;
+
+        for (size_t i = 0; i <= textLen; ++i) {
+            // Inject start state for a new match attempt at position i.
+            // Mark existing states as visited so addState won't duplicate them
+            // (they have earlier/equal matchStartPos, which is preferred).
+            ++generation_;
+            for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return {bestStart, bestEnd};
+                s->visitGeneration = generation_;
+            }
+            addState(current_, start_, text, textLen, i, i);
+
+            // Check for match state in current set
+            for (NFAState *s : current_) {
+                if (s == matchState_) {
+                    int64_t S = (int64_t)s->matchStartPos;
+                    int64_t E = (int64_t)i;
+                    if (bestStart == -1 || S < bestStart ||
+                        (S == bestStart && !preferShortest && E > bestEnd)) {
+                        bestStart = S;
+                        bestEnd = E;
+                    }
+                    if (preferShortest && bestStart >= 0) {
+                        // Only return once no active thread has an earlier
+                        // start position — preserves leftmost-start semantics.
+                        bool hasEarlierStart = false;
+                        for (NFAState *t : current_) {
+                            if (t != matchState_ &&
+                                (int64_t)t->matchStartPos < bestStart) {
+                                hasEarlierStart = true;
+                                break;
+                            }
+                        }
+                        if (!hasEarlierStart) {
+                            return {bestStart, bestEnd};
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // Early termination for greedy: once we have a leftmost match and
+            // no thread from that start position remains, we're done.
+            if (!preferShortest && bestStart >= 0) {
+                if (!hasActiveThreadFrom((size_t)bestStart)) {
+                    return {bestStart, bestEnd};
+                }
+            }
+
+            if (i == textLen) break;
+
+            // Step: consume text[i], build next state set
+            char c = text[i];
+            next_.clear();
+            ++generation_;
+
+            for (NFAState *s : current_) {
+                if (++steps > MAX_STEPS) return {bestStart, bestEnd};
+                if (s == matchState_) continue;
+                if (stateMatchesChar(s, c) && s->out1) {
+                    addState(next_, s->out1, text, textLen, i + 1,
+                             s->matchStartPos);
+                }
+            }
+
+            current_.swap(next_);
+
+            if (current_.empty() && bestStart >= 0) {
+                return {bestStart, bestEnd};
+            }
+        }
+
+        return {bestStart, bestEnd};
+    }
+
+    // Single-pass findAll: find all non-overlapping matches in O(n*s) time.
+    std::vector<std::pair<int64_t, int64_t>> findAllSinglePass(
+            const char *text, size_t textLen, bool preferShortest) {
+        std::vector<std::pair<int64_t, int64_t>> results;
+        current_.clear();
+        next_.clear();
+        size_t discardBefore = 0;
+
+        // Track pending match: the best match found for the current leftmost
+        // start position, not yet emitted (for greedy, we wait for longest).
+        int64_t pendingStart = -1, pendingEnd = -1;
+
+        for (size_t i = 0; i <= textLen; ++i) {
+            // Prune threads starting before discardBefore
+            if (discardBefore > 0) {
+                current_.erase(
+                    std::remove_if(current_.begin(), current_.end(),
+                        [&](NFAState *s) {
+                            return s->matchStartPos < discardBefore;
+                        }),
+                    current_.end());
+            }
+
+            // Inject start state for position i (only if >= discardBefore)
+            ++generation_;
+            for (NFAState *s : current_) {
+                s->visitGeneration = generation_;
+            }
+            if (i >= discardBefore) {
+                addState(current_, start_, text, textLen, i, i);
+            }
+
+            // Check for match state
+            for (NFAState *s : current_) {
+                if (s == matchState_) {
+                    int64_t S = (int64_t)s->matchStartPos;
+                    int64_t E = (int64_t)i;
+
+                    if (preferShortest) {
+                        // Non-greedy: record as pending, emit only once
+                        // no earlier-start thread is active (leftmost-first).
+                        if (pendingStart == -1 || S < pendingStart) {
+                            pendingStart = S;
+                            pendingEnd = E;
+                        }
+                    } else {
+                        // Greedy: record as pending, wait for longest
+                        if (pendingStart == -1 || S < pendingStart ||
+                            (S == pendingStart && E > pendingEnd)) {
+                            pendingStart = S;
+                            pendingEnd = E;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // Emit pending match once no earlier-start thread can
+            // produce a better result (leftmost-first semantics).
+            if (pendingStart >= 0) {
+                bool canEmit;
+                if (preferShortest) {
+                    // Non-greedy: emit once no thread has an earlier start
+                    bool hasEarlierStart = false;
+                    for (NFAState *s : current_) {
+                        if (s != matchState_ &&
+                            (int64_t)s->matchStartPos < pendingStart) {
+                            hasEarlierStart = true;
+                            break;
+                        }
+                    }
+                    canEmit = !hasEarlierStart;
+                } else {
+                    // Greedy: emit once no thread from the same start remains
+                    canEmit = !hasActiveThreadFrom((size_t)pendingStart);
+                }
+                if (canEmit) {
+                    results.push_back({pendingStart, pendingEnd});
+                    if (pendingEnd == pendingStart) {
+                        discardBefore = (size_t)pendingStart + 1;
+                    } else {
+                        discardBefore = (size_t)pendingEnd;
+                    }
+                    pendingStart = -1;
+                    pendingEnd = -1;
+                }
+            }
+
+            if (i == textLen) break;
+
+            // Step: consume text[i]
+            char c = text[i];
+            next_.clear();
+            ++generation_;
+
+            for (NFAState *s : current_) {
+                if (s == matchState_) continue;
+                // Skip threads from already-emitted match regions
+                // (discardBefore may have changed mid-iteration)
+                if (s->matchStartPos < discardBefore) continue;
+                if (stateMatchesChar(s, c) && s->out1) {
+                    addState(next_, s->out1, text, textLen, i + 1,
+                             s->matchStartPos);
+                }
+            }
+
+            current_.swap(next_);
+        }
+
+        // Emit any remaining pending match
+        if (pendingStart >= 0) {
+            results.push_back({pendingStart, pendingEnd});
+        }
+
+        return results;
+    }
+
 private:
     NFAState *start_;
     NFAState *matchState_;
     std::vector<NFAState *> current_;
     std::vector<NFAState *> next_;
-    int generation_;
+    int64_t generation_;
     bool caseInsensitive_;
 
     void addState(std::vector<NFAState *> &stateSet, NFAState *s,
-                  const char *text, size_t textLen, size_t pos) {
+                  const char *text, size_t textLen, size_t pos,
+                  size_t matchStartPos = 0) {
         if (!s || s->visitGeneration == generation_) return;
         s->visitGeneration = generation_;
+        s->matchStartPos = matchStartPos;
 
         if (s->kind == NFAState::Split) {
-            addState(stateSet, s->out1, text, textLen, pos);
-            addState(stateSet, s->out2, text, textLen, pos);
+            addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
+            addState(stateSet, s->out2, text, textLen, pos, matchStartPos);
             return;
         }
         if (s->kind == NFAState::Anchor) {
             if (s->ch == '^') {
-                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos);
+                if (pos == 0) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             } else { // '$'
-                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos);
+                if (pos == textLen) addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             }
             return;
         }
@@ -678,7 +518,7 @@ private:
             bool currIsWord = (pos < textLen) && isWordChar(text[pos]);
             bool atBoundary = (prevIsWord != currIsWord);
             if (atBoundary != s->negated) {
-                addState(stateSet, s->out1, text, textLen, pos);
+                addState(stateSet, s->out1, text, textLen, pos, matchStartPos);
             }
             return;
         }
@@ -688,6 +528,32 @@ private:
     static bool isWordChar(char c) {
         for (auto &[lo, hi] : WORD_CHAR_RANGES) {
             if (c >= lo && c <= hi) return true;
+        }
+        return false;
+    }
+
+    bool stateMatchesChar(NFAState *s, char c) const {
+        switch (s->kind) {
+        case NFAState::Char:
+            if (caseInsensitive_) {
+                return std::tolower((unsigned char)s->ch) ==
+                       std::tolower((unsigned char)c);
+            }
+            return s->ch == c;
+        case NFAState::Dot:
+            return c != '\n';
+        case NFAState::CharClass:
+            return charClassMatches(s, c, caseInsensitive_);
+        default:
+            return false;
+        }
+    }
+
+    bool hasActiveThreadFrom(size_t startPos) const {
+        for (NFAState *s : current_) {
+            if (s != matchState_ && s->matchStartPos == startPos) {
+                return true;
+            }
         }
         return false;
     }
@@ -762,35 +628,14 @@ struct CompiledRegex {
     std::pair<int64_t, int64_t> search(const char *text) {
         size_t len = strlen(text);
         NFASimulator sim(start, matchState, caseInsensitive_);
-        for (size_t i = 0; i <= len; ++i) {
-            int64_t endPos = sim.simulate(text, len, i, false, hasLazy_);
-            if (endPos >= 0) {
-                return {(int64_t)i, endPos};
-            }
-        }
-        return {-1, -1};
+        return sim.searchSinglePass(text, len, hasLazy_);
     }
 
     // Find all non-overlapping matches
     std::vector<std::pair<int64_t, int64_t>> findAll(const char *text) {
         size_t len = strlen(text);
-        std::vector<std::pair<int64_t, int64_t>> results;
         NFASimulator sim(start, matchState, caseInsensitive_);
-        size_t pos = 0;
-        while (pos <= len) {
-            int64_t endPos = sim.simulate(text, len, pos, false, hasLazy_);
-            if (endPos >= 0) {
-                results.push_back({(int64_t)pos, endPos});
-                if ((size_t)endPos == pos) {
-                    ++pos; // avoid infinite loop on zero-length match
-                } else {
-                    pos = (size_t)endPos;
-                }
-            } else {
-                ++pos;
-            }
-        }
-        return results;
+        return sim.findAllSinglePass(text, len, hasLazy_);
     }
 };
 

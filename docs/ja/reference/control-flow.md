@@ -113,7 +113,7 @@ for k, v in map_expr:
 
 ### タプル分解代入
 
-2要素タプルのリスト（`enumerate()` や `zip()` の戻り値など）を走査する際、2つの変数に分解できます。`_` で値を破棄できます。
+タプルのリストを走査する際、タプルの要素数に合わせて N 個の変数に分解できます。`_` で値を破棄できます。
 
 ```python
 xs = [10, 20, 30]
@@ -126,6 +126,14 @@ for a, b in zip([1, 2], [10, 20]):
 
 for _, x in enumerate(xs):
     print(x)              # インデックスを破棄
+
+# N要素の分解代入（3個以上の変数）
+triples = [(1, 2, 3), (4, 5, 6)]
+for a, b, c in triples:
+    print(a + b + c)      # 6, 15
+
+for a, _, c in triples:
+    print(a + c)          # 4, 10（中間の要素を破棄）
 ```
 
 ### 範囲演算子（`..`）
@@ -173,89 +181,35 @@ for i in 1 .. 3:
 
 ---
 
-## spawn / await
+## async / await
 
-`spawn` はユーザー定義関数またはラムダ呼び出しをランタイムの worker pool で開始し、`Task<T>` を返します。`await` と `join(task)` はどちらも task の完了を待機します。
-
-```python
-fn square(x: int) -> int:
-    return x * x
-
-t: Task<int> = spawn square(12)
-print(await t)          # 144
-u: Task<int> = spawn square(3)
-print(join(u))          # 9, await の関数形式
-```
-
-### 制約
-
-- `spawn` は関数呼び出し式にのみ使用できます。
-- 呼び出し先はユーザー定義関数またはラムダに限られます。
-- v1 の `spawn` は `Unit` 戻り値の呼び出しをサポートしません。
-- task は OS スレッド 1 本ごとではなく、ランタイム上の軽量 job として実行されます。
-- `await` は `Task<T>` にのみ使用できます。
-- `await expr` は式としても文としても使えます。
-
-## channels
-
-`Channel<T>` は task 間で値を受け渡すための組み込みブロッキング通信プリミティブです。
+`async fn` は並行実行される関数を宣言します。`async fn` を呼び出すと `Task<T>` が返ります。別の `async fn` 内では `await` を使い、同期コンテキストからは `block_on()` を使って結果を待ちます。
 
 ```python
-fn worker(ch: Channel<int>) -> int:
-    send(ch, 42)
-    close(ch)
-    return 0
+async fn add(a: int, b: int) -> int:
+    return a + b
 
-ch: Channel<int> = channel[int]()
-t: Task<int> = spawn worker(ch)
-for x in ch:
-    print(x)
-print(join(t))
+# 同期コンテキストからは block_on() を使用
+t: Task<int> = add(20, 22)
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# async fn 内では await を使用
+async fn double_add(a: int, b: int) -> int:
+    result = await add(a, b)
+    return result * 2
 ```
 
 ### ルール
 
-- `channel[T]()` は unbuffered channel を作成します。
-- `channel[T](n)` は容量 `n` の buffered channel を作成します。
-- `send(ch, value)` は受け入れられるまで待機します。
-- `try_send(ch, value)` は送信を即時に試み、`bool` を返します。
-- `recv(ch)` は strict な受信 API で、値が届くまで待機します。
-- `recv_opt(ch)` は値が届くか、channel が close 済みかつ drained になるまで待機します。
-- `try_recv(ch)` は受信を即時に試み、`Option<T>` または `Channel<Unit>` では `bool` を返します。
-- `for x in ch:` は channel が close 済みかつ drained になるまで値を反復します。
-- `close(ch)` は channel を閉じます。
-- v1 では、閉じた channel への `send` と、空の closed channel からの `recv` はランタイムエラーです。
-- `recv_opt(ch: Channel<T>) -> Option<T>` は受信した値を `Some(v)` として返し、channel が close 済みかつ drained なら `None` を返します。
-- `recv_opt(ch: Channel<Unit>) -> bool` は `Unit` を受信したら `true`、close 済みかつ drained なら `false` を返します。
-- `try_recv(ch: Channel<T>) -> Option<T>` は値が即時に取れれば `Some(v)`、そうでなければ `None` を返します。close 済みかつ drained な channel でも `None` です。
-- `try_recv(ch: Channel<Unit>) -> bool` は `Unit` を即時に受信できれば `true`、そうでなければ `false` を返します。
-- `for _ in ch:` を使うと `Channel<Unit>` を消費できます。
-
-## select
-
-`select` は複数の channel 操作を待ち合わせし、ready になった branch を 1 つだけ実行します。
-
-```python
-select:
-    case let x = recv(inbox):
-        print(x)
-    case send(outbox, 42):
-        print("sent")
-    else:
-        print("idle")
-```
-
-### Rules
-
-- `select` は式ではなく文です。
-- case は `case let name = recv(ch):`、`case let name = recv_opt(ch):`、`case send(ch, value):` のみです。
-- 受信値を捨てる場合は `let _ = recv(ch)` を使います。
-- `recv_opt` を使う case では `Option<T>`、`Channel<Unit>` の場合は `bool` が束縛されます。
-- `else:` は省略可能で、書く場合は最後の branch に限られます。
-- `timeout n:` は select 全体の待機上限をミリ秒で指定する最後の branch です。
-- `else` と `timeout` は同時に指定できません。
-- `else` が無い場合、いずれかの case が ready になるまで block します。
-- v1 では `select` 内でも closed channel のエラーは変わりません。閉じた channel への `send` と、空の closed channel からの `recv` はランタイムエラーです。
+- `async fn name(...) -> T:` の `T` は await 後の値型です。
+- `async fn` の呼び出し結果は常に `Task<T>` です。
+- `await expr` は `Task<T>` にのみ使用でき、結果は `T` です。
+- `await` は `async fn` 内でのみ使用可能。同期コンテキストからは `block_on(task)` を使用します。
+- `block_on(task)` は現在のスレッドをタスク完了までブロックし、結果を返します。
+- `async fn ... -> Unit` をサポートします。値を返さない task の待機には `block_on(task)` を使うのが基本です。
+- task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
+- `async` ラムダと `async @native fn` は v1 では未対応です。
 
 ---
 
@@ -358,6 +312,8 @@ match 式:
 | ADT enum バリアント | `Shape::Circle(r)` | 関連データを持つ enum バリアントにマッチし、束縛する |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
+| `Ok(x)` | `Ok(v)` | Result が Ok の場合、中身を束縛 |
+| `Err(x)` | `Err(e)` | Result が Err の場合、エラー値を束縛 |
 | OR パターン | `1 \| 2 \| 3` | いずれかにマッチ |
 
 ### guard 節
@@ -416,6 +372,18 @@ match x:
     case None:
         print("nothing")
 
+# Result マッチ
+fn divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+match divide(10, 2):
+    case Ok(v):
+        print(v)         # 5
+    case Err(e):
+        print(e.message)
+
 # リテラルマッチ
 match x:
     case 0:
@@ -461,7 +429,7 @@ match s:
 ### スコープルール
 
 - 各 `case` アームはブロックスコープを持つ。
-- 変数束縛パターン (`n`) や `Some(x)` で束縛された変数はそのアーム内でのみ有効。
+- 変数束縛パターン (`n`)、`Some(x)`、`Ok(v)`、`Err(e)` で束縛された変数はそのアーム内でのみ有効。
 
 ---
 

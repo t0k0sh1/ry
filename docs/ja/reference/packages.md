@@ -23,7 +23,7 @@ from math
 ### 選択インポート
 
 ```python
-from math import add
+from math import sqrt
 ```
 
 指定した定義のみをインポートします。
@@ -31,7 +31,7 @@ from math import add
 ### 複数選択インポート
 
 ```python
-from math import add, sub
+from math import sqrt, PI
 ```
 
 カンマ区切りで複数の定義を選択インポートします。
@@ -46,7 +46,7 @@ from math import add, sub
 |---|---|
 | `from math` | `math/` ディレクトリ（パッケージ）または `math.ry` ファイル |
 | `from utils.math` | `utils/math/` ディレクトリまたは `utils/math.ry` ファイル |
-| `from std.str` | `std/str/` ディレクトリまたは `std/str.ry` ファイル |
+| `from str` | `str/` ディレクトリまたは `str.ry` ファイル |
 
 ### 解決順序
 
@@ -79,7 +79,7 @@ fn public_api() -> int:  # パブリック — インポート可能
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
@@ -93,7 +93,7 @@ from mypackage import add   # add のみインポート
 ## 標準ライブラリ (`std`)
 
 `std` パッケージはすべてのプログラムに自動的にインポートされます。提供する機能:
-- 組み込み関数（`print`, `len`, `range` など）
+- 組み込み関数（`print`, `length`, `range` など）
 - 文字列関数（`contains`, `find`, `replace` など）
 - 型変換関数（`to_int`, `to_float`, `to_str`）
 - コレクション関数（`map`, `filter`, `sort` など）
@@ -104,17 +104,17 @@ from mypackage import add   # add のみインポート
 
 | パッケージ | 説明 |
 |-----------|------|
-| [`std.math`](math.md) | 数学定数・関数 |
-| [`std.io`](io.md) | ファイル I/O・標準入力・バイト変換 |
+| [`math`](math.md) | 数学定数・関数 |
+| [`io`](io.md) | ファイル I/O・標準入力・バイト変換 |
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
-特定の定義を `std` から明示的にインポートすることもできます:
+標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます:
 
 ```python
-from std.str import contains
+from str import contains
 ```
 
 ### RY_HOME
@@ -125,14 +125,53 @@ from std.str import contains
 export RY_HOME="$HOME/.ry"   # デフォルト
 ```
 
+### RY_ENV
+
+`RY_ENV` 環境変数でランタイム環境モードを制御します。`--env=<value>` CLI フラグでも指定可能です。
+
+| 値 | エイリアス | `.env` 読み込み | lib 探索 |
+|---|----------|---------------|---------|
+| `prod` | `production` | 無効 | リポジトリビルド用プロジェクトオーバーライド → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `dev` | `development` | `.env.dev` → `.env` | `prod` と同じ |
+| `test` | — | `.env.test` → `.env` | `prod` と同じ |
+| `staging` | — | `.env.staging` → `.env` | `prod` と同じ |
+| `internal` | — | `.env.internal` → `.env` | リポジトリビルド用プロジェクトオーバーライド → `exe/../lib` → `exe/lib`（`$RY_HOME` スキップ） |
+| （未設定）（デフォルト） | — | `.env` のみ | `prod` と同じ |
+
+エイリアスは自動的に正規形に解決されます。例えば `RY_ENV=production` は `prod` に正規化されます。
+
+`prod` モードではセキュリティのため `.env` ファイルを読み込みません。本番環境の秘密情報はインフラレベルの環境変数管理（CI/CD、シークレットマネージャー等）で管理してください。
+
+その他のモードでは `.env.<環境名>` を先に読み込み（存在する場合）、次に `.env` を読み込みます。既存の環境変数は上書きされないため、環境別の値が優先されます。
+
+```bash
+# 短縮形（推奨）
+RY_ENV=dev ./build/ry app.ry
+
+# フルネーム（後方互換）
+RY_ENV=development ./build/ry app.ry
+
+# CLI フラグ
+./build/ry --env=dev test
+
+# prod モード: .env は読み込まれない
+RY_ENV=prod ./build/ry app.ry
+
+# Ry 自体の開発時の追加 isolation
+RY_ENV=internal ./build/ry test
+```
+
+Ry のソースツリー内でビルドされた `ry` 実行バイナリは、プロジェクトの `package.toml` からリポジトリローカルの stdlib オーバーライドを使用できます。これにより、`~/.ry/lib/std` が古い場合でも、チェックアウトされた `lib/std` とリポジトリビルドの整合性が保たれます。インストール済みの `ry` バイナリはこのオーバーライドを無視し、`$RY_HOME/lib/std` を引き続き使用します。
+
 ---
 
 ## 検索パスの優先順位
 
 1. インポート元ファイルのディレクトリ
-2. `$RY_HOME/lib`（標準ライブラリの場所）
-3. 実行ファイル相対の `lib/` ディレクトリ
-4. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
+2. 現在の Ry チェックアウトからのリポジトリローカル stdlib オーバーライド（リポジトリビルドの `ry` 使用時）
+3. `$RY_HOME/lib`（標準ライブラリの場所）
+4. 実行ファイル相対の `lib/` ディレクトリ
+5. `RY_PATH` 環境変数に含まれるパス（コロン区切り）
 
 ---
 
@@ -171,7 +210,7 @@ from math   # スキップされる
 ### 単一ファイルパッケージ
 
 ```python
-# math.ry
+# calc.ry
 fn add(a: int, b: int) -> int:
     return a + b
 
@@ -181,7 +220,7 @@ fn sub(a: int, b: int) -> int:
 
 ```python
 # main.ry
-from math import add, sub
+from calc import add, sub
 
 print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
@@ -191,7 +230,7 @@ print(sub(5, 3))   # 2
 
 ```
 mylib/
-  math.ry
+  calc.ry
   string.ry
 ```
 

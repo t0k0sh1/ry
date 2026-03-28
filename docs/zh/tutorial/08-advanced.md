@@ -1,35 +1,35 @@
-[English](../../tutorial/08-advanced.md) | [日本語](../../ja/tutorial/08-advanced.md) | [繁體中文](08-advanced.md)
+[English](../../tutorial/08-advanced.md) | [日本語](../../ja/tutorial/08-advanced.md) | [简体中文](08-advanced.md)
 
-# 進階功能
+# 高级特性
 
-[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)
+[<- 上一篇：集合](07-collections.md) | [下一篇：包 ->](09-modules.md)
 
 ---
 
-## Lambda 函式
+## Lambda 函数
 
-Lambda 函式是將函式以表達式形式撰寫的語法，以 `fn(參數): 表達式` 的形式書寫。回傳值型別會自動推論。
+Lambda 函数是将函数以表达式形式编写的语法，以 `fn(参数) => 表达式` 的形式书写。返回值类型会自动推断。
 
-### 單一表達式 Lambda
+### 单一表达式 Lambda
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
-### 無參數 Lambda
+### 无参数 Lambda
 
 ```python
-answer = fn(): 42
+answer = fn() => 42
 print(answer())  # 42
 ```
 
 ### 多行 Lambda
 
-在 `:` 後換行並縮排，即可撰寫多個陳述式。
+在 `:` 后换行并缩进，即可编写多条语句。
 
 ```python
 abs = fn(x: int):
@@ -43,36 +43,36 @@ print(abs(3))   # 3
 
 ---
 
-## 閉包
+## 闭包
 
-Lambda 函式可以捕獲定義時作用域中的變數。
+Lambda 函数可以捕获定义时作用域中的变量。
 
 ```python
 offset = 10
-add_offset = fn(x: int): x + offset
+add_offset = fn(x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
 ---
 
-## 高階函式
+## 高阶函数
 
-可以定義接受函式作為參數的函式。函式型別以 `fn(參數型別) -> 回傳值型別` 的形式書寫。
+可以定义接受函数作为参数的函数。函数类型以 `fn(参数类型) -> 返回值类型` 的形式书写。
 
 ```python
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int): n + 1, 10))    # 11
+print(apply(fn(n: int) => n + 1, 10))    # 11
 ```
 
 ---
 
-## 將函式作為值使用
+## 将函数作为值使用
 
-具名函式也可以繫結到變數或作為參數傳遞。
+具名函数也可以绑定到变量或作为参数传递。
 
 ```python
 fn square(x: int) -> int:
@@ -81,10 +81,10 @@ fn square(x: int) -> int:
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-# 將具名函式作為參數傳遞
+# 将具名函数作为参数传递
 print(apply(square, 4))  # 16
 
-# 繫結到變數
+# 绑定到变量
 sq = square
 print(sq(5))  # 25
 ```
@@ -93,34 +93,34 @@ print(sq(5))  # 25
 
 ## UFCS（Uniform Function Call Syntax）
 
-使用 UFCS 可以將 `f(a, b)` 的呼叫寫成 `a.f(b)`，實現類似方法鏈的寫法。
+使用 UFCS 可以将 `f(a, b)` 的调用写成 `a.f(b)`，实现类似方法链的写法。
 
 ```python
 fn add(a: int, b: int) -> int:
     return a + b
 
 x = 1
-print(x.add(2))   # add(x, 2) → 3
+print(x.add(2))   # add(x, 2) -> 3
 ```
 
-### 鏈式呼叫
+### 链式调用
 
 ```python
 fn double(n: int) -> int:
     return n * 2
 
-print(x.add(2).double())   # double(add(x, 2)) → 6
+print(x.add(2).double())   # double(add(x, 2)) -> 6
 ```
 
 ---
 
-## 運算子多載
+## 运算符重载
 
-使用 `fn operator運算子` 語法可為自訂型別定義運算子。
+使用 `fn operator` 语法可为自定义类型定义运算符。
 
-### 二元運算子
+### 二元运算符
 
-接受 2 個參數。
+接受 2 个参数。
 
 ```python
 record Vec2:
@@ -140,29 +140,29 @@ print(v3.x)       # 4
 print(v1 == v2)   # false
 ```
 
-### 一元運算子
+### 一元运算符
 
-接受 1 個參數。
+接受 1 个参数。
 
 ```python
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
-### 支援的運算子一覽
+### 支持的运算符
 
-| 類別 | 運算子 |
+| 类别 | 运算符 |
 |------|--------|
-| 算術 | `+`, `-`, `*`, `/`, `%`, `**`, `//` |
-| 比較 | `==`, `!=`, `<`, `<=`, `>`, `>=` |
-| 位元 | `&`, `\|`, `^`, `~`, `<<`, `>>` |
-| 邏輯 | `and`, `or`, `not` |
+| 算术 | `+`, `-`, `*`, `/`, `%`, `**`, `//` |
+| 比较 | `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| 位运算 | `&`, `\|`, `^`, `~`, `<<`, `>>` |
+| 逻辑 | `and`, `or`, `not` |
 
 ---
 
-## Option 型別
+## Option 类型
 
-表示值是否存在的型別，可以是 `Some(值)` 或 `None`。
+表示值是否存在的类型，可以是 `Some(值)` 或 `None`。
 
 ```python
 x: Option<int> = Some(42)
@@ -174,7 +174,7 @@ print(y)   # None
 
 ### 取出值
 
-使用 `match` 安全地取出內部的值，並處理 `None` 的情況。
+使用 `match` 安全地取出内部的值，并处理 `None` 的情况。
 
 ```python
 match x:
@@ -186,9 +186,101 @@ match x:
 
 ---
 
-## F-String（字串插值）
+## 并发基础
 
-使用 `f"..."` 可以在字串中直接嵌入表達式。表達式放在 `{}` 內。
+`Task<T>` 是并发工作的运行时句柄。使用 `async fn` 定义返回任务的函数，在另一个 `async fn` 内部使用 `await`，从同步上下文使用 `block_on(task)` 等待完成。
+
+```python
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+# 从同步上下文使用 block_on()
+t: Task<int> = add(20, 22)
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# 在 async fn 内部使用 await
+async fn double_add(a: int, b: int) -> int:
+    return (await add(a, b)) * 2
+```
+
+`@parallel` 可以应用于使用 `range(...)` 或整数 `..` 范围的计数 `for` 循环：
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+`@parallel for` 禁止使用 `break`、`continue` 以及对外部可变变量的写入。
+
+---
+
+## 网络（TCP 套接字）
+
+Ry 通过 `net` 模块提供 TCP 套接字支持。`send`、`recv` 和 `close` 函数用于 TCP 套接字操作。所有网络操作返回 `Result` 类型。
+
+```python
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
+
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
+                        case Err(e):
+                            ...
+                case Err(e):
+                    ...
+            close(conn)
+        case Err(e):
+            ...
+    close(server)
+    return "done"
+
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                match connect("127.0.0.1", port):
+                    case Ok(conn):
+                        match send(conn, str_to_bytes("hello")):
+                            case Ok(_):
+                                ...
+                            case Err(e):
+                                ...
+                        match recv(conn, 4096):
+                            case Ok(resp):
+                                match bytes_to_str(resp):
+                                    case Ok(s):
+                                        print(s)   # hello
+                                    case Err(e):
+                                        ...
+                            case Err(e):
+                                ...
+                        close(conn)
+                    case Err(e):
+                        print("connect failed")
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        print("bind failed")
+```
+
+完整 API 请参阅[网络参考手册](../reference/net.md)。
+
+---
+
+## F-String（字符串插值）
+
+使用 `f"..."` 可以在字符串中直接嵌入表达式。表达式放在 `{}` 内。
 
 ```python
 name = "Alice"
@@ -199,7 +291,7 @@ y = 4
 print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
 ```
 
-使用 `{{` 和 `}}` 來包含字面大括號。
+使用 `{{` 和 `}}` 来包含字面大括号。
 
 ```python
 print(f"{{escaped}}")   # {escaped}
@@ -207,31 +299,35 @@ print(f"{{escaped}}")   # {escaped}
 
 ---
 
-## 型別轉換（`as`）
+## 类型转换（`as`）
 
-使用 `as` 在型別之間進行明確轉換。
+使用 `as` 在类型之间进行显式转换。
 
 ```python
 x = 42 as float     # 42.0
-y = 3.14 as int      # 3（截斷）
+y = 3.14 as int      # 3（截断）
 s = 42 as str         # "42"
 b = true as int       # 1
 ```
 
 ---
 
-## 帶關聯資料的 enum（ADT）
+## 带关联数据的 enum（ADT）
 
-enum 變體可以攜帶關聯值，讓單一 enum 代表一系列不同形狀的資料。
+enum 变体可以携带关联值。这使得单一 enum 可以表示一系列不同形状的数据。可以选择性地为字段命名以提高文档清晰度。
 
 ```python
 enum Shape:
-    Circle(float)
-    Rectangle(float, float)
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
     Point
 ```
 
-### 建構 ADT 變體
+命名字段仅用于文档说明 —— 使定义具有自描述性。无名语法（`Circle(float)`）同样有效。
+
+### 构造 ADT 变体
+
+构造始终按位置进行，无论字段是否命名。
 
 ```python
 c = Shape::Circle(3.14)
@@ -239,9 +335,9 @@ r = Shape::Rectangle(4.0, 5.0)
 p = Shape::Point
 ```
 
-### 匹配 ADT 變體
+### 匹配 ADT 变体
 
-在 `case` 中使用綁定模式來取出關聯資料。
+在 `case` 中使用绑定模式来提取关联数据。绑定使用你选择的变量名，而非字段名。
 
 ```python
 fn describe(s: Shape) -> str:
@@ -261,7 +357,7 @@ print(describe(Shape::Rectangle(4.0, 5.0)))  # rectangle 4.0x5.0
 
 ## 泛型 enum
 
-enum 可以帶有型別參數，使其可在不同酬載型別間重複使用。
+enum 可以带有类型参数，使其可在不同载荷类型间重复使用。
 
 ```python
 enum MyOption<T>:
@@ -269,7 +365,7 @@ enum MyOption<T>:
     MyNone
 ```
 
-### 使用方式
+### 用法
 
 ```python
 a = MyOption<int>::MySome(42)
@@ -284,9 +380,9 @@ match a:
 
 ---
 
-## Result 型別
+## Result 类型
 
-`Result<T, E>` 用於可能失敗的函式。成功時回傳 `Ok(value)`，失敗時回傳 `Err(error)`。
+`Result<T, E>` 用于可能失败的函数。成功时返回 `Ok(value)`，失败时返回 `Err(error)`。
 
 ```python
 fn divide(a: int, b: int) -> Result<int, str>:
@@ -295,7 +391,7 @@ fn divide(a: int, b: int) -> Result<int, str>:
     return Ok(a // b)
 ```
 
-使用 `match` 來處理結果。
+使用 `match` 来处理结果。
 
 ```python
 r = divide(10, 0)
@@ -308,4 +404,4 @@ match r:
 
 ---
 
-[← 前一篇：集合](07-collections.md) | [下一篇：套件 →](09-modules.md)
+[<- 上一篇：集合](07-collections.md) | [下一篇：包 ->](09-modules.md)

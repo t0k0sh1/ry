@@ -62,10 +62,61 @@ A compile error occurs if the type annotation does not match the actual type of 
 | Type | Description | Literal Examples |
 |------|-------------|-----------------|
 | `int` | 64-bit integer | `0`, `42`, `-10` |
-| `byte` | Unsigned 8-bit integer (0-255) | `b: byte = 42` |
+| `u8` | Unsigned 8-bit integer (0-255) | `b: u8 = 42` |
 | `float` | 64-bit floating-point number | `0.0`, `3.14`, `-1.5` |
 | `bool` | Boolean | `true`, `false` |
 | `str` | String | `"hello"`, `""` |
+
+### Low-Level Numeric Types
+
+Ry also provides low-level numeric types for precise control over memory layout. These types have **no implicit conversions** — you must use `as` for explicit casts.
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `i8` | 8-bit signed integer | `x: i8 = 42` |
+| `i16` | 16-bit signed integer | `x: i16 = 100` |
+| `i32` | 32-bit signed integer | `x: i32 = 42` |
+| `i64` | 64-bit signed integer | `x: i64 = 100` |
+| `u8` | 8-bit unsigned integer | `x: u8 = 200` |
+| `u16` | 16-bit unsigned integer | `x: u16 = 60000` |
+| `u32` | 32-bit unsigned integer | `x: u32 = 3000000000` |
+| `u64` | 64-bit unsigned integer | `x: u64 = 100` |
+| `f32` | 32-bit floating-point | `x: f32 = 3.14` |
+
+```python
+a: i32 = 10
+b: i32 = 20
+c = a + b          # OK: i32 + i32 → i32
+
+d = 42
+# e = a + d        # Error: cannot mix i32 and int
+
+y = a as int       # Explicit cast to int
+z = d as i32       # Explicit cast to i32
+
+# Unsigned types use unsigned operations
+x: u32 = 3000000000
+y: u32 = 7
+q = x / y          # Unsigned division (UDiv)
+```
+
+> **Note**: `/` on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`, unsigned types use `UDiv`.
+>
+> **Note**: Arithmetic on low-level integers wraps on overflow. Signed types use two's complement, unsigned types use modular arithmetic. Use the high-level `int` type (64-bit) if overflow is a concern.
+
+### Fixed-Length Arrays
+
+For low-level types, Ry provides fixed-length contiguous arrays `[T; N]`. These are stack-allocated with compile-time known size.
+
+```python
+buf: [i32; 4] = [1, 2, 3, 4]
+print(buf[0])          # 1
+buf[2] = 99
+print(buf[2])          # 99
+print(length(buf))     # 4
+
+pixels: [u8; 3] = [255, 128, 0]
+```
 
 ---
 
@@ -86,7 +137,7 @@ print(a != b)   # true
 print(a < b)    # true ("H" < "W")
 
 # Length
-print(len(a))   # 5
+print(length(a))   # 5
 
 # Substring checks
 s = "Hello, World!"

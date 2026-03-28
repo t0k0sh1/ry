@@ -1,6 +1,6 @@
 [English](http.md)
 
-# HTTP Server Reference
+# HTTP Reference
 
 ## Types
 
@@ -8,15 +8,16 @@
 |------|-------------|
 | `HttpRequest` | Opaque handle for an incoming HTTP request |
 | `HttpResponse` | Opaque handle for an outgoing HTTP response |
+| `HttpClientResponse` | Opaque handle for an HTTP client response |
 
-Both types are opaque pointers. `HttpRequest` is provided by the server framework; `HttpResponse` is created via `http_response()`.
+`HttpRequest` is provided by the server framework. `HttpResponse` is created via `http_response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
 
-## Functions (from `std.http`)
+## Functions (from `http`)
 
 These functions require explicit import:
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_form_field, http_form_file, http_form_fields, http_response
 ```
 
 ### Server
@@ -24,15 +25,24 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. |
+| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async fn` + `block_on()` lifecycle management. |
+| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
 
 ### Request Accessors
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `http_method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
-| `http_path` | `(req: HttpRequest) -> str` | Returns the request path (e.g., `"/hello"`). |
+| `http_path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
 | `http_header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
 | `http_body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
+| `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
+| `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
+| `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
+| `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
+| `http_form_field` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a multipart form text field. Returns `None` if not found. |
+| `http_form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `None` if not found. |
+| `http_form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
 
 ### Response Builder
 
@@ -45,7 +55,7 @@ from std.http import http_listen, http_method, http_path, http_header, http_body
 ### Basic HTTP Server
 
 ```python
-from std.http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import http_listen, http_method, http_path, http_header, http_body, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     method = http_method(req)
@@ -59,12 +69,12 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 )
 ```
 
-### Non-blocking Server with `spawn`
+### Non-blocking Server with `async fn`
 
 ```python
-from std.http import http_listen, http_path, http_response
+from http import http_listen, http_path, http_response
 
-fn start_server(port: int) -> str:
+async fn start_server(port: int) -> str:
     http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
         path = http_path(req)
         if path == "/api/health":
@@ -73,14 +83,59 @@ fn start_server(port: int) -> str:
     )
     return "done"
 
-t: Task<str> = spawn start_server(8080)
-# Server runs in background thread
+t = start_server(8080)
+# Server runs in background task
+```
+
+### Server with Request Limit (`max_requests`)
+
+```python
+from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+
+port_holder = [0]
+fn on_port(p: int) -> Unit:
+    port_holder[0] = p
+
+async fn start_server() -> str:
+    http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
+        return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
+    , 1, on_port)  # Stop after 1 request; call on_port with bound port
+    return "done"
+
+t = start_server()
+sleep(100)  # Wait for server to start
+port = port_holder[0]
+
+match http_get("http://127.0.0.1:" + to_str(port) + "/"):
+    case Ok(resp):
+        print(http_client_body(resp))  # "Hello!"
+    case Err(e):
+        print("error")
+
+result = block_on(t)  # Server exits after 1 request; block_on completes
+```
+
+### Reading Query Parameters
+
+```python
+from http import http_listen, http_path, http_query, http_query_all, http_response
+
+http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    path = http_path(req)
+    if path == "/search":
+        match http_query(req, "q"):
+            case Some(query):
+                return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
+            case None:
+                return http_response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
+    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+)
 ```
 
 ### Reading Headers
 
 ```python
-from std.http import http_listen, http_header, http_response
+from http import http_listen, http_header, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     match http_header(req, "Authorization"):
@@ -91,37 +146,186 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 )
 ```
 
+### Handling Form Submissions
+
+```python
+from http import http_listen, http_form_field, http_form_file, http_response
+
+http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    match http_form_field(req, "username"):
+        case Some(name):
+            match http_form_file(req, "avatar"):
+                case Some(file_info):
+                    filename = file_info["filename"]
+                    return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+                case None:
+                    return http_response(400, {"Content-Type": "text/plain"}, "No file uploaded")
+        case None:
+            return http_response(400, {"Content-Type": "text/plain"}, "Missing username")
+)
+```
+
+### Reading Cookies
+
+```python
+from http import http_listen, http_cookie, http_cookies, http_response
+
+http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    match http_cookie(req, "session_id"):
+        case Some(sid):
+            return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
+        case None:
+            return http_response(401, {"Content-Type": "text/plain"}, "No session")
+)
+```
+
 ## Behavior
 
-- `http_listen()` binds to the address, starts listening, and enters an infinite accept loop.
-- Each accepted connection reads one HTTP/1.1 request, calls the handler, sends the response, and closes the connection.
+- `http_listen()` binds to the address, starts listening, and enters an accept loop.
+- When called with 3 arguments, the accept loop runs indefinitely.
+- When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `async fn` + `block_on()` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
+- When called with 5 arguments (`max_requests`, `port_callback`), `port_callback` is called synchronously with the actual bound port after `bind` + `listen` succeeds. This allows safe use of port `0` (OS-assigned ephemeral port) to avoid port conflicts in parallel tests.
+- The server supports HTTP/1.1 keep-alive by default. Multiple requests can be processed on a single connection. The server checks the `Connection` header on each request: if `Connection: close` is sent, the connection is closed after the response; otherwise the connection stays open for subsequent requests. Idle connections are closed after a 5-second timeout.
 - `Content-Length` is automatically added to the response if not provided in the headers map.
-- The server supports HTTP/1.1 with `Content-Length`-based body reading.
+- The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
+- When `Transfer-Encoding: chunked` is present in a request, the body is automatically decoded and concatenated — Ry code receives the full body transparently.
+- If both `Transfer-Encoding: chunked` and `Content-Length` are present, the request is rejected as malformed (per RFC 9112).
+- To send a chunked response, include `"Transfer-Encoding": "chunked"` in the headers map passed to `http_response()`. The body will be encoded in chunked format automatically.
 - Header lookup via `http_header()` is case-insensitive.
+- `http_path()` returns the path without the query string. Query parameters are accessed separately via `http_query()` or `http_query_all()`.
+- Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
+- For duplicate query parameter keys, the first value is returned.
+- `http_cookie()` and `http_cookies()` parse the `Cookie` header by splitting on `;`, then splitting each pair on the first `=`. Leading and trailing whitespace is trimmed from names and values.
+- For duplicate cookie names, the first value is returned.
+- Cookie values may contain `=` characters (only the first `=` separates the name from the value).
+- `http_form_field()`, `http_form_file()`, and `http_form_fields()` parse `multipart/form-data` request bodies. Parsing is lazy — the body is parsed on the first call and cached.
+- The `boundary` parameter is extracted from the `Content-Type` header and supports both quoted and unquoted values.
+- Parts with a `filename` in `Content-Disposition` are treated as file uploads; parts without are treated as text fields.
+- For duplicate field/file names, the first value is returned.
+- `http_form_file()` returns `Some(map)` with keys `"filename"`, `"content_type"`, and `"data"`, or `None` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
+- For non-multipart requests, form functions return `None` (for `http_form_field`, `http_form_file`) or an empty map (for `http_form_fields`).
 
 ## Supported Status Codes
 
-The following status codes have standard reason phrases:
+The following status codes have standard reason phrases (RFC 9110):
 
 | Code | Reason |
 |------|--------|
+| 100 | Continue |
+| 101 | Switching Protocols |
 | 200 | OK |
 | 201 | Created |
+| 202 | Accepted |
+| 203 | Non-Authoritative Information |
 | 204 | No Content |
+| 205 | Reset Content |
+| 206 | Partial Content |
+| 300 | Multiple Choices |
 | 301 | Moved Permanently |
 | 302 | Found |
+| 303 | See Other |
 | 304 | Not Modified |
+| 307 | Temporary Redirect |
+| 308 | Permanent Redirect |
 | 400 | Bad Request |
 | 401 | Unauthorized |
 | 403 | Forbidden |
 | 404 | Not Found |
 | 405 | Method Not Allowed |
+| 406 | Not Acceptable |
+| 408 | Request Timeout |
+| 409 | Conflict |
+| 410 | Gone |
+| 411 | Length Required |
+| 413 | Content Too Large |
+| 414 | URI Too Long |
+| 415 | Unsupported Media Type |
+| 416 | Range Not Satisfiable |
+| 417 | Expectation Failed |
+| 422 | Unprocessable Content |
+| 426 | Upgrade Required |
+| 429 | Too Many Requests |
 | 500 | Internal Server Error |
+| 501 | Not Implemented |
+| 502 | Bad Gateway |
+| 503 | Service Unavailable |
+| 504 | Gateway Timeout |
+| 505 | HTTP Version Not Supported |
 
 Other status codes use `"Unknown"` as the reason phrase.
+
+## HTTP Client
+
+### Client Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `http_get` | `(url: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP GET request to the given URL. |
+| `http_post` | `(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientResponse, Error>` | Sends an HTTP POST request with body and headers. |
+| `http_request` | `(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>` | Sends an HTTP request with a custom method. |
+
+### Response Accessors
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `http_client_status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
+| `http_client_body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
+| `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
+| `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
+
+### Client Usage Example
+
+```python
+from http import http_get, http_post, http_client_status, http_client_body, http_client_header
+
+# Simple GET request
+match http_get("http://example.com/api/data"):
+    case Ok(resp):
+        status = http_client_status(resp)
+        body = http_client_body(resp)
+        print(to_str(status) + ": " + body)
+    case Err(e):
+        print("Request failed")
+
+# POST request with body and headers
+headers: Map<str, str> = {"Content-Type": "application/json"}
+match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+    case Ok(resp):
+        print(http_client_body(resp))
+    case Err(e):
+        print("Request failed")
+```
+
+### Client Behavior
+
+- Both `http://` and `https://` URLs are supported. HTTPS uses TLS with system CA bundle certificate validation.
+- The `Host` header is automatically added based on the URL.
+- `Connection: close` is always sent; each request uses a separate TCP connection.
+- `Content-Length` is always added automatically (including `0` for empty bodies). User-provided `Content-Length` headers are overridden with the correct value.
+- Response body reading supports `Content-Length`, `Transfer-Encoding: chunked`, or read-until-close.
+- Response header lookup is case-insensitive.
+- Connection timeout is 5 seconds; receive timeout is 30 seconds.
+- Returns `Err` on connection failure, invalid URL, or malformed response.
+- `HttpClientResponse` owns allocated memory (headers, body). Call `http_client_response_free()` when done to avoid memory leaks.
+
+### Redirect Behavior
+
+HTTP client functions automatically follow redirect responses (3xx with `Location` header).
+
+- **Supported status codes**: 301, 302, 303, 307, 308
+- **Maximum redirects**: 10 (returns `Err` if exceeded)
+- **Method conversion** (per RFC 9110):
+  - 301, 302: `POST` is changed to `GET` (body is dropped); other methods are preserved
+  - 303: Method is always changed to `GET` (body is dropped)
+  - 307, 308: Method and body are preserved
+- **URL resolution**: Absolute URLs, protocol-relative (`//...`), absolute paths (`/...`), and relative paths in `Location` headers are supported
+- User-provided headers are re-sent on each redirect hop, except sensitive headers (`Authorization`, `Proxy-Authorization`, `Cookie`) which are stripped on cross-origin redirects (different host or port)
+- If the `Location` header is missing or empty, the redirect response is returned as-is
+- The caller receives only the final response after all redirects are followed
 
 ## Error Handling
 
 - `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
-- Malformed requests (incomplete request line) are silently skipped and the connection is closed.
+- Malformed requests or idle timeouts on a keep-alive connection cause the connection to be closed. The server then resumes accepting new connections.
 - The handler function must always return an `HttpResponse` — there is no default response.
+- Client functions return `Result<HttpClientResponse, Error>` — use `match` to handle success and failure.

@@ -1,22 +1,21 @@
 # Map operations
+@native
+fn keys(map: Map<str, int>) -> List<str>
 
 @native
-fn keys(m: Map<str, int>) -> List<str>
+fn values(map: Map<str, int>) -> List<int>
 
 @native
-fn values(m: Map<str, int>) -> List<int>
+fn items(map: Map<str, int>) -> List<int>
 
 @native
-fn items(m: Map<str, int>) -> List<int>
+fn has_key(map: Map<str, int>, key: str) -> bool
 
 @native
-fn has_key(m: Map<str, int>, key: str) -> bool
+fn get(map: Map<str, int>, key: str) -> Option<int>
 
 @native
-fn get(m: Map<str, int>, key: str) -> Option<int>
+fn get(map: Map<str, int>, key: str, default: int) -> int
 
 @native
-fn get(m: Map<str, int>, key: str, default: int) -> int
-
-@native
-fn merge(m1: Map<str, int>, m2: Map<str, int>) -> Map<str, int>
+fn merge(first_map: Map<str, int>, second_map: Map<str, int>) -> Map<str, int>

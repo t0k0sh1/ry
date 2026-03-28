@@ -10,9 +10,10 @@ fn function_name(param_name: type, ...) -> return_type:
     return value
 ```
 
-- Parameter types are required.
-- Return type is optional (defaults to `Unit` when omitted).
+- Parameter types are optional. When omitted, the parameter is treated as `any` type.
+- Return type is optional. When omitted, the return type is **inferred from the body** (both named functions and lambdas). If the function has no `return` statement, the return type is inferred as `Unit`. Use `-> any` explicitly for functions that should accept any return type.
 - The body is an indented block.
+- Functions with an explicit return type (other than `Unit` or `any`) must have a `return` statement on all control flow paths. The compiler reports an error if any path is missing a return.
 - Functions can have `require` (precondition) and `ensure` (postcondition) clauses. See [Design by Contract](contracts.md).
 
 > **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
@@ -21,8 +22,8 @@ fn function_name(param_name: type, ...) -> return_type:
 fn add(a: int, b: int) -> int:
     return a + b
 
-fn greet(name: str):
-    print("Hello, " + name)   # Return type is Unit
+fn greet(name: str) -> Unit:
+    print("Hello, " + name)   # Return type is Unit (explicit)
 ```
 
 ---
@@ -31,16 +32,61 @@ fn greet(name: str):
 
 | Item | Description |
 |---|---|
-| Parameter type | Required. All parameters must have type annotations |
-| Return type | Optional. Defaults to `Unit` (equivalent to void) when omitted |
+| Parameter type | Optional. Defaults to `any` when the `: type` annotation is omitted |
+| Return type | Optional. Inferred from the body when omitted (inferred as `Unit` if no `return` statement) |
 | `Unit` | Return type for functions that return no value |
 
+> **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
+
 ```python
-fn no_return(x: int):      # Return type Unit (omitted)
+fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
 fn get_value() -> int:     # Return type int
     return 42
+
+fn identity(x) -> any:    # Parameter type any (omitted)
+    return x
+```
+
+### Type Omission and `any`
+
+When a parameter type annotation is omitted, the parameter is treated as `any` — a dynamic type that accepts any primitive value at runtime. This is similar to Python's untyped parameters.
+
+```python
+# All parameters default to any
+fn add(a, b):
+    return a + b
+
+add(1, 2)              # 3 (int + int)
+add("hello", " world") # "hello world" (str + str)
+add(1, 2.0)            # 3.0 (int + float)
+```
+
+You can also use `any` explicitly in type annotations:
+
+```python
+fn identity(x: any) -> any:
+    return x
+```
+
+### Return Type Inference
+
+When the return type is omitted, it is inferred from the `return` statements in the body:
+
+```python
+fn double(x: int):     # return type inferred as int
+    return x * 2
+
+fn greet(name: str):   # return type inferred as Unit (no return)
+    print("Hello, " + name)
+```
+
+To explicitly allow any return type, use `-> any`:
+
+```python
+fn flexible(x: any) -> any:
+    return x    # can return int, float, str, etc.
 ```
 
 ---
@@ -55,6 +101,27 @@ fn factorial(n: int) -> int:
         return 1
     return n * factorial(n - 1)
 ```
+
+### Tail Call Optimization
+
+The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
+
+```python
+fn sum_to(n: int, acc: int) -> int:
+    if n <= 0:
+        return acc
+    return sum_to(n - 1, acc + n)    # tail call → optimized
+
+sum_to(1000000, 0)    # works without stack overflow
+```
+
+**Conditions for TCO:**
+
+- The function calls itself directly in a `return` statement (`return f(args)`)
+- The call result is returned without any further computation (`return n * f(n-1)` is NOT a tail call)
+- The function has no `ensure` (postcondition) clauses
+
+Mutual recursion (A calls B, B calls A) is not currently optimized.
 
 ---
 
@@ -79,17 +146,81 @@ a = area(5)       # 25
 b = area(3, 4)    # 12
 ```
 
+### Resolution Priority
+
+When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
+
+1. **Exact type match** — argument type matches parameter type exactly
+2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)
+3. **Union type match** — argument type is a member of a union parameter type
+4. **`any` type match** — parameter type is `any` (accepts anything)
+
+The overload with the most exact matches wins. If two or more overloads have equal specificity, the compiler reports an ambiguity error.
+
+Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **not** participate in implicit widening — they require explicit `as` casts.
+
+```python
+fn process(x: int) -> str:
+    return "int"
+
+fn process(x) -> str:          # x: any
+    return "any"
+
+process(42)       # "int" — exact match (int) beats any
+process("hello")  # "any" — no exact match for str, falls back to any
+```
+
+```python
+fn double(x: float) -> float:
+    return x * 2.0
+
+double(5)         # OK — int is implicitly widened to float, returns 10.0
+```
+
+---
+
+## Default Arguments
+
+Parameters can have default values, allowing callers to omit trailing arguments.
+
+### Syntax
+
+```python
+fn connect(host: str, port: int = 8080, timeout: int = 30):
+    # ...
+
+connect("localhost")                    # port=8080, timeout=30
+connect("localhost", 3000)              # port=3000, timeout=30
+connect("localhost", 3000, 10000)       # port=3000, timeout=10000
+```
+
+### Rules
+
+- Default parameters must come after all non-default parameters.
+- A parameter with a default value **must** have an explicit type annotation (e.g., `x: int = 10`; `x = 10` is a compile error).
+- Default values must be compile-time constant expressions (literals and `@const` variables).
+- If a function with default arguments creates an ambiguous overload (overlapping arity with matching types), the compiler reports an error.
+
+```python
+# Error: ambiguous overload
+fn calc(x: int, y: int = 0) -> int:
+    return x + y
+fn calc(x: int) -> int:      # conflicts with calc(int) from above
+    return x * 2
+```
+
+### Limitations
+
+- Default arguments are not supported in **generic functions** or **lambda expressions**.
+
 ---
 
 ## Unit Type Functions
 
-Functions without a return value return `Unit`. The return type can be omitted.
+Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
 ```python
-fn log(msg: str):
-    print(msg)
-
-fn log_typed(msg: str) -> Unit:
+fn log(msg: str) -> Unit:
     print(msg)
 ```
 
@@ -97,16 +228,20 @@ fn log_typed(msg: str) -> Unit:
 
 ## Tasks And Async Functions
 
-`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T`, and `join(task)` is the blocking function-form equivalent of `await task`.
+`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T` inside another `async fn`, and `block_on(task)` blocks from synchronous context until the task completes.
 
 ```python
 async fn add(a: int, b: int) -> int:
     return a + b
 
+# From synchronous context, use block_on()
 t: Task<int> = add(20, 22)
-print(await t)          # 42
-await add(1, 2)         # waits and discards the result
-print(join(add(1, 2)))  # 3
+print(block_on(t))                  # 42
+block_on(add(1, 2))                 # waits and discards the result
+
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
+    return (await add(a, b)) * 2
 ```
 
 ### Rules
@@ -114,12 +249,11 @@ print(join(add(1, 2)))  # 3
 - `async fn name(...) -> T:` is declared with the awaited result type `T`.
 - Calling an `async fn` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` is allowed anywhere an expression is allowed, and `await expr` is also allowed as a statement.
-- `async fn ... -> Unit` is supported; `await task` is the primary way to wait when no value is produced.
+- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
+- `block_on(task)` blocks the current thread until the task completes and returns the result.
+- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
 - `async` lambdas and `async @native fn` are not supported in v1.
-
-`Channel<T>` is the built-in handle type for blocking message passing between tasks. Create channels with `channel[T]()` or `channel[T](capacity)`, send values with `send(ch, value)`, use `try_send(ch, value)` for a non-blocking send attempt, use `recv(ch)` for strict receive, use `recv_opt(ch)` for close-aware receive, use `try_recv(ch)` for a non-blocking receive attempt, iterate consumers with `for x in ch:`, and terminate a channel with `close(ch)`.
 
 ---
 
@@ -130,8 +264,11 @@ Anonymous functions can be defined inline.
 ### Syntax
 
 ```python
-# Single expression (the expression value is returned; return type is inferred)
-fn(param_name: type, ...): expression
+# Single expression (return type inferred from expression)
+fn(param_name: type, ...) => expression
+
+# Parameter type can be omitted (defaults to any)
+fn(param_name, ...) => expression
 
 # Multi-line block
 fn(param_name: type, ...):
@@ -139,16 +276,16 @@ fn(param_name: type, ...):
     return value
 
 # With explicit return type (optional)
-fn(param_name: type, ...) -> return_type: expression
+fn(param_name: type, ...) -> return_type => expression
 ```
 
 ### Example
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 result = double(5)   # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 sum = add(3, 4)      # 7
 
 # Multi-line lambda
@@ -166,7 +303,7 @@ Lambda functions **capture by value** the variables from the outer scope at the 
 
 ```python
 base = 10
-add_base = fn(x: int): x + base   # Captures base by value
+add_base = fn(x: int) => x + base   # Captures base by value
 
 base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
@@ -195,8 +332,8 @@ fn(param_type1, param_type2, ...) -> return_type
 ### Example
 
 ```python
-f: fn(int) -> int = fn(x: int): x * 2
-g: fn(int, int) -> int = fn(a: int, b: int): a + b
+f: fn(int) -> int = fn(x: int) => x * 2
+g: fn(int, int) -> int = fn(a: int, b: int) => a + b
 
 fn apply(func: fn(int) -> int, x: int) -> int:
     return func(x)
@@ -217,9 +354,77 @@ fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], fn(x: int): x * 2)
+doubled = map_list([1, 2, 3], fn(x: int) => x * 2)
 # [2, 4, 6]
 ```
+
+---
+
+## Generic Functions
+
+Functions can have type parameters, enabling type-safe reuse without code duplication.
+
+### Syntax
+
+```python
+fn name<T, U>(param1: T, param2: U) -> T:
+    # body using T, U as types
+```
+
+### Example
+
+```python
+fn identity<T>(x: T) -> T:
+    return x
+
+# Explicit type argument
+result = identity[int](42)      # 42
+result = identity[str]("hello") # "hello"
+
+# Type inference (type argument deduced from actual argument)
+result = identity(42)           # T = int, result = 42
+result = identity("hello")     # T = str, result = "hello"
+```
+
+### Multiple Type Parameters
+
+```python
+fn pick_first<T, U>(a: T, b: U) -> T:
+    return a
+
+result = pick_first(1, "x")       # T = int, U = str, result = 1
+result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
+```
+
+### Type Constraints (Bounds)
+
+Type parameters can be constrained with record types using `: RecordName` syntax. The concrete type must be the bound type itself or a subtype of it.
+
+```python
+record Animal:
+    name: str
+    legs: int
+
+record Dog < Animal:
+    breed: str
+
+fn get_name<T: Animal>(a: T) -> str:
+    return a.name
+
+get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
+get_name(Animal("Cat", 4))      # OK — exact type match
+```
+
+Bounded and unbounded type parameters can be mixed:
+
+```python
+fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+    return a.name
+```
+
+### How It Works
+
+Generic functions use **monomorphization**: a specialized version of the function is generated for each unique combination of type arguments. The same instantiation is cached and reused across multiple calls. When type constraints are present, they are validated at instantiation time.
 
 ---
 
@@ -255,7 +460,7 @@ Field access (`.field`) and UFCS (`.method()`) use the same dot notation but are
 
 ```python
 p = Point(3, 4)
-len = p.x.to_float()   # Field access + UFCS
+length = p.x.to_float()   # Field access + UFCS
 ```
 
 ---
@@ -284,7 +489,34 @@ fn operator<op>(a: type) -> return_type:
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise (binary) | `&` `\|` `^` `<<` `>>` |
 | Logical (binary) | `and` `or` |
+| Membership | `in` |
+| Subscript | `[]` (read), `[]=` (write) |
+| Call | `()` |
+| Cast | `as` |
 | Unary | `-` `~` `not` |
+
+### Return Type Constraints
+
+Comparison, logical, and membership operators must return `bool`:
+
+| Category | Operators | Required Return Type |
+|---|---|---|
+| Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| Logical | `and` `or` `not` | `bool` |
+| Membership | `in` | `bool` |
+| Cast | `as` | Required (target type) |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# Error: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+Arithmetic and bitwise operators have no return type constraint.
 
 ### Distinguishing Binary and Unary
 
@@ -312,3 +544,41 @@ v2 = Vec2(3.0, 4.0)
 v3 = v1 + v2    # Vec2(4.0, 6.0)
 v4 = -v1        # Vec2(-1.0, -2.0)
 ```
+
+---
+
+## Checked/Saturating Arithmetic
+
+Built-in functions for explicit overflow control on low-level integer types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`). Both arguments must be the same type.
+
+| Function | Returns | Behavior |
+|----------|---------|----------|
+| `checked_add(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `checked_sub(a, b)` | `Result<T, Error>` | Returns `Err` on underflow |
+| `checked_mul(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `saturating_add(a, b)` | `T` | Clamps to type min/max on overflow |
+| `saturating_sub(a, b)` | `T` | Clamps to type min/max on underflow |
+| `saturating_mul(a, b)` | `T` | Clamps to type min/max on overflow |
+| `wrapping_add(a, b)` | `T` | Explicit wrapping (same as `+`) |
+| `wrapping_sub(a, b)` | `T` | Explicit wrapping (same as `-`) |
+| `wrapping_mul(a, b)` | `T` | Explicit wrapping (same as `*`) |
+
+```python
+# Checked: returns Result, use match or ? to handle
+r = checked_add(2147483647i32, 1i32)
+match r:
+  case Ok(v):
+    print(v)
+  case Err(e):
+    print("overflow!")   # prints "overflow!"
+
+# Saturating: clamps to bounds
+v = saturating_add(2147483647i32, 100i32)
+print(v as int)   # 2147483647
+
+# Wrapping: self-documenting wrapping behavior
+v = wrapping_add(2147483647i32, 1i32)
+print(v as int)   # -2147483648
+```
+
+> **Note**: These functions do not support floating-point types (`f32`) or the high-level `int` type. The default `+`, `-`, `*` operators on low-level integers use wrapping behavior (two's complement for signed, modular for unsigned).

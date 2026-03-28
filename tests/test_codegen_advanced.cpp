@@ -137,7 +137,7 @@ TEST_F(CodeGenTest, EscapeQuote) {
 TEST_F(CodeGenTest, RangeEmptyList) {
     std::string src =
         "xs = range(0)\n"
-        "print(len(xs))";
+        "print(length(xs))";
     EXPECT_EQ(runSource(src), "0\n");
 }
 
@@ -147,7 +147,7 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
         "print(xs[0])\n"
         "print(xs[1])\n"
         "print(xs[2])\n"
-        "print(len(xs))";
+        "print(length(xs))";
     EXPECT_EQ(runSource(src), "0\n1\n2\n3\n");
 }
 
@@ -155,28 +155,28 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
-        "double = fn(x: int): x * 2\n"
+        "double = fn(x: int) => x * 2\n"
         "print(double(5))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, LambdaNoParams) {
     std::string src =
-        "answer = fn(): 42\n"
+        "answer = fn() => 42\n"
         "print(answer())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, LambdaMultipleParams) {
     std::string src =
-        "add = fn(a: int, b: int): a + b\n"
+        "add = fn(a: int, b: int) => a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
 
 TEST_F(CodeGenTest, LambdaFloat) {
     std::string src =
-        "half = fn(x: float): x / 2.0\n"
+        "half = fn(x: float) => x / 2.0\n"
         "print(half(7.0))";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
@@ -185,7 +185,7 @@ TEST_F(CodeGenTest, LambdaAsArgument) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "doubled = apply(fn(n: int): n * 2, 10)\n"
+        "doubled = apply(fn(n: int) => n * 2, 10)\n"
         "print(doubled)";
     EXPECT_EQ(runSource(src), "20\n");
 }
@@ -194,7 +194,7 @@ TEST_F(CodeGenTest, LambdaStoredAndPassed) {
     std::string src =
         "fn apply(f: fn(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "triple = fn(n: int): n * 3\n"
+        "triple = fn(n: int) => n * 3\n"
         "print(apply(triple, 5))";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -211,7 +211,7 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "is_positive = fn(x: int): x > 0\n"
+        "is_positive = fn(x: int) => x > 0\n"
         "print(is_positive(5))\n"
         "print(is_positive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -231,7 +231,7 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "offset = 10\n"
-        "add_offset = fn(x: int): x + offset\n"
+        "add_offset = fn(x: int) => x + offset\n"
         "print(add_offset(5))\n"
         "print(add_offset(20))";
     EXPECT_EQ(runSource(src), "15\n30\n");
@@ -239,14 +239,14 @@ TEST_F(CodeGenTest, LambdaClosure) {
 
 TEST_F(CodeGenTest, LambdaArgCountError) {
     std::string src =
-        "f = fn(x: int): x\n"
+        "f = fn(x: int) => x\n"
         "f(1, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, LambdaArgTypeError) {
     std::string src =
-        "f = fn(x: int): x\n"
+        "f = fn(x: int) => x\n"
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -270,7 +270,7 @@ TEST_F(CodeGenTest, SetNotIn) {
 TEST_F(CodeGenTest, SetLen) {
     std::string src =
         "s = {1, 2, 3}\n"
-        "print(len(s))";
+        "print(length(s))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
@@ -286,7 +286,7 @@ TEST_F(CodeGenTest, SetAddDuplicate) {
     std::string src =
         "s = {1, 2, 3}\n"
         "s.add(1)\n"
-        "print(len(s))";
+        "print(length(s))";
     EXPECT_EQ(runSource(src), "3\n");
 }
 
@@ -316,7 +316,7 @@ TEST_F(CodeGenTest, SetStringElements) {
 TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
     std::string src =
         "s: Set<int> = {}\n"
-        "print(len(s))\n"
+        "print(length(s))\n"
         "s.add(42)\n"
         "print(42 in s)";
     EXPECT_EQ(runSource(src), "0\ntrue\n");
@@ -788,12 +788,12 @@ TEST_F(CodeGenTest, AsCastBoolToStr) {
     EXPECT_EQ(runSource("x = true as str\nprint(x)"), "true\n");
 }
 
-TEST_F(CodeGenTest, AsCastIntToByte) {
-    EXPECT_EQ(runSource("x = 255 as byte\nprint(x)"), "255\n");
+TEST_F(CodeGenTest, AsCastIntToU8) {
+    EXPECT_EQ(runSource("x = 255 as u8\nprint(x)"), "255\n");
 }
 
-TEST_F(CodeGenTest, AsCastByteToInt) {
-    EXPECT_EQ(runSource("b: byte = 200\nx = b as int\nprint(x)"), "200\n");
+TEST_F(CodeGenTest, AsCastU8ToInt) {
+    EXPECT_EQ(runSource("b: u8 = 200\nx = b as int\nprint(x)"), "200\n");
 }
 
 // ===== Error type tests =====
@@ -832,72 +832,70 @@ print(e)
     EXPECT_EQ(runSource(src), "Error: test error (code: 42)\n");
 }
 
-// ===== !! operator tests =====
+// ===== Result type tests =====
 
-TEST_F(CodeGenTest, BangBangPropagateSuccess) {
+TEST_F(CodeGenTest, ResultOkMatch) {
     std::string src = R"(
-fn read_file(path: str) -> (str, Error?):
+fn read_file(path: str) -> Result<str, Error>:
     if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+        return Err(Error("empty path"))
+    return Ok("content")
 
-fn process() -> (str, Error?):
-    data = read_file("test.txt")!!
-    return (data, none)
-
-val, err = process()
-print(val)
-print(err == none)
+res = read_file("test.txt")
+match res:
+    case Ok(data):
+        print(data)
+    case Err(e):
+        print(e.message)
 )";
-    EXPECT_EQ(runSource(src), "content\ntrue\n");
+    EXPECT_EQ(runSource(src), "content\n");
 }
 
-TEST_F(CodeGenTest, BangBangPropagateError) {
+TEST_F(CodeGenTest, ResultErrMatch) {
     std::string src = R"(
-fn read_file(path: str) -> (str, Error?):
+fn read_file(path: str) -> Result<str, Error>:
     if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+        return Err(Error("empty path"))
+    return Ok("content")
 
-fn process() -> (str, Error?):
-    data = read_file("")!!
-    return (data, none)
-
-val, err = process()
-print(err != none)
+res = read_file("")
+match res:
+    case Ok(data):
+        print(data)
+    case Err(e):
+        print(e.message)
 )";
-    EXPECT_EQ(runSource(src), "true\n");
+    EXPECT_EQ(runSource(src), "empty path\n");
 }
 
-TEST_F(CodeGenTest, ErrorTupleDestructure) {
+TEST_F(CodeGenTest, ResultDivideOk) {
     std::string src = R"(
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 2)
-if err != none:
-    print("error")
-else:
-    print(val)
+match divide(10, 2):
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print(e.message)
 )";
     EXPECT_EQ(runSource(src), "5\n");
 }
 
-TEST_F(CodeGenTest, ErrorTupleDestructureWithError) {
+TEST_F(CodeGenTest, ResultDivideErr) {
     std::string src = R"(
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 0)
-match err:
-    case Some(e):
+match divide(10, 0):
+    case Ok(v):
+        print(v)
+    case Err(e):
         print(e.message)
-    case None:
-        print(val)
 )";
     EXPECT_EQ(runSource(src), "division by zero\n");
 }
@@ -1089,6 +1087,67 @@ TEST_F(CodeGenTest, GenericEnumFloat) {
     EXPECT_EQ(runSource(src), "3.14\n");
 }
 
+// ===== Explicit enum values =====
+
+TEST_F(CodeGenTest, EnumExplicitValuePrint) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::Ok\n"
+        "print(s)";
+    EXPECT_EQ(runSource(src), "Ok\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueComparison) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::NotFound\n"
+        "print(s == HttpStatus::NotFound)\n"
+        "print(s != HttpStatus::Ok)";
+    EXPECT_EQ(runSource(src), "true\ntrue\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueMatch) {
+    std::string src =
+        "enum HttpStatus:\n"
+        "    Ok = 200\n"
+        "    NotFound = 404\n"
+        "    InternalError = 500\n"
+        "s = HttpStatus::InternalError\n"
+        "match s:\n"
+        "    case HttpStatus::Ok:\n"
+        "        print(\"ok\")\n"
+        "    case HttpStatus::NotFound:\n"
+        "        print(\"not found\")\n"
+        "    case HttpStatus::InternalError:\n"
+        "        print(\"error\")";
+    EXPECT_EQ(runSource(src), "error\n");
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueDuplicateError) {
+    std::string src =
+        "enum Bad:\n"
+        "    A = 1\n"
+        "    B = 1\n"
+        "x = Bad::A";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, EnumExplicitValueNegative) {
+    std::string src =
+        "enum Temp:\n"
+        "    Cold = -10\n"
+        "    Hot = 40\n"
+        "t = Temp::Cold\n"
+        "print(t)";
+    EXPECT_EQ(runSource(src), "Cold\n");
+}
+
 // ===== r-string =====
 
 TEST_F(CodeGenTest, RawStringPrint) {
@@ -1161,4 +1220,149 @@ TEST_F(CodeGenTest, LambdaArgDescribeIt) {
         "    )\n"
         ")";
     EXPECT_NO_THROW(runTestSource(src));
+}
+
+// ===== Field assignment subtype coercion (#359) =====
+
+TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "record Owner:\n"
+        "    pet: Animal\n"
+        "o = Owner(Animal(\"cat\", 4))\n"
+        "o.pet = Dog(\"Rex\", 4, \"Lab\")\n"
+        "print(o.pet.name)\n"
+        "print(o.pet.legs)";
+    EXPECT_EQ(runSource(src), "Rex\n4\n");
+}
+
+// ===== ? operator subtype coercion (#360) =====
+
+TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
+    std::string src =
+        "record ApiError < Error:\n"
+        "    endpoint: str\n"
+        "fn fetch(url: str) -> Result<int, ApiError>:\n"
+        "    return Err(ApiError(\"fail\", 500, url))\n"
+        "fn process(url: str) -> Result<int, Error>:\n"
+        "    val = fetch(url)?\n"
+        "    return Ok(val)\n"
+        "result = process(\"/api\")\n"
+        "match result:\n"
+        "    case Err(e):\n"
+        "        print(e.message)\n"
+        "    case Ok(v):\n"
+        "        print(v)";
+    EXPECT_EQ(runSource(src), "fail\n");
+}
+
+// ===== Generic record bounds (#297) =====
+
+TEST_F(CodeGenTest, GenericRecordBound) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(describe(Dog(\"Rex\", 4, \"Lab\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundExactType) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(describe(Animal(\"Cat\", 4)))";
+    EXPECT_EQ(runSource(src), "Cat\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundViolation) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "describe(42)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundDeepInheritance) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "record GuideDog < Dog:\n"
+        "    handler: str\n"
+        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(get_name(GuideDog(\"Rex\", \"Lab\", \"John\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundExplicitTypeArg) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(get_name[Dog](Dog(\"Rex\", \"Lab\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn pair_name<T: Animal, U>(a: T, x: U) -> str:\n"
+        "    return a.name\n"
+        "print(pair_name(Dog(\"Rex\", \"Lab\"), 42))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+// ===== Tail Call Optimization (#214) =====
+
+TEST_F(CodeGenTest, TailCallOptimization) {
+    // Deep self-recursive tail call should not stack overflow
+    EXPECT_EQ(runSource(
+        "fn sum_to(n: int, acc: int) -> int:\n"
+        "  if n <= 0:\n"
+        "    return acc\n"
+        "  return sum_to(n - 1, acc + n)\n"
+        "print(sum_to(1000000, 0))"), "500000500000\n");
+}
+
+TEST_F(CodeGenTest, TailCallFactorial) {
+    // Tail-recursive factorial with accumulator
+    EXPECT_EQ(runSource(
+        "fn factorial(n: int, acc: int) -> int:\n"
+        "  if n <= 1:\n"
+        "    return acc\n"
+        "  return factorial(n - 1, n * acc)\n"
+        "print(factorial(20, 1))"), "2432902008176640000\n");
+}
+
+TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
+    // n * factorial(n-1) is NOT a tail call — should still work for small N
+    EXPECT_EQ(runSource(
+        "fn factorial(n: int) -> int:\n"
+        "  if n <= 1:\n"
+        "    return 1\n"
+        "  return n * factorial(n - 1)\n"
+        "print(factorial(10))"), "3628800\n");
 }

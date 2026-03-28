@@ -1,147 +1,143 @@
-from std.math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
+from math import PI, E, Inf, NaN, abs, floor, ceil, round, sqrt, pow, log, log2, log10, exp, sin, cos, tan, asin, acos, atan, atan2, hypot, is_nan, is_inf
 
-describe("std.math constants", fn():
-    it("PI", fn():
-        expect(PI > 3.14).to_eq(true)
-        expect(PI < 3.15).to_eq(true)
-
-    )
-    it("E", fn():
-        expect(E > 2.71).to_eq(true)
-        expect(E < 2.72).to_eq(true)
-
-    )
+describe("math constants", fn():
+  it("PI", fn():
+    expect(PI > 3.14).to_eq(true)
+    expect(PI < 3.15).to_eq(true)
+  )
+  it("E", fn():
+    expect(E > 2.71).to_eq(true)
+    expect(E < 2.72).to_eq(true)
+  )
 )
 
-describe("std.math special values", fn():
-    it("Inf", fn():
-        expect(is_inf(Inf)).to_eq(true)
-        expect(Inf > 1000000.0).to_eq(true)
-
-    )
-    it("NaN", fn():
-        expect(is_nan(NaN)).to_eq(true)
-
-    )
+describe("math special values", fn():
+  it("Inf", fn():
+    expect(is_inf(Inf)).to_eq(true)
+    expect(Inf > 1000000.0).to_eq(true)
+  )
+  it("NaN", fn():
+    expect(is_nan(NaN)).to_eq(true)
+  )
 )
 
-describe("std.math abs", fn():
-    it("int", fn():
-        expect(abs(-5)).to_eq(5)
-        expect(abs(3)).to_eq(3)
-        expect(abs(0)).to_eq(0)
-
-    )
-    it("float", fn():
-        expect(abs(-3.14)).to_eq(3.14)
-        expect(abs(2.5)).to_eq(2.5)
-
-    )
+describe("NaN comparisons", fn():
+  it("NaN == NaN is false", fn():
+    expect(NaN == NaN).to_eq(false)
+  )
+  it("NaN != NaN is false (ordered)", fn():
+    expect(NaN != NaN).to_eq(false)
+  )
+  it("NaN < 1.0 is false", fn():
+    expect(NaN < 1.0).to_eq(false)
+  )
+  it("NaN <= 1.0 is false", fn():
+    expect(NaN <= 1.0).to_eq(false)
+  )
+  it("NaN > 1.0 is false", fn():
+    expect(NaN > 1.0).to_eq(false)
+  )
+  it("NaN >= 1.0 is false", fn():
+    expect(NaN >= 1.0).to_eq(false)
+  )
 )
 
-describe("std.math rounding", fn():
-    it("floor", fn():
-        expect(floor(3.7)).to_eq(3)
-        expect(floor(-2.3)).to_eq(-3)
-
-    )
-    it("ceil", fn():
-        expect(ceil(3.2)).to_eq(4)
-        expect(ceil(-2.7)).to_eq(-2)
-
-    )
-    it("round", fn():
-        expect(round(3.5)).to_eq(4)
-        expect(round(2.3)).to_eq(2)
-
-    )
+describe("math abs", fn():
+  it("int", fn():
+    expect(abs(-5)).to_eq(5)
+    expect(abs(3)).to_eq(3)
+    expect(abs(0)).to_eq(0)
+  )
+  it("float", fn():
+    expect(abs(-3.14)).to_eq(3.14)
+    expect(abs(2.5)).to_eq(2.5)
+  )
 )
 
-describe("std.math pow/sqrt", fn():
-    it("sqrt", fn():
-        expect(sqrt(4.0)).to_eq(2.0)
-        expect(sqrt(9.0)).to_eq(3.0)
-
-    )
-    it("pow", fn():
-        expect(pow(2.0, 3.0)).to_eq(8.0)
-        expect(pow(3.0, 2.0)).to_eq(9.0)
-
-    )
+describe("math rounding", fn():
+  it("floor", fn():
+    expect(floor(3.7)).to_eq(3)
+    expect(floor(-2.3)).to_eq(-3)
+  )
+  it("ceil", fn():
+    expect(ceil(3.2)).to_eq(4)
+    expect(ceil(-2.7)).to_eq(-2)
+  )
+  it("round", fn():
+    expect(round(3.5)).to_eq(4)
+    expect(round(2.3)).to_eq(2)
+  )
 )
 
-describe("std.math log", fn():
-    it("log", fn():
-        expect(log(1.0)).to_eq(0.0)
-
-    )
-    it("log2", fn():
-        expect(log2(8.0)).to_eq(3.0)
-
-    )
-    it("log10", fn():
-        expect(log10(100.0)).to_eq(2.0)
-
-    )
+describe("math pow/sqrt", fn():
+  it("sqrt", fn():
+    expect(sqrt(4.0)).to_eq(2.0)
+    expect(sqrt(9.0)).to_eq(3.0)
+  )
+  it("pow", fn():
+    expect(pow(2.0, 3.0)).to_eq(8.0)
+    expect(pow(3.0, 2.0)).to_eq(9.0)
+  )
 )
 
-describe("std.math exp", fn():
-    it("exp(0)", fn():
-        expect(exp(0.0)).to_eq(1.0)
-
-    )
+describe("math log", fn():
+  it("log", fn():
+    expect(log(1.0)).to_eq(0.0)
+  )
+  it("log2", fn():
+    expect(log2(8.0)).to_eq(3.0)
+  )
+  it("log10", fn():
+    expect(log10(100.0)).to_eq(2.0)
+  )
 )
 
-describe("std.math trigonometric", fn():
-    it("sin(0)", fn():
-        expect(sin(0.0)).to_eq(0.0)
-
-    )
-    it("cos(0)", fn():
-        expect(cos(0.0)).to_eq(1.0)
-
-    )
-    it("tan(0)", fn():
-        expect(tan(0.0)).to_eq(0.0)
-
-    )
+describe("math exp", fn():
+  it("exp(0)", fn():
+    expect(exp(0.0)).to_eq(1.0)
+  )
 )
 
-describe("std.math inverse trig", fn():
-    it("asin(0)", fn():
-        expect(asin(0.0)).to_eq(0.0)
-
-    )
-    it("acos(1)", fn():
-        expect(acos(1.0)).to_eq(0.0)
-
-    )
-    it("atan(0)", fn():
-        expect(atan(0.0)).to_eq(0.0)
-
-    )
+describe("math trigonometric", fn():
+  it("sin(0)", fn():
+    expect(sin(0.0)).to_eq(0.0)
+  )
+  it("cos(0)", fn():
+    expect(cos(0.0)).to_eq(1.0)
+  )
+  it("tan(0)", fn():
+    expect(tan(0.0)).to_eq(0.0)
+  )
 )
 
-describe("std.math two-arg", fn():
-    it("atan2", fn():
-        expect(atan2(0.0, 1.0)).to_eq(0.0)
-
-    )
-    it("hypot", fn():
-        expect(hypot(3.0, 4.0)).to_eq(5.0)
-
-    )
+describe("math inverse trig", fn():
+  it("asin(0)", fn():
+    expect(asin(0.0)).to_eq(0.0)
+  )
+  it("acos(1)", fn():
+    expect(acos(1.0)).to_eq(0.0)
+  )
+  it("atan(0)", fn():
+    expect(atan(0.0)).to_eq(0.0)
+  )
 )
 
-describe("std.math predicates", fn():
-    it("is_nan", fn():
-        expect(is_nan(NaN)).to_eq(true)
-        expect(is_nan(1.0)).to_eq(false)
+describe("math two-arg", fn():
+  it("atan2", fn():
+    expect(atan2(0.0, 1.0)).to_eq(0.0)
+  )
+  it("hypot", fn():
+    expect(hypot(3.0, 4.0)).to_eq(5.0)
+  )
+)
 
-    )
-    it("is_inf", fn():
-        expect(is_inf(Inf)).to_eq(true)
-        expect(is_inf(1.0)).to_eq(false)
-
-    )
+describe("math predicates", fn():
+  it("is_nan", fn():
+    expect(is_nan(NaN)).to_eq(true)
+    expect(is_nan(1.0)).to_eq(false)
+  )
+  it("is_inf", fn():
+    expect(is_inf(Inf)).to_eq(true)
+    expect(is_inf(1.0)).to_eq(false)
+  )
 )

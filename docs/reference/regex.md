@@ -78,7 +78,7 @@ print(s)  # aXbXcX
 
 ```ry
 parts = regex_split("\\s+", "hello  world  foo")
-print(len(parts))  # 3
+print(length(parts))  # 3
 print(parts[0])    # hello
 ```
 
@@ -86,7 +86,7 @@ print(parts[0])    # hello
 
 ```ry
 matches = regex_find_all("[0-9]+", "a1b23c456")
-print(len(matches))  # 3
+print(length(matches))  # 3
 print(matches[0])    # 1
 print(matches[1])    # 23
 print(matches[2])    # 456
@@ -113,7 +113,7 @@ print(l)  # X and X
 
 # Find individual HTML-like tags
 tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
-print(len(tags))  # 3
+print(length(tags))  # 3
 ```
 
 > **Note:** Non-greedy matching controls the overall match length. Without support for extracting parenthesized groups, mixed greedy/lazy patterns may behave differently from PCRE-style engines.
@@ -127,7 +127,7 @@ print(pos)  # 6
 
 # Find all words
 words = regex_find_all("\\b\\w+\\b", "hello world foo")
-print(len(words))  # 3
+print(length(words))  # 3
 
 # \B matches non-boundary (inside a word)
 pos2 = regex_search("\\Bworld", "helloworld")

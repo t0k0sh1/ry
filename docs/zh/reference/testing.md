@@ -1,55 +1,62 @@
 [English](../../reference/testing.md) | [日本語](../../ja/reference/testing.md) | [繁體中文](testing.md)
 
-# 測試功能
+# 测试功能
 
-Ry 內建 RSpec 風格的測試語法。使用 `ry test` 子指令執行測試檔案。
+Ry 内建 RSpec 风格的测试语法。使用 `ry test` 子命令执行测试文件。
 
 ---
 
-## 執行方式
+## 运行测试
 
 ```bash
-ry test              # 自動探索並執行專案內所有 *.test.ry 檔案
-ry test tests/spec   # 遞迴執行指定目錄下所有 *.test.ry 檔案
-ry test test_file.ry # 執行指定的測試檔案
+ry test              # 自动发现并运行项目内所有 *.test.ry 文件
+ry test tests/spec   # 递归运行指定目录下所有 *.test.ry 文件
+ry test test_file.ry # 运行指定的测试文件
+ry test -p           # 并行运行所有测试（-p 或 --parallel）
+ry test -p tests/    # 并行运行指定目录的测试
+ry test -w           # 监视模式：文件变更时自动重新运行测试（-w 或 --watch）
+ry test -w -p        # 监视模式 + 并行运行
+ry test -w tests/    # 监视指定目录
+ry test --coverage   # 所有测试 + 行覆盖率摘要
+ry test --cov        # --coverage 的简写
 ```
 
-結束代碼為 0 表示所有測試通過，1 表示有測試失敗。
+退出码为 0 表示所有测试通过，1 表示有测试失败。
 
-### 自動探索模式
+### 自动发现模式
 
-不帶引數執行 `ry test` 時：
+不带参数运行 `ry test` 时：
 
-1. 搜尋 `ry.toml` 以找到專案根目錄
-2. 在專案根目錄下遞迴探索所有 `*.test.ry` 檔案（`.git`、`build`、`node_modules` 會被跳過）
-3. 逐一執行並彙總結果
+1. 搜索 `package.toml` 以找到项目根目录
+2. 在项目根目录下递归发现所有 `*.test.ry` 文件（`.git`、`build`、`node_modules` 会被跳过）
+3. 逐一运行并汇总结果
 
 ---
 
-## 語法
+## 语法
 
 ### describe / it
 
 ```
-describe("說明文字", fn():
-    it("測試案例名稱", fn():
-        # 測試主體
-        expect(實際值).to_eq(預期值)
+describe("description", fn():
+    it("test case name", fn():
+        # test body
+        expect(actual_value).to_eq(expected_value)
     )
 )
 ```
 
-- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數
-- `describe` 區塊內可以撰寫 `it` 區塊及其他語句（如變數宣告等）
-- 各 `it` 區塊為獨立的測試案例
-- `describe` / `expect` 僅能在 `ry test` 中使用（在一般的 `ry` 執行中會產生編譯錯誤）
+- `describe` 和 `it` 接受描述字符串和 **lambda 参数** `fn():` 作为第二个参数
+- `describe` 块内可以编写 `it` 块及其他语句（如变量声明等）
+- 每个 `it` 块为独立的测试用例
+- `describe` / `expect` 仅在 `ry test` 中可用（在普通的 `ry` 执行中会产生编译错误）
 
-### 尾隨區塊語法
+### 尾随块语法
 
-任何函式呼叫（`describe`/`it`/`mock` 除外）都可以使用尾隨區塊語法。在 `()` 後加上 `:` 會將縮排區塊作為無參數 lambda 傳入最後的參數位置:
+任何函数调用（`describe`/`it`/`mock` 除外）都可以使用尾随块语法。在 `()` 后加上 `:` 会将缩进块作为无参数 lambda 传入最后的参数位置:
 
 ```
-# 以下兩者等價:
+# 以下两者等价:
 foo("arg"):
     bar()
 
@@ -60,45 +67,62 @@ foo("arg", fn():
 
 ### expect / 匹配器
 
-| 匹配器 | 說明 | 支援型別 |
+| 匹配器 | 说明 | 支持类型 |
 |---|---|---|
-| `to_eq(expected)` | 相等比較 | int, float, bool, str |
+| `to_eq(expected)` | 相等比较 | int, float, bool, str |
 | `to_not_eq(expected)` | 不相等 | int, float, bool, str |
-| `to_be_true()` | 為 `true` | bool |
-| `to_be_false()` | 為 `false` | bool |
-| `to_be_none()` | 為 `None` | Option |
-| `to_be_some()` | Option 為 `Some` | Option |
+| `to_be_true()` | 为 `true` | bool |
+| `to_be_false()` | 为 `false` | bool |
+| `to_be_none()` | 为 `None` | Option |
+| `to_be_some()` | Option 为 `Some` | Option |
+| `to_be_ok()` | Result 为 `Ok` | Result |
+| `to_be_err()` | Result 为 `Err` | Result |
 | `to_contain(val)` | 容器包含值 | List, Set, Map, str |
 | `to_not_contain(val)` | 容器不包含值 | List, Set, Map, str |
 | `to_be_greater_than(v)` | `actual > v` | int, float |
 | `to_be_less_than(v)` | `actual < v` | int, float |
 | `to_be_greater_than_or_eq(v)` | `actual >= v` | int, float |
 | `to_be_less_than_or_eq(v)` | `actual <= v` | int, float |
-| `to_have_length(n)` | 長度為 `n` | List, Set, Map, str |
-| `to_be_empty()` | 長度為 0 | List, Set, Map, str |
-| `to_start_with(prefix)` | 字串以 prefix 開頭 | str |
-| `to_end_with(suffix)` | 字串以 suffix 結尾 | str |
+| `to_have_length(n)` | 长度为 `n` | List, Set, Map, str |
+| `to_be_empty()` | 长度为 0 | List, Set, Map, str |
+| `to_start_with(prefix)` | 字符串以 prefix 开头 | str |
+| `to_end_with(suffix)` | 字符串以 suffix 结尾 | str |
+
+### fail
+
+立即将当前测试标记为失败。
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — 使用通用消息标记测试失败
+- `fail(msg)` — 使用自定义消息标记测试失败
+- `fail()` 之后执行继续进行（不会中止测试）
+- 仅在 `ry test` 模式下可用
 
 ---
 
-## 輸出格式
+## 输出格式
 
 ```
 Calculator
   + adds numbers
   + subtracts
-  - fails test （紅色）
+  - fails test (red)
     line 10: expected 3, got 2
 
 2 passed, 1 failed
 ```
 
-- `+` 為成功（綠色），`-` 為失敗（紅色）
-- 失敗時顯示行號與預期值/實際值
+- `+` 为成功（绿色），`-` 为失败（红色）
+- 失败时显示行号与预期值/实际值
 
 ---
 
-## 範例
+## 示例
 
 ```
 describe("Arithmetic", fn():
@@ -124,11 +148,11 @@ describe("Booleans", fn():
 
 ---
 
-## 模擬（Mock）
+## 模拟（Mock）
 
 ### mock(fn_name, replacement)
 
-在當前 `it` 區塊中將函式替換為模擬實作。`it` 區塊結束時模擬會自動清除。
+在当前 `it` 块中将函数替换为模拟实现。`it` 块结束时模拟会自动清除。
 
 ```
 fn fetch_data() -> str:
@@ -136,7 +160,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -146,19 +170,19 @@ describe("mocking", fn():
 )
 ```
 
-- 第一個參數為函式名稱（識別符，非字串）
-- 第二個參數為替換用 lambda
-- 替換函式必須與原始函式具有相同的參數型別和回傳型別
-- `it` 區塊結束時模擬會自動還原
+- 第一个参数为函数名称（标识符，非字符串）
+- 第二个参数为替换用 lambda
+- 替换函数必须与原始函数具有相同的参数类型和返回类型
+- `it` 块结束时模拟会自动恢复
 
 ### verify(fn_name)
 
-回傳模擬函式被呼叫的次數（`int`）。
+返回模拟函数被调用的次数（`int`）。
 
 ```
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -166,17 +190,17 @@ describe("verify", fn():
 )
 ```
 
-### 模擬的限制事項
+### 限制
 
-- 不支援多載函式的模擬
-- 不支援使用捕獲閉包進行模擬（僅支援純 lambda）
-- 不支援 `@native fn` 的模擬
+- 不支持重载函数的模拟
+- 不支持使用捕获闭包进行模拟（仅支持纯 lambda）
+- 不支持 `@native fn` 的模拟
 
 ---
 
-## 參數化測試 (@each)
+## 参数化测试 (@each)
 
-`@each` 可以用多組參數執行同一個測試。將元組列表附加到 `it` 區塊:
+`@each` 可以用多组参数运行同一个测试。将元组列表附加到 `it` 块:
 
 ```
 @each([
@@ -189,16 +213,16 @@ it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
 )
 ```
 
-- 列表必須包含與 lambda 參數數量相同的元組
-- 描述中的 `{0}`, `{1}`, ... 會被替換為參數值
-- 每個元組生成一個獨立的測試案例
-- 支援的參數型別: `int`, `float`, `bool`, `str`
+- 列表必须包含与 lambda 参数数量相同的元组
+- 描述中的 `{0}`, `{1}`, ... 会被替换为参数值
+- 每个元组生成一个独立的测试用例
+- 支持的参数类型: `int`, `float`, `bool`, `str`
 
 ---
 
-## 基於屬性的測試 (@property)
+## 基于属性的测试 (@property)
 
-`@property` 生成隨機輸入並多次執行測試:
+`@property` 生成随机输入并多次运行测试:
 
 ```
 @property(count=100)
@@ -207,14 +231,39 @@ it("addition is commutative", fn(a: int, b: int):
 )
 ```
 
-- `count=N` 指定隨機試驗次數（預設: 100）
-- 失敗時會顯示反例（導致失敗的輸入值）
-- 在第一次失敗時停止測試
-- 支援的參數型別: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (隨機 ASCII、0-20 字元)
+- `count=N` 指定随机试验次数（默认: 100）
+- 失败时会显示反例（导致失败的输入值）
+- 在第一次失败时停止测试
+- 支持的参数类型: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (随机 ASCII、0-20 字符)
 
 ---
 
-## 限制事項
+## 测试覆盖率
 
-- 不支援 `describe` 的巢狀
-- 不支援 `before_each` / `after_each`
+使用 `--coverage`（或 `--cov`）标志来测量行覆盖率:
+
+```bash
+ry test --coverage                    # 所有测试 + 覆盖率摘要
+ry test --cov tests/spec/math.test.ry # 单个文件
+ry test --coverage tests/spec/        # 目录
+```
+
+### 输出
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- 仅报告用户代码；标准库文件会被排除
+- `--coverage` 与 `--parallel` 同时指定时，会退回为顺序执行
+
+---
+
+## 限制
+
+- 不支持 `describe` 的嵌套
+- 不支持 `before_each` / `after_each`

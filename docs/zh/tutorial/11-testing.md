@@ -1,30 +1,31 @@
-[English](../../tutorial/11-testing.md) | [日本語](../../ja/tutorial/11-testing.md) | [繁體中文](11-testing.md)
+[English](../../tutorial/11-testing.md) | [日本語](../../ja/tutorial/11-testing.md) | [简体中文](11-testing.md)
 
-# 測試
+# 测试
 
-[← 前一篇：契約式設計](10-contracts.md)
+[<- 上一篇：契约式设计](10-contracts.md)
 
-Ry 內建了使用 `describe`、`it`、`expect` 的 RSpec 風格測試語法。詳細規格請參閱[測試參考手冊](../reference/testing.md)。
+Ry 内置了使用 `describe`、`it`、`expect` 的 RSpec 风格测试语法。详细规格请参阅[测试参考手册](../reference/testing.md)。
 
 ---
 
-## 執行測試
+## 运行测试
 
 ```bash
-ry test                       # 自動探索並執行所有 *.test.ry 檔案
-ry test tests/spec            # 遞迴執行指定目錄下所有 *.test.ry 檔案
-ry test tests/my_test.test.ry # 執行特定的測試檔案
+ry test                       # 自动发现并运行所有 *.test.ry 文件
+ry test tests/spec            # 递归运行指定目录下所有 *.test.ry 文件
+ry test tests/my_test.test.ry # 运行特定的测试文件
+ry test -p                    # 并行运行所有测试（-p 或 --parallel）
 ```
 
-所有測試通過時，結束碼為 `0`；若有任一測試失敗，則為 `1`。
+所有测试通过时，退出码为 `0`；若有任一测试失败，则为 `1`。
 
-不帶參數執行時，`ry test` 會搜尋 `ry.toml` 來找到專案根目錄，然後遞迴地探索所有 `*.test.ry` 檔案。
+不带参数运行时，`ry test` 会搜索 `package.toml` 来找到项目根目录，然后递归地发现所有 `*.test.ry` 文件。
 
 ---
 
-## 撰寫測試
+## 编写测试
 
-使用 `describe` 將相關測試分組，使用 `it` 定義各個測試案例。
+使用 `describe` 将相关测试分组，使用 `it` 定义各个测试用例。
 
 ```python
 describe("Calculator", fn():
@@ -42,26 +43,26 @@ describe("Calculator", fn():
 )
 ```
 
-- `describe` 和 `it` 接受描述字串和**lambda 引數** `fn():` 作為第二個參數。
-- `describe` / `it` / `expect` / `mock` / `verify` 僅可在 `ry test` 中使用（一般的 `ry` 執行會產生編譯錯誤）。
+- `describe` 和 `it` 接受描述字符串和 **lambda 参数** `fn():` 作为第二个参数
+- `describe`、`it`、`expect`、`mock` 和 `verify` 仅可在 `ry test` 中使用（普通的 `ry` 执行会产生编译错误）
 
 ---
 
 ## 匹配器
 
-| 匹配器 | 說明 | 支援型別 |
+| 匹配器 | 说明 | 支持类型 |
 |--------|------|---------|
-| `to_eq(expected)` | 等值比較 | int, float, bool, str |
-| `to_not_eq(expected)` | 不等值斷言 | int, float, bool, str |
-| `to_be_true()` | `true` 斷言 | bool |
-| `to_be_false()` | `false` 斷言 | bool |
-| `to_be_none()` | `None` 斷言 | Option |
-| `to_be_some()` | Option 為 `Some` 的斷言 | Option |
-| `to_contain(val)` | 容器包含值的斷言 | List, Set, str |
+| `to_eq(expected)` | 等值比较 | int, float, bool, str |
+| `to_not_eq(expected)` | 不等值断言 | int, float, bool, str |
+| `to_be_true()` | `true` 断言 | bool |
+| `to_be_false()` | `false` 断言 | bool |
+| `to_be_none()` | `None` 断言 | Option |
+| `to_be_some()` | Option 为 `Some` 的断言 | Option |
+| `to_contain(val)` | 容器包含值的断言 | List, Set, str |
 
 ---
 
-## 輸出格式
+## 输出格式
 
 ```
 Calculator
@@ -73,15 +74,15 @@ Calculator
 2 passed, 1 failed
 ```
 
-`+` 表示通過（綠色），`-` 表示失敗（紅色）。
+`+` 表示通过（绿色），`-` 表示失败（红色）。
 
 ---
 
-## 模擬（Mock）
+## 模拟（Mock）
 
 ### `mock(fn_name, replacement)`
 
-在目前的 `it` 區塊中將函式替換為模擬實作。`it` 區塊結束時會自動還原。
+在当前的 `it` 块中将函数替换为模拟实现。`it` 块结束时会自动恢复。
 
 ```python
 fn fetch_data() -> str:
@@ -89,7 +90,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -101,12 +102,12 @@ describe("mocking", fn():
 
 ### `verify(fn_name)`
 
-傳回模擬函式被呼叫的次數。
+返回模拟函数被调用的次数。
 
 ```python
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -116,9 +117,9 @@ describe("verify", fn():
 
 ---
 
-## 參數化測試
+## 参数化测试
 
-使用 `@each` 以多組輸入執行同一個測試:
+使用 `@each` 以多组输入运行同一个测试：
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
@@ -127,13 +128,13 @@ it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
 )
 ```
 
-每個元組成為一個獨立的測試案例。描述中的 `{0}`, `{1}` 會被替換為實際值。
+每个元组成为一个独立的测试用例。描述中的 `{0}`、`{1}` 等会被替换为实际值。
 
 ---
 
-## 基於屬性的測試
+## 基于属性的测试
 
-使用 `@property` 以隨機生成的輸入進行測試:
+使用 `@property` 以随机生成的输入进行测试：
 
 ```python
 @property(count=100)
@@ -142,16 +143,16 @@ it("addition is commutative", fn(a: int, b: int):
 )
 ```
 
-測試以隨機值執行 `count` 次。失敗時會顯示反例。
+测试以随机值运行 `count` 次。失败时会显示反例。
 
 ---
 
-## 限制事項
+## 限制
 
-- 不支援 `describe` 的巢狀使用
-- 不支援 `before_each` / `after_each`
-- 多載函式及 `@native` 函式無法模擬
+- 不支持 `describe` 的嵌套使用
+- 不支持 `before_each` / `after_each`
+- 重载函数及 `@native` 函数无法模拟
 
 ---
 
-[← 前一篇：契約式設計](10-contracts.md)
+[<- 上一篇：契约式设计](10-contracts.md)

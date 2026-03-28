@@ -85,10 +85,10 @@ print(xs[i])   # 2
 xs[0] = 99
 ```
 
-### len
+### length
 
 ```python
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -119,11 +119,11 @@ Lists support `filter`, `map`, and `sort` operations. These return new lists wit
 xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-evens = xs.filter(fn(x: int): x > 3)
+evens = xs.filter(fn(x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-doubled = xs.map(fn(x: int): x * 2)
+doubled = xs.map(fn(x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
@@ -131,7 +131,7 @@ sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # Chaining
-result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +143,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: start from first element
-total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: provide an explicit initial value
-total2 = fold(xs, 0, fn(a: int, b: int): a + b)
+total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +158,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int): x > 4))   # true
-print(any(xs, fn(x: int): x > 9))   # false
+print(any(xs, fn(x: int) => x > 4))   # true
+print(any(xs, fn(x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int): x > 0))   # true
-print(all(xs, fn(x: int): x > 3))   # false
+print(all(xs, fn(x: int) => x > 0))   # true
+print(all(xs, fn(x: int) => x > 3))   # false
 ```
 
 ### sum, min, max
@@ -240,10 +240,10 @@ m["c"] = 3    # Insert new entry
 m["a"] = 99   # Update existing entry
 ```
 
-### len
+### length
 
 ```python
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -318,10 +318,10 @@ s.remove(1)    # Remove element
 s.add(2)       # Ignored since it already exists
 ```
 
-### len / print
+### length / print
 
 ```python
-print(len(s))  # 3
+print(length(s))  # 3
 print(s)       # {2, 3, 4}
 ```
 
@@ -365,8 +365,8 @@ You can chain `filter`, `map`, and `take` to build pipelines:
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int): x > 2)
-    .map(fn(x: int): x * 2)
+    .filter(fn(x: int) => x > 2)
+    .map(fn(x: int) => x * 2)
     .take(2)
     .to_list()
 print(result)   # [6, 8]
@@ -386,7 +386,7 @@ print(it.next())   # None
 Iterators work directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int): x > 1):
+for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
     print(x)   # 2, 3
 ```
 

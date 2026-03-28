@@ -7,13 +7,35 @@
 #include "ry/jit.hpp"
 #include "ry/test_runtime.hpp"
 #include "ry/project_config.hpp"
+#include "ry/formatter.hpp"
 #include "ry/self_update.hpp"
 #include "ry/args_runtime.hpp"
 #include "ry/paths.hpp"
+#include "ry/file_watcher.hpp"
+#include "ry/coverage_runtime.hpp"
+#include "ry/dotenv.hpp"
 #include <algorithm>
+#include <cerrno>
+#include <chrono>
+#ifdef __APPLE__
+#include <crt_externs.h>
+#define RY_ENVIRON (*_NSGetEnviron())
+#else
+extern "C" { extern char **environ; }
+#define RY_ENVIRON environ
+#endif
+#include <cstdlib>
+#include <iostream>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <filesystem>
+#include <mutex>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
 #include <unordered_set>
 #include <vector>
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
@@ -28,19 +50,58 @@ using namespace llvm::orc;
 
 namespace fs = std::filesystem;
 
-// Compile and run a .ry file via JIT. Returns the JIT function's exit code.
-static int runRyFile(const std::string &filepath, bool test_mode,
-                     const char *argv0) {
-    auto bufOrErr = MemoryBuffer::getFile(filepath);
-    if (!bufOrErr) {
-        errs() << "Error reading file: " << filepath << "\n";
-        return 1;
+static void test_timeout_handler(int) {
+    const char msg[] = "\nTest timed out (60s)\n";
+    (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    _exit(124);
+}
+
+// RY_ENV: skip $RY_HOME/lib when running in "internal" mode
+static bool g_skip_global_lib = false;
+
+// Coverage: accumulated filenames across multiple runRyFile calls.
+// Maps global file_id to filename for user files (excluding stdlib).
+static std::vector<std::string> g_coverage_filenames;
+static int g_coverage_file_count = 0;
+// Global offset to avoid file_id collisions across separate runRyFile calls.
+static int g_coverage_file_id_offset = 0;
+
+static void resetCoverageState() {
+    __ry_coverage_reset();
+    g_coverage_file_id_offset = 0;
+    g_coverage_file_count = 0;
+    g_coverage_filenames.clear();
+}
+
+static void emitCoverageReport() {
+    if (g_coverage_file_count <= 0) return;
+    std::vector<const char*> ptrs(g_coverage_file_count);
+    for (int i = 0; i < g_coverage_file_count; ++i)
+        ptrs[i] = g_coverage_filenames[i].c_str();
+    __ry_coverage_report_summary(ptrs.data(), g_coverage_file_count);
+}
+
+// Compile and run Ry source code via JIT. Returns the JIT function's exit code.
+static int runRySource(const std::string &src, const std::string &source_name,
+                       const std::string &referrer_dir, bool test_mode,
+                       const char *argv0, bool coverage_mode = false) {
+    std::string project_root;
+    // Load .env from project root (once per root per process)
+    {
+        if (auto root = findProjectRoot(referrer_dir)) {
+            project_root = *root;
+            static std::string loaded_root;
+            if (loaded_root != *root) {
+                const char *ry_env = std::getenv("RY_ENV");
+                ry::loadDotEnv(*root, ry_env ? ry_env : "");
+                loaded_root = *root;
+            }
+        }
     }
-    std::string src = (*bufOrErr)->getBuffer().str();
 
     // Source manager for rich error messages
     SourceManager sm;
-    int fileId = sm.addSource(filepath, src);
+    int fileId = sm.addSource(source_name, src);
 
     // Lex -> Parse
     Lexer  lexer(src);
@@ -49,10 +110,13 @@ static int runRyFile(const std::string &filepath, bool test_mode,
 
     // Set up search paths with lib/ for stdlib
     std::vector<std::string> search_paths;
-    std::string lib_dir = ry::find_lib_dir(argv0).string();
-    if (!lib_dir.empty()) search_paths.push_back(lib_dir);
+    std::string lib_dir = ry::find_lib_dir(argv0, project_root, g_skip_global_lib).string();
+    if (!lib_dir.empty()) {
+        search_paths.push_back(lib_dir);
+        // Enable flattened imports: "from math" resolves to lib/std/math/
+        search_paths.push_back((fs::path(lib_dir) / "std").string());
+    }
 
-    std::string referrer_dir = fs::path(filepath).parent_path().string();
     ModuleLoader loader(search_paths, &sm);
 
     // Implicit `from std` import (like Java's java.lang)
@@ -74,7 +138,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     prog = loader.resolveImports(prog, referrer_dir);
 
     // CodeGen -> ThreadSafeModule
-    CodeGen cg(test_mode, &sm);
+    CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset);
     ThreadSafeModule tsm = cg.compile(prog);
 
     // Build LLJIT
@@ -143,6 +207,19 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         }
     }
 
+    // Register coverage runtime symbols if in coverage mode
+    if (coverage_mode) {
+        auto &es = jit->getExecutionSession();
+        SymbolMap covSymbols;
+        covSymbols[es.intern("__ry_coverage_hit")] =
+            {ExecutorAddr::fromPtr(&__ry_coverage_hit), JITSymbolFlags::Exported};
+        if (auto err = mainJD.define(absoluteSymbols(std::move(covSymbols)))) {
+            errs() << "Failed to define coverage symbols: ";
+            logAllUnhandledErrors(std::move(err), errs());
+            return 1;
+        }
+    }
+
     // Add module
     if (auto err = jit->addIRModule(std::move(tsm))) {
         errs() << "Failed to add IR module: ";
@@ -158,8 +235,49 @@ static int runRyFile(const std::string &filepath, bool test_mode,
         return 1;
     }
     auto *fn = symOrErr->toPtr<int(*)()>();
+
+    if (test_mode) {
+        std::signal(SIGALRM, test_timeout_handler);
+    }
     int result = fn();
+
+    // Record filenames for coverage reporting (accumulates across calls).
+    // Exclude stdlib files (those under lib_dir) from the report.
+    if (coverage_mode) {
+        int fc = sm.getFileCount();
+        int new_total = g_coverage_file_id_offset + fc;
+        if (new_total > g_coverage_file_count) {
+            g_coverage_filenames.resize(new_total);
+            for (int i = 0; i < fc; ++i) {
+                int gid = g_coverage_file_id_offset + i;
+                const std::string &fname = sm.getFilename(i);
+                bool is_stdlib = false;
+                if (!lib_dir.empty()) {
+                    auto canonical = fs::weakly_canonical(fname).string();
+                    auto canonical_lib = fs::weakly_canonical(lib_dir).string();
+                    is_stdlib = canonical.find(canonical_lib) == 0;
+                }
+                g_coverage_filenames[gid] = is_stdlib ? "" : fname;
+            }
+            g_coverage_file_count = new_total;
+        }
+        g_coverage_file_id_offset += fc;
+    }
+
     return result > 0 ? 1 : 0;
+}
+
+// Compile and run a .ry file via JIT. Returns the JIT function's exit code.
+static int runRyFile(const std::string &filepath, bool test_mode,
+                     const char *argv0, bool coverage_mode = false) {
+    auto bufOrErr = MemoryBuffer::getFile(filepath);
+    if (!bufOrErr) {
+        errs() << "Error reading file: " << filepath << "\n";
+        return 1;
+    }
+    std::string src = (*bufOrErr)->getBuffer().str();
+    std::string referrer_dir = fs::path(filepath).parent_path().string();
+    return runRySource(src, filepath, referrer_dir, test_mode, argv0, coverage_mode);
 }
 
 // Collect *.test.ry files recursively under root_dir
@@ -189,15 +307,16 @@ static std::vector<std::string> findTestFiles(const std::string &root_dir) {
     return files;
 }
 
-// Run multiple test files and report results
-static int runTestFiles(const std::vector<std::string> &test_files,
-                        const char *argv0) {
+// Run multiple test files sequentially and report results
+static int runTestFilesSequential(const std::vector<std::string> &test_files,
+                                  const char *argv0, bool coverage = false) {
+    if (coverage) resetCoverageState();
     int total_failed = 0;
     int total_files = 0;
     for (const auto &tf : test_files) {
         ++total_files;
         try {
-            int failed = runRyFile(tf, /*test_mode=*/true, argv0);
+            int failed = runRyFile(tf, /*test_mode=*/true, argv0, coverage);
             total_failed += failed;
         } catch (const DiagnosticError &e) {
             errs() << e.what();
@@ -211,20 +330,291 @@ static int runTestFiles(const std::vector<std::string> &test_files,
         std::printf("\n%d test files executed, %d total failures\n",
                     total_files, total_failed);
     }
+    if (coverage) emitCoverageReport();
     return total_failed > 0 ? 1 : 0;
 }
 
+struct TestFileResult {
+    std::string filepath;
+    int exit_code;
+    std::string output;
+};
+
+// Run a single test file in a subprocess, capturing stdout+stderr.
+// Uses posix_spawn instead of fork to be safe from multi-threaded contexts.
+static TestFileResult runTestFileSubprocess(const std::string &filepath,
+                                            const std::string &exe_path) {
+    TestFileResult result;
+    result.filepath = filepath;
+    result.exit_code = -1;
+
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+        result.output = "Error: pipe() failed: " + std::string(strerror(errno)) + "\n";
+        return result;
+    }
+
+    posix_spawn_file_actions_t actions;
+    int rc = posix_spawn_file_actions_init(&actions);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[0]);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDERR_FILENO);
+    if (rc == 0) rc = posix_spawn_file_actions_addclose(&actions, pipefd[1]);
+    if (rc != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        result.output = "Error: posix_spawn_file_actions failed: " + std::string(strerror(rc)) + "\n";
+        return result;
+    }
+
+    const char *argv[] = {exe_path.c_str(), "test", filepath.c_str(), nullptr};
+    pid_t pid;
+    int err = posix_spawn(&pid, exe_path.c_str(), &actions, nullptr,
+                          const_cast<char *const *>(argv), RY_ENVIRON);
+    posix_spawn_file_actions_destroy(&actions);
+
+    if (err != 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        result.output = "Error: posix_spawn() failed: " + std::string(strerror(err)) + "\n";
+        return result;
+    }
+
+    close(pipefd[1]);
+    char buf[4096];
+    ssize_t n;
+    while ((n = read(pipefd[0], buf, sizeof(buf))) > 0 || (n == -1 && errno == EINTR)) {
+        if (n > 0) result.output.append(buf, n);
+    }
+    close(pipefd[0]);
+
+    int status = 0;
+    pid_t wp;
+    while ((wp = waitpid(pid, &status, 0)) == -1) {
+        if (errno != EINTR) break;
+    }
+
+    if (wp == -1)
+        result.exit_code = -1;
+    else if (WIFEXITED(status))
+        result.exit_code = WEXITSTATUS(status);
+    else if (WIFSIGNALED(status))
+        result.exit_code = 128 + WTERMSIG(status);
+    else
+        result.exit_code = -1;
+
+    return result;
+}
+
+// Run multiple test files in parallel using worker threads
+static int runTestFilesParallel(const std::vector<std::string> &test_files,
+                                const std::string &exe_path, int parallelism) {
+    int num_files = static_cast<int>(test_files.size());
+    std::vector<TestFileResult> results(num_files);
+
+    // Work queue: indices into test_files
+    std::deque<int> work_queue;
+    for (int i = 0; i < num_files; ++i)
+        work_queue.push_back(i);
+
+    std::mutex queue_mutex;
+    std::mutex progress_mutex;
+    int completed = 0;
+
+    auto worker = [&]() {
+        while (true) {
+            int idx;
+            {
+                std::lock_guard<std::mutex> lock(queue_mutex);
+                if (work_queue.empty()) return;
+                idx = work_queue.front();
+                work_queue.pop_front();
+            }
+            results[idx] = runTestFileSubprocess(test_files[idx], exe_path);
+            {
+                std::lock_guard<std::mutex> lock(progress_mutex);
+                ++completed;
+                std::fprintf(stderr, "\r\033[K[%d/%d] Running tests...",
+                             completed, num_files);
+            }
+        }
+    };
+
+    int num_workers = std::min(parallelism, num_files);
+    std::vector<std::thread> threads;
+    threads.reserve(num_workers);
+
+    auto wall_start = std::chrono::steady_clock::now();
+    for (int i = 0; i < num_workers; ++i)
+        threads.emplace_back(worker);
+    for (auto &t : threads)
+        t.join();
+    auto wall_end = std::chrono::steady_clock::now();
+    double wall_elapsed = std::chrono::duration<double>(wall_end - wall_start).count();
+
+    std::fprintf(stderr, "\r\033[K");
+
+    int total_failed = 0;
+    for (const auto &r : results) {
+        std::fputs(r.output.c_str(), stdout);
+        if (r.exit_code != 0)
+            ++total_failed;
+    }
+
+    std::printf("\n%d test files executed, %d total failures (%.2fs, %d workers)\n",
+                num_files, total_failed, wall_elapsed, num_workers);
+    return total_failed > 0 ? 1 : 0;
+}
+
+// Run multiple test files and report results
+static int runTestFiles(const std::vector<std::string> &test_files,
+                        const char *argv0, bool parallel, bool coverage = false) {
+    if (!parallel || test_files.size() <= 1) {
+        return runTestFilesSequential(test_files, argv0, coverage);
+    }
+    std::string exe_path = ry::self_update::detail::get_executable_path();
+    if (exe_path.empty()) {
+        errs() << "Warning: cannot resolve executable path, falling back to sequential\n";
+        return runTestFilesSequential(test_files, argv0, coverage);
+    }
+    unsigned hw = std::thread::hardware_concurrency();
+    int parallelism = static_cast<int>(std::min({hw, 8u, static_cast<unsigned>(test_files.size())}));
+    if (parallelism < 1) parallelism = 1;
+    return runTestFilesParallel(test_files, exe_path, parallelism);
+}
+
 // Discover *.test.ry files in a directory and run them
-static int discoverAndRunTests(const std::string &dir, const char *argv0) {
+static int discoverAndRunTests(const std::string &dir, const char *argv0,
+                               bool parallel, bool coverage = false) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0);
+    return runTestFiles(test_files, argv0, parallel, coverage);
+}
+
+static void applyRyEnv(const char *value) {
+    std::string canonical = ry::resolveRyEnv(value);
+    setenv("RY_ENV", canonical.c_str(), 1);
+    if (canonical == "internal")
+        g_skip_global_lib = true;
+}
+
+static bool isHelpFlag(const char *arg) {
+    return std::strcmp(arg, "-h") == 0 || std::strcmp(arg, "--help") == 0;
+}
+
+static bool hasHelpFlag(int argc, char *argv[], int start = 1) {
+    for (int i = start; i < argc; ++i)
+        if (isHelpFlag(argv[i])) return true;
+    return false;
+}
+
+static bool isKnownSubcommand(const char *arg) {
+    static const char *known[] = {
+        "test", "init", "new", "fmt", "self-update", nullptr
+    };
+    for (const char **p = known; *p; ++p)
+        if (std::strcmp(arg, *p) == 0) return true;
+    return false;
+}
+
+static void printMainHelp() {
+    llvm::outs() << "ry " << RY_VERSION << "\n\n";
+    llvm::outs() << "Usage:\n";
+    llvm::outs() << "  ry <file.ry> [args...]              Run a Ry script\n";
+    llvm::outs() << "  echo '<code>' | ry                  Run code from stdin\n";
+    llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
+    llvm::outs() << "  ry init                              Initialize a project\n";
+    llvm::outs() << "  ry new <project-name>                Create a new project\n";
+    llvm::outs() << "  ry fmt [options] [<file> | <dir>]    Format source files\n";
+    llvm::outs() << "  ry self-update [options]              Update ry itself\n";
+    llvm::outs() << "\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  -h, --help       Show this help\n";
+    llvm::outs() << "  -v, --version    Show version\n";
+    llvm::outs() << "  --env=<env>      Set environment (production|development|internal)\n";
+    llvm::outs() << "\n";
+    llvm::outs() << "Run 'ry <command> --help' for more information on a command.\n";
+}
+
+static void printTestHelp() {
+    llvm::outs() << "Usage: ry test [options] [<file.ry> | <dir>]\n\n";
+    llvm::outs() << "Run test files (*.test.ry).\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  -p, --parallel       Run tests in parallel\n";
+    llvm::outs() << "  -w, --watch          Watch for changes and re-run\n";
+    llvm::outs() << "  --coverage, --cov    Collect coverage information\n";
+    llvm::outs() << "  -h, --help           Show this help\n";
+}
+
+static void printInitHelp() {
+    llvm::outs() << "Usage: ry init\n\n";
+    llvm::outs() << "Initialize a new Ry project in the current directory.\n";
+    llvm::outs() << "Creates a package.toml and basic project structure.\n";
+}
+
+static void printNewHelp() {
+    llvm::outs() << "Usage: ry new <project-name>\n\n";
+    llvm::outs() << "Create a new Ry project in a new directory.\n";
+}
+
+static void printFmtHelp() {
+    llvm::outs() << "Usage: ry fmt [options] [<file> | <dir>]\n\n";
+    llvm::outs() << "Format Ry source files.\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  --check      Check formatting without modifying files\n";
+    llvm::outs() << "  -h, --help   Show this help\n";
+}
+
+static void printSelfUpdateHelp() {
+    llvm::outs() << "Usage: ry self-update [--nightly | <version>]\n\n";
+    llvm::outs() << "Update ry to a newer version.\n\n";
+    llvm::outs() << "Options:\n";
+    llvm::outs() << "  (no args)    Update to latest stable release\n";
+    llvm::outs() << "  --nightly    Update to latest nightly/prerelease\n";
+    llvm::outs() << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
+    llvm::outs() << "  -h, --help   Show this help\n";
+}
+
+static void parseRyEnv(int &argc, char **&argv) {
+    // --env=<value> CLI flag takes precedence over RY_ENV env var
+    if (argc >= 2 && std::strncmp(argv[1], "--env=", 6) == 0) {
+        applyRyEnv(argv[1] + 6);
+        // Remove --env flag from argv, preserving argv[0] (program name)
+        argv[1] = argv[0];
+        ++argv;
+        --argc;
+    } else if (const char *env = std::getenv("RY_ENV")) {
+        applyRyEnv(env);
+    }
 }
 
 int main(int argc, char *argv[]) {
+    parseRyEnv(argc, argv);
+
+    // Help flag handling: -h/--help takes priority over other options
+    if (argc >= 2) {
+        if (isKnownSubcommand(argv[1])) {
+            // Subcommand help: ry <subcmd> ... -h/--help
+            if (hasHelpFlag(argc, argv, 2)) {
+                if (std::strcmp(argv[1], "test") == 0) { printTestHelp(); return 0; }
+                if (std::strcmp(argv[1], "init") == 0) { printInitHelp(); return 0; }
+                if (std::strcmp(argv[1], "new") == 0) { printNewHelp(); return 0; }
+                if (std::strcmp(argv[1], "fmt") == 0) { printFmtHelp(); return 0; }
+                if (std::strcmp(argv[1], "self-update") == 0) { printSelfUpdateHelp(); return 0; }
+            }
+        } else {
+            // Main help: ry -h, ry --help, ry --env=internal -h, etc.
+            if (hasHelpFlag(argc, argv)) {
+                printMainHelp();
+                return 0;
+            }
+        }
+    }
+
     if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
         llvm::outs() << "ry " << RY_VERSION << "\n";
         return 0;
@@ -237,6 +627,12 @@ int main(int argc, char *argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "init") == 0) {
         return cmd_init();
     }
+    if (argc >= 2 && std::strcmp(argv[1], "new") == 0) {
+        return cmd_new(argc - 2, argv + 2);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "fmt") == 0) {
+        return cmd_fmt(argc - 2, argv + 2);
+    }
 
     InitLLVM X(argc, argv);
     InitializeNativeTarget();
@@ -244,44 +640,125 @@ int main(int argc, char *argv[]) {
     InitializeNativeTargetAsmParser();
 
     bool test_mode = false;
+    bool coverage_mode = false;
     const char *filename = nullptr;
 
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
+        // Unknown subcommand detection: if the argument is not an existing file,
+        // show an error and help message
+        std::string arg1 = argv[1];
+        if (!fs::exists(arg1)) {
+            errs() << "Error: unknown command '" << arg1 << "'\n\n";
+            printMainHelp();
+            return 1;
+        }
         filename = argv[1];
         __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
-    } else if (argc >= 3 && std::strcmp(argv[1], "test") == 0) {
-        std::string target = argv[2];
-        std::error_code ec;
-        if (fs::is_directory(target, ec)) {
-            return discoverAndRunTests(target, argv[0]);
+    } else if (argc >= 2 && std::strcmp(argv[1], "test") == 0) {
+        // Parse test subcommand arguments
+        bool parallel = false;
+        bool watch = false;
+        bool coverage = false;
+        const char *target = nullptr;
+        for (int i = 2; i < argc; ++i) {
+            if (std::strcmp(argv[i], "-p") == 0 ||
+                std::strcmp(argv[i], "--parallel") == 0) {
+                parallel = true;
+            } else if (std::strcmp(argv[i], "-w") == 0 ||
+                       std::strcmp(argv[i], "--watch") == 0) {
+                watch = true;
+            } else if (std::strcmp(argv[i], "--coverage") == 0 ||
+                       std::strcmp(argv[i], "--cov") == 0) {
+                coverage = true;
+            } else if (!target) {
+                target = argv[i];
+            }
         }
-        if (ec) {
-            errs() << "Error: cannot access " << target << ": "
-                   << ec.message() << "\n";
-            return 1;
+        if (coverage && parallel) {
+            errs() << "Warning: --coverage is not supported with --parallel, falling back to sequential\n";
+            parallel = false;
         }
-        // ry test <file.ry> — single file test
-        test_mode = true;
-        filename = argv[2];
+
+        if (target) {
+            std::string target_str = target;
+            std::error_code ec;
+            if (fs::is_directory(target_str, ec)) {
+                if (watch) {
+                    const char *a0 = argv[0];
+                    ry::watchAndRunTests(target_str, [target_str, a0, parallel, coverage]() {
+                        discoverAndRunTests(target_str, a0, parallel, coverage);
+                    });
+                    return 0;
+                }
+                return discoverAndRunTests(target_str, argv[0], parallel, coverage);
+            }
+            if (ec) {
+                errs() << "Error: cannot access " << target_str << ": "
+                       << ec.message() << "\n";
+                return 1;
+            }
+            if (watch) {
+                // Watch project root (or file's parent dir) and re-run single file
+                auto target_dir = fs::path(target_str).parent_path().string();
+                std::string watch_root = findProjectRoot(target_dir).value_or(target_dir);
+                const char *a0 = argv[0];
+                ry::watchAndRunTests(watch_root, [target_str, a0]() {
+                    try {
+                        runRyFile(target_str, true, a0);
+                    } catch (const DiagnosticError &e) {
+                        errs() << e.what();
+                    } catch (const std::exception &e) {
+                        errs() << "Error: " << e.what() << "\n";
+                    }
+                });
+                return 0;
+            }
+            // ry test <file.ry> — single file test (parallel flag ignored)
+            test_mode = true;
+            coverage_mode = coverage;
+            filename = target;
+            __ry_args_init(0, nullptr);
+        } else {
+            // ry test [-p] [-w] — discover from project root
+            auto root = findProjectRoot();
+            if (!root) {
+                errs() << "Error: package.toml not found. Run 'ry init' first.\n";
+                return 1;
+            }
+            if (watch) {
+                std::string root_dir = *root;
+                const char *a0 = argv[0];
+                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel, coverage]() {
+                    discoverAndRunTests(root_dir, a0, parallel, coverage);
+                });
+                return 0;
+            }
+            return discoverAndRunTests(*root, argv[0], parallel, coverage);
+        }
+    } else if (argc == 1 && !isatty(STDIN_FILENO)) {
+        std::string src{std::istreambuf_iterator<char>(std::cin),
+                        std::istreambuf_iterator<char>{}};
         __ry_args_init(0, nullptr);
-    } else if (argc == 2 && std::strcmp(argv[1], "test") == 0) {
-        auto root = findProjectRoot();
-        if (!root) {
-            errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
+        std::string cwd = fs::current_path().string();
+        try {
+            return runRySource(src, "<stdin>", cwd, false, argv[0]);
+        } catch (const DiagnosticError &e) {
+            errs() << e.what();
+            return 1;
+        } catch (const std::exception &e) {
+            errs() << "Error: " << e.what() << "\n";
             return 1;
         }
-        return discoverAndRunTests(*root, argv[0]);
     } else {
-        errs() << "Usage: ry <file.ry> [args...]\n";
-        errs() << "       ry test [<file.ry> | <dir>]\n";
-        errs() << "       ry init\n";
-        errs() << "       ry self-update [--nightly | <version>]\n";
-        errs() << "       ry --version\n";
+        printMainHelp();
         return 1;
     }
 
     try {
-        return runRyFile(filename, test_mode, argv[0]);
+        if (coverage_mode) resetCoverageState();
+        int rc = runRyFile(filename, test_mode, argv[0], coverage_mode);
+        if (coverage_mode) emitCoverageReport();
+        return rc;
     } catch (const DiagnosticError &e) {
         errs() << e.what();
         return 1;

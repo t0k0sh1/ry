@@ -1,8 +1,13 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# Ry
+<p align="center">
+  <img src="docs/logo.png" alt="Ry" width="200">
+</p>
 
-A simple programming language based on LLVM JIT. It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
+<p align="center">
+  A simple programming language based on LLVM JIT.<br>
+  It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
+</p>
 
 ## Features
 
@@ -62,7 +67,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums
@@ -75,8 +80,8 @@ c = Color::Red
 print(c)               # Red
 
 # Package import
-from math import add
-print(add(1, 2))
+from math import sqrt, PI
+print(sqrt(PI))
 ```
 
 ## Installation
@@ -109,13 +114,31 @@ cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-## Run
+## Usage
 
 ```bash
-ry <file.ry>
+ry <file.ry>              # Run a Ry script
+echo '<code>' | ry         # Run code from stdin
+ry test [options] [path]   # Run tests (*.test.ry)
+ry init                    # Initialize a project in current directory
+ry new <name>              # Create a new project
+ry fmt [options] [path]    # Format source files
+ry self-update             # Update ry itself
 ```
 
-## Test
+Stdin also supports here-documents:
+
+```bash
+ry <<'RY'
+a = 1
+b = 2
+print(a + b)
+RY
+```
+
+Run `ry <command> --help` for detailed options.
+
+## Development
 
 ```bash
 cd build && ctest --output-on-failure

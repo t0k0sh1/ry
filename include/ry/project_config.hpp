@@ -8,6 +8,7 @@ struct ProjectConfig {
     std::string version;
     std::string entry;
     std::string src_dir;
+    std::optional<std::string> dev_stdlib_dir;
 };
 
 class ProjectConfigParser {
@@ -19,3 +20,4 @@ public:
 std::optional<std::string> findProjectRoot(const std::string &start_dir = "");
 
 int cmd_init();
+int cmd_new(int argc, char *argv[]);

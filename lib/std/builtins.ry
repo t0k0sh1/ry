@@ -1,22 +1,21 @@
 # Core built-in functions
+@native
+fn print(value: str) -> Unit
 
 @native
-fn print(x: str) -> Unit
+fn length(value: str) -> int
 
 @native
-fn len(x: str) -> int
+fn length(value: List<int>) -> int
 
 @native
-fn len(x: List<int>) -> int
+fn length(value: Map<str, int>) -> int
 
 @native
-fn len(x: Map<str, int>) -> int
+fn length(value: Set<int>) -> int
 
 @native
-fn len(x: Set<int>) -> int
-
-@native
-fn range(n: int) -> List<int>
+fn range(count: int) -> List<int>
 
 @native
 fn range(start: int, end: int) -> List<int>
@@ -25,10 +24,10 @@ fn range(start: int, end: int) -> List<int>
 fn range(start: int, end: int, step: int) -> List<int>
 
 @native
-fn enumerate(xs: List<int>) -> List<int>
+fn enumerate(values: List<int>) -> List<int>
 
 @native
-fn zip(xs: List<int>, ys: List<int>) -> List<int>
+fn zip(values: List<int>, other_values: List<int>) -> List<int>
 
 @native
 fn exit(code: int) -> Unit
@@ -38,3 +37,12 @@ fn args() -> List<str>
 
 @native
 fn available_parallelism() -> int
+
+@native
+fn sleep(duration_ms: int) -> Unit
+
+@native
+fn env(key: str) -> Option<str>
+
+@native
+fn env(key: str, default: str) -> str

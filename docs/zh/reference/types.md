@@ -1,38 +1,49 @@
-[English](../../reference/types.md) | [日本語](../../ja/reference/types.md) | [繁體中文](types.md)
+[English](../../reference/types.md) | [日本語](../../ja/reference/types.md) | [简体中文](types.md)
 
-# 型別參考
+# 类型参考
 
-## 型別一覽
+## 类型一览
 
-| 型別 | 內部表示 | 字面值範例 | 說明 |
+| 类型 | 内部表示 | 字面值示例 | 说明 |
 |---|---|---|---|
-| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64 位元有號整數 |
-| `byte` | i8 | （無專用字面值） | 無號 8 位元整數（0-255）。透過型別標註 `b: byte = 42` 使用 |
-| `float` | f64 | `3.14`, `0.5` | 64 位元浮點數 |
-| `bool` | i1 | `true`, `false` | 布林值 |
-| `str` | ptr | `"hello"`, `""`, `"a\nb"` | 字串（堆積上的不可變位元組序列） |
-| `Unit` | void | （無回傳值） | 省略回傳值型別時的隱式回傳型別 |
-| `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | 可能存在值的型別 |
-| `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | 元組型別 |
-| `List<T>` | ptr（堆積） | `[1, 2, 3]` | 動態陣列 |
-| `Map<K, V>` | ptr（堆積） | `{"a": 1}` | 雜湊映射 |
-| `Set<T>` | ptr（堆積） | `{1, 2, 3}` | 不重複的集合 |
-| `fn(T1, T2) -> R` | ptr（函式指標） | `fn(x: int): x * 2` | 函式型別 |
-| 使用者定義型別 | LLVM StructType (named) | `record Point: ...` | 以 `record` 關鍵字定義的結構體 |
-| `enum` | i64 / 標籤聯合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 關鍵字定義的列舉型別（支援關聯資料） |
-| `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 內建錯誤型別 |
-| `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 型別（可持有多種型別之一） |
-| int 字面量 | i64 | `42`, `0 \| 1` | int 字面量型別（值限制） |
-| str 字面量 | ptr | `"N" \| "S"` | str 字面量型別（值限制） |
-| 範圍 | i64 | `1..12`, `-10..10` | 範圍型別（包含兩端的整數範圍限制） |
+| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64 位有符号整数 |
+| `u8` | i8 | （无专用字面值） | 无符号 8 位整数（0-255）。通过类型标注 `b: u8 = 42` 使用 |
+| `float` | f64 | `3.14`, `0.5` | 64 位浮点数 |
+| `bool` | i1 | `true`, `false` | 布尔值 |
+| `str` | ptr | `"hello"`, `""`, `"a\nb"` | 字符串（堆上的不可变字节序列） |
+| `Unit` | void | （无返回值） | 无返回值函数的返回类型。必须用 `-> Unit` 显式指定 |
+| `Option<T>` | `{ i1, T }` | `Some(42)`, `None` | 可能存在值的类型 |
+| `(T1, T2, ...)` | LLVM StructType (literal) | `(1, 3.14)` | 元组类型 |
+| `List<T>` | ptr（堆） | `[1, 2, 3]` | 动态数组 |
+| `Map<K, V>` | ptr（堆） | `{"a": 1}` | 哈希映射 |
+| `Set<T>` | ptr（堆） | `{1, 2, 3}` | 不重复的集合 |
+| `fn(T1, T2) -> R` | ptr（函数指针） | `fn(x: int) => x * 2` | 函数类型 |
+| 用户定义类型 | LLVM StructType (named) | `record Point: ...` | 以 `record` 关键字定义的结构体 |
+| `enum` | i64 / 标签联合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 关键字定义的枚举类型（支持关联数据） |
+| `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 内置错误类型 |
+| `any` | `{ i64, [8 x i8] }` | `x: any = 42` | 可持有任意基本值的标签联合 |
+| `T1 \| T2` | `{ i64, [N x i8] }` | `int \| str` | union 类型（可持有多种类型之一） |
+| Int 字面量 | i64 | `42`, `0 \| 1` | int 字面量类型（值约束） |
+| String 字面量 | ptr | `"N" \| "S"` | str 字面量类型（值约束） |
+| 范围 | i64 | `1..12`, `-10..10` | 范围类型（包含两端的整数范围约束） |
+| `i8` | i8 | `x: i8 = 42`, `x = 42i8` | 8 位有符号整数（低级，无隐式转换） |
+| `i16` | i16 | `x: i16 = 100`, `x = 100i16` | 16 位有符号整数（低级，无隐式转换） |
+| `i32` | i32 | `x: i32 = 42`, `x = 42i32` | 32 位有符号整数（低级，无隐式转换） |
+| `i64` | i64 | `x: i64 = 100`, `x = 100i64` | 64 位有符号整数（低级，无隐式转换） |
+| `u8` | i8 | `x: u8 = 200`, `x = 200u8` | 8 位无符号整数（低级，无隐式转换） |
+| `u16` | i16 | `x: u16 = 60000`, `x = 60000u16` | 16 位无符号整数（低级，无隐式转换） |
+| `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32 位无符号整数（低级，无隐式转换） |
+| `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64 位无符号整数（低级，无隐式转换） |
+| `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32 位浮点数（低级，无隐式转换） |
+| `[T; N]` | `[N x T]` | `buf: [i32; 8]` | 固定长度连续数组。低级类型 T 的 N 个元素（栈分配） |
 
-## 型別標註語法
+## 类型标注语法
 
-宣告變數時可以明確指定型別。當型別可推論時可以省略。
+声明变量时可以显式指定类型。当类型可推断时可以省略。
 
 ```python
 x: int = 42
-b: byte = 255
+b: u8 = 255
 f: float = 3.14
 s: str = "hello"
 b: bool = true
@@ -41,36 +52,45 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int): x * 2
+fn_val: fn(int) -> int = fn(x: int) => x * 2
 u: int | str = 42
+a: any = 42
 ```
 
-## 可用型別名稱一覽
+## 可用类型名称一览
 
-| 型別名稱 | 備註 |
+| 类型名称 | 备注 |
 |---|---|
-| `int` | 內建純量型別 |
-| `byte` | 內建純量型別（無號 0-255） |
-| `float` | 內建純量型別 |
-| `bool` | 內建純量型別 |
-| `str` | 內建字串型別 |
-| `Unit` | 無回傳值函式的回傳型別 |
-| `Option<T>` | 泛型型別（T 為任意型別） |
-| `(T1, T2, ...)` | 元組型別（元素數量和型別組合任意） |
-| `List<T>` | 泛型動態陣列型別 |
-| `Map<K, V>` | 泛型雜湊映射型別 |
-| `Set<T>` | 泛型集合型別 |
-| `fn(T1, ...) -> R` | 函式型別 |
-| `Error` | 內建錯誤型別（`message: str`、`code: int`） |
-| `T1 \| T2 \| ...` | union 型別（以 `\|` 分隔的多個型別之一） |
-| 使用者定義型別名稱 | 以 `record` 或 `enum` 關鍵字宣告的型別 |
-| int 字面量型別 | 以 int 字面量值限制（例：`42`、`0 \| 1`） |
-| str 字面量型別 | 以字串字面量值限制（例：`"N" \| "S"`） |
-| 範圍型別 | 以整數範圍限制（例：`1..12`、`-10..10`） |
+| `int` | 内置标量类型 |
+| `u8` | 内置标量类型（无符号 0-255） |
+| `float` | 内置标量类型 |
+| `bool` | 内置标量类型 |
+| `str` | 内置字符串类型 |
+| `Unit` | 无返回值函数的返回类型 |
+| `Option<T>` | 泛型类型（T 为任意类型） |
+| `(T1, T2, ...)` | 元组类型（元素数量和类型组合任意） |
+| `List<T>` | 泛型动态数组类型 |
+| `Map<K, V>` | 泛型哈希映射类型 |
+| `Set<T>` | 泛型集合类型 |
+| `fn(T1, ...) -> R` | 函数类型 |
+| `Error` | 内置错误类型（`message: str`、`code: int`） |
+| `any` | 可持有任意基本值（`int`, `float`, `bool`, `str`）或 `Unit` 的内置类型。支持隐式转换：具体值赋值给 `any` 时自动包装，`any` 值赋值给具体类型时自动解包（带运行时类型检查）。支持 `any(int)` → `float` 的自动提升。详见 [any 类型](#any-类型) |
+| `T1 \| T2 \| ...` | union 类型（以 `\|` 分隔的多个类型之一） |
+| `i8` | 低级 8 位有符号整数（无隐式转换） |
+| `i16` | 低级 16 位有符号整数（无隐式转换） |
+| `i32` | 低级 32 位有符号整数（无隐式转换） |
+| `i64` | 低级 64 位有符号整数（无隐式转换） |
+| `u8` | 低级 8 位无符号整数（无隐式转换） |
+| `u16` | 低级 16 位无符号整数（无隐式转换） |
+| `u32` | 低级 32 位无符号整数（无隐式转换） |
+| `u64` | 低级 64 位无符号整数（无隐式转换） |
+| `f32` | 低级 32 位浮点数（无隐式转换） |
+| `[T; N]` | 低级类型 `T` 的 `N` 个元素的固定长度数组。栈分配，连续内存。支持索引读写和 `length()` |
+| 用户定义类型名称 | 以 `record` 或 `enum` 关键字声明的类型 |
 
-## 型別別名
+## 类型别名
 
-`type` 關鍵字為現有型別建立新的名稱。別名與原始型別完全互換。
+`type` 关键字为现有类型创建新的名称。别名与原始类型完全互换。
 
 ```python
 type Meters = float
@@ -80,14 +100,14 @@ d: Meters = 3.14
 names: StringList = ["Alice", "Bob"]
 ```
 
-> **命名慣例**：型別別名名稱必須使用 PascalCase（如 `Meters`、`StringList`）。編譯器會強制執行此慣例。
+> **命名约定**：类型别名名称必须使用 PascalCase（如 `Meters`、`StringList`）。编译器会强制执行此约定。
 
-型別別名也可以用於函式型別、字面量型別和範圍型別：
+类型别名也可以用于函数类型、字面量类型和范围类型：
 
 ```python
 type Callback = fn(int, int) -> int
 
-add: Callback = fn(a: int, b: int): a + b
+add: Callback = fn(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -103,75 +123,75 @@ n: Digit = 5
 
 ---
 
-## 字面量型別
+## 字面量类型
 
-字面量型別將變數的值限制為特定的常數值。對於常數值，在編譯時進行約束檢查；對於動態值，在執行時進行約束檢查。
+字面量类型将变量的值限制为特定的常量值。对于常量值，在编译时进行约束检查；对于动态值，在运行时进行约束检查。
 
-### int 字面量型別
+### int 字面量类型
 
 ```python
-x: 42 = 42           # 單一字面量型別
+x: 42 = 42           # 单一字面量类型
 y: 0 | 1 = 0         # int 字面量的 union
 z: 0 | 1 = 0
 z = 1                     # OK
-# z = 2                   # 編譯錯誤（常數）或執行時錯誤（動態值）
+# z = 2                   # 编译错误（常量）或运行时错误（动态值）
 ```
 
-### str 字面量型別
+### str 字面量类型
 
 ```python
 dir: "N" | "S" | "E" | "W" = "N"
-# @const bad: "N" | "S" = "X"    # 編譯錯誤
+# @const bad: "N" | "S" = "X"    # 编译错误
 ```
 
-### 約束檢查
+### 约束检查
 
-- **編譯時**：當賦值為常數（`ConstantInt` 或字串字面量）時，在編譯時檢查，違反時產生編譯錯誤
-- **執行時**：當值為動態（如函式回傳值）時，在執行時檢查，違反時程式以錯誤退出
+- **编译时**：当赋值为常量（`ConstantInt` 或字符串字面量）时，在编译时检查，违反时产生编译错误
+- **运行时**：当值为动态（如函数返回值）时，在运行时检查，违反时程序以错误退出
 
 ---
 
-## 範圍型別
+## 范围类型
 
-範圍型別將整數變數的值限制在連續的範圍內（包含兩端）。
+范围类型将整数变量的值限制在连续的范围内（包含两端）。
 
 ```python
 month: 1..12 = 6       # OK
-# @const bad: 1..12 = 0       # 編譯錯誤：超出範圍
-# @const bad: 1..12 = 13      # 編譯錯誤：超出範圍
+# @const bad: 1..12 = 0       # 编译错误：超出范围
+# @const bad: 1..12 = 13      # 编译错误：超出范围
 
-t: -10..10 = -5        # 支援負數範圍
+t: -10..10 = -5        # 支持负数范围
 ```
 
-### 使用可變變數重新賦值（執行時檢查）
+### 使用可变变量重新赋值（运行时检查）
 
 ```python
 x: 1..12 = 6
 x = 12                      # OK
-# x = dynamic_value()       # 執行時檢查：超出範圍則錯誤退出
+# x = dynamic_value()       # 运行时检查：超出范围则错误退出
 ```
 
-### 在函式參數中使用
+### 在函数参数中使用
 
 ```python
 fn set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
-# set_month(13)             # 編譯錯誤（常數引數）
+# set_month(13)             # 编译错误（常量参数）
 ```
 
 ---
 
-## `none` 關鍵字與 Option 型別簡寫
+## `none` 关键字与 Option 类型简写
 
-`none` 關鍵字表示 Option 型別的值不存在，等同於 `None`。
+`none` 关键字表示 Option 类型的值不存在，等同于 `None`。
 
-`T?` 語法是 `Option<T>` 的簡寫。
+`T?` 语法是 `Option<T>` 的简写。
 
 ```python
-x: int? = 42       # 等同於 Option<int>
-y: int? = none      # 等同於 None
+x: int? = 42       # 等同于 Option<int>
+y: int? = none      # 等同于 None
 
 fn find(xs: List<int>, val: int) -> int?:
     for x in xs:
@@ -182,9 +202,9 @@ fn find(xs: List<int>, val: int) -> int?:
 
 ---
 
-## F-String（字串插值）
+## F-String（字符串插值）
 
-使用 `f"..."` 語法進行字串插值。`{}` 內的表達式會被求值並轉換為字串。
+使用 `f"..."` 语法进行字符串插值。`{}` 内的表达式会被求值并转换为字符串。
 
 ```python
 name = "world"
@@ -195,51 +215,67 @@ b = 2
 print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 ```
 
-### 插值中支援的型別
+### 插值中支持的类型
 
-`{}` 內可使用求值結果為 `int`、`float`、`bool` 或 `str` 的任意表達式。
+`{}` 内可使用求值结果为 `int`、`float`、`bool` 或 `str` 的任意表达式。
 
-### 跳脫序列
+### 转义序列
 
-| 序列 | 輸出 |
+| 序列 | 输出 |
 |---|---|
-| `{{` | `{`（字面大括號） |
-| `}}` | `}`（字面大括號） |
-| `\n` `\r` `\t` `\\` `\"` | 與普通字串相同 |
+| `{{` | `{`（字面大括号） |
+| `}}` | `}`（字面大括号） |
+| `\n` `\r` `\t` `\\` `\"` | 与普通字符串相同 |
 
 ```python
 print(f"{{braces}}")   # {braces}
 ```
 
-## 型別轉換（`as`）
+## 类型转换（`as`）
 
-使用 `as` 關鍵字進行明確的型別轉換。
+使用 `as` 关键字进行显式的类型转换。
 
 ```python
 x = 42 as float     # 42.0
 y = 3.14 as int      # 3
 z = 1 as bool        # true
 s = 42 as str         # "42"
-b = 255 as byte       # byte 值 255
+b = 255 as u8         # u8 值 255
 ```
 
-### 支援的轉換
+### 支持的转换
 
-| 來源 | 目標 | 行為 |
+| 来源 | 目标 | 行为 |
 |---|---|---|
 | `int` | `float` | `SIToFP` |
-| `float` | `int` | 截斷（`FPToSI`） |
+| `float` | `int` | 截断（`FPToSI`） |
 | `int` | `bool` | `0` → `false`、非零 → `true` |
 | `bool` | `int` | `false` → `0`、`true` → `1` |
-| `int` / `float` / `bool` | `str` | 字串表示 |
-| `int` | `byte` | 截斷（低 8 位元） |
-| `byte` | `int` | 零擴展 |
+| `int` / `float` / `bool` | `str` | 字符串表示 |
+| `int` | `u8` | 截断（低 8 位） |
+| `u8` | `int` | 零扩展 |
 
-不支援的轉換（例如 `str as int`）會產生編譯錯誤。字串轉數值請使用 `to_int()` / `to_float()`。
+| `int` | `i8` / `i16` / `i32` / `i64` | 截断（或 i64 时为恒等） |
+| `i8` / `i16` / `i32` / `i64` | `int` | 符号扩展（`SExt`） |
+| `int` | `u8` / `u16` / `u32` / `u64` | 截断（或 u64 时为恒等） |
+| `u8` / `u16` / `u32` / `u64` | `int` | 零扩展（`ZExt`） |
+| 有符号 | 有符号（更宽） | 符号扩展（`SExt`） |
+| 有符号 | 有符号（更窄） | 截断 |
+| 无符号 | 无符号/有符号（更宽） | 零扩展（`ZExt`） |
+| 无符号 | 无符号/有符号（更窄） | 截断 |
+| 有符号 / 无符号整数 | `float` | `SIToFP` / `UIToFP` 然后 `f64` |
+| `float` | 有符号 / 无符号整数 | `FPToSI` / `FPToUI` |
+| `float` | `f32` | `FPTrunc` |
+| `f32` | `float` | `FPExt` |
+| 有符号整数 | `f32` | `SIToFP` |
+| 无符号整数 | `f32` | `UIToFP` |
+| `f32` | 有符号 / 无符号整数 | `FPToSI` / `FPToUI` |
 
-## 帶關聯資料的 enum（ADT）
+不支持的转换（例如 `str as int`）会产生编译错误。字符串转数值请使用 `to_int()` / `to_float()`。
 
-在變體名稱後面加上括號並指定型別，enum 變體就可以攜帶關聯資料。不帶括號的變體仍然是單純的標籤。
+## 带关联数据的 enum（ADT）
+
+在变体名称后面加上括号并指定类型，enum 变体就可以携带关联数据。不带括号的变体仍然是单纯的标签。
 
 ```python
 enum Shape:
@@ -248,9 +284,25 @@ enum Shape:
     Point
 ```
 
-### 建構子
+### 命名字段
 
-使用 `EnumName::Variant(value)` 語法建立帶有資料的變體。
+变体可以选择性地使用命名字段以提高文档清晰度。命名字段使变体定义具有自描述性，但不改变运行时行为——构造和模式匹配仍然是位置性的。
+
+```python
+enum Shape:
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
+    Point
+```
+
+规则：
+- 字段名必须为 `snake_case`。
+- 在单个变体内，所有字段必须全部命名或全部未命名（不可混用）。
+- 同一变体内的重复字段名是编译错误。
+
+### 构造函数
+
+使用 `EnumName::Variant(value)` 语法构建带有数据的变体。参数始终是位置性的，即使字段有名称也是如此。
 
 ```python
 c = Shape::Circle(3.14)
@@ -258,9 +310,9 @@ r = Shape::Rectangle(4.0, 5.0)
 p = Shape::Point
 ```
 
-### 帶綁定的模式匹配
+### 带绑定的模式匹配
 
-使用 `case EnumName::Variant(binding):` 形式取出關聯資料。
+使用 `case EnumName::Variant(binding):` 形式取出关联数据。绑定使用用户选择的变量名，而非字段名。
 
 ```python
 match c:
@@ -273,15 +325,15 @@ match c:
         print("point")
 ```
 
-### 內部表示
+### 内部表示
 
-ADT enum 以標籤聯合的形式儲存：`{ i64 tag, [N x i8] data }`，`N` 的大小足以容納最大變體的酬載。
+ADT enum 以标签联合的形式存储：`{ i64 tag, [N x i8] data }`，`N` 的大小足以容纳最大变体的载荷。
 
 ---
 
 ## 泛型 enum
 
-enum 可以使用角括號語法 `<T>` 帶有型別參數，使相同的 enum 結構可以持有不同型別的酬載。
+enum 可以使用角括号语法 `<T>` 带有类型参数，使相同的 enum 结构可以持有不同类型的载荷。
 
 ```python
 enum MyOption<T>:
@@ -291,7 +343,7 @@ enum MyOption<T>:
 
 ### 使用方式
 
-當編譯器無法推論型別時，需提供具體的型別引數來實例化。
+提供具体的类型参数来实例化。当编译器无法推断类型时，需要显式指定类型参数。
 
 ```python
 a = MyOption<int>::MySome(42)
@@ -306,69 +358,78 @@ match a:
 
 ---
 
-## Error 型別
+## Error 类型
 
-用於錯誤處理的內建型別。`Error` 具有兩個欄位：`message`（str）和 `code`（int）。
+用于错误处理的内置类型。`Error` 具有两个字段：`message`（str）和 `code`（int）。
 
 ```python
-e = Error("something went wrong")       # code 預設為 0
-e2 = Error("not found", 404)            # 明確指定 code
+e = Error("something went wrong")       # code 默认为 0
+e2 = Error("not found", 404)            # 显式指定 code
 
 print(e.message)   # something went wrong
 print(e2.code)     # 404
 print(e2)          # Error: not found (code: 404)
 ```
 
-### 錯誤處理慣例
+### 使用 Result 进行错误处理
 
-可能失敗的函式回傳 `(T, Error?)` 元組：
+可能失败的函数返回 `Result<V, E>`：
 
 ```python
-fn divide(a: int, b: int) -> (int, Error?):
+fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return (0, Some(Error("division by zero")))
-    return (a // b, none)
+        return Err(Error("division by zero"))
+    return Ok(a // b)
 
-val, err = divide(10, 2)
-match err:
-    case Some(e):
+match divide(10, 2):
+    case Ok(v):
+        print(v)            # 5
+    case Err(e):
         print(e.message)
-    case None:
-        print(val)          # 5
 ```
 
-### `!!` 運算子（錯誤傳播）
-
-`!!` 後綴運算子從 `(T, Error?)` 元組中取出值。如果錯誤存在，會將其傳播給外層函式。
+当返回值没有意义时，使用 `Result<Unit, Error>`：
 
 ```python
-fn read_file(path: str) -> (str, Error?):
-    if path == "":
-        return ("", Some(Error("empty path")))
-    return ("content", none)
+fn save(path: str, data: str) -> Result<Unit, Error>:
+    return Ok(0 as u8)   # Unit 占位符
 
-fn process() -> (str, Error?):
-    data = read_file("test.txt")!!   # 如果有錯誤則傳播
-    return (data, none)
+match save("/tmp/test.txt", "hello"):
+    case Ok(_):
+        print("saved")
+    case Err(e):
+        print(e.message)
 ```
 
-外層函式也必須回傳 `(X, Error?)` 才能使用 `!!`。
+### Result 类型
 
-### 內部表示
+`Result<V, E>` 是一个内置的参数化类型，有两个构造函数：
+
+- `Ok(value)` — 成功变体
+- `Err(error)` — 错误变体
+
+与 `match` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
+
+**测试匹配器：**
+- `expect(x).to_be_ok()` — 断言结果为 `Ok`
+- `expect(x).to_be_err()` — 断言结果为 `Err`
+
+### 内部表示
 
 `Error` 以 `{ ptr message, i64 code }` 表示。
+`Result<V, E>` 以 `{ i1 isOk, V okValue, E errValue }` 表示。
 
-## union 型別
+## union 类型
 
-可以使用 `|` 宣告可能持有多種型別的變數。
+可以使用 `|` 声明可能持有多种类型的变量。
 
 ```python
 x: int | str = 42
-x = "hello"     # 可重新賦值（union 中的任一型別）
+x = "hello"     # 可重新赋值（union 中的任一类型）
 print(x)        # hello
 ```
 
-### 在函式引數與回傳值中的使用
+### 在函数参数与返回值中的使用
 
 ```python
 fn show(x: int | str) -> int:
@@ -381,48 +442,195 @@ fn get_val(flag: bool) -> int | str:
     return "hello"
 ```
 
-### 內部表示
+### 内部表示
 
-union 型別以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各組成型別的索引（按字母順序排序後），`data` 是最大組成型別大小的位元組陣列。
+union 类型以 `{ i64 tag, [N x i8] data }` 表示。`tag` 表示各组成类型的索引（按字母顺序排序后），`data` 是最大组成类型大小的字节数组。
 
-### 限制
+### 约束
 
-- 賦值不屬於 union 的型別會產生編譯錯誤
-- `int | str` 和 `str | int` 是相同的型別（會被正規化）
-- 使用 `print()` 輸出 union 值時，會根據執行時的 tag 以適當的型別顯示
+- 赋值不属于 union 的类型会产生编译错误
+- `int | str` 和 `str | int` 是相同的类型（会被规范化）
+- 使用 `print()` 输出 union 值时，会根据运行时的 tag 以适当的类型显示
 
-## 型別規則（運算時的型別轉換）
+## any 类型
 
-| 運算 | 左運算元 | 右運算元 | 結果型別 | 備註 |
+`any` 类型是一种内置的动态类型，可以持有任意基本值。它采用类似 Python 的灵活类型方式——当不需要静态类型保证时，`any` 让您无需使用泛型或 union 类型即可处理多种类型。
+
+### 支持的类型
+
+`any` 可以持有以下类型：
+
+| 类型 | 标签 | 说明 |
+|------|------|------|
+| `int` | 0 | 64 位有符号整数 |
+| `float` | 1 | 64 位浮点数 |
+| `bool` | 2 | 布尔值 |
+| `str` | 3 | 字符串 |
+| `Unit` | 4 | Unit 值（用于无返回值的函数） |
+
+`any` **无法**持有集合类型（`List`、`Map`、`Set`）、资源类型（`TcpListener`、`TcpStream` 等）、函数指针或用户定义类型（`record`、`enum`）。
+
+### 内部表示
+
+`any` 以标签联合实现：
+
+```
+{ i64 tag, [8 x i8] data }   // 共 16 字节
+```
+
+`tag` 字段标识存储的类型，`data` 字段持有值（最多 8 字节）。
+
+### 包装与解包
+
+具体类型的值在赋值给 `any` 时自动**包装**，`any` 的值在赋值给具体类型时自动**解包**。
+
+```python
+# 包装：具体类型 → any
+x: any = 42          # int 被包装成 any
+x = "hello"          # 可以重新赋值为不同类型
+
+# 解包：any → 具体类型
+fn get_value() -> any:
+    return 42
+n: int = get_value()  # any(int) 被解包为 int
+
+# 解包时的 int → float 自动提升
+f: float = get_value()  # any(int) 被解包并提升为 float
+```
+
+如果运行时类型与目标类型不符（例如将 `any(str)` 解包至 `int` 变量），会产生**运行时错误**。
+
+### 重新赋值
+
+`any` 变量可以重新赋值为任何可持有类型的值：
+
+```python
+x: any = 42
+x = 3.14       # OK：现在持有 float
+x = "hello"    # OK：现在持有 str
+x = true       # OK：现在持有 bool
+```
+
+### 算术运算
+
+当两个操作数都是 `any` 时，运算会在运行时根据实际类型进行分派：
+
+| 运算 | 类型 | 结果 |
+|------|------|------|
+| `+` | int + int | int |
+| `+` | float + float | float |
+| `+` | int + float | float |
+| `+` | str + str | str（拼接） |
+| `-` | 数值 | int 或 float |
+| `*` | 数值 | int 或 float |
+| `*` | str * int / int * str | str（重复） |
+| `/` | 数值 | float（总是） |
+| `//` | int // int | int |
+| `//` | 含 float | float |
+| `%` | 数值 | int 或 float |
+| `**` | 数值 | float（总是） |
+| 一元 `-` | int | int |
+| 一元 `-` | float | float |
+
+当一个操作数是 `any`、另一个是具体类型时，具体值会在运算前自动包装。
+
+```python
+x: any = 10
+y: any = x + 20    # 20 被自动包装；结果是 any(int) = 30
+```
+
+不兼容的类型组合（例如 `str - int`）会导致**运行时错误**。
+
+### 比较运算
+
+| 运算 | 行为 |
+|------|------|
+| `==`、`!=` | 相同类型之间有效；int/float 混合比较可行 |
+| `<`、`<=`、`>`、`>=` | 数值（int/float 混合可）和字符串（字典序） |
+
+```python
+x: any = 3
+y: any = 3.0
+print(x == y)    # true（int/float 比较）
+```
+
+比较时类型不符（例如 `int < str`）会导致**运行时错误**。
+
+### 字符串转换
+
+`any` 值支持 `print()` 和 f-string 插值：
+
+```python
+x: any = 42
+print(x)              # 42
+print(f"value: {x}")  # value: 42
+```
+
+转换规则：`int` → 十进制字符串、`float` → `%g` 格式、`bool` → `"true"`/`"false"`、`str` → 原样、`Unit` → `"Unit"`。
+
+### 将 any 传递给有类型的函数
+
+`any` 值可以传递给具有具体参数类型的函数。值会通过运行时类型检查自动解包：
+
+```python
+fn add_one(x: int) -> int:
+    return x + 1
+
+v: any = 42
+result = add_one(v)   # any(int) 被解包为 int；结果是 43
+```
+
+---
+
+## 类型规则（运算时的类型转换）
+
+| 运算 | 左操作数 | 右操作数 | 结果类型 | 备注 |
 |---|---|---|---|---|
 | `+` `-` `*` | int | int | int | |
-| `+` `-` `*` | byte | byte 或 int | int | byte 在運算時以 ZExt 提升為 int |
-| `+` `-` `*` | float 或 int | float 或 int（其中一方為 float） | float | 隱式 float 提升 |
-| `/` | 任意數值 | 任意數值 | float | 始終為 float |
-| `//` | 任意數值 | 任意數值 | int | float 輸入會截斷轉換 |
-| `**` | 任意數值 | 任意數值 | float | 使用 libm `pow` |
+| `+` `-` `*` | u8 | u8 | u8 | 低级类型：原生宽度的无符号运算，无隐式提升 |
+| `+` `-` `*` | float 或 int | float 或 int（其中一方为 float） | float | 隐式 float 提升 |
+| `/` | 任意数值 | 任意数值 | float | 始终为 float |
+| `//` | 任意数值 | 任意数值 | int 或 float | 向下取整除法（向 -∞）；int 操作数结果为 int，含 float 则结果为 float |
+| `**` | 任意数值 | 任意数值 | float | 使用 libm `pow` |
 | `%` | int | int | int | |
-| `%` | float 或 int | float 或 int（其中一方為 float） | float | |
-| `+` | str | str | str | 字串串接 |
-| `==` `!=` `<` `<=` `>` `>=` | str | str | bool | 字典序比較 |
-| `==` `!=` `<` `<=` `>` `>=` | 數值或 bool | 數值或 bool | bool | |
+| `%` | float 或 int | float 或 int（其中一方为 float） | float | |
+| `+` | str | str | str | 字符串拼接 |
+| `==` `!=` `<` `<=` `>` `>=` | str | str | bool | 字典序比较 |
+| `==` `!=` `<` `<=` `>` `>=` | 数值或 bool | 数值或 bool | bool | |
 | `in` | 任意 | Set<T> | bool | 元素是否包含在集合中 |
-| `&` `\|` `^` `~` `<<` `>>` | int | int | int | 對 float 會產生錯誤 |
+| `&` `\|` `^` `~` `<<` `>>` | int | int | int | 对 float 会产生错误 |
+| `+` `-` `*` | i32 | i32 | i32 | 低级类型：无隐式转换，需要相同类型 |
+| `/` `//` | i32 | i32 | i32 | 有符号整数除法（`SDiv`） |
+| `/` `//` | u32 | u32 | u32 | 无符号整数除法（`UDiv`） |
+| `%` | i32 | i32 | i32 | 有符号取余（`SRem`） |
+| `%` | u32 | u32 | u32 | 无符号取余（`URem`） |
+| `+` `-` `*` `/` | f32 | f32 | f32 | |
+| `==` `!=` | i32/u32 | i32/u32 | bool | 符号无关的相等比较 |
+| `<` `<=` `>` `>=` | i32 | i32 | bool | 有符号比较（`ICMP_SLT` 等） |
+| `<` `<=` `>` `>=` | u32 | u32 | bool | 无符号比较（`ICMP_ULT` 等） |
+| `>>` | i32 | i32 | i32 | 算术右移（保留符号位） |
+| `>>` | u32 | u32 | u32 | 逻辑右移（零填充） |
+| `**` | 低级 | 任意 | 错误 | 低级类型不支持幂运算符 |
+| 混合 | 低级 | 不同 | 错误 | 混合低级和高级类型是编译错误 |
 
-### 跳脫序列（str 字面值內）
+### 转义序列（str 字面值内）
 
-| 序列 | 意義 |
+| 序列 | 含义 |
 |---|---|
-| `\n` | 換行 |
-| `\r` | 回車 |
-| `\t` | 定位字元 |
-| `\\` | 反斜線 |
-| `\"` | 雙引號 |
-| `\0` | 空字元 |
+| `\n` | 换行 |
+| `\r` | 回车 |
+| `\t` | 制表符 |
+| `\\` | 反斜杠 |
+| `\"` | 双引号 |
+| `\0` | 空字符 |
 
-## 型別安全性限制
+## 类型安全约束
 
-- **沒有隱式型別轉換** — 混合使用 `int` 和 `float` 時會發生 float 提升，但除此之外不存在隱式轉換。`byte` 在運算時會自動提升為 `int`（ZExt）。僅在型別標註 `b: byte = 42` 時允許從 `int` 字面值到 `byte` 的窄化轉換。
-- **變數型別在宣告時固定** — 一旦以 `int` 宣告的變數，就無法重新賦值為 `float`。
-- **位元運算僅限 `int`** — 對 `float` 或 `bool` 使用位元運算會產生編譯錯誤。
-- **`bool` 以外的型別也可用於條件式** — `if` 的條件式可使用 `int`（0 = false、非 0 = true）等 `bool` 以外的型別。
+- **隐式拓宽转换** — 函数调用中支持安全的拓宽转换：`u8` → `int`、`u8` → `float`、`int` → `float`。对于二元运算符，混合 `int` 和 `float` 会触发 float 提升。`u8` 是低级类型，使用原生宽度的无符号运算；在二元运算符中混合 `u8` 与 `int` 是编译错误。窄化转换（例如 `float` → `int`）不允许隐式进行。从 `int` 字面量到 `u8` 的窄化转换仅在带有类型标注 `b: u8 = 42` 时允许。
+- **变量类型在声明时固定** — 一旦以 `int` 声明的变量，就无法重新赋值为 `float`。
+- **位运算仅限 `int`** — 对 `float` 或 `bool` 使用位运算会产生编译错误。
+- **非 `bool` 类型也可用于条件式** — `if` 的条件式可使用 `int`（0 = false、非 0 = true）等 `bool` 以外的类型。
+- **数值字面量后缀** — 低级类型可通过字面量后缀指定：`42i32`、`255u8`、`3.14f32`、`0xFFu8`、`0b1010u8`。带有 float 后缀的整数字面量（`42f32`）会产生浮点值。带有整数后缀的浮点字面量（`3.14i32`）是编译错误。超出范围的值（例如 `256u8`、`129i8`）也是编译错误。
+- **低级数值类型（`i8`、`i16`、`i32`、`i64`、`u8`、`u16`、`u32`、`u64`、`f32`）无隐式转换** — 混合低级类型之间或低级与高级类型（`int`、`float`）之间会产生编译错误。请使用显式 `as` 转换。低级整数的 `/` 运算符执行整数除法（类似 Rust），而非浮点除法。有符号类型使用 `SDiv`/`SRem`，无符号类型使用 `UDiv`/`URem`。
+- **有符号与无符号** — 有符号类型（`i8`、`i16`、`i32`、`i64`）使用有符号比较（`ICMP_SLT` 等）和算术右移（`AShr`）。无符号类型（`u8`、`u16`、`u32`、`u64`）使用无符号比较（`ICMP_ULT` 等）和逻辑右移（`LShr`）。`>>>` 运算符无论符号性如何，始终执行逻辑移位。
+- **低级整数溢出会回绕** — 低级整数类型的算术运算在溢出时使用补码回绕（有符号）或模运算（无符号）。例如，`i32` 最大值 `2147483647 + 1` 会回绕为 `-2147483648`。这与 C 的行为一致。如果溢出是问题所在，请使用高级 `int` 类型（64 位）。如需显式溢出控制，请使用 `checked_add/sub/mul`（返回 `Result<T, Error>`）、`saturating_add/sub/mul`（钳制到类型边界）或 `wrapping_add/sub/mul`（自文档化的回绕行为）。参见[函数参考](functions.md#checkedsaturating-arithmetic)。

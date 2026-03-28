@@ -1,13 +1,42 @@
 # TCP socket operations
+@native
+fn bind(host: str, port: int) -> Result<TcpListener, Error>
 
 @native
-fn bind(host: str, port: int) -> Option<TcpListener>
+fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 
 @native
-fn listen(listener: TcpListener, backlog: int) -> Unit
+fn accept(listener: TcpListener) -> Result<TcpStream, Error>
 
 @native
-fn accept(listener: TcpListener) -> Option<TcpStream>
+fn listener_port(listener: TcpListener) -> int
 
 @native
-fn connect(host: str, port: int) -> Option<TcpStream>
+fn connect(host: str, port: int) -> Result<TcpStream, Error>
+
+@native
+fn shutdown(listener: TcpListener) -> Unit
+
+# TLS connections
+@native
+fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
+
+# Timeout configuration (milliseconds) — TcpStream
+@native
+fn set_timeout(stream: TcpStream, ms: int) -> Unit
+
+@native
+fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
+
+@native
+fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
+
+# Timeout configuration (milliseconds) — TlsStream
+@native
+fn set_timeout(stream: TlsStream, ms: int) -> Unit
+
+@native
+fn set_recv_timeout(stream: TlsStream, ms: int) -> Unit
+
+@native
+fn set_send_timeout(stream: TlsStream, ms: int) -> Unit

@@ -2,10 +2,10 @@
 
 # I/O Function Reference
 
-Standard I/O and file operations. All functions require explicit import from `std.io`.
+Standard I/O and file operations. All functions require explicit import from `io`.
 
 ```python
-from std.io import read_text, write_text, file_exists
+from io import read_text, write_text, file_exists
 ```
 
 ## Function List
@@ -21,60 +21,74 @@ from std.io import read_text, write_text, file_exists
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `read_text` | `(str) -> str` | Reads entire file as a string |
-| `write_text` | `(str, str) -> Unit` | Writes a string to a file (overwrites) |
-| `append_text` | `(str, str) -> Unit` | Appends a string to the end of a file |
+| `read_text` | `(str) -> Result<str, Error>` | Reads entire file as a string |
+| `write_text` | `(str, str) -> Result<Unit, Error>` | Writes a string to a file (overwrites) |
+| `append_text` | `(str, str) -> Result<Unit, Error>` | Appends a string to the end of a file |
 | `file_exists` | `(str) -> bool` | Checks if a file exists |
-| `delete_file` | `(str) -> Unit` | Deletes a file |
-| `read_bytes` | `(str) -> List<byte>` | Reads a file as a byte list |
-| `write_bytes` | `(str, List<byte>) -> Unit` | Writes a byte list to a file |
+| `delete_file` | `(str) -> Result<Unit, Error>` | Deletes a file |
+| `read_bytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
+| `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
 
 ### Byte Conversions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `str_to_bytes` | `(str) -> List<byte>` | Converts a string to UTF-8 bytes |
-| `bytes_to_str` | `(List<byte>) -> str` | Converts a byte list to a string |
+| `str_to_bytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
+| `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | Converts a byte list to a string |
 
 ## Examples
 
 ### Reading and Writing Files
 
 ```python
-from std.io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, file_exists, delete_file
 
-write_text("hello.txt", "Hello, World!")
-content = read_text("hello.txt")
-print(content)   # Hello, World!
-
-append_text("hello.txt", "\nGoodbye!")
-print(read_text("hello.txt"))
-# Hello, World!
-# Goodbye!
+match write_text("hello.txt", "Hello, World!"):
+    case Ok(_):
+        match read_text("hello.txt"):
+            case Ok(content):
+                print(content)   # Hello, World!
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 
 print(file_exists("hello.txt"))   # true
-delete_file("hello.txt")
-print(file_exists("hello.txt"))   # false
+
+match delete_file("hello.txt"):
+    case Ok(_):
+        print(file_exists("hello.txt"))   # false
+    case Err(e):
+        print(e.message)
 ```
 
 ### Byte Operations
 
 ```python
-from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
-print(len(bs))    # 3
+print(length(bs))    # 3
 
-write_bytes("data.bin", bs)
-rb = read_bytes("data.bin")
-s = bytes_to_str(rb)
-print(s)          # ABC
+match write_bytes("data.bin", bs):
+    case Ok(_):
+        match read_bytes("data.bin"):
+            case Ok(rb):
+                match bytes_to_str(rb):
+                    case Ok(s):
+                        print(s)          # ABC
+                    case Err(e):
+                        print(e.message)
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 ```
 
 ### Reading from Standard Input
 
 ```python
-from std.io import read_line
+from io import read_line
 
 name = read_line()
 print(f"Hello, {name}!")
@@ -82,18 +96,25 @@ print(f"Hello, {name}!")
 
 ## Error Handling
 
-All file operations terminate with a runtime error if the operation fails:
+File operations return `Result<T, Error>` instead of terminating on failure. Use `match` with `Ok`/`Err` patterns to handle errors:
+
+```python
+match read_text("missing.txt"):
+    case Ok(content):
+        print(content)
+    case Err(e):
+        print(e.message)   # cannot open file 'missing.txt' for reading
+```
 
 | Operation | Error Condition |
 |-----------|----------------|
 | `read_text` / `read_bytes` | File does not exist or cannot be opened |
 | `write_text` / `write_bytes` / `append_text` | File cannot be opened for writing |
 | `delete_file` | File cannot be deleted |
-
-Error messages are printed to stderr and the program exits with code 1.
+| `bytes_to_str` | Input contains NUL byte |
 
 ## Notes
 
-- `List<byte>` is used as the buffer type. Standard list operations (`len()`, `append()`, `slice()`, index access) all work with byte lists.
+- `List<u8>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.

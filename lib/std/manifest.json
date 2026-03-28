@@ -1,7 +1,9 @@
 {
-  "version": "0.0.3",
+  "version": "0.0.5",
   "files": [
     "builtins.ry", "convert.ry", "higher_order.ry",
-    "list.ry", "map.ry", "set.ry", "str.ry", "regex.ry"
+    "list.ry", "map.ry", "set.ry", "str.ry", "regex.ry",
+    "base64/base64.ry",
+    "http/http.ry", "io/io.ry", "json/json.ry", "math/math.ry", "net/net.ry"
   ]
 }

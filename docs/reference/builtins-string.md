@@ -4,7 +4,7 @@
 
 A list of operation functions for strings (`str`). All functions support UFCS notation.
 
-> **Note:** All string operations are UTF-8 aware. `len()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
+> **Note:** All string operations are UTF-8 aware. `length()`, `char_at()`, `substring()`, `find()`, and `reverse()` operate on Unicode code points, not bytes. Use `byte_len()` if you need the byte length.
 
 ## Function List
 
@@ -61,15 +61,15 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 |------|-----------|------|
 | `to_int` | `str -> int` | Convert string to integer |
 | `to_float` | `str -> float` | Convert string to floating-point number |
-| `to_str` | `int/float/bool/str -> str` | Convert value to string |
+| `to_str` | `int/float/bool/str/record -> str` | Convert value to string |
 
 ---
 
 ## contains
 
-**Signature:** `contains(s: str, sub: str) -> bool`
+**Signature:** `contains(string: str, substring: str) -> bool`
 
-Returns whether string `s` contains the substring `sub`.
+Returns whether string `string` contains the substring `substring`.
 
 ```python
 print(contains("hello", "ell"))   # true
@@ -80,9 +80,9 @@ print("hello".contains("xyz"))    # false (UFCS)
 
 ## starts_with
 
-**Signature:** `starts_with(s: str, prefix: str) -> bool`
+**Signature:** `starts_with(string: str, prefix: str) -> bool`
 
-Returns whether string `s` starts with `prefix`.
+Returns whether string `string` starts with `prefix`.
 
 ```python
 print(starts_with("hello", "hel"))   # true
@@ -93,9 +93,9 @@ print("hello".starts_with("world"))  # false (UFCS)
 
 ## ends_with
 
-**Signature:** `ends_with(s: str, suffix: str) -> bool`
+**Signature:** `ends_with(string: str, suffix: str) -> bool`
 
-Returns whether string `s` ends with `suffix`.
+Returns whether string `string` ends with `suffix`.
 
 ```python
 print(ends_with("hello", "llo"))   # true
@@ -106,9 +106,9 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**Signature:** `find(s: str, sub: str) -> Option<int>`
+**Signature:** `find(string: str, substring: str) -> Option<int>`
 
-Returns the character position of the first occurrence of substring `sub` in string `s`. Returns `None` if not found.
+Returns the character position of the first occurrence of substring `substring` in string `string`. Returns `None` if not found.
 
 ```python
 print(find("hello world", "world"))   # Some(6)
@@ -120,9 +120,9 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 ## substring
 
-**Signature:** `substring(s: str, start: int, end: int) -> str`
+**Signature:** `substring(string: str, start: int, end: int) -> str`
 
-Returns the substring of `s` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
+Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -134,9 +134,9 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 ## char_at
 
-**Signature:** `char_at(s: str, i: int) -> str`
+**Signature:** `char_at(string: str, i: int) -> str`
 
-Returns the UTF-8 character at position `i` in string `s` as a string.
+Returns the UTF-8 character at position `i` in string `string` as a string.
 
 ```python
 print(char_at("hello", 0))   # h
@@ -147,9 +147,9 @@ print("abc".char_at(2))       # c (UFCS)
 
 ## replace
 
-**Signature:** `replace(s: str, old: str, new: str) -> str`
+**Signature:** `replace(string: str, old: str, new: str) -> str`
 
-Returns a new string with all occurrences of `old` in `s` replaced with `new`.
+Returns a new string with all occurrences of `old` in `string` replaced with `new`.
 
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
@@ -161,7 +161,7 @@ print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
 
 ## to_upper
 
-**Signature:** `to_upper(s: str) -> str`
+**Signature:** `to_upper(string: str) -> str`
 
 Returns a new string with ASCII lowercase letters (a-z) converted to uppercase.
 
@@ -174,7 +174,7 @@ print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 
 ## to_lower
 
-**Signature:** `to_lower(s: str) -> str`
+**Signature:** `to_lower(string: str) -> str`
 
 Returns a new string with ASCII uppercase letters (A-Z) converted to lowercase.
 
@@ -187,7 +187,7 @@ print("Hello World".to_lower())  # hello world (UFCS)
 
 ## trim
 
-**Signature:** `trim(s: str) -> str`
+**Signature:** `trim(string: str) -> str`
 
 Returns a new string with leading and trailing whitespace characters (spaces, tabs, newlines, carriage returns) removed.
 
@@ -200,7 +200,7 @@ print("  hi  ".trim())     # hi (UFCS)
 
 ## trim_start
 
-**Signature:** `trim_start(s: str) -> str`
+**Signature:** `trim_start(string: str) -> str`
 
 Returns a new string with leading whitespace characters removed.
 
@@ -213,7 +213,7 @@ print("  hi".trim_start())       # hi (UFCS)
 
 ## trim_end
 
-**Signature:** `trim_end(s: str) -> str`
+**Signature:** `trim_end(string: str) -> str`
 
 Returns a new string with trailing whitespace characters removed.
 
@@ -226,9 +226,9 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 ## repeat
 
-**Signature:** `repeat(s: str, n: int) -> str`
+**Signature:** `repeat(string: str, count: int) -> str`
 
-Returns a new string with `s` repeated `n` times.
+Returns a new string with `string` repeated `count` times.
 
 ```python
 print(repeat("ab", 3))     # ababab
@@ -239,7 +239,7 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 ## reverse
 
-**Signature:** `reverse(s: str) -> str`
+**Signature:** `reverse(string: str) -> str`
 
 Returns a new string with the characters reversed (UTF-8 aware).
 
@@ -252,23 +252,23 @@ print("abc".reverse())     # cba (UFCS)
 
 ## byte_len
 
-**Signature:** `byte_len(s: str) -> int`
+**Signature:** `byte_len(string: str) -> int`
 
-Returns the byte length of string `s`. Unlike `len()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
+Returns the byte length of string `string`. Unlike `length()`, which returns the number of UTF-8 characters, `byte_len()` returns the number of bytes.
 
 ```python
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
-print(len("あいう"))        # 3 (characters)
+print(length("あいう"))        # 3 (characters)
 ```
 
 ---
 
 ## split
 
-**Signature:** `split(s: str, delim: str) -> List<str>`
+**Signature:** `split(string: str, delimiter: str) -> List<str>`
 
-Splits string `s` by delimiter `delim` and returns a `List<str>`.
+Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
 
 ```python
 parts = split("a,b,c", ",")
@@ -286,7 +286,7 @@ for word in "hello world".split(" "):
 
 ## join
 
-**Signature:** `join(xs: List<str>, sep: str) -> str`
+**Signature:** `join(values: List<str>, sep: str) -> str`
 
 Joins the elements of a string list with separator `sep` and returns a string.
 
@@ -300,7 +300,7 @@ print(parts.join("-"))         # a-b-c (UFCS)
 
 ## to_int
 
-**Signature:** `to_int(s: str) -> int`
+**Signature:** `to_int(string: str) -> int`
 
 Converts a string to an integer.
 
@@ -314,7 +314,7 @@ print("123".to_int())     # 123 (UFCS)
 
 ## to_float
 
-**Signature:** `to_float(s: str) -> float`
+**Signature:** `to_float(string: str) -> float`
 
 Converts a string to a floating-point number.
 
@@ -327,7 +327,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**Signature:** `to_str(v: int | float | bool | str) -> str`
+**Signature:** `to_str(v: int | float | bool | str | record) -> str`
 
 Converts a value to a string.
 
@@ -337,10 +337,22 @@ Converts a value to a string.
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | Returned as-is |
+| record | `TypeName(field1: val1, field2: val2)` |
+
+Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+record Point:
+    x: int
+    y: int
+
+p = Point(10, 20)
+print(to_str(p))          # Point(x: 10, y: 20)
+print(p)                  # Point(x: 10, y: 20)
+print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

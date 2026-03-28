@@ -35,6 +35,31 @@ TEST(RuntimeUtf8, Len4Byte) {
     EXPECT_EQ(__ry_utf8_len("\xF0\x9F\x98\x80\xF0\x9F\x98\x81"), 2);
 }
 
+TEST(RuntimeUtf8, LenTruncated2Byte) {
+    // Truncated 2-byte sequence: lead byte 0xC3 followed by '\0'
+    // Should treat the lead byte as 1 char
+    EXPECT_EQ(__ry_utf8_len("\xC3"), 1);
+}
+
+TEST(RuntimeUtf8, LenTruncated3Byte) {
+    // Truncated 3-byte: lead byte + 1 continuation, missing 2nd continuation
+    // 0xE3 0x81 → 2 invalid bytes, each counted as 1 char
+    EXPECT_EQ(__ry_utf8_len("\xE3\x81"), 2);
+    // Lead byte only: 0xE3 → 1 char
+    EXPECT_EQ(__ry_utf8_len("\xE3"), 1);
+}
+
+TEST(RuntimeUtf8, LenTruncated4Byte) {
+    // Truncated 4-byte: lead + 1 continuation
+    // 0xF0 0x9F → 2 invalid bytes
+    EXPECT_EQ(__ry_utf8_len("\xF0\x9F"), 2);
+    // Truncated 4-byte: lead + 2 continuations
+    // 0xF0 0x9F 0x98 → 3 invalid bytes
+    EXPECT_EQ(__ry_utf8_len("\xF0\x9F\x98"), 3);
+    // Lead byte only: 0xF0 → 1 char
+    EXPECT_EQ(__ry_utf8_len("\xF0"), 1);
+}
+
 TEST(RuntimeUtf8, CharAtAscii) {
     expectStr(__ry_utf8_char_at("hello", 0), "h");
     expectStr(__ry_utf8_char_at("hello", 4), "o");

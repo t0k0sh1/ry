@@ -30,6 +30,7 @@ enum class TokenKind {
     GreaterGreater, // >>
     GreaterGreaterGreater, // >>>
     Colon,          // :
+    Semi,           // ;
     // --- インデント ---
     Indent,         // インデントレベル増加
     Dedent,         // インデントレベル減少
@@ -42,6 +43,7 @@ enum class TokenKind {
     Fn,             // fn
     Return,         // return
     Arrow,          // ->
+    FatArrow,       // =>
     // --- import ---
     From,           // from
     Import,         // import
@@ -90,15 +92,12 @@ enum class TokenKind {
     // --- match ---
     Match,          // match
     Case,           // case
-    Select,         // select
     // --- test ---
     Expect,         // expect
     // --- contract (Design by Contract) ---
     Require,        // require
     Ensure,         // ensure
     Invariant,      // invariant
-    Old,            // old
-    Result,         // result
     // --- directive ---
     At,             // @
     // --- f-string ---
@@ -111,7 +110,6 @@ enum class TokenKind {
     ErrorKw,        // Error
     BangBang,       // !!
     Question,       // ?
-    Spawn,          // spawn
     Async,          // async
     Await,          // await
 };
@@ -131,6 +129,7 @@ public:
 
     const Token& peek() const { return current_; }
     Token next();
+    bool consumeGreaterInTypeContext();
 
     // State save/restore for backtracking (used by lambda parsing)
     struct State {
@@ -160,4 +159,5 @@ private:
 
     Token readToken();
     Token readFStringSegment(bool isStart);
+    void tryConsumeNumericSuffix(TokenKind &kind);
 };

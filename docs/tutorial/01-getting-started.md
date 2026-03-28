@@ -31,19 +31,25 @@ On a successful build, an executable named `build/ry` will be generated.
 
 ## Project Initialization
 
-You can create a new project with the `ry init` command:
+You can create a new project with the `ry new` command:
+
+```bash
+ry new my-project
+cd my-project
+```
+
+This generates the following files and directories:
+
+- `package.toml` -- Project configuration file
+- `src/main.ry` -- Entry point (with sample code)
+
+To initialize the current directory as a project instead, use `ry init`:
 
 ```bash
 mkdir my-project
 cd my-project
 ry init
 ```
-
-This generates the following files and directories:
-
-- `ry.toml` -- Project configuration file
-- `src/main.ry` -- Entry point (with sample code)
-- `test/` -- Directory for test code
 
 See [Project Management](../reference/project.md) for details.
 
@@ -67,6 +73,16 @@ Output:
 
 ```
 Hello, World!
+```
+
+You can also run code from stdin using a pipe or here-document:
+
+```bash
+echo 'print("Hello, World!")' | ./build/ry
+
+./build/ry <<'RY'
+print("Hello, World!")
+RY
 ```
 
 ---

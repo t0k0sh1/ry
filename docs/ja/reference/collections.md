@@ -85,11 +85,11 @@ xs[0] = 99
 print(xs[0])   # 99
 ```
 
-### len
+### length
 
 ```python
 xs = [1, 2, 3]
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -112,7 +112,7 @@ for x in xs:
 
 ### append
 
-リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。
+リストの末尾に要素を追加します。これはミューテーション操作です。
 
 ```python
 xs = [1, 2]
@@ -169,7 +169,7 @@ print(xs.take(0))    # []
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 # 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
@@ -179,7 +179,7 @@ ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -189,7 +189,7 @@ print(ys)   # [4, 5]
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -202,7 +202,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -212,7 +212,7 @@ print(desc)   # [3, 2, 1]
 
 ```python
 xs = [5, 3, 1, 4, 2]
-result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -222,7 +222,7 @@ print(result)   # [20, 30, 40, 50]
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -232,7 +232,7 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = fold(xs, 0, fn(a: int, b: int): a + b)
+total = fold(xs, 0, fn(a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -242,8 +242,8 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-print(any(xs, fn(x: int): x > 4))   # true
-print(any(xs, fn(x: int): x > 9))   # false
+print(any(xs, fn(x: int) => x > 4))   # true
+print(any(xs, fn(x: int) => x > 9))   # false
 ```
 
 ### all
@@ -252,8 +252,8 @@ print(any(xs, fn(x: int): x > 9))   # false
 
 ```python
 xs = [2, 4, 6]
-print(all(xs, fn(x: int): x > 0))   # true
-print(all(xs, fn(x: int): x > 3))   # false
+print(all(xs, fn(x: int) => x > 0))   # true
+print(all(xs, fn(x: int) => x > 3))   # false
 ```
 
 ### sum
@@ -308,6 +308,7 @@ print(last(xs))   # 30
 ```python
 xs = [1, 2, 3]
 print(is_empty(xs))   # false
+print(is_empty([]))   # true（実際には型注釈が必要）
 ```
 
 ### enumerate
@@ -405,7 +406,7 @@ print(xs)            # [[1, 2], [3, 4]]（変更なし）
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
-| `len` | O(1) |
+| `length` | O(1) |
 
 ### 制約とエラー
 
@@ -445,11 +446,11 @@ m["b"] = 2     # 新規追加
 m["a"] = 99    # 更新
 ```
 
-### len
+### length
 
 ```python
 m = {"a": 1, "b": 2, "c": 3}
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -566,11 +567,11 @@ print(2 in s)   # true
 print(5 in s)   # false
 ```
 
-### len
+### length
 
 ```python
 s = {1, 2, 3}
-print(len(s))   # 3
+print(length(s))   # 3
 ```
 
 ### print
@@ -588,7 +589,7 @@ print(s)   # {1, 2, 3}
 s = {1, 2, 3}
 s.add(4)         # 追加
 s.add(1)         # 既に存在するため無視
-print(len(s))    # 4
+print(length(s))    # 4
 ```
 
 ### remove（要素削除）
@@ -692,3 +693,73 @@ print(is_superset(b, a))   # false
 | 空セット `{}` | 型注釈が必要 |
 | 要素検索 | ハッシュテーブル（平均 O(1)） |
 | 容量超過時 | 自動で2倍に拡張 |
+
+---
+
+## イテレータ
+
+### 概要
+
+効率的なデータ変換パイプラインを実現する遅延イテレータの抽象化です。イテレータは中間結果のコピーや実体化を行わず、各要素をオンデマンドで処理します。
+
+### イテレータの作成
+
+`iter()` を使って任意のコレクションからイテレータを作成します:
+
+```python
+xs = [1, 2, 3, 4, 5]
+it = xs.iter()           # Iterator<int>
+
+s = {10, 20, 30}
+sit = s.iter()           # Iterator<int>
+
+m = {"a": 1, "b": 2}
+mit = m.iter()           # Iterator<(str, int)>
+```
+
+### 遅延メソッドチェーン
+
+イテレータのメソッドは新しいイテレータを返し、消費されるまで評価されないパイプラインを形成します:
+
+| メソッド | 説明 |
+|--------|------|
+| `.filter(fn)` | 述語が `true` を返す要素のみを生成 |
+| `.map(fn)` | 各要素を関数で変換 |
+| `.take(n)` | 最大 `n` 要素を生成 |
+
+```python
+result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int) => x > 2)
+    .map(fn(x: int) => x * 2)
+    .take(2)
+    .to_list()   # [6, 8]
+```
+
+### イテレータの消費
+
+| メソッド | 説明 |
+|--------|------|
+| `.to_list()` | 全要素を `List<T>` に収集 |
+| `.next()` | 次の要素を `Option<T>` として返す |
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### for ループのサポート
+
+イテレータは `for` ループで直接使用できます:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+    print(x)
+# 2
+# 3
+
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```

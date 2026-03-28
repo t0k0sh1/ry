@@ -9,8 +9,16 @@ namespace ry {
 std::filesystem::path get_ry_home();
 
 // Find the lib/ directory containing stdlib
-// Search order: $RY_HOME/lib -> exe/../lib -> exe/lib
-std::filesystem::path find_lib_dir(const std::string &exe_path);
+// Search order:
+// 1. project-local override from package.toml (repo builds only)
+// 2. $RY_HOME/lib (skipped when skip_global is true)
+// 3. exe/../lib
+// 4. exe/lib
+std::filesystem::path find_lib_dir(const std::string &exe_path,
+                                   const std::string &project_root,
+                                   bool skip_global = false);
+std::filesystem::path find_lib_dir(const std::string &exe_path,
+                                   bool skip_global = false);
 
 struct StdlibManifest {
     std::string version;

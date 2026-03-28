@@ -57,6 +57,7 @@
 ```ry
 print(regex_match("[a-z]+", "hello"))   # true
 print(regex_match("[0-9]+", "hello"))   # false
+print(regex_match("[a-zA-Z_]\\w*", "my_var"))  # true
 ```
 
 ### regex_search
@@ -77,7 +78,7 @@ print(s)  # aXbXcX
 
 ```ry
 parts = regex_split("\\s+", "hello  world  foo")
-print(len(parts))  # 3
+print(length(parts))  # 3
 print(parts[0])    # hello
 ```
 
@@ -85,7 +86,7 @@ print(parts[0])    # hello
 
 ```ry
 matches = regex_find_all("[0-9]+", "a1b23c456")
-print(len(matches))  # 3
+print(length(matches))  # 3
 print(matches[0])    # 1
 print(matches[1])    # 23
 ```
@@ -111,7 +112,7 @@ print(l)  # X and X
 
 # 個別のHTMLタグを取得
 tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
-print(len(tags))  # 3
+print(length(tags))  # 3
 ```
 
 > **注意:** 非貪欲マッチはマッチ全体の長さを制御します。グループ（括弧で囲んだ部分式）がない場合、greedy/lazy の混在パターンは PCRE エンジンと異なる動作をする場合があります。
@@ -125,7 +126,7 @@ print(pos)  # 6
 
 # すべての単語を取得
 words = regex_find_all("\\b\\w+\\b", "hello world foo")
-print(len(words))  # 3
+print(length(words))  # 3
 
 # \B は非境界（単語の内部）にマッチ
 pos2 = regex_search("\\Bworld", "helloworld")

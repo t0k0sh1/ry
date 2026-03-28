@@ -40,14 +40,18 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [関数・ラムダ・UFCS・演算子オーバーロード](reference/functions.md) | 関数定義の全形式 |
 | [構造体・列挙型](reference/structs.md) | type 定義・enum 定義の完全な文法 |
 | [タプル・リスト・マップ・セット](reference/collections.md) | コレクション型の操作方法 |
-| [組み込み関数](reference/builtins.md) | print・len・Some 等 |
+| [組み込み関数](reference/builtins.md) | print・length・Some 等 |
 | [文字列操作関数](reference/builtins-string.md) | contains・find・replace・split・join 等 |
 | [正規表現](reference/regex.md) | regex_match・regex_search・regex_replace・regex_split・regex_find_all |
 | [数学関数](reference/math.md) | PI・E・sqrt・sin・cos・abs・floor・ceil・round 等 |
 | [I/O 関数](reference/io.md) | read_text・write_text・file_exists・read_bytes・str_to_bytes 等 |
+| [JSON](reference/json.md) | parse・stringify・json_get・json_at・json_str・json_int 等 |
+| [ネットワーク（TCP）](reference/net.md) | bind・listen・accept・connect・TCP ソケットの send/recv/close |
+| [HTTP サーバー](reference/http.md) | http_listen・http_method・http_path・http_header・http_body・http_response |
+| [Base64](reference/base64.md) | encode・decode・encode_url_safe・decode_url_safe |
 | [パッケージシステム](reference/packages.md) | from/import の文法・ディレクトリパッケージ・std・RY_HOME |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
-| [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
+| [プロジェクト管理](reference/project.md) | ry init・package.toml の仕様 |
 | [契約による設計](reference/contracts.md) | require・ensure・invariant・old・result |
 | [ディレクティブ](reference/directives.md) | @deprecated とコンパイル時メタデータ |
 | [エラー一覧](reference/errors.md) | コンパイルエラーと実行時エラーの説明 |

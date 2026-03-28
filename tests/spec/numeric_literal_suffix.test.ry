@@ -1,0 +1,113 @@
+describe("integer literal suffix", fn():
+  it("i32 suffix", fn():
+    x = 42i32
+    expect(x as int).to_eq(42)
+  )
+  it("i16 suffix", fn():
+    x = 100i16
+    expect(x as int).to_eq(100)
+  )
+  it("i8 suffix", fn():
+    x = 127i8
+    expect(x as int).to_eq(127)
+  )
+  it("i64 suffix", fn():
+    x = 1000i64
+    expect(x).to_eq(1000)
+  )
+  it("u8 suffix", fn():
+    x = 255u8
+    expect(x as int).to_eq(255)
+  )
+  it("u16 suffix", fn():
+    x = 1000u16
+    expect(x as int).to_eq(1000)
+  )
+  it("u32 suffix", fn():
+    x = 100u32
+    expect(x as int).to_eq(100)
+  )
+  it("u64 suffix", fn():
+    x = 100u64
+    expect(x as int).to_eq(100)
+  )
+  it("zero with suffix", fn():
+    x = 0i32
+    expect(x as int).to_eq(0)
+  )
+)
+
+describe("float literal suffix", fn():
+  it("f32 suffix on float", fn():
+    x = 3.14f32
+    expect(x as float > 3.0).to_eq(true)
+  )
+  it("f64 suffix on float", fn():
+    x = 3.14f64
+    expect(x > 3.0).to_eq(true)
+  )
+  it("integer with f32 suffix becomes float", fn():
+    x = 42f32
+    expect(x as float > 41.0).to_eq(true)
+  )
+)
+
+describe("hex and binary with suffix", fn():
+  it("hex with u8 suffix", fn():
+    x = 0xFFu8
+    expect(x as int).to_eq(255)
+  )
+  it("hex with i32 suffix", fn():
+    x = 0x1Fi32
+    expect(x as int).to_eq(31)
+  )
+  it("binary with u8 suffix", fn():
+    x = 0b1010u8
+    expect(x as int).to_eq(10)
+  )
+)
+
+describe("negative suffixed literals", fn():
+  it("negative i32", fn():
+    x = -1i32
+    expect(x as int).to_eq(-1)
+  )
+  it("negative i8", fn():
+    x = -128i8
+    expect(x as int).to_eq(-128)
+  )
+  it("negative i16", fn():
+    x = -100i16
+    expect(x as int).to_eq(-100)
+  )
+)
+
+describe("suffixed literal arithmetic", fn():
+  it("i32 addition", fn():
+    c = 10i32 + 20i32
+    expect(c as int).to_eq(30)
+  )
+  it("u8 addition", fn():
+    c = 100u8 + 50u8
+    expect(c as int).to_eq(150)
+  )
+  it("f32 addition", fn():
+    c = 1.5f32 + 2.5f32
+    expect(c as float > 3.9).to_eq(true)
+  )
+)
+
+describe("suffixed literal with annotation", fn():
+  it("matching annotation i32", fn():
+    x: i32 = 42i32
+    expect(x as int).to_eq(42)
+  )
+  it("matching annotation u8", fn():
+    x: u8 = 200u8
+    expect(x as int).to_eq(200)
+  )
+  it("matching annotation f32", fn():
+    x: f32 = 1.5f32
+    expect(x as float > 1.0).to_eq(true)
+  )
+)

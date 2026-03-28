@@ -1,5 +1,6 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
+#include "ry/sema_return.hpp"
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 #include <functional>
@@ -50,7 +51,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
                 for (auto &el : v->elements) scanExpr(*el);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
-                scanExpr(*v->object); scanExpr(*v->index);
+                scanExpr(*v->object); for (auto &idx : v->indices) scanExpr(*idx);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
                 for (auto &k : v->keys) scanExpr(*k);
                 for (auto &val : v->values) scanExpr(*val);
@@ -71,7 +72,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
-                scanExpr(*s.object); scanExpr(*s.index); scanExpr(*s.value);
+                scanExpr(*s.object); for (auto &idx : s.indices) scanExpr(*idx); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
                 scanExpr(*s.object); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
@@ -111,17 +112,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : e->params)
-        paramTypes.push_back(resolveType(p.type));
+        paramTypes.push_back(resolveType(p.type->toString()));
     std::vector<llvm::Type*> allParamTypes = paramTypes;
     for (auto *t : capturedTypes)
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
-    if (e->return_type.empty()) {
-        // 戻り値型を推論
+    std::string retTypeStr = e->return_type ? e->return_type->toString() : "";
+    if (retTypeStr == "any") {
+        retTy = anyTy_;
+    } else if (!e->return_type) {
+        // Infer return type when omitted
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : e->params)
-            paramTypeMap[p.name] = resolveType(p.type);
+            paramTypeMap[p.name] = resolveType(p.type->toString());
 
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
@@ -129,7 +133,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             retTy = inferReturnType(e->body, paramTypeMap);
         }
     } else {
-        retTy = resolveType(e->return_type);
+        retTy = resolveType(retTypeStr);
+    }
+
+    // Check that block-bodied lambdas with explicit non-any/Unit return type
+    // return on all paths
+    if (!e->expr_body && e->return_type
+        && !isAnyType(retTy) && !retTy->isVoidTy()) {
+        if (!allPathsReturn(e->body))
+            codegenError("lambda with return type '" + retTypeStr +
+                         "' does not return a value on all code paths");
     }
 
     // Create the LLVM function
@@ -141,6 +154,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     {
         FnScope guard(*this);
         fn_ = func;
+        current_fn_return_type_ = retTypeStr;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
@@ -156,16 +170,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[e->params[idx].name] = alloca;
                 // Track fn type info for fn-typed parameters
-                const std::string &ptype = e->params[idx].type;
+                const std::string ptype = e->params[idx].type->toString();
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
-                // Track opaque handle types
-                if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
-                if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
-                if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
-                if (ptype == "HttpResponse") http_response_values_.insert(alloca);
+                registerResourceByTypeName(ptype, alloca);
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
@@ -181,6 +191,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         // Emit body
         if (e->expr_body) {
             llvm::Value *val = emitExpr(*e->expr_body);
+            if (isAnyType(retTy) && !isAnyType(val->getType()))
+                val = wrapInAny(val);
             builder_.CreateRet(val);
         } else {
             for (auto &stmt : e->body)
@@ -189,6 +201,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             if (!builder_.GetInsertBlock()->getTerminator()) {
                 if (retTy->isVoidTy())
                     builder_.CreateRetVoid();
+                else if (isAnyType(retTy))
+                    builder_.CreateRet(buildUnitAny());
                 else if (retTy == i64Ty_)
                     builder_.CreateRet(llvm::ConstantInt::get(i64Ty_, 0));
                 else if (retTy == f64Ty_)
@@ -210,6 +224,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Register fn_type_info for the function pointer value
     FnTypeInfo info;
     info.paramTypes = paramTypes;  // only the user-visible params
+    for (auto &p : e->params)
+        info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;
@@ -256,9 +272,9 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
     return std::visit([&](const auto &v) -> llvm::Type* {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, NumberExpr>) {
-            return i64Ty_;
+            return v.suffix.empty() ? i64Ty_ : resolveType(v.suffix);
         } else if constexpr (std::is_same_v<T, FloatExpr>) {
-            return f64Ty_;
+            return v.suffix.empty() ? f64Ty_ : resolveType(v.suffix);
         } else if constexpr (std::is_same_v<T, BoolExpr>) {
             return i1Ty_;
         } else if constexpr (std::is_same_v<T, StringExpr>) {
@@ -277,6 +293,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 return i1Ty_;
             llvm::Type *lhsTy = inferExprType(*v->lhs, paramTypeMap);
             llvm::Type *rhsTy = inferExprType(*v->rhs, paramTypeMap);
+            if (isAnyType(lhsTy) || isAnyType(rhsTy))
+                return anyTy_;
             if (op == "+") {
                 if (lhsTy == ptrTy_ || rhsTy == ptrTy_)
                     return ptrTy_;
@@ -287,15 +305,21 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
             if (v->op == "not")
                 return i1Ty_;
-            return inferExprType(*v->operand, paramTypeMap);
+            llvm::Type *opTy = inferExprType(*v->operand, paramTypeMap);
+            if (isAnyType(opTy)) return anyTy_;
+            return opTy;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
             // Look up the function return type
             auto it = functions_.find(v->callee);
             if (it != functions_.end() && !it->second.empty())
                 return it->second[0].func->getReturnType();
+            // Check if it's a struct constructor
+            auto sit = struct_types_.find(v->callee);
+            if (sit != struct_types_.end())
+                return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
-            if (c == "len" || c == "to_int" || c == "find")
+            if (c == "length" || c == "to_int" || c == "find")
                 return i64Ty_;
             // sum/min/max/first/last return the element type of the list argument
             if (c == "sum" || c == "min" || c == "max" || c == "first" || c == "last") {
@@ -330,25 +354,65 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
 
 llvm::Type *CodeGen::inferReturnType(const std::vector<StmtNode> &body,
     const std::unordered_map<std::string, llvm::Type*> &paramTypeMap) {
-    // Scan for ReturnStmt with a value
+    std::vector<llvm::Type*> types;
+    collectReturnTypes(body, paramTypeMap, types);
+    return deduceReturnType(types);
+}
+
+void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
+    const std::unordered_map<std::string, llvm::Type*> &paramTypeMap,
+    std::vector<llvm::Type*> &out) {
     for (auto &stmt : body) {
-        auto result = std::visit([&](const auto &s) -> llvm::Type* {
+        std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value)
-                    return inferExprType(*s.value, paramTypeMap);
+                    out.push_back(inferExprType(*s.value, paramTypeMap));
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches) {
-                    auto *ty = inferReturnType(br.body, paramTypeMap);
-                    if (ty) return ty;
-                }
-                auto *ty = inferReturnType(s->else_body, paramTypeMap);
-                if (ty) return ty;
+                for (auto &br : s->branches)
+                    collectReturnTypes(br.body, paramTypeMap, out);
+                collectReturnTypes(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypes(arm.body, paramTypeMap, out);
             }
-            return static_cast<llvm::Type*>(nullptr);
         }, stmt);
-        if (result) return result;
     }
-    // No return found → void
-    return llvm::Type::getVoidTy(*ctx_);
+}
+
+llvm::Type *CodeGen::deduceReturnType(const std::vector<llvm::Type*> &types) {
+    if (types.empty())
+        return llvm::Type::getVoidTy(*ctx_);
+
+    // Deduplicate types
+    std::vector<llvm::Type*> unique;
+    for (auto *ty : types) {
+        if (std::find(unique.begin(), unique.end(), ty) == unique.end())
+            unique.push_back(ty);
+    }
+
+    if (unique.size() == 1)
+        return unique[0];
+
+    // Build union type name from component types
+    std::string unionName;
+    for (size_t i = 0; i < unique.size(); ++i) {
+        if (i > 0) unionName += " | ";
+        unionName += reverseResolveTypeName(unique[i]);
+    }
+    return resolveType(unionName);
+}
+
+std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
+    if (ty == i64Ty_) return "int";
+    if (ty == f64Ty_) return "float";
+    if (ty == i1Ty_)  return "bool";
+    if (ty == i8Ty_)  return "u8";
+    if (ty == i16Ty_) return "i16";
+    if (ty == i32Ty_) return "i32";
+    if (ty == f32Ty_) return "f32";
+    if (ty == ptrTy_) return "str";
+    if (isAnyType(ty)) return "any";
+    if (ty->isVoidTy()) return "Unit";
+    return "any"; // fallback
 }

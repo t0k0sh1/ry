@@ -1,0 +1,84 @@
+# --- helper functions ---
+
+fn double_float(x: float) -> float:
+  return x * 2.0
+
+fn accept_int(x: int) -> int:
+  return x
+
+fn accept_float(x: float) -> float:
+  return x
+
+fn add_floats(x: float, y: float) -> float:
+  return x + y
+
+# overload: exact match should win
+fn typed(x: int) -> str:
+  return "int"
+
+fn typed(x: float) -> str:
+  return "float"
+
+# overload: widening should win over any
+fn prefer_widening(x: float) -> str:
+  return "float"
+
+fn prefer_widening(x) -> str:
+  return "any"
+
+# --- tests ---
+
+describe("basic implicit widening", fn():
+  it("int to float", fn():
+    result = double_float(5)
+    expect(result).to_eq(10.0)
+  )
+
+  it("u8 to int", fn():
+    b: u8 = 200
+    result = accept_int(b)
+    expect(result).to_eq(200)
+  )
+
+  it("u8 to float", fn():
+    b: u8 = 42
+    result = accept_float(b)
+    expect(result).to_eq(42.0)
+  )
+)
+
+describe("return value correctness", fn():
+  it("int widened to float returns float", fn():
+    result = double_float(5)
+    expect(result).to_eq(10.0)
+  )
+
+  it("u8 widened to int preserves unsigned value", fn():
+    b: u8 = 255
+    result = accept_int(b)
+    expect(result).to_eq(255)
+  )
+)
+
+describe("overload resolution priority", fn():
+  it("exact match wins over widening", fn():
+    expect(typed(5)).to_eq("int")
+    expect(typed(5.0)).to_eq("float")
+  )
+
+  it("widening wins over any", fn():
+    expect(prefer_widening(5)).to_eq("float")
+  )
+)
+
+describe("multi-arg widening", fn():
+  it("both args widened", fn():
+    result = add_floats(1, 2)
+    expect(result).to_eq(3.0)
+  )
+
+  it("mixed: one exact, one widened", fn():
+    result = add_floats(1, 2.0)
+    expect(result).to_eq(3.0)
+  )
+)

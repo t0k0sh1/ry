@@ -85,11 +85,11 @@ xs[0] = 99
 print(xs[0])   # 99
 ```
 
-### len
+### length
 
 ```python
 xs = [1, 2, 3]
-print(len(xs))   # 3
+print(length(xs))   # 3
 ```
 
 ### print
@@ -169,7 +169,7 @@ Calls the given function on each element (ignoring any return value), then retur
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -179,7 +179,7 @@ Returns a new list containing only elements that satisfy the predicate. The orig
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -189,7 +189,7 @@ Returns a new list with each element transformed by the given function. The outp
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -202,7 +202,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order with comparator
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -212,7 +212,7 @@ These functions return new lists, so they can be chained via UFCS.
 
 ```python
 xs = [5, 3, 1, 4, 2]
-result = xs.filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -222,7 +222,7 @@ Reduces a list to a single value using an accumulator function, starting with th
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = reduce(xs, fn(a: int, b: int): a + b)
+total = reduce(xs, fn(a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -232,7 +232,7 @@ Folds a list to a single value using an accumulator function and an explicit ini
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = fold(xs, 0, fn(a: int, b: int): a + b)
+total = fold(xs, 0, fn(a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -242,8 +242,8 @@ Returns `true` if at least one element satisfies the predicate.
 
 ```python
 xs = [1, 2, 3, 4, 5]
-print(any(xs, fn(x: int): x > 4))   # true
-print(any(xs, fn(x: int): x > 9))   # false
+print(any(xs, fn(x: int) => x > 4))   # true
+print(any(xs, fn(x: int) => x > 9))   # false
 ```
 
 ### all
@@ -252,8 +252,8 @@ Returns `true` if every element satisfies the predicate.
 
 ```python
 xs = [2, 4, 6]
-print(all(xs, fn(x: int): x > 0))   # true
-print(all(xs, fn(x: int): x > 3))   # false
+print(all(xs, fn(x: int) => x > 0))   # true
+print(all(xs, fn(x: int) => x > 3))   # false
 ```
 
 ### sum
@@ -406,7 +406,7 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | `filter`, `map`, `reduce`, `fold` | O(n) |
 | `reverse` / `reverse!` | O(n) |
 | `distinct` | O(n) |
-| `len` | O(1) |
+| `length` | O(1) |
 
 ### Constraints and Errors
 
@@ -446,11 +446,11 @@ m["b"] = 2     # Insert new entry
 m["a"] = 99    # Update existing entry
 ```
 
-### len
+### length
 
 ```python
 m = {"a": 1, "b": 2, "c": 3}
-print(len(m))   # 3
+print(length(m))   # 3
 ```
 
 ### print
@@ -567,11 +567,11 @@ print(2 in s)   # true
 print(5 in s)   # false
 ```
 
-### len
+### length
 
 ```python
 s = {1, 2, 3}
-print(len(s))   # 3
+print(length(s))   # 3
 ```
 
 ### print
@@ -589,7 +589,7 @@ Duplicate elements are ignored when added.
 s = {1, 2, 3}
 s.add(4)         # Add
 s.add(1)         # Ignored because it already exists
-print(len(s))    # 4
+print(length(s))    # 4
 ```
 
 ### remove (Remove Element)
@@ -730,8 +730,8 @@ Iterator methods return new iterators, forming a pipeline that is only evaluated
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int): x > 2)
-    .map(fn(x: int): x * 2)
+    .filter(fn(x: int) => x > 2)
+    .map(fn(x: int) => x * 2)
     .take(2)
     .to_list()   # [6, 8]
 ```
@@ -755,7 +755,7 @@ print(it.next())   # None
 Iterators can be used directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int): x > 1):
+for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
     print(x)
 # 2
 # 3

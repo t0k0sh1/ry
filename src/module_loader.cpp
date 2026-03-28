@@ -111,16 +111,39 @@ ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
 
 std::string ModuleLoader::resolve(const std::string &package_path,
                                    const std::string &referrer_dir) {
+    // Reject path traversal and absolute paths
+    if (package_path.find("..") != std::string::npos)
+        throw std::runtime_error("invalid package path (path traversal): " + package_path);
+    if (!package_path.empty() && package_path[0] == '/')
+        throw std::runtime_error("invalid package path (absolute): " + package_path);
+
     auto try_resolve = [&](const std::string &dir) -> std::string {
+        std::error_code ec;
+        std::string base_str = fs::canonical(fs::path(dir), ec).string();
+        if (ec) return "";
+
+        auto is_within_base = [&](const std::string &resolved) -> bool {
+            if (resolved.compare(0, base_str.size(), base_str) != 0)
+                return false;
+            return resolved.size() == base_str.size() ||
+                   resolved[base_str.size()] == '/';
+        };
+
         // 1. Directory (package)
         fs::path dir_candidate = fs::path(dir) / package_path;
-        if (fs::is_directory(dir_candidate))
-            return fs::canonical(dir_candidate).string();
+        if (fs::is_directory(dir_candidate)) {
+            std::string resolved = fs::canonical(dir_candidate).string();
+            if (!is_within_base(resolved)) return "";
+            return resolved;
+        }
 
         // 2. Single file (backward compatibility)
         fs::path file_candidate = fs::path(dir) / (package_path + ".ry");
-        if (fs::is_regular_file(file_candidate))
-            return fs::canonical(file_candidate).string();
+        if (fs::is_regular_file(file_candidate)) {
+            std::string resolved = fs::canonical(file_candidate).string();
+            if (!is_within_base(resolved)) return "";
+            return resolved;
+        }
 
         return "";
     };

@@ -104,6 +104,99 @@ print(c.center.x)   # 0
 
 ---
 
+## Comparison (`==` / `!=`)
+
+Record types automatically support `==` and `!=` operators. Comparison is performed field-by-field (structural equality).
+
+```python
+record Point:
+    x: int
+    y: int
+
+p1 = Point(10, 20)
+p2 = Point(10, 20)
+p3 = Point(30, 40)
+
+print(p1 == p2)  # true
+print(p1 != p3)  # true
+```
+
+- All fields are compared in order. For `==`, all fields must be equal. For `!=`, at least one field must differ.
+- Nested records are compared recursively.
+- If a user-defined `operator==` or `operator!=` is provided, it takes precedence over the auto-generated version.
+
+---
+
+## Record Subtyping (Inheritance)
+
+Records support single inheritance using the `<` syntax. A child record inherits all fields from its parent.
+
+### Syntax
+
+```python
+record ChildName < ParentName:
+    child_field: type
+```
+
+### Example
+
+```python
+record HttpError < Error:
+    status: int
+    url: str
+```
+
+### Field Inheritance
+
+- The child record inherits all parent fields at the beginning of its layout.
+- The constructor takes parent fields first, then child-specific fields.
+
+```python
+err = HttpError("not found", 404, 404, "/api")
+print(err.message)  # "not found" (inherited from Error)
+print(err.status)   # 404 (own field)
+```
+
+### Subtype Coercion
+
+A child value can be passed where the parent type is expected. The child is automatically sliced to extract the parent-prefix fields (value-type slicing).
+
+```python
+fn handle(e: Error) -> str:
+    return e.message
+
+err = HttpError("fail", 500, 500, "/api")
+handle(err)  # OK — HttpError coerced to Error
+```
+
+### Deep Inheritance
+
+Records can form inheritance chains. Each level inherits all ancestor fields.
+
+```python
+record DetailedHttpError < HttpError:
+    detail: str
+
+# Constructor: Error fields + HttpError fields + own fields
+derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
+handle(derr)  # OK — coerced to Error (grandparent)
+```
+
+### Rules
+
+| Rule | Details |
+|------|------|
+| Single inheritance only | `record A < B:` — one parent only |
+| Deep inheritance | `record C < B:` where `record B < A:` — allowed |
+| Name collision | Child field with same name as parent field → compile error |
+| Auto `==` / `to_str` | Includes all inherited fields |
+| Invariant inheritance | Parent `invariant:` clauses are checked when constructing or modifying child records |
+| Subtype coercion | Applies to: function args, return, `Err()`, field assignment, `?` operator |
+| Generic bounds | `<T: RecordName>` constrains type parameter to subtypes of the record |
+| `@const` | Applies to all fields including inherited |
+
+---
+
 ## Constraints and Errors
 
 | Constraint | Details |
@@ -129,7 +222,7 @@ print(p)   # Error
 
 ### Overview
 
-Enumerations are a set of named constants. Internally, they are represented as i64 integers (0, 1, 2, ...).
+Enumerations are a set of named constants. By default, they are represented as sequential i64 integers (0, 1, 2, ...). Explicit integer values can also be assigned.
 
 ### Definition Syntax
 
@@ -200,10 +293,56 @@ c = Color::Blue
 print(c)   # Blue
 ```
 
+### Explicit Values
+
+Simple enum variants can be assigned explicit integer values for use cases like HTTP status codes or bitmask patterns.
+
+```python
+enum HttpStatus:
+    Ok = 200
+    NotFound = 404
+    InternalError = 500
+
+s = HttpStatus::NotFound
+print(s)                              # NotFound
+print(s == HttpStatus::NotFound)      # true
+```
+
+```python
+enum Permission:
+    Read = 1
+    Write = 2
+    Execute = 4
+```
+
+Rules:
+- Only simple enums (no ADT variants with associated data) support explicit values.
+- Values must be integer literals (negative values are allowed).
+- If any variant has an explicit value, all variants must have explicit values (no mixing auto and manual).
+- Duplicate values are a compile error.
+- `print()` displays the variant name, not the integer value.
+
+### Named Fields in ADT Variants
+
+ADT variant fields can optionally include names for documentation purposes. Named fields make definitions self-describing without changing construction or pattern matching semantics.
+
+```python
+enum Shape:
+    Circle(radius: float)
+    Rect(width: float, height: float)
+    Point
+```
+
+- Construction is always positional: `Shape::Circle(3.14)`, not `Shape::Circle(radius: 3.14)`.
+- Pattern matching binds user-chosen variable names: `case Shape::Circle(r):`.
+- Field names must be `snake_case`. Mixing named and unnamed fields within a single variant is not allowed.
+- Unnamed syntax (`Circle(float)`) remains valid.
+
 ### Constraints and Errors
 
 | Constraint | Details |
 |------|------|
 | Variant access requires `EnumName::VariantName` | The `::` operator is required |
-| Variant values are auto-assigned | Sequential numbers 0, 1, 2, ... (manual specification is not supported) |
+| Variant values | Auto-assigned (0, 1, 2, ...) by default, or explicitly specified with `= value` |
 | Comparison uses integer comparison | `==`, `!=` can be used |
+| Named field names | Must be `snake_case`; no duplicates within a variant; no mixing named/unnamed |

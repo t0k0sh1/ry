@@ -1,99 +1,118 @@
-[English](../../reference/builtins.md) | [日本語](../../ja/reference/builtins.md) | [繁體中文](builtins.md)
+[English](../../reference/builtins.md) | [日本語](../../ja/reference/builtins.md) | [简体中文](builtins.md)
 
-# 內建函式參考
+# 内置函数参考
 
-## 函式一覽
+## 函数一览
 
 ### 核心
 
-| 函式 | 說明 |
+| 函数 | 说明 |
 |------|------|
-| `print(expr)` | 將值輸出到標準輸出 |
-| `len(x)` | 回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數 |
-| `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整數串列 |
-| `exit(code)` | 以指定的結束碼終止程序 |
-| `args()` | 以 `List<str>` 回傳命令列引數 |
+| `print(expr)` | 将值输出到标准输出 |
+| `length(value)` | 返回列表、映射、集合的元素数量，或字符串的 UTF-8 字符数 |
+| `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整数列表 |
+| `exit(code)` | 以指定的退出码终止进程 |
+| `args()` | 以 `List<str>` 返回命令行参数 |
+| `available_parallelism()` | 返回运行时工作线程数（`int`） |
+| `sleep(duration_ms)` | 暂停执行指定的毫秒数 |
+| `env(key)` | 返回环境变量为 `Option<str>` |
+| `env(key, default)` | 返回环境变量，若未设置则返回 `default` |
+| `send(stream, data)` | 通过 `TcpStream` 发送 `List<u8>`，返回发送的字节数 |
+| `recv(stream, max)` | 从 `TcpStream` 接收最多 `max` 字节，返回 `List<u8>` |
+| `close(handle)` | 关闭 `TcpStream` 或 `TcpListener` |
+| `block_on(task)` | 阻塞当前线程直到 `Task<T>` 完成并返回其结果 |
 
 ### Option
 
-| 函式 | 說明 |
+| 函数 | 说明 |
 |------|------|
-| `Some(expr)` | 建構 Option 型別的有值變體 |
+| `Some(expr)` | 构造 Option 类型的有值变体 |
 
 ### 集合操作
 
-| 函式 | 說明 |
+| 函数 | 说明 |
 |------|------|
-| `has_key(map, key)` | 回傳映射中是否存在該鍵 |
-| `add(set, value)` | 向集合新增元素（重複則忽略） |
-| `remove(set, value)` | 從集合刪除元素 |
-| `append(list, value)` / `append!(list, value)` | 向串列末尾新增元素（就地修改） |
-| `appended(list, value)` | 傳回新增元素後的新串列（非破壞性） |
-| `pop(list)` | 移除並回傳串列的最後一個元素（`Option<T>`） |
-| `reverse(list)` | 傳回反轉後的新串列（也適用於字串） |
-| `reverse!(list)` | 就地反轉串列（破壞性） |
-| `slice(list, start, end)` | 傳回從 start 到 end 的新子串列 |
-| `take(list, n)` | 傳回包含前 n 個元素的新串列 |
-| `tap(list, fn)` | 對每個元素呼叫 fn 以執行副作用，傳回原始串列 |
-| `filter(list, pred)` | 傳回僅包含滿足述詞的元素的新串列 |
-| `map(list, fn)` | 傳回將每個元素轉換後的新串列 |
-| `sort(list)` / `sort(list, comp)` | 傳回排序後的新串列（預設升序） |
-| `sort!(list)` / `sort!(list, comp)` | 就地排序串列（破壞性） |
-| `insert(list, i, val)` | 在索引 i 處插入元素 |
-| `remove_at(list, i)` | 移除並回傳索引 i 處的元素 |
-| `items(map)` | 回傳 (鍵, 值) 元組的串列 |
-| `remove(map, key)` | 刪除指定鍵的條目 |
-| `get(map, key)` | 回傳鍵的值（`Option<V>`） |
-| `get(map, key, default)` | 回傳鍵的值，若不存在則回傳預設值 |
-| `union(set, set)` | 回傳兩個集合的聯集 |
-| `intersection(set, set)` | 回傳兩個集合的交集 |
-| `difference(set, set)` | 回傳兩個集合的差集 |
-| `symmetric_difference(set, set)` | 回傳兩個集合的對稱差 |
-| `is_subset(set, set)` | 回傳第一個集合是否為第二個的子集 |
-| `is_superset(set, set)` | 回傳第一個集合是否為第二個的超集 |
+| `has_key(map, key)` | 返回映射中是否存在该键 |
+| `add(set, value)` | 向集合添加元素（重复则忽略） |
+| `remove(set, value)` | 从集合删除元素 |
+| `append(list, value)` / `append!(list, value)` | 向列表末尾添加元素（就地修改） |
+| `appended(list, value)` | 返回添加元素后的新列表（非破坏性） |
+| `pop(list)` | 移除并返回列表的最后一个元素（`Option<T>`） |
+| `reverse(list)` | 返回反转后的新列表（也适用于字符串） |
+| `reverse!(list)` | 就地反转列表（破坏性） |
+| `slice(list, start, end)` | 返回从 start 到 end 的新子列表 |
+| `take(list, n)` | 返回包含前 n 个元素的新列表 |
+| `tap(list, fn)` | 对每个元素调用 fn 以执行副作用，返回原始列表 |
+| `filter(list, pred)` | 返回仅包含满足谓词的元素的新列表 |
+| `map(list, fn)` | 返回将每个元素转换后的新列表 |
+| `sort(list)` / `sort(list, comp)` | 返回排序后的新列表（默认升序） |
+| `sort!(list)` / `sort!(list, comp)` | 就地排序列表（破坏性） |
+| `insert(list, i, val)` | 在索引 i 处插入元素 |
+| `remove_at(list, i)` | 移除并返回索引 i 处的元素 |
+| `items(map)` | 返回 (键, 值) 元组的列表 |
+| `remove(map, key)` | 删除指定键的条目 |
+| `get(map, key)` | 返回键的值（`Option<V>`） |
+| `get(map, key, default)` | 返回键的值，若不存在则返回默认值 |
+| `union(set, set)` | 返回两个集合的并集 |
+| `intersection(set, set)` | 返回两个集合的交集 |
+| `difference(set, set)` | 返回两个集合的差集 |
+| `symmetric_difference(set, set)` | 返回两个集合的对称差 |
+| `is_subset(set, set)` | 返回第一个集合是否为第二个的子集 |
+| `is_superset(set, set)` | 返回第一个集合是否为第二个的超集 |
 
-### [字串操作](builtins-string.md)
+### 迭代器
 
-| 函式 | 說明 |
+| 函数 | 说明 |
 |------|------|
-| `contains(s, sub)` | 是否包含子字串 |
-| `starts_with(s, prefix)` | 是否以前綴開頭 |
-| `ends_with(s, suffix)` | 是否以後綴結尾 |
-| `find(s, sub)` | 子字串的字元位置（`Option<int>`） |
-| `byte_len(s)` | 回傳字串的位元組長度 |
-| `substring(s, start, end)` | 取得子字串 |
-| `char_at(s, i)` | 取得指定位置的字元 |
-| `replace(s, old, new)` | 全部取代子字串 |
-| `to_upper(s)` / `to_lower(s)` | 大小寫轉換 |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | 去除空白 |
-| `repeat(s, n)` | 將字串重複 n 次 |
-| `reverse(s)` | 反轉字串 |
-| `split(s, delim)` | 分割字串並回傳串列 |
-| `join(list, sep)` | 以分隔符號連接串列中的字串 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型別轉換 |
+| `iter(collection)` | 从 List、Set 或 Map 创建惰性迭代器 |
+| `next(iter)` | 返回下一个元素（`Option<T>`），耗尽时返回 `None` |
+| `to_list(iter)` | 将迭代器剩余的所有元素收集到 `List<T>` |
+| `filter(iter, pred)` | 返回只产出满足谓词的元素的惰性迭代器 |
+| `map(iter, fn)` | 返回转换每个元素的惰性迭代器 |
+| `take(iter, n)` | 返回最多产出 n 个元素的惰性迭代器 |
 
-→ 詳細請參閱 **[字串操作函式參考](builtins-string.md)**
+### [字符串操作](builtins-string.md)
+
+| 函数 | 说明 |
+|------|------|
+| `contains(string, substring)` | 是否包含子字符串 |
+| `starts_with(string, prefix)` | 是否以前缀开头 |
+| `ends_with(string, suffix)` | 是否以后缀结尾 |
+| `find(string, substring)` | 子字符串的字符位置（`Option<int>`） |
+| `byte_len(string)` | 返回字符串的字节长度 |
+| `substring(string, start, end)` | 提取子字符串 |
+| `char_at(string, i)` | 获取指定位置的字符 |
+| `replace(string, old, new)` | 替换所有出现的子字符串 |
+| `to_upper(string)` / `to_lower(string)` | 大小写转换 |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | 去除空白 |
+| `repeat(string, count)` | 将字符串重复 n 次 |
+| `reverse(string)` | 反转字符串 |
+| `split(string, delimiter)` | 分割字符串并返回列表 |
+| `join(list, sep)` | 以分隔符连接列表中的字符串 |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 类型转换 |
+
+-> 详细请参阅 **[字符串操作函数参考](builtins-string.md)**
 
 ---
 
 ## print
 
-**簽名：** `print(expr)`
+**签名：** `print(expr)`
 
-將值輸出到標準輸出。末尾會加上換行。
+将值输出到标准输出。末尾会追加换行。
 
-| 型別 | 輸出格式 |
+| 类型 | 输出格式 |
 |----|---------|
 | `int` | `%ld` |
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
-| `Option` (Some) | `Some(值)` |
+| `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
-| `list` | `[元素1, 元素2, ...]` |
-| `map` | `{鍵1: 值1, 鍵2: 值2, ...}` |
-| `set` | `{元素1, 元素2, ...}` |
-| `enum` | 變體名稱（例如：`Red`） |
+| `list` | `[elem1, elem2, ...]` |
+| `map` | `{key1: val1, key2: val2, ...}` |
+| `set` | `{elem1, elem2, ...}` |
+| `enum` | 变体名称（例如：`Red`） |
 
 ```python
 print(42)          # 42
@@ -107,15 +126,15 @@ print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
 ```
 
-**錯誤條件：** 直接傳入結構體或元組會產生編譯錯誤。
+**错误条件：** 直接传入结构体或元组会产生编译错误。
 
 ---
 
 ## Some
 
-**簽名：** `Some(expr) -> Option<T>`
+**签名：** `Some(expr) -> Option<T>`
 
-建構 Option 型別的有值變體。
+构造 Option 类型的有值变体。
 
 ```python
 x: Option<int> = Some(42)
@@ -124,57 +143,57 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**簽名：** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**签名：** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
-回傳串列、映射、集合的元素數量，或字串的 UTF-8 字元數。如需取得位元組長度，請使用 `byte_len()`。
+返回列表、映射、集合的元素数量，或字符串的 UTF-8 字符数。如需获取字节长度，请使用 `byte_len()`。
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 字元數)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3（UTF-8 字符数）
 ```
 
 ---
 
 ## has_key
 
-**簽名：** `has_key(m: Map<K, V>, key: K) -> bool`
+**签名：** `has_key(m: Map<K, V>, key: K) -> bool`
 
-回傳映射中是否存在指定的鍵。也可使用 UFCS 記法。
+返回映射中是否存在指定的键。也可使用 UFCS 记法。
 
 ```python
 m = {"a": 1, "b": 2}
 print(has_key(m, "a"))    # true
-print(m.has_key("z"))     # false (UFCS)
+print(m.has_key("z"))     # false（UFCS）
 ```
 
 ---
 
 ## add
 
-**簽名：** `add(s: Set<T>, value: T)`
+**签名：** `add(s: Set<T>, value: T)`
 
-向集合新增元素。若元素已存在則不做任何操作。也可使用 UFCS 記法。
+向集合添加元素。若元素已存在则不做任何操作。也可使用 UFCS 记法。
 
 ```python
 s = {1, 2, 3}
 s.add(4)          # UFCS
-add(s, 5)         # 一般呼叫
+add(s, 5)         # 普通调用
 s.add(1)          # 已存在，因此忽略
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
 
 ## remove
 
-**簽名：** `remove(s: Set<T>, value: T)`
+**签名：** `remove(s: Set<T>, value: T)`
 
-從集合刪除元素。也可使用 UFCS 記法。
+从集合删除元素。也可使用 UFCS 记法。
 
 ```python
 s = {1, 2, 3}
@@ -186,9 +205,9 @@ print(2 in s)     # false
 
 ## range
 
-**簽名：** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
+**签名：** `range(n: int) -> List<int>` / `range(start: int, end: int) -> List<int>` / `range(start: int, end: int, step: int) -> List<int>`
 
-生成整數串列。
+生成整数列表。
 
 | 形式 | 生成的值 |
 |------|------------|
@@ -196,9 +215,10 @@ print(2 in s)     # false
 | `range(start, end)` | `[start, start+1, ..., end-1]` |
 | `range(start, end, step)` | `[start, start+step, start+2*step, ...]`（不包含 `end`） |
 
-- `step > 0` 時，從 `start` 向 `end` 遞增生成。
-- `step < 0` 時，從 `start` 向 `end` 遞減生成。
-- `step == 0` 時，會產生執行時錯誤。
+- `step > 0` 时，从 `start` 向 `end` 递增生成。
+- `step < 0` 时，从 `start` 向 `end` 递减生成。
+- `step == 0` 时，会产生运行时错误。
+- 如果范围为空（例如 `range(0, 10, -1)`），返回空列表。
 
 ```python
 print(range(3))           # [0, 1, 2]
@@ -217,27 +237,27 @@ for i in range(3):
 
 ## exit
 
-**簽名：** `exit(code: int)`
+**签名：** `exit(code: int)`
 
-以指定的結束碼立即終止程序。`exit()` 之後的程式碼將不會被執行。
+以指定的退出码立即终止进程。`exit()` 之后的代码将不会被执行。
 
 ```python
-exit(0)        # 正常終止
-exit(1)        # 錯誤終止
+exit(0)        # 正常终止
+exit(1)        # 错误终止
 ```
 
 ---
 
 ## args
 
-**簽名：** `args() -> List<str>`
+**签名：** `args() -> List<str>`
 
-以字串串列的形式回傳傳遞給腳本的命令列引數。不包含直譯器名稱或腳本檔案名稱——僅包含腳本路徑之後的引數。
+以字符串列表的形式返回传递给脚本的命令行参数。不包含解释器名称或脚本文件名——仅包含脚本路径之后的参数。
 
 ```python
-# 執行: ry script.ry hello world
+# 运行：ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
@@ -247,11 +267,71 @@ for x in args():
 
 ---
 
+## sleep
+
+**签名：** `sleep(duration_ms: int) -> Unit`
+
+暂停当前线程的执行指定的毫秒数。若 `duration_ms` 为 0 或负数，则函数立即返回。
+
+```python
+sleep(1000)    # 等待 1 秒
+sleep(0)       # 立即返回
+```
+
+---
+
+## env
+
+**签名：** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+返回环境变量的值。单参数形式返回 `Option<str>`（若已设置则为 `Some(value)`，未设置则为 `None`）。双参数形式在变量未设置时返回 `default`。
+
+若项目根目录（包含 `package.toml` 的目录）中存在 `.env` 文件，启动时会自动载入到进程环境中。现有的环境变量不会被 `.env` 的值覆盖。
+
+> **安全提示：** `.env` 文件通常包含密钥（API 密钥、数据库密码、令牌等）。请**不要**将 `.env` 提交到版本控制系统（添加到 `.gitignore` 或类似文件中），并将其内容视为敏感配置。
+
+```python
+# 单参数形式：返回 Option<str>
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# 双参数形式：带默认值返回 str
+port = env("PORT", "8080")
+print(port)   # 若 PORT 未设置则为 "8080"
+```
+
+### `.env` 文件格式
+
+```env
+# 注释以 # 开头
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
+
+### 环境专属 `.env` 文件
+
+设置 `RY_ENV` 时，Ry 会按照以下优先顺序载入环境专属的 `.env` 文件：
+
+- 先载入 `.env.<env>`（例如 `RY_ENV=dev` 时载入 `.env.dev`）
+- 再载入 `.env`（已由 `.env.<env>` 设置的值不会被覆盖）
+- `RY_ENV=prod` 时不载入任何 `.env` 文件（安全考虑）
+- `RY_ENV` 未设置时仅载入 `.env`（向后兼容）
+
+环境模式的详细信息请参阅 [RY_ENV](packages.md#ry_env)。
+
+---
+
 ## append
 
-**簽名：** `append(list: List<T>, value: T)`
+**签名：** `append(list: List<T>, value: T)`
 
-向串列末尾新增元素。此為就地修改操作——串列會被直接修改。也可使用 UFCS 記法。
+向列表末尾添加元素。此为就地修改操作——列表会被直接修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2]
@@ -263,9 +343,9 @@ print(xs)   # [1, 2, 3]
 
 ## pop
 
-**簽名：** `pop(list: List<T>) -> Option<T>`
+**签名：** `pop(list: List<T>) -> Option<T>`
 
-移除並回傳串列的最後一個元素（`Option<T>`）。串列為空時回傳 `None`。也可使用 UFCS 記法。
+移除并返回列表的最后一个元素（`Option<T>`）。列表为空时返回 `None`。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
@@ -276,11 +356,11 @@ print(xs)   # [1, 2]
 
 ---
 
-## reverse（串列）
+## reverse（列表）
 
-**簽名：** `reverse(list: List<T>) -> List<T>`
+**签名：** `reverse(list: List<T>) -> List<T>`
 
-傳回元素順序反轉的新串列。原始串列不會被修改。也適用於字串（請參閱[字串操作](builtins-string.md)）。也可使用 UFCS 記法。
+返回元素顺序反转的新列表。原始列表不会被修改。也适用于字符串（请参阅[字符串操作](builtins-string.md)）。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
@@ -293,29 +373,29 @@ print(xs)   # [1, 2, 3]（未修改）
 
 ## slice
 
-**簽名：** `slice(list: List<T>, start: int, end: int) -> List<T>`
+**签名：** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-傳回從 `start`（含）到 `end`（不含）的新子串列。索引會被鉗制在有效範圍內（`0` 到 `len(list)`）。也可使用 UFCS 記法。
+返回从 `start`（含）到 `end`（不含）的新子列表。索引会被钳制在有效范围内（`0` 到 `length(list)`）。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
 print(slice(xs, 1, 3))     # [2, 3]
-print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（鉗制）
+print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（钳制）
 ```
 
 ---
 
 ## take
 
-**簽名：** `take(list: List<T>, n: int) -> List<T>`
+**签名：** `take(list: List<T>, n: int) -> List<T>`
 
-傳回包含前 `n` 個元素的新串列。若 `n` 超過串列長度，傳回整個串列的副本。若 `n <= 0`，傳回空串列。原始串列不會被修改。也可使用 UFCS 記法。
+返回包含前 `n` 个元素的新列表。若 `n` 超过列表长度，返回整个列表的副本。若 `n <= 0`，返回空列表。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
 ys = xs.take(3)
 print(ys)   # [1, 2, 3]
-print(xs.take(10))   # [1, 2, 3, 4, 5]（鉗制）
+print(xs.take(10))   # [1, 2, 3, 4, 5]（钳制）
 print(xs.take(0))    # []
 ```
 
@@ -323,42 +403,42 @@ print(xs.take(0))    # []
 
 ## tap
 
-**簽名：** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+**签名：** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
 
-對每個元素呼叫給定函式（忽略回傳值），然後傳回原始串列。適用於方法鏈中的除錯或插入副作用。也可使用 UFCS 記法。
+对每个元素调用给定函数（忽略返回值），然后返回原始列表。适用于方法链中的调试或插入副作用。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
-# 輸出 1, 2, 3，然後 ys = [2, 4, 6]
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+# 输出 1, 2, 3，然后 ys = [2, 4, 6]
 ```
 
 ---
 
 ## filter
 
-**簽名:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+**签名：** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
 
-傳回僅包含述詞回傳 `true` 的元素的新串列。原始串列不會被修改。也可使用 UFCS 記法。
+返回仅包含谓词返回 `true` 的元素的新列表。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
-print(xs)   # [1, 2, 3, 4, 5]  （未修改）
+print(xs)   # [1, 2, 3, 4, 5]（未修改）
 ```
 
 ---
 
 ## map
 
-**簽名:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+**签名：** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
 
-傳回將每個元素以給定函式轉換後的新串列。輸出元素型別可以與輸入不同。原始串列不會被修改。也可使用 UFCS 記法。
+返回将每个元素以给定函数转换后的新列表。输出元素类型可以与输入不同。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -366,16 +446,16 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**簽名:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**签名：** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
 
-傳回排序後的新串列。預設為升序。可提供自訂比較函式（第一引數應排在第二引數之前時回傳 `true`）。原始串列不會被修改。排序是**穩定的**（相等元素保持原始順序）。也可使用 UFCS 記法。
+返回排序后的新列表。默认为升序。可提供自定义比较函数（第一参数应排在第二参数之前时返回 `true`）。原始列表不会被修改。排序是**稳定的**（相等元素保持原始顺序）。也可使用 UFCS 记法。
 
 ```python
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -383,9 +463,9 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**簽名:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**签名：** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
 
-就地排序串列。排序演算法與 `sort()` 相同，但修改原始串列而非建立新串列。也可使用 UFCS 記法。
+就地排序列表。排序算法与 `sort()` 相同，但修改原始列表而非创建新列表。也可使用 UFCS 记法。
 
 ```python
 xs = [3, 1, 2]
@@ -397,9 +477,9 @@ print(xs)   # [1, 2, 3]
 
 ## reverse!
 
-**簽名：** `reverse!(list: List<T>)`
+**签名：** `reverse!(list: List<T>)`
 
-就地反轉串列。也可使用 UFCS 記法。
+就地反转列表。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
@@ -411,9 +491,9 @@ print(xs)   # [3, 2, 1]
 
 ## appended
 
-**簽名：** `appended(list: List<T>, value: T) -> List<T>`
+**签名：** `appended(list: List<T>, value: T) -> List<T>`
 
-傳回新增元素後的新串列。原始串列不會被修改。也可使用 UFCS 記法。
+返回添加元素后的新列表。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2]
@@ -426,17 +506,17 @@ print(ys)   # [1, 2, 3]
 
 ## append!
 
-**簽名：** `append!(list: List<T>, value: T)`
+**签名：** `append!(list: List<T>, value: T)`
 
-`append()` 的別名。就地向串列末尾新增元素。為配合 `!` 命名慣例而提供。
+`append()` 的别名。就地向列表末尾添加元素。为配合 `!` 命名约定而提供。
 
 ---
 
 ## first
 
-**簽名：** `first(list: List<T>) -> Option<T>`
+**签名：** `first(list: List<T>) -> Option<T>`
 
-傳回串列的第一個元素（`Option<T>`）。串列為空時回傳 `None`。
+返回列表的第一个元素（`Option<T>`）。列表为空时返回 `None`。
 
 ```python
 print(first([10, 20, 30]))   # Some(10)
@@ -446,9 +526,9 @@ print(first([10, 20, 30]))   # Some(10)
 
 ## last
 
-**簽名：** `last(list: List<T>) -> Option<T>`
+**签名：** `last(list: List<T>) -> Option<T>`
 
-傳回串列的最後一個元素（`Option<T>`）。串列為空時回傳 `None`。
+返回列表的最后一个元素（`Option<T>`）。列表为空时返回 `None`。
 
 ```python
 print(last([10, 20, 30]))   # Some(30)
@@ -458,13 +538,63 @@ print(last([10, 20, 30]))   # Some(30)
 
 ## get（映射）
 
-**簽名：** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
+**签名：** `get(map: Map<K, V>, key: K) -> Option<V>` / `get(map: Map<K, V>, key: K, default: V) -> V`
 
-兩引數形式回傳鍵的值（`Option<V>`）。三引數形式回傳鍵的值，若不存在則回傳預設值。
+双参数形式返回键的值（`Option<V>`）。三参数形式返回键的值，若不存在则返回默认值。
 
 ```python
 m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**签名：** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+从集合创建惰性迭代器。迭代器不复制数据；它引用原始集合。也可使用 UFCS 记法。
+
+- 对于 `List<T>` 和 `Set<T>`，元素类型为 `T`。
+- 对于 `Map<K, V>`，元素类型为元组 `(K, V)`。
+
+```python
+xs = [1, 2, 3]
+it = xs.iter()           # Iterator<int>
+ys = it.to_list()        # [1, 2, 3]
+
+m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**签名：** `next(iter: Iterator<T>) -> Option<T>`
+
+返回迭代器的下一个元素（`Option<T>`）。当迭代器耗尽时返回 `None`。每次调用时迭代器会推进其内部状态。也可使用 UFCS 记法。
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**签名：** `to_list(iter: Iterator<T>) -> List<T>`
+
+将迭代器剩余的所有元素收集到新列表中。也可使用 UFCS 记法。
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```

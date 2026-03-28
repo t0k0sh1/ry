@@ -1,0 +1,32 @@
+describe("fixed-length array", fn():
+  it("declaration and index read", fn():
+    buf: [i32; 4] = [1, 2, 3, 4]
+    expect(buf[0] as int).to_eq(1)
+    expect(buf[1] as int).to_eq(2)
+    expect(buf[3] as int).to_eq(4)
+  )
+  it("index write", fn():
+    buf: [i32; 3] = [0, 0, 0]
+    buf[1] = 42
+    expect(buf[1] as int).to_eq(42)
+  )
+  it("length", fn():
+    buf: [u8; 8] = [1, 2, 3, 4, 5, 6, 7, 8]
+    expect(length(buf)).to_eq(8)
+  )
+  it("u8 array", fn():
+    buf: [u8; 3] = [65, 66, 67]
+    expect(buf[0] as int).to_eq(65)
+    expect(buf[2] as int).to_eq(67)
+  )
+  it("f32 array", fn():
+    buf: [f32; 2] = [1.5, 2.5]
+    expect(buf[0] as float).to_eq(1.5)
+    expect(buf[1] as float).to_eq(2.5)
+  )
+  it("i16 array", fn():
+    buf: [i16; 2] = [100, 200]
+    expect(buf[0] as int).to_eq(100)
+    expect(buf[1] as int).to_eq(200)
+  )
+)

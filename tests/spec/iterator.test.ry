@@ -1,114 +1,101 @@
 describe("Iterator", fn():
-    it("iter and to_list on list", fn():
-        xs = [1, 2, 3]
-        ys = xs.iter().to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-        expect(ys[1]).to_eq(2)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("iter on empty list", fn():
-        xs = [1]
-        empty = xs.filter(fn(x: int): x > 10)
-        ys = empty.iter().to_list()
-        expect(ys).to_have_length(0)
-
-    )
-    it("lazy filter", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.iter().filter(fn(x: int): x > 2).to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(3)
-        expect(ys[1]).to_eq(4)
-        expect(ys[2]).to_eq(5)
-
-    )
-    it("lazy map", fn():
-        xs = [1, 2, 3]
-        ys = xs.iter().map(fn(x: int): x * 10).to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(10)
-        expect(ys[1]).to_eq(20)
-        expect(ys[2]).to_eq(30)
-
-    )
-    it("lazy take", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.iter().take(3).to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-        expect(ys[1]).to_eq(2)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("chained filter map take", fn():
-        xs = [1, 2, 3, 4, 5]
-        ys = xs.iter().filter(fn(x: int): x > 2).map(fn(x: int): x * 2).take(2).to_list()
-        expect(ys).to_have_length(2)
-        expect(ys[0]).to_eq(6)
-        expect(ys[1]).to_eq(8)
-
-    )
-    it("take 0", fn():
-        xs = [1, 2, 3]
-        ys = xs.iter().take(0).to_list()
-        expect(ys).to_have_length(0)
-
-    )
-    it("take more than length", fn():
-        xs = [1, 2, 3]
-        ys = xs.iter().take(10).to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-        expect(ys[2]).to_eq(3)
-
-    )
-    it("for loop over iterator", fn():
-        xs = [10, 20, 30]
-        sum = 0
-        for x in xs.iter():
-            sum = sum + x
-        expect(sum).to_eq(60)
-
-    )
-    it("for loop with filter", fn():
-        xs = [1, 2, 3, 4, 5]
-        sum = 0
-        for x in xs.iter().filter(fn(x: int): x > 3):
-            sum = sum + x
-        expect(sum).to_eq(9)
-
-    )
-    it("next returns Option", fn():
-        xs = [10, 20]
-        it = xs.iter()
-        a = it.next()
-        expect(a).to_eq(Some(10))
-        b = it.next()
-        expect(b).to_eq(Some(20))
-        c = it.next()
-        expect(c).to_be_none()
-
-    )
-    it("iter on set", fn():
-        s = {1, 2, 3}
-        ys = s.iter().to_list()
-        expect(ys).to_have_length(3)
-
-    )
-    it("iter on map", fn():
-        m = {"a": 1, "b": 2}
-        count = 0
-        for k, v in m.iter():
-            count = count + 1
-        expect(count).to_eq(2)
-
-    )
-    it("UFCS iter", fn():
-        xs = [1, 2, 3]
-        ys = iter(xs).to_list()
-        expect(ys).to_have_length(3)
-        expect(ys[0]).to_eq(1)
-    )
+  it("iter and to_list on list", fn():
+    xs = [1, 2, 3]
+    ys = to_list(iter(xs))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(3)
+  )
+  it("iter on empty list", fn():
+    xs = [1]
+    empty = filter(xs, fn(x: int) => x > 10)
+    ys = to_list(iter(empty))
+    expect(ys).to_have_length(0)
+  )
+  it("lazy filter", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = to_list(filter(iter(xs), fn(x: int) => x > 2))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(3)
+    expect(ys[1]).to_eq(4)
+    expect(ys[2]).to_eq(5)
+  )
+  it("lazy map", fn():
+    xs = [1, 2, 3]
+    ys = to_list(map(iter(xs), fn(x: int) => x * 10))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(10)
+    expect(ys[1]).to_eq(20)
+    expect(ys[2]).to_eq(30)
+  )
+  it("lazy take", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = to_list(take(iter(xs), 3))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(3)
+  )
+  it("chained filter map take", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = to_list(take(map(filter(iter(xs), fn(x: int) => x > 2), fn(x: int) => x * 2), 2))
+    expect(ys).to_have_length(2)
+    expect(ys[0]).to_eq(6)
+    expect(ys[1]).to_eq(8)
+  )
+  it("take 0", fn():
+    xs = [1, 2, 3]
+    ys = to_list(take(iter(xs), 0))
+    expect(ys).to_have_length(0)
+  )
+  it("take more than length", fn():
+    xs = [1, 2, 3]
+    ys = to_list(take(iter(xs), 10))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[2]).to_eq(3)
+  )
+  it("for loop over iterator", fn():
+    xs = [10, 20, 30]
+    sum = 0
+    for x in iter(xs):
+      sum = sum + x
+    expect(sum).to_eq(60)
+  )
+  it("for loop with filter", fn():
+    xs = [1, 2, 3, 4, 5]
+    sum = 0
+    for x in filter(iter(xs), fn(x: int) => x > 3):
+      sum = sum + x
+    expect(sum).to_eq(9)
+  )
+  it("next returns Option", fn():
+    xs = [10, 20]
+    it = iter(xs)
+    a = next(it)
+    expect(a).to_eq(Some(10))
+    b = next(it)
+    expect(b).to_eq(Some(20))
+    c = next(it)
+    expect(c).to_be_none()
+  )
+  it("iter on set", fn():
+    s = {1, 2, 3}
+    ys = to_list(iter(s))
+    expect(ys).to_have_length(3)
+  )
+  it("iter on map", fn():
+    m = {"a": 1, "b": 2}
+    count = 0
+    for k, v in iter(m):
+      count = count + 1
+    expect(count).to_eq(2)
+  )
+  it("UFCS iter", fn():
+    xs = [1, 2, 3]
+    ys = to_list(iter(xs))
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+  )
 )

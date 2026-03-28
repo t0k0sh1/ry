@@ -12,6 +12,13 @@ Ry has a built-in RSpec-style test syntax. Test files are executed using the `ry
 ry test              # Auto-discover and run all *.test.ry files in the project
 ry test tests/spec   # Run all *.test.ry files under a directory (recursive)
 ry test test_file.ry # Run a specific test file
+ry test -p           # Run all tests in parallel (-p or --parallel)
+ry test -p tests/    # Run tests in a directory in parallel
+ry test -w           # Watch mode: re-run tests on file change (-w or --watch)
+ry test -w -p        # Watch mode with parallel execution
+ry test -w tests/    # Watch a specific directory
+ry test --coverage   # Run all tests with line coverage summary
+ry test --cov        # Short alias for --coverage
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
@@ -20,7 +27,7 @@ The exit code is 0 if all tests passed, 1 if any test failed.
 
 When `ry test` is run without arguments, it:
 
-1. Searches for `ry.toml` to find the project root
+1. Searches for `package.toml` to find the project root
 2. Recursively discovers all `*.test.ry` files under the project root (`.git`, `build`, `node_modules` are skipped)
 3. Runs each file and aggregates results
 
@@ -68,6 +75,8 @@ foo("arg", fn():
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
 | `to_be_some()` | Asserts Option is `Some` | Option |
+| `to_be_ok()` | Asserts Result is `Ok` | Result |
+| `to_be_err()` | Asserts Result is `Err` | Result |
 | `to_contain(val)` | Asserts container includes value | List, Set, Map, str |
 | `to_not_contain(val)` | Asserts container does not include value | List, Set, Map, str |
 | `to_be_greater_than(v)` | Asserts `actual > v` | int, float |
@@ -78,6 +87,21 @@ foo("arg", fn():
 | `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
 | `to_start_with(prefix)` | Asserts string starts with prefix | str |
 | `to_end_with(suffix)` | Asserts string ends with suffix | str |
+
+### fail
+
+Immediately marks the current test as failed.
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — marks the test as failed with a generic message
+- `fail(msg)` — marks the test as failed with a custom message
+- Execution continues after `fail()` (does not abort the test)
+- Only available in `ry test` mode
 
 ---
 
@@ -136,7 +160,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -158,7 +182,7 @@ Returns the number of times a mocked function was called (as `int`).
 ```
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -211,6 +235,31 @@ it("addition is commutative", fn(a: int, b: int):
 - On failure, the counterexample (failing inputs) is printed
 - The test stops at the first failure
 - Supported parameter types: `int` ([-1000, 1000]), `float` ([-1000.0, 1000.0]), `bool`, `str` (random ASCII, 0-20 chars)
+
+---
+
+## Test Coverage
+
+Run tests with the `--coverage` (or `--cov`) flag to measure line coverage:
+
+```bash
+ry test --coverage                    # All tests with coverage summary
+ry test --cov tests/spec/math.test.ry # Single file
+ry test --coverage tests/spec/        # Directory
+```
+
+### Output
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- Only user code is reported; standard library files are excluded
+- `--coverage` with `--parallel` falls back to sequential execution
 
 ---
 

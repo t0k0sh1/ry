@@ -17,17 +17,21 @@ extern "C" {
 const char *__ry_read_line();
 const char *__ry_read_all();
 
-// File I/O
+// File I/O (return NULL / non-zero on error; use __ry_get_last_error() for message)
 const char *__ry_read_text(const char *path);
-void __ry_write_text(const char *path, const char *content);
-void __ry_append_text(const char *path, const char *content);
+int64_t __ry_write_text(const char *path, const char *content);
+int64_t __ry_append_text(const char *path, const char *content);
 int64_t __ry_file_exists(const char *path);
-void __ry_delete_file(const char *path);
+int64_t __ry_delete_file(const char *path);
 void *__ry_read_bytes(const char *path);
-void __ry_write_bytes(const char *path, void *list);
+int64_t __ry_write_bytes(const char *path, void *list);
 
 // Byte conversions
 void *__ry_str_to_bytes(const char *s);
 const char *__ry_bytes_to_str(void *list);
+
+// Error message retrieval/setting (thread-local)
+const char *__ry_get_last_error();
+void __ry_set_last_error(const char *msg);
 
 }

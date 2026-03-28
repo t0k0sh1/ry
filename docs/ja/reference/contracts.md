@@ -19,7 +19,7 @@ fn deposit(amount: int, balance: int) -> int:
     return new_balance
 ```
 
-事前条件が満たされない場合、以下のメッセージとともにプログラムが終了します：
+事前条件が満たされない場合、以下のメッセージとともにプログラムが終了します:
 ```
 Contract violation: require failed in deposit()
 ```
@@ -30,29 +30,41 @@ Contract violation: require failed in deposit()
 
 事後条件はすべての `return` の直前にチェックされます。関数の戻り値について保証する条件を指定します。
 
-### `result` キーワード
+### 変数バインド
 
-`ensure` ブロック内では、`result` は戻り値を参照します。
+`ensure` には戻り値をバインドする変数名が必要です。この変数を事後条件の式で使用できます。
 
 ```python
 fn abs(x: int) -> int:
-    ensure:
-        result >= 0
+    ensure v:
+        v >= 0
     if x < 0:
         return -x
     return x
 ```
 
-### `old()` 式
-
-`old(expr)` は関数本体の実行前の式の値をキャプチャします。変更前後の状態を比較するのに便利です。
+Ry の関数引数はイミュータブルなので、`ensure` ブロック内で引数を直接参照して入口時の値と比較できます:
 
 ```python
 fn increment(x: int) -> int:
-    ensure:
-        result == old(x) + 1
+    ensure v:
+        v == x + 1
     return x + 1
 ```
+
+### タプル展開
+
+タプルを返す関数では、カンマ区切りで複数の変数名を指定できます:
+
+```python
+fn divide(a: int, b: int) -> (int, int):
+    ensure q, r:
+        q >= 0
+        r >= 0
+    return (a // b, a % b)
+```
+
+バインド変数の数はタプルの要素数と一致する必要があります。
 
 ---
 
@@ -63,9 +75,9 @@ fn deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
-    ensure:
-        result >= 0
-        result == old(balance) + amount
+    ensure v:
+        v >= 0
+        v == balance + amount
     new_balance: int = balance + amount
     return new_balance
 ```
@@ -74,7 +86,7 @@ fn deposit(amount: int, balance: int) -> int:
 
 ## 構造体の不変条件 (`invariant`)
 
-不変条件は構造体のインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます：
+不変条件は構造体のインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます:
 - 構築時
 - フィールド代入後
 
@@ -97,6 +109,7 @@ a.balance = -1                  # Contract violation: invariant failed
 
 - `require` と `ensure` ブロックはオプションで、関数本体の前に記述します。
 - 両方を使う場合、`require` は `ensure` の前に記述する必要があります。
-- `result` と `old()` は `ensure` ブロック内でのみ使用できます。
+- `ensure` には戻り値をバインドする変数名が必要です（例: `ensure v:`）。
+- タプル戻り値の場合、複数のバインド変数を指定できます（例: `ensure q, r:`）。
 - `invariant` は `record` 定義の末尾、全フィールド宣言の後に記述します。
 - すべての契約違反は `exit(1)` でプログラムを終了し、診断メッセージを出力します。

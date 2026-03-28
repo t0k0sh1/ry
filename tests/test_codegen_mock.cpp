@@ -11,7 +11,7 @@ TEST_F(CodeGenTest, MockBasicReplace) {
         "\n"
         "describe(\"mock basic\", fn():\n"
         "    it(\"replaces function\", fn():\n"
-        "        mock(greet, fn(): \"mocked\")\n"
+        "        mock(greet, fn() => \"mocked\")\n"
         "        expect(greet()).to_eq(\"mocked\")\n"
         "    )\n"
         ")\n"
@@ -29,7 +29,7 @@ TEST_F(CodeGenTest, MockWithArgs) {
         "\n"
         "describe(\"mock with args\", fn():\n"
         "    it(\"replaces function with args\", fn():\n"
-        "        mock(add, fn(a: int, b: int): a * b)\n"
+        "        mock(add, fn(a: int, b: int) => a * b)\n"
         "        expect(add(3, 4)).to_eq(12)\n"
         "    )\n"
         ")\n"
@@ -47,7 +47,7 @@ TEST_F(CodeGenTest, MockAutoRestore) {
         "\n"
         "describe(\"mock restore\", fn():\n"
         "    it(\"mocks\", fn():\n"
-        "        mock(greet, fn(): \"mocked\")\n"
+        "        mock(greet, fn() => \"mocked\")\n"
         "        expect(greet()).to_eq(\"mocked\")\n"
         "    )\n"
         "    it(\"auto-restores\", fn():\n"
@@ -68,7 +68,7 @@ TEST_F(CodeGenTest, MockVerifyCallCount) {
         "\n"
         "describe(\"verify\", fn():\n"
         "    it(\"counts calls\", fn():\n"
-        "        mock(greet, fn(): \"mocked\")\n"
+        "        mock(greet, fn() => \"mocked\")\n"
         "        greet()\n"
         "        greet()\n"
         "        greet()\n"
@@ -90,7 +90,7 @@ TEST_F(CodeGenTest, MockFunctionUsedAsExpr) {
         "\n"
         "describe(\"mock expr\", fn():\n"
         "    it(\"tracks calls in expressions\", fn():\n"
-        "        mock(get_value, fn(): 999)\n"
+        "        mock(get_value, fn() => 999)\n"
         "        x = get_value()\n"
         "        expect(x).to_eq(999)\n"
         "        expect(verify(get_value)).to_eq(1)\n"
@@ -107,7 +107,7 @@ TEST_F(CodeGenTest, MockOutsideTestModeError) {
     EXPECT_THROW(runSource(
         "fn greet() -> str:\n"
         "    return \"hello\"\n"
-        "mock(greet, fn(): \"mocked\")\n"
+        "mock(greet, fn() => \"mocked\")\n"
     ), std::exception);
 }
 
@@ -119,7 +119,7 @@ TEST_F(CodeGenTest, MockNonExistentFunctionError) {
     EXPECT_THROW(runTestSource(
         "describe(\"error\", fn():\n"
         "    it(\"errors\", fn():\n"
-        "        mock(no_such_fn, fn(): \"x\")\n"
+        "        mock(no_such_fn, fn() => \"x\")\n"
         "    )\n"
         ")\n"
     ), std::exception);
@@ -136,7 +136,7 @@ TEST_F(CodeGenTest, MockTypeMismatchError) {
         "\n"
         "describe(\"error\", fn():\n"
         "    it(\"errors\", fn():\n"
-        "        mock(greet, fn(): 42)\n"
+        "        mock(greet, fn() => 42)\n"
         "    )\n"
         ")\n"
     ), std::exception);

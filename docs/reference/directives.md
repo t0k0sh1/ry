@@ -108,7 +108,7 @@ Declares a function whose implementation is provided by the runtime (built-in). 
 
 ```
 @native
-fn contains(s: str, sub: str) -> bool
+fn contains(string: str, substring: str) -> bool
 
 print(contains("hello world", "world"))  # true
 ```
@@ -126,7 +126,7 @@ print("hello" + " world")  # hello world
 
 ```
 @native
-fn to_upper(s: str) -> str
+fn to_upper(string: str) -> str
 
 print("hello".to_upper())  # HELLO
 ```
@@ -141,9 +141,9 @@ fn range(n: int) -> List<int>
 @native
 fn range(start: int, end: int) -> List<int>
 
-print(len(range(5)))       # OK: matches 1-arg overload
-print(len(range(1, 10)))   # OK: matches 2-arg overload
-print(len(range()))        # Error: expects 1 or 2 argument(s), but got 0
+print(length(range(5)))       # OK: matches 1-arg overload
+print(length(range(1, 10)))   # OK: matches 2-arg overload
+print(length(range()))        # Error: expects 1 or 2 argument(s), but got 0
 ```
 
 **Standard library declarations (`core/`):**
@@ -152,7 +152,7 @@ The `core/` directory contains `@native` declarations for all built-in functions
 
 | File | Contents |
 |---|---|
-| `core/builtins.ry` | `print`, `len`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism` |
+| `core/builtins.ry` | `print`, `length`, `range`, `enumerate`, `zip`, `exit`, `args`, `available_parallelism`, `sleep` |
 | `core/str.ry` | `contains`, `starts_with`, `ends_with`, `find`, `substring`, `char_at`, `replace`, `to_upper`, `to_lower`, `trim`, `trim_start`, `trim_end`, `repeat`, `reverse`, `split`, `join` |
 | `core/convert.ry` | `to_int`, `to_float`, `to_str` |
 | `core/list.ry` | `append`, `pop`, `insert`, `remove_at`, `slice`, `distinct`, `flatten`, `sort`, `first`, `last`, `is_empty` |
@@ -243,6 +243,46 @@ it("property name", fn(a: int, b: int):
 | `str` | Random ASCII, 0-20 characters |
 
 On failure, the counterexample (parameter values that caused the failure) is printed.
+
+### `@inline`
+
+Provides inlining hints to the LLVM optimizer. By default, marks the function for aggressive inlining.
+
+**Basic usage (always inline):**
+
+```
+@inline
+fn add(a: int, b: int) -> int:
+    return a + b
+```
+
+**With mode parameter:**
+
+```
+@inline(mode="always")
+fn hot_path(x: int) -> int:
+    return x * 2 + 1
+
+@inline(mode="hint")
+fn medium_path(x: int) -> int:
+    return x + 1
+
+@inline(mode="never")
+fn cold_error_handler(msg: str):
+    print("ERROR: " + msg)
+```
+
+**Modes:**
+
+| Mode | LLVM Attribute | Description |
+|------|---------------|-------------|
+| `always` (default) | `AlwaysInline` | Always inline this function |
+| `hint` | `InlineHint` | Suggest inlining to the optimizer |
+| `never` | `NoInline` | Never inline this function |
+
+**Constraints:**
+- `@inline` cannot be used with `@native` (native functions have no body to inline).
+- An unknown mode value causes a compile error.
 
 ### Parameters (future extension)
 

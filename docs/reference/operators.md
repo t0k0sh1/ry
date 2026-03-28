@@ -8,7 +8,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
-| 0 | `!!` | Error propagation (postfix) | Left |
+| 0 | `?` `!!` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
@@ -34,7 +34,7 @@ Lower numbers indicate higher precedence (evaluated first).
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
 | `/` | Division (always float) | `7 / 2` -> `3.5` |
-| `//` | Integer division (truncated) | `7 // 2` -> `3` |
+| `//` | Floor division (toward -∞) | `7 // 2` -> `3`, `-7 // 2` -> `-4` |
 | `%` | Modulo | `7 % 3` -> `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` -> `1024.0` |
 | `-x` | Unary minus | `-5`, `-3.14` |
@@ -62,6 +62,7 @@ All return `bool`.
 
 - Can be used with numeric types (int / float) and bool.
 - `str` values are compared lexicographically (byte order).
+- Record types support `==` and `!=` with auto-generated field-by-field comparison (see [Struct Reference](structs.md#comparison--)).
 - The `in` operator is used for membership checks on sets, lists, and maps (`x in s`).
 - The `not in` operator is the negation of `in` (`x not in s`).
 - For maps, `in` checks whether the key exists.
@@ -111,6 +112,43 @@ flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
+
+## Error Propagation Operator (`?` / `!!`)
+
+The postfix `?` operator unwraps a `Result` value. If the value is `Ok(v)`, it evaluates to `v`. If the value is `Err(e)`, the enclosing function immediately returns `Err(e)`.
+
+The `!!` operator is an alias for `?` with identical semantics. Both can be used interchangeably.
+
+The enclosing function must have a `Result` return type.
+
+```python
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    x = safe_divide(a, b)?    # returns Err early if b == 0
+    y = safe_divide(x, c)!!
+    return Ok(y + 1)
+```
+
+This is equivalent to the following `match` pattern, but much more concise:
+
+```python
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
+        case Ok(x):
+            match safe_divide(x, c):
+                case Ok(y):
+                    return Ok(y + 1)
+                case Err(e):
+                    return Err(e)
+        case Err(e):
+            return Err(e)
+```
+
+---
 
 ## Ternary Conditional Operator
 
@@ -223,7 +261,8 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `+ - *` | float | int / float | float |
 | `+ - *` | int | float | float |
 | `/` | any numeric | any numeric | float |
-| `//` | any numeric | any numeric | int |
+| `//` | int | int | int |
+| `//` | float or int (one is float) | -- | float |
 | `**` | any numeric | any numeric | float |
 | `%` | int | int | int |
 | `%` | float or int (one is float) | -- | float |
@@ -259,7 +298,35 @@ fn operator-(a: MyType) -> MyType:
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
 | Logical (binary) | `and` `or` |
+| Membership | `in` |
+| Subscript | `[]` (read), `[]=` (write) |
+| Call | `()` |
+| Cast | `as` |
 | Unary | `-` `~` `not` |
+| Compound assignment | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
+
+### Return Type Constraints
+
+Comparison and logical operators must return `bool`:
+
+| Category | Operators | Required Return Type |
+|---|---|---|
+| Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| Logical | `and` `or` `not` | `bool` |
+| Membership | `in` | `bool` |
+| Cast | `as` | Required (target type) |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# Error: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+Arithmetic and bitwise operators have no return type constraint.
 
 ### Distinguishing Binary and Unary
 
@@ -274,3 +341,130 @@ fn operator-(a: Vec2, b: Vec2) -> Vec2:
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
+
+### Compound Assignment Operator Overloading
+
+Compound assignment operators (`+=`, `-=`, etc.) can be independently overloaded. This enables in-place optimization for large data structures.
+
+```python
+record Matrix:
+    data: List
+    rows: int
+    cols: int
+
+fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+    for i in range(len(a.data)):
+        a.data[i] = a.data[i] + b.data[i]
+    return a
+```
+
+#### Resolution Priority
+
+When `x += y` is evaluated:
+
+1. If `operator+=` is defined for the types → call it directly
+2. If `operator+=` is not defined but `operator+` is → fall back to `x = x + y`
+3. If neither is defined (for non-builtin types) → compile error
+
+```python
+record Vec2:
+    x: float
+    y: float
+
+fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+    return Vec2(a.x + b.x, a.y + b.y)
+
+v = Vec2(1.0, 2.0)
+v += Vec2(3.0, 4.0)  # calls operator+= directly
+# v.x == 4.0, v.y == 6.0
+```
+
+Compound assignment operators require exactly 2 parameters and have no return type constraint.
+
+### Subscript Operator Overloading
+
+The `[]` (read) and `[]=` (write) operators enable custom subscript behavior for user-defined types. Multi-index access (e.g., `m[row, col]`) is supported.
+
+```python
+record Grid:
+    a: int
+    b: int
+    c: int
+    d: int
+
+# Read: requires 2+ parameters (object + indices)
+fn operator[](g: Grid, row: int, col: int) -> int:
+    if row == 0 and col == 0:
+        return g.a
+    if row == 0 and col == 1:
+        return g.b
+    if row == 1 and col == 0:
+        return g.c
+    return g.d
+
+# Write: requires 3+ parameters (object + indices + value)
+fn operator[]=(g: Grid, row: int, col: int, value: int):
+    ...
+
+g = Grid(1, 2, 3, 4)
+print(g[0, 1])    # 2
+g[1, 0] = 99
+```
+
+User-defined subscript operators are tried first; if no match is found, built-in subscript behavior (for lists, maps, and arrays) is used as a fallback.
+
+### Membership Operator Overloading
+
+The `in` operator can be overloaded to define custom membership tests. Must return `bool`.
+
+```python
+record Range:
+    lo: int
+    hi: int
+
+fn operator in(value: int, r: Range) -> bool:
+    return value >= r.lo and value < r.hi
+
+r = Range(1, 10)
+print(5 in r)       # true
+print(15 not in r)  # true
+```
+
+User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, and lists) is used as a fallback. `not in` is automatically supported when `in` is defined.
+
+### Call Operator Overloading
+
+The `()` operator enables records to behave as callable objects. Requires at least 2 parameters (object + arguments).
+
+```python
+record Adder:
+    base: int
+
+fn operator()(a: Adder, x: int) -> int:
+    return a.base + x
+
+add5 = Adder(5)
+print(add5(10))    # 15
+```
+
+When a variable holding a record value is called like a function, the compiler tries `operator()` overloads first. If no match is found, other call resolution strategies (functions, constructors, lambdas) take precedence.
+
+### Cast Operator Overloading
+
+The `as` operator can be overloaded to define custom type conversions. Takes exactly 1 parameter (the source value) and must specify a return type (the target type). Dispatch matches by source type and return type.
+
+```python
+record Celsius:
+    value: int
+
+record Fahrenheit:
+    value: int
+
+fn operator as(c: Celsius) -> Fahrenheit:
+    return Fahrenheit(c.value * 9 // 5 + 32)
+
+c = Celsius(100)
+f = c as Fahrenheit   # Fahrenheit(212)
+```
+
+User-defined `as` operators are tried first; if no match is found, built-in casts (int, float, bool, str, etc.) are used as a fallback.

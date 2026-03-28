@@ -8,10 +8,10 @@
 
 | 優先順位 | 演算子 | 説明 | 結合性 |
 |---|---|---|---|
-| 0 | `!!` | エラー伝播（後置） | 左 |
+| 0 | `?` `!!` | エラー伝播（後置） | 左 |
 | 1 | `()` | グループ化 | — |
 | 2 | `+x` `-x` `~x` | 単項正・負、ビット NOT | 右 |
-| 3 | `**` | 累乗 | 右結合 |
+| 3 | `**` | 累乗 | 右 |
 | 3.5 | `as` | 型キャスト | 左 |
 | 4 | `*` `/` `%` `//` | 乗算・除算・剰余・整数除算 | 左 |
 | 5 | `+` `-` | 加算・減算 | 左 |
@@ -30,13 +30,13 @@
 
 | 演算子 | 説明 | 例 |
 |---|---|---|
-| `+` | 加算 / 文字列結合 | `1 + 2` → `3`、`"a" + "b"` → `"ab"` |
-| `-` | 減算 | `5 - 3` → `2` |
-| `*` | 乗算 / 文字列繰り返し | `4 * 3` → `12`、`"ab" * 3` → `"ababab"` |
-| `/` | 除算（常に float） | `7 / 2` → `3.5` |
-| `//` | 整数除算（切り捨て） | `7 // 2` → `3` |
-| `%` | 剰余 | `7 % 3` → `1` |
-| `**` | 累乗（常に float） | `2 ** 10` → `1024.0` |
+| `+` | 加算 / 文字列結合 | `1 + 2` -> `3`、`"a" + "b"` -> `"ab"` |
+| `-` | 減算 | `5 - 3` -> `2` |
+| `*` | 乗算 / 文字列繰り返し | `4 * 3` -> `12`、`"ab" * 3` -> `"ababab"` |
+| `/` | 除算（常に float） | `7 / 2` -> `3.5` |
+| `//` | 整数除算（-∞ 方向への切り捨て） | `7 // 2` -> `3`、`-7 // 2` -> `-4` |
+| `%` | 剰余 | `7 % 3` -> `1` |
+| `**` | 累乗（常に float） | `2 ** 10` -> `1024.0` |
 | `-x` | 単項マイナス | `-5`, `-3.14` |
 | `+x` | 単項プラス | `+5`（符号変更なし） |
 
@@ -62,6 +62,7 @@ s = "foo" + "bar"  # "foobar"
 
 - 数値型（int / float）とbool に対して使用可能。
 - `str` 同士は辞書順（バイト順）で比較。
+- レコード型はフィールドごとの自動比較で `==` と `!=` をサポート（[構造体リファレンス](structs.md#比較--)参照）。
 - `in` 演算子はセット、リスト、マップに対する所属チェックに使用（`x in s`）。
 - `not in` 演算子は `in` の否定（`x not in s`）。
 - マップの場合、`in` はキーの存在を確認します。
@@ -82,9 +83,9 @@ b = "a" in m    # true（マップキー検索）
 
 | 演算子 | 説明 | 型 |
 |---|---|---|
-| `and` | 論理 AND | `bool` × `bool` → `bool` |
-| `or` | 論理 OR | `bool` × `bool` → `bool` |
-| `not` | 論理 NOT | `bool` → `bool` |
+| `and` | 論理 AND | `bool` x `bool` -> `bool` |
+| `or` | 論理 OR | `bool` x `bool` -> `bool` |
+| `not` | 論理 NOT | `bool` -> `bool` |
 
 ```python
 a = true and false   # false
@@ -98,19 +99,56 @@ c = not true         # false
 
 | 演算子 | 説明 | 例 |
 |---|---|---|
-| `&` | ビット AND | `0b1100 & 0b1010` → `0b1000` |
-| `\|` | ビット OR | `0b1100 \| 0b1010` → `0b1110` |
-| `^` | ビット XOR | `0b1100 ^ 0b1010` → `0b0110` |
-| `~` | ビット NOT（単項） | `~0` → `-1` |
-| `<<` | 左シフト | `1 << 4` → `16` |
-| `>>` | 算術右シフト | `16 >> 2` → `4` |
-| `>>>` | 論理右シフト | `-1 >>> 1` → `9223372036854775807` |
+| `&` | ビット AND | `0b1100 & 0b1010` -> `0b1000` |
+| `\|` | ビット OR | `0b1100 \| 0b1010` -> `0b1110` |
+| `^` | ビット XOR | `0b1100 ^ 0b1010` -> `0b0110` |
+| `~` | ビット NOT（単項） | `~0` -> `-1` |
+| `<<` | 左シフト | `1 << 4` -> `16` |
+| `>>` | 算術右シフト | `16 >> 2` -> `4` |
+| `>>>` | 論理右シフト | `-1 >>> 1` -> `9223372036854775807` |
 
 ```python
 flags = 0b0001 | 0b0010   # 3
 masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
+
+## エラー伝播演算子（`?` / `!!`）
+
+後置 `?` 演算子は `Result` 値をアンラップします。値が `Ok(v)` の場合は `v` に評価されます。値が `Err(e)` の場合は、外側の関数から即座に `Err(e)` を返します。
+
+`!!` 演算子は `?` のエイリアスで、同一のセマンティクスを持ちます。両方を互換的に使用できます。
+
+外側の関数は `Result` 型を返す必要があります。
+
+```python
+fn safe_divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    x = safe_divide(a, b)?    # b == 0 の場合は Err を早期リターン
+    y = safe_divide(x, c)!!
+    return Ok(y + 1)
+```
+
+これは以下の `match` パターンと等価ですが、はるかに簡潔です:
+
+```python
+fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
+        case Ok(x):
+            match safe_divide(x, c):
+                case Ok(y):
+                    return Ok(y + 1)
+                case Err(e):
+                    return Err(e)
+        case Err(e):
+            return Err(e)
+```
+
+---
 
 ## 三項条件演算子
 
@@ -187,6 +225,8 @@ x = 10
 x += 5    # x = 15
 x -= 3    # x = 12
 x *= 2    # x = 24
+x //= 3  # x = 8
+x &= 6   # x = 0
 ```
 
 ## インクリメント・デクリメント演算子
@@ -221,10 +261,11 @@ f++           # f = 2.5（int 1 が float に型昇格）
 | `+ - *` | float | int / float | float |
 | `+ - *` | int | float | float |
 | `/` | 任意の数値 | 任意の数値 | float |
-| `//` | 任意の数値 | 任意の数値 | int |
+| `//` | int | int | int |
+| `//` | float または int（片方 float） | -- | float |
 | `**` | 任意の数値 | 任意の数値 | float |
 | `%` | int | int | int |
-| `%` | float または int（片方float） | — | float |
+| `%` | float または int（片方 float） | -- | float |
 | `+` | str | str | str |
 | `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
 | `*` | str | int | str |
@@ -257,7 +298,35 @@ fn operator-(a: MyType) -> MyType:
 | 比較（二項） | `==` `!=` `<` `<=` `>` `>=` |
 | ビット（二項） | `&` `\|` `^` `<<` `>>` `>>>` |
 | 論理（二項） | `and` `or` |
+| 所属 | `in` |
+| 添字 | `[]`（読み取り）、`[]=`（書き込み） |
+| 呼び出し | `()` |
+| キャスト | `as` |
 | 単項 | `-` `~` `not` |
+| 複合代入 | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
+
+### 戻り値型の制約
+
+比較演算子と論理演算子は `bool` を返す必要があります:
+
+| 種別 | 演算子 | 必須戻り値型 |
+|---|---|---|
+| 比較 | `==` `!=` `<` `<=` `>` `>=` | `bool` |
+| 論理 | `and` `or` `not` | `bool` |
+| 所属 | `in` | `bool` |
+| キャスト | `as` | 必須（ターゲット型） |
+
+```python
+# OK
+fn operator==(a: Vec2, b: Vec2) -> bool:
+    return a.x == b.x and a.y == b.y
+
+# エラー: comparison operator '==' must return 'bool', but returns 'int'
+fn operator==(a: Vec2, b: Vec2) -> int:
+    return 42
+```
+
+算術演算子・ビット演算子には戻り値型の制約はありません。
 
 ### 二項 / 単項の区別
 
@@ -272,3 +341,130 @@ fn operator-(a: Vec2, b: Vec2) -> Vec2:
 fn operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
+
+### 複合代入演算子のオーバーロード
+
+複合代入演算子（`+=`、`-=` 等）は個別にオーバーロードできます。大きなデータ構造のインプレース最適化を可能にします。
+
+```python
+record Matrix:
+    data: List
+    rows: int
+    cols: int
+
+fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+    for i in range(len(a.data)):
+        a.data[i] = a.data[i] + b.data[i]
+    return a
+```
+
+#### 解決優先順位
+
+`x += y` が評価される際:
+
+1. `operator+=` がその型に定義されている場合 → 直接呼び出す
+2. `operator+=` が未定義で `operator+` がある場合 → `x = x + y` にフォールバック
+3. どちらも未定義の場合（組み込み型以外） → コンパイルエラー
+
+```python
+record Vec2:
+    x: float
+    y: float
+
+fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+    return Vec2(a.x + b.x, a.y + b.y)
+
+v = Vec2(1.0, 2.0)
+v += Vec2(3.0, 4.0)  # operator+= を直接呼び出す
+# v.x == 4.0, v.y == 6.0
+```
+
+複合代入演算子は引数が正確に 2 つ必要で、戻り値型の制約はありません。
+
+### 添字演算子のオーバーロード
+
+`[]`（読み取り）と `[]=`（書き込み）演算子でユーザー定義型にカスタムの添字アクセスを定義できます。複数インデックスアクセス（例: `m[row, col]`）もサポートされています。
+
+```python
+record Grid:
+    a: int
+    b: int
+    c: int
+    d: int
+
+# 読み取り: 2個以上のパラメータ（オブジェクト + インデックス）が必要
+fn operator[](g: Grid, row: int, col: int) -> int:
+    if row == 0 and col == 0:
+        return g.a
+    if row == 0 and col == 1:
+        return g.b
+    if row == 1 and col == 0:
+        return g.c
+    return g.d
+
+# 書き込み: 3個以上のパラメータ（オブジェクト + インデックス + 値）が必要
+fn operator[]=(g: Grid, row: int, col: int, value: int):
+    ...
+
+g = Grid(1, 2, 3, 4)
+print(g[0, 1])    # 2
+g[1, 0] = 99
+```
+
+ユーザー定義の添字演算子が最初に試行され、一致しない場合は組み込みの添字動作（リスト、マップ、配列）がフォールバックとして使用されます。
+
+### 所属演算子のオーバーロード
+
+`in` 演算子をオーバーロードしてカスタムの所属チェックを定義できます。`bool` を返す必要があります。
+
+```python
+record Range:
+    lo: int
+    hi: int
+
+fn operator in(value: int, r: Range) -> bool:
+    return value >= r.lo and value < r.hi
+
+r = Range(1, 10)
+print(5 in r)       # true
+print(15 not in r)  # true
+```
+
+ユーザー定義の `in` 演算子が最初に試行され、一致しない場合は組み込みの動作（セット、マップ、リスト）がフォールバックとして使用されます。`in` が定義されていれば `not in` は自動的にサポートされます。
+
+### 呼び出し演算子のオーバーロード
+
+`()` 演算子でレコードを呼び出し可能なオブジェクトとして動作させることができます。2個以上のパラメータ（オブジェクト + 引数）が必要です。
+
+```python
+record Adder:
+    base: int
+
+fn operator()(a: Adder, x: int) -> int:
+    return a.base + x
+
+add5 = Adder(5)
+print(add5(10))    # 15
+```
+
+レコード値を保持する変数を関数のように呼び出すと、コンパイラはまず `operator()` のオーバーロードを試みます。一致しない場合は、他の呼び出し解決戦略（関数、コンストラクタ、ラムダ）が優先されます。
+
+### キャスト演算子のオーバーロード
+
+`as` 演算子をオーバーロードしてカスタムの型変換を定義できます。パラメータは正確に 1 つ（ソース値）で、戻り値型（ターゲット型）の指定が必要です。ソース型と戻り値型でディスパッチされます。
+
+```python
+record Celsius:
+    value: int
+
+record Fahrenheit:
+    value: int
+
+fn operator as(c: Celsius) -> Fahrenheit:
+    return Fahrenheit(c.value * 9 // 5 + 32)
+
+c = Celsius(100)
+f = c as Fahrenheit   # Fahrenheit(212)
+```
+
+ユーザー定義の `as` 演算子が最初に試行され、一致しない場合は組み込みのキャスト（int、float、bool、str 等）がフォールバックとして使用されます。

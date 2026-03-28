@@ -1,13 +1,13 @@
 [English](../../reference/math.md) | [日本語](../../ja/reference/math.md) | [繁體中文](math.md)
 
-# 數學函式 (`std.math`)
+# 數學函式 (`math`)
 
 ## 概述
 
-`std.math` 套件提供數學常數與函式。與 `std` 套件不同，它不會自動匯入。需要使用明確匯入來存取函式。
+`math` 套件提供數學常數與函式。與 `std` 套件不同，它不會自動匯入。需要使用明確匯入來存取函式。
 
 ```python
-from std.math import sqrt, PI, sin
+from math import sqrt, PI, sin
 ```
 
 ---
@@ -22,7 +22,7 @@ from std.math import sqrt, PI, sin
 | `NaN` | `float` | 非數值 (Not a Number) |
 
 ```python
-from std.math import PI, E, Inf, NaN
+from math import PI, E, Inf, NaN
 
 circumference = 2.0 * PI * radius
 ```
@@ -37,7 +37,7 @@ circumference = 2.0 * PI * radius
 | `abs(x)` | `(float) -> float` | 浮點數的絕對值 |
 
 ```python
-from std.math import abs
+from math import abs
 
 abs(-5)      # 5
 abs(-3.14)   # 3.14
@@ -54,7 +54,7 @@ abs(-3.14)   # 3.14
 | `round(x)` | `(float) -> int` | 四捨五入 |
 
 ```python
-from std.math import floor, ceil, round
+from math import floor, ceil, round
 
 floor(3.7)    # 3
 ceil(3.2)     # 4
@@ -71,7 +71,7 @@ round(3.5)    # 4
 | `pow(x, y)` | `(float, float) -> float` | x 的 y 次方 |
 
 ```python
-from std.math import sqrt, pow
+from math import sqrt, pow
 
 sqrt(9.0)       # 3.0
 pow(2.0, 3.0)   # 8.0
@@ -134,7 +134,7 @@ pow(2.0, 3.0)   # 8.0
 | `is_inf(x)` | `(float) -> bool` | 若 x 為正或負無窮大則回傳 true |
 
 ```python
-from std.math import is_nan, is_inf, NaN, Inf
+from math import is_nan, is_inf, NaN, Inf
 
 is_nan(NaN)   # true
 is_inf(Inf)   # true

@@ -14,11 +14,12 @@ Ry には `describe`、`it`、`expect` を使った RSpec スタイルの組み�
 ry test                       # *.test.ry ファイルを自動検出して実行
 ry test tests/spec            # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test tests/my_test.test.ry # 特定のテストファイルを実行
+ry test -p                    # 全テストを並列実行（-p または --parallel）
 ```
 
 すべてのテストが成功すると終了コード `0`、1つでも失敗すると `1` が返されます。
 
-引数なしで実行すると、`ry test` は `ry.toml` を探してプロジェクトルートを特定し、すべての `*.test.ry` ファイルを再帰的に検出します。
+引数なしで実行すると、`ry test` は `package.toml` を探してプロジェクトルートを特定し、すべての `*.test.ry` ファイルを再帰的に検出します。
 
 ---
 
@@ -89,7 +90,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -106,7 +107,7 @@ describe("mocking", fn():
 ```python
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)

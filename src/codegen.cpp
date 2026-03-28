@@ -1,17 +1,25 @@
 #include "ry/codegen.hpp"
+#include "ry/coverage_runtime.hpp"
 #include "ry/diagnostic.hpp"
+#include <climits>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
-CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_unique<llvm::LLVMContext>()),
-                     mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
-                     builder_(*ctx_),
-                     test_mode_(test_mode),
-                     sm_(sm) {
+CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
+                 int coverage_file_id_offset)
+    : ctx_(std::make_unique<llvm::LLVMContext>()),
+      mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
+      builder_(*ctx_),
+      test_mode_(test_mode),
+      coverage_mode_(coverage_mode),
+      coverage_file_id_offset_(coverage_file_id_offset),
+      sm_(sm) {
     i64Ty_ = llvm::Type::getInt64Ty(*ctx_);
     i32Ty_ = llvm::Type::getInt32Ty(*ctx_);
+    i16Ty_ = llvm::Type::getInt16Ty(*ctx_);
     i8Ty_  = llvm::Type::getInt8Ty(*ctx_);
     f64Ty_ = llvm::Type::getDoubleTy(*ctx_);
+    f32Ty_ = llvm::Type::getFloatTy(*ctx_);
     i1Ty_  = llvm::Type::getInt1Ty(*ctx_);
     ptrTy_ = llvm::PointerType::getUnqual(*ctx_);
 
@@ -19,11 +27,43 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm) : ctx_(std::make_uniqu
     builtins_["exit"] = [this](const std::vector<ExprPtr> &args) { emitExit(args); };
 
     errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
+    {
+        std::vector<FieldDef> errorFields;
+        errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
+        errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
+        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, ""};
+    }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
     iteratorHeaderTy_ = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "IteratorHeader");
+
+    anyTy_ = llvm::StructType::create(
+        *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
+
+    fnTy_ptr_to_ptr_       = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
+    fnTy_ptr_to_i64_       = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
+    fnTy_ptr_to_void_      = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    fnTy_ptr_ptr_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    fnTy_ptr_ptr_to_i64_   = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
+    fnTy_ptr_i64_to_ptr_   = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
+    fnTy_ptr_ptr_ptr_to_ptr_ = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, ptrTy_}, false);
+    fnTy_void_to_ptr_      = llvm::FunctionType::get(ptrTy_, {}, false);
+}
+
+llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
+                                            llvm::ArrayRef<llvm::Type*> argTys) {
+    auto *fnTy = llvm::FunctionType::get(retTy, argTys, false);
+    return mod_->getOrInsertFunction(name, fnTy);
+}
+
+llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
+    auto it = global_string_cache_.find(str);
+    if (it != global_string_cache_.end()) return it->second;
+    auto *gs = builder_.CreateGlobalString(str, name);
+    global_string_cache_[str] = gs;
+    return gs;
 }
 
 // ===== B5: FnScope RAII =====
@@ -35,15 +75,14 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
-    savedResultAlloca_ = cg_.result_alloca_;
+    savedEnsureBindings_ = cg_.ensure_bindings_;
     savedInEnsureContext_ = cg_.in_ensure_context_;
-    savedOldValueMap_ = std::move(cg_.old_value_map_);
+    savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.current_postconditions_ = nullptr;
-    cg_.result_alloca_ = nullptr;
+    cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
-    cg_.old_value_map_.clear();
 }
 
 CodeGen::FnScope::~FnScope() {
@@ -52,9 +91,29 @@ CodeGen::FnScope::~FnScope() {
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
-    cg_.result_alloca_ = savedResultAlloca_;
+    cg_.ensure_bindings_ = savedEnsureBindings_;
     cg_.in_ensure_context_ = savedInEnsureContext_;
-    cg_.old_value_map_ = std::move(savedOldValueMap_);
+    cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
+}
+
+// ===== Coverage instrumentation =====
+
+void CodeGen::emitCoverage(const SourceLocation &loc) {
+    if (!coverage_mode_ || loc.line <= 0) return;
+    int32_t gid = loc.file_id + coverage_file_id_offset_;
+
+    // Register line at compile time (deduplicated)
+    int64_t key = (static_cast<int64_t>(gid) << 32) | loc.line;
+    if (registered_coverage_lines_.insert(key).second)
+        __ry_coverage_register_line(gid, loc.line);
+
+    // Emit runtime hit call
+    auto *ft = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {i32Ty_, i32Ty_}, false);
+    auto hitFn = mod_->getOrInsertFunction("__ry_coverage_hit", ft);
+    builder_.CreateCall(hitFn,
+        {llvm::ConstantInt::get(i32Ty_, gid),
+         llvm::ConstantInt::get(i32Ty_, loc.line)});
 }
 
 // ===== Error helpers =====
@@ -120,14 +179,6 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<SelectStmt>>) {
-                for (auto &selectCase : s->cases) {
-                    std::visit([&](const auto &c) {
-                        collectMockedFunctions(c.body, out);
-                    }, selectCase);
-                }
-                collectMockedFunctions(s->else_body, out);
-                collectMockedFunctions(s->timeout_body, out);
             }
         }, stmt);
         // Also scan lambda args (e.g., describe/it trailing blocks)
@@ -192,24 +243,101 @@ llvm::AllocaInst *CodeGen::getOrCreateVar(const std::string &name, llvm::Type *t
     return alloca;
 }
 
+// ===== Low-level type helpers =====
+
+const std::string &CodeGen::getLowLevelTypeName(llvm::Value *val) const {
+    static const std::string empty;
+    auto it = low_level_type_names_.find(val);
+    if (it != low_level_type_names_.end()) return it->second;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto it2 = low_level_type_names_.find(load->getPointerOperand());
+        if (it2 != low_level_type_names_.end()) return it2->second;
+    }
+    return empty;
+}
+
+bool CodeGen::isUnsignedLowLevel(llvm::Value *val) const {
+    std::string name = getLowLevelTypeName(val);
+    return isUnsignedLowLevelName(name);
+}
+
+bool CodeGen::isUnsignedLowLevelName(const std::string &name) {
+    return !name.empty() && name[0] == 'u';
+}
+
+bool CodeGen::isLowLevelTypeName(const std::string &name) {
+    return name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+           name == "u8" || name == "u16" || name == "u32" || name == "u64" || name == "f32";
+}
+
+std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {
+    if (auto *ne = std::get_if<NumberExpr>(&node.data)) {
+        if (isLowLevelTypeName(ne->suffix)) return ne->suffix;
+    }
+    if (auto *fe = std::get_if<FloatExpr>(&node.data)) {
+        if (isLowLevelTypeName(fe->suffix)) return fe->suffix;
+    }
+    return "";
+}
+
+bool CodeGen::isLowLevelIntTy(llvm::Type *ty) const {
+    return ty == i16Ty_ || ty == i32Ty_;
+}
+
+bool CodeGen::isLowLevelIntTy(llvm::Value *val) const {
+    const std::string &name = getLowLevelTypeName(val);
+    if (!name.empty()) return name != "f32";
+    return isLowLevelIntTy(val->getType());
+}
+
+bool CodeGen::isLowLevelFloatTy(llvm::Type *ty) const {
+    return ty == f32Ty_;
+}
+
+bool CodeGen::isLowLevelTy(llvm::Type *ty) const {
+    return isLowLevelIntTy(ty) || isLowLevelFloatTy(ty);
+}
+
+bool CodeGen::isLowLevelTy(llvm::Value *val) const {
+    return isLowLevelIntTy(val) || isLowLevelFloatTy(val->getType());
+}
+
+void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op) {
+    std::string lhsName = getLowLevelTypeName(lhs);
+    std::string rhsName = getLowLevelTypeName(rhs);
+    bool lhsLL = !lhsName.empty() || isLowLevelTy(lhs->getType());
+    bool rhsLL = !rhsName.empty() || isLowLevelTy(rhs->getType());
+    if (lhsLL || rhsLL) {
+        if (lhs->getType() != rhs->getType()) {
+            codegenError("type error: cannot mix types in operator '" + op +
+                         "'; low-level numeric types require explicit 'as' cast");
+        }
+        // Both have metadata: must match (e.g., u32 vs i32 is an error)
+        if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName) {
+            codegenError("type error: cannot mix types in operator '" + op +
+                         "'; low-level numeric types require explicit 'as' cast");
+        }
+    }
+}
+
 // ===== B1: Type promotion helpers =====
 
 llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
-    if (v->getType() == i8Ty_)
-        return builder_.CreateZExt(v, i64Ty_, "byteext");
+    if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
+        return builder_.CreateZExt(v, i64Ty_, "u8ext");
     return v;
 }
 
 std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, llvm::Value *rhs) {
-    if (!lhs->getType()->isDoubleTy()) {
+    if (!lhs->getType()->isDoubleTy() && !isLowLevelTy(lhs)) {
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else
             lhs = builder_.CreateSIToFP(lhs, f64Ty_, "lhs_f");
     }
-    if (!rhs->getType()->isDoubleTy()) {
+    if (!rhs->getType()->isDoubleTy() && !isLowLevelTy(rhs)) {
         if (rhs->getType() == i8Ty_)
             rhs = builder_.CreateUIToFP(rhs, f64Ty_, "rhs_f");
         else
@@ -219,14 +347,91 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
 }
 
 
+// ===== B3.4: Record subtype helpers =====
+
+bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &parentType) const {
+    std::string current = childType;
+    while (!current.empty()) {
+        auto it = struct_types_.find(current);
+        if (it == struct_types_.end()) return false;
+        if (it->second.parent_name == parentType) return true;
+        current = it->second.parent_name;
+    }
+    return false;
+}
+
+llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
+                                         const std::string &childTypeName,
+                                         const std::string &parentTypeName) {
+    auto pit = struct_types_.find(parentTypeName);
+    if (pit == struct_types_.end())
+        codegenError("unknown parent type: " + parentTypeName);
+    llvm::Value *result = llvm::UndefValue::get(pit->second.llvmType);
+    for (unsigned i = 0; i < pit->second.fields.size(); ++i) {
+        llvm::Value *field = builder_.CreateExtractValue(childVal, i, "slice." + std::to_string(i));
+        result = builder_.CreateInsertValue(result, field, i);
+    }
+    return result;
+}
+
+llvm::Value *CodeGen::tryEmitSubtypeCoerce(llvm::Value *val, llvm::Type *targetTy) {
+    auto *argST = llvm::dyn_cast<llvm::StructType>(val->getType());
+    auto *paramST = llvm::dyn_cast<llvm::StructType>(targetTy);
+    if (!argST || !paramST) return nullptr;
+    std::string argName = argST->getName().str();
+    std::string paramName = paramST->getName().str();
+    if (!isSubtypeOf(argName, paramName)) return nullptr;
+    return emitSubtypeSlice(val, argName, paramName);
+}
+
+// ===== B3.5: Implicit widening conversion helpers =====
+
+bool CodeGen::isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
+                                   const std::string &paramTypeName) const {
+    // Block low-level types except i8/u8 (u8 is the successor of byte)
+    if (isLowLevelTy(argVal) && argVal->getType() != i8Ty_) return false;
+    if (isLowLevelTypeName(paramTypeName)) return false;
+    auto *argTy = argVal->getType();
+    return (argTy == i8Ty_  && paramTy == i64Ty_) ||   // u8 -> int
+           (argTy == i8Ty_  && paramTy == f64Ty_) ||   // u8 -> float
+           (argTy == i64Ty_ && paramTy == f64Ty_);     // int  -> float
+}
+
+llvm::Value *CodeGen::emitWideningConversion(llvm::Value *argVal, llvm::Type *paramTy) {
+    auto *argTy = argVal->getType();
+    if (argTy == i8Ty_ && paramTy == i64Ty_) {
+        std::string name = getLowLevelTypeName(argVal);
+        if (name == "i8")
+            return builder_.CreateSExt(argVal, i64Ty_, "i8_to_int");
+        return builder_.CreateZExt(argVal, i64Ty_, "u8_to_int");
+    }
+    if (argTy == i8Ty_ && paramTy == f64Ty_) {
+        std::string name = getLowLevelTypeName(argVal);
+        if (name == "i8")
+            return builder_.CreateSIToFP(argVal, f64Ty_, "i8_to_float");
+        return builder_.CreateUIToFP(argVal, f64Ty_, "u8_to_float");
+    }
+    if (argTy == i64Ty_ && paramTy == f64Ty_)
+        return builder_.CreateSIToFP(argVal, f64Ty_, "int_to_float");
+    llvm_unreachable("invalid widening conversion");
+}
+
 // ===== B4: emitUserFnCall =====
 
 llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                                           const std::vector<ExprPtr> &args,
                                           std::vector<llvm::Value*> &outArgVals) {
     auto fit = functions_.find(callee);
-    if (fit == functions_.end())
-        codegenError("undefined function: " + callee);
+    if (fit == functions_.end()) {
+        if (native_fn_arg_counts_.count(callee)) {
+            codegenError("@native function '" + callee +
+                "' is declared but not handled by any builtin dispatcher. "
+                "Did you forget to add a case in codegen_call_*.cpp "
+                "or add emitBuiltin*() to the dispatch chain in codegen_call.cpp?");
+        } else {
+            codegenError("undefined function: " + callee);
+        }
+    }
 
     auto &overloads = fit->second;
 
@@ -244,54 +449,165 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             emittedArgs[i] = emitExpr(*args[i]);
     }
 
-    // Filter candidates
-    std::vector<OverloadEntry*> candidates;
+    struct RankedCandidate {
+        OverloadEntry *entry;
+        int exactMatches = 0;
+        int subtypeMatches = 0;
+        int wideningMatches = 0;
+        int unionMatches = 0;
+        int anyMatches = 0;
+        int defaultsUsed = 0;
+    };
+
+    auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
+        if (lhs.exactMatches != rhs.exactMatches)
+            return lhs.exactMatches > rhs.exactMatches;
+        if (lhs.subtypeMatches != rhs.subtypeMatches)
+            return lhs.subtypeMatches > rhs.subtypeMatches;
+        if (lhs.wideningMatches != rhs.wideningMatches)
+            return lhs.wideningMatches > rhs.wideningMatches;
+        if (lhs.unionMatches != rhs.unionMatches)
+            return lhs.unionMatches > rhs.unionMatches;
+        if (lhs.anyMatches != rhs.anyMatches)
+            return lhs.anyMatches < rhs.anyMatches;
+        if (lhs.defaultsUsed != rhs.defaultsUsed)
+            return lhs.defaultsUsed < rhs.defaultsUsed;
+        return false;
+    };
+
+    // Filter and rank candidates
+    std::vector<RankedCandidate> candidates;
     for (auto &entry : overloads) {
-        if (entry.paramTypes.size() != args.size())
+        if (args.size() < entry.minArity || args.size() > entry.paramTypes.size())
             continue;
         bool match = true;
+        RankedCandidate candidate{&entry, 0, 0, 0, 0, 0,
+                                  static_cast<int>(entry.paramTypes.size() - args.size())};
         for (size_t i = 0; i < args.size(); ++i) {
+            std::string resolvedParamTypeName =
+                i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
             if (isNone[i]) {
                 if (!isOptionType(entry.paramTypes[i])) { match = false; break; }
-            } else {
-                if (emittedArgs[i]->getType() != entry.paramTypes[i]) {
-                    // Check if param is a union type that accepts this arg type
-                    if (i < entry.paramTypeNames.size() && isUnionType(entry.paramTypeNames[i])) {
-                        std::string norm = normalizeUnionType(entry.paramTypeNames[i]);
-                        auto uIt = union_type_info_.find(norm);
-                        if (uIt != union_type_info_.end()) {
-                            bool found = false;
-                            for (auto *ct : uIt->second.componentTypes) {
-                                if (ct == emittedArgs[i]->getType()) { found = true; break; }
-                            }
-                            if (!found) { match = false; break; }
-                        } else { match = false; break; }
-                    } else { match = false; break; }
+                continue;
+            }
+
+            if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
+                candidate.exactMatches++;
+                continue;
+            }
+
+            if (auto *argST = llvm::dyn_cast<llvm::StructType>(emittedArgs[i]->getType())) {
+                if (auto *paramST = llvm::dyn_cast<llvm::StructType>(entry.paramTypes[i])) {
+                    if (isSubtypeOf(argST->getName().str(), paramST->getName().str())) {
+                        candidate.subtypeMatches++;
+                        continue;
+                    }
                 }
             }
+
+            if (isWideningConversion(emittedArgs[i], entry.paramTypes[i], resolvedParamTypeName)) {
+                candidate.wideningMatches++;
+                continue;
+            }
+
+            if (isAnyType(entry.paramTypes[i])) {
+                // Match: any type accepts all primitives; wrapping deferred to arg building
+                candidate.anyMatches++;
+            } else if (isUnionType(resolvedParamTypeName)) {
+                std::string norm = normalizeUnionType(resolvedParamTypeName);
+                auto uIt = union_type_info_.find(norm);
+                if (uIt != union_type_info_.end()) {
+                    bool found = false;
+                    for (auto *ct : uIt->second.componentTypes) {
+                        if (ct == emittedArgs[i]->getType()) { found = true; break; }
+                    }
+                    if (!found) { match = false; break; }
+                    candidate.unionMatches++;
+                } else { match = false; break; }
+            } else if (isAnyType(emittedArgs[i]->getType()) &&
+                       canAnyHoldType(entry.paramTypes[i])) {
+                // Matching a concrete parameter from an any-typed value requires runtime unwrap,
+                // so treat it with the same low specificity as an any fallback.
+                candidate.anyMatches++;
+            } else { match = false; break; }
         }
         if (match)
-            candidates.push_back(&entry);
+            candidates.push_back(candidate);
     }
 
     if (candidates.empty())
         codegenError("no matching overload for '" + callee + "'");
-    if (candidates.size() > 1)
+
+    RankedCandidate *best = &candidates[0];
+    bool ambiguous = false;
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        if (isBetterCandidate(candidates[i], *best)) {
+            best = &candidates[i];
+            ambiguous = false;
+        } else if (!isBetterCandidate(*best, candidates[i])) {
+            ambiguous = true;
+        }
+    }
+
+    if (ambiguous)
         codegenError("ambiguous call to '" + callee + "'");
 
-    auto *chosen = candidates[0];
+    auto *chosen = best->entry;
 
     // Build final arg values (fill in None args with proper Option type, wrap union args)
     outArgVals.clear();
     for (size_t i = 0; i < args.size(); ++i) {
+        std::string resolvedParamTypeName =
+            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
         if (isNone[i]) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
-                   i < chosen->paramTypeNames.size() &&
-                   isUnionType(chosen->paramTypeNames[i])) {
-            outArgVals.push_back(wrapInUnion(emittedArgs[i], chosen->paramTypeNames[i]));
+                   isWideningConversion(emittedArgs[i], chosen->paramTypes[i], resolvedParamTypeName)) {
+            outArgVals.push_back(emitWideningConversion(emittedArgs[i], chosen->paramTypes[i]));
+        } else if (auto *sliced = tryEmitSubtypeCoerce(emittedArgs[i], chosen->paramTypes[i])) {
+            outArgVals.push_back(sliced);
+        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
+                   isAnyType(chosen->paramTypes[i])) {
+            outArgVals.push_back(wrapInAny(emittedArgs[i]));
+        } else if (isAnyType(emittedArgs[i]->getType()) &&
+                   emittedArgs[i]->getType() != chosen->paramTypes[i]) {
+            outArgVals.push_back(unwrapFromAny(emittedArgs[i], chosen->paramTypes[i]));
+        } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
+                   isUnionType(resolvedParamTypeName)) {
+            outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
         } else {
             outArgVals.push_back(emittedArgs[i]);
+        }
+    }
+
+    // Fill in default values for omitted parameters
+    for (size_t i = args.size(); i < chosen->paramTypes.size(); ++i) {
+        bool isNoneLit = std::holds_alternative<NoneExpr>(chosen->defaultValues[i]->data) ||
+                         (std::holds_alternative<VariableExpr>(chosen->defaultValues[i]->data) &&
+                          std::get<VariableExpr>(chosen->defaultValues[i]->data).name == "None");
+        if (isNoneLit) {
+            outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
+            continue;
+        }
+        llvm::Value *defVal = emitExpr(*chosen->defaultValues[i]);
+        std::string resolvedParamTypeName =
+            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
+        if (defVal->getType() != chosen->paramTypes[i] &&
+            isWideningConversion(defVal, chosen->paramTypes[i], resolvedParamTypeName)) {
+            outArgVals.push_back(emitWideningConversion(defVal, chosen->paramTypes[i]));
+        } else if (auto *sliced = tryEmitSubtypeCoerce(defVal, chosen->paramTypes[i])) {
+            outArgVals.push_back(sliced);
+        } else if (defVal->getType() != chosen->paramTypes[i] &&
+                   isAnyType(chosen->paramTypes[i])) {
+            outArgVals.push_back(wrapInAny(defVal));
+        } else if (isAnyType(defVal->getType()) &&
+                   defVal->getType() != chosen->paramTypes[i]) {
+            outArgVals.push_back(unwrapFromAny(defVal, chosen->paramTypes[i]));
+        } else if (defVal->getType() != chosen->paramTypes[i] &&
+                   isUnionType(resolvedParamTypeName)) {
+            outArgVals.push_back(wrapInUnion(defVal, resolvedParamTypeName));
+        } else {
+            outArgVals.push_back(defVal);
         }
     }
 
@@ -334,7 +650,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::FunctionCallee mockIncFn = mod_->getOrInsertFunction("__ry_mock_increment_call", mockIncTy);
 
         auto &nameStr = mock_name_strings_[callee];
-        if (!nameStr) nameStr = builder_.CreateGlobalString(callee, ".mock." + callee);
+        if (!nameStr) nameStr = cachedGlobalString(callee, ".mock." + callee);
         llvm::Value *mockPtr = builder_.CreateCall(mockGetFn, {nameStr}, "mock_ptr");
         llvm::Value *nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
         llvm::Value *isMocked = builder_.CreateICmpNE(mockPtr, nullPtr, "is_mocked");
@@ -385,23 +701,21 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
     if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
-        matchedEntry->returnTypeName.substr(0, 5) == "Task<" &&
+        matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
         matchedEntry->returnTypeName.back() == '>') {
         std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
-        task_result_types_[callResult] = resolveType(inner);
+        type_meta_[TM_TaskResult][callResult] = resolveType(inner);
     }
 
-    if (matchedEntry && matchedEntry->returnTypeName.size() > 8 &&
-        matchedEntry->returnTypeName.substr(0, 8) == "Channel<" &&
-        matchedEntry->returnTypeName.back() == '>') {
-        std::string inner = matchedEntry->returnTypeName.substr(8, matchedEntry->returnTypeName.size() - 9);
-        channel_element_types_[callResult] = resolveType(inner);
-    }
+    // Propagate low-level type metadata from return type
+    if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
+        low_level_type_names_[callResult] = matchedEntry->returnTypeName;
 
     return callResult;
 }
 
 void CodeGen::emitStmt(CallStmt &s) {
+    emitCoverage(s.loc);
     if (s.callee == "describe") {
         emitDescribeCall(s);
         return;
@@ -414,6 +728,10 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitMockCall(s);
         return;
     }
+    if (s.callee == "fail") {
+        emitFailCall(s);
+        return;
+    }
     auto it = builtins_.find(s.callee);
     if (it != builtins_.end()) {
         it->second(s.args);
@@ -424,14 +742,19 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
-    if (s.callee == "join" || s.callee == "available_parallelism" || s.callee == "args" ||
-        s.callee == "range" || s.callee == "send" || s.callee == "try_send" ||
-        s.callee == "recv" || s.callee == "recv_opt" || s.callee == "try_recv" ||
+    if (s.callee == "available_parallelism" || s.callee == "args" ||
+        s.callee == "range" || s.callee == "send" ||
+        s.callee == "recv" ||
         s.callee == "close" ||
         s.callee == "write_text" || s.callee == "append_text" ||
         s.callee == "delete_file" || s.callee == "write_bytes" ||
         s.callee == "listen" ||
-        s.callee == "http_listen") {
+        s.callee == "http_listen" ||
+        s.callee == "sleep" ||
+        s.callee == "block_on" ||
+        s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
+        s.callee == "shutdown" ||
+        s.callee == "json_free") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
@@ -485,6 +808,8 @@ void CodeGen::emitStmt(CallStmt &s) {
             return;
         }
     }
+    if (tryCallOperator(s.callee, s.args))
+        return;
     emitUserFnCall(s.callee, s.args);
 }
 
@@ -496,255 +821,6 @@ llvm::Value *CodeGen::toBool(llvm::Value *v) {
             v, llvm::ConstantFP::get(f64Ty_, 0.0), "ftobool");
     return builder_.CreateICmpNE(
         v, llvm::ConstantInt::get(v->getType(), 0), "itobool");
-}
-
-llvm::Type *CodeGen::resolveType(const std::string &typeName) {
-    // Built-in primitive types first (cannot be shadowed by aliases)
-    if (typeName == "int")   return i64Ty_;
-    if (typeName == "byte")  return i8Ty_;
-    if (typeName == "float") return f64Ty_;
-    if (typeName == "bool")  return i1Ty_;
-    if (typeName == "str")   return ptrTy_;
-    if (typeName == "Error") return errorTy_;
-    if (typeName == "Unit")  return llvm::Type::getVoidTy(*ctx_);
-
-    // Optional type suffix: "int?" -> Option<int>
-    if (!typeName.empty() && typeName.back() == '?') {
-        std::string inner = typeName.substr(0, typeName.size() - 1);
-        llvm::Type *innerTy = resolveType(inner);
-        return getOptionType(innerTy);
-    }
-
-    // Check type alias (with cycle detection)
-    auto aliasIt = type_aliases_.find(typeName);
-    if (aliasIt != type_aliases_.end()) {
-        std::string resolved = resolveTypeAlias(typeName);
-        return resolveType(resolved);
-    }
-
-    // Int literal type: "42", "-5"
-    if (isIntLiteralType(typeName))
-        return i64Ty_;
-
-    // Range type: "1..12"
-    if (isRangeType(typeName))
-        return i64Ty_;
-
-    // String literal type: "\"N\""
-    if (isStrLiteralType(typeName))
-        return ptrTy_;
-
-    // Literal union type: "0 | 1 | 2" or "\"N\" | \"S\""
-    if (isLiteralUnionType(typeName))
-        return parseTypeConstraint(typeName)->kind == TypeConstraint::IntLiteral ? i64Ty_ : ptrTy_;
-
-    // Union type: "int | str"
-    if (typeName.find(" | ") != std::string::npos) {
-        std::string normalized = normalizeUnionType(typeName);
-        auto it = union_type_info_.find(normalized);
-        if (it != union_type_info_.end()) return it->second.llvmType;
-
-        auto components = parseUnionComponents(normalized);
-        std::vector<llvm::Type*> compTypes;
-        uint64_t maxSize = 0;
-        const auto &dl = mod_->getDataLayout();
-        for (auto &c : components) {
-            auto *ty = resolveType(c);
-            compTypes.push_back(ty);
-            maxSize = std::max(maxSize, (uint64_t)dl.getTypeAllocSize(ty));
-        }
-        auto *dataTy = llvm::ArrayType::get(
-            llvm::Type::getInt8Ty(*ctx_), maxSize);
-        auto *unionTy = llvm::StructType::create(
-            *ctx_, {i64Ty_, dataTy}, "union." + normalized);
-
-        union_type_info_[normalized] = {unionTy, components, compTypes};
-        return unionTy;
-    }
-
-    // Tuple type: "(int, float)"
-    if (!typeName.empty() && typeName.front() == '(') {
-        // Parse element types from "(T1, T2, ...)"
-        std::string inner = typeName.substr(1, typeName.size() - 2); // strip parens
-        std::vector<llvm::Type*> elementTypes;
-        size_t depth = 0;
-        size_t start = 0;
-        for (size_t i = 0; i <= inner.size(); ++i) {
-            if (i < inner.size() && inner[i] == '(') ++depth;
-            else if (i < inner.size() && inner[i] == ')') --depth;
-            else if ((i == inner.size() || inner[i] == ',') && depth == 0) {
-                std::string elem = inner.substr(start, i - start);
-                // trim leading/trailing spaces
-                size_t s = elem.find_first_not_of(' ');
-                size_t e = elem.find_last_not_of(' ');
-                if (s != std::string::npos)
-                    elem = elem.substr(s, e - s + 1);
-                elementTypes.push_back(resolveType(elem));
-                start = i + 1;
-            }
-        }
-        return llvm::StructType::get(*ctx_, elementTypes);
-    }
-
-    // fn(...) -> T function type → opaque pointer
-    if (typeName.size() > 3 && typeName.substr(0, 3) == "fn(") {
-        return ptrTy_;
-    }
-
-    // List<T> parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "List<" && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Map<K, V> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "Map<" && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Set<T> parsing
-    if (typeName.size() > 4 && typeName.substr(0, 4) == "Set<" && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Task<T> parsing
-    if (typeName.size() > 5 && typeName.substr(0, 5) == "Task<" && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Channel<T> parsing
-    if (typeName.size() > 8 && typeName.substr(0, 8) == "Channel<" && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // TCP socket opaque handle types
-    if (typeName == "TcpListener") return ptrTy_;
-    if (typeName == "TcpStream")   return ptrTy_;
-
-    // HTTP opaque handle types
-    if (typeName == "HttpRequest")  return ptrTy_;
-    if (typeName == "HttpResponse") return ptrTy_;
-
-    // Option<T> parsing
-    if (typeName.size() > 7 && typeName.substr(0, 7) == "Option<" && typeName.back() == '>') {
-        std::string inner = typeName.substr(7, typeName.size() - 8);
-        llvm::Type *innerTy = resolveType(inner);
-        return getOptionType(innerTy);
-    }
-
-    auto it = struct_types_.find(typeName);
-    if (it != struct_types_.end()) return it->second.llvmType;
-
-    // enum name → i64
-    if (enum_types_.count(typeName)) return i64Ty_;
-
-    codegenError("unknown type: " + typeName);
-}
-
-llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
-    auto it = option_types_.find(innerTy);
-    if (it != option_types_.end()) return it->second;
-    llvm::StructType *optTy = llvm::StructType::create(
-        *ctx_, {i1Ty_, innerTy}, "Option");
-    option_types_[innerTy] = optTy;
-    return optTy;
-}
-
-bool CodeGen::isOptionType(llvm::Type *ty) {
-    auto *st = llvm::dyn_cast<llvm::StructType>(ty);
-    if (!st) return false;
-    for (auto &pair : option_types_) {
-        if (pair.second == st) return true;
-    }
-    return false;
-}
-
-std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
-    std::string inner = typeStr.substr(4, typeStr.size() - 5);
-    size_t depth = 0;
-    for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '<') ++depth;
-        else if (inner[i] == '>') --depth;
-        else if (inner[i] == ',' && depth == 0) {
-            std::string kStr = inner.substr(0, i);
-            std::string vStr = inner.substr(i + 1);
-            while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
-            while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-            return {resolveType(kStr), resolveType(vStr)};
-        }
-    }
-    return {nullptr, nullptr};
-}
-
-llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
-    auto it = task_result_types_.find(taskVal);
-    if (it != task_result_types_.end())
-        return it->second;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(taskVal)) {
-        auto ptrIt = task_result_types_.find(load->getPointerOperand());
-        if (ptrIt != task_result_types_.end())
-            return ptrIt->second;
-    }
-    return nullptr;
-}
-
-CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
-    // Parse "fn(int, float) -> int"
-    FnTypeInfo info;
-    // Find the opening paren
-    size_t openParen = typeStr.find('(');
-    size_t closeParen = typeStr.find(')');
-    if (openParen == std::string::npos || closeParen == std::string::npos)
-        codegenError("invalid function type: " + typeStr);
-
-    std::string paramStr = typeStr.substr(openParen + 1, closeParen - openParen - 1);
-    // Parse comma-separated parameter types
-    if (!paramStr.empty()) {
-        size_t start = 0;
-        int depth = 0;
-        for (size_t i = 0; i <= paramStr.size(); ++i) {
-            if (i < paramStr.size() && paramStr[i] == '(') ++depth;
-            else if (i < paramStr.size() && paramStr[i] == ')') --depth;
-            else if ((i == paramStr.size() || paramStr[i] == ',') && depth == 0) {
-                std::string p = paramStr.substr(start, i - start);
-                // trim
-                size_t s = p.find_first_not_of(' ');
-                size_t e = p.find_last_not_of(' ');
-                if (s != std::string::npos)
-                    p = p.substr(s, e - s + 1);
-                info.paramTypes.push_back(resolveType(p));
-                start = i + 1;
-            }
-        }
-    }
-
-    // Parse return type after " -> "
-    size_t arrow = typeStr.find("->", closeParen);
-    if (arrow != std::string::npos) {
-        std::string retStr = typeStr.substr(arrow + 2);
-        size_t s = retStr.find_first_not_of(' ');
-        if (s != std::string::npos)
-            retStr = retStr.substr(s);
-        info.returnType = resolveType(retStr);
-    } else {
-        info.returnType = llvm::Type::getVoidTy(*ctx_);
-    }
-
-    return info;
-}
-
-llvm::Value *CodeGen::buildNoneValue(llvm::Type *optionTy) {
-    llvm::Value *val = llvm::UndefValue::get(optionTy);
-    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 0), 0);
-    val = builder_.CreateInsertValue(val, llvm::UndefValue::get(
-        llvm::cast<llvm::StructType>(optionTy)->getElementType(1)), 1);
-    return val;
-}
-
-llvm::Value *CodeGen::buildSomeValue(llvm::Value *inner, llvm::Type *optionTy) {
-    llvm::Value *val = llvm::UndefValue::get(optionTy);
-    val = builder_.CreateInsertValue(val, llvm::ConstantInt::get(i1Ty_, 1), 0);
-    val = builder_.CreateInsertValue(val, inner, 1);
-    return val;
 }
 
 // ===== C stdlib function helpers =====
@@ -825,255 +901,156 @@ llvm::FunctionCallee CodeGen::getStdlibExit() {
 }
 
 void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    auto printfFn = getStdlibPrintf();
-    llvm::Constant *errMsg = builder_.CreateGlobalString(message, globalName);
-    builder_.CreateCall(printfFn, {errMsg});
+    // fprintf(stderr, message)
+    auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
+    auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
+#ifdef __APPLE__
+    const char *stderrName = "__stderrp";
+#else
+    const char *stderrName = "stderr";
+#endif
+    auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
+    llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
+    llvm::Constant *errMsg = cachedGlobalString(message, globalName);
+    builder_.CreateCall(fprintfFn, {stderrVal, errMsg});
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
 }
 
+void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
+                               const std::string &errMsg, const std::string &globalName,
+                               const std::string &bbPrefix) {
+    if (index->getType() == i1Ty_)
+        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
+
+    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
+        if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
+            int64_t idx = ci->getSExtValue();
+            uint64_t sz = cs->getZExtValue();
+            if (idx < 0 || (uint64_t)idx >= sz)
+                codegenError("index " + std::to_string(idx) +
+                             " out of bounds (size " + std::to_string(sz) + ")");
+            return;
+        }
+    }
+
+    llvm::Value *negCheck = builder_.CreateICmpSLT(
+        index, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_neg");
+    llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
+    llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
+    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
+    builder_.CreateCondBr(oob, oobBB, okBB);
+    builder_.SetInsertPoint(oobBB);
+    emitRuntimeError(errMsg, globalName);
+    builder_.SetInsertPoint(okBB);
+}
+
+llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
+                                            const std::string &typeName,
+                                            const std::string &context,
+                                            const std::string &truncName) {
+    if (val->getType() == f64Ty_ && targetTy == f32Ty_)
+        return builder_.CreateFPTrunc(val, f32Ty_, truncName);
+
+    if (val->getType() == i64Ty_ && (targetTy == i8Ty_ || targetTy == i16Ty_ || targetTy == i32Ty_)) {
+        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+            int64_t v = ci->getSExtValue();
+            bool isUnsigned = (!typeName.empty() && typeName[0] == 'u');
+            bool outOfRange = false;
+            if (targetTy == i8Ty_) {
+                outOfRange = isUnsigned ? (v < 0 || v > 255) : (v < INT8_MIN || v > INT8_MAX);
+            } else if (targetTy == i16Ty_) {
+                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT16_MAX) : (v < INT16_MIN || v > INT16_MAX);
+            } else {
+                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT32_MAX) : (v < INT32_MIN || v > INT32_MAX);
+            }
+            if (outOfRange)
+                codegenError(typeName + " value out of range" + context + ": " + std::to_string(v));
+        }
+        return builder_.CreateTrunc(val, targetTy, truncName);
+    }
+
+    return nullptr;
+}
+
 void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
                               llvm::FunctionCallee printfFn, const std::string &suffix) {
     if (ty == i1Ty_) {
-        llvm::Constant *t = builder_.CreateGlobalString("true", ".fmt_true" + suffix);
-        llvm::Constant *f = builder_.CreateGlobalString("false", ".fmt_false" + suffix);
+        llvm::Constant *t = cachedGlobalString("true", ".fmt_true" + suffix);
+        llvm::Constant *f = cachedGlobalString("false", ".fmt_false" + suffix);
         builder_.CreateCall(printfFn, {builder_.CreateSelect(val, t, f, "bool_fmt")});
     } else if (ty->isPointerTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%s", ".fmt_s" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_s" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
     } else if (ty == i8Ty_) {
-        llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
-        llvm::Constant *fmt = builder_.CreateGlobalString("%d", ".fmt_b" + suffix);
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "i8") {
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i8_print");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i8" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else if (llName == "u8") {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8_def" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        }
+    } else if (ty == i16Ty_) {
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u16") {
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u16_print");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u16" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        } else {
+            llvm::Value *ext = builder_.CreateSExt(val, i32Ty_, "i16_print");
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i16" + suffix);
+            builder_.CreateCall(printfFn, {fmt, ext});
+        }
+    } else if (ty == i32Ty_) {
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u32") {
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u32" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        } else {
+            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_i32" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        }
+    } else if (ty == f32Ty_) {
+        llvm::Value *ext = builder_.CreateFPExt(val, f64Ty_, "f32_print");
+        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f32" + suffix);
         builder_.CreateCall(printfFn, {fmt, ext});
     } else if (ty->isDoubleTy()) {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%g", ".fmt_f" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("%g", ".fmt_f" + suffix);
         builder_.CreateCall(printfFn, {fmt, val});
+    } else if (ty == anyTy_) {
+        llvm::Value *str = emitAnyToString(val);
+        llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_any" + suffix);
+        builder_.CreateCall(printfFn, {fmt, str});
     } else if (ty == errorTy_) {
         llvm::Value *msg = builder_.CreateExtractValue(val, 0, "err_msg");
         llvm::Value *code = builder_.CreateExtractValue(val, 1, "err_code");
-        llvm::Constant *fmt = builder_.CreateGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
+        llvm::Constant *fmt = cachedGlobalString("Error: %s (code: %ld)", ".fmt_err" + suffix);
         builder_.CreateCall(printfFn, {fmt, msg, code});
+    } else if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string name = st->getName().str();
+        if (struct_types_.count(name)) {
+            llvm::Value *str = structToString(val);
+            llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_struct" + suffix);
+            builder_.CreateCall(printfFn, {fmt, str});
+        }
     } else {
-        llvm::Constant *fmt = builder_.CreateGlobalString("%ld", ".fmt_i" + suffix);
-        builder_.CreateCall(printfFn, {fmt, val});
+        std::string llName = getLowLevelTypeName(val);
+        if (llName == "u64") {
+            llvm::Constant *fmt = cachedGlobalString("%lu", ".fmt_u64" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        } else {
+            llvm::Constant *fmt = cachedGlobalString("%ld", ".fmt_i" + suffix);
+            builder_.CreateCall(printfFn, {fmt, val});
+        }
     }
 }
 
-// ===== Literal/Range type helpers =====
-
-std::string CodeGen::resolveTypeAlias(const std::string &typeName) {
-    std::unordered_set<std::string> visited;
-    std::string current = typeName;
-    while (true) {
-        if (!visited.insert(current).second)
-            codegenError("Circular type alias detected: " + typeName);
-        auto it = type_aliases_.find(current);
-        if (it == type_aliases_.end())
-            break;
-        current = it->second;
-    }
-    return current;
-}
-
-bool CodeGen::isIntLiteralType(const std::string &typeName) {
-    if (typeName.empty()) return false;
-    size_t start = (typeName[0] == '-') ? 1 : 0;
-    if (start >= typeName.size()) return false;
-    for (size_t i = start; i < typeName.size(); ++i) {
-        if (!std::isdigit(typeName[i])) return false;
-    }
-    return true;
-}
-
-bool CodeGen::isStrLiteralType(const std::string &typeName) {
-    if (typeName.size() < 2 || typeName.front() != '"' || typeName.back() != '"')
-        return false;
-    // Ensure it's a single quoted string, not a union like "N" | "S"
-    // Check there's exactly one opening and one closing quote
-    size_t quoteCount = 0;
-    for (char c : typeName)
-        if (c == '"') quoteCount++;
-    return quoteCount == 2;
-}
-
-bool CodeGen::isRangeType(const std::string &typeName) {
-    auto pos = typeName.find("..");
-    if (pos == std::string::npos || pos == 0 || pos == typeName.size() - 2)
-        return false;
-    std::string lo = typeName.substr(0, pos);
-    std::string hi = typeName.substr(pos + 2);
-    return isIntLiteralType(lo) && isIntLiteralType(hi);
-}
-
-bool CodeGen::isLiteralUnionType(const std::string &typeName) {
-    if (typeName.find(" | ") == std::string::npos) return false;
-    auto components = parseUnionComponents(typeName);
-    if (components.empty()) return false;
-    bool allInt = true, allStr = true;
-    for (auto &c : components) {
-        if (allInt && !isIntLiteralType(c)) allInt = false;
-        if (allStr && !isStrLiteralType(c)) allStr = false;
-        if (!allInt && !allStr) return false;
-    }
-    return allInt || allStr;
-}
-
-std::optional<CodeGen::TypeConstraint> CodeGen::parseTypeConstraint(const std::string &typeName) {
-    // Callers are responsible for resolving type aliases before calling this function.
-
-    // Range type: "1..12"
-    if (isRangeType(typeName)) {
-        auto pos = typeName.find("..");
-        TypeConstraint tc;
-        tc.kind = TypeConstraint::IntRange;
-        tc.range_low = std::stoll(typeName.substr(0, pos));
-        tc.range_high = std::stoll(typeName.substr(pos + 2));
-        if (tc.range_low > tc.range_high)
-            codegenError("invalid range type: low bound " +
-                std::to_string(tc.range_low) + " > high bound " +
-                std::to_string(tc.range_high));
-        return tc;
-    }
-
-    // Single int literal: "42"
-    if (isIntLiteralType(typeName)) {
-        TypeConstraint tc;
-        tc.kind = TypeConstraint::IntLiteral;
-        tc.int_values.push_back(std::stoll(typeName));
-        return tc;
-    }
-
-    // Single str literal: "\"N\""
-    if (isStrLiteralType(typeName)) {
-        TypeConstraint tc;
-        tc.kind = TypeConstraint::StrLiteral;
-        tc.str_values.push_back(typeName.substr(1, typeName.size() - 2));
-        return tc;
-    }
-
-    // Union of literals
-    if (typeName.find(" | ") != std::string::npos) {
-        auto components = parseUnionComponents(typeName);
-        if (components.empty()) return std::nullopt;
-
-        // Check if all int literals
-        bool allInt = true;
-        for (auto &c : components) {
-            if (!isIntLiteralType(c)) { allInt = false; break; }
-        }
-        if (allInt) {
-            TypeConstraint tc;
-            tc.kind = TypeConstraint::IntLiteral;
-            for (auto &c : components)
-                tc.int_values.push_back(std::stoll(c));
-            return tc;
-        }
-
-        // Check if all str literals
-        bool allStr = true;
-        for (auto &c : components) {
-            if (!isStrLiteralType(c)) { allStr = false; break; }
-        }
-        if (allStr) {
-            TypeConstraint tc;
-            tc.kind = TypeConstraint::StrLiteral;
-            for (auto &c : components)
-                tc.str_values.push_back(c.substr(1, c.size() - 2));
-            return tc;
-        }
-    }
-
-    return std::nullopt;
-}
-
-void CodeGen::emitConstraintCheck(llvm::Value *val, const TypeConstraint &constraint,
-                                   const std::string &varName) {
-    if (constraint.kind == TypeConstraint::IntLiteral) {
-        // Compile-time check if constant
-        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-            int64_t v = ci->getSExtValue();
-            bool found = false;
-            for (int64_t allowed : constraint.int_values) {
-                if (v == allowed) { found = true; break; }
-            }
-            if (!found) {
-                std::string allowed_str;
-                for (size_t i = 0; i < constraint.int_values.size(); ++i) {
-                    if (i > 0) allowed_str += " | ";
-                    allowed_str += std::to_string(constraint.int_values[i]);
-                }
-                codegenError(
-                    "value " + std::to_string(v) + " is not in literal type " + allowed_str +
-                    " for variable '" + varName + "'");
-            }
-            return; // Compile-time check passed
-        }
-        // Runtime check: compare against each allowed value, OR results
-        llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
-        for (int64_t allowed : constraint.int_values) {
-            llvm::Value *cmp = builder_.CreateICmpEQ(
-                val, llvm::ConstantInt::get(i64Ty_, allowed), "lit_cmp");
-            anyMatch = builder_.CreateOr(anyMatch, cmp, "lit_or");
-        }
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(anyMatch, okBB, failBB);
-        builder_.SetInsertPoint(failBB);
-        emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
-                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
-        builder_.SetInsertPoint(okBB);
-
-    } else if (constraint.kind == TypeConstraint::IntRange) {
-        // Compile-time check if constant
-        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-            int64_t v = ci->getSExtValue();
-            if (v < constraint.range_low || v > constraint.range_high) {
-                codegenError(
-                    "value " + std::to_string(v) + " is out of range " +
-                    std::to_string(constraint.range_low) + ".." +
-                    std::to_string(constraint.range_high) +
-                    " for variable '" + varName + "'");
-            }
-            return; // Compile-time check passed
-        }
-        // Runtime check: low <= val <= high
-        llvm::Value *geLow = builder_.CreateICmpSGE(
-            val, llvm::ConstantInt::get(i64Ty_, constraint.range_low), "range_ge");
-        llvm::Value *leHigh = builder_.CreateICmpSLE(
-            val, llvm::ConstantInt::get(i64Ty_, constraint.range_high), "range_le");
-        llvm::Value *inRange = builder_.CreateAnd(geLow, leHigh, "in_range");
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(inRange, okBB, failBB);
-        builder_.SetInsertPoint(failBB);
-        emitRuntimeError("runtime error: value out of range for '" + varName + "'\n",
-                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
-        builder_.SetInsertPoint(okBB);
-
-    } else if (constraint.kind == TypeConstraint::StrLiteral) {
-        // Compile-time check: if the value is a global string constant, check it
-        if (auto *constExpr = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
-            // Can't easily extract string from ConstantExpr, fall through to runtime
-        }
-        // For string literals, we need runtime strcmp checks
-        auto strcmpFn = getStdlibStrcmp();
-
-        llvm::Value *anyMatch = llvm::ConstantInt::get(i1Ty_, 0);
-        for (const auto &allowed : constraint.str_values) {
-            llvm::Constant *allowedStr = builder_.CreateGlobalString(
-                allowed, ".str_lit_" + std::to_string(constraint_err_counter_) + "_" + allowed);
-            llvm::Value *cmpResult = builder_.CreateCall(strcmpFn, {val, allowedStr}, "strcmp_res");
-            llvm::Value *isEq = builder_.CreateICmpEQ(
-                cmpResult, llvm::ConstantInt::get(i32Ty_, 0), "str_eq");
-            anyMatch = builder_.CreateOr(anyMatch, isEq, "str_or");
-        }
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "constraint.ok", fn_);
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, "constraint.fail", fn_);
-        builder_.CreateCondBr(anyMatch, okBB, failBB);
-        builder_.SetInsertPoint(failBB);
-        emitRuntimeError("runtime error: value not in allowed set for '" + varName + "'\n",
-                          ".constraint_err_" + std::to_string(constraint_err_counter_++));
-        builder_.SetInsertPoint(okBB);
-    }
-}

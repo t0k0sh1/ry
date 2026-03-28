@@ -1,27 +1,132 @@
-from std.net import bind, listen, accept, connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
+from io import str_to_bytes, bytes_to_str
 
 describe("TCP socket API", fn():
-    it("bind returns Some on valid address", fn():
-        match bind("127.0.0.1", 18090):
-            case Some(server):
-                close(server)
-                expect(true).to_eq(true)
-            case None:
-                expect(true).to_eq(false)
-
-    )
-    it("connect to closed port returns None", fn():
-        match connect("127.0.0.1", 19998):
-            case Some(conn):
+  it("bind returns Ok on valid address", fn():
+    match bind("127.0.0.1", 0):
+      case Ok(server):
+        close(server)
+        expect(true).to_eq(true)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("listen returns Ok on valid listener", fn():
+    match bind("127.0.0.1", 0):
+      case Ok(server):
+        match listen(server, 1):
+          case Ok(_):
+            expect(true).to_eq(true)
+          case Err(e):
+            fail("unexpected error")
+        close(server)
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("tls_connect to closed port returns Err", fn():
+    match tls_connect("127.0.0.1", 19991):
+      case Ok(conn):
+        close(conn)
+        fail("expected Err but got Ok")
+      case Err(e):
+        expect(true).to_eq(true)
+  )
+  it("connect to closed port returns Err", fn():
+    match connect("127.0.0.1", 19998):
+      case Ok(conn):
+        close(conn)
+        fail("expected Err but got Ok")
+      case Err(e):
+        expect(true).to_eq(true)
+  )
+  it("set_recv_timeout causes recv to return Err on timeout", fn():
+    async fn timeout_server(server: TcpListener) -> str:
+      match accept(server):
+        case Ok(conn):
+          sleep(500)
+          close(conn)
+        case Err(e):
+          ...
+      close(server)
+      return "done"
+    match bind("127.0.0.1", 0):
+      case Ok(server):
+        match listen(server, 1):
+          case Ok(_):
+            port = listener_port(server)
+            t = timeout_server(server)
+            match connect("127.0.0.1", port):
+              case Ok(conn):
+                set_recv_timeout(conn, 100)
+                match recv(conn, 4096):
+                  case Ok(data):
+                    fail("expected Err but got Ok")
+                  case Err(e):
+                    expect(true).to_eq(true)
                 close(conn)
-                expect(true).to_eq(false)
-            case None:
-                expect(true).to_eq(true)
-
-    )
-    # TODO: re-enable once network test hang on CI (macos-14) is resolved
-    # it("echo round-trip with spawn", fn():
-    #     ...
-    # )
+              case Err(e):
+                fail("unexpected error")
+            block_on(t)
+          case Err(e):
+            fail("unexpected error")
+      case Err(e):
+        fail("unexpected error")
+  )
+  it("echo round-trip with async fn", fn():
+    async fn run_server(server: TcpListener) -> str:
+      match accept(server):
+        case Ok(conn):
+          match recv(conn, 4096):
+            case Ok(data):
+              match bytes_to_str(data):
+                case Ok(msg):
+                  match send(conn, str_to_bytes("echo:" + msg)):
+                    case Ok(_):
+                      ...
+                    case Err(e):
+                      ...
+                case Err(e):
+                  ...
+            case Err(e):
+              ...
+          close(conn)
+        case Err(e):
+          ...
+      close(server)
+      return "done"
+    fn run_client(port: int) -> str:
+      match connect("127.0.0.1", port):
+        case Ok(conn):
+          match send(conn, str_to_bytes("hello")):
+            case Ok(_):
+              ...
+            case Err(e):
+              ...
+          match recv(conn, 4096):
+            case Ok(resp):
+              match bytes_to_str(resp):
+                case Ok(msg):
+                  close(conn)
+                  return msg
+                case Err(e):
+                  ...
+            case Err(e):
+              ...
+          close(conn)
+          return "fail"
+        case Err(e):
+          return "fail"
+    match bind("127.0.0.1", 0):
+      case Ok(server):
+        match listen(server, 1):
+          case Ok(_):
+            port = listener_port(server)
+            t = run_server(server)
+            resp_msg = run_client(port)
+            expect(resp_msg).to_eq("echo:hello")
+            block_on(t)
+          case Err(e):
+            fail("unexpected error")
+      case Err(e):
+        fail("unexpected error")
+  )
 )

@@ -9,20 +9,18 @@
 | 関数 | 説明 |
 |------|------|
 | `print(expr)` | 値を標準出力に表示 |
-| `len(x)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
+| `length(value)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
 | `args()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
-| `channel[T]()` | unbuffered な `Channel<T>` を作成 |
-| `channel[T](capacity)` | buffered な `Channel<T>` を作成 |
-| `send(ch, value)` | `Channel<T>` に値を送る |
-| `try_send(ch, value)` | `Channel<T>` への送信をブロックせず試みる |
-| `recv(ch)` | `Channel<T>` から値を受け取る |
-| `recv_opt(ch)` | `Channel<T>` から `Option<T>` として受け取り、`Channel<Unit>` では `bool` を返す |
-| `try_recv(ch)` | `Channel<T>` からの受信を `Option<T>`、`Channel<Unit>` では `bool` で即時に試みる |
-| `close(ch)` | `Channel<T>` を閉じる |
-| `join(task)` | `Task<T>` の完了を待ち、結果を返す |
+| `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
+| `env(key)` | 環境変数を `Option<str>` で返す |
+| `env(key, default)` | 環境変数を返す。未設定なら `default` を返す |
+| `send(stream, data)` | `TcpStream` を通じて `List<u8>` を送信し、送信バイト数を返す |
+| `recv(stream, max)` | `TcpStream` から最大 `max` バイトを `List<u8>` として受信 |
+| `close(handle)` | `TcpStream` または `TcpListener` を閉じる |
+| `block_on(task)` | 現在のスレッドを `Task<T>` の完了までブロックし、結果を返す |
 
 ### Option
 
@@ -62,27 +60,38 @@
 | `is_subset(set, set)` | 最初のセットが2番目の部分集合かを返す |
 | `is_superset(set, set)` | 最初のセットが2番目の上位集合かを返す |
 
+### イテレータ
+
+| 関数 | 説明 |
+|------|------|
+| `iter(collection)` | List、Set、Map から遅延イテレータを作成 |
+| `next(iter)` | 次の要素を `Option<T>` として返す。使い切った場合は `None` |
+| `to_list(iter)` | イテレータの残りの要素をすべて `List<T>` に収集 |
+| `filter(iter, pred)` | 述語にマッチする要素のみを返す遅延イテレータを返す |
+| `map(iter, fn)` | 各要素を変換する遅延イテレータを返す |
+| `take(iter, n)` | 最大 n 要素を返す遅延イテレータを返す |
+
 ### [文字列操作](builtins-string.md)
 
 | 関数 | 説明 |
 |------|------|
-| `contains(s, sub)` | 部分文字列が含まれるか |
-| `starts_with(s, prefix)` | 接頭辞で始まるか |
-| `ends_with(s, suffix)` | 接尾辞で終わるか |
-| `find(s, sub)` | 部分文字列の文字位置（`Option<int>`） |
-| `byte_len(s)` | 文字列のバイト長を返す |
-| `substring(s, start, end)` | 部分文字列を取得 |
-| `char_at(s, i)` | 指定位置の文字を取得 |
-| `replace(s, old, new)` | 部分文字列を全置換 |
-| `to_upper(s)` / `to_lower(s)` | 大文字・小文字変換 |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | 空白除去 |
-| `repeat(s, n)` | 文字列を n 回繰り返す |
-| `reverse(s)` | 文字列を逆順にする |
-| `split(s, delim)` | 文字列を分割してリストを返す |
+| `contains(string, substring)` | 部分文字列が含まれるか |
+| `starts_with(string, prefix)` | 接頭辞で始まるか |
+| `ends_with(string, suffix)` | 接尾辞で終わるか |
+| `find(string, substring)` | 部分文字列の文字位置（`Option<int>`） |
+| `byte_len(string)` | 文字列のバイト長を返す |
+| `substring(string, start, end)` | 部分文字列を取得 |
+| `char_at(string, i)` | 指定位置の文字を取得 |
+| `replace(string, old, new)` | 部分文字列を全置換 |
+| `to_upper(string)` / `to_lower(string)` | 大文字・小文字変換 |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | 空白除去 |
+| `repeat(string, count)` | 文字列を n 回繰り返す |
+| `reverse(string)` | 文字列を逆順にする |
+| `split(string, delimiter)` | 文字列を分割してリストを返す |
 | `join(list, sep)` | リストの文字列をセパレータで結合 |
 | `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換 |
 
-→ 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
+-> 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
 
 ---
 
@@ -134,18 +143,18 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**シグネチャ:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**シグネチャ:** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 リスト・マップ・セットの要素数、または文字列の UTF-8 文字数を返します。バイト長が必要な場合は `byte_len()` を使用してください。
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 文字数)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3 (UTF-8 文字数)
 ```
 
 ---
@@ -175,7 +184,7 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # 通常の呼び出し
 s.add(1)          # 既に存在するため無視
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
@@ -209,6 +218,7 @@ print(2 in s)     # false
 - `step > 0` の場合、`start` から昇順に `end` に向かって生成します。
 - `step < 0` の場合、`start` から降順に `end` に向かって生成します。
 - `step == 0` の場合、ランタイムエラーになります。
+- 範囲が空の場合（例: `range(0, 10, -1)`）、空リストを返します。
 
 ```python
 print(range(3))           # [0, 1, 2]
@@ -242,18 +252,78 @@ exit(1)        # エラー終了
 
 **シグネチャ:** `args() -> List<str>`
 
-スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません — スクリプトパスの後の引数のみです。
+スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません -- スクリプトパスの後の引数のみです。
 
 ```python
 # 実行: ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
 for x in args():
     print(x)
 ```
+
+---
+
+## sleep
+
+**シグネチャ:** `sleep(duration_ms: int) -> Unit`
+
+指定されたミリ秒間、現在のスレッドの実行を一時停止します。`duration_ms` が 0 以下の場合は即座に返ります。
+
+```python
+sleep(1000)    # 1秒待機
+sleep(0)       # 即座に返る
+```
+
+---
+
+## env
+
+**シグネチャ:** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+環境変数の値を返します。1引数の場合は `Option<str>`（設定済みなら `Some(value)`、未設定なら `None`）を返します。2引数の場合は値が未設定なら `default` を返します。
+
+プロジェクトルート（`package.toml` が存在するディレクトリ）に `.env` ファイルがある場合、起動時に自動的に読み込まれます。既存の環境変数は `.env` の値で上書きされません。
+
+> **セキュリティ上の注意:** `.env` ファイルには通常シークレット（API キー、データベースパスワード、トークン等）が含まれます。`.env` をバージョン管理にコミット**しないでください**（`.gitignore` 等に追加してください）。その内容は機密情報として扱ってください。
+
+```python
+# 1引数: Option<str> を返す
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# 2引数: デフォルト値付き
+port = env("PORT", "8080")
+print(port)   # PORT 未設定なら "8080"
+```
+
+### `.env` ファイルの書式
+
+```env
+# コメントは # で始まる
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
+
+### 環境別 `.env` ファイル
+
+`RY_ENV` が設定されている場合、Ry は以下の優先順位で環境別の `.env` ファイルを読み込みます:
+
+- `.env.<環境名>` を最初に読み込む（例: `RY_ENV=dev` なら `.env.dev`）
+- `.env` を次に読み込む（`.env.<環境名>` で設定済みの値は上書きされない）
+- `RY_ENV=prod` の場合、`.env` ファイルは一切読み込まない（セキュリティ）
+- `RY_ENV` が未設定の場合、`.env` のみ読み込む（後方互換）
+
+環境モードの詳細は [RY_ENV](packages.md#ry_env) を参照してください。
 
 ---
 
@@ -305,7 +375,7 @@ print(xs)   # [1, 2, 3]（変更なし）
 
 **シグネチャ:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `len(list)` まで）にクランプされます。UFCS記法も使用可能です。
+`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `length(list)` まで）にクランプされます。UFCS記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -339,7 +409,7 @@ print(xs.take(0))    # []
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 # 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
@@ -353,7 +423,7 @@ ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 ```
@@ -368,7 +438,7 @@ print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -385,7 +455,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -477,4 +547,54 @@ m = {"a": 1, "b": 2}
 print(get(m, "a"))       # Some(1)
 print(get(m, "z"))       # None
 print(get(m, "z", 0))   # 0
+```
+
+---
+
+## iter
+
+**シグネチャ:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
+
+コレクションから遅延イテレータを作成します。イテレータはデータをコピーせず、元のコレクションを参照します。UFCS記法も使用可能です。
+
+- `List<T>` と `Set<T>` の場合、要素型は `T`。
+- `Map<K, V>` の場合、要素型はタプル `(K, V)`。
+
+```python
+xs = [1, 2, 3]
+it = xs.iter()           # Iterator<int>
+ys = it.to_list()        # [1, 2, 3]
+
+m = {"a": 1, "b": 2}
+for k, v in m.iter():        # Iterator<(str, int)>
+    print(k)
+```
+
+---
+
+## next
+
+**シグネチャ:** `next(iter: Iterator<T>) -> Option<T>`
+
+イテレータから次の要素を `Option<T>` として返します。イテレータが使い切られた場合は `None` を返します。呼び出しごとにイテレータの内部状態が進みます。UFCS記法も使用可能です。
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+---
+
+## to_list
+
+**シグネチャ:** `to_list(iter: Iterator<T>) -> List<T>`
+
+イテレータの残りの要素をすべて新しいリストに収集します。UFCS記法も使用可能です。
+
+```python
+xs = [1, 2, 3, 4, 5]
+ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+print(ys)   # [3, 4, 5]
 ```

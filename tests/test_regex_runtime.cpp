@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include "ry/runtime_regex.hpp"
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 // ============================================================
 // regex_match tests
@@ -446,4 +448,75 @@ TEST(RegexRuntime, CaseInsensitiveFindAll) {
     EXPECT_STREQ(list->data[1], "HELLO");
     EXPECT_STREQ(list->data[2], "hello");
     freeStringList(list);
+}
+
+// ============================================================
+// Performance regression tests (issue #107)
+// ============================================================
+
+TEST(RegexRuntime, PerfSearchLongNonMatch) {
+    // Pattern "a" on 10000 'b's: previously O(n^2), now O(n*s)
+    std::string text(10000, 'b');
+    auto start = std::chrono::steady_clock::now();
+    int64_t result = __ry_regex_search("a", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_EQ(result, -1);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 1000);
+}
+
+TEST(RegexRuntime, PerfSearchDotStarNonMatch) {
+    // Pattern ".*x" on 10000 'a's: worst case for naive approach
+    std::string text(10000, 'a');
+    auto start = std::chrono::steady_clock::now();
+    int64_t result = __ry_regex_search(".*x", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_EQ(result, -1);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 1000);
+}
+
+TEST(RegexRuntime, PerfFindAllManyMatches) {
+    // Pattern "[a-z]+" on 10000 lowercase chars interspersed with spaces
+    std::string text;
+    text.reserve(20000);
+    for (int i = 0; i < 10000; ++i) {
+        text += (char)('a' + (i % 26));
+        if (i % 5 == 4) text += ' ';
+    }
+    auto start = std::chrono::steady_clock::now();
+    auto *list = (ListHeader *)__ry_regex_find_all("[a-z]+", text.c_str());
+    auto elapsed = std::chrono::steady_clock::now() - start;
+    EXPECT_GT(list->len, 0);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 1000);
+    freeStringList(list);
+}
+
+// Regression test: lazy search must preserve leftmost-start semantics
+TEST(RegexRuntime, LazySearchLeftmostStart) {
+    // Pattern "a.+?b|c" on "acb": the 'c' alternative matches at pos 1,
+    // but "a.+?b" matches starting at pos 0 (leftmost wins).
+    EXPECT_EQ(__ry_regex_search("a.+?b|c", "acb"), 0);
+
+    // Pattern "a.+?x|b" on "bax": 'b' matches at pos 0 (leftmost)
+    EXPECT_EQ(__ry_regex_search("a.+?x|b", "bax"), 0);
+}
+
+TEST(RegexRuntime, LazyFindAllLeftmostStart) {
+    // findAll must also respect leftmost-start ordering
+    auto *list = (ListHeader *)__ry_regex_find_all("a.+?b|c", "acb");
+    ASSERT_EQ(list->len, 1);
+    EXPECT_STREQ(list->data[0], "acb");
+    freeStringList(list);
+}
+
+// --- ReDoS protection tests ---
+
+TEST(RegexSecurity, ModerateGroupNestingSucceeds) {
+    // 10 nested groups should work fine
+    std::string pattern = std::string(10, '(') + "a" + std::string(10, ')');
+    EXPECT_TRUE(__ry_regex_match(pattern.c_str(), "a"));
+}
+
+TEST(RegexSecurity, NormalPatternWithStepLimit) {
+    // Normal patterns should complete well within the step limit
+    EXPECT_TRUE(__ry_regex_match("(a+)(b+)(c+)", "aaabbbccc"));
 }

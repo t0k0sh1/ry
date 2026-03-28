@@ -12,6 +12,13 @@ Ry はRSpec風のテスト構文を内蔵しています。`ry test` サブコ�
 ry test              # プロジェクト内の *.test.ry を自動検出して実行
 ry test tests/spec   # 指定ディレクトリ以下の *.test.ry を再帰的に実行
 ry test test_file.ry # 特定のテストファイルを実行
+ry test -p           # 全テストを並列実行（-p または --parallel）
+ry test -p tests/    # 指定ディレクトリのテストを並列実行
+ry test -w           # ウォッチモード: ファイル変更時にテストを自動再実行（-w または --watch）
+ry test -w -p        # ウォッチモード + 並列実行
+ry test -w tests/    # 特定ディレクトリをウォッチ
+ry test --coverage   # 全テストをラインカバレッジ付きで実行
+ry test --cov        # --coverage の短縮形
 ```
 
 終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
@@ -20,7 +27,7 @@ ry test test_file.ry # 特定のテストファイルを実行
 
 `ry test` を引数なしで実行すると:
 
-1. `ry.toml` を探してプロジェクトルートを特定
+1. `package.toml` を探してプロジェクトルートを特定
 2. プロジェクトルート以下の `*.test.ry` ファイルを再帰的に検出（`.git`、`build`、`node_modules` はスキップ）
 3. 各ファイルを実行し、結果を集計
 
@@ -68,6 +75,8 @@ foo("arg", fn():
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
 | `to_be_some()` | Option が `Some` であること | Option |
+| `to_be_ok()` | Result が `Ok` であること | Result |
+| `to_be_err()` | Result が `Err` であること | Result |
 | `to_contain(val)` | コンテナが値を含むこと | List, Set, Map, str |
 | `to_not_contain(val)` | コンテナが値を含まないこと | List, Set, Map, str |
 | `to_be_greater_than(v)` | `actual > v` であること | int, float |
@@ -78,6 +87,21 @@ foo("arg", fn():
 | `to_be_empty()` | 長さが 0 であること | List, Set, Map, str |
 | `to_start_with(prefix)` | 文字列が prefix で始まること | str |
 | `to_end_with(suffix)` | 文字列が suffix で終わること | str |
+
+### fail
+
+現在のテストを即座に失敗としてマークします。
+
+```
+it("should not reach here", fn():
+    fail("unexpected error")
+)
+```
+
+- `fail()` — 汎用メッセージでテストを失敗にする
+- `fail(msg)` — カスタムメッセージでテストを失敗にする
+- `fail()` 後も実行は継続される（テストを中断はしない）
+- `ry test` モードでのみ使用可能
 
 ---
 
@@ -136,7 +160,7 @@ fn fetch_data() -> str:
 
 describe("mocking", fn():
     it("replaces function", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -158,7 +182,7 @@ describe("mocking", fn():
 ```
 describe("verify", fn():
     it("counts calls", fn():
-        mock(fetch_data, fn(): "fake")
+        mock(fetch_data, fn() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -211,6 +235,31 @@ it("addition is commutative", fn(a: int, b: int):
 - 失敗時は反例（失敗した入力値）が表示される
 - 最初の失敗でテストを停止
 - 対応するパラメータ型: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (ランダム ASCII、0-20文字)
+
+---
+
+## テストカバレッジ
+
+`--coverage`（または `--cov`）フラグでラインカバレッジを計測できます:
+
+```bash
+ry test --coverage                    # 全テスト + カバレッジサマリー
+ry test --cov tests/spec/math.test.ry # 単一ファイル
+ry test --coverage tests/spec/        # ディレクトリ
+```
+
+### 出力例
+
+```
+Test Coverage Summary:
+  tests/spec/math.test.ry    100.0%  (74/74 lines)
+  tests/spec/strings.test.ry  92.3%  (24/26 lines)
+  -------------------------------------------------
+  Total                        95.1%  (98/100 lines)
+```
+
+- 標準ライブラリのファイルは除外され、ユーザーコードのみが対象
+- `--coverage` と `--parallel` を同時に指定した場合、逐次実行にフォールバック
 
 ---
 

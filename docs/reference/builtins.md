@@ -9,23 +9,18 @@
 | Function | Description |
 |------|------|
 | `print(expr)` | Prints a value to standard output |
-| `len(x)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
+| `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
 | `args()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
-| `channel[T]()` | Creates an unbuffered `Channel<T>` |
-| `channel[T](capacity)` | Creates a buffered `Channel<T>` |
-| `send(ch, value)` | Sends a value through `Channel<T>` |
-| `send(stream, data)` | Sends `List<byte>` through `TcpStream`, returns bytes sent |
-| `try_send(ch, value)` | Attempts to send through `Channel<T>` without blocking |
-| `recv(ch)` | Receives a value from `Channel<T>` |
-| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<byte>` |
-| `recv_opt(ch)` | Receives from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
-| `try_recv(ch)` | Attempts to receive from `Channel<T>` as `Option<T>` or `bool` for `Channel<Unit>` |
-| `close(ch)` | Closes a `Channel<T>` |
+| `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
+| `env(key)` | Returns the environment variable as `Option<str>` |
+| `env(key, default)` | Returns the environment variable, or `default` if not set |
+| `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
+| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
 | `close(handle)` | Closes a `TcpStream` or `TcpListener` |
-| `join(task)` | Waits for a `Task<T>` to complete and returns its result |
+| `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 
 ### Option
 
@@ -80,19 +75,19 @@
 
 | Function | Description |
 |------|------|
-| `contains(s, sub)` | Whether a substring is contained |
-| `starts_with(s, prefix)` | Whether it starts with a prefix |
-| `ends_with(s, suffix)` | Whether it ends with a suffix |
-| `find(s, sub)` | Character position of a substring (`Option<int>`) |
-| `byte_len(s)` | Returns the byte length of a string |
-| `substring(s, start, end)` | Extract a substring |
-| `char_at(s, i)` | Get the character at a specified position |
-| `replace(s, old, new)` | Replace all occurrences of a substring |
-| `to_upper(s)` / `to_lower(s)` | Uppercase / lowercase conversion |
-| `trim(s)` / `trim_start(s)` / `trim_end(s)` | Whitespace removal |
-| `repeat(s, n)` | Repeat a string n times |
-| `reverse(s)` | Reverse a string |
-| `split(s, delim)` | Split a string into a list |
+| `contains(string, substring)` | Whether a substring is contained |
+| `starts_with(string, prefix)` | Whether it starts with a prefix |
+| `ends_with(string, suffix)` | Whether it ends with a suffix |
+| `find(string, substring)` | Character position of a substring (`Option<int>`) |
+| `byte_len(string)` | Returns the byte length of a string |
+| `substring(string, start, end)` | Extract a substring |
+| `char_at(string, i)` | Get the character at a specified position |
+| `replace(string, old, new)` | Replace all occurrences of a substring |
+| `to_upper(string)` / `to_lower(string)` | Uppercase / lowercase conversion |
+| `trim(string)` / `trim_start(string)` / `trim_end(string)` | Whitespace removal |
+| `repeat(string, count)` | Repeat a string n times |
+| `reverse(string)` | Reverse a string |
+| `split(string, delimiter)` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
 | `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion |
 
@@ -148,18 +143,18 @@ print(x)   # Some(42)
 
 ---
 
-## len
+## length
 
-**Signature:** `len(x: List<T> | Map<K, V> | Set<T> | str) -> int`
+**Signature:** `length(x: List<T> | Map<K, V> | Set<T> | str) -> int`
 
 Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string. Use `byte_len()` for the byte length.
 
 ```python
-print(len([1, 2, 3]))         # 3
-print(len({"a": 1, "b": 2})) # 2
-print(len({1, 2, 3}))         # 3
-print(len("hello"))           # 5
-print(len("あいう"))           # 3 (UTF-8 characters)
+print(length([1, 2, 3]))         # 3
+print(length({"a": 1, "b": 2})) # 2
+print(length({1, 2, 3}))         # 3
+print(length("hello"))           # 5
+print(length("あいう"))           # 3 (UTF-8 characters)
 ```
 
 ---
@@ -189,7 +184,7 @@ s = {1, 2, 3}
 s.add(4)          # UFCS
 add(s, 5)         # Normal call
 s.add(1)          # Ignored because it already exists
-print(len(s))     # 5
+print(length(s))     # 5
 ```
 
 ---
@@ -262,13 +257,73 @@ Returns the command-line arguments passed to the script as a list of strings. Do
 ```python
 # Run: ry script.ry hello world
 a = args()
-print(len(a))    # 2
+print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
 for x in args():
     print(x)
 ```
+
+---
+
+## sleep
+
+**Signature:** `sleep(duration_ms: int) -> Unit`
+
+Suspends execution of the current thread for the specified number of milliseconds. If `duration_ms` is 0 or negative, the function returns immediately.
+
+```python
+sleep(1000)    # wait 1 second
+sleep(0)       # returns immediately
+```
+
+---
+
+## env
+
+**Signature:** `env(key: str) -> Option<str>` / `env(key: str, default: str) -> str`
+
+Returns the value of an environment variable. The one-argument form returns `Option<str>` (`Some(value)` if set, `None` if not). The two-argument form returns the value or `default` if the variable is not set.
+
+If a `.env` file exists in the project root (the directory containing `package.toml`), its entries are automatically loaded into the process environment at startup. Existing environment variables are not overwritten by `.env` values.
+
+> **Security note:** `.env` files typically contain secrets (API keys, database passwords, tokens, etc.). Do **not** commit `.env` to version control (add it to `.gitignore` or equivalent), and treat its contents as sensitive configuration.
+
+```python
+# One-argument form: returns Option<str>
+path = env("PATH")
+match path:
+    case Some(v):
+        print(v)
+    case None:
+        print("PATH not set")
+
+# Two-argument form: returns str with default
+port = env("PORT", "8080")
+print(port)   # "8080" if PORT is not set
+```
+
+### `.env` file format
+
+```env
+# Comments start with #
+DATABASE_URL=postgres://localhost/mydb
+API_KEY="secret-key-123"
+EMPTY_VALUE=
+QUOTED='single quoted'
+```
+
+### Environment-specific `.env` files
+
+When `RY_ENV` is set, Ry loads environment-specific `.env` files with the following priority:
+
+- `.env.<env>` is loaded first (e.g., `.env.dev` when `RY_ENV=dev`)
+- `.env` is loaded second (values already set by `.env.<env>` are not overwritten)
+- When `RY_ENV=prod`, no `.env` files are loaded (security)
+- When `RY_ENV` is not set, only `.env` is loaded (backward compatible)
+
+See [RY_ENV](packages.md#ry_env) for details on environment modes.
 
 ---
 
@@ -320,7 +375,7 @@ print(xs)   # [1, 2, 3] (unchanged)
 
 **Signature:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `len(list)`). UFCS notation is also available.
+Returns a new sub-list from `start` (inclusive) to `end` (exclusive). Indices are clamped to the valid range (`0` to `length(list)`). UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -354,7 +409,7 @@ Calls the given function on each element (ignoring any return value), then retur
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int): print(x)).map(fn(x: int): x * 2)
+ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -368,7 +423,7 @@ Returns a new list containing only elements for which the predicate returns `tru
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int): x > 3)
+ys = xs.filter(fn(x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 ```
@@ -383,7 +438,7 @@ Returns a new list with each element transformed by the given function. The outp
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int): x * 2)
+ys = xs.map(fn(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -400,7 +455,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order
-desc = xs.sort(fn(a: int, b: int): a > b)
+desc = xs.sort(fn(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -540,6 +595,6 @@ Collects all remaining elements from the iterator into a new list. UFCS notation
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter(fn(x: int): x > 2).to_list()
+ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```

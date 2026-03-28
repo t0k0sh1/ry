@@ -1,0 +1,711 @@
+#include "ry/codegen.hpp"
+#include "ry/diagnostic.hpp"
+
+// ===== Builtin Regex =====
+
+llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
+    // regex_match(pattern, text) -> bool
+    if (e.callee == "regex_match") {
+        requireArgs(e, 2);
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_match() requires str arguments");
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_regex_match", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_match");
+        return builder_.CreateTrunc(result, i1Ty_, "regex_match_bool");
+    }
+
+    // regex_search(pattern, text) -> int
+    if (e.callee == "regex_search") {
+        requireArgs(e, 2);
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_search() requires str arguments");
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_regex_search", fnTy);
+        return builder_.CreateCall(fn, {pattern, text}, "regex_search");
+    }
+
+    // regex_replace(pattern, text, replacement) -> str
+    if (e.callee == "regex_replace") {
+        requireArgs(e, 3);
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        llvm::Value *replacement = emitExpr(*e.args[2]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_ ||
+            replacement->getType() != ptrTy_)
+            codegenError("regex_replace() requires str arguments");
+        auto fnTy = fnTy_ptr_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy);
+        return builder_.CreateCall(fn, {pattern, text, replacement}, "regex_replace");
+    }
+
+    // regex_split(pattern, text) -> List<str>
+    if (e.callee == "regex_split") {
+        requireArgs(e, 2);
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_split() requires str arguments");
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_split");
+        type_meta_[TM_ListElem][result] = ptrTy_;
+        return result;
+    }
+
+    // regex_find_all(pattern, text) -> List<str>
+    if (e.callee == "regex_find_all") {
+        requireArgs(e, 2);
+        llvm::Value *pattern = emitExpr(*e.args[0]);
+        llvm::Value *text = emitExpr(*e.args[1]);
+        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
+            codegenError("regex_find_all() requires str arguments");
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_regex_find_all", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
+        type_meta_[TM_ListElem][result] = ptrTy_;
+        return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin IO =====
+
+llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // Helper: emit a call to __ry_<name> with ptr args, validate count and types
+    auto emitIOCall = [&](const std::string &name, size_t nargs,
+                          llvm::Type *retTy) -> llvm::Value * {
+        if (e.args.size() != nargs)
+            codegenError(name + "() takes exactly " + std::to_string(nargs) + " argument(s)");
+        std::vector<llvm::Value *> args;
+        std::vector<llvm::Type *> argTys;
+        for (size_t i = 0; i < nargs; ++i) {
+            args.push_back(emitExpr(*e.args[i]));
+            if (args.back()->getType() != ptrTy_)
+                codegenError(name + "() requires str/ptr arguments");
+            argTys.push_back(ptrTy_);
+        }
+        auto fnTy = llvm::FunctionType::get(retTy, argTys, false);
+        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
+        return builder_.CreateCall(fn, args, name);
+    };
+
+    // 0-arg -> str (stdin functions: no Result wrapping)
+    if (e.callee == "read_line" || e.callee == "read_all")
+        return emitIOCall(e.callee, 0, ptrTy_);
+
+    // read_text(path) -> Result<str, Error>
+    if (e.callee == "read_text") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        return wrapPtrAsResult(ptr);
+    }
+
+    // bytes_to_str(bytes) -> Result<str, Error>
+    if (e.callee == "bytes_to_str") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        return wrapPtrAsResult(ptr);
+    }
+
+    // write_text(path, content) -> Result<Unit, Error>
+    if (e.callee == "write_text" || e.callee == "append_text") {
+        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
+        return wrapStatusAsResult(status);
+    }
+
+    // write_bytes(path, bytes) -> Result<Unit, Error>
+    if (e.callee == "write_bytes") {
+        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
+        return wrapStatusAsResult(status);
+    }
+
+    // delete_file(path) -> Result<Unit, Error>
+    if (e.callee == "delete_file") {
+        llvm::Value *status = emitIOCall(e.callee, 1, i64Ty_);
+        return wrapStatusAsResult(status);
+    }
+
+    // file_exists(path) -> bool (i64 truncated to i1) — no Result wrapping
+    if (e.callee == "file_exists") {
+        llvm::Value *result = emitIOCall(e.callee, 1, i64Ty_);
+        return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
+    }
+
+    // read_bytes(path) -> Result<List<u8>, Error>
+    if (e.callee == "read_bytes") {
+        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
+        llvm::Value *result = wrapPtrAsResult(ptr);
+        type_meta_[TM_ListElem][result] = i8Ty_;
+        return result;
+    }
+
+    // str_to_bytes(str) -> List<u8> — always succeeds, no Result wrapping
+    if (e.callee == "str_to_bytes") {
+        llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
+        type_meta_[TM_ListElem][result] = i8Ty_;
+        return result;
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin Net =====
+
+llvm::Value *CodeGen::emitPtrToResult(llvm::Value *ptr, const std::string &name,
+                                       const std::string &errMsg, ResourceKind rk) {
+    llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), name + "_null");
+    llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
+    llvm::Value *okVal = buildOkValue(ptr, resTy);
+    llvm::Value *errVal = buildErrValue(buildStaticError(errMsg, "." + name + "_err_msg"), resTy);
+    llvm::Value *res = builder_.CreateSelect(isNull, errVal, okVal, name + "_result");
+    resource_sets_[rk].insert(res);
+    return res;
+}
+
+llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // bind(host, port) -> Result<TcpListener, Error>
+    if (e.callee == "bind") {
+        requireArgs(e, 2);
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_bind", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "bind_result");
+        return emitPtrToResult(result, "bind", "bind failed", RK_TcpListener);
+    }
+
+    // listen(listener, backlog) -> Result<Unit, Error>
+    if (e.callee == "listen") {
+        requireArgs(e, 2);
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("listen() requires TcpListener as first argument");
+        llvm::Value *backlog = emitExpr(*e.args[1]);
+        auto fn = getRuntimeFn("__ry_listen", i64Ty_, {ptrTy_, i64Ty_});
+        llvm::Value *status = builder_.CreateCall(fn, {listener, backlog}, "listen_status");
+        // Wrap in Result<Unit, Error>
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "listen_err");
+        llvm::StructType *resTy = getResultType(i8Ty_, errorTy_);
+        llvm::Value *okVal = buildOkValue(llvm::ConstantInt::get(i8Ty_, 0), resTy);
+        llvm::Value *errVal = buildErrValue(buildStaticError("listen failed", ".listen_err_msg"), resTy);
+        return builder_.CreateSelect(isErr, errVal, okVal, "listen_result");
+    }
+
+    // listener_port(listener) -> int
+    if (e.callee == "listener_port") {
+        requireArgs(e, 1);
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("listener_port() requires TcpListener argument");
+        auto fnTy = fnTy_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_listener_port", fnTy);
+        return builder_.CreateCall(fn, {listener}, "listener_port");
+    }
+
+    // shutdown(listener) -> Unit
+    if (e.callee == "shutdown") {
+        requireArgs(e, 1);
+        llvm::Value *val = emitExpr(*e.args[0]);
+        if (!isTcpListener(val))
+            codegenError("shutdown() requires TcpListener argument");
+        auto *voidPtrFnTy = fnTy_ptr_to_void_;
+        auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_shutdown", voidPtrFnTy);
+        return builder_.CreateCall(fn, {val});
+    }
+
+    // accept(listener) -> Result<TcpStream, Error>
+    if (e.callee == "accept") {
+        requireArgs(e, 1);
+        llvm::Value *listener = emitExpr(*e.args[0]);
+        if (!isTcpListener(listener))
+            codegenError("accept() requires TcpListener argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_accept", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {listener}, "accept_result");
+        return emitPtrToResult(result, "accept", "accept failed", RK_TcpStream);
+    }
+
+    // connect(host, port) -> Result<TcpStream, Error>
+    if (e.callee == "connect") {
+        requireArgs(e, 2);
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_connect", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "connect_result");
+        return emitPtrToResult(result, "connect", "connection failed", RK_TcpStream);
+    }
+
+    // tls_connect(host, port) -> Result<TlsStream, Error>
+    if (e.callee == "tls_connect") {
+        requireArgs(e, 2);
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        auto fnTy = fnTy_ptr_i64_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_tls_connect", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {host, port}, "tls_connect_result");
+        return emitPtrToResult(result, "tls_connect", "TLS connection failed", RK_TlsStream);
+    }
+
+    // set_timeout / set_recv_timeout / set_send_timeout — works for both TcpStream and TlsStream
+    if (e.callee == "set_timeout" || e.callee == "set_recv_timeout" || e.callee == "set_send_timeout") {
+        requireArgs(e, 2);
+        llvm::Value *stream = emitExpr(*e.args[0]);
+        llvm::Value *ms = emitExpr(*e.args[1]);
+        auto *voidTy = llvm::Type::getVoidTy(*ctx_);
+        auto fnTy = llvm::FunctionType::get(voidTy, {ptrTy_, i64Ty_}, false);
+        std::string prefix = isTlsStream(stream) ? "__ry_tls_" : "__ry_tcp_";
+        if (!isTcpStream(stream) && !isTlsStream(stream))
+            codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
+        auto fn = mod_->getOrInsertFunction(prefix + e.callee, fnTy);
+        return builder_.CreateCall(fn, {stream, ms});
+    }
+
+    return nullptr;
+}
+
+// ===== Builtin HTTP =====
+
+llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
+    if (!native_fn_arg_counts_.count(e.callee))
+        return nullptr;
+
+    // http_response(status, headers, body) -> HttpResponse
+    if (e.callee == "http_response") {
+        requireArgs(e, 3);
+        llvm::Value *status = emitExpr(*e.args[0]);
+        llvm::Value *headers = emitExpr(*e.args[1]);
+        llvm::Value *body = emitExpr(*e.args[2]);
+        if (status->getType() != i64Ty_)
+            codegenError("http_response() status must be int");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_response() headers must be Map<str, str>");
+        if (body->getType() != ptrTy_)
+            codegenError("http_response() body must be str");
+        auto fn = getRuntimeFn("__ry_http_response_create", ptrTy_, {i64Ty_, ptrTy_, ptrTy_});
+        llvm::Value *result = builder_.CreateCall(fn, {status, headers, body}, "http_resp");
+        resource_sets_[RK_HttpResponse].insert(result);
+        return result;
+    }
+
+    // http_method/http_path/http_body: single-arg HttpRequest accessors returning str
+    if (e.callee == "http_method" || e.callee == "http_path" || e.callee == "http_body") {
+        requireArgs(e, 1);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError(e.callee + "() requires HttpRequest argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        return builder_.CreateCall(fn, {req}, e.callee);
+    }
+
+    // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str> / http_cookie(req, name) -> Option<str>
+    if (e.callee == "http_header" || e.callee == "http_query" || e.callee == "http_cookie") {
+        requireArgs(e, 2);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError(e.callee + "() requires HttpRequest argument");
+        if (key->getType() != ptrTy_) {
+            std::string param = (e.callee == "http_cookie") ? "name" : "key";
+            codegenError(e.callee + "() " + param + " must be str");
+        }
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        std::string hint = (e.callee == "http_header") ? "http_hdr"
+                         : (e.callee == "http_query") ? "http_qry" : "http_ck";
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, hint);
+        return wrapPtrAsOption(result, hint);
+    }
+
+    // http_query_all(req) -> Map<str, str>
+    if (e.callee == "http_query_all") {
+        requireArgs(e, 1);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_query_all() requires HttpRequest argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_query_all", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_qry_all");
+        type_meta_[TM_MapKey][result] = ptrTy_;
+        type_meta_[TM_MapValue][result] = ptrTy_;
+        return result;
+    }
+
+    // http_cookies(req) -> Map<str, str>
+    if (e.callee == "http_cookies") {
+        requireArgs(e, 1);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_cookies() requires HttpRequest argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_cookies", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_cookies");
+        type_meta_[TM_MapKey][result] = ptrTy_;
+        type_meta_[TM_MapValue][result] = ptrTy_;
+        return result;
+    }
+
+    // http_form_field(req, name) -> Option<str>
+    if (e.callee == "http_form_field") {
+        requireArgs(e, 2);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_field() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_form_field() name must be str");
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_field", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ff");
+        return wrapPtrAsOption(result, "http_ff");
+    }
+
+    // http_form_file(req, name) -> Option<Map<str, str>>
+    if (e.callee == "http_form_file") {
+        requireArgs(e, 2);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_file() requires HttpRequest argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_form_file() name must be str");
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
+        llvm::Value *optResult = wrapPtrAsOption(result, "http_ffile");
+        type_meta_[TM_MapKey][optResult] = ptrTy_;
+        type_meta_[TM_MapValue][optResult] = ptrTy_;
+        return optResult;
+    }
+
+    // http_form_fields(req) -> Map<str, str>
+    if (e.callee == "http_form_fields") {
+        requireArgs(e, 1);
+        llvm::Value *req = emitExpr(*e.args[0]);
+        if (!isHttpRequest(req))
+            codegenError("http_form_fields() requires HttpRequest argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_form_fields", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {req}, "http_ffields");
+        type_meta_[TM_MapKey][result] = ptrTy_;
+        type_meta_[TM_MapValue][result] = ptrTy_;
+        return result;
+    }
+
+    // http_listen(host, port, handler[, max_requests[, port_callback]]) -> Unit
+    if (e.callee == "http_listen") {
+        if (e.args.size() < 3 || e.args.size() > 5)
+            codegenError("http_listen() takes 3 to 5 arguments");
+        llvm::Value *host = emitExpr(*e.args[0]);
+        llvm::Value *port = emitExpr(*e.args[1]);
+        llvm::Value *handler = emitExpr(*e.args[2]);
+        if (host->getType() != ptrTy_)
+            codegenError("http_listen() host must be str");
+        if (port->getType() != i64Ty_)
+            codegenError("http_listen() port must be int");
+
+        // Get handler FnTypeInfo
+        FnTypeInfo handlerInfo;
+        bool foundInfo = false;
+        // Try fn_type_info_ lookup on handler value directly
+        auto fnIt = fn_type_info_.find(handler);
+        if (fnIt != fn_type_info_.end()) {
+            handlerInfo = fnIt->second;
+            foundInfo = true;
+        }
+        if (!foundInfo) {
+            // Check if handler is a LoadInst, look up the alloca
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(handler)) {
+                auto fnIt2 = fn_type_info_.find(load->getPointerOperand());
+                if (fnIt2 != fn_type_info_.end()) {
+                    handlerInfo = fnIt2->second;
+                    foundInfo = true;
+                }
+            }
+        }
+        if (!foundInfo)
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+
+        // Validate handler signature: one ptr param, ptr return
+        if (handlerInfo.paramTypes.size() != 1 ||
+            handlerInfo.returnType != ptrTy_ ||
+            handlerInfo.paramTypes[0] != ptrTy_) {
+            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+        }
+
+        // Optional 4th argument: max_requests (must be > 0)
+        llvm::Value *maxReqs = llvm::ConstantInt::get(i64Ty_, 0);
+        if (e.args.size() >= 4) {
+            maxReqs = emitExpr(*e.args[3]);
+            if (maxReqs->getType() != i64Ty_)
+                codegenError("http_listen() max_requests must be int");
+            if (auto *maxConst = llvm::dyn_cast<llvm::ConstantInt>(maxReqs)) {
+                if (maxConst->getSExtValue() <= 0)
+                    codegenError("http_listen() max_requests must be a positive integer");
+            }
+        }
+
+        // Optional 5th argument: port_callback (fn(int) -> Unit)
+        llvm::Value *portCallback = nullptr;
+        if (e.args.size() == 5) {
+            portCallback = emitExpr(*e.args[4]);
+            if (portCallback->getType() != ptrTy_)
+                codegenError("http_listen() port_callback must be fn(int) -> Unit");
+        }
+
+        // 1. bind(host, port)
+        auto bindFnTy = fnTy_ptr_i64_to_ptr_;
+        auto bindFn = mod_->getOrInsertFunction("__ry_bind", bindFnTy);
+        llvm::Value *listener = builder_.CreateCall(bindFn, {host, port}, "http_listener");
+
+        // null check
+        llvm::Value *isNull = builder_.CreateICmpEQ(listener,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "bind_null");
+        llvm::BasicBlock *bindFailBB = llvm::BasicBlock::Create(*ctx_, "http.bind_fail", fn_);
+        llvm::BasicBlock *bindOkBB = llvm::BasicBlock::Create(*ctx_, "http.bind_ok", fn_);
+        builder_.CreateCondBr(isNull, bindFailBB, bindOkBB);
+
+        builder_.SetInsertPoint(bindFailBB);
+        static int httpErrCounter = 0;
+        emitRuntimeError("runtime error: http_listen() bind failed\n",
+                          ".http_err_" + std::to_string(httpErrCounter++));
+
+        // 2. listen(listener, 128)
+        builder_.SetInsertPoint(bindOkBB);
+        auto listenFn = getRuntimeFn("__ry_listen", i64Ty_, {ptrTy_, i64Ty_});
+        llvm::Value *listenStatus = builder_.CreateCall(listenFn, {listener, llvm::ConstantInt::get(i64Ty_, 128)}, "listen_status");
+        // Check listen result — fatal for http_listen
+        llvm::Value *listenFailed = builder_.CreateICmpNE(listenStatus,
+            llvm::ConstantInt::get(i64Ty_, 0), "listen_failed");
+        llvm::BasicBlock *listenFailBB = llvm::BasicBlock::Create(*ctx_, "http.listen_fail", fn_);
+        llvm::BasicBlock *listenOkBB = llvm::BasicBlock::Create(*ctx_, "http.listen_ok", fn_);
+        builder_.CreateCondBr(listenFailed, listenFailBB, listenOkBB);
+        builder_.SetInsertPoint(listenFailBB);
+        static int httpListenErrCounter = 0;
+        emitRuntimeError("runtime error: http_listen() listen failed\n",
+                          ".http_listen_err_" + std::to_string(httpListenErrCounter++));
+        builder_.SetInsertPoint(listenOkBB);
+
+        // If port_callback provided, call it with the actual bound port after bind+listen
+        if (portCallback) {
+            auto portFn = getRuntimeFn("__ry_listener_port", i64Ty_, {ptrTy_});
+            llvm::Value *actualPort = builder_.CreateCall(portFn, {listener}, "actual_port");
+
+            auto callbackFnTy = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(*ctx_), {i64Ty_}, false);
+            builder_.CreateCall(callbackFnTy, portCallback, {actualPort});
+        }
+
+        bool hasMaxRequests = (e.args.size() >= 4);
+        llvm::Value *counterAlloca = nullptr;
+        if (hasMaxRequests) {
+            counterAlloca = builder_.CreateAlloca(i64Ty_, nullptr, "req_counter");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), counterAlloca);
+        }
+
+        auto voidPtrFnTy = fnTy_ptr_to_void_;
+        auto closeFn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
+        auto listenerCloseFn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
+        auto freeReqFn = mod_->getOrInsertFunction("__ry_http_request_free", voidPtrFnTy);
+        auto freeRespFn = mod_->getOrInsertFunction("__ry_http_response_free", voidPtrFnTy);
+
+        // 3. accept loop
+        llvm::BasicBlock *loopBB = llvm::BasicBlock::Create(*ctx_, "http.loop", fn_);
+        llvm::BasicBlock *loopBodyBB = llvm::BasicBlock::Create(*ctx_, "http.loop_body", fn_);
+        llvm::BasicBlock *loopEndBB = llvm::BasicBlock::Create(*ctx_, "http.loop_end", fn_);
+
+        builder_.CreateBr(loopBB);
+        builder_.SetInsertPoint(loopBB);
+
+        // accept(listener) -> conn
+        auto acceptFnTy = fnTy_ptr_to_ptr_;
+        auto acceptFn = mod_->getOrInsertFunction("__ry_accept", acceptFnTy);
+        llvm::Value *conn = builder_.CreateCall(acceptFn, {listener}, "http_conn");
+
+        llvm::Value *connNull = builder_.CreateICmpEQ(conn,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "conn_null");
+        // Retry accept on null (e.g., transient errors) instead of exiting the loop
+        builder_.CreateCondBr(connNull, loopBB, loopBodyBB);
+
+        // Keep-alive loop: same connection until Connection: close or timeout
+        builder_.SetInsertPoint(loopBodyBB);
+
+        auto readReqFnTy = fnTy_ptr_to_ptr_;
+        auto readReqFn = mod_->getOrInsertFunction("__ry_http_read_request", readReqFnTy);
+        llvm::Value *req = builder_.CreateCall(readReqFn, {conn}, "http_req");
+        resource_sets_[RK_HttpRequest].insert(req);
+
+        llvm::Value *reqNull = builder_.CreateICmpEQ(req,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "req_null");
+        llvm::BasicBlock *reqOkBB = llvm::BasicBlock::Create(*ctx_, "http.req_ok", fn_);
+        llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*ctx_, "http.req_bad", fn_);
+        builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
+
+        builder_.SetInsertPoint(reqBadBB);
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        builder_.SetInsertPoint(reqOkBB);
+
+        // Must check before handler call — req is freed afterward
+        auto keepAliveFn = getRuntimeFn("__ry_http_should_keep_alive", i64Ty_, {ptrTy_});
+        llvm::Value *keepAlive = builder_.CreateCall(keepAliveFn, {req}, "keep_alive");
+
+        llvm::Value *resp = emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
+        resource_sets_[RK_HttpResponse].insert(resp);
+
+        auto sendRespFn = getRuntimeFn("__ry_http_send_response", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, i64Ty_});
+        builder_.CreateCall(sendRespFn, {conn, resp, keepAlive});
+
+        builder_.CreateCall(freeReqFn, {req});
+        builder_.CreateCall(freeRespFn, {resp});
+
+        // max_requests counts individual requests, not connections
+        if (hasMaxRequests) {
+            llvm::Value *oldCount = builder_.CreateLoad(i64Ty_, counterAlloca, "old_count");
+            llvm::Value *newCount = builder_.CreateAdd(oldCount,
+                llvm::ConstantInt::get(i64Ty_, 1), "new_count");
+            builder_.CreateStore(newCount, counterAlloca);
+
+            llvm::Value *limitReached = builder_.CreateICmpSGE(newCount, maxReqs, "limit_reached");
+            llvm::BasicBlock *shutdownBB = llvm::BasicBlock::Create(*ctx_, "http.shutdown", fn_);
+            llvm::BasicBlock *kaCheckBB = llvm::BasicBlock::Create(*ctx_, "http.ka_check", fn_);
+            builder_.CreateCondBr(limitReached, shutdownBB, kaCheckBB);
+
+            builder_.SetInsertPoint(shutdownBB);
+            builder_.CreateCall(closeFn, {conn});
+            builder_.CreateCall(listenerCloseFn, {listener});
+            builder_.CreateBr(loopEndBB);
+
+            builder_.SetInsertPoint(kaCheckBB);
+        }
+
+        llvm::Value *isKeepAlive = builder_.CreateICmpNE(keepAlive,
+            llvm::ConstantInt::get(i64Ty_, 0), "is_keep_alive");
+        llvm::BasicBlock *closeBB = llvm::BasicBlock::Create(*ctx_, "http.close_conn", fn_);
+        builder_.CreateCondBr(isKeepAlive, loopBodyBB, closeBB);
+
+        builder_.SetInsertPoint(closeBB);
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
+
+        builder_.SetInsertPoint(loopEndBB);
+
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    // http_get(url) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_get") {
+        requireArgs(e, 1);
+        llvm::Value *url = emitExpr(*e.args[0]);
+        if (url->getType() != ptrTy_)
+            codegenError("http_get() url must be str");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_get", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {url}, "http_get_result");
+        return emitPtrToResult(result, "http_get", "HTTP request failed", RK_HttpClientResponse);
+    }
+
+    // http_post(url, body, headers) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_post") {
+        requireArgs(e, 3);
+        llvm::Value *url = emitExpr(*e.args[0]);
+        llvm::Value *body = emitExpr(*e.args[1]);
+        llvm::Value *headers = emitExpr(*e.args[2]);
+        if (url->getType() != ptrTy_)
+            codegenError("http_post() url must be str");
+        if (body->getType() != ptrTy_)
+            codegenError("http_post() body must be str");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_post() headers must be Map<str, str>");
+        auto fnTy = fnTy_ptr_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_post", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {url, body, headers}, "http_post_result");
+        return emitPtrToResult(result, "http_post", "HTTP request failed", RK_HttpClientResponse);
+    }
+
+    // http_request(method, url, headers, body) -> Result<HttpClientResponse, Error>
+    if (e.callee == "http_request") {
+        requireArgs(e, 4);
+        llvm::Value *method = emitExpr(*e.args[0]);
+        llvm::Value *url = emitExpr(*e.args[1]);
+        llvm::Value *headers = emitExpr(*e.args[2]);
+        llvm::Value *body = emitExpr(*e.args[3]);
+        if (method->getType() != ptrTy_)
+            codegenError("http_request() method must be str");
+        if (url->getType() != ptrTy_)
+            codegenError("http_request() url must be str");
+        if (headers->getType() != ptrTy_)
+            codegenError("http_request() headers must be Map<str, str>");
+        if (body->getType() != ptrTy_)
+            codegenError("http_request() body must be str");
+        auto fn = getRuntimeFn("__ry_http_client_request", ptrTy_, {ptrTy_, ptrTy_, ptrTy_, ptrTy_});
+        llvm::Value *result = builder_.CreateCall(fn, {method, url, headers, body}, "http_request_result");
+        return emitPtrToResult(result, "http_request", "HTTP request failed", RK_HttpClientResponse);
+    }
+
+    // http_client_status(resp) -> int
+    if (e.callee == "http_client_status") {
+        requireArgs(e, 1);
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_status() requires HttpClientResponse argument");
+        auto fnTy = fnTy_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_status", fnTy);
+        return builder_.CreateCall(fn, {resp}, "http_client_status");
+    }
+
+    // http_client_body(resp) -> str
+    if (e.callee == "http_client_body") {
+        requireArgs(e, 1);
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_body() requires HttpClientResponse argument");
+        auto fnTy = fnTy_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_body", fnTy);
+        return builder_.CreateCall(fn, {resp}, "http_client_body");
+    }
+
+    // http_client_header(resp, key) -> Option<str>
+    if (e.callee == "http_client_header") {
+        requireArgs(e, 2);
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_header() requires HttpClientResponse argument");
+        if (key->getType() != ptrTy_)
+            codegenError("http_client_header() key must be str");
+        auto fnTy = fnTy_ptr_ptr_to_ptr_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
+        llvm::Value *result = builder_.CreateCall(fn, {resp, key}, "http_client_hdr");
+        return wrapPtrAsOption(result, "http_client_hdr");
+    }
+
+    // http_client_response_free(resp) -> Unit
+    if (e.callee == "http_client_response_free") {
+        requireArgs(e, 1);
+        llvm::Value *resp = emitExpr(*e.args[0]);
+        if (!isHttpClientResponse(resp))
+            codegenError("http_client_response_free() requires HttpClientResponse argument");
+        auto fnTy = fnTy_ptr_to_void_;
+        auto fn = mod_->getOrInsertFunction("__ry_http_client_response_free", fnTy);
+        builder_.CreateCall(fn, {resp});
+        return llvm::ConstantInt::get(i64Ty_, 0);
+    }
+
+    return nullptr;
+}
+

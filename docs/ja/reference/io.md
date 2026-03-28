@@ -2,10 +2,10 @@
 
 # I/O 関数リファレンス
 
-標準入出力とファイル操作の関数一覧です。すべての関数は `std.io` からの明示的なインポートが必要です。
+標準入出力とファイル操作の関数一覧です。すべての関数は `io` からの明示的なインポートが必要です。
 
 ```python
-from std.io import read_text, write_text, file_exists
+from io import read_text, write_text, file_exists
 ```
 
 ## 関数一覧
@@ -21,79 +21,100 @@ from std.io import read_text, write_text, file_exists
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `read_text` | `(str) -> str` | ファイル全体を文字列として読み取り |
-| `write_text` | `(str, str) -> Unit` | ファイルに文字列を書き込み（上書き） |
-| `append_text` | `(str, str) -> Unit` | ファイル末尾に文字列を追記 |
+| `read_text` | `(str) -> Result<str, Error>` | ファイル全体を文字列として読み取り |
+| `write_text` | `(str, str) -> Result<Unit, Error>` | ファイルに文字列を書き込み（上書き） |
+| `append_text` | `(str, str) -> Result<Unit, Error>` | ファイル末尾に文字列を追記 |
 | `file_exists` | `(str) -> bool` | ファイル存在チェック |
-| `delete_file` | `(str) -> Unit` | ファイル削除 |
-| `read_bytes` | `(str) -> List<byte>` | ファイルをバイト列として読み取り |
-| `write_bytes` | `(str, List<byte>) -> Unit` | バイト列をファイルに書き込み |
+| `delete_file` | `(str) -> Result<Unit, Error>` | ファイル削除 |
+| `read_bytes` | `(str) -> Result<List<u8>, Error>` | ファイルをバイト列として読み取り |
+| `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | バイト列をファイルに書き込み |
 
 ### バイト列変換
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `str_to_bytes` | `(str) -> List<byte>` | 文字列を UTF-8 バイト列に変換 |
-| `bytes_to_str` | `(List<byte>) -> str` | バイト列を文字列に変換 |
+| `str_to_bytes` | `(str) -> List<u8>` | 文字列を UTF-8 バイト列に変換 |
+| `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | バイト列を文字列に変換 |
 
 ## 使用例
 
 ### ファイルの読み書き
 
 ```python
-from std.io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, file_exists, delete_file
 
-write_text("hello.txt", "Hello, World!")
-content = read_text("hello.txt")
-print(content)   # Hello, World!
-
-append_text("hello.txt", "\nGoodbye!")
-print(read_text("hello.txt"))
-# Hello, World!
-# Goodbye!
+match write_text("hello.txt", "Hello, World!"):
+    case Ok(_):
+        match read_text("hello.txt"):
+            case Ok(content):
+                print(content)   # Hello, World!
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 
 print(file_exists("hello.txt"))   # true
-delete_file("hello.txt")
-print(file_exists("hello.txt"))   # false
+
+match delete_file("hello.txt"):
+    case Ok(_):
+        print(file_exists("hello.txt"))   # false
+    case Err(e):
+        print(e.message)
 ```
 
 ### バイト操作
 
 ```python
-from std.io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 
 bs = str_to_bytes("ABC")
-print(len(bs))    # 3
+print(length(bs))    # 3
 
-write_bytes("data.bin", bs)
-rb = read_bytes("data.bin")
-s = bytes_to_str(rb)
-print(s)          # ABC
+match write_bytes("data.bin", bs):
+    case Ok(_):
+        match read_bytes("data.bin"):
+            case Ok(rb):
+                match bytes_to_str(rb):
+                    case Ok(s):
+                        print(s)          # ABC
+                    case Err(e):
+                        print(e.message)
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 ```
 
 ### 標準入力からの読み取り
 
 ```python
-from std.io import read_line
+from io import read_line
 
 name = read_line()
 print(f"Hello, {name}!")
 ```
 
-## エラー処理
+## エラーハンドリング
 
-すべてのファイル操作は、操作が失敗した場合に実行時エラーで終了します：
+ファイル操作は失敗時に終了するのではなく、`Result<T, Error>` を返します。`match` で `Ok`/`Err` パターンを使ってエラーを処理してください:
+
+```python
+match read_text("missing.txt"):
+    case Ok(content):
+        print(content)
+    case Err(e):
+        print(e.message)   # cannot open file 'missing.txt' for reading
+```
 
 | 操作 | エラー条件 |
 |------|-----------|
 | `read_text` / `read_bytes` | ファイルが存在しない、または開けない |
 | `write_text` / `write_bytes` / `append_text` | ファイルを書き込み用に開けない |
 | `delete_file` | ファイルを削除できない |
-
-エラーメッセージは stderr に出力され、プログラムは終了コード 1 で終了します。
+| `bytes_to_str` | 入力に NUL バイトが含まれている |
 
 ## 備考
 
-- `List<byte>` をバッファ型として使用します。標準的なリスト操作（`len()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
+- `List<u8>` をバッファ型として使用します。標準的なリスト操作（`length()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
 - ファイルパスは絶対パスを指定しない限り、カレントディレクトリからの相対パスとなります。
 - `write_text` と `write_bytes` は既存ファイルを上書きします。既存ファイルに追記するには `append_text` を使用してください。

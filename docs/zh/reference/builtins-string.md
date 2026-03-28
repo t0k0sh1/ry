@@ -1,75 +1,75 @@
 [English](../../reference/builtins-string.md) | [日本語](../../ja/reference/builtins-string.md) | [繁體中文](builtins-string.md)
 
-# 字串操作函式參考
+# 字符串操作函数参考
 
-針對字串（`str`）的操作函式一覽。所有函式皆可使用 UFCS 記法。
+针对字符串（`str`）的操作函数一览。所有函数均可使用 UFCS 记法。
 
-> **注意：** 所有字串操作皆支援 UTF-8。`len()`、`char_at()`、`substring()`、`find()` 和 `reverse()` 以 Unicode 碼位為單位操作，而非位元組。如需取得位元組長度，請使用 `byte_len()`。
+> **注意：** 所有字符串操作均支持 UTF-8。`length()`、`char_at()`、`substring()`、`find()` 和 `reverse()` 以 Unicode 码位为单位操作，而非字节。如需获取字节长度，请使用 `byte_len()`。
 
-## 函式一覽
+## 函数列表
 
-### 搜尋與判定
+### 搜索与判定
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `contains` | `(str, str) → bool` | 回傳是否包含子字串 |
-| `starts_with` | `(str, str) → bool` | 回傳是否以前綴開頭 |
-| `ends_with` | `(str, str) → bool` | 回傳是否以後綴結尾 |
-| `find` | `(str, str) → Option<int>` | 回傳子字串的字元位置（未找到為 `None`） |
+| `contains` | `(str, str) -> bool` | 返回是否包含子字符串 |
+| `starts_with` | `(str, str) -> bool` | 返回是否以前缀开头 |
+| `ends_with` | `(str, str) -> bool` | 返回是否以后缀结尾 |
+| `find` | `(str, str) -> Option<int>` | 返回子字符串的字符位置（未找到为 `None`） |
 
-### 擷取與轉換
+### 提取与转换
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `substring` | `(str, int, int) → str` | 取得子字串（字元索引） |
-| `char_at` | `(str, int) → str` | 取得指定位置的 UTF-8 字元 |
-| `replace` | `(str, str, str) → str` | 全部取代子字串 |
+| `substring` | `(str, int, int) -> str` | 提取子字符串（字符索引） |
+| `char_at` | `(str, int) -> str` | 获取指定位置的 UTF-8 字符 |
+| `replace` | `(str, str, str) -> str` | 替换所有匹配的子字符串 |
 
-### 大小寫
+### 大小写转换
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `to_upper` | `str → str` | 轉換為 ASCII 大寫 |
-| `to_lower` | `str → str` | 轉換為 ASCII 小寫 |
+| `to_upper` | `str -> str` | 转换为 ASCII 大写 |
+| `to_lower` | `str -> str` | 转换为 ASCII 小写 |
 
 ### 去除空白
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `trim` | `str → str` | 去除前後的空白 |
-| `trim_start` | `str → str` | 去除開頭的空白 |
-| `trim_end` | `str → str` | 去除結尾的空白 |
+| `trim` | `str -> str` | 去除前后的空白 |
+| `trim_start` | `str -> str` | 去除开头的空白 |
+| `trim_end` | `str -> str` | 去除结尾的空白 |
 
-### 生成與加工
+### 生成与加工
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `repeat` | `(str, int) → str` | 將字串重複 n 次 |
-| `reverse` | `str → str` | 反轉字串（UTF-8 感知） |
-| `byte_len` | `str → int` | 回傳字串的位元組長度 |
+| `repeat` | `(str, int) -> str` | 将字符串重复 n 次 |
+| `reverse` | `str -> str` | 反转字符串（UTF-8 感知） |
+| `byte_len` | `str -> int` | 返回字符串的字节长度 |
 
-### 分割與連接
+### 分割与连接
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `split` | `(str, str) → List<str>` | 以分隔符號分割 |
-| `join` | `(List<str>, str) → str` | 以分隔符號連接 |
+| `split` | `(str, str) -> List<str>` | 以分隔符分割 |
+| `join` | `(List<str>, str) -> str` | 以分隔符连接 |
 
-### 型別轉換
+### 类型转换
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `to_int` | `str → int` | 將字串轉換為整數 |
-| `to_float` | `str → float` | 將字串轉換為浮點數 |
-| `to_str` | `int/float/bool/str → str` | 將值轉換為字串 |
+| `to_int` | `str -> int` | 将字符串转换为整数 |
+| `to_float` | `str -> float` | 将字符串转换为浮点数 |
+| `to_str` | `int/float/bool/str/record -> str` | 将值转换为字符串 |
 
 ---
 
 ## contains
 
-**簽名：** `contains(s: str, sub: str) -> bool`
+**签名：** `contains(string: str, substring: str) -> bool`
 
-回傳字串 `s` 中是否包含子字串 `sub`。
+返回字符串 `string` 中是否包含子字符串 `substring`。
 
 ```python
 print(contains("hello", "ell"))   # true
@@ -80,9 +80,9 @@ print("hello".contains("xyz"))    # false (UFCS)
 
 ## starts_with
 
-**簽名：** `starts_with(s: str, prefix: str) -> bool`
+**签名：** `starts_with(string: str, prefix: str) -> bool`
 
-回傳字串 `s` 是否以 `prefix` 開頭。
+返回字符串 `string` 是否以 `prefix` 开头。
 
 ```python
 print(starts_with("hello", "hel"))   # true
@@ -93,9 +93,9 @@ print("hello".starts_with("world"))  # false (UFCS)
 
 ## ends_with
 
-**簽名：** `ends_with(s: str, suffix: str) -> bool`
+**签名：** `ends_with(string: str, suffix: str) -> bool`
 
-回傳字串 `s` 是否以 `suffix` 結尾。
+返回字符串 `string` 是否以 `suffix` 结尾。
 
 ```python
 print(ends_with("hello", "llo"))   # true
@@ -106,9 +106,9 @@ print("hello".ends_with("world"))  # false (UFCS)
 
 ## find
 
-**簽名：** `find(s: str, sub: str) -> Option<int>`
+**签名：** `find(string: str, substring: str) -> Option<int>`
 
-回傳字串 `s` 中子字串 `sub` 首次出現的字元位置。未找到時回傳 `None`。
+返回字符串 `string` 中子字符串 `substring` 首次出现的字符位置。未找到时返回 `None`。
 
 ```python
 print(find("hello world", "world"))   # Some(6)
@@ -120,9 +120,9 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 ## substring
 
-**簽名：** `substring(s: str, start: int, end: int) -> str`
+**签名：** `substring(string: str, start: int, end: int) -> str`
 
-回傳字串 `s` 從 `start` 到 `end`（不含）的子字串。索引為字元位置（UTF-8 感知）。
+返回字符串 `string` 从 `start` 到 `end`（不含）的子字符串。索引为字符位置（UTF-8 感知）。
 
 ```python
 print(substring("hello world", 0, 5))   # hello
@@ -134,9 +134,9 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 ## char_at
 
-**簽名：** `char_at(s: str, i: int) -> str`
+**签名：** `char_at(string: str, i: int) -> str`
 
-回傳字串 `s` 第 `i` 個位置的 UTF-8 字元作為字串。
+返回字符串 `string` 第 `i` 个位置的 UTF-8 字符作为字符串。
 
 ```python
 print(char_at("hello", 0))   # h
@@ -147,9 +147,9 @@ print("abc".char_at(2))       # c (UFCS)
 
 ## replace
 
-**簽名：** `replace(s: str, old: str, new: str) -> str`
+**签名：** `replace(string: str, old: str, new: str) -> str`
 
-回傳將字串 `s` 中所有 `old` 替換為 `new` 後的新字串。
+返回将字符串 `string` 中所有 `old` 替换为 `new` 后的新字符串。
 
 ```python
 print(replace("hello world", "world", "ry"))   # hello ry
@@ -161,9 +161,9 @@ print("foo bar foo".replace("foo", "baz"))      # baz bar baz (UFCS)
 
 ## to_upper
 
-**簽名：** `to_upper(s: str) -> str`
+**签名：** `to_upper(string: str) -> str`
 
-回傳將 ASCII 小寫字母（a-z）轉換為大寫後的新字串。
+返回将 ASCII 小写字母（a-z）转换为大写后的新字符串。
 
 ```python
 print(to_upper("hello"))         # HELLO
@@ -174,9 +174,9 @@ print("Hello World".to_upper())  # HELLO WORLD (UFCS)
 
 ## to_lower
 
-**簽名：** `to_lower(s: str) -> str`
+**签名：** `to_lower(string: str) -> str`
 
-回傳將 ASCII 大寫字母（A-Z）轉換為小寫後的新字串。
+返回将 ASCII 大写字母（A-Z）转换为小写后的新字符串。
 
 ```python
 print(to_lower("HELLO"))         # hello
@@ -187,9 +187,9 @@ print("Hello World".to_lower())  # hello world (UFCS)
 
 ## trim
 
-**簽名：** `trim(s: str) -> str`
+**签名：** `trim(string: str) -> str`
 
-回傳去除字串前後空白字元（空格、定位字元、換行、回車）後的新字串。
+返回去除字符串前后空白字符（空格、制表符、换行、回车）后的新字符串。
 
 ```python
 print(trim("  hello  "))   # hello
@@ -200,9 +200,9 @@ print("  hi  ".trim())     # hi (UFCS)
 
 ## trim_start
 
-**簽名：** `trim_start(s: str) -> str`
+**签名：** `trim_start(string: str) -> str`
 
-回傳去除字串開頭空白字元後的新字串。
+返回去除字符串开头空白字符后的新字符串。
 
 ```python
 print(trim_start("  hello  "))   # hello
@@ -213,9 +213,9 @@ print("  hi".trim_start())       # hi (UFCS)
 
 ## trim_end
 
-**簽名：** `trim_end(s: str) -> str`
+**签名：** `trim_end(string: str) -> str`
 
-回傳去除字串結尾空白字元後的新字串。
+返回去除字符串结尾空白字符后的新字符串。
 
 ```python
 print(trim_end("  hello  "))   #   hello
@@ -226,9 +226,9 @@ print("hi  ".trim_end())       # hi (UFCS)
 
 ## repeat
 
-**簽名：** `repeat(s: str, n: int) -> str`
+**签名：** `repeat(string: str, count: int) -> str`
 
-回傳將字串 `s` 重複 `n` 次後的新字串。
+返回将字符串 `string` 重复 `count` 次后的新字符串。
 
 ```python
 print(repeat("ab", 3))     # ababab
@@ -239,9 +239,9 @@ print("ha".repeat(3))      # hahaha (UFCS)
 
 ## reverse
 
-**簽名：** `reverse(s: str) -> str`
+**签名：** `reverse(string: str) -> str`
 
-回傳字元順序反轉後的新字串（UTF-8 感知）。
+返回字符顺序反转后的新字符串（UTF-8 感知）。
 
 ```python
 print(reverse("hello"))    # olleh
@@ -252,23 +252,23 @@ print("abc".reverse())     # cba (UFCS)
 
 ## byte_len
 
-**簽名：** `byte_len(s: str) -> int`
+**签名：** `byte_len(string: str) -> int`
 
-回傳字串 `s` 的位元組長度。與回傳 UTF-8 字元數的 `len()` 不同，`byte_len()` 回傳的是位元組數。
+返回字符串 `string` 的字节长度。与返回 UTF-8 字符数的 `length()` 不同，`byte_len()` 返回的是字节数。
 
 ```python
 print(byte_len("hello"))   # 5
 print(byte_len("あいう"))   # 9
-print(len("あいう"))        # 3 (字元數)
+print(length("あいう"))        # 3 (characters)
 ```
 
 ---
 
 ## split
 
-**簽名：** `split(s: str, delim: str) -> List<str>`
+**签名：** `split(string: str, delimiter: str) -> List<str>`
 
-以分隔符號 `delim` 分割字串 `s`，回傳 `List<str>`。
+以分隔符 `delimiter` 分割字符串 `string`，返回 `List<str>`。
 
 ```python
 parts = split("a,b,c", ",")
@@ -286,9 +286,9 @@ for word in "hello world".split(" "):
 
 ## join
 
-**簽名：** `join(xs: List<str>, sep: str) -> str`
+**签名：** `join(values: List<str>, sep: str) -> str`
 
-以分隔符號 `sep` 連接字串串列的元素，回傳結合後的字串。
+以分隔符 `sep` 连接字符串列表的元素，返回合并后的字符串。
 
 ```python
 parts = ["a", "b", "c"]
@@ -300,9 +300,9 @@ print(parts.join("-"))         # a-b-c (UFCS)
 
 ## to_int
 
-**簽名：** `to_int(s: str) -> int`
+**签名：** `to_int(string: str) -> int`
 
-將字串轉換為整數。
+将字符串转换为整数。
 
 ```python
 print(to_int("42"))       # 42
@@ -314,9 +314,9 @@ print("123".to_int())     # 123 (UFCS)
 
 ## to_float
 
-**簽名：** `to_float(s: str) -> float`
+**签名：** `to_float(string: str) -> float`
 
-將字串轉換為浮點數。
+将字符串转换为浮点数。
 
 ```python
 print(to_float("3.14"))   # 3.14
@@ -327,20 +327,32 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**簽名：** `to_str(v: int | float | bool | str) -> str`
+**签名：** `to_str(v: int | float | bool | str | record) -> str`
 
-將值轉換為字串。
+将值转换为字符串。
 
-| 型別 | 轉換格式 |
+| 类型 | 转换格式 |
 |----|---------|
 | `int` | `%ld` |
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
-| `str` | 直接回傳 |
+| `str` | 直接返回 |
+| record | `TypeName(field1: val1, field2: val2)` |
+
+Record 类型自动生成 `to_str` 表示。如果提供了用户定义的 `fn to_str(v: MyRecord) -> str`，则优先使用用户定义的版本。这也适用于 `print()` 和 f-string 插值。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+record Point:
+    x: int
+    y: int
+
+p = Point(10, 20)
+print(to_str(p))          # Point(x: 10, y: 20)
+print(p)                  # Point(x: 10, y: 20)
+print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

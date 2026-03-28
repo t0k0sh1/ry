@@ -40,16 +40,18 @@ For detailed language specifications, see the reference pages below.
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Structs and Enums](reference/structs.md) | Complete grammar for type and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |
-| [Built-in Functions](reference/builtins.md) | print, len, Some, range, etc. |
+| [Built-in Functions](reference/builtins.md) | print, length, Some, range, etc. |
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
 | [Regular Expressions](reference/regex.md) | regex_match, regex_search, regex_replace, regex_split, regex_find_all |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |
 | [I/O Functions](reference/io.md) | read_text, write_text, file_exists, read_bytes, str_to_bytes, etc. |
+| [JSON](reference/json.md) | parse, stringify, json_get, json_at, json_str, json_int, etc. |
 | [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/recv/close for TCP sockets |
 | [HTTP Server](reference/http.md) | http_listen, http_method, http_path, http_header, http_body, http_response |
+| [Base64](reference/base64.md) | encode, decode, encode_url_safe, decode_url_safe |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
-| [Project Management](reference/project.md) | ry init and ry.toml specification |
+| [Project Management](reference/project.md) | ry init and package.toml specification |
 | [Design by Contract](reference/contracts.md) | require, ensure, invariant, old, result |
 | [Directives](reference/directives.md) | @deprecated and compile-time metadata |
 | [Error List](reference/errors.md) | Compile errors and runtime errors |

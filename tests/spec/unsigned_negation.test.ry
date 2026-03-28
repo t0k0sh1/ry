@@ -1,0 +1,17 @@
+describe("signed variable negation (regression)", fn():
+  it("negate i32 variable", fn():
+    x: i32 = 5
+    y = -x
+    expect(y as int).to_eq(-5)
+  )
+  it("negate i16 variable", fn():
+    x: i16 = 10
+    y = -x
+    expect(y as int).to_eq(-10)
+  )
+  it("negate plain int variable", fn():
+    x = 42
+    y = -x
+    expect(y).to_eq(-42)
+  )
+)

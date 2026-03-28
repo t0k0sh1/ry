@@ -12,17 +12,22 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
-                           const std::optional<std::string> &type_annotation,
+                           const TypeNodePtr &type_annotation,
                            ExprNode &value, bool is_immutable) {
     if (scope_stack_.back().count(name))
         codegenError("redeclared variable: " + name);
 
+    // Convert TypeNodePtr to string for codegen (Phase 1 bridge)
+    std::optional<std::string> annot;
+    if (type_annotation)
+        annot = type_annotation->toString();
+
     // Handle empty set/map literal with type annotation
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
-        if (!type_annotation)
+        if (!annot)
             codegenError("empty {} literal requires type annotation");
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Set<") {
-            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+        if (annot->size() > 4 && annot->substr(0, 4) == "Set<") {
+            std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
             auto mallocFn = getStdlibMalloc();
@@ -43,19 +48,19 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
             llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2);
             builder_.CreateStore(elemsPtr, elemsPtrField);
-            emitBucketInit(headerPtr, setHeaderTy_, 3, 4, 8);
+            emitBucketInit(headerPtr, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            set_element_types_[ptr] = elemTy;
+            type_meta_[TM_SetElem][ptr] = elemTy;
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Map<") {
-            auto [keyTy, valTy] = parseMapTypeAnnotation(*type_annotation);
+        if (annot->size() > 4 && annot->substr(0, 4) == "Map<") {
+            auto [keyTy, valTy] = parseMapTypeAnnotation(*annot);
             if (!keyTy || !valTy)
-                codegenError("invalid map type annotation: " + *type_annotation);
+                codegenError("invalid map type annotation: " + *annot);
 
             auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -79,12 +84,12 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(keysPtr, keysPtrField);
             llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3);
             builder_.CreateStore(valsPtr, valsPtrField);
-            emitBucketInit(headerPtr, mapHeaderTy_, 4, 5, 8);
+            emitBucketInit(headerPtr, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
-            map_key_types_[ptr] = keyTy;
-            map_value_types_[ptr] = valTy;
+            type_meta_[TM_MapKey][ptr] = keyTy;
+            type_meta_[TM_MapValue][ptr] = valTy;
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
@@ -97,9 +102,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                   (std::holds_alternative<VariableExpr>(value.data) &&
                    std::get<VariableExpr>(value.data).name == "None");
     if (isNone) {
-        if (!type_annotation)
+        if (!annot)
             codegenError("type annotation required for None");
-        llvm::Type *annotTy = resolveType(*type_annotation);
+        llvm::Type *annotTy = resolveType(*annot);
         if (!isOptionType(annotTy))
             codegenError("None can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(annotTy);
@@ -113,8 +118,8 @@ void CodeGen::emitVarDecl(const std::string &name,
     // Resolve type alias and parse constraint once for the entire function
     std::string resolvedAnnot;
     std::optional<TypeConstraint> constraint;
-    if (type_annotation) {
-        resolvedAnnot = resolveTypeAlias(*type_annotation);
+    if (annot) {
+        resolvedAnnot = resolveTypeAlias(*annot);
         constraint = parseTypeConstraint(resolvedAnnot);
 
         // Pre-emit compile-time check for string literal constraints
@@ -138,30 +143,72 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
+    // Fixed-length array declaration: [T; N] = [elem, ...]
+    if (annot && !annot->empty() && annot->front() == '[' &&
+        annot->back() == ']' && annot->find(';') != std::string::npos) {
+        llvm::Type *annotTy = resolveType(*annot);
+        auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
+        if (!arrTy) codegenError("invalid array type: " + *annot);
+
+        llvm::Type *elemTy = arrTy->getElementType();
+        uint64_t arrSize = arrTy->getNumElements();
+
+        // Parse element type name from annotation "[elemType; N]"
+        size_t semiPos = annot->find(';');
+        std::string elemTypeName = annot->substr(1, semiPos - 1);
+        while (!elemTypeName.empty() && elemTypeName.back() == ' ') elemTypeName.pop_back();
+
+        auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+        if (!le)
+            codegenError("array type requires list literal initializer");
+        if ((*le)->elements.size() != arrSize)
+            codegenError("array size mismatch: expected " + std::to_string(arrSize) +
+                         " elements, got " + std::to_string((*le)->elements.size()));
+
+        llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
+
+        for (uint64_t i = 0; i < arrSize; ++i) {
+            llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
+            if (elemVal->getType() != elemTy) {
+                llvm::Value *coerced = coerceToLowLevelType(
+                    elemVal, elemTy, elemTypeName,
+                    " at index " + std::to_string(i), "arr_trunc");
+                if (coerced) {
+                    elemVal = coerced;
+                } else {
+                    codegenError("array element type mismatch at index " + std::to_string(i));
+                }
+            }
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
+            builder_.CreateStore(elemVal, elemPtr);
+        }
+
+        array_elem_type_names_[ptr] = elemTypeName;
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
+        return;
+    }
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
-    if (type_annotation) {
+    if (annot) {
         if (constraint) {
             // Literal/range type: resolve to base type and check constraint
             llvm::Type *annotTy = resolveType(resolvedAnnot);
             if (annotTy != newTy)
                 codegenError(
-                    "type error: annotation '" + *type_annotation +
+                    "type error: annotation '" + *annot +
                     "' does not match expression type for variable '" + name + "'");
             emitConstraintCheck(val, *constraint, name);
         } else {
-            llvm::Type *annotTy = resolveType(*type_annotation);
+            llvm::Type *annotTy = resolveType(*annot);
             if (annotTy != newTy) {
-                if (annotTy == i8Ty_ && newTy == i64Ty_) {
-                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                        int64_t v = ci->getSExtValue();
-                        if (v < 0 || v > 255)
-                            codegenError(
-                                "byte value out of range (0-255): " + std::to_string(v));
-                    }
-                    val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
-                    newTy = i8Ty_;
+                if (llvm::Value *coerced = coerceToLowLevelType(
+                        val, annotTy, *annot, "", *annot + "trunc")) {
+                    val = coerced;
+                    newTy = annotTy;
                 } else if (isOptionType(annotTy) && isOptionType(newTy) &&
                            std::holds_alternative<NoneExpr>(value.data)) {
                     // Allow none coercion to target Option type
@@ -173,16 +220,22 @@ void CodeGen::emitVarDecl(const std::string &name,
                     llvm::Type *innerTy = optTy->getElementType(1);
                     if (val->getType() != innerTy)
                         codegenError(
-                            "type error: annotation '" + *type_annotation +
+                            "type error: annotation '" + *annot +
                             "' does not match expression type for variable '" + name + "'");
                     val = buildSomeValue(val, annotTy);
                     newTy = annotTy;
-                } else if (isUnionType(*type_annotation)) {
-                    val = wrapInUnion(val, *type_annotation);
+                } else if (isAnyType(annotTy)) {
+                    val = wrapInAny(val);
+                    newTy = anyTy_;
+                } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
+                    val = unwrapFromAny(val, annotTy);
+                    newTy = annotTy;
+                } else if (isUnionType(*annot)) {
+                    val = wrapInUnion(val, *annot);
                     newTy = val->getType();
                 } else {
                     codegenError(
-                        "type error: annotation '" + *type_annotation +
+                        "type error: annotation '" + *annot +
                         "' does not match expression type for variable '" + name + "'");
                 }
             }
@@ -192,36 +245,93 @@ void CodeGen::emitVarDecl(const std::string &name,
     llvm::AllocaInst *ptr = getOrCreateVar(name, newTy);
     builder_.CreateStore(val, ptr);
 
+    // Track low-level type metadata
+    if (annot) {
+        const std::string &ann = *annot;
+        if (isLowLevelTypeName(ann))
+            low_level_type_names_[ptr] = ann;
+    } else {
+        // Propagate metadata from initializer expression (e.g., y = x as u32)
+        std::string valName = getLowLevelTypeName(val);
+        // Fall back to AST suffix for literal constants, since ConstantInt/ConstantFP
+        // pointers are shared by LLVM and cannot carry per-use metadata (#311).
+        if (valName.empty())
+            valName = getExprLowLevelSuffix(value);
+        if (!valName.empty())
+            low_level_type_names_[ptr] = valName;
+    }
+
     // Track type constraint for reassignment checks
     if (constraint)
         type_constraints_[ptr] = *constraint;
 
     // Track union value type (skip literal unions which use base types directly)
-    if (type_annotation && isUnionType(*type_annotation) && !constraint) {
-        union_value_types_[ptr] = normalizeUnionType(*type_annotation);
+    if (annot && isUnionType(*annot) && !constraint) {
+        union_value_types_[ptr] = normalizeUnionType(*annot);
+    }
+
+    // Track collection metadata for Option/Result wrapping a collection
+    // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
+    if (isOptionType(newTy) || isResultType(newTy)) {
+        propagateCollectionMetadata(val, ptr);
+        // Extract inner collection type from Option<Map<K,V>> or Result<Map<K,V>, E>
+        if (annot && type_meta_[TM_MapKey].find(ptr) == type_meta_[TM_MapKey].end()) {
+            std::string ann = *annot;
+            std::string inner;
+            if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
+                inner = ann.substr(7, ann.size() - 8);
+            else if (ann.size() > 7 && ann.substr(0, 7) == "Result<" && ann.back() == '>') {
+                // Extract first type param: Result<Map<K,V>, E> → Map<K,V>
+                std::string params = ann.substr(7, ann.size() - 8);
+                int depth = 0;
+                for (size_t i = 0; i < params.size(); ++i) {
+                    if (params[i] == '<') ++depth;
+                    else if (params[i] == '>') --depth;
+                    else if (params[i] == ',' && depth == 0) {
+                        inner = params.substr(0, i);
+                        break;
+                    }
+                }
+            }
+            if (inner.size() > 4 && inner.substr(0, 4) == "Map<") {
+                auto [k, v] = parseMapTypeAnnotation(inner);
+                if (k) type_meta_[TM_MapKey][ptr] = k;
+                if (v) type_meta_[TM_MapValue][ptr] = v;
+            } else if (inner.size() > 5 && inner.substr(0, 5) == "List<") {
+                std::string elemName = inner.substr(5, inner.size() - 6);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    type_meta_[TM_ListElem][ptr] = elemTy;
+            } else if (inner.size() > 4 && inner.substr(0, 4) == "Set<") {
+                std::string elemName = inner.substr(4, inner.size() - 5);
+                llvm::Type *elemTy = resolveType(elemName);
+                if (elemTy)
+                    type_meta_[TM_SetElem][ptr] = elemTy;
+            }
+        }
     }
 
     // Track list/map element types if this is a ptr value
     if (newTy == ptrTy_) {
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
-        if (!elemTy && type_annotation && type_annotation->size() > 5 &&
-            type_annotation->substr(0, 5) == "List<") {
-            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+        if (!elemTy && annot && annot->size() > 5 &&
+            annot->substr(0, 5) == "List<") {
+            std::string inner = annot->substr(5, annot->size() - 6);
             elemTy = resolveType(inner);
         }
         if (elemTy)
-            list_element_types_[ptr] = elemTy;
+            type_meta_[TM_ListElem][ptr] = elemTy;
 
         // --- Nested list tracking (for flatten) ---
         {
-            auto nit = nested_list_element_types_.find(val);
-            if (nit != nested_list_element_types_.end())
-                nested_list_element_types_[ptr] = nit->second;
+            auto nit = type_meta_[TM_NestedListElem].find(val);
+            if (nit != type_meta_[TM_NestedListElem].end())
+                type_meta_[TM_NestedListElem][ptr] = nit->second;
             else if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto nit2 = nested_list_element_types_.find(load->getPointerOperand());
-                if (nit2 != nested_list_element_types_.end())
-                    nested_list_element_types_[ptr] = nit2->second;
+                auto nit2 = type_meta_[TM_NestedListElem].find(load->getPointerOperand());
+                if (nit2 != type_meta_[TM_NestedListElem].end())
+                    type_meta_[TM_NestedListElem][ptr] = nit2->second;
             }
         }
 
@@ -229,26 +339,26 @@ void CodeGen::emitVarDecl(const std::string &name,
         llvm::Type *keyTy = nullptr;
         llvm::Type *valTy = nullptr;
         // Direct mapping (from MapExpr)
-        auto mk = map_key_types_.find(val);
-        if (mk != map_key_types_.end()) keyTy = mk->second;
-        auto mv = map_value_types_.find(val);
-        if (mv != map_value_types_.end()) valTy = mv->second;
+        auto mk = type_meta_[TM_MapKey].find(val);
+        if (mk != type_meta_[TM_MapKey].end()) keyTy = mk->second;
+        auto mv = type_meta_[TM_MapValue].find(val);
+        if (mv != type_meta_[TM_MapValue].end()) valTy = mv->second;
         // From variable load
         if (!keyTy) {
             if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-                auto mk2 = map_key_types_.find(load->getPointerOperand());
-                if (mk2 != map_key_types_.end()) keyTy = mk2->second;
-                auto mv2 = map_value_types_.find(load->getPointerOperand());
-                if (mv2 != map_value_types_.end()) valTy = mv2->second;
+                auto mk2 = type_meta_[TM_MapKey].find(load->getPointerOperand());
+                if (mk2 != type_meta_[TM_MapKey].end()) keyTy = mk2->second;
+                auto mv2 = type_meta_[TM_MapValue].find(load->getPointerOperand());
+                if (mv2 != type_meta_[TM_MapValue].end()) valTy = mv2->second;
             }
         }
         // From type annotation: Map<K, V>
-        if (!keyTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "Map<") {
-            std::tie(keyTy, valTy) = parseMapTypeAnnotation(*type_annotation);
+        if (!keyTy && annot && annot->size() > 4 &&
+            annot->substr(0, 4) == "Map<") {
+            std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
-        if (keyTy) map_key_types_[ptr] = keyTy;
-        if (valTy) map_value_types_[ptr] = valTy;
+        if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
+        if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
 
         // --- Set tracking ---
         llvm::Type *setElemTy = getSetElementType(val);
@@ -257,59 +367,29 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setElemTy = getSetElementType(load->getPointerOperand());
             }
         }
-        if (!setElemTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "Set<") {
-            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+        if (!setElemTy && annot && annot->size() > 4 &&
+            annot->substr(0, 4) == "Set<") {
+            std::string inner = annot->substr(4, annot->size() - 5);
             setElemTy = resolveType(inner);
         }
         if (setElemTy)
-            set_element_types_[ptr] = setElemTy;
+            type_meta_[TM_SetElem][ptr] = setElemTy;
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
-        if (!taskTy && type_annotation && type_annotation->size() > 5 &&
-            type_annotation->substr(0, 5) == "Task<" && type_annotation->back() == '>') {
-            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+        if (!taskTy && annot && annot->size() > 5 &&
+            annot->substr(0, 5) == "Task<" && annot->back() == '>') {
+            std::string inner = annot->substr(5, annot->size() - 6);
             taskTy = resolveType(inner);
         }
         if (taskTy)
-            task_result_types_[ptr] = taskTy;
-
-        // --- Channel tracking ---
-        llvm::Type *channelTy = getChannelElementType(val);
-        if (!channelTy && type_annotation && type_annotation->size() > 8 &&
-            type_annotation->substr(0, 8) == "Channel<" && type_annotation->back() == '>') {
-            std::string inner = type_annotation->substr(8, type_annotation->size() - 9);
-            channelTy = resolveType(inner);
-        }
-        if (channelTy)
-            channel_element_types_[ptr] = channelTy;
-
-        // --- TcpListener/TcpStream tracking ---
-        if (isTcpListener(val))
-            tcp_listener_values_.insert(ptr);
-        else if (type_annotation && *type_annotation == "TcpListener")
-            tcp_listener_values_.insert(ptr);
-        if (isTcpStream(val))
-            tcp_stream_values_.insert(ptr);
-        else if (type_annotation && *type_annotation == "TcpStream")
-            tcp_stream_values_.insert(ptr);
-
-        // --- HttpRequest/HttpResponse tracking ---
-        if (isHttpRequest(val))
-            http_request_values_.insert(ptr);
-        else if (type_annotation && *type_annotation == "HttpRequest")
-            http_request_values_.insert(ptr);
-        if (isHttpResponse(val))
-            http_response_values_.insert(ptr);
-        else if (type_annotation && *type_annotation == "HttpResponse")
-            http_response_values_.insert(ptr);
+            type_meta_[TM_TaskResult][ptr] = taskTy;
 
         // --- Function pointer tracking ---
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
-        } else if (type_annotation) {
+        } else if (annot) {
             if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
                 fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
@@ -323,17 +403,24 @@ void CodeGen::emitVarDecl(const std::string &name,
                     iterElemTy = getIteratorElementType(load->getPointerOperand());
             }
             if (iterElemTy)
-                iterator_element_types_[ptr] = iterElemTy;
+                type_meta_[TM_IteratorElem][ptr] = iterElemTy;
         }
     }
+
+    // --- Resource type tracking ---
+    // These must be outside the ptrTy_ guard because resources can be
+    // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
+    propagateResourceTrackingWide(val, ptr);
+    if (annot)
+        registerResourceByTypeName(*annot, ptr);
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
     {
         auto evIt = enum_value_types_.find(val);
         if (evIt != enum_value_types_.end())
             enum_value_types_[ptr] = evIt->second;
-        else if (type_annotation && enum_types_.count(*type_annotation))
-            enum_value_types_[ptr] = *type_annotation;
+        else if (annot && enum_types_.count(*annot))
+            enum_value_types_[ptr] = *annot;
     }
 
     if (is_immutable)
@@ -342,12 +429,13 @@ void CodeGen::emitVarDecl(const std::string &name,
 
 void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     bool is_const = hasDirective(s.directives, "const");
     bool is_native = hasDirective(s.directives, "native");
 
-    // @native @const declaration (e.g., PI, E, Inf, NaN)
+    // @native @const declaration
     if (is_native && !s.value) {
-        if (s.name == "PI" || s.name == "E" || s.name == "Inf" || s.name == "NaN") {
+        if (isNativeConstant(s.name)) {
             native_constants_.insert(s.name);
         } else {
             codegenError("unsupported native constant: " + s.name);
@@ -374,6 +462,37 @@ void CodeGen::emitStmt(AssignStmt &s) {
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
+    // Compound assignment resolution: operator+= → operator+ → built-in
+    if (s.compound_op) {
+        llvm::Value *currentVal = builder_.CreateLoad(ptr->getAllocatedType(), ptr, s.name);
+        llvm::Value *rhs = emitExpr(*s.value);
+
+        // Priority 1: user-defined compound assignment operator (e.g., operator+=)
+        std::string compoundOpName = "operator" + *s.compound_op + "=";
+        llvm::Value *result = tryOperatorCall(compoundOpName, currentVal, rhs);
+
+        if (!result) {
+            // Priority 2: user-defined binary operator or built-in (e.g., operator+)
+            result = emitBinaryOp(*s.compound_op, currentVal, rhs);
+        }
+
+        // Type compatibility check (same as plain assignment path)
+        llvm::Type *varTy = ptr->getAllocatedType();
+        if (result->getType() != varTy) {
+            if (varTy == i8Ty_ && result->getType() == i64Ty_) {
+                result = builder_.CreateTrunc(result, i8Ty_, "bytetrunc");
+            } else if (isAnyType(varTy)) {
+                result = wrapInAny(result);
+            } else {
+                codegenError("type error: compound assignment on '" + s.name +
+                    "' produces incompatible type");
+            }
+        }
+
+        builder_.CreateStore(result, ptr);
+        return;
+    }
+
     // Handle None literal in assignment
     if (auto *ve = std::get_if<VariableExpr>(&s.value->data); ve && ve->name == "None") {
         llvm::Type *varTy = ptr->getAllocatedType();
@@ -388,15 +507,16 @@ void CodeGen::emitStmt(AssignStmt &s) {
     llvm::Type *newTy = val->getType();
 
     if (ptr->getAllocatedType() != newTy) {
-        // byte variable assigned from int expression
-        if (ptr->getAllocatedType() == i8Ty_ && newTy == i64Ty_) {
-            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
-                int64_t v = ci->getSExtValue();
-                if (v < 0 || v > 255)
-                    codegenError(
-                        "byte value out of range (0-255): " + std::to_string(v));
-            }
-            val = builder_.CreateTrunc(val, i8Ty_, "bytetrunc");
+        if (llvm::Value *coerced = coerceToLowLevelType(
+                val, ptr->getAllocatedType(), getLowLevelTypeName(ptr),
+                "", "i8trunc")) {
+            val = coerced;
+        } else if (isAnyType(ptr->getAllocatedType())) {
+            val = wrapInAny(val);
+            newTy = val->getType();
+        } else if (isAnyType(newTy) && canAnyHoldType(ptr->getAllocatedType())) {
+            val = unwrapFromAny(val, ptr->getAllocatedType());
+            newTy = val->getType();
         } else {
             auto uvIt = union_value_types_.find(ptr);
             if (uvIt != union_value_types_.end()) {
@@ -424,345 +544,16 @@ void CodeGen::emitStmt(AssignStmt &s) {
             fn_type_info_[ptr] = fnIt->second;
         llvm::Type *taskTy = getTaskResultType(val);
         if (taskTy)
-            task_result_types_[ptr] = taskTy;
-        llvm::Type *channelTy = getChannelElementType(val);
-        if (channelTy)
-            channel_element_types_[ptr] = channelTy;
-        if (isTcpListener(val)) tcp_listener_values_.insert(ptr);
-        if (isTcpStream(val))   tcp_stream_values_.insert(ptr);
-        if (isHttpRequest(val))  http_request_values_.insert(ptr);
-        if (isHttpResponse(val)) http_response_values_.insert(ptr);
+            type_meta_[TM_TaskResult][ptr] = taskTy;
     }
+    // Resource tracking: must be outside ptrTy_ guard for Result-wrapped types
+    propagateResourceTrackingWide(val, ptr);
 }
 
-
-void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "while.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "while.body", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "while.end", fn_);
-
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *cond = emitExpr(*s->condition);
-    cond = toBool(cond);
-    builder_.CreateCondBr(cond, bodyBB, endBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({condBB, endBB});
-    pushScope();
-    for (auto &stmt : s->body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-    popScope();
-    loop_stack_.pop_back();
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(endBB);
-}
-
-void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
-    if (hasDirective(s->directives, "parallel")) {
-        if (s->var_name2.has_value())
-            codegenError(s->loc, "@parallel for does not support destructuring iteration");
-
-        validateParallelFor(*s);
-
-        llvm::Value *begin = nullptr;
-        llvm::Value *end = nullptr;
-        llvm::Value *step = llvm::ConstantInt::get(i64Ty_, 1);
-
-        if (auto *rangeExpr = std::get_if<std::unique_ptr<RangeExpr>>(&s->iterable->data)) {
-            begin = emitExpr(*(*rangeExpr)->start);
-            llvm::Value *inclusiveEnd = emitExpr(*(*rangeExpr)->end);
-            end = builder_.CreateAdd(inclusiveEnd, llvm::ConstantInt::get(i64Ty_, 1), "parallel_inclusive_end");
-        } else if (auto *callExpr = std::get_if<std::unique_ptr<CallExpr>>(&s->iterable->data)) {
-            if ((*callExpr)->callee != "range")
-                codegenError(s->loc, "@parallel for only supports range(...) or .. iterables");
-            if ((*callExpr)->args.size() < 1 || (*callExpr)->args.size() > 3)
-                codegenError(s->loc, "range() takes 1, 2, or 3 arguments");
-            if ((*callExpr)->args.size() == 1) {
-                begin = llvm::ConstantInt::get(i64Ty_, 0);
-                end = emitExpr(*(*callExpr)->args[0]);
-            } else {
-                begin = emitExpr(*(*callExpr)->args[0]);
-                end = emitExpr(*(*callExpr)->args[1]);
-            }
-            if ((*callExpr)->args.size() == 3)
-                step = emitExpr(*(*callExpr)->args[2]);
-        } else {
-            codegenError(s->loc, "@parallel for only supports range(...) or .. iterables");
-        }
-
-        if (begin->getType() != i64Ty_ || end->getType() != i64Ty_ || step->getType() != i64Ty_)
-            codegenError(s->loc, "@parallel for requires integer range bounds");
-
-        emitParallelForRange(*s, begin, end, step);
-        return;
-    }
-
-    // Evaluate iterable
-    llvm::Value *iterable = emitExpr(*s->iterable);
-
-    // Check if this is a pointer-backed iterable (list/set/map/channel)
-    if (iterable->getType() != ptrTy_)
-        codegenError("for loop requires list, set, map, channel, or iterator iterable");
-
-    if (llvm::Type *channelElemTy = getChannelElementType(iterable)) {
-        if (s->var_name2.has_value())
-            codegenError("channel iteration does not support destructuring");
-        emitChannelForLoop(*s, iterable, channelElemTy);
-        return;
-    }
-
-    // Check if iterable is an iterator
-    llvm::Type *iterElemTy = getIteratorElementType(iterable);
-    if (iterElemTy) {
-        llvm::Value *nextFnField = builder_.CreateStructGEP(iteratorHeaderTy_, iterable, 0, "for_iter_nf");
-        llvm::Value *nextFnPtr = builder_.CreateLoad(ptrTy_, nextFnField, "for_iter_next_fn");
-        llvm::Value *stateField = builder_.CreateStructGEP(iteratorHeaderTy_, iterable, 1, "for_iter_st");
-        llvm::Value *statePtr = builder_.CreateLoad(ptrTy_, stateField, "for_iter_state");
-
-        llvm::StructType *optTy = getOptionType(iterElemTy);
-        llvm::FunctionType *nextCallTy = llvm::FunctionType::get(optTy, {ptrTy_}, false);
-
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "foriter.cond", fn_);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "foriter.body", fn_);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "foriter.end", fn_);
-
-        builder_.CreateBr(condBB);
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *opt = builder_.CreateCall(nextCallTy, nextFnPtr, {statePtr}, "foriter_opt");
-        llvm::Value *hasVal = builder_.CreateExtractValue(opt, 0, "foriter_has");
-        builder_.CreateCondBr(hasVal, bodyBB, endBB);
-
-        builder_.SetInsertPoint(bodyBB);
-        loop_stack_.push_back({condBB, endBB});
-        pushScope();
-
-        llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
-
-        // Handle two-variable destructuring for map iterators (tuple elements)
-        if (s->var_name2.has_value()) {
-            auto *structTy = llvm::dyn_cast<llvm::StructType>(iterElemTy);
-            if (!structTy || structTy->getNumElements() != 2)
-                codegenError("for k, v over iterator requires tuple elements");
-            llvm::Value *first = builder_.CreateExtractValue(elem, 0, "foriter_first");
-            llvm::Value *second = builder_.CreateExtractValue(elem, 1, "foriter_second");
-            if (s->var_name != "_") {
-                llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, structTy->getElementType(0));
-                builder_.CreateStore(first, firstVar);
-            }
-            if (*s->var_name2 != "_") {
-                llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, structTy->getElementType(1));
-                builder_.CreateStore(second, secondVar);
-            }
-        } else {
-            llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, iterElemTy);
-            builder_.CreateStore(elem, loopVar);
-        }
-
-        for (auto &stmt : s->body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-        popScope();
-        loop_stack_.pop_back();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(condBB);
-
-        builder_.SetInsertPoint(endBB);
-        return;
-    }
-
-    // Two-variable iteration: for k, v in map  OR  for i, x in enumerate(xs)
-    if (s->var_name2.has_value()) {
-        llvm::Type *keyTy = getMapKeyType(iterable);
-        llvm::Type *valTy = getMapValueType(iterable);
-        if (!keyTy || !valTy) {
-            // Try List<Tuple> (e.g. enumerate, zip)
-            llvm::Type *elemTy = getListElementType(iterable);
-            auto *structTy = llvm::dyn_cast_or_null<llvm::StructType>(elemTy);
-            if (!structTy || structTy->getNumElements() != 2)
-                codegenError("for k, v requires a map or list of 2-element tuples");
-
-            llvm::Type *firstTy = structTy->getElementType(0);
-            llvm::Type *secondTy = structTy->getElementType(1);
-
-            llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, iterable, 0, "for_len_ptr");
-            llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
-            llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, iterable, 2, "for_data_ptr");
-            llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
-
-            emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-                llvm::Value *tuplePtr = builder_.CreateGEP(structTy, dataPtr, {iCur}, "for_tuple_ptr");
-                llvm::Value *tuple = builder_.CreateLoad(structTy, tuplePtr, "for_tuple");
-                llvm::Value *first = builder_.CreateExtractValue(tuple, 0, "for_first");
-                llvm::Value *second = builder_.CreateExtractValue(tuple, 1, "for_second");
-                if (s->var_name != "_") {
-                    llvm::AllocaInst *firstVar = getOrCreateVar(s->var_name, firstTy);
-                    builder_.CreateStore(first, firstVar);
-                }
-                if (*s->var_name2 != "_") {
-                    llvm::AllocaInst *secondVar = getOrCreateVar(*s->var_name2, secondTy);
-                    builder_.CreateStore(second, secondVar);
-                }
-            });
-            return;
-        }
-
-        llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, iterable, 0, "map_len_ptr");
-        llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "map_len");
-        llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 2, "keys_ptr_field");
-        llvm::Value *keysPtr = builder_.CreateLoad(ptrTy_, keysPtrField, "keys_ptr");
-        llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, iterable, 3, "vals_ptr_field");
-        llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "vals_ptr");
-
-        emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-            llvm::Value *keyPtr = builder_.CreateGEP(keyTy, keysPtr, {iCur}, "for_key_ptr");
-            llvm::Value *key = builder_.CreateLoad(keyTy, keyPtr, "for_key");
-            llvm::Value *valPtr = builder_.CreateGEP(valTy, valsPtr, {iCur}, "for_val_ptr");
-            llvm::Value *val = builder_.CreateLoad(valTy, valPtr, "for_val");
-            llvm::AllocaInst *keyVar = getOrCreateVar(s->var_name, keyTy);
-            builder_.CreateStore(key, keyVar);
-            llvm::AllocaInst *valVar = getOrCreateVar(*s->var_name2, valTy);
-            builder_.CreateStore(val, valVar);
-        });
-        return;
-    }
-
-    // Try set first, then list
-    llvm::Type *elemTy = getSetElementType(iterable);
-    llvm::StructType *headerTy = setHeaderTy_;
-    if (!elemTy) {
-        elemTy = getListElementType(iterable);
-        headerTy = listHeaderTy_;
-    }
-    if (!elemTy)
-        codegenError("cannot determine element type for for loop iterable");
-
-    llvm::Value *lenPtr = builder_.CreateStructGEP(headerTy, iterable, 0, "for_len_ptr");
-    llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "for_len");
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(headerTy, iterable, 2, "for_data_ptr");
-    llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "for_data");
-
-    emitIndexedForLoop(length, s->body, [&](llvm::Value *iCur) {
-        llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {iCur}, "for_elem_ptr");
-        llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "for_elem");
-        llvm::AllocaInst *loopVar = getOrCreateVar(s->var_name, elemTy);
-        builder_.CreateStore(elem, loopVar);
-    });
-}
-
-void CodeGen::emitChannelForLoop(ForStmt &s, llvm::Value *channel, llvm::Type *elemTy) {
-    llvm::FunctionType *recvOptTy = llvm::FunctionType::get(i1Ty_, {ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee recvOptFn = mod_->getOrInsertFunction("__ry_channel_recv_opt", recvOptTy);
-
-    llvm::AllocaInst *recvSlot = nullptr;
-    llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*ctx_));
-    if (!elemTy->isVoidTy()) {
-        recvSlot = builder_.CreateAlloca(elemTy, nullptr, "for_channel_recv");
-        outPtr = recvSlot;
-    } else if (s.var_name != "_") {
-        codegenError(s.loc, "for x in Channel<Unit> requires '_' loop variable");
-    }
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.channel.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.channel.body", fn_);
-    llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "for.channel.end", fn_);
-
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *hasValue = builder_.CreateCall(recvOptFn, {channel, outPtr}, "for_channel_has_value");
-    builder_.CreateCondBr(hasValue, bodyBB, endBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({condBB, endBB});
-    pushScope();
-
-    if (s.var_name != "_" && recvSlot) {
-        llvm::AllocaInst *loopVar = getOrCreateVar(s.var_name, elemTy);
-        llvm::Value *elem = builder_.CreateLoad(elemTy, recvSlot, "for_channel_elem");
-        builder_.CreateStore(elem, loopVar);
-    }
-
-    for (auto &stmt : s.body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-    popScope();
-    loop_stack_.pop_back();
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(endBB);
-}
-
-void CodeGen::emitIndexedForLoop(llvm::Value *length,
-                                  std::vector<StmtNode> &body,
-                                  std::function<void(llvm::Value *iCur)> bindVars) {
-    llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "for_i");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
-
-    llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "for.cond", fn_);
-    llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "for.body", fn_);
-    llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "for.step", fn_);
-    llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "for.end", fn_);
-
-    builder_.CreateBr(condBB);
-    builder_.SetInsertPoint(condBB);
-    llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
-    llvm::Value *cond = builder_.CreateICmpSLT(iVal, length, "for_cond");
-    builder_.CreateCondBr(cond, bodyBB, endBB);
-
-    builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({stepBB, endBB});
-    pushScope();
-
-    llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
-    bindVars(iCur);
-
-    for (auto &stmt : body)
-        std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-    popScope();
-    loop_stack_.pop_back();
-    if (!builder_.GetInsertBlock()->getTerminator())
-        builder_.CreateBr(stepBB);
-
-    builder_.SetInsertPoint(stepBB);
-    llvm::Value *iNext = builder_.CreateAdd(
-        builder_.CreateLoad(i64Ty_, iVar, "i_step"), llvm::ConstantInt::get(i64Ty_, 1), "i_next");
-    builder_.CreateStore(iNext, iVar);
-    builder_.CreateBr(condBB);
-
-    builder_.SetInsertPoint(endBB);
-}
-
-void CodeGen::emitStmt(BreakStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    if (loop_stack_.empty())
-        codegenError("break outside of loop");
-    builder_.CreateBr(loop_stack_.back().second);
-    // Create unreachable block for subsequent code
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "break.dead", fn_);
-    builder_.SetInsertPoint(deadBB);
-}
-
-void CodeGen::emitStmt(ContinueStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    if (loop_stack_.empty())
-        codegenError("continue outside of loop");
-    builder_.CreateBr(loop_stack_.back().first);
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "continue.dead", fn_);
-    builder_.SetInsertPoint(deadBB);
-}
-
-void CodeGen::emitStmt(EllipsisStmt &) {
-    // no-op: intentionally does nothing
-}
 
 void CodeGen::emitStmt(FieldAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     // Get the variable name from the object expression
     auto *varExpr = std::get_if<VariableExpr>(&s.object->data);
     if (!varExpr)
@@ -798,17 +589,19 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
     llvm::Value *newVal = emitExpr(*s.value);
     llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
-    if (newVal->getType() != expectedTy)
-        codegenError("field '" + s.field + "' type mismatch");
+    if (newVal->getType() != expectedTy) {
+        if (auto *sliced = tryEmitSubtypeCoerce(newVal, expectedTy))
+            newVal = sliced;
+        else
+            codegenError("field '" + s.field + "' type mismatch");
+    }
 
     // Load current struct value, insert new field value, store back
     llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
     llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
     builder_.CreateStore(updated, ptr);
 
-    // Check invariants after field assignment
-    if (!info.invariants.empty())
-        emitInvariantCheck(typeName, info, updated);
+    emitInvariantCheck(typeName, info, updated);
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {
@@ -817,7 +610,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
         GenericEnumTemplate tmpl;
         tmpl.name = s.name;
         tmpl.typeParams = s.type_params;
-        tmpl.variants = s.variants;
+        tmpl.variants = std::move(s.variants);
         generic_enum_templates_[s.name] = std::move(tmpl);
         return;
     }
@@ -836,11 +629,23 @@ void CodeGen::emitStmt(EnumStmt &s) {
     }
     info.isADT = hasADT;
 
+    // Check if any variant has explicit values
+    bool hasExplicit = false;
+    for (auto &v : s.variants) {
+        if (v.explicit_value.has_value()) { hasExplicit = true; break; }
+    }
+    info.hasExplicitValues = hasExplicit;
+
     // Create global string array for variant names (for printing)
     std::vector<llvm::Constant*> nameStrings;
+    std::unordered_set<int64_t> seenValues;
     for (size_t i = 0; i < s.variants.size(); ++i) {
-        info.variants[s.variants[i].name] = static_cast<int64_t>(i);
-        llvm::Constant *str = builder_.CreateGlobalString(
+        int64_t val = s.variants[i].explicit_value.value_or(static_cast<int64_t>(i));
+        if (!seenValues.insert(val).second)
+            codegenError("duplicate enum value " + std::to_string(val) + " in enum '" + s.name + "'");
+        info.variants[s.variants[i].name] = val;
+        info.variantOrder.push_back(s.variants[i].name);
+        llvm::Constant *str = cachedGlobalString(
             s.variants[i].name, ".enum_" + s.name + "_" + s.variants[i].name);
         nameStrings.push_back(str);
 
@@ -848,8 +653,9 @@ void CodeGen::emitStmt(EnumStmt &s) {
         if (!s.variants[i].field_types.empty()) {
             VariantFieldInfo vfi;
             for (auto &ft : s.variants[i].field_types) {
-                vfi.fieldTypes.push_back(resolveType(ft));
-                vfi.fieldTypeNames.push_back(ft);
+                std::string ftStr = ft->toString();
+                vfi.fieldTypes.push_back(resolveType(ftStr));
+                vfi.fieldTypeNames.push_back(ftStr);
             }
             info.variantFields[s.variants[i].name] = std::move(vfi);
         }
@@ -886,209 +692,8 @@ void CodeGen::emitStmt(EnumStmt &s) {
     enum_types_[s.name] = std::move(info);
 }
 
-void CodeGen::emitStmt(AwaitStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-
-    auto awaitExpr = std::make_unique<AwaitExpr>();
-    awaitExpr->operand = std::move(s.operand);
-    auto node = std::make_unique<ExprNode>();
-    node->data = std::move(awaitExpr);
-    node->loc = s.loc;
-    (void)emitExpr(*node);
-}
-
-void CodeGen::emitStmt(std::unique_ptr<SelectStmt> &s) {
-    if (s->loc.isValid()) current_loc_ = s->loc;
-
-    llvm::FunctionType *beginTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionType *addRecvTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionType *addRecvOptTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionType *addSendTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionType *waitTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-    llvm::FunctionType *destroyTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-
-    llvm::FunctionCallee beginFn = mod_->getOrInsertFunction("__ry_select_begin", beginTy);
-    llvm::FunctionCallee addRecvFn = mod_->getOrInsertFunction("__ry_select_add_recv", addRecvTy);
-    llvm::FunctionCallee addRecvOptFn = mod_->getOrInsertFunction("__ry_select_add_recv_opt", addRecvOptTy);
-    llvm::FunctionCallee addSendFn = mod_->getOrInsertFunction("__ry_select_add_send", addSendTy);
-    llvm::FunctionCallee waitFn = mod_->getOrInsertFunction("__ry_select_wait", waitTy);
-    llvm::FunctionCallee destroyFn = mod_->getOrInsertFunction("__ry_select_destroy", destroyTy);
-
-    llvm::Value *state = builder_.CreateCall(
-        beginFn, {llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(s->cases.size()))}, "select_state");
-
-    struct CaseCodegenInfo {
-        llvm::Type *recvTy = nullptr;
-        llvm::AllocaInst *recvSlot = nullptr;
-        llvm::AllocaInst *recvOptFlagSlot = nullptr;
-        std::string recvName;
-        SelectRecvMode recvMode = SelectRecvMode::Strict;
-    };
-    std::vector<CaseCodegenInfo> caseInfos(s->cases.size());
-
-    for (size_t i = 0; i < s->cases.size(); ++i) {
-        std::visit([&](auto &selectCase) {
-            using T = std::decay_t<decltype(selectCase)>;
-            if constexpr (std::is_same_v<T, SelectRecvCase>) {
-                if (selectCase.loc.isValid()) current_loc_ = selectCase.loc;
-                llvm::Value *channelVal = emitExpr(*selectCase.channel);
-                llvm::Type *elemTy = getChannelElementType(channelVal);
-                if (!elemTy)
-                    codegenError(selectCase.loc,
-                        selectCase.mode == SelectRecvMode::Optional
-                            ? "select recv_opt requires Channel<T>"
-                            : "select recv requires Channel<T>");
-
-                llvm::Value *outPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-                if (!elemTy->isVoidTy()) {
-                    caseInfos[i].recvSlot = builder_.CreateAlloca(elemTy, nullptr, "select_recv");
-                    if (selectCase.mode == SelectRecvMode::Optional)
-                        builder_.CreateStore(llvm::Constant::getNullValue(elemTy), caseInfos[i].recvSlot);
-                    outPtr = caseInfos[i].recvSlot;
-                }
-                caseInfos[i].recvTy = elemTy;
-                caseInfos[i].recvName = selectCase.name;
-                caseInfos[i].recvMode = selectCase.mode;
-                if (selectCase.mode == SelectRecvMode::Optional) {
-                    caseInfos[i].recvOptFlagSlot = builder_.CreateAlloca(i1Ty_, nullptr, "select_recv_opt_flag");
-                    builder_.CreateCall(addRecvOptFn, {state, channelVal, outPtr, caseInfos[i].recvOptFlagSlot});
-                } else {
-                    builder_.CreateCall(addRecvFn, {state, channelVal, outPtr});
-                }
-            } else if constexpr (std::is_same_v<T, SelectSendCase>) {
-                if (selectCase.loc.isValid()) current_loc_ = selectCase.loc;
-                llvm::Value *channelVal = emitExpr(*selectCase.channel);
-                llvm::Type *elemTy = getChannelElementType(channelVal);
-                if (!elemTy)
-                    codegenError(selectCase.loc, "select send requires Channel<T>");
-                llvm::Value *valueVal = emitExpr(*selectCase.value);
-                if (valueVal->getType() != elemTy)
-                    codegenError(selectCase.loc, "select send value type does not match channel element type");
-
-                llvm::Value *valuePtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-                if (!elemTy->isVoidTy()) {
-                    llvm::AllocaInst *valueSlot = builder_.CreateAlloca(elemTy, nullptr, "select_send");
-                    builder_.CreateStore(valueVal, valueSlot);
-                    valuePtr = valueSlot;
-                }
-                builder_.CreateCall(addSendFn, {state, channelVal, valuePtr});
-            }
-        }, s->cases[i]);
-    }
-
-    const int64_t elseIndex = s->else_body.empty() ? -1 : static_cast<int64_t>(s->cases.size());
-    const int64_t timeoutIndex = s->timeout_ms ? static_cast<int64_t>(s->cases.size()) : -1;
-    llvm::Value *timeoutMsVal = llvm::ConstantInt::get(i64Ty_, -1);
-    if (s->timeout_ms) {
-        if (s->timeout_loc.isValid()) current_loc_ = s->timeout_loc;
-        timeoutMsVal = emitExpr(*s->timeout_ms);
-        if (timeoutMsVal->getType() != i64Ty_)
-            codegenError(s->timeout_loc, "select timeout requires int milliseconds");
-    }
-    llvm::Value *selected = builder_.CreateCall(
-        waitFn,
-        {state,
-         llvm::ConstantInt::get(i64Ty_, elseIndex),
-         timeoutMsVal,
-         llvm::ConstantInt::get(i64Ty_, timeoutIndex)},
-        "select_index");
-    builder_.CreateCall(destroyFn, {state});
-
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "select.end", fn_);
-    llvm::BasicBlock *defaultBB = s->else_body.empty() ? mergeBB : llvm::BasicBlock::Create(*ctx_, "select.else", fn_);
-    llvm::BasicBlock *timeoutBB = s->timeout_body.empty() ? mergeBB : llvm::BasicBlock::Create(*ctx_, "select.timeout", fn_);
-    llvm::SwitchInst *switchInst = builder_.CreateSwitch(selected, mergeBB,
-        static_cast<unsigned>(s->cases.size() + (s->else_body.empty() ? 0 : 1) + (s->timeout_body.empty() ? 0 : 1)));
-
-    for (size_t i = 0; i < s->cases.size(); ++i) {
-        llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "select.case", fn_);
-        switchInst->addCase(
-            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, static_cast<int64_t>(i))),
-            caseBB);
-        builder_.SetInsertPoint(caseBB);
-
-        pushScope();
-        std::visit([&](auto &selectCase) {
-            using T = std::decay_t<decltype(selectCase)>;
-            if constexpr (std::is_same_v<T, SelectRecvCase>) {
-                if (selectCase.name != "_") {
-                    llvm::Type *recvTy = caseInfos[i].recvTy;
-                    llvm::Value *boundValue = nullptr;
-                    llvm::Type *boundTy = nullptr;
-                    if (caseInfos[i].recvMode == SelectRecvMode::Optional) {
-                        llvm::Value *hasValue = builder_.CreateLoad(i1Ty_, caseInfos[i].recvOptFlagSlot, "select_recv_opt_has");
-                        if (recvTy->isVoidTy()) {
-                            boundValue = hasValue;
-                            boundTy = i1Ty_;
-                        } else {
-                            llvm::StructType *optTy = getOptionType(recvTy);
-                            llvm::Value *recvVal = builder_.CreateLoad(recvTy, caseInfos[i].recvSlot, "select_received");
-                            llvm::Value *optInner = builder_.CreateSelect(
-                                hasValue, recvVal, llvm::UndefValue::get(recvTy), "select_recv_opt_inner");
-                            llvm::Value *opt = llvm::UndefValue::get(optTy);
-                            opt = builder_.CreateInsertValue(opt, hasValue, 0, "select_recv_opt_has_field");
-                            opt = builder_.CreateInsertValue(opt, optInner, 1, "select_recv_opt_value_field");
-                            boundValue = opt;
-                            boundTy = optTy;
-                        }
-                    } else {
-                        if (recvTy->isVoidTy())
-                            codegenError(selectCase.loc, "select recv binding requires a non-Unit channel value");
-                        boundValue = builder_.CreateLoad(recvTy, caseInfos[i].recvSlot, "select_received");
-                        boundTy = recvTy;
-                    }
-
-                    llvm::AllocaInst *varPtr = getOrCreateVar(selectCase.name, boundTy);
-                    builder_.CreateStore(boundValue, varPtr);
-                    immutable_scope_stack_.back().insert(selectCase.name);
-                }
-                for (auto &stmt : selectCase.body)
-                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
-            } else if constexpr (std::is_same_v<T, SelectSendCase>) {
-                for (auto &stmt : selectCase.body)
-                    std::visit([this](auto &st) { emitStmt(st); }, stmt);
-            }
-        }, s->cases[i]);
-        popScope();
-
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(mergeBB);
-    }
-
-    if (!s->else_body.empty()) {
-        switchInst->addCase(
-            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, elseIndex)),
-            defaultBB);
-        builder_.SetInsertPoint(defaultBB);
-        pushScope();
-        for (auto &stmt : s->else_body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(mergeBB);
-    }
-
-    if (!s->timeout_body.empty()) {
-        switchInst->addCase(
-            llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, timeoutIndex)),
-            timeoutBB);
-        builder_.SetInsertPoint(timeoutBB);
-        pushScope();
-        for (auto &stmt : s->timeout_body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(mergeBB);
-    }
-
-    builder_.SetInsertPoint(mergeBB);
-}
-
 void CodeGen::emitStmt(TupleDestructStmt &s) {
+    emitCoverage(s.loc);
     llvm::Value *tupleVal = emitExpr(*s.value);
     llvm::StructType *structTy = llvm::dyn_cast<llvm::StructType>(tupleVal->getType());
     if (!structTy)
@@ -1113,6 +718,7 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 }
 
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
+    emitCoverage(s->loc);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
 
     for (auto &branch : s->branches) {
@@ -1153,224 +759,50 @@ void CodeGen::emitStmt(ImportStmt &s) {
                              " (ModuleLoader should have resolved this)");
 }
 
-void CodeGen::validateParallelFor(const ForStmt &s) {
-    std::vector<std::unordered_set<std::string>> localScopes(1);
-    localScopes.back().insert(s.var_name);
-    if (s.var_name2)
-        localScopes.back().insert(*s.var_name2);
-
-    auto isLocal = [&](const std::string &name) {
-        for (auto it = localScopes.rbegin(); it != localScopes.rend(); ++it) {
-            if (it->count(name))
-                return true;
-        }
-        return false;
-    };
-
-    std::function<void(const std::vector<StmtNode>&)> scanBlock;
-    std::function<void(const StmtNode&)> scanStmt;
-
-    scanBlock = [&](const std::vector<StmtNode> &body) {
-        localScopes.push_back({});
-        for (const auto &stmt : body)
-            scanStmt(stmt);
-        localScopes.pop_back();
-    };
-
-    scanStmt = [&](const StmtNode &stmt) {
-        std::visit([&](const auto &node) {
-            using T = std::decay_t<decltype(node)>;
-            if constexpr (std::is_same_v<T, AssignStmt>) {
-                if (!isLocal(node.name)) {
-                    // Check if this is a first assignment (new local) or outer mutation
-                    // If the variable already exists in the outer codegen scope, it's outer mutation
-                    if (findVar(node.name))
-                        codegenError(s.loc, "parallel for cannot assign to outer variable '" + node.name + "'");
-                    // Otherwise it's a new local variable — register it
-                    localScopes.back().insert(node.name);
-                }
-            } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
-                for (const auto &name : node.names) {
-                    if (name != "_")
-                        localScopes.back().insert(name);
-                }
-            } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
-                codegenError(node.loc, "parallel for does not allow indexed assignment");
-            } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
-                codegenError(node.loc, "parallel for does not allow field assignment");
-            } else if constexpr (std::is_same_v<T, BreakStmt>) {
-                codegenError(node.loc, "parallel for does not allow break");
-            } else if constexpr (std::is_same_v<T, ContinueStmt>) {
-                codegenError(node.loc, "parallel for does not allow continue");
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (const auto &branch : node->branches)
-                    scanBlock(branch.body);
-                scanBlock(node->else_body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
-                scanBlock(node->body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                scanBlock(node->body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
-                for (const auto &arm : node->arms)
-                    scanBlock(arm.body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
-                codegenError(node->loc, "parallel for does not allow nested function definitions");
-            }
-        }, stmt);
-    };
-
-    for (const auto &stmt : s.body)
-        scanStmt(stmt);
-}
-
-void CodeGen::emitParallelForRange(ForStmt &s, llvm::Value *begin, llvm::Value *end, llvm::Value *step) {
-    std::vector<std::pair<std::string, llvm::AllocaInst*>> captures;
-    std::unordered_set<std::string> seen;
-    for (auto scopeIt = scope_stack_.rbegin(); scopeIt != scope_stack_.rend(); ++scopeIt) {
-        for (const auto &[name, alloca] : *scopeIt) {
-            if (name == s.var_name || seen.count(name))
-                continue;
-            seen.insert(name);
-            captures.push_back({name, alloca});
-        }
-    }
-
-    std::vector<llvm::Type*> envFields;
-    if (captures.empty())
-        envFields.push_back(i8Ty_);
-    else
-        for (const auto &[_, alloca] : captures)
-            envFields.push_back(alloca->getAllocatedType());
-    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
-
-    llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-    llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t envSize = std::max<uint64_t>(1, dl.getTypeAllocSize(envTy));
-    llvm::Value *envPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, envSize)}, "parallel_env");
-
-    if (captures.empty()) {
-        llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "parallel_env_dummy");
-        builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
-    } else {
-        for (size_t i = 0; i < captures.size(); ++i) {
-            llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, envPtr, i, "parallel_env_field");
-            llvm::AllocaInst *src = captures[i].second;
-            builder_.CreateStore(
-                builder_.CreateLoad(src->getAllocatedType(), src, captures[i].first + ".par_cap"),
-                fieldPtr);
-        }
-    }
-
-    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, i64Ty_}, false);
-    llvm::Function *thunk = llvm::Function::Create(
-        thunkTy, llvm::Function::InternalLinkage,
-        "__ry_parallel_for." + std::to_string(lambda_counter_++), *mod_);
-
-    {
-        FnScope guard(*this);
-        fn_ = thunk;
-        pushScope();
-
-        llvm::BasicBlock *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-        builder_.SetInsertPoint(entryBB);
-
-        auto argIt = thunk->arg_begin();
-        llvm::Value *envRaw = &*argIt++;
-        envRaw->setName("env_raw");
-        llvm::Value *chunkBegin = &*argIt++;
-        chunkBegin->setName("chunk_begin");
-        llvm::Value *chunkEnd = &*argIt++;
-        chunkEnd->setName("chunk_end");
-        llvm::Value *stepArg = &*argIt;
-        stepArg->setName("step");
-
-        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "parallel_env_typed");
-
-        if (!captures.empty()) {
-            for (size_t i = 0; i < captures.size(); ++i) {
-                const auto &[name, src] = captures[i];
-                llvm::Type *capTy = src->getAllocatedType();
-                llvm::Value *fieldPtr = builder_.CreateStructGEP(envTy, typedEnv, i, name + ".field");
-                llvm::AllocaInst *dst = builder_.CreateAlloca(capTy, nullptr, name);
-                builder_.CreateStore(builder_.CreateLoad(capTy, fieldPtr, name + ".cap"), dst);
-                scope_stack_.back()[name] = dst;
-
-                if (auto it = list_element_types_.find(src); it != list_element_types_.end())
-                    list_element_types_[dst] = it->second;
-                if (auto it = nested_list_element_types_.find(src); it != nested_list_element_types_.end())
-                    nested_list_element_types_[dst] = it->second;
-                if (auto it = map_key_types_.find(src); it != map_key_types_.end())
-                    map_key_types_[dst] = it->second;
-                if (auto it = map_value_types_.find(src); it != map_value_types_.end())
-                    map_value_types_[dst] = it->second;
-                if (auto it = set_element_types_.find(src); it != set_element_types_.end())
-                    set_element_types_[dst] = it->second;
-                if (auto it = fn_type_info_.find(src); it != fn_type_info_.end())
-                    fn_type_info_[dst] = it->second;
-                if (auto it = task_result_types_.find(src); it != task_result_types_.end())
-                    task_result_types_[dst] = it->second;
-                if (auto it = union_value_types_.find(src); it != union_value_types_.end())
-                    union_value_types_[dst] = it->second;
-                if (auto it = enum_value_types_.find(src); it != enum_value_types_.end())
-                    enum_value_types_[dst] = it->second;
-                if (auto it = channel_element_types_.find(src); it != channel_element_types_.end())
-                    channel_element_types_[dst] = it->second;
-                if (tcp_listener_values_.count(src)) tcp_listener_values_.insert(dst);
-                if (tcp_stream_values_.count(src))   tcp_stream_values_.insert(dst);
-            }
-        }
-
-        llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, s.var_name);
-        builder_.CreateStore(chunkBegin, iVar);
-
-        llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "parallel.cond", thunk);
-        llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "parallel.body", thunk);
-        llvm::BasicBlock *stepBB = llvm::BasicBlock::Create(*ctx_, "parallel.step", thunk);
-        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "parallel.end", thunk);
-
-        builder_.CreateBr(condBB);
-
-        builder_.SetInsertPoint(condBB);
-        llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "parallel_i");
-        llvm::Value *stepPos = builder_.CreateICmpSGT(stepArg, llvm::ConstantInt::get(i64Ty_, 0), "parallel_step_pos");
-        llvm::Value *posCond = builder_.CreateICmpSLT(iCur, chunkEnd, "parallel_pos_cond");
-        llvm::Value *negCond = builder_.CreateICmpSGT(iCur, chunkEnd, "parallel_neg_cond");
-        llvm::Value *loopCond = builder_.CreateSelect(stepPos, posCond, negCond, "parallel_cond");
-        builder_.CreateCondBr(loopCond, bodyBB, endBB);
-
-        builder_.SetInsertPoint(bodyBB);
-        pushScope();
-        scope_stack_.back()[s.var_name] = iVar;
-        for (auto &stmt : s.body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-        popScope();
-        if (!builder_.GetInsertBlock()->getTerminator())
-            builder_.CreateBr(stepBB);
-
-        builder_.SetInsertPoint(stepBB);
-        llvm::Value *iNext = builder_.CreateAdd(
-            builder_.CreateLoad(i64Ty_, iVar, "parallel_i_step"), stepArg, "parallel_i_next");
-        builder_.CreateStore(iNext, iVar);
-        builder_.CreateBr(condBB);
-
-        builder_.SetInsertPoint(endBB);
-        builder_.CreateRetVoid();
-    }
-
-    llvm::FunctionType *parallelTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {i64Ty_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
-    llvm::FunctionCallee parallelFn = mod_->getOrInsertFunction("__ry_parallel_for_i64", parallelTy);
-    builder_.CreateCall(parallelFn, {begin, end, step, envPtr, builder_.CreateBitCast(thunk, ptrTy_)});
-}
-
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
     llvm::Value *objPtr = emitExpr(*s.object);
-    llvm::Value *key = emitExpr(*s.index);
+
+    llvm::SmallVector<llvm::Value*, 2> indexValues;
+    for (auto &idx : s.indices)
+        indexValues.push_back(emitExpr(*idx));
     llvm::Value *val = emitExpr(*s.value);
+
+    if (trySubscriptAssignOperatorCall(objPtr, indexValues, val))
+        return;
+    if (indexValues.size() > 1)
+        codegenError("multi-index requires operator[]= overload");
+
+    llvm::Value *key = indexValues[0];
+
+    // Fixed-length array index assignment
+    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
+        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
+
+            emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
+                            "runtime error: array index out of range\n", ".arr_assign_err", "arr_assign");
+
+            if (val->getType() != elemTy) {
+                auto nit = array_elem_type_names_.find(ai);
+                std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
+                llvm::Value *coerced = coerceToLowLevelType(
+                    val, elemTy, tn, "", "arr_assign_trunc");
+                if (coerced) {
+                    val = coerced;
+                } else {
+                    codegenError("array element type mismatch in index assignment");
+                }
+            }
+
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
+            builder_.CreateStore(val, elemPtr);
+            return;
+        }
+    }
 
     if (objPtr->getType() != ptrTy_)
         codegenError("index assignment requires list or map");
@@ -1478,7 +910,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
         builder_.CreateStore(newLen, lenPtr);
 
         // Insert into hash table buckets and check rehash
-        emitBucketInsertAndRehashCheck(objPtr, mapHeaderTy_, 0, 4, 5, key, mapKeyTy, curLen);
+        emitBucketInsertAndRehashCheck(objPtr, mapHeaderTy_, kMapLayout.lenIdx, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, key, mapKeyTy, curLen);
 
         builder_.CreateBr(endBB);
 
@@ -1491,536 +923,13 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (!elemTy)
         codegenError("cannot determine list element type for index assignment");
 
-    if (key->getType() == i1Ty_)
-        key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
-
-    // Bounds check
     llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, objPtr, 0, "len_ptr");
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
-    llvm::Value *negCheck = builder_.CreateICmpSLT(key, llvm::ConstantInt::get(i64Ty_, 0), "neg_check");
-    llvm::Value *overCheck = builder_.CreateICmpSGE(key, length, "over_check");
-    llvm::Value *outOfBounds = builder_.CreateOr(negCheck, overCheck, "oob");
 
-    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.oob", fn_);
-    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "idx_assign.ok", fn_);
-    builder_.CreateCondBr(outOfBounds, oobBB, okBB);
-
-    builder_.SetInsertPoint(oobBB);
-    emitRuntimeError("runtime error: list index out of range\n", ".idx_assign_err");
-
-    builder_.SetInsertPoint(okBB);
+    emitBoundsCheck(key, length,
+                    "runtime error: list index out of range\n", ".idx_assign_err", "idx_assign");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");
     builder_.CreateStore(val, elemPtr);
-}
-
-void CodeGen::emitStmt(ReturnStmt &s) {
-    if (s.loc.isValid()) current_loc_ = s.loc;
-    if (!s.value) {
-        if (!fn_->getReturnType()->isVoidTy())
-            codegenError("return without value in non-Unit function");
-        builder_.CreateRetVoid();
-    } else {
-        llvm::Value *val = emitExpr(*s.value);
-        llvm::Type *retTy = fn_->getReturnType();
-        if (retTy->isVoidTy())
-            codegenError("cannot return a value from Unit function '" +
-                                     std::string(fn_->getName()) + "'");
-        if (val->getType() != retTy) {
-            if (isUnionType(current_fn_return_type_)) {
-                val = wrapInUnion(val, current_fn_return_type_);
-            } else {
-                // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
-                auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
-                auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
-                if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                    codegenError("return type mismatch");
-
-                // Find which elements need coercion
-                bool needsCoercion = false;
-                for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                    if (valST->getElementType(i) != retST->getElementType(i)) {
-                        if (!(isOptionType(valST->getElementType(i)) &&
-                              isOptionType(retST->getElementType(i))))
-                            codegenError("return type mismatch");
-                        needsCoercion = true;
-                    }
-                }
-                if (needsCoercion) {
-                    llvm::Value *coerced = llvm::UndefValue::get(retTy);
-                    for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                        llvm::Value *elem = builder_.CreateExtractValue(val, i);
-                        if (valST->getElementType(i) != retST->getElementType(i))
-                            elem = buildNoneValue(retST->getElementType(i));
-                        coerced = builder_.CreateInsertValue(coerced, elem, i);
-                    }
-                    val = coerced;
-                }
-            }
-        }
-
-        // Emit ensure checks (postconditions) before return
-        if (current_postconditions_ && !current_postconditions_->empty()) {
-            if (result_alloca_)
-                builder_.CreateStore(val, result_alloca_);
-            in_ensure_context_ = true;
-            std::string fnName = fn_->getName().str();
-            for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
-                emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
-            in_ensure_context_ = false;
-            if (result_alloca_)
-                val = builder_.CreateLoad(retTy, result_alloca_, "ensure_result");
-        }
-
-        builder_.CreateRet(val);
-    }
-    llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
-    builder_.SetInsertPoint(deadBB);
-}
-
-// ===== B5: FnStmt using FnScope RAII =====
-
-void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
-    if (s->loc.isValid()) current_loc_ = s->loc;
-    if (hasDirective(s->directives, "native")) {
-        if (s->is_async)
-            codegenError("async native functions are not supported");
-        if (hasDirective(s->directives, "deprecated"))
-            deprecated_functions_.insert(s->name);
-
-        // Register argument count for native function overload
-        native_fn_arg_counts_[s->name].push_back(s->params.size());
-        return;
-    }
-
-    std::vector<llvm::Type*> paramTypes;
-    for (auto &p : s->params)
-        paramTypes.push_back(resolveType(p.type));
-    llvm::Type *bodyRetTy = resolveType(s->return_type);
-    std::string exposedReturnTypeName = s->is_async ? "Task<" + s->return_type + ">" : s->return_type;
-    llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
-
-    // Check for duplicate signatures
-    auto &overloads = functions_[s->name];
-    for (auto &entry : overloads) {
-        if (entry.paramTypes == paramTypes) {
-            if (entry.func->getReturnType() == exposedRetTy)
-                codegenError("function '" + s->name +
-                    "' is already defined with the same signature");
-            else
-                codegenError("function '" + s->name +
-                    "': overloads with same parameter types but different return types");
-        }
-    }
-
-    // LLVM IR function name: first overload uses original name, subsequent use name.N
-    std::string irName = s->name;
-    if (!overloads.empty())
-        irName = s->name + "." + std::to_string(overloads.size());
-
-    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-    llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::ExternalLinkage, irName, *mod_);
-
-    std::vector<std::string> paramTypeNames;
-    for (auto &p : s->params)
-        paramTypeNames.push_back(p.type);
-    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
-
-    if (hasDirective(s->directives, "deprecated"))
-        deprecated_functions_.insert(s->name);
-
-    auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
-                                const std::string &returnTypeName, const std::string &fnNameForErrors) {
-        FnScope guard(*this);
-        fn_ = targetFunc;
-        current_fn_return_type_ = returnTypeName;
-        pushScope();
-
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
-        builder_.SetInsertPoint(entry);
-
-        unsigned idx = 0;
-        for (auto &arg : targetFunc->args()) {
-            arg.setName(s->params[idx].name);
-            llvm::AllocaInst *alloca = builder_.CreateAlloca(
-                paramTypes[idx], nullptr, s->params[idx].name);
-            builder_.CreateStore(&arg, alloca);
-            scope_stack_.back()[s->params[idx].name] = alloca;
-            // Track list element type for list parameters
-            const std::string &ptype = s->params[idx].type;
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "List<" && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                list_element_types_[alloca] = resolveType(inner);
-            }
-            // Track set element type for set parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Set<" && ptype.back() == '>') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                set_element_types_[alloca] = resolveType(inner);
-            }
-            // Track enum type for enum parameters
-            if (enum_types_.count(ptype)) {
-                enum_value_types_[alloca] = ptype;
-            }
-            // Track map key/value types for map parameters
-            if (ptype.size() > 4 && ptype.substr(0, 4) == "Map<" && ptype.back() == '>') {
-                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) map_key_types_[alloca] = kTy;
-                if (vTy) map_value_types_[alloca] = vTy;
-            }
-            if (ptype.size() > 5 && ptype.substr(0, 5) == "Task<" && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                task_result_types_[alloca] = resolveType(inner);
-            }
-            if (ptype.size() > 8 && ptype.substr(0, 8) == "Channel<" && ptype.back() == '>') {
-                std::string inner = ptype.substr(8, ptype.size() - 9);
-                channel_element_types_[alloca] = resolveType(inner);
-            }
-            if (ptype == "TcpListener") tcp_listener_values_.insert(alloca);
-            if (ptype == "TcpStream")   tcp_stream_values_.insert(alloca);
-            if (ptype == "HttpRequest")  http_request_values_.insert(alloca);
-            if (ptype == "HttpResponse") http_response_values_.insert(alloca);
-            // Track fn type info and constraint check (shared alias resolution)
-            {
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                }
-                auto constraint = parseTypeConstraint(resolvedPtype);
-                if (constraint) {
-                    type_constraints_[alloca] = *constraint;
-                    llvm::Value *argVal = builder_.CreateLoad(
-                        paramTypes[idx], alloca, s->params[idx].name + ".load");
-                    emitConstraintCheck(argVal, *constraint, s->params[idx].name);
-                } else {
-                    // Track union type only for non-literal unions
-                    if (isUnionType(ptype))
-                        union_value_types_[alloca] = normalizeUnionType(ptype);
-                }
-            }
-            ++idx;
-        }
-
-        // Save old values for postconditions (before require checks)
-        old_value_map_.clear();
-        if (!s->postconditions.empty()) {
-            std::vector<OldExpr*> oldExprs;
-            for (auto &post : s->postconditions)
-                collectOldExprs(*post, oldExprs);
-            for (auto *oe : oldExprs) {
-                llvm::Value *val = emitExpr(*oe->expr);
-                llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, "old_val");
-                builder_.CreateStore(val, alloca);
-                old_value_map_[oe] = alloca;
-            }
-        }
-
-        // Emit require checks (preconditions)
-        for (int i = 0; i < static_cast<int>(s->preconditions.size()); ++i)
-            emitContractCheck("require", s->name, s->preconditions[i]);
-
-        // Set up postcondition context
-        current_postconditions_ = s->postconditions.empty() ? nullptr : &s->postconditions;
-        if (!s->postconditions.empty() && !retTy->isVoidTy()) {
-            result_alloca_ = builder_.CreateAlloca(retTy, nullptr, "contract_result");
-        } else {
-            result_alloca_ = nullptr;
-        }
-
-        for (auto &stmt : s->body)
-            std::visit([this](auto &st) { emitStmt(st); }, stmt);
-
-        if (!builder_.GetInsertBlock()->getTerminator()) {
-            llvm::Value *defaultRet = nullptr;
-            if (retTy->isVoidTy()) {
-                // no default value needed
-            } else if (retTy == i64Ty_) {
-                defaultRet = llvm::ConstantInt::get(i64Ty_, 0);
-            } else if (retTy == i8Ty_) {
-                defaultRet = llvm::ConstantInt::get(i8Ty_, 0);
-            } else if (retTy == f64Ty_) {
-                defaultRet = llvm::ConstantFP::get(f64Ty_, 0.0);
-            } else if (retTy == i1Ty_) {
-                defaultRet = llvm::ConstantInt::get(i1Ty_, 0);
-            } else if (retTy == ptrTy_) {
-                defaultRet = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-            } else if (llvm::isa<llvm::StructType>(retTy)) {
-                defaultRet = llvm::UndefValue::get(retTy);
-            }
-
-            // Emit ensure checks on implicit return path
-            if (defaultRet && current_postconditions_ && !current_postconditions_->empty()) {
-                if (result_alloca_)
-                    builder_.CreateStore(defaultRet, result_alloca_);
-                in_ensure_context_ = true;
-                std::string fnName = fn_->getName().str();
-                for (int i = 0; i < static_cast<int>(current_postconditions_->size()); ++i)
-                    emitContractCheck("ensure", fnName, (*current_postconditions_)[i]);
-                in_ensure_context_ = false;
-            }
-
-            if (retTy->isVoidTy())
-                builder_.CreateRetVoid();
-            else if (defaultRet)
-                builder_.CreateRet(defaultRet);
-            else
-                builder_.CreateRet(llvm::UndefValue::get(retTy));
-        }
-
-        std::string err;
-        llvm::raw_string_ostream errStream(err);
-        if (llvm::verifyFunction(*targetFunc, &errStream))
-            codegenError("IR verify error in function '" + fnNameForErrors + "': " + err);
-    };
-
-    if (!s->is_async) {
-        emitFunctionBody(func, bodyRetTy, s->return_type, s->name);
-        return;
-    }
-
-    llvm::FunctionType *bodyFt = llvm::FunctionType::get(bodyRetTy, paramTypes, false);
-    llvm::Function *bodyFunc = llvm::Function::Create(
-        bodyFt, llvm::Function::InternalLinkage, irName + ".__async_body", *mod_);
-    emitFunctionBody(bodyFunc, bodyRetTy, s->return_type, s->name);
-
-    std::vector<llvm::Type*> envFields = paramTypes;
-    if (envFields.empty())
-        envFields.push_back(i8Ty_);
-    llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFields);
-
-    llvm::FunctionType *thunkTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
-    llvm::Function *thunk = llvm::Function::Create(
-        thunkTy, llvm::Function::InternalLinkage,
-        "__ry_async." + std::to_string(lambda_counter_++), *mod_);
-
-    // FnScope destructor restores fn_, scope_stack_, immutable_scope_stack_, builder_ insert point,
-    // and contract state (current_postconditions_, result_alloca_, in_ensure_context_, old_value_map_)
-
-    {
-        FnScope guard(*this);
-        fn_ = thunk;
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", thunk);
-        builder_.SetInsertPoint(entry);
-
-        auto argIt = thunk->arg_begin();
-        llvm::Value *envRaw = &*argIt++;
-        envRaw->setName("env_raw");
-        llvm::Value *outRaw = &*argIt;
-        outRaw->setName("out_raw");
-
-        llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "async_env_typed");
-        std::vector<llvm::Value*> thunkArgs;
-        for (size_t i = 0; i < paramTypes.size(); ++i) {
-            llvm::Value *argField = builder_.CreateStructGEP(
-                envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
-            thunkArgs.push_back(builder_.CreateLoad(paramTypes[i], argField, "async_arg." + std::to_string(i)));
-        }
-
-        llvm::Value *result = builder_.CreateCall(bodyFunc, thunkArgs, bodyRetTy->isVoidTy() ? "" : "async_result");
-        if (!bodyRetTy->isVoidTy()) {
-            llvm::Value *outTyped = builder_.CreateBitCast(outRaw, ptrTy_, "async_out_typed");
-            builder_.CreateStore(result, outTyped);
-        }
-        builder_.CreateRetVoid();
-    }
-
-    {
-        FnScope guard(*this);
-        fn_ = func;
-        current_fn_return_type_ = exposedReturnTypeName;
-        llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
-        builder_.SetInsertPoint(entry);
-
-        llvm::FunctionType *mallocTy = llvm::FunctionType::get(ptrTy_, {i64Ty_}, false);
-        llvm::FunctionCallee mallocFn = mod_->getOrInsertFunction("malloc", mallocTy);
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        llvm::Value *envPtr = builder_.CreateCall(
-            mallocFn,
-            {llvm::ConstantInt::get(i64Ty_, std::max<uint64_t>(1, dl.getTypeAllocSize(envTy)))},
-            "async_env");
-
-        if (paramTypes.empty()) {
-            llvm::Value *dummyField = builder_.CreateStructGEP(envTy, envPtr, 0, "async_env_dummy");
-            builder_.CreateStore(llvm::ConstantInt::get(i8Ty_, 0), dummyField);
-        } else {
-            size_t idx = 0;
-            for (auto &arg : func->args()) {
-                llvm::Value *argField = builder_.CreateStructGEP(
-                    envTy, envPtr, idx++, "async_env_arg");
-                builder_.CreateStore(&arg, argField);
-            }
-        }
-
-        llvm::FunctionType *spawnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_, i64Ty_}, false);
-        llvm::FunctionCallee spawnFn = mod_->getOrInsertFunction("__ry_task_spawn", spawnTy);
-        llvm::Value *task = builder_.CreateCall(
-            spawnFn,
-            {
-                builder_.CreateBitCast(thunk, ptrTy_),
-                envPtr,
-                llvm::ConstantInt::get(i64Ty_, bodyRetTy->isVoidTy() ? 0 : dl.getTypeAllocSize(bodyRetTy))
-            },
-            "task");
-        builder_.CreateRet(task);
-
-        std::string err;
-        llvm::raw_string_ostream errStream(err);
-        if (llvm::verifyFunction(*func, &errStream))
-            codegenError("IR verify error in function '" + s->name + "': " + err);
-    }
-}
-
-// ===== Contract helpers =====
-
-void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_name,
-                                 const ExprPtr &cond) {
-    llvm::Value *condVal = emitExpr(*cond);
-    condVal = toBool(condVal);
-
-    std::string errName = ".contract_err_" + std::to_string(contract_err_counter_++);
-    std::string suffix = (kind == "invariant") ? "" : "()";
-    std::string preposition = (kind == "invariant") ? " for " : " in ";
-    std::string msg = "Contract violation: " + kind + " failed" + preposition + fn_name + suffix + "\n";
-
-    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, kind + ".fail", fn_);
-    llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, kind + ".ok", fn_);
-
-    builder_.CreateCondBr(condVal, nextBB, failBB);
-
-    builder_.SetInsertPoint(failBB);
-    emitRuntimeError(msg, errName);
-
-    builder_.SetInsertPoint(nextBB);
-}
-
-void CodeGen::collectOldExprs(const ExprNode &node, std::vector<OldExpr*> &out) {
-    std::visit([this, &out](const auto &e) {
-        using T = std::decay_t<decltype(e)>;
-        if constexpr (std::is_same_v<T, std::unique_ptr<OldExpr>>) {
-            out.push_back(e.get());
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
-            collectOldExprs(*e->lhs, out);
-            collectOldExprs(*e->rhs, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
-            collectOldExprs(*e->operand, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
-            for (auto &arg : e->args)
-                collectOldExprs(*arg, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
-            collectOldExprs(*e->object, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
-            collectOldExprs(*e->object, out);
-            collectOldExprs(*e->index, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TupleExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
-            for (auto &k : e->keys)
-                collectOldExprs(*k, out);
-            for (auto &v : e->values)
-                collectOldExprs(*v, out);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<SetExpr>>) {
-            for (auto &elem : e->elements)
-                collectOldExprs(*elem, out);
-        }
-    }, node.data);
-}
-
-void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
-                                  llvm::Value *structVal) {
-    if (info.invariants.empty()) return;
-
-    pushScope();
-    for (unsigned f = 0; f < info.fields.size(); ++f) {
-        llvm::Type *fieldTy = info.llvmType->getElementType(f);
-        llvm::AllocaInst *fieldAlloca = builder_.CreateAlloca(fieldTy, nullptr, info.fields[f].name);
-        llvm::Value *fieldVal = builder_.CreateExtractValue(structVal, f, info.fields[f].name + "_val");
-        builder_.CreateStore(fieldVal, fieldAlloca);
-        scope_stack_.back()[info.fields[f].name] = fieldAlloca;
-    }
-    for (int i = 0; i < static_cast<int>(info.invariants.size()); ++i)
-        emitContractCheck("invariant", typeName, info.invariants[i]);
-    popScope();
-}
-
-void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
-                                      const std::vector<std::string> &typeArgs) {
-    if (enum_types_.count(fullName))
-        return; // already instantiated
-
-    auto it = generic_enum_templates_.find(baseName);
-    if (it == generic_enum_templates_.end())
-        codegenError("unknown generic enum: " + baseName);
-
-    auto &tmpl = it->second;
-    if (typeArgs.size() != tmpl.typeParams.size())
-        codegenError("generic enum '" + baseName + "' expects " +
-            std::to_string(tmpl.typeParams.size()) + " type parameters");
-
-    // Build type parameter mapping
-    std::unordered_map<std::string, std::string> typeMap;
-    for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
-        typeMap[tmpl.typeParams[i]] = typeArgs[i];
-
-    // Create a concrete EnumStmt by substituting type parameters
-    EnumInfo info;
-    info.name = fullName;
-    info.variantCount = tmpl.variants.size();
-
-    bool hasADT = false;
-    std::vector<llvm::Constant*> nameStrings;
-    for (size_t i = 0; i < tmpl.variants.size(); ++i) {
-        auto &v = tmpl.variants[i];
-        info.variants[v.name] = static_cast<int64_t>(i);
-        llvm::Constant *str = builder_.CreateGlobalString(
-            v.name, ".enum_" + fullName + "_" + v.name);
-        nameStrings.push_back(str);
-
-        if (!v.field_types.empty()) {
-            hasADT = true;
-            VariantFieldInfo vfi;
-            for (auto &ft : v.field_types) {
-                std::string resolved = ft;
-                auto mit = typeMap.find(ft);
-                if (mit != typeMap.end()) resolved = mit->second;
-                vfi.fieldTypes.push_back(resolveType(resolved));
-                vfi.fieldTypeNames.push_back(resolved);
-            }
-            info.variantFields[v.name] = std::move(vfi);
-        }
-    }
-    info.isADT = hasADT;
-
-    auto *arrTy = llvm::ArrayType::get(ptrTy_, tmpl.variants.size());
-    auto *init = llvm::ConstantArray::get(arrTy, nameStrings);
-    auto *gv = new llvm::GlobalVariable(
-        *mod_, arrTy, true, llvm::GlobalValue::PrivateLinkage,
-        init, ".enum_names_" + fullName);
-    info.nameArray = gv;
-
-    if (hasADT) {
-        const llvm::DataLayout &dl = mod_->getDataLayout();
-        size_t maxPayload = 0;
-        for (auto &[vname, vfi] : info.variantFields) {
-            size_t payloadSize = 0;
-            for (auto *ty : vfi.fieldTypes) {
-                uint64_t align = dl.getABITypeAlign(ty).value();
-                payloadSize = (payloadSize + align - 1) / align * align;
-                payloadSize += dl.getTypeAllocSize(ty);
-            }
-            if (payloadSize > maxPayload) maxPayload = payloadSize;
-        }
-        info.maxPayloadSize = maxPayload;
-        llvm::Type *payloadTy = llvm::ArrayType::get(
-            llvm::Type::getInt8Ty(*ctx_), maxPayload > 0 ? maxPayload : 1);
-        info.adtType = llvm::StructType::create(
-            *ctx_, {i64Ty_, payloadTy}, "enum." + fullName);
-    }
-
-    enum_types_[fullName] = std::move(info);
 }

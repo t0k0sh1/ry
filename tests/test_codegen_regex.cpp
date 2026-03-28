@@ -70,7 +70,7 @@ print(s)
 TEST_F(CodeGenTest, RegexSplitBasic) {
     EXPECT_EQ(runSource(R"(
 parts = regex_split(",", "a,b,c")
-print(len(parts))
+print(length(parts))
 print(parts[0])
 print(parts[1])
 print(parts[2])
@@ -80,7 +80,7 @@ print(parts[2])
 TEST_F(CodeGenTest, RegexSplitPattern) {
     EXPECT_EQ(runSource(R"(
 parts = regex_split("\\s+", "hello  world")
-print(len(parts))
+print(length(parts))
 print(parts[0])
 print(parts[1])
 )"), "2\nhello\nworld\n");
@@ -93,7 +93,7 @@ print(parts[1])
 TEST_F(CodeGenTest, RegexFindAllBasic) {
     EXPECT_EQ(runSource(R"(
 matches = regex_find_all("[0-9]+", "a1b23c456")
-print(len(matches))
+print(length(matches))
 print(matches[0])
 print(matches[1])
 print(matches[2])
@@ -103,7 +103,7 @@ print(matches[2])
 TEST_F(CodeGenTest, RegexFindAllNoMatch) {
     EXPECT_EQ(runSource(R"(
 matches = regex_find_all("[0-9]+", "hello")
-print(len(matches))
+print(length(matches))
 )"), "0\n");
 }
 
@@ -158,7 +158,7 @@ print(s)
 TEST_F(CodeGenTest, RegexLazyFindAll) {
     EXPECT_EQ(runSource(R"(
 tags = regex_find_all("<.*?>", "<x> <yy>")
-print(len(tags))
+print(length(tags))
 print(tags[0])
 print(tags[1])
 )"), "2\n<x>\n<yy>\n");

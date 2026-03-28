@@ -1,11 +1,64 @@
 #include "ry/lexer.hpp"
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
+#include <unordered_map>
+
+static const std::unordered_map<std::string, TokenKind> keyword_map = {
+    {"and",       TokenKind::And},
+    {"or",        TokenKind::Or},
+    {"not",       TokenKind::Not},
+    {"true",      TokenKind::True},
+    {"false",     TokenKind::False},
+    {"if",        TokenKind::If},
+    {"elif",      TokenKind::Elif},
+    {"else",      TokenKind::Else},
+    {"while",     TokenKind::While},
+    {"for",       TokenKind::For},
+    {"in",        TokenKind::In},
+    {"break",     TokenKind::Break},
+    {"continue",  TokenKind::Continue},
+    {"fn",        TokenKind::Fn},
+    {"return",    TokenKind::Return},
+    {"from",      TokenKind::From},
+    {"import",    TokenKind::Import},
+    {"type",      TokenKind::Type},
+    {"record",    TokenKind::Record},
+    {"operator",  TokenKind::Operator},
+    {"enum",      TokenKind::Enum},
+    {"match",     TokenKind::Match},
+    {"case",      TokenKind::Case},
+    {"expect",    TokenKind::Expect},
+    {"require",   TokenKind::Require},
+    {"ensure",    TokenKind::Ensure},
+    {"invariant", TokenKind::Invariant},
+    {"none",      TokenKind::NoneKw},
+    {"as",        TokenKind::As},
+    {"Error",     TokenKind::ErrorKw},
+    {"async",     TokenKind::Async},
+    {"await",     TokenKind::Await},
+};
 
 Token Lexer::next() {
     Token t = current_;
     current_ = readToken();
     return t;
+}
+
+bool Lexer::consumeGreaterInTypeContext() {
+    if (current_.kind == TokenKind::Greater) {
+        current_ = readToken();
+        return true;
+    }
+    if (current_.kind == TokenKind::GreaterGreater) {
+        current_ = {TokenKind::Greater, ">", current_.line, current_.col + 1};
+        return true;
+    }
+    if (current_.kind == TokenKind::GreaterGreaterGreater) {
+        current_ = {TokenKind::GreaterGreater, ">>", current_.line, current_.col + 1};
+        return true;
+    }
+    return false;
 }
 
 Lexer::State Lexer::saveState() const {
@@ -21,6 +74,33 @@ void Lexer::restoreState(State s) {
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
     fstring_brace_depth_ = s.fstring_brace_depth;
+}
+
+void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
+    if (pos_ >= src_.size()) return;
+    char ch = src_[pos_];
+    if (ch != 'i' && ch != 'u' && ch != 'f') return;
+
+    static const char *suffixes[] = {
+        "i8", "i16", "i32", "i64",
+        "u8", "u16", "u32", "u64",
+        "f32", "f64"
+    };
+    for (const char *suf : suffixes) {
+        size_t len = std::strlen(suf);
+        if (pos_ + len > src_.size()) continue;
+        if (src_.compare(pos_, len, suf) != 0) continue;
+        // Avoid matching partial identifiers like `42i32x`
+        if (pos_ + len < src_.size()) {
+            char after = src_[pos_ + len];
+            if (std::isalnum(after) || after == '_') continue;
+        }
+        pos_ += len;
+        col_ += static_cast<int>(len);
+        if (suf[0] == 'f' && kind == TokenKind::Number)
+            kind = TokenKind::Float;
+        return;
+    }
 }
 
 Token Lexer::readToken() {
@@ -191,6 +271,9 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::EqEq, "==", line_, startCol};
         }
+        if (pos_ < src_.size() && src_[pos_] == '>') {
+            ++pos_; ++col_; return {TokenKind::FatArrow, "=>", line_, startCol};
+        }
         return {TokenKind::Equals, "=", line_, startCol};
     }
     if (c == '(') { ++pos_; ++col_; return {TokenKind::LParen, "(", line_, startCol}; }
@@ -279,6 +362,7 @@ Token Lexer::readToken() {
     }
     if (c == '[') { ++pos_; ++col_; return {TokenKind::LBracket, "[", line_, startCol}; }
     if (c == ']') { ++pos_; ++col_; return {TokenKind::RBracket, "]", line_, startCol}; }
+    if (c == ';') { ++pos_; ++col_; return {TokenKind::Semi, ";", line_, startCol}; }
     if (c == '{') {
         ++pos_; ++col_;
         if (fstring_brace_depth_ > 0)
@@ -311,19 +395,19 @@ Token Lexer::readToken() {
     // r-string: r"..." (raw string, no escape processing)
     if (c == 'r' && pos_ + 1 < src_.size() && src_[pos_ + 1] == '"') {
         pos_ += 2; col_ += 2;
-        std::string str;
+        size_t strStart = pos_;
         while (pos_ < src_.size() && src_[pos_] != '"') {
             if (src_[pos_] == '\n' || src_[pos_] == '\r')
                 throw std::runtime_error("line " + std::to_string(line_) +
                                          ": unterminated raw string literal");
-            str += src_[pos_];
             ++pos_; ++col_;
         }
         if (pos_ >= src_.size())
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unterminated raw string literal");
+        std::string str(src_, strStart, pos_ - strStart);
         ++pos_; ++col_;
-        return {TokenKind::String, str, line_, startCol};
+        return {TokenKind::String, std::move(str), line_, startCol};
     }
 
     // f-string: f"..."
@@ -339,11 +423,13 @@ Token Lexer::readToken() {
     if (c == '"') {
         ++pos_; ++col_;
         std::string str;
+        size_t runStart = pos_;
         while (pos_ < src_.size() && src_[pos_] != '"') {
             if (src_[pos_] == '\n' || src_[pos_] == '\r')
                 throw std::runtime_error("line " + std::to_string(line_) +
                                          ": unterminated string literal");
             if (src_[pos_] == '\\') {
+                str.append(src_, runStart, pos_ - runStart);
                 ++pos_; ++col_;
                 if (pos_ >= src_.size())
                     throw std::runtime_error("line " + std::to_string(line_) +
@@ -361,11 +447,12 @@ Token Lexer::readToken() {
                                                  std::string(1, src_[pos_]) + "'");
                 }
                 ++pos_; ++col_;
+                runStart = pos_;
             } else {
-                str += src_[pos_];
                 ++pos_; ++col_;
             }
         }
+        str.append(src_, runStart, pos_ - runStart);
         if (pos_ >= src_.size())
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unterminated string literal");
@@ -375,6 +462,7 @@ Token Lexer::readToken() {
 
     if (std::isdigit(c)) {
         size_t start = pos_;
+        TokenKind numKind = TokenKind::Number;
         if (c == '0' && pos_ + 1 < src_.size()) {
             char next = src_[pos_ + 1];
             if (next == 'x' || next == 'X') {
@@ -382,14 +470,16 @@ Token Lexer::readToken() {
                 if (pos_ >= src_.size() || !std::isxdigit(src_[pos_]))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
                 while (pos_ < src_.size() && std::isxdigit(src_[pos_])) { ++pos_; ++col_; }
-                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+                tryConsumeNumericSuffix(numKind);
+                return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
             if (next == 'b' || next == 'B') {
                 pos_ += 2; col_ += 2;
                 if (pos_ >= src_.size() || (src_[pos_] != '0' && src_[pos_] != '1'))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid binary literal");
                 while (pos_ < src_.size() && (src_[pos_] == '0' || src_[pos_] == '1')) { ++pos_; ++col_; }
-                return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+                tryConsumeNumericSuffix(numKind);
+                return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
         while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
@@ -397,9 +487,12 @@ Token Lexer::readToken() {
             pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])) {
             ++pos_; ++col_;
             while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
-            return {TokenKind::Float, std::string(src_, start, pos_ - start), line_, startCol};
+            numKind = TokenKind::Float;
+            tryConsumeNumericSuffix(numKind);
+            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
-        return {TokenKind::Number, std::string(src_, start, pos_ - start), line_, startCol};
+        tryConsumeNumericSuffix(numKind);
+        return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 
     if (std::isalpha(c) || c == '_') {
@@ -412,43 +505,9 @@ Token Lexer::readToken() {
             ++pos_; ++col_;
         }
         std::string id(src_, start, pos_ - start);
-        if (id == "and")   return {TokenKind::And,   "and",   line_, startCol};
-        if (id == "or")    return {TokenKind::Or,    "or",    line_, startCol};
-        if (id == "not")   return {TokenKind::Not,   "not",   line_, startCol};
-        if (id == "true")  return {TokenKind::True,  "true",  line_, startCol};
-        if (id == "false") return {TokenKind::False, "false", line_, startCol};
-
-        if (id == "if")    return {TokenKind::If,    "if",    line_, startCol};
-        if (id == "elif")  return {TokenKind::Elif,  "elif",  line_, startCol};
-        if (id == "else")  return {TokenKind::Else,  "else",  line_, startCol};
-        if (id == "while") return {TokenKind::While, "while", line_, startCol};
-        if (id == "for")      return {TokenKind::For,      "for",      line_, startCol};
-        if (id == "in")       return {TokenKind::In,       "in",       line_, startCol};
-        if (id == "break")    return {TokenKind::Break,    "break",    line_, startCol};
-        if (id == "continue") return {TokenKind::Continue, "continue", line_, startCol};
-        if (id == "fn")     return {TokenKind::Fn,     "fn",     line_, startCol};
-        if (id == "return") return {TokenKind::Return, "return", line_, startCol};
-        if (id == "from")   return {TokenKind::From,   "from",   line_, startCol};
-        if (id == "import") return {TokenKind::Import, "import", line_, startCol};
-        if (id == "type")     return {TokenKind::Type,     "type",     line_, startCol};
-        if (id == "record")   return {TokenKind::Record,   "record",   line_, startCol};
-        if (id == "operator") return {TokenKind::Operator, "operator", line_, startCol};
-        if (id == "enum")     return {TokenKind::Enum,     "enum",     line_, startCol};
-        if (id == "match")    return {TokenKind::Match,    "match",    line_, startCol};
-        if (id == "case")     return {TokenKind::Case,     "case",     line_, startCol};
-        if (id == "select")   return {TokenKind::Select,   "select",   line_, startCol};
-        if (id == "expect")   return {TokenKind::Expect,   "expect",   line_, startCol};
-        if (id == "require")   return {TokenKind::Require,   "require",   line_, startCol};
-        if (id == "ensure")    return {TokenKind::Ensure,    "ensure",    line_, startCol};
-        if (id == "invariant") return {TokenKind::Invariant, "invariant", line_, startCol};
-        if (id == "old")       return {TokenKind::Old,       "old",       line_, startCol};
-        if (id == "result")    return {TokenKind::Result,    "result",    line_, startCol};
-        if (id == "none")      return {TokenKind::NoneKw,    "none",      line_, startCol};
-        if (id == "as")        return {TokenKind::As,        "as",        line_, startCol};
-        if (id == "Error")     return {TokenKind::ErrorKw,   "Error",     line_, startCol};
-        if (id == "spawn")     return {TokenKind::Spawn,     "spawn",     line_, startCol};
-        if (id == "async")     return {TokenKind::Async,     "async",     line_, startCol};
-        if (id == "await")     return {TokenKind::Await,     "await",     line_, startCol};
+        auto kit = keyword_map.find(id);
+        if (kit != keyword_map.end())
+            return {kit->second, std::move(id), line_, startCol};
         return {TokenKind::Ident, std::move(id), line_, startCol};
     }
 
@@ -459,33 +518,39 @@ Token Lexer::readToken() {
 Token Lexer::readFStringSegment(bool isStart) {
     int startCol = col_;
     std::string str;
+    size_t runStart = pos_;
     while (pos_ < src_.size() && src_[pos_] != '"') {
         if (src_[pos_] == '\n' || src_[pos_] == '\r')
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unterminated f-string literal");
         if (src_[pos_] == '{') {
+            str.append(src_, runStart, pos_ - runStart);
             if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '{') {
                 str += '{';
                 pos_ += 2; col_ += 2;
+                runStart = pos_;
                 continue;
             }
             ++pos_; ++col_;
             fstring_brace_depth_ = 1;
             if (isStart)
-                return {TokenKind::FStringStart, str, line_, startCol};
+                return {TokenKind::FStringStart, std::move(str), line_, startCol};
             else
-                return {TokenKind::FStringMid, str, line_, startCol};
+                return {TokenKind::FStringMid, std::move(str), line_, startCol};
         }
         if (src_[pos_] == '}') {
+            str.append(src_, runStart, pos_ - runStart);
             if (pos_ + 1 < src_.size() && src_[pos_ + 1] == '}') {
                 str += '}';
                 pos_ += 2; col_ += 2;
+                runStart = pos_;
                 continue;
             }
             throw std::runtime_error("line " + std::to_string(line_) +
                                      ": unmatched '}' in f-string");
         }
         if (src_[pos_] == '\\') {
+            str.append(src_, runStart, pos_ - runStart);
             ++pos_; ++col_;
             if (pos_ >= src_.size())
                 throw std::runtime_error("line " + std::to_string(line_) +
@@ -503,11 +568,12 @@ Token Lexer::readFStringSegment(bool isStart) {
                                              std::string(1, src_[pos_]) + "' in f-string");
             }
             ++pos_; ++col_;
+            runStart = pos_;
         } else {
-            str += src_[pos_];
             ++pos_; ++col_;
         }
     }
+    str.append(src_, runStart, pos_ - runStart);
     if (pos_ >= src_.size())
         throw std::runtime_error("line " + std::to_string(line_) +
                                  ": unterminated f-string literal");

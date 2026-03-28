@@ -8,22 +8,22 @@
 
 ## Lambda Functions
 
-Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters): expression`. The return type is automatically inferred.
+Lambda functions are a syntax for writing functions as expressions. They use the form `fn(parameters) => expression`. The return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int): a + b
+add = fn(a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-answer = fn(): 42
+answer = fn() => 42
 print(answer())  # 42
 ```
 
@@ -49,7 +49,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 offset = 10
-add_offset = fn(x: int): x + offset
+add_offset = fn(x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -63,9 +63,9 @@ You can define functions that take other functions as arguments. Function types 
 fn apply(f: fn(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int): x * 2
+double = fn(x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int): n + 1, 10))    # 11
+print(apply(fn(n: int) => n + 1, 10))    # 11
 ```
 
 ---
@@ -188,20 +188,20 @@ match x:
 
 ## Concurrency Basics
 
-`Task<T>` is the runtime handle for concurrent work. Use `spawn` for explicit task creation, `async fn` for task-returning functions, and `await` or `join(task)` to wait for completion.
+`Task<T>` is the runtime handle for concurrent work. Use `async fn` for task-returning functions, `await` inside another `async fn`, and `block_on(task)` from synchronous context to wait for completion.
 
 ```python
-fn square(x: int) -> int:
-    return x * x
-
-t: Task<int> = spawn square(12)
-print(await t)   # 144
-
 async fn add(a: int, b: int) -> int:
     return a + b
 
-print(await add(20, 22))   # 42
-await add(1, 2)            # statement form also works
+# From synchronous context, use block_on()
+t: Task<int> = add(20, 22)
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# Inside async fn, use await
+async fn double_add(a: int, b: int) -> int:
+    return (await add(a, b)) * 2
 ```
 
 `@parallel` can be applied to counted `for` loops over `range(...)` or integer `..` ranges:
@@ -212,48 +212,66 @@ for i in range(8):
     print(i)
 ```
 
-In v1, `spawn` does not support `Unit`-returning calls, and `@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
-
-For channels, `recv(ch)` is the strict form and raises on a closed drained channel, while `recv_opt(ch)` returns `Some(value)` or `None` instead. `for x in ch:` is the close-aware consumer form and ends normally once the channel is closed and drained. For `Channel<Unit>`, `recv_opt(ch)` returns `bool` and `for _ in ch:` can be used to consume values.
+`@parallel for` rejects `break`, `continue`, and writes to outer mutable variables.
 
 ---
 
 ## Networking (TCP Sockets)
 
-Ry provides TCP socket support through the `std.net` module. The `send`, `recv`, and `close` functions are overloaded to work with both channels and TCP sockets.
+Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions work with TCP sockets. All network operations return `Result` types.
 
 ```python
-from std.net import bind, listen, accept, connect
-from std.io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
 
-fn echo_server(port: int) -> str:
-    match bind("127.0.0.1", port):
-        case Some(server):
-            listen(server, 1)
-            match accept(server):
-                case Some(conn):
-                    data: List<byte> = recv(conn, 4096)
-                    send(conn, data)
-                    close(conn)
-                case None:
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
+                        case Err(e):
+                            ...
+                case Err(e):
                     ...
-            close(server)
-        case None:
+            close(conn)
+        case Err(e):
             ...
+    close(server)
     return "done"
 
-t: Task<str> = spawn echo_server(8080)
-
-match connect("127.0.0.1", 8080):
-    case Some(conn):
-        send(conn, str_to_bytes("hello"))
-        resp: List<byte> = recv(conn, 4096)
-        print(bytes_to_str(resp))   # hello
-        close(conn)
-    case None:
-        print("connect failed")
-
-join(t)
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                match connect("127.0.0.1", port):
+                    case Ok(conn):
+                        match send(conn, str_to_bytes("hello")):
+                            case Ok(_):
+                                ...
+                            case Err(e):
+                                ...
+                        match recv(conn, 4096):
+                            case Ok(resp):
+                                match bytes_to_str(resp):
+                                    case Ok(s):
+                                        print(s)   # hello
+                                    case Err(e):
+                                        ...
+                            case Err(e):
+                                ...
+                        close(conn)
+                    case Err(e):
+                        print("connect failed")
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        print("bind failed")
 ```
 
 See [Network Reference](../reference/net.md) for the full API.
@@ -296,16 +314,20 @@ b = true as int       # 1
 
 ## Enum with Associated Data (ADT)
 
-Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data.
+Enum variants can carry associated values. This lets a single enum represent a family of different shapes of data. You can optionally name the fields for documentation clarity.
 
 ```python
 enum Shape:
-    Circle(float)
-    Rectangle(float, float)
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
     Point
 ```
 
+Named fields are documentation-only — they make definitions self-describing. Unnamed syntax (`Circle(float)`) is also valid.
+
 ### Constructing ADT Variants
+
+Construction is always positional, regardless of whether fields are named.
 
 ```python
 c = Shape::Circle(3.14)
@@ -315,7 +337,7 @@ p = Shape::Point
 
 ### Matching ADT Variants
 
-Use `case` with a binding pattern to extract the associated data.
+Use `case` with a binding pattern to extract the associated data. Bindings use your chosen variable names, not the field names.
 
 ```python
 fn describe(s: Shape) -> str:

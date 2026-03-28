@@ -1,32 +1,37 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# Ry
+<p align="center">
+  <img src="docs/logo.png" alt="Ry" width="200">
+</p>
 
-基於 LLVM JIT 的簡潔程式語言。讀取原始碼後，透過 LLVM ORC JIT 編譯為原生程式碼並即時執行。
+<p align="center">
+  基于 LLVM JIT 的简洁编程语言。<br>
+  读取源代码后，通过 LLVM ORC JIT 编译为原生代码并即时执行。
+</p>
 
-## 特色
+## 特性
 
-- **LLVM JIT 編譯** — 使用 ORC LLJIT 實現高速原生執行
-- **豐富的型別系統** — `int`、`float`、`bool`、`str`、`Option<T>`、`Error`、元組、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函式型別、使用者自訂結構體
-- **運算子** — 算術、比較、邏輯、位元（`>>>` 邏輯右移）、複合賦值、`in` / `not in`、字串重複（`"ab" * 3`）、`as` 型別轉換（支援運算子多載）
-- **f-string** — 使用 `f"Hello {name}"` 進行字串內插
-- **契約式設計** — `require`（前置條件）、`ensure`（後置條件）、`invariant`（結構體不變量）、`old()`、`result`
-- **指令** — `@deprecated` 編譯時元資料標註
-- **函式** — `fn` 定義、遞迴、多載、Lambda（閉包）、高階函式、UFCS
-- **控制流程** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
-- **檔案 I/O** — 檔案讀寫、位元組操作、標準輸入（`std.io`）
-- **套件** — 基於目錄的套件、自動匯入的 `std` 函式庫、`from ... import ...`
-- **型別安全** — 型別推論、型別標註、禁止變更型別的重新賦值、`@const` 指令
+- **LLVM JIT 编译** — 使用 ORC LLJIT 实现高速原生执行
+- **丰富的类型系统** — `int`、`float`、`bool`、`str`、`Option<T>`、`Error`、元组、`List<T>`、`Map<K,V>`、`Set<T>`、`enum`、函数类型、用户自定义结构体
+- **运算符** — 算术、比较、逻辑、位运算（`>>>` 逻辑右移）、复合赋值、`in` / `not in`、字符串重复（`"ab" * 3`）、`as` 类型转换，支持运算符重载
+- **F-String** — 使用 `f"Hello {name}"` 进行字符串插值
+- **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（结构体不变量）、`old()`、`result`
+- **指令** — `@deprecated` 编译时元数据注解
+- **函数** — `fn` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
+- **控制流** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
+- **文件 I/O** — 文件读写、字节操作、标准输入（`std.io`）
+- **包管理** — 基于目录的包、自动导入的 `std` 标准库、`from ... import ...`
+- **类型安全** — 类型推断、类型注解、不可变类型绑定、`@const` 指令
 
-## 範例程式碼
+## 示例代码
 
 ```python
-# 變數與型別
+# 变量与类型
 x: int = 42
 name: str = "hello"
 pi = 3.14159
 
-# 函式定義
+# 函数定义
 fn factorial(n: int) -> int:
     if n <= 1:
         return 1
@@ -34,12 +39,12 @@ fn factorial(n: int) -> int:
 
 print(factorial(5))    # 120
 
-# Lambda 與閉包
+# Lambda 与闭包
 offset = 10
 add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
-# 結構體
+# 结构体
 type Point:
     x: int
     y: int
@@ -50,7 +55,7 @@ fn operator+(a: Point, b: Point) -> Point:
 p = Point(1, 2) + Point(3, 4)
 print(p.x)             # 4
 
-# 集合型別
+# 集合类型
 xs = [1, 2, 3]
 m = {"a": 1, "b": 2}
 s = {1, 2, 3}
@@ -61,11 +66,11 @@ for x in xs:
 print(2 in s)          # true
 print(m["a"])           # 1
 
-# 串流操作 (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int): x > 1).map(fn(x: int): x * 10).sort()
+# 流式操作 (filter, map, sort)
+result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
-# 列舉型別
+# 枚举类型
 enum Color:
     Red
     Green
@@ -74,14 +79,14 @@ enum Color:
 c = Color::Red
 print(c)               # Red
 
-# 套件匯入
-from math import add
-print(add(1, 2))
+# 包导入
+from math import sqrt, PI
+print(sqrt(PI))
 ```
 
-## 安裝
+## 安装
 
-### 一行指令（macOS Apple Silicon）
+### 一行命令（macOS Apple Silicon）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
@@ -93,34 +98,52 @@ curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh -s v0.0.4
 ```
 
-預設安裝至 `~/.local/bin`。可透過 `RY_INSTALL_DIR` 環境變數變更安裝位置。
+默认安装至 `~/.local/bin`。可通过 `RY_INSTALL_DIR` 环境变量更改安装位置。
 
-標準函式庫安裝至 `$RY_HOME/lib/std/`（預設：`~/.ry/lib/std/`）。
+标准库安装至 `$RY_HOME/lib/std/`（默认：`~/.ry/lib/std/`）。
 
-### 從原始碼建置
+### 从源代码构建
 
-需求環境：
+环境要求：
 - LLVM 21
 - CMake 3.20+
-- 支援 C++17 的編譯器
+- 支持 C++17 的编译器
 
 ```bash
 cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-## 執行
+## 使用方法
 
 ```bash
-ry <file.ry>
+ry <file.ry>              # 运行 Ry 脚本
+echo '<code>' | ry         # 从标准输入运行代码
+ry test [options] [path]   # 运行测试 (*.test.ry)
+ry init                    # 在当前目录初始化项目
+ry new <name>              # 创建新项目
+ry fmt [options] [path]    # 格式化源文件
+ry self-update             # 更新 ry 本身
 ```
 
-## 測試
+标准输入也支持 here-document：
+
+```bash
+ry <<'RY'
+a = 1
+b = 2
+print(a + b)
+RY
+```
+
+运行 `ry <command> --help` 查看详细选项。
+
+## 开发
 
 ```bash
 cd build && ctest --output-on-failure
 ```
 
-## 文件
+## 文档
 
-詳細的語言規格與教學請參閱 [docs/](docs/zh/README.md)。
+详细的语言规格与教程请参阅 [docs/](docs/zh/README.md)。

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <random>
 #include <string>
+#include <unistd.h>
 #include <unordered_map>
 
 static int g_passed = 0;
@@ -30,9 +31,11 @@ void __ry_test_describe_end() {
 void __ry_test_it_begin(const char *name) {
     g_current_it = name;
     g_current_it_failed = false;
+    alarm(60);
 }
 
 void __ry_test_it_end() {
+    alarm(0);
     __ry_mock_clear_all();
     if (g_current_it_failed) {
         std::printf("  \033[31m- %s\033[0m\n", g_current_it.c_str());
@@ -47,6 +50,15 @@ void __ry_test_it_end() {
 void __ry_test_expect_fail(int line, const char *actual, const char *expected) {
     g_current_it_failed = true;
     std::printf("    \033[31mline %d: expected %s, got %s\033[0m\n", line, expected, actual);
+}
+
+void __ry_test_fail(int line, const char *msg) {
+    g_current_it_failed = true;
+    if (msg && msg[0] != '\0') {
+        std::printf("    \033[31mline %d: %s\033[0m\n", line, msg);
+    } else {
+        std::printf("    \033[31mline %d: test failed\033[0m\n", line);
+    }
 }
 
 int __ry_test_summary() {

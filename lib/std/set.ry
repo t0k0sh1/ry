@@ -1,25 +1,24 @@
 # Set operations
+@native
+fn add(set: Set<int>, value: int) -> Unit
 
 @native
-fn add(s: Set<int>, val: int) -> Unit
+fn remove(set: Set<int>, value: int) -> Unit
 
 @native
-fn remove(s: Set<int>, val: int) -> Unit
+fn union(first_set: Set<int>, second_set: Set<int>) -> Set<int>
 
 @native
-fn union(s1: Set<int>, s2: Set<int>) -> Set<int>
+fn intersection(first_set: Set<int>, second_set: Set<int>) -> Set<int>
 
 @native
-fn intersection(s1: Set<int>, s2: Set<int>) -> Set<int>
+fn difference(first_set: Set<int>, second_set: Set<int>) -> Set<int>
 
 @native
-fn difference(s1: Set<int>, s2: Set<int>) -> Set<int>
+fn symmetric_difference(first_set: Set<int>, second_set: Set<int>) -> Set<int>
 
 @native
-fn symmetric_difference(s1: Set<int>, s2: Set<int>) -> Set<int>
+fn is_subset(first_set: Set<int>, second_set: Set<int>) -> bool
 
 @native
-fn is_subset(s1: Set<int>, s2: Set<int>) -> bool
-
-@native
-fn is_superset(s1: Set<int>, s2: Set<int>) -> bool
+fn is_superset(first_set: Set<int>, second_set: Set<int>) -> bool
