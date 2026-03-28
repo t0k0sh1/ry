@@ -514,7 +514,7 @@ static bool hasHelpFlag(int argc, char *argv[], int start = 1) {
 
 static bool isKnownSubcommand(const char *arg) {
     static const char *known[] = {
-        "test", "init", "new", "fmt", "self-update", nullptr
+        "test", "init", "new", "fmt", "self-update", "run", nullptr
     };
     for (const char **p = known; *p; ++p)
         if (std::strcmp(arg, *p) == 0) return true;
@@ -529,6 +529,7 @@ static void printMainHelp() {
     llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
     llvm::outs() << "  ry init                              Initialize a project\n";
     llvm::outs() << "  ry new <project-name>                Create a new project\n";
+    llvm::outs() << "  ry run [<script-name>]               Run a project script\n";
     llvm::outs() << "  ry fmt [options] [<file> | <dir>]    Format source files\n";
     llvm::outs() << "  ry self-update [options]              Update ry itself\n";
     llvm::outs() << "\n";
@@ -569,6 +570,12 @@ static void printFmtHelp() {
     llvm::outs() << "  -h, --help   Show this help\n";
 }
 
+static void printRunHelp() {
+    llvm::outs() << "Usage: ry run [<script-name>]\n\n";
+    llvm::outs() << "Run a script defined in package.toml [scripts] section.\n\n";
+    llvm::outs() << "If no script name is given, lists all available scripts.\n";
+}
+
 static void printSelfUpdateHelp() {
     llvm::outs() << "Usage: ry self-update [--nightly | <version>]\n\n";
     llvm::outs() << "Update ry to a newer version.\n\n";
@@ -604,6 +611,7 @@ int main(int argc, char *argv[]) {
                 if (std::strcmp(argv[1], "init") == 0) { printInitHelp(); return 0; }
                 if (std::strcmp(argv[1], "new") == 0) { printNewHelp(); return 0; }
                 if (std::strcmp(argv[1], "fmt") == 0) { printFmtHelp(); return 0; }
+                if (std::strcmp(argv[1], "run") == 0) { printRunHelp(); return 0; }
                 if (std::strcmp(argv[1], "self-update") == 0) { printSelfUpdateHelp(); return 0; }
             }
         } else {
@@ -632,6 +640,9 @@ int main(int argc, char *argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "fmt") == 0) {
         return cmd_fmt(argc - 2, argv + 2);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "run") == 0) {
+        return cmd_run(argc - 2, argv + 2);
     }
 
     InitLLVM X(argc, argv);
