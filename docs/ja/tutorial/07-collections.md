@@ -347,4 +347,56 @@ empty: Set<int> = {}
 
 ---
 
+## イテレータ
+
+イテレータはコレクションを**遅延的に**処理する方法を提供します。各ステップで中間リストを作成する代わりに、パイプラインを通じて要素を1つずつ処理します。
+
+### 生成と消費
+
+```python
+xs = [1, 2, 3]
+ys = xs.iter().to_list()   # [1, 2, 3]
+```
+
+### 操作のチェーン
+
+`filter`、`map`、`take` をチェーンしてパイプラインを構築できます:
+
+```python
+result = [1, 2, 3, 4, 5]
+    .iter()
+    .filter(fn(x: int) => x > 2)
+    .map(fn(x: int) => x * 2)
+    .take(2)
+    .to_list()
+print(result)   # [6, 8]
+```
+
+### next() による手動イテレーション
+
+```python
+it = [10, 20].iter()
+print(it.next())   # Some(10)
+print(it.next())   # Some(20)
+print(it.next())   # None
+```
+
+### for ループ
+
+イテレータは `for` ループで直接使えます:
+
+```python
+for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+    print(x)   # 2, 3
+```
+
+マップはタプル要素を生成します:
+
+```python
+for k, v in {"a": 1, "b": 2}.iter():
+    print(k)
+```
+
+---
+
 [← 前: 構造体](06-structs.md) | [次: 高度な機能 →](08-advanced.md)

@@ -2,7 +2,7 @@
 
 # Base64 関数リファレンス
 
-Base64 エンコード・デコード。すべての関数は `base64` からの明示的な import が必要です。
+Base64 エンコード・デコード。すべての関数は `base64` からの明示的なインポートが必要です。
 
 ```python
 from base64 import encode, decode, encode_url_safe, decode_url_safe
@@ -42,12 +42,25 @@ URL-safe base64 は `+` と `/` の代わりに `-` と `_` を使用し、パ�
 from base64 import encode_url_safe, decode_url_safe
 
 encoded = encode_url_safe("data with special chars: ?&=")
+# 出力に + / = は含まれない
 
 match decode_url_safe(encoded):
     case Ok(s):
         print(s)
     case Err(e):
         print(e.message)
+```
+
+### バイトデータの操作
+
+バイトデータのエンコード・デコードには `io` の `str_to_bytes` / `bytes_to_str` と組み合わせます。
+
+```python
+from base64 import encode, decode
+from io import str_to_bytes, bytes_to_str
+
+bytes = str_to_bytes("binary data")
+encoded = encode(bytes_to_str(bytes)?)
 ```
 
 ## エラーハンドリング
@@ -60,4 +73,12 @@ match decode("!!!not-valid!!!"):
         print(s)
     case Err(e):
         print(e.message)  # "invalid base64 character at position 0"
+```
+
+`?` 演算子との組み合わせ:
+
+```python
+fn process(input: str) -> Result<str, Error>:
+    decoded = decode(input)?
+    return Ok(decoded)
 ```

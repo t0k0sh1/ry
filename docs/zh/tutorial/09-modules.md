@@ -1,69 +1,69 @@
-[English](../../tutorial/09-modules.md) | [日本語](../../ja/tutorial/09-modules.md) | [繁體中文](09-modules.md)
+[English](../../tutorial/09-modules.md) | [日本語](../../ja/tutorial/09-modules.md) | [简体中文](09-modules.md)
 
-# 套件
+# 包
 
-[← 前一篇：進階功能](08-advanced.md) | [下一篇：契約式設計 →](10-contracts.md)
+[<- 上一篇：高级特性](08-advanced.md) | [下一篇：契约式设计 ->](10-contracts.md)
 
-Ry 使用套件系統來管理跨檔案和目錄的程式碼。詳細規格請參閱[套件參考手冊](../reference/packages.md)。
+Ry 使用包系统来管理跨文件和目录的代码。详细规格请参阅[包参考手册](../reference/packages.md)。
 
 ---
 
-## from/import 語法
+## from/import 语法
 
-使用 `from` 語法匯入其他檔案的函式。
+使用 `from` 语法导入其他文件的函数。
 
 ```python
-from math import add, sub   # 選擇性匯入
-from math                    # 全部匯入
+from math import sqrt, PI   # 选择性导入
+from math                    # 全部导入（所有定义）
 ```
 
-這樣就可以使用 `math.ry` 中定義的函式。
+这样就可以使用 `math.ry` 中定义的函数。
 
 ---
 
-## 子目錄（點分隔）
+## 子目录（点分隔路径）
 
-可以使用點分隔來指定子目錄中的套件。
+使用点分隔路径指定子目录中的包。
 
 ```python
-from utils.math import add   # 匯入 utils/math.ry
+from utils.calc import add   # 从 utils/calc.ry 导入
 ```
 
-每個點對應一層目錄分隔。
+每个点对应一层目录分隔。
 
 ---
 
-## 目錄套件
+## 目录包
 
-套件可以是單一的 `.ry` 檔案，也可以是包含多個 `.ry` 檔案的目錄。當套件解析為目錄時，其中所有的 `.ry` 檔案會自動載入。
+包可以是单一的 `.ry` 文件，也可以是包含多个 `.ry` 文件的目录。当包解析为目录时，其中所有的 `.ry` 文件会自动加载。
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
 ```python
-from mypackage              # 匯入 add、sub、concat
-from mypackage import add   # 僅匯入 add
+from mypackage              # 导入 add、sub、concat
+from mypackage import add   # 仅导入 add
 ```
 
-不需要特殊的入口檔案（如 `__init__.py`）。以 `_` 開頭的檔案會被排除。
+不需要特殊的入口文件（如 `__init__.py`）。以 `_` 开头的文件会被排除。
 
 ---
 
-## 標準函式庫（`std`）
+## 标准库（`std`）
 
-`std` 套件會自動匯入到所有程式中。不需要撰寫 `from std`。
+`std` 包会自动导入到所有程序中。不需要编写 `from std` —— 它始终可用。
 
 ```python
-# 這些函式無需匯入即可使用
+# 这些函数无需导入即可使用
 print("hello")
 n = length("world")
 xs = range(5)
 ```
 
-也可以直接從標準函式庫的套件中明確匯入特定定義：
+也可以从标准库的包中显式导入特定定义：
 
 ```python
 from str import contains
@@ -71,49 +71,49 @@ from str import contains
 
 ### RY_HOME
 
-標準函式庫安裝在 `$RY_HOME/lib/std/`。`RY_HOME` 的預設值為 `~/.ry`。
+标准库安装在 `$RY_HOME/lib/std/`。`RY_HOME` 的默认值为 `~/.ry`。
 
 ```bash
-export RY_HOME="$HOME/.ry"   # 預設
+export RY_HOME="$HOME/.ry"   # 默认
 ```
 
 ---
 
-## 搜尋路徑的優先順序
+## 搜索路径优先级
 
-套件檔案按以下順序搜尋：
+包文件按以下顺序搜索：
 
-1. **匯入來源檔案的目錄** — 首先搜尋撰寫匯入的檔案所在的目錄。
-2. **`$RY_HOME/lib`** — 標準函式庫的位置。
-3. **執行檔相對的 `lib/`** — 相對於 `ry` 執行檔的目錄。
-4. **`RY_PATH` 環境變數** — 找不到時，按順序搜尋 `RY_PATH` 中指定的目錄。
+1. **导入源文件的目录** —— 首先搜索包含导入语句的文件所在的目录。
+2. **`$RY_HOME/lib`** —— 标准库的位置。
+3. **可执行文件相对的 `lib/`** —— 相对于 `ry` 可执行文件的目录。
+4. **`RY_PATH` 环境变量** —— 如果未找到，按顺序搜索 `RY_PATH` 中指定的目录。
 
 ---
 
-## RY_PATH 環境變數
+## RY_PATH 环境变量
 
-可以使用冒號分隔指定多個目錄。
+可以使用冒号分隔指定多个目录。
 
 ```bash
 export RY_PATH=/home/user/ry-libs:/usr/local/ry-libs
 ```
 
-設定後，可以從任何地方匯入指定目錄中的套件。
+设置后，可以从任何地方导入指定目录中的包。
 
 ---
 
-## 限制事項
+## 限制
 
-- `from` 陳述式只能寫在檔案的**最上層**，不能寫在函式或區塊內部。
-- 多次匯入同一套件時，會自動跳過（不會發生重複匯入）。
-- **循環匯入**（A 匯入 B，B 匯入 A）會產生錯誤。
+- `from` 语句只能写在文件的**顶层**，不能写在函数或块内部。
+- 多次导入同一包时，会自动跳过（不会发生重复导入）。
+- **循环导入**（A 导入 B，B 导入 A）会产生错误。
 
 ```python
-# 錯誤範例：a.ry 和 b.ry 互相匯入的情況
+# 错误示例：a.ry 和 b.ry 互相导入
 # a.ry: from b import foo
-# b.ry: from a import bar  ← 循環匯入錯誤
+# b.ry: from a import bar  <- 循环导入错误
 ```
 
 ---
 
-[← 前一篇：進階功能](08-advanced.md) | [下一篇：契約式設計 →](10-contracts.md)
+[<- 上一篇：高级特性](08-advanced.md) | [下一篇：契约式设计 ->](10-contracts.md)

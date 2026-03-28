@@ -1,63 +1,68 @@
 [English](../../reference/io.md) | [日本語](../../ja/reference/io.md) | [繁體中文](io.md)
 
-# I/O 函式參考手冊
+# I/O 函数参考手册
 
-標準輸入輸出與檔案操作的函式一覽。所有函式皆需從 `io` 明確匯入。
+标准输入输出与文件操作。所有函数均需从 `io` 明确导入。
 
 ```python
 from io import read_text, write_text, file_exists
 ```
 
-## 函式一覽
+## 函数列表
 
-### 標準輸入
+### 标准输入
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|------|------|
-| `read_line` | `() -> str` | 從 stdin 讀取一行（移除末尾換行） |
-| `read_all` | `() -> str` | 讀取 stdin 直到 EOF |
+| `read_line` | `() -> str` | 从 stdin 读取一行（移除末尾换行） |
+| `read_all` | `() -> str` | 读取 stdin 直到 EOF |
 
-### 檔案 I/O
+### 文件 I/O
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|------|------|
-| `read_text` | `(str) -> str` | 將整個檔案作為字串讀取 |
-| `write_text` | `(str, str) -> Unit` | 將字串寫入檔案（覆蓋） |
-| `append_text` | `(str, str) -> Unit` | 在檔案末尾追加字串 |
-| `file_exists` | `(str) -> bool` | 檢查檔案是否存在 |
-| `delete_file` | `(str) -> Unit` | 刪除檔案 |
-| `read_bytes` | `(str) -> List<u8>` | 將檔案作為位元組串列讀取 |
-| `write_bytes` | `(str, List<u8>) -> Unit` | 將位元組串列寫入檔案 |
+| `read_text` | `(str) -> Result<str, Error>` | 将整个文件作为字符串读取 |
+| `write_text` | `(str, str) -> Result<Unit, Error>` | 将字符串写入文件（覆盖） |
+| `append_text` | `(str, str) -> Result<Unit, Error>` | 在文件末尾追加字符串 |
+| `file_exists` | `(str) -> bool` | 检查文件是否存在 |
+| `delete_file` | `(str) -> Result<Unit, Error>` | 删除文件 |
+| `read_bytes` | `(str) -> Result<List<u8>, Error>` | 将文件作为字节列表读取 |
+| `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | 将字节列表写入文件 |
 
-### 位元組轉換
+### 字节转换
 
-| 函式 | 簽名 | 說明 |
+| 函数 | 签名 | 说明 |
 |------|------|------|
-| `str_to_bytes` | `(str) -> List<u8>` | 將字串轉換為 UTF-8 位元組 |
-| `bytes_to_str` | `(List<u8>) -> str` | 將位元組串列轉換為字串 |
+| `str_to_bytes` | `(str) -> List<u8>` | 将字符串转换为 UTF-8 字节 |
+| `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | 将字节列表转换为字符串 |
 
-## 使用範例
+## 使用示例
 
-### 讀寫檔案
+### 读写文件
 
 ```python
 from io import read_text, write_text, append_text, file_exists, delete_file
 
-write_text("hello.txt", "Hello, World!")
-content = read_text("hello.txt")
-print(content)   # Hello, World!
-
-append_text("hello.txt", "\nGoodbye!")
-print(read_text("hello.txt"))
-# Hello, World!
-# Goodbye!
+match write_text("hello.txt", "Hello, World!"):
+    case Ok(_):
+        match read_text("hello.txt"):
+            case Ok(content):
+                print(content)   # Hello, World!
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 
 print(file_exists("hello.txt"))   # true
-delete_file("hello.txt")
-print(file_exists("hello.txt"))   # false
+
+match delete_file("hello.txt"):
+    case Ok(_):
+        print(file_exists("hello.txt"))   # false
+    case Err(e):
+        print(e.message)
 ```
 
-### 位元組操作
+### 字节操作
 
 ```python
 from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
@@ -65,13 +70,22 @@ from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
 bs = str_to_bytes("ABC")
 print(length(bs))    # 3
 
-write_bytes("data.bin", bs)
-rb = read_bytes("data.bin")
-s = bytes_to_str(rb)
-print(s)          # ABC
+match write_bytes("data.bin", bs):
+    case Ok(_):
+        match read_bytes("data.bin"):
+            case Ok(rb):
+                match bytes_to_str(rb):
+                    case Ok(s):
+                        print(s)          # ABC
+                    case Err(e):
+                        print(e.message)
+            case Err(e):
+                print(e.message)
+    case Err(e):
+        print(e.message)
 ```
 
-### 從標準輸入讀取
+### 从标准输入读取
 
 ```python
 from io import read_line
@@ -80,20 +94,27 @@ name = read_line()
 print(f"Hello, {name}!")
 ```
 
-## 錯誤處理
+## 错误处理
 
-所有檔案操作在失敗時會以執行時錯誤終止：
+文件操作返回 `Result<T, Error>` 而不是在失败时终止程序。使用 `match` 配合 `Ok`/`Err` 模式来处理错误:
 
-| 操作 | 錯誤條件 |
+```python
+match read_text("missing.txt"):
+    case Ok(content):
+        print(content)
+    case Err(e):
+        print(e.message)   # cannot open file 'missing.txt' for reading
+```
+
+| 操作 | 错误条件 |
 |------|---------|
-| `read_text` / `read_bytes` | 檔案不存在或無法開啟 |
-| `write_text` / `write_bytes` / `append_text` | 無法開啟檔案進行寫入 |
-| `delete_file` | 無法刪除檔案 |
+| `read_text` / `read_bytes` | 文件不存在或无法打开 |
+| `write_text` / `write_bytes` / `append_text` | 无法打开文件进行写入 |
+| `delete_file` | 无法删除文件 |
+| `bytes_to_str` | 输入包含 NUL 字节 |
 
-錯誤訊息會輸出到 stderr，程式以結束代碼 1 終止。
+## 备注
 
-## 備註
-
-- 使用 `List<u8>` 作為緩衝區型別。標準串列操作（`length()`、`append()`、`slice()`、索引存取）均可用於位元組串列。
-- 檔案路徑若未指定絕對路徑，則為相對於當前工作目錄的相對路徑。
-- `write_text` 與 `write_bytes` 會覆蓋既有檔案。若要追加內容，請使用 `append_text`。
+- 使用 `List<u8>` 作为缓冲区类型。标准列表操作（`length()`、`append()`、`slice()`、索引访问）均可用于字节列表。
+- 文件路径若未指定绝对路径，则为相对于当前工作目录的相对路径。
+- `write_text` 与 `write_bytes` 会覆盖现有文件。若要追加内容，请使用 `append_text`。

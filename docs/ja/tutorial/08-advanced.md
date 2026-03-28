@@ -100,7 +100,7 @@ fn add(a: int, b: int) -> int:
     return a + b
 
 x = 1
-print(x.add(2))   # add(x, 2) → 3
+print(x.add(2))   # add(x, 2) -> 3
 ```
 
 ### チェーン呼び出し
@@ -109,7 +109,7 @@ print(x.add(2))   # add(x, 2) → 3
 fn double(n: int) -> int:
     return n * 2
 
-print(x.add(2).double())   # double(add(x, 2)) → 6
+print(x.add(2).double())   # double(add(x, 2)) -> 6
 ```
 
 ---
@@ -186,6 +186,98 @@ match x:
 
 ---
 
+## 並行処理の基本
+
+`Task<T>` は並行処理のランタイムハンドルです。タスクを返す関数には `async fn` を使い、別の `async fn` 内では `await` を、同期コンテキストからは `block_on(task)` を使って完了を待ちます。
+
+```python
+async fn add(a: int, b: int) -> int:
+    return a + b
+
+# 同期コンテキストからは block_on() を使用
+t: Task<int> = add(20, 22)
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# async fn 内では await を使用
+async fn double_add(a: int, b: int) -> int:
+    return (await add(a, b)) * 2
+```
+
+`@parallel` はカウント付きの `for` ループ（`range(...)` または整数の `..` 範囲）に適用できます:
+
+```python
+@parallel
+for i in range(8):
+    print(i)
+```
+
+`@parallel for` は `break`、`continue`、外部の可変変数への書き込みを拒否します。
+
+---
+
+## ネットワーク（TCP ソケット）
+
+Ry は `net` モジュールを通じて TCP ソケットをサポートしています。`send`、`recv`、`close` 関数は TCP ソケットで動作します。すべてのネットワーク操作は `Result` 型を返します。
+
+```python
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
+
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
+                        case Err(e):
+                            ...
+                case Err(e):
+                    ...
+            close(conn)
+        case Err(e):
+            ...
+    close(server)
+    return "done"
+
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                match connect("127.0.0.1", port):
+                    case Ok(conn):
+                        match send(conn, str_to_bytes("hello")):
+                            case Ok(_):
+                                ...
+                            case Err(e):
+                                ...
+                        match recv(conn, 4096):
+                            case Ok(resp):
+                                match bytes_to_str(resp):
+                                    case Ok(s):
+                                        print(s)   # hello
+                                    case Err(e):
+                                        ...
+                            case Err(e):
+                                ...
+                        close(conn)
+                    case Err(e):
+                        print("connect failed")
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        print("bind failed")
+```
+
+完全な API については[ネットワークリファレンス](../reference/net.md)を参照してください。
+
+---
+
 ## F-String（文字列補間）
 
 `f"..."` を使って、文字列内に式を直接埋め込むことができます。式は `{}` 内に記述します。
@@ -222,16 +314,20 @@ b = true as int       # 1
 
 ## 関連データを持つ enum（ADT）
 
-enum バリアントに関連する値を持たせることができます。これにより、1 つの enum でさまざまな形のデータファミリーを表現できます。
+enum バリアントに関連する値を持たせることができます。これにより、1つの enum でさまざまな形のデータファミリーを表現できます。フィールドにはドキュメント目的で名前を付けることもできます。
 
 ```python
 enum Shape:
-    Circle(float)
-    Rectangle(float, float)
+    Circle(radius: float)
+    Rectangle(width: float, height: float)
     Point
 ```
 
+名前付きフィールドはドキュメント目的のみです — 定義を自己記述的にします。名前なし構文（`Circle(float)`）も有効です。
+
 ### ADT バリアントの構築
+
+構築は名前付きフィールドの有無にかかわらず、常に位置ベースです。
 
 ```python
 c = Shape::Circle(3.14)
@@ -241,7 +337,7 @@ p = Shape::Point
 
 ### ADT バリアントのマッチング
 
-`case` にバインディングパターンを使って関連データを取り出します。
+`case` にバインディングパターンを使って関連データを取り出します。バインディングにはフィールド名ではなく、任意の変数名を使用します。
 
 ```python
 fn describe(s: Shape) -> str:

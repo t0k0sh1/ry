@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-03-28
+
 ### Added
 
 - Low-level numeric types: i8, i16, i32, i64, u8, u16, u32, u64, f32 (#288)
@@ -193,7 +195,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/t0k0sh1/ry/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/t0k0sh1/ry/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/t0k0sh1/ry/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/t0k0sh1/ry/compare/v0.0.1...v0.0.2

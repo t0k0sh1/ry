@@ -13,8 +13,8 @@ Ry はパッケージシステムを使って、ファイルやディレクト�
 別ファイルの関数をインポートするには `from` 構文を使います。
 
 ```python
-from math import add, sub   # 選択インポート
-from math                    # 全関数インポート
+from math import sqrt, PI   # 選択インポート
+from math                    # 全インポート（すべての定義）
 ```
 
 これで `math.ry` に定義された関数が使えるようになります。
@@ -26,7 +26,7 @@ from math                    # 全関数インポート
 ドット区切りでサブディレクトリ内のパッケージを指定できます。
 
 ```python
-from utils.math import add   # utils/math.ry をインポート
+from utils.calc import add   # utils/calc.ry をインポート
 ```
 
 ドット1つがディレクトリの区切りに対応します。
@@ -39,7 +39,7 @@ from utils.math import add   # utils/math.ry をインポート
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
@@ -111,7 +111,7 @@ export RY_PATH=/home/user/ry-libs:/usr/local/ry-libs
 ```python
 # エラー例: a.ry と b.ry が互いをインポートしている場合
 # a.ry: from b import foo
-# b.ry: from a import bar  ← 循環インポートエラー
+# b.ry: from a import bar  <- 循環インポートエラー
 ```
 
 ---

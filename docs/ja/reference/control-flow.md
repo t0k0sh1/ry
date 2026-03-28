@@ -183,15 +183,21 @@ for i in 1 .. 3:
 
 ## async / await
 
-`async fn` は並行実行される関数を宣言します。`async fn` を呼び出すと `Task<T>` が返り、`await` または `join(task)` で結果を待ちます。
+`async fn` は並行実行される関数を宣言します。`async fn` を呼び出すと `Task<T>` が返ります。別の `async fn` 内では `await` を使い、同期コンテキストからは `block_on()` を使って結果を待ちます。
 
 ```python
 async fn add(a: int, b: int) -> int:
     return a + b
 
+# 同期コンテキストからは block_on() を使用
 t: Task<int> = add(20, 22)
-print(await t)          # 42
-print(join(add(1, 2)))  # 3
+print(block_on(t))                  # 42
+print(block_on(add(1, 2)))          # 3
+
+# async fn 内では await を使用
+async fn double_add(a: int, b: int) -> int:
+    result = await add(a, b)
+    return result * 2
 ```
 
 ### ルール
@@ -199,8 +205,9 @@ print(join(add(1, 2)))  # 3
 - `async fn name(...) -> T:` の `T` は await 後の値型です。
 - `async fn` の呼び出し結果は常に `Task<T>` です。
 - `await expr` は `Task<T>` にのみ使用でき、結果は `T` です。
-- `await` は式位置に加えて `await expr` の文形式でも使えます。
-- `async fn ... -> Unit` をサポートします。値を返さない task の待機には `await task` を使うのが基本です。
+- `await` は `async fn` 内でのみ使用可能。同期コンテキストからは `block_on(task)` を使用します。
+- `block_on(task)` は現在のスレッドをタスク完了までブロックし、結果を返します。
+- `async fn ... -> Unit` をサポートします。値を返さない task の待機には `block_on(task)` を使うのが基本です。
 - task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
 - `async` ラムダと `async @native fn` は v1 では未対応です。
 
@@ -305,6 +312,8 @@ match 式:
 | ADT enum バリアント | `Shape::Circle(r)` | 関連データを持つ enum バリアントにマッチし、束縛する |
 | `Some(x)` | `Some(v)` | Option が値ありの場合、中身を束縛 |
 | `None` | `None` | Option が値なしの場合 |
+| `Ok(x)` | `Ok(v)` | Result が Ok の場合、中身を束縛 |
+| `Err(x)` | `Err(e)` | Result が Err の場合、エラー値を束縛 |
 | OR パターン | `1 \| 2 \| 3` | いずれかにマッチ |
 
 ### guard 節
@@ -363,6 +372,18 @@ match x:
     case None:
         print("nothing")
 
+# Result マッチ
+fn divide(a: int, b: int) -> Result<int, Error>:
+    if b == 0:
+        return Err(Error("division by zero"))
+    return Ok(a // b)
+
+match divide(10, 2):
+    case Ok(v):
+        print(v)         # 5
+    case Err(e):
+        print(e.message)
+
 # リテラルマッチ
 match x:
     case 0:
@@ -408,7 +429,7 @@ match s:
 ### スコープルール
 
 - 各 `case` アームはブロックスコープを持つ。
-- 変数束縛パターン (`n`) や `Some(x)` で束縛された変数はそのアーム内でのみ有効。
+- 変数束縛パターン (`n`)、`Some(x)`、`Ok(v)`、`Err(e)` で束縛された変数はそのアーム内でのみ有効。
 
 ---
 

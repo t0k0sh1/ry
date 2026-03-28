@@ -12,56 +12,56 @@
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `contains` | `(str, str) → bool` | 部分文字列が含まれるかを返す |
-| `starts_with` | `(str, str) → bool` | 接頭辞で始まるかを返す |
-| `ends_with` | `(str, str) → bool` | 接尾辞で終わるかを返す |
-| `find` | `(str, str) → Option<int>` | 部分文字列の文字位置を返す（未発見は `None`） |
+| `contains` | `(str, str) -> bool` | 部分文字列が含まれるかを返す |
+| `starts_with` | `(str, str) -> bool` | 接頭辞で始まるかを返す |
+| `ends_with` | `(str, str) -> bool` | 接尾辞で終わるかを返す |
+| `find` | `(str, str) -> Option<int>` | 部分文字列の文字位置を返す（未発見は `None`） |
 
 ### 抽出・変換
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `substring` | `(str, int, int) → str` | 部分文字列を取得（文字インデックス） |
-| `char_at` | `(str, int) → str` | 指定位置の UTF-8 文字を取得 |
-| `replace` | `(str, str, str) → str` | 部分文字列を全置換 |
+| `substring` | `(str, int, int) -> str` | 部分文字列を取得（文字インデックス） |
+| `char_at` | `(str, int) -> str` | 指定位置の UTF-8 文字を取得 |
+| `replace` | `(str, str, str) -> str` | 部分文字列を全置換 |
 
 ### 大文字・小文字
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `to_upper` | `str → str` | ASCII 大文字に変換 |
-| `to_lower` | `str → str` | ASCII 小文字に変換 |
+| `to_upper` | `str -> str` | ASCII 大文字に変換 |
+| `to_lower` | `str -> str` | ASCII 小文字に変換 |
 
 ### 空白除去
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `trim` | `str → str` | 前後の空白を除去 |
-| `trim_start` | `str → str` | 先頭の空白を除去 |
-| `trim_end` | `str → str` | 末尾の空白を除去 |
+| `trim` | `str -> str` | 前後の空白を除去 |
+| `trim_start` | `str -> str` | 先頭の空白を除去 |
+| `trim_end` | `str -> str` | 末尾の空白を除去 |
 
 ### 生成・加工
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `repeat` | `(str, int) → str` | 文字列を n 回繰り返す |
-| `reverse` | `str → str` | 文字列を逆順にする（UTF-8 対応） |
-| `byte_len` | `str → int` | 文字列のバイト長を返す |
+| `repeat` | `(str, int) -> str` | 文字列を n 回繰り返す |
+| `reverse` | `str -> str` | 文字列を逆順にする（UTF-8 対応） |
+| `byte_len` | `str -> int` | 文字列のバイト長を返す |
 
 ### 分割・結合
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `split` | `(str, str) → List<str>` | デリミタで分割 |
-| `join` | `(List<str>, str) → str` | セパレータで結合 |
+| `split` | `(str, str) -> List<str>` | デリミタで分割 |
+| `join` | `(List<str>, str) -> str` | セパレータで結合 |
 
 ### 型変換
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `to_int` | `str → int` | 文字列を整数に変換 |
-| `to_float` | `str → float` | 文字列を浮動小数点数に変換 |
-| `to_str` | `int/float/bool/str → str` | 値を文字列に変換 |
+| `to_int` | `str -> int` | 文字列を整数に変換 |
+| `to_float` | `str -> float` | 文字列を浮動小数点数に変換 |
+| `to_str` | `int/float/bool/str/record -> str` | 値を文字列に変換 |
 
 ---
 
@@ -300,7 +300,7 @@ print(parts.join("-"))         # a-b-c (UFCS)
 
 ## to_int
 
-**シグネチャ:** `to_int(value: str) -> int`
+**シグネチャ:** `to_int(string: str) -> int`
 
 文字列を整数に変換します。
 
@@ -314,7 +314,7 @@ print("123".to_int())     # 123 (UFCS)
 
 ## to_float
 
-**シグネチャ:** `to_float(value: str) -> float`
+**シグネチャ:** `to_float(string: str) -> float`
 
 文字列を浮動小数点数に変換します。
 
@@ -327,7 +327,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**シグネチャ:** `to_str(value: int | float | bool | str) -> str`
+**シグネチャ:** `to_str(v: int | float | bool | str | record) -> str`
 
 値を文字列に変換します。
 
@@ -337,10 +337,22 @@ print("2.5".to_float())   # 2.5 (UFCS)
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | そのまま返す |
+| record | `TypeName(field1: val1, field2: val2)` |
+
+record 型は `to_str` 表現を自動生成します。ユーザー定義の `fn to_str(v: MyRecord) -> str` が提供されている場合、自動生成バージョンより優先されます。これは `print()` や f-string 補間でも同様に機能します。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+record Point:
+    x: int
+    y: int
+
+p = Point(10, 20)
+print(to_str(p))          # Point(x: 10, y: 20)
+print(p)                  # Point(x: 10, y: 20)
+print(f"pos={p}")         # pos=Point(x: 10, y: 20)
 ```

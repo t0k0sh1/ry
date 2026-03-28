@@ -1,16 +1,16 @@
-[English](../../tutorial/10-contracts.md) | [日本語](../../ja/tutorial/10-contracts.md) | [繁體中文](10-contracts.md)
+[English](../../tutorial/10-contracts.md) | [日本語](../../ja/tutorial/10-contracts.md) | [简体中文](10-contracts.md)
 
-# 契約式設計
+# 契约式设计
 
-[← 前一篇：套件](09-modules.md) | [下一篇：測試 →](11-testing.md)
+[<- 上一篇：包](09-modules.md) | [下一篇：测试 ->](11-testing.md)
 
-Ry 支援 Eiffel 風格的契約式設計，包含前置條件（`require`）、後置條件（`ensure`）以及結構體不變量（`invariant`）。當契約違反時，程式會終止。詳細規格請參閱[契約式設計參考手冊](../reference/contracts.md)。
+Ry 支持 Eiffel 风格的契约式设计，包含前置条件（`require`）、后置条件（`ensure`）以及结构体不变量（`invariant`）。当契约违反时，程序会终止。详细规格请参阅[契约式设计参考手册](../reference/contracts.md)。
 
 ---
 
-## 前置條件（`require`）
+## 前置条件（`require`）
 
-使用 `require` 指定函式被呼叫時必須為真的條件。
+使用 `require` 指定函数被调用时必须为真的条件。
 
 ```python
 fn deposit(amount: int, balance: int) -> int:
@@ -21,7 +21,7 @@ fn deposit(amount: int, balance: int) -> int:
     return new_balance
 ```
 
-當前置條件不滿足時，程式會以下列訊息終止：
+当前置条件不满足时，程序会以下列消息终止：
 
 ```
 Contract violation: require failed in deposit()
@@ -29,9 +29,9 @@ Contract violation: require failed in deposit()
 
 ---
 
-## 後置條件（`ensure`）
+## 后置条件（`ensure`）
 
-使用 `ensure` 指定函式回傳值時必須為真的條件。回傳值會綁定到使用者選擇的變數名。
+使用 `ensure` 指定函数返回时必须为真的条件。返回值会绑定到用户选择的变量名。
 
 ```python
 fn abs(x: int) -> int:
@@ -42,7 +42,7 @@ fn abs(x: int) -> int:
     return x
 ```
 
-由於 Ry 的函式參數是不可變的，可以在 `ensure` 區塊中直接引用參數：
+由于 Ry 的函数参数是不可变的，可以在 `ensure` 块中直接引用参数：
 
 ```python
 fn increment(x: int) -> int:
@@ -51,7 +51,7 @@ fn increment(x: int) -> int:
     return x + 1
 ```
 
-對於回傳元組的函式，可以用逗號分隔指定多個變數名：
+对于返回元组的函数，可以用逗号分隔指定多个变量名：
 
 ```python
 fn divide(a: int, b: int) -> (int, int):
@@ -63,9 +63,9 @@ fn divide(a: int, b: int) -> (int, int):
 
 ---
 
-## 同時使用 `require` 和 `ensure`
+## 同时使用 `require` 和 `ensure`
 
-兩者可以同時使用。`require` 必須寫在 `ensure` 之前。
+两者可以同时使用。`require` 必须写在 `ensure` 之前。
 
 ```python
 fn deposit(amount: int, balance: int) -> int:
@@ -81,9 +81,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## 結構體不變量（`invariant`）
+## 结构体不变量（`invariant`）
 
-使用 `invariant` 指定結構體必須始終成立的條件。不變量會在建構後及每次欄位賦值後檢查。
+使用 `invariant` 指定结构体必须始终成立的条件。不变量会在构造后及每次字段赋值后检查。
 
 ```python
 record BankAccount:
@@ -100,15 +100,15 @@ a = BankAccount(100, 0)   # OK: 100 >= 0
 
 ---
 
-## 規則
+## 规则
 
-- `require` 和 `ensure` 區塊為選用項，寫在函式主體之前。
-- 同時使用時，`require` 必須寫在 `ensure` 之前。
-- `ensure` 需要變數綁定來命名回傳值（例：`ensure v:`）。
-- 對於元組回傳值，可指定多個綁定變數（例：`ensure q, r:`）。
-- `invariant` 寫在 `record` 定義的末尾，在所有欄位宣告之後。
-- 所有契約違反都會以 `exit(1)` 終止程式。
+- `require` 和 `ensure` 块为可选项，写在函数主体之前。
+- 同时使用时，`require` 必须写在 `ensure` 之前。
+- `ensure` 需要变量绑定来命名返回值（例：`ensure v:`）。
+- 对于元组返回值，可指定多个绑定变量（例：`ensure q, r:`）。
+- `invariant` 写在 `record` 定义的末尾，在所有字段声明之后。
+- 所有契约违反都会以 `exit(1)` 终止程序。
 
 ---
 
-[← 前一篇：套件](09-modules.md) | [下一篇：測試 →](11-testing.md)
+[<- 上一篇：包](09-modules.md) | [下一篇：测试 ->](11-testing.md)

@@ -1,24 +1,24 @@
-[English](../../reference/structs.md) | [日本語](../../ja/reference/structs.md) | [繁體中文](structs.md)
+[English](../../reference/structs.md) | [日本語](../../ja/reference/structs.md) | [简体中文](structs.md)
 
-# 結構體參考
+# 结构体参考
 
 ## 概述
 
-結構體是堆疊上的值型別。使用 `record` 關鍵字定義。結構體可以使用 `invariant` 子句定義不變量。參閱 [契約式設計](contracts.md)。
+结构体是栈上的值类型。使用 `record` 关键字定义。结构体可以使用 `invariant` 子句实现契约式设计。参阅 [契约式设计](contracts.md)。
 
-> **命名慣例**：結構體名稱必須使用 PascalCase（如 `Point`、`Rectangle`）。欄位名稱必須使用 snake_case。編譯器會強制執行這些慣例。
+> **命名约定**：结构体名称必须使用 PascalCase（如 `Point`、`Rectangle`）。字段名称必须使用 snake_case。编译器会强制执行这些约定。
 
 ---
 
-## 定義語法
+## 定义语法
 
 ```python
-record 型別名:
-    欄位名: 型別
-    欄位名: 型別
+record TypeName:
+    field_name: type
+    field_name: type
 ```
 
-### 範例
+### 示例
 
 ```python
 record Point:
@@ -32,9 +32,9 @@ record Rectangle:
 
 ---
 
-## 建構子
+## 构造函数
 
-按照欄位定義順序傳遞引數。不支援具名引數。
+按照字段定义顺序传递参数。不支持命名参数。
 
 ```python
 p = Point(10, 20)
@@ -43,9 +43,9 @@ r = Rectangle(3.0, 4.5)
 
 ---
 
-## 欄位存取
+## 字段访问
 
-使用點記法讀取欄位。
+使用点号记法读取字段。
 
 ```python
 p = Point(10, 20)
@@ -55,25 +55,25 @@ print(p.y)   # 20
 
 ---
 
-## 欄位賦值
+## 字段赋值
 
-| 變數宣告 | 欄位賦值 |
+| 变量声明 | 字段赋值 |
 |---------|--------------|
-| 可變（無 `@const`） | 可以         |
-| `@const`   | 編譯錯誤 |
+| 可变（无 `@const`） | 可以 |
+| `@const` | 编译错误 |
 
 ```python
 p = Point(10, 20)
-p.x = 100    # OK: 可變變數
+p.x = 100    # OK：可变变量
 
 @const
 q = Point(10, 20)
-q.x = 100    # 錯誤: @const 變數的欄位不可變更
+q.x = 100    # 错误：@const 变量的字段不可变更
 ```
 
 ---
 
-## 作為函式引數與回傳值使用
+## 作为函数参数与返回值使用
 
 ```python
 fn distance(p: Point) -> float:
@@ -85,9 +85,9 @@ fn make_point(x: int, y: int) -> Point:
 
 ---
 
-## 巢狀結構體
+## 嵌套结构体
 
-可以將結構體作為另一個結構體的欄位使用。
+可以将结构体作为另一个结构体的字段使用。
 
 ```python
 record Point:
@@ -104,9 +104,9 @@ print(c.center.x)   # 0
 
 ---
 
-## 比較 (`==` / `!=`)
+## 比较（`==` / `!=`）
 
-記錄型別自動支援 `==` 和 `!=` 運算子。比較是逐欄位進行的（結構性相等）。
+记录类型自动支持 `==` 和 `!=` 运算符。比较是逐字段进行的（结构性相等）。
 
 ```python
 record Point:
@@ -121,49 +121,119 @@ print(p1 == p2)  # true
 print(p1 != p3)  # true
 ```
 
-- 所有欄位按順序比較。對於 `==`，所有欄位必須相等。對於 `!=`，至少一個欄位必須不同。
-- 巢狀記錄會遞迴比較。
-- 如果提供了使用者定義的 `operator==` 或 `operator!=`，則優先於自動生成的版本。
+- 所有字段按顺序比较。对于 `==`，所有字段必须相等。对于 `!=`，至少一个字段必须不同。
+- 嵌套记录会递归比较。
+- 如果提供了用户定义的 `operator==` 或 `operator!=`，则优先于自动生成的版本。
 
 ---
 
-## 限制與錯誤
+## 记录子类型（继承）
 
-| 限制 | 詳細 |
-|------|------|
-| 相同欄位名重複 | 編譯錯誤 |
-| `@const` 變數的欄位賦值 | 編譯錯誤 |
-| 直接將結構體傳給 `print` | 編譯錯誤（print 不支援） |
+记录支持使用 `<` 语法的单继承。子记录继承父记录的所有字段。
+
+### 语法
 
 ```python
-# 錯誤範例：相同欄位名重複
+record ChildName < ParentName:
+    child_field: type
+```
+
+### 示例
+
+```python
+record HttpError < Error:
+    status: int
+    url: str
+```
+
+### 字段继承
+
+- 子记录在其布局的开头继承所有父字段。
+- 构造函数先接受父字段，然后是子特有的字段。
+
+```python
+err = HttpError("not found", 404, 404, "/api")
+print(err.message)  # "not found"（从 Error 继承）
+print(err.status)   # 404（自有字段）
+```
+
+### 子类型强制转换
+
+子值可以传递给期望父类型的地方。子值会被自动切片以提取父前缀字段（值类型切片）。
+
+```python
+fn handle(e: Error) -> str:
+    return e.message
+
+err = HttpError("fail", 500, 500, "/api")
+handle(err)  # OK — HttpError 强制转换为 Error
+```
+
+### 深层继承
+
+记录可以形成继承链。每一层继承所有祖先字段。
+
+```python
+record DetailedHttpError < HttpError:
+    detail: str
+
+# 构造函数：Error 字段 + HttpError 字段 + 自有字段
+derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
+handle(derr)  # OK — 强制转换为 Error（祖父类型）
+```
+
+### 规则
+
+| 规则 | 详细 |
+|------|------|
+| 仅支持单继承 | `record A < B:` — 只能有一个父类 |
+| 深层继承 | `record C < B:` 其中 `record B < A:` — 允许 |
+| 名称冲突 | 子字段与父字段同名 → 编译错误 |
+| 自动 `==` / `to_str` | 包含所有继承字段 |
+| 不变量继承 | 构造或修改子记录时检查父的 `invariant:` 子句 |
+| 子类型强制转换 | 适用于：函数参数、返回值、`Err()`、字段赋值、`?` 运算符 |
+| 泛型边界 | `<T: RecordName>` 将类型参数约束为记录的子类型 |
+| `@const` | 适用于所有字段（包括继承的字段） |
+
+---
+
+## 约束与错误
+
+| 约束 | 详细 |
+|------|------|
+| 相同字段名重复 | 编译错误 |
+| `@const` 变量的字段赋值 | 编译错误 |
+| 直接将结构体传给 `print` | 编译错误（print 不支持） |
+
+```python
+# 错误示例：相同字段名重复
 record Bad:
     x: int
-    x: int   # 錯誤
+    x: int   # 错误
 
-# 錯誤範例：將結構體傳給 print
+# 错误示例：将结构体传给 print
 p = Point(1, 2)
-print(p)   # 錯誤
+print(p)   # 错误
 ```
 
 ---
 
-## 列舉型別（enum）
+## 枚举类型（enum）
 
 ### 概述
 
-列舉型別是具名常數的集合。預設以 i64 整數（0, 1, 2, ...）的連續編號表示。也可以指定明確的整數值。
+枚举类型是具名常量的集合。默认以 i64 整数（0, 1, 2, ...）的连续编号表示。也可以指定显式的整数值。
 
-### 定義語法
+### 定义语法
 
 ```python
-enum 型別名:
-    變體名
-    變體名
+enum TypeName:
+    VariantName
+    VariantName
     ...
 ```
 
-### 範例
+### 示例
 
 ```python
 enum Color:
@@ -172,25 +242,25 @@ enum Color:
     Blue
 ```
 
-### 變體存取
+### 变体访问
 
-使用 `::` 運算子存取變體。
+使用 `::` 运算符访问变体。
 
 ```python
 c = Color::Red
 print(c)   # Red
 ```
 
-### 比較
+### 比较
 
-enum 值為整數，因此可以直接使用 `==` / `!=` 進行比較。
+enum 值为整数，因此可以直接使用 `==` / `!=` 进行比较。
 
 ```python
 print(Color::Red == Color::Red)    # true
 print(Color::Red != Color::Green)  # true
 ```
 
-### 在 if 陳述式中使用
+### 在 if 语句中使用
 
 ```python
 c = Color::Green
@@ -202,9 +272,9 @@ else:
     print("blue")
 ```
 
-### 函式引數
+### 函数参数
 
-型別名稱使用 enum 名稱。
+类型名称使用 enum 名称。
 
 ```python
 fn is_red(c: Color) -> bool:
@@ -216,16 +286,16 @@ print(is_red(Color::Green))  # false
 
 ### print
 
-使用 `print()` 會輸出變體名稱。
+使用 `print()` 会输出变体名称。
 
 ```python
 c = Color::Blue
 print(c)   # Blue
 ```
 
-### 明確值指定
+### 显式值指定
 
-simple enum 的變體可以指定明確的整數值。適用於 HTTP 狀態碼或位元遮罩模式等用途。
+simple enum 的变体可以指定显式的整数值。适用于 HTTP 状态码或位掩码模式等用途。
 
 ```python
 enum HttpStatus:
@@ -245,17 +315,34 @@ enum Permission:
     Execute = 4
 ```
 
-規則：
-- 僅支援 simple enum（不含關聯資料的 ADT 變體）
-- 值必須為整數字面量（允許負值）
-- 若任一變體有明確值，則所有變體都必須有（不可混用）
-- 重複值會產生編譯錯誤
-- `print()` 顯示變體名稱（而非整數值）
+规则：
+- 仅支持 simple enum（不含关联数据的 ADT 变体）。
+- 值必须为整数字面量（允许负值）。
+- 若任一变体有显式值，则所有变体都必须有（不可混用自动和手动）。
+- 重复值会产生编译错误。
+- `print()` 显示变体名称，而非整数值。
 
-### 限制與錯誤
+### ADT 变体的命名字段
 
-| 限制 | 詳細 |
+ADT 变体字段可以选择性地包含名称以用于文档目的。命名字段使定义具有自描述性，而不改变构造或模式匹配的语义。
+
+```python
+enum Shape:
+    Circle(radius: float)
+    Rect(width: float, height: float)
+    Point
+```
+
+- 构造始终是位置性的：`Shape::Circle(3.14)`，而非 `Shape::Circle(radius: 3.14)`。
+- 模式匹配绑定用户选择的变量名：`case Shape::Circle(r):`。
+- 字段名必须为 `snake_case`。不允许在单个变体内混用命名和未命名字段。
+- 未命名语法（`Circle(float)`）仍然有效。
+
+### 约束与错误
+
+| 约束 | 详细 |
 |------|------|
-| 變體存取為 `EnumName::VariantName` | 必須使用 `::` 運算子 |
-| 變體值 | 預設為自動分配（0, 1, 2, ...），可使用 `= 值` 明確指定 |
-| 比較為整數比較 | 可使用 `==`、`!=` |
+| 变体访问为 `EnumName::VariantName` | 必须使用 `::` 运算符 |
+| 变体值 | 默认为自动分配（0, 1, 2, ...），可使用 `= value` 显式指定 |
+| 比较为整数比较 | 可使用 `==`、`!=` |
+| 命名字段名 | 必须为 `snake_case`；同一变体内不可重复；不可混用命名/未命名 |

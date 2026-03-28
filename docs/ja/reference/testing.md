@@ -75,6 +75,8 @@ foo("arg", fn():
 | `to_be_false()` | `false` であること | bool |
 | `to_be_none()` | `None` であること | Option |
 | `to_be_some()` | Option が `Some` であること | Option |
+| `to_be_ok()` | Result が `Ok` であること | Result |
+| `to_be_err()` | Result が `Err` であること | Result |
 | `to_contain(val)` | コンテナが値を含むこと | List, Set, Map, str |
 | `to_not_contain(val)` | コンテナが値を含まないこと | List, Set, Map, str |
 | `to_be_greater_than(v)` | `actual > v` であること | int, float |
