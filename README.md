@@ -1,8 +1,13 @@
 [English](README.md) | [日本語](README.ja.md) | [繁體中文](README.zh.md)
 
-# Ry
+<p align="center">
+  <img src="docs/logo.png" alt="Ry" width="200">
+</p>
 
-A simple programming language based on LLVM JIT. It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
+<p align="center">
+  A simple programming language based on LLVM JIT.<br>
+  It reads source code, compiles it to native code with LLVM ORC JIT, and executes it immediately.
+</p>
 
 ## Features
 
