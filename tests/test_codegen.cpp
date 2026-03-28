@@ -188,39 +188,37 @@ TEST_F(CodeGenTest, TypeAnnotationMismatchThrows) {
     EXPECT_THROW(runSource("a: bool = 10"), std::runtime_error);
 }
 
-// ===== Byte basics =====
+// ===== u8 basics =====
 
-TEST_F(CodeGenTest, ByteBasics) {
-    EXPECT_EQ(runSource("b: byte = 42\nprint(b)"), "42\n");
-    EXPECT_EQ(runSource("b: byte = 0\nprint(b)"), "0\n");
-    EXPECT_EQ(runSource("b: byte = 255\nprint(b)"), "255\n");
-    EXPECT_EQ(runSource("b: byte = 10\nb = 20\nprint(b)"), "20\n");
+TEST_F(CodeGenTest, U8Basics) {
+    EXPECT_EQ(runSource("b: u8 = 42\nprint(b)"), "42\n");
+    EXPECT_EQ(runSource("b: u8 = 0\nprint(b)"), "0\n");
+    EXPECT_EQ(runSource("b: u8 = 255\nprint(b)"), "255\n");
+    EXPECT_EQ(runSource("b: u8 = 10\nb = 20\nprint(b)"), "20\n");
 }
 
-TEST_F(CodeGenTest, ByteArithmetic) {
-    // byte + byte → int (i64)
-    EXPECT_EQ(runSource("a: byte = 10\nb: byte = 20\nc = a + b\nprint(c)"), "30\n");
-    // byte + int → int
-    EXPECT_EQ(runSource("a: byte = 10\nb = 100\nc = a + b\nprint(c)"), "110\n");
-    EXPECT_EQ(runSource("a: byte = 50\nb: byte = 20\nc = a - b\nprint(c)"), "30\n");
-    EXPECT_EQ(runSource("a: byte = 3\nb: byte = 4\nc = a * b\nprint(c)"), "12\n");
-    // byte / byte → float
-    EXPECT_EQ(runSource("a: byte = 7\nb: byte = 2\nc = a / b\nprint(c)"), "3.5\n");
+TEST_F(CodeGenTest, U8Arithmetic) {
+    // u8 + u8 → u8 (native width)
+    EXPECT_EQ(runSource("a: u8 = 10\nb: u8 = 20\nc = a + b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: u8 = 50\nb: u8 = 20\nc = a - b\nprint(c)"), "30\n");
+    EXPECT_EQ(runSource("a: u8 = 3\nb: u8 = 4\nc = a * b\nprint(c)"), "12\n");
+    // u8 / u8 → u8 (integer division)
+    EXPECT_EQ(runSource("a: u8 = 7\nb: u8 = 2\nc = a / b\nprint(c)"), "3\n");
 }
 
-TEST_F(CodeGenTest, ByteComparisonAndBitwise) {
-    EXPECT_EQ(runSource("a: byte = 10\nb: byte = 10\nprint(a == b)"), "true\n");
-    EXPECT_EQ(runSource("a: byte = 5\nb: byte = 10\nprint(a < b)"), "true\n");
+TEST_F(CodeGenTest, U8ComparisonAndBitwise) {
+    EXPECT_EQ(runSource("a: u8 = 10\nb: u8 = 10\nprint(a == b)"), "true\n");
+    EXPECT_EQ(runSource("a: u8 = 5\nb: u8 = 10\nprint(a < b)"), "true\n");
     // 0xFF & 0x0F = 0x0F = 15
-    EXPECT_EQ(runSource("a: byte = 255\nb: byte = 15\nc = a & b\nprint(c)"), "15\n");
-    EXPECT_EQ(runSource("a: byte = 12\nb: byte = 10\nc = a | b\nprint(c)"), "14\n");
-    EXPECT_EQ(runSource("a: byte = 12\nb: byte = 10\nc = a ^ b\nprint(c)"), "6\n");
+    EXPECT_EQ(runSource("a: u8 = 255\nb: u8 = 15\nc = a & b\nprint(c)"), "15\n");
+    EXPECT_EQ(runSource("a: u8 = 12\nb: u8 = 10\nc = a | b\nprint(c)"), "14\n");
+    EXPECT_EQ(runSource("a: u8 = 12\nb: u8 = 10\nc = a ^ b\nprint(c)"), "6\n");
 }
 
-TEST_F(CodeGenTest, ByteOutOfRange) {
-    EXPECT_THROW(runSource("b: byte = 256"), std::runtime_error);
-    EXPECT_THROW(runSource("b: byte = -1"), std::runtime_error);
-    EXPECT_THROW(runSource("b: byte = 10\nb = 256"), std::runtime_error);
+TEST_F(CodeGenTest, U8OutOfRange) {
+    EXPECT_THROW(runSource("b: u8 = 256"), std::runtime_error);
+    EXPECT_THROW(runSource("b: u8 = -1"), std::runtime_error);
+    EXPECT_THROW(runSource("b: u8 = 10\nb = 256"), std::runtime_error);
 }
 
 // ===== Hex / Binary literal tests =====
@@ -230,8 +228,8 @@ TEST_F(CodeGenTest, HexBinaryLiterals) {
     EXPECT_EQ(runSource("print(0x10 + 0x20)"), "48\n");
     EXPECT_EQ(runSource("print(0b1010)"), "10\n");
     EXPECT_EQ(runSource("print(0b1100 & 0b1010)"), "8\n");
-    EXPECT_EQ(runSource("b: byte = 0xFF\nprint(b)"), "255\n");
-    EXPECT_EQ(runSource("b: byte = 0b11111111\nprint(b)"), "255\n");
+    EXPECT_EQ(runSource("b: u8 = 0xFF\nprint(b)"), "255\n");
+    EXPECT_EQ(runSource("b: u8 = 0b11111111\nprint(b)"), "255\n");
     EXPECT_EQ(runSource("print(-0xFF)"), "-255\n");
 }
 

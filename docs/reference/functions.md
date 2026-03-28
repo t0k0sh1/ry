@@ -130,7 +130,7 @@ b = area(3, 4)    # 12
 When multiple overloads match a call, the compiler selects the most specific one using the following priority (highest first):
 
 1. **Exact type match** — argument type matches parameter type exactly
-2. **Implicit widening** — safe widening conversion (`byte` → `int`, `byte` → `float`, `int` → `float`)
+2. **Implicit widening** — safe widening conversion (`u8` → `int`, `u8` → `float`, `int` → `float`)
 3. **Union type match** — argument type is a member of a union parameter type
 4. **`any` type match** — parameter type is `any` (accepts anything)
 

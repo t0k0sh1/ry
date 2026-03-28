@@ -12,9 +12,9 @@ fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
 fn listener_port(listener: TcpListener) -> int
 @native
-fn str_to_bytes(s: str) -> List<byte>
+fn str_to_bytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
 fn sleep(ms: int) -> Unit
 )";

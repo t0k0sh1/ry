@@ -428,7 +428,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("sum() requires a list");
         if (elemTy != i64Ty_ && elemTy != f64Ty_ && elemTy != i8Ty_)
-            codegenError("sum() requires a numeric list (int, float, or byte)");
+            codegenError("sum() requires a numeric list (int, float, or u8)");
 
         auto lf = loadListHeader(listVal, "sum");
         llvm::Value *srcLen = lf.len;

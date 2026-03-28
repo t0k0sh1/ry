@@ -35,12 +35,12 @@ describe("type cast as", fn():
   it("int to str", fn():
     expect(42 as str).to_eq("42")
   )
-  it("byte to int", fn():
-    b: byte = 200
+  it("u8 to int", fn():
+    b: u8 = 200
     expect(b as int).to_eq(200)
   )
-  it("int to byte to int", fn():
-    b = 255 as byte
+  it("int to u8 to int", fn():
+    b = 255 as u8
     expect(b as int).to_eq(255)
   )
 )

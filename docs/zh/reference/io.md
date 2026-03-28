@@ -26,15 +26,15 @@ from io import read_text, write_text, file_exists
 | `append_text` | `(str, str) -> Unit` | 在檔案末尾追加字串 |
 | `file_exists` | `(str) -> bool` | 檢查檔案是否存在 |
 | `delete_file` | `(str) -> Unit` | 刪除檔案 |
-| `read_bytes` | `(str) -> List<byte>` | 將檔案作為位元組串列讀取 |
-| `write_bytes` | `(str, List<byte>) -> Unit` | 將位元組串列寫入檔案 |
+| `read_bytes` | `(str) -> List<u8>` | 將檔案作為位元組串列讀取 |
+| `write_bytes` | `(str, List<u8>) -> Unit` | 將位元組串列寫入檔案 |
 
 ### 位元組轉換
 
 | 函式 | 簽名 | 說明 |
 |------|------|------|
-| `str_to_bytes` | `(str) -> List<byte>` | 將字串轉換為 UTF-8 位元組 |
-| `bytes_to_str` | `(List<byte>) -> str` | 將位元組串列轉換為字串 |
+| `str_to_bytes` | `(str) -> List<u8>` | 將字串轉換為 UTF-8 位元組 |
+| `bytes_to_str` | `(List<u8>) -> str` | 將位元組串列轉換為字串 |
 
 ## 使用範例
 
@@ -94,6 +94,6 @@ print(f"Hello, {name}!")
 
 ## 備註
 
-- 使用 `List<byte>` 作為緩衝區型別。標準串列操作（`length()`、`append()`、`slice()`、索引存取）均可用於位元組串列。
+- 使用 `List<u8>` 作為緩衝區型別。標準串列操作（`length()`、`append()`、`slice()`、索引存取）均可用於位元組串列。
 - 檔案路徑若未指定絕對路徑，則為相對於當前工作目錄的相對路徑。
 - `write_text` 與 `write_bytes` 會覆蓋既有檔案。若要追加內容，請使用 `append_text`。

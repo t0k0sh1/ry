@@ -17,8 +17,8 @@
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
-| `send(stream, data)` | Sends `List<byte>` through `TcpStream`, returns bytes sent |
-| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<byte>` |
+| `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
+| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
 | `close(handle)` | Closes a `TcpStream` or `TcpListener` |
 | `join(task)` | Waits for a `Task<T>` to complete and returns its result |
 

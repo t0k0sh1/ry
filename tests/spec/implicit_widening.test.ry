@@ -34,14 +34,14 @@ describe("basic implicit widening", fn():
     expect(result).to_eq(10.0)
   )
 
-  it("byte to int", fn():
-    b: byte = 200
+  it("u8 to int", fn():
+    b: u8 = 200
     result = accept_int(b)
     expect(result).to_eq(200)
   )
 
-  it("byte to float", fn():
-    b: byte = 42
+  it("u8 to float", fn():
+    b: u8 = 42
     result = accept_float(b)
     expect(result).to_eq(42.0)
   )
@@ -53,8 +53,8 @@ describe("return value correctness", fn():
     expect(result).to_eq(10.0)
   )
 
-  it("byte widened to int preserves unsigned value", fn():
-    b: byte = 255
+  it("u8 widened to int preserves unsigned value", fn():
+    b: u8 = 255
     result = accept_int(b)
     expect(result).to_eq(255)
   )

@@ -226,7 +226,7 @@ fn echo_server(port: int) -> str:
             listen(server, 1)
             match accept(server):
                 case Some(conn):
-                    data: List<byte> = recv(conn, 4096)
+                    data: List<u8> = recv(conn, 4096)
                     send(conn, data)
                     close(conn)
                 case None:
@@ -241,7 +241,7 @@ t: Task<str> = spawn echo_server(8080)
 match connect("127.0.0.1", 8080):
     case Some(conn):
         send(conn, str_to_bytes("hello"))
-        resp: List<byte> = recv(conn, 4096)
+        resp: List<u8> = recv(conn, 4096)
         print(bytes_to_str(resp))   # hello
         close(conn)
     case None:

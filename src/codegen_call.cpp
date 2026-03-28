@@ -421,7 +421,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             codegenError("send() requires TcpStream or TlsStream as first argument");
         llvm::Value *data = emitExpr(*e.args[1]);
         if (!getListElementType(data) || getListElementType(data) != i8Ty_)
-            codegenError("send() with TcpStream/TlsStream requires List<byte> as second argument");
+            codegenError("send() with TcpStream/TlsStream requires List<u8> as second argument");
         auto fnTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, ptrTy_}, false);
         std::string rtFn = isTlsStream(firstArg) ? "__ry_tls_send" : "__ry_tcp_send";
         auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
@@ -437,7 +437,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
 
     if (e.callee == "recv") {
         requireArgs(e, 2);
-        // TCP/TLS recv(stream, max_bytes) -> Result<List<byte>, Error>
+        // TCP/TLS recv(stream, max_bytes) -> Result<List<u8>, Error>
         llvm::Value *streamVal = emitExpr(*e.args[0]);
         if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
             codegenError("recv() requires TcpStream or TlsStream as first argument");
@@ -446,7 +446,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
         auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
-        // Wrap in Result<List<byte>, Error>: nullptr = Err, non-null = Ok
+        // Wrap in Result<List<u8>, Error>: nullptr = Err, non-null = Ok
         llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
         llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);

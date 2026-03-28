@@ -319,7 +319,7 @@ llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
     if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
-        return builder_.CreateZExt(v, i64Ty_, "byteext");
+        return builder_.CreateZExt(v, i64Ty_, "u8ext");
     return v;
 }
 
@@ -344,20 +344,29 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
 
 bool CodeGen::isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
                                    const std::string &paramTypeName) const {
-    if (isLowLevelTy(argVal)) return false;
+    // Block low-level types except i8/u8 (u8 is the successor of byte)
+    if (isLowLevelTy(argVal) && argVal->getType() != i8Ty_) return false;
     if (isLowLevelTypeName(paramTypeName)) return false;
     auto *argTy = argVal->getType();
-    return (argTy == i8Ty_  && paramTy == i64Ty_) ||   // byte -> int
-           (argTy == i8Ty_  && paramTy == f64Ty_) ||   // byte -> float
+    return (argTy == i8Ty_  && paramTy == i64Ty_) ||   // u8 -> int
+           (argTy == i8Ty_  && paramTy == f64Ty_) ||   // u8 -> float
            (argTy == i64Ty_ && paramTy == f64Ty_);     // int  -> float
 }
 
 llvm::Value *CodeGen::emitWideningConversion(llvm::Value *argVal, llvm::Type *paramTy) {
     auto *argTy = argVal->getType();
-    if (argTy == i8Ty_ && paramTy == i64Ty_)
-        return promoteToInt(argVal);
-    if (argTy == i8Ty_ && paramTy == f64Ty_)
-        return builder_.CreateUIToFP(argVal, f64Ty_, "byte_to_float");
+    if (argTy == i8Ty_ && paramTy == i64Ty_) {
+        std::string name = getLowLevelTypeName(argVal);
+        if (name == "i8")
+            return builder_.CreateSExt(argVal, i64Ty_, "i8_to_int");
+        return builder_.CreateZExt(argVal, i64Ty_, "u8_to_int");
+    }
+    if (argTy == i8Ty_ && paramTy == f64Ty_) {
+        std::string name = getLowLevelTypeName(argVal);
+        if (name == "i8")
+            return builder_.CreateSIToFP(argVal, f64Ty_, "i8_to_float");
+        return builder_.CreateUIToFP(argVal, f64Ty_, "u8_to_float");
+    }
     if (argTy == i64Ty_ && paramTy == f64Ty_)
         return builder_.CreateSIToFP(argVal, f64Ty_, "int_to_float");
     llvm_unreachable("invalid widening conversion");
@@ -833,8 +842,8 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
             llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         } else {
-            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "byte_print");
-            llvm::Constant *fmt = cachedGlobalString("%d", ".fmt_b" + suffix);
+            llvm::Value *ext = builder_.CreateZExt(val, i32Ty_, "u8_print");
+            llvm::Constant *fmt = cachedGlobalString("%u", ".fmt_u8_def" + suffix);
             builder_.CreateCall(printfFn, {fmt, ext});
         }
     } else if (ty == i16Ty_) {

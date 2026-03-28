@@ -138,7 +138,7 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
     }
 
-    // read_bytes(path) -> Result<List<byte>, Error>
+    // read_bytes(path) -> Result<List<u8>, Error>
     if (e.callee == "read_bytes") {
         llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
         llvm::Value *result = wrapPtrAsResult(ptr);
@@ -146,7 +146,7 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         return result;
     }
 
-    // str_to_bytes(str) -> List<byte> — always succeeds, no Result wrapping
+    // str_to_bytes(str) -> List<u8> — always succeeds, no Result wrapping
     if (e.callee == "str_to_bytes") {
         llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
         type_meta_[TM_ListElem][result] = i8Ty_;

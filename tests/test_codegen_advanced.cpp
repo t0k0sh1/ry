@@ -788,12 +788,12 @@ TEST_F(CodeGenTest, AsCastBoolToStr) {
     EXPECT_EQ(runSource("x = true as str\nprint(x)"), "true\n");
 }
 
-TEST_F(CodeGenTest, AsCastIntToByte) {
-    EXPECT_EQ(runSource("x = 255 as byte\nprint(x)"), "255\n");
+TEST_F(CodeGenTest, AsCastIntToU8) {
+    EXPECT_EQ(runSource("x = 255 as u8\nprint(x)"), "255\n");
 }
 
-TEST_F(CodeGenTest, AsCastByteToInt) {
-    EXPECT_EQ(runSource("b: byte = 200\nx = b as int\nprint(x)"), "200\n");
+TEST_F(CodeGenTest, AsCastU8ToInt) {
+    EXPECT_EQ(runSource("b: u8 = 200\nx = b as int\nprint(x)"), "200\n");
 }
 
 // ===== Error type tests =====
