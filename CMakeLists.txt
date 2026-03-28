@@ -174,6 +174,7 @@ add_executable(ry_tests
     tests/test_self_update.cpp
     tests/test_diagnostic.cpp
     tests/test_paths.cpp
+    tests/test_builtin_stdlib_registry.cpp
     tests/test_regex_runtime.cpp
     tests/test_codegen_regex.cpp
     tests/test_codegen_mock.cpp

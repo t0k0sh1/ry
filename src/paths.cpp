@@ -1,12 +1,61 @@
 #include "ry/paths.hpp"
+#include "ry/project_config.hpp"
 #include "ry/self_update.hpp"
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 
 namespace fs = std::filesystem;
 
 namespace ry {
+
+namespace {
+
+bool is_within(const fs::path &child, const fs::path &parent) {
+    auto rel = child.lexically_relative(parent);
+    return !rel.empty() && rel.native().find("..") != 0;
+}
+
+std::optional<fs::path> find_project_override_lib_dir(const std::string &exe_path,
+                                                      const std::string &project_root) {
+    if (project_root.empty()) return std::nullopt;
+
+    std::error_code ec;
+    fs::path project = fs::weakly_canonical(fs::path(project_root), ec);
+    if (ec || project.empty()) return std::nullopt;
+
+    fs::path exe = fs::weakly_canonical(fs::absolute(fs::path(exe_path)), ec);
+    if (ec || exe.empty() || !is_within(exe, project)) return std::nullopt;
+
+    std::ifstream file(project / "package.toml");
+    if (!file.is_open()) return std::nullopt;
+    std::string toml((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    ProjectConfig config = ProjectConfigParser::load(toml);
+    if (!config.dev_stdlib_dir || config.dev_stdlib_dir->empty()) return std::nullopt;
+
+    fs::path rel(*config.dev_stdlib_dir);
+    if (rel.is_absolute()) {
+        throw std::runtime_error("package.toml [paths]._dev_stdlib must be a project-relative path");
+    }
+    for (const auto &part : rel) {
+        if (part == "..") {
+            throw std::runtime_error("package.toml [paths]._dev_stdlib must stay within the project root");
+        }
+    }
+
+    fs::path candidate = fs::weakly_canonical(project / rel, ec);
+    if (ec || candidate.empty() || !is_within(candidate, project)) {
+        throw std::runtime_error("package.toml [paths]._dev_stdlib resolves outside the project root");
+    }
+    if (!fs::is_directory(candidate / "std")) {
+        throw std::runtime_error("package.toml [paths]._dev_stdlib must point to a lib directory containing std/");
+    }
+    return candidate;
+}
+
+} // namespace
 
 fs::path get_ry_home() {
     if (const char *env = std::getenv("RY_HOME")) {
@@ -18,8 +67,15 @@ fs::path get_ry_home() {
     return fs::path(".ry");
 }
 
-fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
-    // 1. $RY_HOME/lib (skipped when skip_global is true)
+fs::path find_lib_dir(const std::string &exe_path,
+                      const std::string &project_root,
+                      bool skip_global) {
+    // 1. project-local override from package.toml (repo builds only)
+    if (auto project_lib = find_project_override_lib_dir(exe_path, project_root)) {
+        return *project_lib;
+    }
+
+    // 2. $RY_HOME/lib (skipped when skip_global is true)
     if (!skip_global) {
         fs::path ry_home_lib = get_ry_home() / "lib";
         if (fs::is_directory(ry_home_lib / "std")) {
@@ -27,7 +83,7 @@ fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
         }
     }
 
-    // 2. exe/../lib (installed layout)
+    // 3. exe/../lib (installed layout)
     std::error_code ec;
     fs::path exe_dir = fs::path(exe_path).parent_path();
     exe_dir = fs::canonical(exe_dir, ec);
@@ -37,7 +93,7 @@ fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
             return parent_lib;
         }
 
-        // 3. exe/lib (development layout)
+        // 4. exe/lib (development layout)
         fs::path sibling_lib = exe_dir / "lib";
         if (fs::is_directory(sibling_lib / "std")) {
             return sibling_lib;
@@ -45,6 +101,10 @@ fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
     }
 
     return {};
+}
+
+fs::path find_lib_dir(const std::string &exe_path, bool skip_global) {
+    return find_lib_dir(exe_path, "", skip_global);
 }
 
 StdlibManifest read_manifest(const fs::path &dir) {

@@ -85,9 +85,11 @@ static void emitCoverageReport() {
 static int runRySource(const std::string &src, const std::string &source_name,
                        const std::string &referrer_dir, bool test_mode,
                        const char *argv0, bool coverage_mode = false) {
+    std::string project_root;
     // Load .env from project root (once per root per process)
     {
         if (auto root = findProjectRoot(referrer_dir)) {
+            project_root = *root;
             static std::string loaded_root;
             if (loaded_root != *root) {
                 const char *ry_env = std::getenv("RY_ENV");
@@ -108,7 +110,7 @@ static int runRySource(const std::string &src, const std::string &source_name,
 
     // Set up search paths with lib/ for stdlib
     std::vector<std::string> search_paths;
-    std::string lib_dir = ry::find_lib_dir(argv0, g_skip_global_lib).string();
+    std::string lib_dir = ry::find_lib_dir(argv0, project_root, g_skip_global_lib).string();
     if (!lib_dir.empty()) {
         search_paths.push_back(lib_dir);
         // Enable flattened imports: "from math" resolves to lib/std/math/
