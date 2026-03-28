@@ -1221,3 +1221,41 @@ TEST_F(CodeGenTest, LambdaArgDescribeIt) {
         ")";
     EXPECT_NO_THROW(runTestSource(src));
 }
+
+// ===== Field assignment subtype coercion (#359) =====
+
+TEST_F(CodeGenTest, FieldAssignSubtypeCoercion) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "record Owner:\n"
+        "    pet: Animal\n"
+        "o = Owner(Animal(\"cat\", 4))\n"
+        "o.pet = Dog(\"Rex\", 4, \"Lab\")\n"
+        "print(o.pet.name)\n"
+        "print(o.pet.legs)";
+    EXPECT_EQ(runSource(src), "Rex\n4\n");
+}
+
+// ===== ? operator subtype coercion (#360) =====
+
+TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
+    std::string src =
+        "record ApiError < Error:\n"
+        "    endpoint: str\n"
+        "fn fetch(url: str) -> Result<int, ApiError>:\n"
+        "    return Err(ApiError(\"fail\", 500, url))\n"
+        "fn process(url: str) -> Result<int, Error>:\n"
+        "    val = fetch(url)?\n"
+        "    return Ok(val)\n"
+        "result = process(\"/api\")\n"
+        "match result:\n"
+        "    case Err(e):\n"
+        "        print(e.message)\n"
+        "    case Ok(v):\n"
+        "        print(v)";
+    EXPECT_EQ(runSource(src), "fail\n");
+}

@@ -191,6 +191,7 @@ handle(derr)  # OK — coerced to Error (grandparent)
 | Name collision | Child field with same name as parent field → compile error |
 | Auto `==` / `to_str` | Includes all inherited fields |
 | Invariant inheritance | Parent `invariant:` clauses are checked when constructing or modifying child records |
+| Subtype coercion | Applies to: function args, return, `Err()`, field assignment, `?` operator |
 | `@const` | Applies to all fields including inherited |
 
 ---

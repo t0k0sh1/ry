@@ -589,8 +589,12 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 
     llvm::Value *newVal = emitExpr(*s.value);
     llvm::Type *expectedTy = structTy->getElementType(fieldIdx);
-    if (newVal->getType() != expectedTy)
-        codegenError("field '" + s.field + "' type mismatch");
+    if (newVal->getType() != expectedTy) {
+        if (auto *sliced = tryEmitSubtypeCoerce(newVal, expectedTy))
+            newVal = sliced;
+        else
+            codegenError("field '" + s.field + "' type mismatch");
+    }
 
     // Load current struct value, insert new field value, store back
     llvm::Value *current = builder_.CreateLoad(varTy, ptr, "struct_cur");
