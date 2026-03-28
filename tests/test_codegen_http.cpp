@@ -372,3 +372,202 @@ result = await t
 print(result)
 )"), "true\ntrue\ndone\n");
 }
+
+TEST_F(CodeGenTest, HttpKeepAlive) {
+    EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
+async fn server() -> str:
+    http_listen("127.0.0.1", 18934, fn(req: HttpRequest) -> HttpResponse:
+        path = http_path(req)
+        return http_response(200, {"Content-Type": "text/plain"}, path)
+    , 2)
+    return "done"
+
+t = server()
+sleep(200)
+
+# Send two requests on the same connection (keep-alive)
+match connect("127.0.0.1", 18934):
+    case Ok(conn):
+        # First request
+        match send(conn, str_to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "/first"))
+                        print(contains(msg, "Connection: keep-alive"))
+                    case Err(e):
+                        print("false")
+                        print("false")
+            case Err(e):
+                print("false")
+                print("false")
+
+        # Second request on same connection
+        match send(conn, str_to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "/second"))
+                        print(contains(msg, "Connection: close"))
+                    case Err(e):
+                        print("false")
+                        print("false")
+            case Err(e):
+                print("false")
+                print("false")
+        close(conn)
+    case Err(e):
+        print("false")
+        print("false")
+        print("false")
+        print("false")
+
+result = await t
+print(result)
+)"), "true\ntrue\ntrue\ntrue\ndone\n");
+}
+
+TEST_F(CodeGenTest, HttpConnectionClose) {
+    EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
+async fn server() -> str:
+    http_listen("127.0.0.1", 18935, fn(req: HttpRequest) -> HttpResponse:
+        return http_response(200, {"Content-Type": "text/plain"}, "ok")
+    , 2)
+    return "done"
+
+t = server()
+sleep(200)
+
+# Send request with Connection: close
+match connect("127.0.0.1", 18935):
+    case Ok(conn):
+        match send(conn, str_to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "200 OK"))
+                        print(contains(msg, "Connection: close"))
+                    case Err(e):
+                        print("false")
+                        print("false")
+            case Err(e):
+                print("false")
+                print("false")
+        close(conn)
+    case Err(e):
+        print("false")
+        print("false")
+
+# Second request on new connection to reach max_requests
+match connect("127.0.0.1", 18935):
+    case Ok(conn):
+        match send(conn, str_to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "200 OK"))
+                    case Err(e):
+                        print("false")
+            case Err(e):
+                print("false")
+        close(conn)
+    case Err(e):
+        print("false")
+
+result = await t
+print(result)
+)"), "true\ntrue\ntrue\ndone\n");
+}
+
+TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
+    EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
+async fn server() -> str:
+    http_listen("127.0.0.1", 18936, fn(req: HttpRequest) -> HttpResponse:
+        path = http_path(req)
+        return http_response(200, {"Content-Type": "text/plain"}, path)
+    , 3)
+    return "done"
+
+t = server()
+sleep(200)
+
+# Send 3 requests on the same keep-alive connection
+match connect("127.0.0.1", 18936):
+    case Ok(conn):
+        # Request 1
+        match send(conn, str_to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "/a"))
+                    case Err(e):
+                        print("false")
+            case Err(e):
+                print("false")
+
+        # Request 2
+        match send(conn, str_to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "/b"))
+                    case Err(e):
+                        print("false")
+            case Err(e):
+                print("false")
+
+        # Request 3 (triggers shutdown)
+        match send(conn, str_to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+            case Ok(_):
+                ...
+            case Err(e):
+                ...
+        match recv(conn, 4096):
+            case Ok(resp):
+                match bytes_to_str(resp):
+                    case Ok(msg):
+                        print(contains(msg, "/c"))
+                    case Err(e):
+                        print("false")
+            case Err(e):
+                print("false")
+        close(conn)
+    case Err(e):
+        print("false")
+        print("false")
+        print("false")
+
+result = await t
+print(result)
+)"), "true\ntrue\ntrue\ndone\n");
+}

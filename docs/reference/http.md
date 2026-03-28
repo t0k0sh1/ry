@@ -185,7 +185,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - When called with 3 arguments, the accept loop runs indefinitely.
 - When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `spawn` + `join` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
 - When called with 5 arguments (`max_requests`, `port_callback`), `port_callback` is called synchronously with the actual bound port after `bind` + `listen` succeeds. This allows safe use of port `0` (OS-assigned ephemeral port) to avoid port conflicts in parallel tests.
-- Each accepted connection reads one HTTP/1.1 request, calls the handler, sends the response, and closes the connection.
+- The server supports HTTP/1.1 keep-alive by default. Multiple requests can be processed on a single connection. The server checks the `Connection` header on each request: if `Connection: close` is sent, the connection is closed after the response; otherwise the connection stays open for subsequent requests. Idle connections are closed after a 5-second timeout.
 - `Content-Length` is automatically added to the response if not provided in the headers map.
 - The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
 - When `Transfer-Encoding: chunked` is present in a request, the body is automatically decoded and concatenated — Ry code receives the full body transparently.
@@ -326,6 +326,6 @@ HTTP client functions automatically follow redirect responses (3xx with `Locatio
 ## Error Handling
 
 - `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
-- Malformed requests (incomplete request line) are silently skipped and the connection is closed.
+- Malformed requests or idle timeouts on a keep-alive connection cause the connection to be closed. The server then resumes accepting new connections.
 - The handler function must always return an `HttpResponse` — there is no default response.
 - Client functions return `Result<HttpClientResponse, Error>` — use `match` to handle success and failure.
