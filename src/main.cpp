@@ -615,7 +615,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0)) {
+    if (argc == 2 && (std::strcmp(argv[1], "--version") == 0 || std::strcmp(argv[1], "-v") == 0 || std::strcmp(argv[1], "version") == 0)) {
         llvm::outs() << "ry " << RY_VERSION << "\n";
         return 0;
     }
