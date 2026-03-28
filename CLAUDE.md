@@ -39,7 +39,7 @@ RY_ENV=internal ./build/ry test tests/spec/<file>.test.ry # 個別ファイル�
 - **実装計画のスコープ**: セルフ検証まで（git add / commit / push / PR 作成は含めない）
 - **実装計画に必ず含めるもの**:
   - 仕様通りに実装できていることのセルフ検証タスク
-  - README.md / docs の更新（または変更不要の確認）
+  - 英語ドキュメント（README.md / docs）の更新（または変更不要の確認）
 
 ## TDD ベースの開発プロセス
 
@@ -133,6 +133,7 @@ static const StdlibDispatcher stdlib_dispatchers[] = {
 - コミット・PR 作成時は、常に現在のブランチから新しいフィーチャーブランチを作成すること
 - PR のマージ先は、作業開始時のブランチ（分岐元）とする
 - PR を非デフォルトブランチ（`vx.x.x` 等）にマージした場合、GitHub の `Closes #xx` による自動クローズは動作しない。ラベル整理は「作業完了前チェックリスト」に従うこと
+- リリース時は `vx.x.x` を `main` にマージする PR を作成する。詳細は「リリース準備ワークフロー」を参照
 
 ## 責務の分離
 
@@ -156,16 +157,22 @@ static const StdlibDispatcher stdlib_dispatchers[] = {
 
 タスクの完了前に、以下を必ず実行すること。
 
-### 1. ドキュメント反映チェック
+### 1. ドキュメント反映チェック（英語のみ）
 
-機能の**追加・変更・削除**を行った場合、`docs/` 配下のドキュメントに反映すべき内容がないか確認する。
+機能の**追加・変更・削除**を行った場合、**英語ドキュメントのみ**を更新する。翻訳（ja/zh）と PDF 生成はリリース準備時に行う（「リリース準備ワークフロー」参照）。
+
+**判断基準**: ドキュメントに現在記載があるかではなく、**ユーザーが知るべき内容かどうか**で更新要否を判断する。新機能・挙動変更・新オプションなど、ユーザーに影響する変更は必ずドキュメントに反映すること。
 
 対象と確認観点:
 
 - **`docs/reference/`** — 型・演算子・制御構文・関数・コレクション・組み込み関数・エラーなどの仕様変更があれば該当ファイルを更新
 - **`docs/tutorial/`** — ユーザー向け新機能があれば関連するチュートリアルを更新
 - **`docs/README.md`** — ドキュメント目次の更新（新ページ追加時）
-- **`README.md`** — 特徴一覧やサンプルコードに大きな変更がある場合のみ更新（詳細は docs/ に委譲）
+- **`README.md`** — 以下の内容に関わる変更があれば更新（詳細は docs/ に委譲）:
+  - Features（言語機能の追加・変更）
+  - Sample Code（新機能のデモに適したコード変更）
+  - Installation（インストール方法の変更）
+  - Usage（CLI コマンドの追加・変更）
 
 反映が不要と判断した場合は、その理由を明示すること（内部リファクタリングのみ、テスト追加のみ、等）。
 
@@ -184,3 +191,32 @@ cmake --preset default && cmake --build build && ./build/ry_tests && RY_ENV=inte
 **セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ時に行う:
 - PR が `vx.x.x` ブランチにマージされた時点で、対象 issue の `wip` ラベルを外し issue をクローズする
 - PR を非デフォルトブランチにマージした場合、`Closes #xx` による自動クローズは動作しないため、手動で issue をクローズすること
+
+## リリース準備ワークフロー
+
+`vx.x.x` ブランチを `main` にマージしてリリースする前に、以下の準備を行う。
+
+### フロー
+
+1. `vx.x.x` から `chore/pre-release-vx.x.x` ブランチを作成
+2. 翻訳と PDF 生成を実施（下記参照）
+3. `chore/pre-release-vx.x.x` を `vx.x.x` にマージ
+4. `vx.x.x` を `main` にマージする PR を作成・マージ
+
+### 翻訳（英語 → ja/zh）
+
+通常開発で更新された英語ドキュメントの差分を他言語に反映する。
+
+対象:
+- `docs/reference/` → `docs/ja/reference/`, `docs/zh/reference/`
+- `docs/tutorial/` → `docs/ja/tutorial/`, `docs/zh/tutorial/`
+- `docs/README.md` → `docs/ja/README.md`, `docs/zh/README.md`
+- `README.md` → `README.ja.md`, `README.zh.md`
+
+### PDF 生成
+
+```bash
+cd docs && bash generate-pdf.sh
+```
+
+6 つの PDF（`tutorial-{en,ja,zh}.pdf`, `reference-{en,ja,zh}.pdf`）が更新される。

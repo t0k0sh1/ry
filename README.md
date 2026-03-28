@@ -109,14 +109,21 @@ cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
 cmake --build build
 ```
 
-## Run
+## Usage
 
 ```bash
-ry <file.ry>
+ry <file.ry>              # Run a Ry script
+echo '<code>' | ry         # Run code from stdin
+ry test [options] [path]   # Run tests (*.test.ry)
+ry init                    # Initialize a project in current directory
+ry new <name>              # Create a new project
+ry fmt [options] [path]    # Format source files
+ry self-update             # Update ry itself
+```
 
-# Execute from stdin (pipe or here-document)
-echo 'print("hello")' | ry
+Stdin also supports here-documents:
 
+```bash
 ry <<'RY'
 a = 1
 b = 2
@@ -124,7 +131,9 @@ print(a + b)
 RY
 ```
 
-## Test
+Run `ry <command> --help` for detailed options.
+
+## Development
 
 ```bash
 cd build && ctest --output-on-failure
