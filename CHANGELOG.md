@@ -31,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Named fields in ADT enum variants (#308)
 - Subscript operator overloading `operator[]` / `operator[]=` with multi-index support (#202)
 - Membership operator overloading `operator in` for user-defined types (#202)
+- Call operator overloading `operator()` for callable records (#202)
+- Cast operator overloading `operator as` for user-defined type conversions (#202)
 - Compound assignment operator overloading with in-place optimization (#204)
 - Enforce bool return type for comparison and logical operator overloads (#203)
 - N-element tuple destructuring in for loops (#302)
@@ -62,6 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Self-update artifact checksum verification (#116)
 - Linux x86_64 (amd64) release build in CI (#154)
 - Linux ARM64 (aarch64) release build in CI (#155)
+- `block_on(task)` built-in function for synchronous Task waiting (#206)
 
 ### Changed
 
@@ -70,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Lambda expression syntax changed from `:` to `=>` (#301)
 - Flatten stdlib imports — `from std.x` to `from x` (#178)
 - Rename `ry.toml` to `package.toml` (#335)
+- Restrict `await` to `async fn` context only — use `block_on()` in synchronous code (#206)
 
 ### Fixed
 
@@ -105,6 +109,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Concurrency primitives: channels, spawn, select, task_group, cancel (#304)
 - `byte` type in favor of `u8` (#294)
+- `join(task)` built-in — replaced by `block_on(task)` (#206)
 
 ## [0.0.4] - 2026-03-22
 

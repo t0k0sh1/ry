@@ -20,7 +20,7 @@
 | `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
 | `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
 | `close(handle)` | Closes a `TcpStream` or `TcpListener` |
-| `join(task)` | Waits for a `Task<T>` to complete and returns its result |
+| `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 
 ### Option
 

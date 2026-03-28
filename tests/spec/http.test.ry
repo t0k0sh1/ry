@@ -47,7 +47,7 @@ describe("HTTP Server API", fn():
                 close(conn)
               case Err(e):
                 fail("unexpected error")
-            await t
+            block_on(t)
           case Err(e):
             fail("unexpected error")
       case Err(e):
@@ -97,7 +97,7 @@ describe("HTTP Server API", fn():
                 close(conn)
               case Err(e):
                 fail("unexpected error")
-            await t
+            block_on(t)
           case Err(e):
             fail("unexpected error")
       case Err(e):

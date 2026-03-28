@@ -361,6 +361,8 @@ private:
                                       llvm::Value *operand);
     llvm::Value *trySubscriptOperatorCall(llvm::Value *object,
                                            llvm::ArrayRef<llvm::Value*> indices);
+    llvm::Value *tryCallOperator(const std::string &callee,
+                                 const std::vector<ExprPtr> &args);
     bool trySubscriptAssignOperatorCall(llvm::Value *object,
                                          llvm::ArrayRef<llvm::Value*> indices,
                                          llvm::Value *value);
@@ -441,6 +443,7 @@ private:
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
     llvm::Value *emitSetElementLookup(llvm::Value *setPtr, llvm::Value *elem, llvm::Type *elemTy);
     llvm::Type *getTaskResultType(llvm::Value *taskVal);
+    llvm::Value *emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, const char *label);
 
     // Hash function resolution helper (Step 1)
     struct HashFnInfo {

@@ -142,6 +142,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
             llvm::Value *loaded = builder_.CreateLoad(ptrTy_, varPtr, e->callee + ".fn");
             return emitLambdaCall(loaded, info, argVals, "indirect_call");
         }
+
+        if (auto *result = tryCallOperator(e->callee, e->args))
+            return result;
     }
 
     // Generic function dispatch (explicit type args or type inference)

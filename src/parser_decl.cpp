@@ -106,6 +106,18 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 opName = "in";
                 lex_.next(); // consume 'in'
                 break;
+            case TokenKind::LParen: {
+                lex_.next(); // consume '('
+                if (lex_.peek().kind != TokenKind::RParen)
+                    parseError("expected ')' after '(' in operator declaration");
+                lex_.next(); // consume ')'
+                opName = "()";
+                break;
+            }
+            case TokenKind::As:
+                opName = "as";
+                lex_.next(); // consume 'as'
+                break;
             default:
                 parseError(opTok.line, "expected operator symbol after 'operator'");
         }
@@ -212,6 +224,14 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         } else if (opName == "operatorin") {
             if (nParams != 2)
                 parseError("operator in requires exactly 2 parameters");
+        } else if (opName == "operator()") {
+            if (nParams < 2)
+                parseError("operator() requires at least 2 parameters (object + arguments)");
+        } else if (opName == "operatoras") {
+            if (nParams != 1)
+                parseError("operator as requires exactly 1 parameter");
+            if (!fnStmt->return_type)
+                parseError("operator as requires a return type");
         } else if (nParams != 1 && nParams != 2) {
             parseError("operator function requires 1 or 2 parameters");
         }
@@ -261,6 +281,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         parseEnsureClause(*fnStmt);
     }
 
+    // Track async context for await restriction
+    bool prev_in_async = in_async_fn_;
+    in_async_fn_ = is_async;
+
     // Parse body statements
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
@@ -272,6 +296,9 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 
     if (fnStmt->body.empty())
         parseError("empty function body is not allowed");
+
+    // Restore async context
+    in_async_fn_ = prev_in_async;
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next(); // consume Dedent
