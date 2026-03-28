@@ -331,21 +331,31 @@ static const unsigned char SIGNING_PUBLIC_KEY[32] = {
 std::string base64_decode(const std::string &input) {
     if (input.empty()) return "";
 
-    int max_len = 3 * ((int)input.size() + 3) / 4;
+    // Strip whitespace (base64 output may contain line wrapping)
+    std::string cleaned;
+    cleaned.reserve(input.size());
+    for (char c : input) {
+        if (c != '\n' && c != '\r' && c != ' ' && c != '\t')
+            cleaned.push_back(c);
+    }
+    if (cleaned.empty()) return "";
+
+    int max_len = 3 * ((int)cleaned.size() + 3) / 4;
     std::string output(max_len, '\0');
 
     int decoded_len = EVP_DecodeBlock(
         reinterpret_cast<unsigned char *>(&output[0]),
-        reinterpret_cast<const unsigned char *>(input.data()),
-        (int)input.size());
+        reinterpret_cast<const unsigned char *>(cleaned.data()),
+        (int)cleaned.size());
 
     if (decoded_len < 0) return "";
 
     // EVP_DecodeBlock ignores padding in its return value — adjust manually
-    size_t padding = 0;
-    if (input.size() >= 1 && input[input.size() - 1] == '=') padding++;
-    if (input.size() >= 2 && input[input.size() - 2] == '=') padding++;
+    int padding = 0;
+    if (cleaned.size() >= 1 && cleaned[cleaned.size() - 1] == '=') padding++;
+    if (cleaned.size() >= 2 && cleaned[cleaned.size() - 2] == '=') padding++;
 
+    if (decoded_len < padding) return "";
     output.resize(decoded_len - padding);
     return output;
 }
@@ -519,7 +529,8 @@ std::string download_and_extract(const std::string &download_url, const std::str
         // Signature verification (before checksum verification)
         std::string sig_url = build_signature_url(tag);
         std::string sig_path = tmp_dir_str + "/checksums.txt.sig";
-        bool sig_required = (std::getenv("RY_REQUIRE_SIGNATURE") != nullptr);
+        const char *sig_env = std::getenv("RY_REQUIRE_SIGNATURE");
+        bool sig_required = (sig_env != nullptr && std::string(sig_env) == "1");
 
         if (download_file(sig_url, sig_path)) {
             std::ifstream sig_ifs(sig_path);

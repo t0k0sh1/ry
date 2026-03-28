@@ -153,7 +153,7 @@ jobs:
             -rawin \
             -in artifacts/checksums.txt \
             -out /tmp/checksums.txt.sig.raw
-          base64 < /tmp/checksums.txt.sig.raw > artifacts/checksums.txt.sig
+          openssl base64 -A -in /tmp/checksums.txt.sig.raw -out artifacts/checksums.txt.sig
           rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
 
       - name: Extract changelog
@@ -171,8 +171,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSETS="artifacts/ry-*.tar.gz artifacts/checksums.txt"
+          if [ -f artifacts/checksums.txt.sig ]; then
+            ASSETS="$ASSETS artifacts/checksums.txt.sig"
+          fi
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
             --notes-file release_notes.txt \
             --latest \
-            artifacts/ry-*.tar.gz artifacts/checksums.txt artifacts/checksums.txt.sig
+            $ASSETS

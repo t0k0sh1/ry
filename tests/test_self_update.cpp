@@ -392,7 +392,7 @@ TEST(SelfUpdate, Base64DecodeKnown) {
     EXPECT_EQ(decoded, "hello");
 }
 
-TEST(SelfUpdate, Base64DecodeNoPadding) {
+TEST(SelfUpdate, Base64DecodePaddedShort) {
     auto decoded = base64_decode("aGk=");
     EXPECT_EQ(decoded, "hi");
 }

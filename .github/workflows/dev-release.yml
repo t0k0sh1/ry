@@ -113,7 +113,7 @@ jobs:
             -rawin \
             -in dist/checksums.txt \
             -out /tmp/checksums.txt.sig.raw
-          base64 < /tmp/checksums.txt.sig.raw > dist/checksums.txt.sig
+          openssl base64 -A -in /tmp/checksums.txt.sig.raw -out dist/checksums.txt.sig
           rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
@@ -130,11 +130,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSETS="dist/ry-*.tar.gz dist/checksums.txt"
+          if [ -f dist/checksums.txt.sig ]; then
+            ASSETS="$ASSETS dist/checksums.txt.sig"
+          fi
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
             --notes "Nightly build from branch ${{ matrix.branch }}" \
             --prerelease \
-            dist/ry-*.tar.gz dist/checksums.txt dist/checksums.txt.sig
+            $ASSETS
 
   # 手動実行: 現在のブランチでビルド
   manual:
@@ -200,7 +204,7 @@ jobs:
             -rawin \
             -in dist/checksums.txt \
             -out /tmp/checksums.txt.sig.raw
-          base64 < /tmp/checksums.txt.sig.raw > dist/checksums.txt.sig
+          openssl base64 -A -in /tmp/checksums.txt.sig.raw -out dist/checksums.txt.sig
           rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
@@ -217,8 +221,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSETS="dist/ry-*.tar.gz dist/checksums.txt"
+          if [ -f dist/checksums.txt.sig ]; then
+            ASSETS="$ASSETS dist/checksums.txt.sig"
+          fi
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
             --notes "Dev build from branch ${GITHUB_REF_NAME}" \
             --prerelease \
-            dist/ry-*.tar.gz dist/checksums.txt dist/checksums.txt.sig
+            $ASSETS
