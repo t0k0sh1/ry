@@ -6,35 +6,120 @@ on:
     branches: [main]
 
 jobs:
-  release:
-    runs-on: macos-14
+  build:
     if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+            llvm_install: brew
+          - os: ubuntu-22.04
+            target: linux-amd64
+            llvm_install: apt
+          - os: ubuntu-22.04-arm
+            target: linux-arm64
+            llvm_install: apt
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Cache LLVM 21
-        id: cache-llvm
+
+      # --- LLVM 21: macOS (Homebrew) ---
+      - name: Cache LLVM 21 (brew)
+        if: matrix.llvm_install == 'brew'
+        id: cache-llvm-brew
         uses: actions/cache@v4
         with:
           path: |
             /opt/homebrew/opt/llvm@21
             /opt/homebrew/Cellar/llvm@21
-          key: llvm-21-macos-arm64
-      - name: Install LLVM 21
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
+          key: llvm-21-${{ matrix.target }}
+      - name: Install LLVM 21 (brew)
+        if: matrix.llvm_install == 'brew' && steps.cache-llvm-brew.outputs.cache-hit != 'true'
         run: brew install llvm@21
-      - name: Install dependencies
+      - name: Install dependencies (brew)
+        if: matrix.llvm_install == 'brew'
         run: brew install openssl@3 ninja googletest
+
+      # --- LLVM 21: Linux (APT) ---
+      - name: Cache LLVM 21 (apt)
+        if: matrix.llvm_install == 'apt'
+        id: cache-llvm-apt
+        uses: actions/cache@v4
+        with:
+          path: /usr/lib/llvm-21
+          key: llvm-21-${{ matrix.target }}
+      - name: Install LLVM 21 (apt)
+        if: matrix.llvm_install == 'apt' && steps.cache-llvm-apt.outputs.cache-hit != 'true'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev
+      - name: Install dependencies (apt)
+        if: matrix.llvm_install == 'apt'
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
-          key: release-macos
+          key: release-${{ matrix.target }}
           restore-keys: |
-            release-macos-
+            release-${{ matrix.target }}-
+
       - name: Read version
         id: version
         run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Build (macOS)
+        if: matrix.llvm_install == 'brew'
+        run: |
+          cmake -B build -G Ninja \
+            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
+            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Build (Linux)
+        if: matrix.llvm_install == 'apt'
+        run: |
+          cmake -B build -G Ninja \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Test
+        run: ./build/ry_tests
+
+      - name: Package
+        run: |
+          mkdir -p dist/lib
+          cp build/ry dist/ry
+          cp -r lib/std dist/lib/std
+          cd dist
+          tar czf ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz ry lib/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ry-${{ matrix.target }}
+          path: dist/ry-*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=v$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
       - name: Check if release exists
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,28 +128,20 @@ jobs:
             echo "Release ${{ steps.version.outputs.version }} already exists. Skipping."
             echo "SKIP=true" >> "$GITHUB_ENV"
           fi
-      - name: Build
+
+      - name: Download all artifacts
+        if: env.SKIP != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
         if: env.SKIP != 'true'
         run: |
-          cmake -B build -G Ninja \
-            -DLLVM_DIR="$(brew --prefix llvm@21)/lib/cmake/llvm" \
-            -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build
-      - name: Test
-        if: env.SKIP != 'true'
-        run: ./build/ry_tests
-      - name: Package
-        if: env.SKIP != 'true'
-        run: |
-          mkdir -p dist/lib/std
-          cp build/ry dist/ry
-          cp lib/std/*.ry dist/lib/std/
-          VERSION=$(cat VERSION | tr -d '[:space:]')
-          echo "{\"version\":\"$VERSION\",\"files\":[$(cd lib/std && ls *.ry | sed 's/.*/"&"/' | paste -sd, -)]}" > dist/lib/std/manifest.json
-          cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry lib/
+          cd artifacts
           shasum -a 256 ry-*.tar.gz > checksums.txt
+
       - name: Extract changelog
         if: env.SKIP != 'true'
         run: |
@@ -74,6 +151,7 @@ jobs:
           if [ ! -s release_notes.txt ]; then
             echo "No changelog entries for $VERSION." > release_notes.txt
           fi
+
       - name: Create Release
         if: env.SKIP != 'true'
         env:
@@ -83,4 +161,4 @@ jobs:
             --title "${{ steps.version.outputs.version }}" \
             --notes-file release_notes.txt \
             --latest \
-            dist/ry-*.tar.gz dist/checksums.txt
+            artifacts/ry-*.tar.gz artifacts/checksums.txt
