@@ -67,6 +67,7 @@ private:
         llvm::StructType *llvmType;
         std::vector<FieldDef> fields;
         std::vector<ExprPtr> invariants;
+        std::string parent_name;
     };
     std::unordered_map<std::string, StructInfo> struct_types_;
     std::unordered_map<std::string, std::string> type_aliases_;
@@ -314,6 +315,11 @@ private:
     bool isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
                               const std::string &paramTypeName) const;
     llvm::Value *emitWideningConversion(llvm::Value *argVal, llvm::Type *paramTy);
+    bool isSubtypeOf(const std::string &childType, const std::string &parentType) const;
+    llvm::Value *emitSubtypeSlice(llvm::Value *childVal,
+                                   const std::string &childTypeName,
+                                   const std::string &parentTypeName);
+    llvm::Value *tryEmitSubtypeCoerce(llvm::Value *val, llvm::Type *targetTy);
 
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);

@@ -127,6 +127,73 @@ print(p1 != p3)  # true
 
 ---
 
+## Record Subtyping (Inheritance)
+
+Records support single inheritance using the `<` syntax. A child record inherits all fields from its parent.
+
+### Syntax
+
+```python
+record ChildName < ParentName:
+    child_field: type
+```
+
+### Example
+
+```python
+record HttpError < Error:
+    status: int
+    url: str
+```
+
+### Field Inheritance
+
+- The child record inherits all parent fields at the beginning of its layout.
+- The constructor takes parent fields first, then child-specific fields.
+
+```python
+err = HttpError("not found", 404, 404, "/api")
+print(err.message)  # "not found" (inherited from Error)
+print(err.status)   # 404 (own field)
+```
+
+### Subtype Coercion
+
+A child value can be passed where the parent type is expected. The child is automatically sliced to extract the parent-prefix fields (value-type slicing).
+
+```python
+fn handle(e: Error) -> str:
+    return e.message
+
+err = HttpError("fail", 500, 500, "/api")
+handle(err)  # OK — HttpError coerced to Error
+```
+
+### Deep Inheritance
+
+Records can form inheritance chains. Each level inherits all ancestor fields.
+
+```python
+record DetailedHttpError < HttpError:
+    detail: str
+
+# Constructor: Error fields + HttpError fields + own fields
+derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
+handle(derr)  # OK — coerced to Error (grandparent)
+```
+
+### Rules
+
+| Rule | Details |
+|------|------|
+| Single inheritance only | `record A < B:` — one parent only |
+| Deep inheritance | `record C < B:` where `record B < A:` — allowed |
+| Name collision | Child field with same name as parent field → compile error |
+| Auto `==` / `to_str` | Includes all inherited fields |
+| `@const` | Applies to all fields including inherited |
+
+---
+
 ## Constraints and Errors
 
 | Constraint | Details |

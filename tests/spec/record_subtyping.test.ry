@@ -1,0 +1,69 @@
+record HttpError < Error:
+  status: int
+  url: str
+
+fn handle_error(e: Error) -> str:
+  return e.message
+
+describe("record subtyping", fn():
+  it("constructor with inherited fields", fn():
+    err = HttpError("not found", 404, 404, "/api")
+    expect(err.message).to_eq("not found")
+    expect(err.code).to_eq(404)
+    expect(err.status).to_eq(404)
+    expect(err.url).to_eq("/api")
+  )
+  it("subtype coercion in function call", fn():
+    err = HttpError("fail", 500, 500, "/x")
+    expect(handle_error(err)).to_eq("fail")
+  )
+  it("auto == includes inherited fields", fn():
+    expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).to_be_true()
+    expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).to_be_false()
+  )
+  it("auto to_str includes inherited fields", fn():
+    err = HttpError("err", 1, 404, "/api")
+    expect(to_str(err)).to_eq("HttpError(message: err, code: 1, status: 404, url: /api)")
+  )
+)
+
+record DetailedHttpError < HttpError:
+  detail: str
+
+describe("deep inheritance", fn():
+  it("constructor with all ancestor fields", fn():
+    derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
+    expect(derr.message).to_eq("fail")
+    expect(derr.code).to_eq(500)
+    expect(derr.status).to_eq(500)
+    expect(derr.url).to_eq("/x")
+    expect(derr.detail).to_eq("server crash")
+  )
+  it("deep coercion to grandparent", fn():
+    derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
+    expect(handle_error(derr)).to_eq("fail")
+  )
+)
+
+record Animal:
+  name: str
+  legs: int
+
+record Dog < Animal:
+  breed: str
+
+fn describe_animal(a: Animal) -> str:
+  return f"{a.name} has {a.legs} legs"
+
+describe("non-Error subtyping", fn():
+  it("basic field inheritance", fn():
+    d = Dog("Rex", 4, "Labrador")
+    expect(d.name).to_eq("Rex")
+    expect(d.legs).to_eq(4)
+    expect(d.breed).to_eq("Labrador")
+  )
+  it("coercion to parent type", fn():
+    d = Dog("Rex", 4, "Labrador")
+    expect(describe_animal(d)).to_eq("Rex has 4 legs")
+  )
+)

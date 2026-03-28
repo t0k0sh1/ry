@@ -133,7 +133,10 @@ void Formatter::formatRecord(const RecordStmt &s) {
     formatDirectives(s.directives);
     if (!s.directives.empty()) emitIndent();
 
-    emit("record " + s.name + ":");
+    emit("record " + s.name);
+    if (s.parent_name)
+        emit(" < " + *s.parent_name);
+    emit(":");
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;

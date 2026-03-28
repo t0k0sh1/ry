@@ -300,6 +300,22 @@ StmtNode Parser::parseRecordStatement() {
         parseError(nameTok.line, "record name '" + nameTok.value + "' must be PascalCase");
     lex_.next(); // consume name
 
+    RecordStmt ts;
+    ts.name = nameTok.value;
+    ts.loc = locFromToken(recordTok);
+
+    // Optional parent type: record Child < Parent:
+    if (lex_.peek().kind == TokenKind::Less) {
+        lex_.next(); // consume '<'
+        Token parentTok = lex_.peek();
+        if (parentTok.kind != TokenKind::Ident && parentTok.kind != TokenKind::ErrorKw)
+            parseError(parentTok.line, "expected parent record name after '<'");
+        if (parentTok.kind == TokenKind::Ident && !isPascalCase(parentTok.value))
+            parseError(parentTok.line, "parent record name '" + parentTok.value + "' must be PascalCase");
+        lex_.next(); // consume parent name
+        ts.parent_name = parentTok.value;
+    }
+
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after record name");
     lex_.next(); // consume ':'
@@ -313,9 +329,6 @@ StmtNode Parser::parseRecordStatement() {
         parseError("expected indented block");
     lex_.next(); // consume Indent
 
-    RecordStmt ts;
-    ts.name = nameTok.value;
-    ts.loc = locFromToken(recordTok);
     std::unordered_set<std::string> seenFields;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
