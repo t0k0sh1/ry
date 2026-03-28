@@ -13,7 +13,7 @@ Ry uses a package system to organize code across files and directories. For the 
 Use the `from` syntax to import functions from another file.
 
 ```python
-from math import add, sub   # Selective import
+from math import sqrt, PI   # Selective import
 from math                    # Full import (all definitions)
 ```
 
@@ -26,7 +26,7 @@ This makes functions defined in `math.ry` available for use.
 Use dot-separated paths to specify packages in subdirectories.
 
 ```python
-from utils.math import add   # Import from utils/math.ry
+from utils.calc import add   # Import from utils/calc.ry
 ```
 
 Each dot corresponds to a directory separator.
@@ -39,7 +39,7 @@ A package can be either a single `.ry` file or a directory containing multiple `
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 

@@ -80,8 +80,8 @@ c = Color::Red
 print(c)               # Red
 
 # Package import
-from math import add
-print(add(1, 2))
+from math import sqrt, PI
+print(sqrt(PI))
 ```
 
 ## Installation
