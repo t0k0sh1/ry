@@ -400,7 +400,11 @@ build = "make"
 )");
     char arg[] = "nonexistent";
     char *argv[] = {arg};
+    testing::internal::CaptureStderr();
     EXPECT_EQ(cmd_run(1, argv), 1);
+    std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("nonexistent"), std::string::npos);
+    EXPECT_NE(err.find("build"), std::string::npos);
 }
 
 TEST_F(CmdRunTest, NoPackageToml) {

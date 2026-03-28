@@ -6,7 +6,9 @@
 #include <map>
 #include <sstream>
 #include <stdexcept>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <unordered_map>
 
 namespace fs = std::filesystem;
