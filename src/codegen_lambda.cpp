@@ -313,6 +313,10 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             auto it = functions_.find(v->callee);
             if (it != functions_.end() && !it->second.empty())
                 return it->second[0].func->getReturnType();
+            // Check if it's a struct constructor
+            auto sit = struct_types_.find(v->callee);
+            if (sit != struct_types_.end())
+                return sit->second.llvmType;
             // Known builtin return types
             const std::string &c = v->callee;
             if (c == "length" || c == "to_int" || c == "find")

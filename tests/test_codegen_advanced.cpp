@@ -1260,6 +1260,81 @@ TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     EXPECT_EQ(runSource(src), "fail\n");
 }
 
+// ===== Generic record bounds (#297) =====
+
+TEST_F(CodeGenTest, GenericRecordBound) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(describe(Dog(\"Rex\", 4, \"Lab\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundExactType) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(describe(Animal(\"Cat\", 4)))";
+    EXPECT_EQ(runSource(src), "Cat\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundViolation) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "    legs: int\n"
+        "fn describe<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "describe(42)";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundDeepInheritance) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "record GuideDog < Dog:\n"
+        "    handler: str\n"
+        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(get_name(GuideDog(\"Rex\", \"Lab\", \"John\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundExplicitTypeArg) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "    return a.name\n"
+        "print(get_name[Dog](Dog(\"Rex\", \"Lab\")))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
+TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
+    std::string src =
+        "record Animal:\n"
+        "    name: str\n"
+        "record Dog < Animal:\n"
+        "    breed: str\n"
+        "fn pair_name<T: Animal, U>(a: T, x: U) -> str:\n"
+        "    return a.name\n"
+        "print(pair_name(Dog(\"Rex\", \"Lab\"), 42))";
+    EXPECT_EQ(runSource(src), "Rex\n");
+}
+
 // ===== Tail Call Optimization (#214) =====
 
 TEST_F(CodeGenTest, TailCallOptimization) {

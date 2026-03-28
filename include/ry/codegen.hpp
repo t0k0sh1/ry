@@ -116,7 +116,7 @@ private:
 
     struct GenericEnumTemplate {
         std::string name;
-        std::vector<std::string> typeParams;
+        std::vector<TypeParam> typeParams;
         std::vector<EnumVariant> variants;
     };
     std::unordered_map<std::string, GenericEnumTemplate> generic_enum_templates_;
@@ -133,6 +133,9 @@ private:
 
     void instantiateGenericFn(const std::string &baseName,
                               const std::vector<std::string> &typeArgs);
+    void validateTypeBounds(const std::vector<TypeParam> &typeParams,
+                            const std::vector<std::string> &typeArgs,
+                            const std::string &context);
     std::vector<std::string> inferTypeArgs(const std::string &baseName,
                                            const std::vector<ExprPtr> &args);
     std::string reverseResolveType(llvm::Value *val);

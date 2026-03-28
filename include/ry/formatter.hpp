@@ -76,6 +76,7 @@ private:
     void formatDirectives(const std::vector<Directive> &directives);
     void formatBlock(const std::vector<StmtNode> &body);
     std::string formatParams(const std::vector<FnParam> &params);
+    void emitTypeParams(const std::vector<TypeParam> &params);
     std::string formatPattern(const Pattern &pat);
     std::string escapeString(const std::string &s);
     std::string formatFloat(double v);

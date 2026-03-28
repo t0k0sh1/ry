@@ -567,6 +567,24 @@ void CodeGen::emitEnsureChecks(llvm::Value *retVal) {
     popScope();
 }
 
+void CodeGen::validateTypeBounds(const std::vector<TypeParam> &typeParams,
+                                  const std::vector<std::string> &typeArgs,
+                                  const std::string &context) {
+    for (size_t i = 0; i < typeParams.size(); ++i) {
+        if (!typeParams[i].bound) continue;
+        const std::string &bound = *typeParams[i].bound;
+        const std::string &concrete = typeArgs[i];
+
+        if (!struct_types_.count(bound))
+            codegenError("unknown type constraint: '" + bound + "'");
+
+        if (concrete != bound && !isSubtypeOf(concrete, bound))
+            codegenError("type '" + concrete + "' does not satisfy constraint '" +
+                         bound + "': not a subtype of '" + bound +
+                         "' (" + context + ")");
+    }
+}
+
 void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::string &baseName,
                                       const std::vector<std::string> &typeArgs) {
     if (enum_types_.count(fullName))
@@ -581,10 +599,12 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
         codegenError("generic enum '" + baseName + "' expects " +
             std::to_string(tmpl.typeParams.size()) + " type parameters");
 
+    validateTypeBounds(tmpl.typeParams, typeArgs, "in generic enum '" + baseName + "'");
+
     // Build type parameter mapping
     std::unordered_map<std::string, std::string> typeMap;
     for (size_t i = 0; i < tmpl.typeParams.size(); ++i)
-        typeMap[tmpl.typeParams[i]] = typeArgs[i];
+        typeMap[tmpl.typeParams[i].name] = typeArgs[i];
 
     // Create a concrete EnumStmt by substituting type parameters
     EnumInfo info;
@@ -711,8 +731,9 @@ std::vector<std::string> CodeGen::inferTypeArgs(
     if (args.size() != tmpl.params.size()) return {};
 
     std::unordered_map<std::string, std::string> inferred;
-    std::unordered_set<std::string> typeParamSet(
-        tmpl.type_params.begin(), tmpl.type_params.end());
+    std::unordered_set<std::string> typeParamSet;
+    for (auto &tp : tmpl.type_params)
+        typeParamSet.insert(tp.name);
 
     // Use AST-based type inference to avoid emitting IR for arguments
     std::unordered_map<std::string, llvm::Type*> emptyParamMap;
@@ -728,6 +749,13 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             else if (argTy == i8Ty_)  resolved = "u8";
             else if (argTy == ptrTy_) resolved = "str";
             else if (isAnyType(argTy)) resolved = "any";
+            else if (auto *st = llvm::dyn_cast<llvm::StructType>(argTy)) {
+                std::string sname = st->getName().str();
+                if (struct_types_.count(sname))
+                    resolved = sname;
+                else
+                    resolved = "any";
+            }
             else resolved = "any";
 
             if (inferred.count(paramType) && inferred[paramType] != resolved)
@@ -740,9 +768,9 @@ std::vector<std::string> CodeGen::inferTypeArgs(
     // Build result in template parameter order
     std::vector<std::string> result;
     for (auto &tp : tmpl.type_params) {
-        auto found = inferred.find(tp);
+        auto found = inferred.find(tp.name);
         if (found == inferred.end())
-            codegenError("could not infer type parameter '" + tp +
+            codegenError("could not infer type parameter '" + tp.name +
                          "' in call to generic function '" + baseName + "'");
         result.push_back(found->second);
     }
@@ -780,7 +808,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     auto savedScope = std::move(type_param_scope_);
     type_param_scope_.clear();
     for (size_t i = 0; i < s.type_params.size(); ++i)
-        type_param_scope_[s.type_params[i]] = typeArgs[i];
+        type_param_scope_[s.type_params[i].name] = typeArgs[i];
+
+    validateTypeBounds(s.type_params, typeArgs, "in generic function '" + baseName + "'");
 
     // Resolve parameter types and return type using type_param_scope_
     std::vector<llvm::Type*> paramTypes;
