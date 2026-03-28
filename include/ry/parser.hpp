@@ -121,10 +121,23 @@ inline std::pair<std::string, std::string> splitNumericSuffix(const std::string 
     return {s, ""};
 }
 
+inline std::string stripUnderscores(const std::string &s) {
+    std::string r;
+    r.reserve(s.size());
+    for (char c : s)
+        if (c != '_') r += c;
+    return r;
+}
+
 inline int64_t parseIntLiteral(const std::string &s) {
-    if (s.size() > 2 && s[0] == '0') {
-        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
-        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
+    std::string clean = stripUnderscores(s);
+    if (clean.size() > 2 && clean[0] == '0') {
+        if (clean[1] == 'x' || clean[1] == 'X') return std::stoll(clean, nullptr, 16);
+        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.c_str() + 2, nullptr, 2);
     }
-    return std::stoll(s);
+    return std::stoll(clean);
+}
+
+inline double parseFloatLiteral(const std::string &s) {
+    return std::stod(stripUnderscores(s));
 }

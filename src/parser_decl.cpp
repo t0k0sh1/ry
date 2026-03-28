@@ -833,7 +833,7 @@ Pattern Parser::parsePattern() {
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
         if (suffix == "f32" || suffix == "f64")
-            node->data = FloatExpr{std::stod(numStr), suffix};
+            node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         else
             node->data = NumberExpr{parseIntLiteral(numStr), suffix};
         return LiteralPattern{std::move(node)};
@@ -842,7 +842,7 @@ Pattern Parser::parsePattern() {
         lex_.next();
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        node->data = FloatExpr{std::stod(numStr), suffix};
+        node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::String) {
@@ -867,7 +867,7 @@ Pattern Parser::parsePattern() {
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
             if (suffix == "f32" || suffix == "f64")
-                node->data = FloatExpr{-std::stod(numStr), suffix};
+                node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
             else
                 node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
             return LiteralPattern{std::move(node)};
@@ -876,7 +876,7 @@ Pattern Parser::parsePattern() {
             lex_.next();
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            node->data = FloatExpr{-std::stod(numStr), suffix};
+            node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
             return LiteralPattern{std::move(node)};
         }
         parseError(num.line, "expected number after '-' in pattern");

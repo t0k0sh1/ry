@@ -209,7 +209,7 @@ ExprPtr Parser::parsePrimary() {
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
         if (suffix == "f32" || suffix == "f64")
-            node->data = FloatExpr{std::stod(numStr), suffix};
+            node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         else
             node->data = NumberExpr{parseIntLiteral(numStr), suffix};
         node->loc = locFromToken(t);
@@ -221,7 +221,7 @@ ExprPtr Parser::parsePrimary() {
         if (!suffix.empty() && suffix[0] != 'f')
             parseError("cannot use integer suffix '" + suffix + "' on float literal");
         auto node = std::make_unique<ExprNode>();
-        node->data = FloatExpr{std::stod(numStr), suffix};
+        node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         node->loc = locFromToken(t);
         return node;
     }

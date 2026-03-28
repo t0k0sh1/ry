@@ -1171,3 +1171,70 @@ TEST(LexerTest, LeadingDotFloat) {
         EXPECT_EQ(toks[2].value, "0");
     }
 }
+
+TEST(LexerTest, NumericUnderscoreSeparators) {
+    // Decimal integers
+    {
+        auto toks = tokenize("100_000");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "100_000");
+    }
+    {
+        auto toks = tokenize("1_000_000");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "1_000_000");
+    }
+    // Hex
+    {
+        auto toks = tokenize("0xFF_FF");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "0xFF_FF");
+    }
+    // Binary
+    {
+        auto toks = tokenize("0b1010_0101");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "0b1010_0101");
+    }
+    // Float
+    {
+        auto toks = tokenize("3.14_159");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14_159");
+    }
+    // Leading-dot float
+    {
+        auto toks = tokenize(".5_0");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5_0");
+    }
+    // With suffix
+    {
+        auto toks = tokenize("100_000i32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "100_000i32");
+    }
+    {
+        auto toks = tokenize("3.14_159f64");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14_159f64");
+    }
+    // Invalid: consecutive underscores
+    EXPECT_THROW(tokenize("100__000"), std::runtime_error);
+    // Invalid: trailing underscore
+    EXPECT_THROW(tokenize("100_"), std::runtime_error);
+    // Invalid: underscore after hex prefix
+    EXPECT_THROW(tokenize("0x_FF"), std::runtime_error);
+    // Invalid: underscore after binary prefix
+    EXPECT_THROW(tokenize("0b_1010"), std::runtime_error);
+    // Invalid: trailing underscore in float fractional part
+    EXPECT_THROW(tokenize("3.14_"), std::runtime_error);
+}
