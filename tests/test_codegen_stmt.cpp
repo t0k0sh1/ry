@@ -1225,3 +1225,45 @@ TEST_F(CodeGenTest, ShortCircuitEvaluation) {
         "res = false or side_effect()\n"
         "print(res)"), "side\ntrue\n");
 }
+
+// ===== Default arguments =====
+
+TEST_F(CodeGenTest, DefaultArgBasic) {
+    EXPECT_EQ(runSource(
+        "fn greet(name: str, greeting: str = \"Hello\") -> str:\n"
+        "    return greeting + \", \" + name\n"
+        "print(greet(\"Alice\"))\n"
+        "print(greet(\"Alice\", \"Hi\"))"), "Hello, Alice\nHi, Alice\n");
+}
+
+TEST_F(CodeGenTest, DefaultArgMultiple) {
+    EXPECT_EQ(runSource(
+        "fn f(a: int, b: int = 10, c: int = 20) -> int:\n"
+        "    return a + b + c\n"
+        "print(f(1))\n"
+        "print(f(1, 2))\n"
+        "print(f(1, 2, 3))"), "31\n23\n6\n");
+}
+
+TEST_F(CodeGenTest, DefaultArgOverloadConflict) {
+    EXPECT_THROW(runSource(
+        "fn calc(x: int, y: int = 0) -> int:\n"
+        "    return x + y\n"
+        "fn calc(x: int) -> int:\n"
+        "    return x * 2\n"
+        "print(calc(1))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, DefaultArgWithWidening) {
+    EXPECT_EQ(runSource(
+        "fn calc(x: float, precision: int = 6) -> float:\n"
+        "    return x\n"
+        "print(calc(3))"), "3\n");
+}
+
+TEST_F(CodeGenTest, DefaultArgGenericError) {
+    EXPECT_THROW(runSource(
+        "fn identity<T>(x: T, label: str = \"default\") -> T:\n"
+        "    return x\n"
+        "print(identity(42))"), std::runtime_error);
+}

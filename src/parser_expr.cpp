@@ -599,7 +599,11 @@ ExprPtr Parser::parseLambdaExpr() {
                 lex_.next(); // consume ':'
                 paramType = parseTypeName();
             }
-            lambda->params.push_back({paramName.value, paramType});
+            if (lex_.peek().kind == TokenKind::Equals)
+                parseError(paramName.line,
+                    "default arguments are not supported in lambda expressions");
+
+            lambda->params.push_back({paramName.value, paramType, nullptr});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;

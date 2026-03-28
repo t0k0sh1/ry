@@ -351,6 +351,8 @@ std::string Formatter::formatParams(const std::vector<FnParam> &params) {
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0) result += ", ";
         result += params[i].name + ": " + params[i].type;
+        if (params[i].default_value)
+            result += " = " + formatExpr(*params[i].default_value);
     }
     return result;
 }

@@ -125,6 +125,42 @@ b = area(3, 4)    # 12
 
 ---
 
+## 預設引數
+
+參數可以有預設值，允許呼叫者省略尾部的引數。
+
+### 語法
+
+```python
+fn connect(host: str, port: int = 8080, timeout: int = 30):
+    # ...
+
+connect("localhost")                    # port=8080, timeout=30
+connect("localhost", 3000)              # port=3000, timeout=30
+connect("localhost", 3000, 10000)       # port=3000, timeout=10000
+```
+
+### 規則
+
+- 預設參數必須放在所有非預設參數之後。
+- 有預設值的參數**必須**有明確的型別標註（例如：`x: int = 10`；`x = 10` 是編譯錯誤）。
+- 預設值僅限編譯時常數運算式（字面量和 `@const` 變數）。
+- 如果預設引數導致模糊的多載（arity 範圍重疊且型別匹配），編譯器會報告錯誤。
+
+```python
+# 錯誤：模糊的多載
+fn calc(x: int, y: int = 0) -> int:
+    return x + y
+fn calc(x: int) -> int:      # 與上面的 calc(int) 衝突
+    return x * 2
+```
+
+### 限制
+
+- **泛型函式**和 **lambda 運算式**不支援預設引數。
+
+---
+
 ## Unit 型別函式
 
 不回傳值的函式會回傳 `Unit`。回傳型別可以省略。

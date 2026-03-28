@@ -110,6 +110,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     lex_.next(); // consume '('
 
     // parse parameters
+    bool seen_default = false;
     if (lex_.peek().kind != TokenKind::RParen) {
         for (;;) {
             Token paramName = lex_.peek();
@@ -120,12 +121,28 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
             lex_.next(); // consume param name
 
             std::string paramType = "any";  // default when type is omitted
+            bool has_explicit_type = false;
             if (lex_.peek().kind == TokenKind::Colon) {
                 lex_.next(); // consume ':'
                 paramType = parseTypeName();
+                has_explicit_type = true;
             }
 
-            fnStmt->params.push_back({paramName.value, paramType});
+            ExprPtr default_value;
+            if (lex_.peek().kind == TokenKind::Equals) {
+                if (!has_explicit_type)
+                    parseError(paramName.line,
+                        "parameter '" + paramName.value + "' with default value must have an explicit type annotation");
+                lex_.next(); // consume '='
+                default_value = parseTernary();
+                seen_default = true;
+            } else if (seen_default) {
+                parseError(paramName.line,
+                    "parameter '" + paramName.value + "' must have a default value "
+                    "(all parameters after a default parameter must also have defaults)");
+            }
+
+            fnStmt->params.push_back({paramName.value, paramType, std::move(default_value)});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;

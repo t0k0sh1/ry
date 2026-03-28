@@ -424,3 +424,11 @@ TEST(Formatter, RoundTripAndIdempotency) {
         EXPECT_EQ(first, second);
     }
 }
+
+TEST(FormatterTest, DefaultArgRoundTrip) {
+    auto src = "fn greet(name: str, greeting: str = \"Hello\") -> str:\n  return greeting\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, src);
+    auto second = Formatter::formatSource(first);
+    EXPECT_EQ(first, second);
+}
