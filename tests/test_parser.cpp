@@ -734,8 +734,8 @@ TEST(ParserTest, IndexAssignStmt) {
     const auto &s = std::get<IndexAssignStmt>(prog[1]);
     ASSERT_TRUE(std::holds_alternative<VariableExpr>(s.object->data));
     EXPECT_EQ(std::get<VariableExpr>(s.object->data).name, "m");
-    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.index->data));
-    EXPECT_EQ(std::get<StringExpr>(s.index->data).value, "b");
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(s.indices[0]->data));
+    EXPECT_EQ(std::get<StringExpr>(s.indices[0]->data).value, "b");
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 2);
 }

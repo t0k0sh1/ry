@@ -369,9 +369,14 @@ StmtNode Parser::parseStatement() {
     } else if (next.kind == TokenKind::LBracket) {
         if (!directives.empty())
             parseError(first.line, "directives are not supported on index assignment");
-        // index assignment: ident[expr] = value
+        // index assignment: ident[expr, ...] = value
         lex_.next(); // consume '['
-        ExprPtr index = parseTernary();
+        std::vector<ExprPtr> indices;
+        indices.push_back(parseTernary());
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            indices.push_back(parseTernary());
+        }
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
         lex_.next(); // consume ']'
@@ -384,7 +389,7 @@ StmtNode Parser::parseStatement() {
         obj->data = VariableExpr{first.value};
         obj->loc = locFromToken(first);
         s.object = std::move(obj);
-        s.index = std::move(index);
+        s.indices = std::move(indices);
         s.value = std::move(val);
         s.loc = locFromToken(first);
         return s;

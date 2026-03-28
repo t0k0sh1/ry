@@ -273,7 +273,12 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             }
             return "[" + elems + "]";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
-            return formatExpr(*v->object) + "[" + formatExpr(*v->index) + "]";
+            std::string idxStr;
+            for (size_t i = 0; i < v->indices.size(); ++i) {
+                if (i > 0) idxStr += ", ";
+                idxStr += formatExpr(*v->indices[i]);
+            }
+            return formatExpr(*v->object) + "[" + idxStr + "]";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
             std::string pairs;
             for (size_t i = 0; i < v->keys.size(); ++i) {

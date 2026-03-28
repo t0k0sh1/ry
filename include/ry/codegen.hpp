@@ -349,10 +349,18 @@ private:
     llvm::Value *structToString(llvm::Value *val);
 
     // Operator overload helpers
+    llvm::Value *findAndCallOverload(const std::string &opFnName,
+                                      llvm::ArrayRef<llvm::Value*> args,
+                                      const char *callName = "opcall");
     llvm::Value *tryOperatorCall(const std::string &opFnName,
                                  llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *tryUnaryOperatorCall(const std::string &opFnName,
                                       llvm::Value *operand);
+    llvm::Value *trySubscriptOperatorCall(llvm::Value *object,
+                                           llvm::ArrayRef<llvm::Value*> indices);
+    bool trySubscriptAssignOperatorCall(llvm::Value *object,
+                                         llvm::ArrayRef<llvm::Value*> indices,
+                                         llvm::Value *value);
 
     // Binary operation dispatch (user-defined → any → built-in)
     llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

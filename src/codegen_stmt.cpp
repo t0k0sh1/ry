@@ -761,8 +761,18 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
     llvm::Value *objPtr = emitExpr(*s.object);
-    llvm::Value *key = emitExpr(*s.index);
+
+    llvm::SmallVector<llvm::Value*, 2> indexValues;
+    for (auto &idx : s.indices)
+        indexValues.push_back(emitExpr(*idx));
     llvm::Value *val = emitExpr(*s.value);
+
+    if (trySubscriptAssignOperatorCall(objPtr, indexValues, val))
+        return;
+    if (indexValues.size() > 1)
+        codegenError("multi-index requires operator[]= overload");
+
+    llvm::Value *key = indexValues[0];
 
     // Fixed-length array index assignment
     if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
