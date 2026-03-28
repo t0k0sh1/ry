@@ -58,6 +58,25 @@ TEST(ParserTest, LetFloat) {
     EXPECT_DOUBLE_EQ(std::get<FloatExpr>(s.value->data).value, 3.14);
 }
 
+TEST(ParserTest, LeadingDotFloat) {
+    Program prog = parseStr("x = .5");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
+    EXPECT_DOUBLE_EQ(std::get<FloatExpr>(s.value->data).value, 0.5);
+}
+
+TEST(ParserTest, LeadingDotFloatInExpression) {
+    Program prog = parseStr("x = .5 + .25");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+}
+
+TEST(ParserTest, LeadingDotFloatRejectsIntSuffix) {
+    EXPECT_THROW(parseStr("x = .5i32"), std::runtime_error);
+}
+
 TEST(ParserTest, AssignStmt) {
     Program prog = parseStr("x = 1\nx = 2");
     ASSERT_EQ(prog.size(), 2u);

@@ -1115,3 +1115,50 @@ TEST(LexerTest, IntDotDigitIsFloat) {
     EXPECT_EQ(toks[0].kind, TokenKind::Float);
     EXPECT_EQ(toks[0].value, "3.14");
 }
+
+TEST(LexerTest, LeadingDotFloat) {
+    {
+        auto toks = tokenize(".5");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5");
+    }
+    {
+        auto toks = tokenize(".01");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".01");
+    }
+    {
+        auto toks = tokenize(".5f64");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5f64");
+    }
+    {
+        auto toks = tokenize(".5f32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5f32");
+    }
+    {
+        auto toks = tokenize(".5i32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5i32");
+    }
+    {
+        auto toks = tokenize(".foo");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "foo");
+    }
+    {
+        auto toks = tokenize("..5");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::DotDot);
+        EXPECT_EQ(toks[1].kind, TokenKind::Number);
+        EXPECT_EQ(toks[1].value, "5");
+    }
+}

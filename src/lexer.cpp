@@ -358,6 +358,13 @@ Token Lexer::readToken() {
             }
             return {TokenKind::DotDot, "..", line_, startCol};
         }
+        if (pos_ < src_.size() && std::isdigit(src_[pos_])) {
+            size_t start = pos_ - 1;
+            while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+            TokenKind numKind = TokenKind::Float;
+            tryConsumeNumericSuffix(numKind);
+            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
+        }
         return {TokenKind::Dot, ".", line_, startCol};
     }
     if (c == '[') { ++pos_; ++col_; return {TokenKind::LBracket, "[", line_, startCol}; }
