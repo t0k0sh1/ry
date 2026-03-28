@@ -53,6 +53,7 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     original.version = "2.0.0";
     original.entry = "src/main.ry";
     original.src_dir = "src";
+    original.dev_stdlib_dir = "lib";
 
     std::string toml = ProjectConfigParser::serialize(original);
     auto loaded = ProjectConfigParser::load(toml);
@@ -61,6 +62,23 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     EXPECT_EQ(loaded.version, original.version);
     EXPECT_EQ(loaded.entry, original.entry);
     EXPECT_EQ(loaded.src_dir, original.src_dir);
+    EXPECT_FALSE(loaded.dev_stdlib_dir.has_value());
+}
+
+TEST(ProjectConfigParser, LoadHiddenDevStdlibOverride) {
+    std::string toml = R"(
+[project]
+name = "ry"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+_dev_stdlib = "lib"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    ASSERT_TRUE(config.dev_stdlib_dir.has_value());
+    EXPECT_EQ(*config.dev_stdlib_dir, "lib");
 }
 
 TEST(ProjectConfigParser, LoadInvalidLine) {

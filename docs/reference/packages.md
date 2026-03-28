@@ -131,11 +131,11 @@ The `RY_ENV` environment variable controls the runtime environment mode. You can
 
 | Value | Alias | `.env` loading | Lib search |
 |-------|-------|---------------|------------|
-| `prod` | `production` | Disabled | `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
 | `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
 | `test` | — | `.env.test` → `.env` | Same as `prod` |
 | `staging` | — | `.env.staging` → `.env` | Same as `prod` |
-| `internal` | — | `.env.internal` → `.env` | `exe/../lib` → `exe/lib` only (`$RY_HOME` skipped) |
+| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../lib` → `exe/lib` (`$RY_HOME` skipped) |
 | (unset) (default) | — | `.env` only | Same as `prod` |
 
 Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
@@ -157,18 +157,21 @@ RY_ENV=development ./build/ry app.ry
 # prod mode: .env is NOT loaded
 RY_ENV=prod ./build/ry app.ry
 
-# Use exe-relative stdlib only (for Ry language development)
+# Additional isolation when developing Ry itself
 RY_ENV=internal ./build/ry test
 ```
+
+When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `lib/std` even if `~/.ry/lib/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/lib/std`.
 
 ---
 
 ## Search Path Priority
 
 1. The directory of the importing file
-2. `$RY_HOME/lib` (standard library location)
-3. Executable-relative `lib/` directories
-4. Paths specified in the `RY_PATH` environment variable (colon-separated)
+2. Repo-local stdlib override from the current Ry checkout, when using a repo-built `ry`
+3. `$RY_HOME/lib` (standard library location)
+4. Executable-relative `lib/` directories
+5. Paths specified in the `RY_PATH` environment variable (colon-separated)
 
 ---
 

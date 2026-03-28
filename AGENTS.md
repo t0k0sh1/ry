@@ -52,7 +52,7 @@
 
 ### 1. Ry 宣言ファイル作成
 
-`lib/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。ディレクトリスキャンで自動認識されるため、`manifest.json` の更新は不要。
+`lib/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
 
 ```ry
 @native
@@ -88,32 +88,42 @@ llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
 | `emitResultBranch(isErr, resTy, buildOk, buildErr)` | カスタム Result 構築 |
 | `buildErrorFromRuntime(errFn)` | ランタイムから Error struct を構築 |
 
-### 4. Dispatcher 登録
+### 4. Central registry 登録
 
-`src/codegen_call.cpp` の `stdlib_dispatchers` 配列に 1 行追加する。
+`include/ry/builtin_stdlib_registry.hpp` に package を 1 行追加する。dispatcher 配列と native constant registry はここから導出される。
 
 ```cpp
-static const StdlibDispatcher stdlib_dispatchers[] = {
-    ...
-    &CodeGen::emitBuiltin<Pkg>,  // ← 追加
-};
+X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
 ```
 
 ### 5. ビルド設定
 
 `CMakeLists.txt` の `ry_lib` に `src/runtime_<pkg>.cpp` と `src/codegen_call_<pkg>.cpp` を追加する。
 
+### 6. テスト追加
+
+- package import テストを追加する
+- 代表的な native function の実行テストを追加する
+- 必要なら declaration file / native constant の registry 整合テストも追加する
+
 ### 定数の追加
 
-`src/codegen_call.cpp` の `native_constant_registry` に 1 行追加するだけでよい。`codegen_stmt.cpp` の変更は不要。
+`lib/std/<pkg>/<pkg>.ry` に `@native @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
-既存パッケージに関数を追加する場合は、以下の 3 箇所を変更する:
+既存パッケージに関数を追加する場合は、以下の 4 箇所を確認する:
 
 1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
 2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
 3. `src/codegen_call_<pkg>.cpp` — dispatch case を追加
+4. テスト — selective import と実行ケースを追加
+
+## repo build と stdlib 解決
+
+- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `lib/std` を参照する
+- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/lib/std` を参照する
+- `RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない
 
 ## Git ブランチ運用ルール
 
@@ -192,7 +202,7 @@ static const StdlibDispatcher stdlib_dispatchers[] = {
 全テストを実行して成功を確認する。
 
 ```bash
-cmake --preset default && cmake --build build && ./build/ry_tests && RY_ENV=internal ./build/ry test -p
+cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry test -p
 ```
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。

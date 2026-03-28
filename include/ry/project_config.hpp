@@ -8,6 +8,7 @@ struct ProjectConfig {
     std::string version;
     std::string entry;
     std::string src_dir;
+    std::optional<std::string> dev_stdlib_dir;
 };
 
 class ProjectConfigParser {

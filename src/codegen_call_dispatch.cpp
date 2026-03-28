@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include "ry/builtin_stdlib_registry.hpp"
 #include "ry/diagnostic.hpp"
 
 // ===== CallExpr Dispatcher =====
@@ -108,15 +109,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     if (auto *v = emitBuiltinRegex(*e))       return v;
 
     // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
-    // To add a new stdlib package, add its emitBuiltin method here.
     using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const StdlibDispatcher stdlib_dispatchers[] = {
-        &CodeGen::emitBuiltinMath,
-        &CodeGen::emitBuiltinIO,
-        &CodeGen::emitBuiltinNet,
-        &CodeGen::emitBuiltinHttp,
-        &CodeGen::emitBuiltinJson,
-        &CodeGen::emitBuiltinBase64,
+#define RY_STDLIB_DISPATCHER_ENTRY(pkg, decl, method) &CodeGen::method,
+        RY_BUILTIN_STDLIB_PACKAGES(RY_STDLIB_DISPATCHER_ENTRY)
+#undef RY_STDLIB_DISPATCHER_ENTRY
     };
     for (auto dispatcher : stdlib_dispatchers) {
         if (auto *v = (this->*dispatcher)(*e)) return v;
@@ -358,10 +355,9 @@ struct NativeConstantEntry {
 };
 
 static const std::unordered_map<std::string, NativeConstantEntry> native_constant_registry = {
-    {"PI",  {NativeConstantKind::Value,    3.141592653589793}},
-    {"E",   {NativeConstantKind::Value,    2.718281828459045}},
-    {"Inf", {NativeConstantKind::Infinity, 0.0}},
-    {"NaN", {NativeConstantKind::NaN,      0.0}},
+#define RY_NATIVE_CONSTANT_ENTRY(pkg, name, kind, value) {#name, {NativeConstantKind::kind, value}},
+    RY_BUILTIN_STDLIB_CONSTANTS(RY_NATIVE_CONSTANT_ENTRY)
+#undef RY_NATIVE_CONSTANT_ENTRY
 };
 
 bool CodeGen::isNativeConstant(const std::string &name) {

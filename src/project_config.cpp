@@ -66,6 +66,13 @@ ProjectConfig ProjectConfigParser::load(const std::string &toml_content) {
     config.version  = sections["project"]["version"];
     config.entry    = sections["project"]["entry"];
     config.src_dir  = sections["paths"]["src"];
+    auto paths = sections.find("paths");
+    if (paths != sections.end()) {
+        auto it = paths->second.find("_dev_stdlib");
+        if (it != paths->second.end()) {
+            config.dev_stdlib_dir = it->second;
+        }
+    }
     return config;
 }
 
