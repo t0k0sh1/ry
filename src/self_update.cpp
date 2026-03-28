@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <openssl/evp.h>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -224,10 +225,13 @@ bool is_prerelease(const std::string &version) {
     return v.find('-') != std::string::npos;
 }
 
-std::string build_download_url(const std::string &tag, const PlatformInfo &platform) {
+static std::string build_release_asset_url(const std::string &tag, const std::string &filename) {
     return "https://github.com/" + get_repo() +
-           "/releases/download/" + tag +
-           "/ry-" + platform.os + "-" + platform.arch + ".tar.gz";
+           "/releases/download/" + tag + "/" + filename;
+}
+
+std::string build_download_url(const std::string &tag, const PlatformInfo &platform) {
+    return build_release_asset_url(tag, "ry-" + platform.os + "-" + platform.arch + ".tar.gz");
 }
 
 UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &platform) {
@@ -310,8 +314,71 @@ bool download_file(const std::string &url, const std::string &dest_path) {
 }
 
 std::string build_checksums_url(const std::string &tag) {
-    return "https://github.com/" + get_repo() +
-           "/releases/download/" + tag + "/checksums.txt";
+    return build_release_asset_url(tag, "checksums.txt");
+}
+
+std::string build_signature_url(const std::string &tag) {
+    return build_release_asset_url(tag, "checksums.txt.sig");
+}
+
+// Ed25519 public key for verifying release signatures (raw 32 bytes).
+static const unsigned char SIGNING_PUBLIC_KEY[32] = {
+    0x66, 0x20, 0xa3, 0xe1, 0x29, 0xff, 0x97, 0x3b, 0x5a, 0xf9, 0x65, 0xfb,
+    0x09, 0x7f, 0x7d, 0xe4, 0x84, 0x24, 0xe5, 0x6b, 0xe3, 0x6e, 0x4b, 0x3d,
+    0x13, 0x97, 0x08, 0xf7, 0x10, 0xb9, 0x3f, 0xc4
+};
+
+std::string base64_decode(const std::string &input) {
+    if (input.empty()) return "";
+
+    int max_len = 3 * ((int)input.size() + 3) / 4;
+    std::string output(max_len, '\0');
+
+    int decoded_len = EVP_DecodeBlock(
+        reinterpret_cast<unsigned char *>(&output[0]),
+        reinterpret_cast<const unsigned char *>(input.data()),
+        (int)input.size());
+
+    if (decoded_len < 0) return "";
+
+    // EVP_DecodeBlock ignores padding in its return value — adjust manually
+    size_t padding = 0;
+    if (input.size() >= 1 && input[input.size() - 1] == '=') padding++;
+    if (input.size() >= 2 && input[input.size() - 2] == '=') padding++;
+
+    output.resize(decoded_len - padding);
+    return output;
+}
+
+bool verify_signature(const std::string &data, const std::string &sig_b64,
+                      const unsigned char *pubkey, size_t pubkey_len) {
+    if (sig_b64.empty() || pubkey_len != 32) return false;
+
+    std::string sig_raw = base64_decode(sig_b64);
+    if (sig_raw.size() != 64) return false;
+
+    EVP_PKEY *pkey = EVP_PKEY_new_raw_public_key(
+        EVP_PKEY_ED25519, nullptr, pubkey, pubkey_len);
+    if (!pkey) return false;
+
+    EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+    if (!ctx) {
+        EVP_PKEY_free(pkey);
+        return false;
+    }
+
+    bool result = false;
+    if (EVP_DigestVerifyInit(ctx, nullptr, nullptr, nullptr, pkey) == 1) {
+        int rc = EVP_DigestVerify(
+            ctx,
+            reinterpret_cast<const unsigned char *>(sig_raw.data()), sig_raw.size(),
+            reinterpret_cast<const unsigned char *>(data.data()), data.size());
+        result = (rc == 1);
+    }
+
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(pkey);
+    return result;
 }
 
 std::string parse_checksum_for_file(const std::string &checksums_content, const std::string &filename) {
@@ -448,6 +515,43 @@ std::string download_and_extract(const std::string &download_url, const std::str
         std::ifstream ifs(checksums_path);
         std::string checksums_content((std::istreambuf_iterator<char>(ifs)),
                                        std::istreambuf_iterator<char>());
+
+        // Signature verification (before checksum verification)
+        std::string sig_url = build_signature_url(tag);
+        std::string sig_path = tmp_dir_str + "/checksums.txt.sig";
+        bool sig_required = (std::getenv("RY_REQUIRE_SIGNATURE") != nullptr);
+
+        if (download_file(sig_url, sig_path)) {
+            std::ifstream sig_ifs(sig_path);
+            std::string sig_content((std::istreambuf_iterator<char>(sig_ifs)),
+                                     std::istreambuf_iterator<char>());
+            // Trim whitespace
+            while (!sig_content.empty() &&
+                   (sig_content.back() == '\n' || sig_content.back() == '\r' ||
+                    sig_content.back() == ' '  || sig_content.back() == '\t')) {
+                sig_content.pop_back();
+            }
+
+            std::cerr << "Verifying signature..." << std::flush;
+            if (!verify_signature(checksums_content, sig_content,
+                                  SIGNING_PUBLIC_KEY, sizeof(SIGNING_PUBLIC_KEY))) {
+                std::cerr << " failed.\n";
+                std::cerr << "Error: Signature verification failed. "
+                          << "The checksums file may have been tampered with.\n";
+                run_command({RM_PATH, "-rf", tmp_dir_str});
+                return "";
+            }
+            std::cerr << " ok.\n";
+        } else {
+            if (sig_required) {
+                std::cerr << "Error: Signature file not available and "
+                          << "RY_REQUIRE_SIGNATURE is set.\n";
+                run_command({RM_PATH, "-rf", tmp_dir_str});
+                return "";
+            }
+            std::cerr << "Warning: Signature file not available. "
+                      << "Skipping signature verification.\n";
+        }
 
         // Extract filename from download URL
         std::string expected_filename;

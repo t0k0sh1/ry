@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
+#include <string>
 
 using namespace ry::self_update;
 using namespace ry::self_update::detail;
@@ -367,4 +368,68 @@ TEST_F(TarValidationTest, Hardlink) {
     run_command({"python3", "-c", script});
 
     EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+// --- Signature verification tests ---
+
+// Dedicated test Ed25519 key pair — distinct from the production SIGNING_PUBLIC_KEY.
+static const unsigned char TEST_PUBKEY[32] = {
+    0xcb, 0xe4, 0xb6, 0x66, 0x4e, 0x4b, 0x97, 0x5c, 0x79, 0x50, 0x4d, 0x1a,
+    0x0c, 0x5a, 0x28, 0x46, 0x8e, 0x1e, 0x01, 0xdc, 0x36, 0x08, 0xc9, 0xc1,
+    0x83, 0x0c, 0x9a, 0x76, 0xeb, 0x64, 0x74, 0x00
+};
+static const char *TEST_MESSAGE = "test message for signature verification";
+static const char *TEST_SIGNATURE_B64 =
+    "LWqzIGYP9gIf2aFVk7qaTIkD2g36unUqDtw4jG8+EhiGA1bTbHJ0+YkpWKJTwNfKIymzI9HQ8XHbo1B8G20gAA==";
+
+TEST(SelfUpdate, BuildSignatureUrl) {
+    auto url = build_signature_url("v0.0.5");
+    EXPECT_EQ(url, "https://github.com/t0k0sh1/ry/releases/download/v0.0.5/checksums.txt.sig");
+}
+
+TEST(SelfUpdate, Base64DecodeKnown) {
+    auto decoded = base64_decode("aGVsbG8=");
+    EXPECT_EQ(decoded, "hello");
+}
+
+TEST(SelfUpdate, Base64DecodeNoPadding) {
+    auto decoded = base64_decode("aGk=");
+    EXPECT_EQ(decoded, "hi");
+}
+
+TEST(SelfUpdate, Base64DecodeEmpty) {
+    auto decoded = base64_decode("");
+    EXPECT_TRUE(decoded.empty());
+}
+
+TEST(SelfUpdate, VerifySignatureValid) {
+    EXPECT_TRUE(verify_signature(TEST_MESSAGE, TEST_SIGNATURE_B64,
+                                 TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureInvalid) {
+    std::string bad_sig = std::string(TEST_SIGNATURE_B64);
+    bad_sig[0] = (bad_sig[0] == 'A') ? 'B' : 'A';
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, bad_sig.c_str(),
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureWrongMessage) {
+    EXPECT_FALSE(verify_signature("wrong message", TEST_SIGNATURE_B64,
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureMalformedBase64) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "!!!not-base64!!!",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureEmptySignature) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureShortSignature) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "AAAA",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
 }

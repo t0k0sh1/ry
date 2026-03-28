@@ -142,6 +142,20 @@ jobs:
           cd artifacts
           shasum -a 256 ry-*.tar.gz > checksums.txt
 
+      - name: Sign checksums
+        if: env.SKIP != 'true' && env.RY_SIGNING_PRIVATE_KEY != ''
+        env:
+          RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
+        run: |
+          echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
+          openssl pkeyutl -sign \
+            -inkey /tmp/signing_key.pem \
+            -rawin \
+            -in artifacts/checksums.txt \
+            -out /tmp/checksums.txt.sig.raw
+          base64 < /tmp/checksums.txt.sig.raw > artifacts/checksums.txt.sig
+          rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
+
       - name: Extract changelog
         if: env.SKIP != 'true'
         run: |
@@ -161,4 +175,4 @@ jobs:
             --title "${{ steps.version.outputs.version }}" \
             --notes-file release_notes.txt \
             --latest \
-            artifacts/ry-*.tar.gz artifacts/checksums.txt
+            artifacts/ry-*.tar.gz artifacts/checksums.txt artifacts/checksums.txt.sig

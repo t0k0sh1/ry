@@ -102,6 +102,19 @@ jobs:
           cd dist
           tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
           shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Sign checksums
+        if: env.RY_SIGNING_PRIVATE_KEY != ''
+        env:
+          RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
+        run: |
+          echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
+          openssl pkeyutl -sign \
+            -inkey /tmp/signing_key.pem \
+            -rawin \
+            -in dist/checksums.txt \
+            -out /tmp/checksums.txt.sig.raw
+          base64 < /tmp/checksums.txt.sig.raw > dist/checksums.txt.sig
+          rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -121,7 +134,7 @@ jobs:
             --title "${{ steps.version.outputs.version }}" \
             --notes "Nightly build from branch ${{ matrix.branch }}" \
             --prerelease \
-            dist/ry-*.tar.gz dist/checksums.txt
+            dist/ry-*.tar.gz dist/checksums.txt dist/checksums.txt.sig
 
   # 手動実行: 現在のブランチでビルド
   manual:
@@ -176,6 +189,19 @@ jobs:
           cd dist
           tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
           shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Sign checksums
+        if: env.RY_SIGNING_PRIVATE_KEY != ''
+        env:
+          RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
+        run: |
+          echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
+          openssl pkeyutl -sign \
+            -inkey /tmp/signing_key.pem \
+            -rawin \
+            -in dist/checksums.txt \
+            -out /tmp/checksums.txt.sig.raw
+          base64 < /tmp/checksums.txt.sig.raw > dist/checksums.txt.sig
+          rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,4 +221,4 @@ jobs:
             --title "${{ steps.version.outputs.version }}" \
             --notes "Dev build from branch ${GITHUB_REF_NAME}" \
             --prerelease \
-            dist/ry-*.tar.gz dist/checksums.txt
+            dist/ry-*.tar.gz dist/checksums.txt dist/checksums.txt.sig

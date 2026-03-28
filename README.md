@@ -127,6 +127,8 @@ ry fmt [options] [path]    # Format source files
 ry self-update             # Update ry itself
 ```
 
+The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Set `RY_REQUIRE_SIGNATURE=1` to enforce signature checks.
+
 Stdin also supports here-documents:
 
 ```bash
