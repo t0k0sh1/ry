@@ -246,7 +246,7 @@ private:
 
     // Variable declaration (B3)
     void emitVarDecl(const std::string &name,
-                     const std::optional<std::string> &type_annotation,
+                     const TypeNodePtr &type_annotation,
                      ExprNode &value, bool is_immutable);
 
     void emitStmt(AssignStmt &s);

@@ -119,9 +119,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         // Validate return type for comparison/logical operators
         if (s->is_operator && isBoolConstrainedOperator(s->name)) {
-            if (!s->return_type.empty() && s->return_type != "bool") {
+            std::string retStr = s->return_type ? s->return_type->toString() : "";
+            if (!retStr.empty() && retStr != "bool") {
                 codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
-                             s->return_type + "'");
+                             retStr + "'");
             }
         }
 
@@ -132,14 +133,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s->params)
-        paramTypes.push_back(resolveType(p.type));
+        paramTypes.push_back(resolveType(p.type->toString()));
 
     llvm::Type *bodyRetTy;
-    if (s->return_type.empty()) {
+    if (!s->return_type) {
         // Infer return type from body
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : s->params)
-            paramTypeMap[p.name] = resolveType(p.type);
+            paramTypeMap[p.name] = resolveType(p.type->toString());
         std::vector<llvm::Type*> retTypes;
         collectReturnTypes(s->body, paramTypeMap, retTypes);
         bodyRetTy = deduceReturnType(retTypes);
@@ -150,24 +151,24 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (std::find(unique.begin(), unique.end(), ty) == unique.end())
                 unique.push_back(ty);
         if (unique.size() <= 1) {
-            s->return_type = reverseResolveTypeName(bodyRetTy);
+            s->return_type = TypeNode::makeBasic(reverseResolveTypeName(bodyRetTy));
         } else {
-            std::string unionName;
-            for (size_t i = 0; i < unique.size(); ++i) {
-                if (i > 0) unionName += " | ";
-                unionName += reverseResolveTypeName(unique[i]);
-            }
-            s->return_type = unionName;
+            std::vector<TypeNodePtr> comps;
+            for (auto *ty : unique)
+                comps.push_back(TypeNode::makeBasic(reverseResolveTypeName(ty)));
+            s->return_type = TypeNode::makeUnion(std::move(comps));
         }
     } else {
-        bodyRetTy = resolveType(s->return_type);
+        bodyRetTy = resolveType(s->return_type->toString());
     }
+
+    std::string returnTypeStr = s->return_type->toString();
 
     // Validate return type for comparison/logical operators
     if (s->is_operator && isBoolConstrainedOperator(s->name)) {
         if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
             codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
-                         s->return_type + "'");
+                         returnTypeStr + "'");
         }
     }
 
@@ -176,9 +177,9 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         && !hasDirective(s->directives, "native")) {
         if (!allPathsReturn(s->body))
             codegenError("function '" + s->name + "' with return type '" +
-                         s->return_type + "' does not return a value on all code paths");
+                         returnTypeStr + "' does not return a value on all code paths");
     }
-    std::string exposedReturnTypeName = s->is_async ? "Task<" + s->return_type + ">" : s->return_type;
+    std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
     llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
     // Compute minArity and collect default values
@@ -226,7 +227,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     std::vector<std::string> paramTypeNames;
     for (auto &p : s->params)
-        paramTypeNames.push_back(p.type);
+        paramTypeNames.push_back(p.type->toString());
     overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName,
                          newMinArity, std::move(defaults)});
 
@@ -271,7 +272,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s->params[idx].name] = alloca;
             // Track list element type for list parameters
-            const std::string &ptype = s->params[idx].type;
+            const std::string &ptype = paramTypeNames[idx];
             if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
                 type_meta_[TM_ListElem][alloca] = resolveType(inner);
@@ -370,14 +371,14 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     };
 
     if (!s->is_async) {
-        emitFunctionBody(func, bodyRetTy, s->return_type, s->name);
+        emitFunctionBody(func, bodyRetTy, returnTypeStr, s->name);
         return;
     }
 
     llvm::FunctionType *bodyFt = llvm::FunctionType::get(bodyRetTy, paramTypes, false);
     llvm::Function *bodyFunc = llvm::Function::Create(
         bodyFt, llvm::Function::InternalLinkage, irName + ".__async_body", *mod_);
-    emitFunctionBody(bodyFunc, bodyRetTy, s->return_type, s->name);
+    emitFunctionBody(bodyFunc, bodyRetTy, returnTypeStr, s->name);
 
     std::vector<llvm::Type*> envFields = paramTypes;
     if (envFields.empty())
@@ -574,8 +575,9 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
             hasADT = true;
             VariantFieldInfo vfi;
             for (auto &ft : v.field_types) {
-                std::string resolved = ft;
-                auto mit = typeMap.find(ft);
+                std::string ftStr = ft->toString();
+                std::string resolved = ftStr;
+                auto mit = typeMap.find(ftStr);
                 if (mit != typeMap.end()) resolved = mit->second;
                 vfi.fieldTypes.push_back(resolveType(resolved));
                 vfi.fieldTypeNames.push_back(resolved);
@@ -686,7 +688,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
     // Use AST-based type inference to avoid emitting IR for arguments
     std::unordered_map<std::string, llvm::Type*> emptyParamMap;
     for (size_t i = 0; i < args.size(); ++i) {
-        const std::string &paramType = tmpl.params[i].type;
+        const std::string paramType = tmpl.params[i].type->toString();
         llvm::Type *argTy = inferExprType(*args[i], emptyParamMap);
 
         if (typeParamSet.count(paramType)) {
@@ -754,12 +756,13 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     // Resolve parameter types and return type using type_param_scope_
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : s.params)
-        paramTypes.push_back(resolveType(p.type));
-    llvm::Type *bodyRetTy = resolveType(s.return_type);
+        paramTypes.push_back(resolveType(p.type->toString()));
+    std::string sReturnType = s.return_type ? s.return_type->toString() : "";
+    llvm::Type *bodyRetTy = resolveType(sReturnType);
 
     // Substitute type params in return type name
-    std::string exposedReturnTypeName = s.return_type;
-    auto retTpit = type_param_scope_.find(s.return_type);
+    std::string exposedReturnTypeName = sReturnType;
+    auto retTpit = type_param_scope_.find(sReturnType);
     if (retTpit != type_param_scope_.end())
         exposedReturnTypeName = retTpit->second;
     llvm::Type *exposedRetTy = bodyRetTy;
@@ -773,8 +776,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     std::vector<std::string> paramTypeNames;
     for (auto &p : s.params) {
         // Substitute type params in param type names for FnTypeInfo
-        std::string resolvedName = p.type;
-        auto tpit = type_param_scope_.find(p.type);
+        std::string pTypeStr = p.type->toString();
+        std::string resolvedName = pTypeStr;
+        auto tpit = type_param_scope_.find(pTypeStr);
         if (tpit != type_param_scope_.end())
             resolvedName = tpit->second;
         paramTypeNames.push_back(resolvedName);
@@ -786,7 +790,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     {
         FnScope guard(*this);
         fn_ = func;
-        current_fn_return_type_ = s.return_type;
+        current_fn_return_type_ = sReturnType;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);

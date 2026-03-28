@@ -147,7 +147,7 @@ ExprPtr Parser::parseCast() {
         std::string targetType = lex_.next().value;
         auto cast = std::make_unique<CastExpr>();
         cast->value = std::move(expr);
-        cast->target_type = targetType;
+        cast->target_type = TypeNode::makeBasic(targetType);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(cast);
         node->loc = locFromToken(asTok);
@@ -594,7 +594,7 @@ ExprPtr Parser::parseLambdaExpr() {
                 parseError(paramName.line, "expected parameter name in lambda");
             lex_.next(); // consume param name
 
-            std::string paramType = "any";  // default when type is omitted
+            TypeNodePtr paramType = TypeNode::makeBasic("any");  // default when type is omitted
             if (lex_.peek().kind == TokenKind::Colon) {
                 lex_.next(); // consume ':'
                 paramType = parseTypeName();
@@ -603,7 +603,7 @@ ExprPtr Parser::parseLambdaExpr() {
                 parseError(paramName.line,
                     "default arguments are not supported in lambda expressions");
 
-            lambda->params.push_back({paramName.value, paramType, nullptr});
+            lambda->params.push_back({paramName.value, std::move(paramType), nullptr});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
@@ -620,7 +620,7 @@ ExprPtr Parser::parseLambdaExpr() {
         lex_.next(); // consume '->'
         lambda->return_type = parseTypeName();
     } else {
-        lambda->return_type = "";  // inferred at codegen time
+        lambda->return_type = nullptr;  // inferred at codegen time
     }
 
     if (lex_.peek().kind == TokenKind::FatArrow) {
@@ -766,7 +766,7 @@ ExprPtr Parser::parseTrailingBlockAsLambda() {
     // ':' is already consumed. Parse the block and wrap it in a LambdaExpr.
     auto body = parseBlock();
     auto lambda = std::make_unique<LambdaExpr>();
-    lambda->return_type = "";  // inferred at codegen time
+    lambda->return_type = nullptr;  // inferred at codegen time
     lambda->body = std::move(body);
     auto node = std::make_unique<ExprNode>();
     node->data = std::move(lambda);

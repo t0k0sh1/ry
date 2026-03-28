@@ -293,7 +293,7 @@ void CodeGen::emitPropertyItCall(CallStmt &s) {
     // Resolve parameter types
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : lam.params)
-        paramTypes.push_back(resolveType(p.type));
+        paramTypes.push_back(resolveType(p.type->toString()));
 
     llvm::Function *testFunc = emitTestFunction("__prop_test_", paramTypes, lam, "@property test");
 

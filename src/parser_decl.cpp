@@ -120,7 +120,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 parseError(paramName.line, "parameter name '" + paramName.value + "' must be snake_case");
             lex_.next(); // consume param name
 
-            std::string paramType = "any";  // default when type is omitted
+            TypeNodePtr paramType = TypeNode::makeBasic("any");  // default when type is omitted
             bool has_explicit_type = false;
             if (lex_.peek().kind == TokenKind::Colon) {
                 lex_.next(); // consume ':'
@@ -142,7 +142,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                     "(all parameters after a default parameter must also have defaults)");
             }
 
-            fnStmt->params.push_back({paramName.value, paramType, std::move(default_value)});
+            fnStmt->params.push_back({paramName.value, std::move(paramType), std::move(default_value)});
 
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
@@ -158,7 +158,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume '->'
         fnStmt->return_type = parseTypeName();
     } else {
-        fnStmt->return_type = "";
+        fnStmt->return_type = nullptr;
     }
 
     // Validate operator parameter count
@@ -178,11 +178,11 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     }
 
     // Validate return type for comparison/logical operators
-    if (fnStmt->is_operator && !fnStmt->return_type.empty()) {
-        if (isBoolConstrainedOperator(fnStmt->name) && fnStmt->return_type != "bool") {
+    if (fnStmt->is_operator && fnStmt->return_type) {
+        if (isBoolConstrainedOperator(fnStmt->name) && fnStmt->return_type->toString() != "bool") {
             parseError(fnTok.line,
                 "operator '" + operatorSymbol(fnStmt->name) + "' must return 'bool', but returns '" +
-                fnStmt->return_type + "'");
+                fnStmt->return_type->toString() + "'");
         }
     }
 
@@ -215,7 +215,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
 
     // Parse optional ensure clause with variable binding
     if (lex_.peek().kind == TokenKind::Ensure) {
-        if (fnStmt->return_type == "Unit")
+        if (fnStmt->return_type && fnStmt->return_type->toString() == "Unit")
             parseError("'ensure' requires a non-Unit return type");
         lex_.next(); // consume 'ensure'
         parseEnsureClause(*fnStmt);
@@ -334,11 +334,11 @@ StmtNode Parser::parseRecordStatement() {
             parseError("expected ':' after field name");
         lex_.next(); // consume ':'
 
-        std::string fieldType = parseTypeName();
+        auto fieldType = parseTypeName();
 
         if (seenFields.count(fieldName.value))
             parseError(fieldName.line, "duplicate field name '" + fieldName.value + "'");
-        ts.fields.push_back({fieldName.value, fieldType, std::move(fieldDirectives)});
+        ts.fields.push_back({fieldName.value, std::move(fieldType), std::move(fieldDirectives)});
         seenFields.insert(fieldName.value);
 
         if (lex_.peek().kind == TokenKind::Newline)
@@ -376,11 +376,11 @@ StmtNode Parser::parseTypeAliasStatement() {
         parseError("expected '=' in type alias declaration");
     lex_.next(); // consume '='
 
-    std::string targetType = parseTypeName();
+    auto targetType = parseTypeName();
 
     TypeAliasStmt s;
     s.name = nameTok.value;
-    s.target_type = targetType;
+    s.target_type = std::move(targetType);
     s.loc = locFromToken(typeTok);
     return s;
 }
@@ -550,72 +550,57 @@ StmtNode Parser::parseEnumStatement() {
     return es;
 }
 
-std::string Parser::parseTypeName() {
-    std::string name = parseTypeNameSingle();
+TypeNodePtr Parser::parseTypeName() {
+    auto node = parseTypeNameSingle();
+    if (lex_.peek().kind != TokenKind::Pipe)
+        return node;
+    // Union type
+    std::vector<TypeNodePtr> components;
+    components.push_back(std::move(node));
     while (lex_.peek().kind == TokenKind::Pipe) {
         lex_.next(); // consume '|'
-        name += " | " + parseTypeNameSingle();
+        components.push_back(parseTypeNameSingle());
     }
-    return name;
+    return TypeNode::makeUnion(std::move(components));
 }
 
-std::string Parser::parseTypeNameSingle() {
+TypeNodePtr Parser::parseTypeNameSingle() {
     // Fixed-length array type: [T; N]
     if (lex_.peek().kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
-        std::string elemType = parseTypeNameSingle();
+        auto elemType = parseTypeNameSingle();
         if (lex_.peek().kind != TokenKind::Semi)
             parseError("expected ';' in array type [T; N]");
         lex_.next(); // consume ';'
         if (lex_.peek().kind != TokenKind::Number)
             parseError("expected integer size in array type [T; N]");
-        std::string size = lex_.peek().value;
+        uint64_t size = std::stoull(lex_.peek().value);
         lex_.next(); // consume number
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']' in array type");
         lex_.next(); // consume ']'
-        return "[" + elemType + "; " + size + "]";
+        return TypeNode::makeArray(std::move(elemType), size);
     }
 
     // Tuple type: (int, float)
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('
-        std::string name = "(" + parseTypeName();
+        std::vector<TypeNodePtr> elements;
+        elements.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
-            name += ", " + parseTypeName();
+            elements.push_back(parseTypeName());
         }
         if (lex_.peek().kind != TokenKind::RParen)
             parseError("expected ')' in tuple type");
         lex_.next(); // consume ')'
-        name += ")";
-        return name;
+        return TypeNode::makeTuple(std::move(elements));
     }
 
     // fn(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
         lex_.next(); // consume 'fn'
-        std::string name = "fn";
-        if (lex_.peek().kind != TokenKind::LParen)
-            parseError("expected '(' after 'fn' in function type");
-        lex_.next(); // consume '('
-        name += "(";
-        if (lex_.peek().kind != TokenKind::RParen) {
-            name += parseTypeName();
-            while (lex_.peek().kind == TokenKind::Comma) {
-                lex_.next(); // consume ','
-                name += ", " + parseTypeName();
-            }
-        }
-        if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' in function type");
-        lex_.next(); // consume ')'
-        name += ")";
-        if (lex_.peek().kind == TokenKind::Arrow) {
-            lex_.next(); // consume '->'
-            name += " -> " + parseTypeName();
-        }
-        return name;
+        return parseFnType();
     }
 
     // Int literal type (42, -10) or range type (1..12, -10..10)
@@ -649,79 +634,87 @@ std::string Parser::parseTypeNameSingle() {
             }
             std::string endVal = (negEnd ? "-" : "") + endNum;
             lex_.next(); // consume end number
-            return name + ".." + endVal;
+            return TypeNode::makeRange(name, endVal);
         }
-        return name;
+        return TypeNode::makeBasic(name);
     }
 
     // String literal type: "N"
     if (lex_.peek().kind == TokenKind::String) {
         std::string name = "\"" + lex_.peek().value + "\"";
         lex_.next(); // consume string
-        return name;
+        return TypeNode::makeBasic(name);
     }
 
     Token t = lex_.peek();
     if (t.kind == TokenKind::ErrorKw) {
         lex_.next(); // consume 'Error'
-        std::string name = "Error";
         if (lex_.peek().kind == TokenKind::Question) {
             lex_.next(); // consume '?'
-            name += "?";
+            return TypeNode::makeOptional(TypeNode::makeBasic("Error"));
         }
-        return name;
+        return TypeNode::makeBasic("Error");
     }
     if (t.kind != TokenKind::Ident)
         parseError(t.line, "expected type name");
     std::string name = t.value;
     lex_.next(); // consume type name
 
-    // fn(int, int) -> int  function type (when fn comes as an ident, shouldn't happen normally)
+    // fn(int, int) -> int  function type (when fn comes as an ident)
     if (name == "fn" && lex_.peek().kind == TokenKind::LParen) {
-        lex_.next(); // consume '('
-        name += "(";
-        if (lex_.peek().kind != TokenKind::RParen) {
-            name += parseTypeName();
-            while (lex_.peek().kind == TokenKind::Comma) {
-                lex_.next(); // consume ','
-                name += ", " + parseTypeName();
-            }
-        }
-        if (lex_.peek().kind != TokenKind::RParen)
-            parseError("expected ')' in function type");
-        lex_.next(); // consume ')'
-        name += ")";
-        if (lex_.peek().kind == TokenKind::Arrow) {
-            lex_.next(); // consume '->'
-            name += " -> " + parseTypeName();
-        }
-        return name;
+        return parseFnType();
     }
 
+    TypeNodePtr result;
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
-        std::string inner = parseTypeName();
+        std::vector<TypeNodePtr> typeArgs;
+        typeArgs.push_back(parseTypeName());
         if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
             // Two-parameter generic: Map<K, V> or Result<V, E>
             lex_.next(); // consume ','
-            std::string secondTy = parseTypeName();
+            typeArgs.push_back(parseTypeName());
             if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' in " + name + " type");
-            name += "<" + inner + ", " + secondTy + ">";
         } else {
             if (!lex_.consumeGreaterInTypeContext())
                 parseError("expected '>' after generic type parameter");
-            name += "<" + inner + ">";
         }
+        result = TypeNode::makeGeneric(name, std::move(typeArgs));
+    } else {
+        result = TypeNode::makeBasic(name);
     }
 
     // Optional type suffix: int? => wraps in Option<T>
     if (lex_.peek().kind == TokenKind::Question) {
         lex_.next(); // consume '?'
-        name = name + "?";
+        result = TypeNode::makeOptional(std::move(result));
     }
 
-    return name;
+    return result;
+}
+
+TypeNodePtr Parser::parseFnType() {
+    if (lex_.peek().kind != TokenKind::LParen)
+        parseError("expected '(' after 'fn' in function type");
+    lex_.next(); // consume '('
+    std::vector<TypeNodePtr> paramTypes;
+    if (lex_.peek().kind != TokenKind::RParen) {
+        paramTypes.push_back(parseTypeName());
+        while (lex_.peek().kind == TokenKind::Comma) {
+            lex_.next(); // consume ','
+            paramTypes.push_back(parseTypeName());
+        }
+    }
+    if (lex_.peek().kind != TokenKind::RParen)
+        parseError("expected ')' in function type");
+    lex_.next(); // consume ')'
+    TypeNodePtr retType;
+    if (lex_.peek().kind == TokenKind::Arrow) {
+        lex_.next(); // consume '->'
+        retType = parseTypeName();
+    }
+    return TypeNode::makeFn(std::move(paramTypes), std::move(retType));
 }
 
 Pattern Parser::parsePattern() {

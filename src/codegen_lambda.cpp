@@ -112,19 +112,20 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;
     for (auto &p : e->params)
-        paramTypes.push_back(resolveType(p.type));
+        paramTypes.push_back(resolveType(p.type->toString()));
     std::vector<llvm::Type*> allParamTypes = paramTypes;
     for (auto *t : capturedTypes)
         allParamTypes.push_back(t);
 
     llvm::Type *retTy;
-    if (e->return_type == "any") {
+    std::string retTypeStr = e->return_type ? e->return_type->toString() : "";
+    if (retTypeStr == "any") {
         retTy = anyTy_;
-    } else if (e->return_type.empty()) {
+    } else if (!e->return_type) {
         // Infer return type when omitted
         std::unordered_map<std::string, llvm::Type*> paramTypeMap;
         for (auto &p : e->params)
-            paramTypeMap[p.name] = resolveType(p.type);
+            paramTypeMap[p.name] = resolveType(p.type->toString());
 
         if (e->expr_body) {
             retTy = inferExprType(*e->expr_body, paramTypeMap);
@@ -132,15 +133,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             retTy = inferReturnType(e->body, paramTypeMap);
         }
     } else {
-        retTy = resolveType(e->return_type);
+        retTy = resolveType(retTypeStr);
     }
 
     // Check that block-bodied lambdas with explicit non-any/Unit return type
     // return on all paths
-    if (!e->expr_body && !e->return_type.empty()
+    if (!e->expr_body && e->return_type
         && !isAnyType(retTy) && !retTy->isVoidTy()) {
         if (!allPathsReturn(e->body))
-            codegenError("lambda with return type '" + e->return_type +
+            codegenError("lambda with return type '" + retTypeStr +
                          "' does not return a value on all code paths");
     }
 
@@ -153,7 +154,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     {
         FnScope guard(*this);
         fn_ = func;
-        current_fn_return_type_ = e->return_type;
+        current_fn_return_type_ = retTypeStr;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
@@ -169,7 +170,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[e->params[idx].name] = alloca;
                 // Track fn type info for fn-typed parameters
-                const std::string &ptype = e->params[idx].type;
+                const std::string ptype = e->params[idx].type->toString();
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
@@ -224,7 +225,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     FnTypeInfo info;
     info.paramTypes = paramTypes;  // only the user-visible params
     for (auto &p : e->params)
-        info.paramTypeNames.push_back(p.type);
+        info.paramTypeNames.push_back(p.type->toString());
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;

@@ -57,6 +57,7 @@ add_library(ry_lib STATIC
     src/lexer.cpp
     src/parser.cpp
     src/parser_expr.cpp
+    src/type_node.cpp
     src/parser_decl.cpp
     src/codegen.cpp
     src/codegen_type.cpp

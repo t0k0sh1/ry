@@ -8,7 +8,7 @@ void Formatter::formatAssign(const AssignStmt &s) {
 
     emit(s.name);
     if (s.type_annotation) {
-        emit(": " + *s.type_annotation);
+        emit(": " + s.type_annotation->toString());
     }
     // @native @const declarations have no value
     if (!s.value) {
@@ -29,7 +29,7 @@ void Formatter::formatAssign(const AssignStmt &s) {
         const auto &lambda = **lambda_ptr;
         if (!lambda.expr_body && !lambda.body.empty()) {
             emit("fn(" + formatParams(lambda.params) + ")");
-            if (!lambda.return_type.empty()) emit(" -> " + lambda.return_type);
+            if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
             emitNewline();
@@ -69,7 +69,7 @@ void Formatter::formatCall(const CallStmt &s) {
         if (has_trailing_lambda && i == lambda_idx) {
             const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.args[i]->data);
             emit("fn(" + formatParams(lambda.params) + ")");
-            if (!lambda.return_type.empty()) emit(" -> " + lambda.return_type);
+            if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
             emitNewline();
@@ -85,7 +85,7 @@ void Formatter::formatCall(const CallStmt &s) {
             if (lp && !(*lp)->expr_body && !(*lp)->body.empty()) {
                 const auto &lambda = **lp;
                 emit("fn(" + formatParams(lambda.params) + ")");
-                if (!lambda.return_type.empty()) emit(" -> " + lambda.return_type);
+                if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
                 emit(":");
                 emitNewline();
                 last_emitted_line_ = s.loc.line;
@@ -141,7 +141,7 @@ void Formatter::formatRecord(const RecordStmt &s) {
     for (const auto &field : s.fields) {
         formatDirectives(field.directives);
         emitIndent();
-        emit(field.name + ": " + field.type);
+        emit(field.name + ": " + field.type->toString());
         emitNewline();
     }
     if (!s.invariants.empty()) {
@@ -181,7 +181,7 @@ void Formatter::formatEnum(const EnumStmt &s) {
             emit("(");
             for (size_t i = 0; i < variant.field_types.size(); ++i) {
                 if (i > 0) emit(", ");
-                emit(variant.field_types[i]);
+                emit(variant.field_types[i]->toString());
             }
             emit(")");
         }
@@ -191,7 +191,7 @@ void Formatter::formatEnum(const EnumStmt &s) {
 }
 
 void Formatter::formatTypeAlias(const TypeAliasStmt &s) {
-    emit("type " + s.name + " = " + s.target_type);
+    emit("type " + s.name + " = " + s.target_type->toString());
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;
@@ -255,8 +255,8 @@ void Formatter::formatFn(const FnStmt &s) {
         emit(">");
     }
     emit("(" + formatParams(s.params) + ")");
-    if (!s.return_type.empty()) {
-        emit(" -> " + s.return_type);
+    if (s.return_type) {
+        emit(" -> " + s.return_type->toString());
     }
 
     // @native functions without body: no colon, no block
