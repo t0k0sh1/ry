@@ -631,7 +631,14 @@ extern "C" const char *__ry_http_reason_phrase(int64_t status) {
     }
 }
 
-extern "C" void __ry_http_send_response(void *stream, void *response) {
+extern "C" int64_t __ry_http_should_keep_alive(void *request) {
+    const char *conn = __ry_http_header(request, "Connection");
+    if (!conn) return 1; // HTTP/1.1 default: keep-alive
+    if (strcasecmp(conn, "close") == 0) return 0;
+    return 1;
+}
+
+extern "C" void __ry_http_send_response(void *stream, void *response, int64_t keep_alive) {
     auto *handle = (TcpStreamHandle *)stream;
     auto *resp = (HttpResponseHandle *)response;
 
@@ -652,6 +659,7 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
     out += "\r\n";
 
     bool has_content_length = false;
+    bool has_connection = false;
     bool is_chunked = has_chunked_encoding(
         resp->header_keys, resp->header_values, resp->header_count);
     for (int64_t i = 0; i < resp->header_count; i++) {
@@ -659,9 +667,18 @@ extern "C" void __ry_http_send_response(void *stream, void *response) {
             has_content_length = true;
             if (is_chunked) continue; // suppress Content-Length when using chunked
         }
+        if (strcasecmp(resp->header_keys[i], "Connection") == 0) {
+            has_connection = true;
+        }
         out += resp->header_keys[i];
         out += ": ";
         out += resp->header_values[i];
+        out += "\r\n";
+    }
+
+    if (!has_connection) {
+        out += "Connection: ";
+        out += (keep_alive ? "keep-alive" : "close");
         out += "\r\n";
     }
 

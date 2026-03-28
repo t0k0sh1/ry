@@ -47,6 +47,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `ry test --watch` for auto-rerunning tests on file change (#163)
 - Parallel test execution with `-p` / `--parallel` flag (#147)
 - `--help` / `-h` option support for commands and subcommands (#337)
+- HTTP keep-alive support for `http_listen` server (#79)
 - Stdin execution via pipe and here-document (#250)
 - `fail()` helper in test framework (#177)
 - HTTP automatic redirect following for client requests (#148)

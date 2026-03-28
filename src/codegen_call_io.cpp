@@ -540,42 +540,40 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         // Retry accept on null (e.g., transient errors) instead of exiting the loop
         builder_.CreateCondBr(connNull, loopBB, loopBodyBB);
 
-        // Loop body: read request, call handler, send response, cleanup
+        // Keep-alive loop: same connection until Connection: close or timeout
         builder_.SetInsertPoint(loopBodyBB);
 
-        // __ry_http_read_request(conn) -> req
         auto readReqFnTy = fnTy_ptr_to_ptr_;
         auto readReqFn = mod_->getOrInsertFunction("__ry_http_read_request", readReqFnTy);
         llvm::Value *req = builder_.CreateCall(readReqFn, {conn}, "http_req");
         resource_sets_[RK_HttpRequest].insert(req);
 
-        // Check if req is null (malformed request)
         llvm::Value *reqNull = builder_.CreateICmpEQ(req,
             llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "req_null");
         llvm::BasicBlock *reqOkBB = llvm::BasicBlock::Create(*ctx_, "http.req_ok", fn_);
         llvm::BasicBlock *reqBadBB = llvm::BasicBlock::Create(*ctx_, "http.req_bad", fn_);
         builder_.CreateCondBr(reqNull, reqBadBB, reqOkBB);
 
-        // Bad request: close conn and continue loop
         builder_.SetInsertPoint(reqBadBB);
         builder_.CreateCall(closeFn, {conn});
         builder_.CreateBr(loopBB);
 
         builder_.SetInsertPoint(reqOkBB);
 
-        // Call handler(req) -> resp
+        // Must check before handler call — req is freed afterward
+        auto keepAliveFn = getRuntimeFn("__ry_http_should_keep_alive", i64Ty_, {ptrTy_});
+        llvm::Value *keepAlive = builder_.CreateCall(keepAliveFn, {req}, "keep_alive");
+
         llvm::Value *resp = emitLambdaCall(handler, handlerInfo, {req}, "http_resp_val");
         resource_sets_[RK_HttpResponse].insert(resp);
 
-        // __ry_http_send_response(conn, resp)
-        auto sendRespFn = getRuntimeFn("__ry_http_send_response", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_});
-        builder_.CreateCall(sendRespFn, {conn, resp});
+        auto sendRespFn = getRuntimeFn("__ry_http_send_response", llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_, i64Ty_});
+        builder_.CreateCall(sendRespFn, {conn, resp, keepAlive});
 
-        // Cleanup
         builder_.CreateCall(freeReqFn, {req});
         builder_.CreateCall(freeRespFn, {resp});
-        builder_.CreateCall(closeFn, {conn});
 
+        // max_requests counts individual requests, not connections
         if (hasMaxRequests) {
             llvm::Value *oldCount = builder_.CreateLoad(i64Ty_, counterAlloca, "old_count");
             llvm::Value *newCount = builder_.CreateAdd(oldCount,
@@ -584,14 +582,25 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
             llvm::Value *limitReached = builder_.CreateICmpSGE(newCount, maxReqs, "limit_reached");
             llvm::BasicBlock *shutdownBB = llvm::BasicBlock::Create(*ctx_, "http.shutdown", fn_);
-            builder_.CreateCondBr(limitReached, shutdownBB, loopBB);
+            llvm::BasicBlock *kaCheckBB = llvm::BasicBlock::Create(*ctx_, "http.ka_check", fn_);
+            builder_.CreateCondBr(limitReached, shutdownBB, kaCheckBB);
 
             builder_.SetInsertPoint(shutdownBB);
+            builder_.CreateCall(closeFn, {conn});
             builder_.CreateCall(listenerCloseFn, {listener});
             builder_.CreateBr(loopEndBB);
-        } else {
-            builder_.CreateBr(loopBB);
+
+            builder_.SetInsertPoint(kaCheckBB);
         }
+
+        llvm::Value *isKeepAlive = builder_.CreateICmpNE(keepAlive,
+            llvm::ConstantInt::get(i64Ty_, 0), "is_keep_alive");
+        llvm::BasicBlock *closeBB = llvm::BasicBlock::Create(*ctx_, "http.close_conn", fn_);
+        builder_.CreateCondBr(isKeepAlive, loopBodyBB, closeBB);
+
+        builder_.SetInsertPoint(closeBB);
+        builder_.CreateCall(closeFn, {conn});
+        builder_.CreateBr(loopBB);
 
         builder_.SetInsertPoint(loopEndBB);
 
