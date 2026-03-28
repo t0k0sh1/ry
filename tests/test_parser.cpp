@@ -1684,3 +1684,39 @@ TEST(ParserTest, ModerateNestingSucceeds) {
     std::string moderate = "x = " + std::string(50, '(') + "1" + std::string(50, ')');
     EXPECT_NO_THROW(parseStr(moderate));
 }
+
+// ===== Default arguments =====
+
+TEST(ParserTest, DefaultArgBasic) {
+    Program prog = parseStr("fn f(x: int, y: int = 10) -> int:\n    return x + y");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 2u);
+    EXPECT_EQ(fn.params[0].name, "x");
+    EXPECT_FALSE(fn.params[0].default_value);
+    EXPECT_EQ(fn.params[1].name, "y");
+    EXPECT_TRUE(fn.params[1].default_value);
+}
+
+TEST(ParserTest, DefaultArgMultiple) {
+    Program prog = parseStr("fn f(a: int, b: int = 1, c: int = 2) -> int:\n    return a");
+    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(fn.params.size(), 3u);
+    EXPECT_FALSE(fn.params[0].default_value);
+    EXPECT_TRUE(fn.params[1].default_value);
+    EXPECT_TRUE(fn.params[2].default_value);
+}
+
+TEST(ParserTest, DefaultArgNonTrailingError) {
+    // default arg followed by non-default arg is a parse error
+    EXPECT_THROW(parseStr("fn f(a: int = 0, b: int) -> int:\n    return a"), std::runtime_error);
+}
+
+TEST(ParserTest, DefaultArgNoTypeError) {
+    // default arg without explicit type annotation is a parse error
+    EXPECT_THROW(parseStr("fn f(x = 10) -> int:\n    return x"), std::runtime_error);
+}
+
+TEST(ParserTest, DefaultArgLambdaError) {
+    // default args in lambda are not supported
+    EXPECT_THROW(parseStr("f = fn(x: int = 10) => x"), std::runtime_error);
+}

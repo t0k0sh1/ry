@@ -56,6 +56,8 @@ private:
         std::vector<llvm::Type*> paramTypes;
         std::vector<std::string> paramTypeNames;
         std::string returnTypeName;
+        size_t minArity = 0;
+        std::vector<ExprPtr> defaultValues;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;

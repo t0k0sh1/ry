@@ -162,7 +162,7 @@ struct AssignStmt { std::string name; std::optional<std::string> type_annotation
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
-struct FnParam { std::string name; std::string type; };
+struct FnParam { std::string name; std::string type; ExprPtr default_value; };
 
 struct ImportStmt {
     std::string module_path;              // "utils/math" (resolved to dir or .ry file)

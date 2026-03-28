@@ -98,6 +98,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
+        for (auto &p : s->params) {
+            if (p.default_value)
+                codegenError("default arguments are not yet supported in generic functions");
+        }
         GenericFnTemplate tmpl;
         std::string name = s->name;
         tmpl.fnStmt = std::move(s);
@@ -177,7 +181,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::string exposedReturnTypeName = s->is_async ? "Task<" + s->return_type + ">" : s->return_type;
     llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
-    // Check for duplicate signatures
+    // Compute minArity and collect default values
+    size_t newMinArity = 0;
+    std::vector<ExprPtr> defaults;
+    for (size_t i = 0; i < s->params.size(); ++i) {
+        if (!s->params[i].default_value) newMinArity = i + 1;
+        defaults.push_back(std::move(s->params[i].default_value));
+    }
+    size_t newMaxArity = paramTypes.size();
+
+    // Check for duplicate/conflicting signatures
     auto &overloads = functions_[s->name];
     for (auto &entry : overloads) {
         if (entry.paramTypes == paramTypes) {
@@ -187,6 +200,18 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             else
                 codegenError("function '" + s->name +
                     "': overloads with same parameter types but different return types");
+        }
+        // Check arity range overlap for default argument conflicts
+        size_t overlapMin = std::max(newMinArity, entry.minArity);
+        size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
+        for (size_t n = overlapMin; n <= overlapMax; ++n) {
+            bool typesMatch = true;
+            for (size_t i = 0; i < n; ++i) {
+                if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
+            }
+            if (typesMatch)
+                codegenError("function '" + s->name +
+                    "' with default arguments creates ambiguous overload");
         }
     }
 
@@ -202,7 +227,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     std::vector<std::string> paramTypeNames;
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type);
-    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
+    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName,
+                         newMinArity, std::move(defaults)});
 
     if (hasDirective(s->directives, "deprecated"))
         deprecated_functions_.insert(s->name);

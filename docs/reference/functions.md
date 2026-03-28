@@ -158,6 +158,42 @@ double(5)         # OK — int is implicitly widened to float, returns 10.0
 
 ---
 
+## Default Arguments
+
+Parameters can have default values, allowing callers to omit trailing arguments.
+
+### Syntax
+
+```python
+fn connect(host: str, port: int = 8080, timeout: int = 30):
+    # ...
+
+connect("localhost")                    # port=8080, timeout=30
+connect("localhost", 3000)              # port=3000, timeout=30
+connect("localhost", 3000, 10000)       # port=3000, timeout=10000
+```
+
+### Rules
+
+- Default parameters must come after all non-default parameters.
+- A parameter with a default value **must** have an explicit type annotation (e.g., `x: int = 10`; `x = 10` is a compile error).
+- Default values must be compile-time constant expressions (literals and `@const` variables).
+- If a function with default arguments creates an ambiguous overload (overlapping arity with matching types), the compiler reports an error.
+
+```python
+# Error: ambiguous overload
+fn calc(x: int, y: int = 0) -> int:
+    return x + y
+fn calc(x: int) -> int:      # conflicts with calc(int) from above
+    return x * 2
+```
+
+### Limitations
+
+- Default arguments are not supported in **generic functions** or **lambda expressions**.
+
+---
+
 ## Unit Type Functions
 
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.

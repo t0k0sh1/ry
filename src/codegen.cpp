@@ -411,6 +411,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         int wideningMatches = 0;
         int unionMatches = 0;
         int anyMatches = 0;
+        int defaultsUsed = 0;
     };
 
     auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
@@ -422,16 +423,19 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             return lhs.unionMatches > rhs.unionMatches;
         if (lhs.anyMatches != rhs.anyMatches)
             return lhs.anyMatches < rhs.anyMatches;
+        if (lhs.defaultsUsed != rhs.defaultsUsed)
+            return lhs.defaultsUsed < rhs.defaultsUsed;
         return false;
     };
 
     // Filter and rank candidates
     std::vector<RankedCandidate> candidates;
     for (auto &entry : overloads) {
-        if (entry.paramTypes.size() != args.size())
+        if (args.size() < entry.minArity || args.size() > entry.paramTypes.size())
             continue;
         bool match = true;
-        RankedCandidate candidate{&entry, 0, 0, 0, 0};
+        RankedCandidate candidate{&entry, 0, 0, 0, 0,
+                                  static_cast<int>(entry.paramTypes.size() - args.size())};
         for (size_t i = 0; i < args.size(); ++i) {
             std::string resolvedParamTypeName =
                 i < entry.paramTypeNames.size() ? resolveTypeAlias(entry.paramTypeNames[i]) : "";
@@ -515,6 +519,35 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             outArgVals.push_back(wrapInUnion(emittedArgs[i], resolvedParamTypeName));
         } else {
             outArgVals.push_back(emittedArgs[i]);
+        }
+    }
+
+    // Fill in default values for omitted parameters
+    for (size_t i = args.size(); i < chosen->paramTypes.size(); ++i) {
+        bool isNoneLit = std::holds_alternative<NoneExpr>(chosen->defaultValues[i]->data) ||
+                         (std::holds_alternative<VariableExpr>(chosen->defaultValues[i]->data) &&
+                          std::get<VariableExpr>(chosen->defaultValues[i]->data).name == "None");
+        if (isNoneLit) {
+            outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
+            continue;
+        }
+        llvm::Value *defVal = emitExpr(*chosen->defaultValues[i]);
+        std::string resolvedParamTypeName =
+            i < chosen->paramTypeNames.size() ? resolveTypeAlias(chosen->paramTypeNames[i]) : "";
+        if (defVal->getType() != chosen->paramTypes[i] &&
+            isWideningConversion(defVal, chosen->paramTypes[i], resolvedParamTypeName)) {
+            outArgVals.push_back(emitWideningConversion(defVal, chosen->paramTypes[i]));
+        } else if (defVal->getType() != chosen->paramTypes[i] &&
+                   isAnyType(chosen->paramTypes[i])) {
+            outArgVals.push_back(wrapInAny(defVal));
+        } else if (isAnyType(defVal->getType()) &&
+                   defVal->getType() != chosen->paramTypes[i]) {
+            outArgVals.push_back(unwrapFromAny(defVal, chosen->paramTypes[i]));
+        } else if (defVal->getType() != chosen->paramTypes[i] &&
+                   isUnionType(resolvedParamTypeName)) {
+            outArgVals.push_back(wrapInUnion(defVal, resolvedParamTypeName));
+        } else {
+            outArgVals.push_back(defVal);
         }
     }
 
