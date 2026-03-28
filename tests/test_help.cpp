@@ -38,7 +38,7 @@ static RunResult runRy(std::initializer_list<const char *> args) {
         for (auto a : args) argv.push_back(a);
         argv.push_back(nullptr);
 
-        execv("./build/ry", const_cast<char *const *>(argv.data()));
+        execv(RY_BINARY_PATH, const_cast<char *const *>(argv.data()));
         _exit(127);
     }
 
@@ -177,7 +177,7 @@ TEST(HelpOption, StdinPipeStillWorks) {
         close(pipeIn[0]);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl("./build/ry", "ry", nullptr);
+        execl(RY_BINARY_PATH, "ry", nullptr);
         _exit(127);
     }
 

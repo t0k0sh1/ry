@@ -207,6 +207,16 @@ cmake --preset default && cmake --build build && ./build/ry_tests && ./build/ry 
 
 テストが失敗した場合は、原因を修正してから作業完了とすること。
 
+### 3.5. ASan 検証
+
+ASan（AddressSanitizer）を有効にしたビルドでテストを実行し、メモリ安全性を確認する。
+
+```bash
+cmake --preset asan && cmake --build build-asan && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry_tests && ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
+```
+
+ASan エラーが検出された場合は、原因を修正してから作業完了とすること。ASan エラーを残したままコミットしてはならない。
+
 ### 4. ラベル整理
 
 **セルフ検証完了時点ではラベルを変更しない。** ラベルの切り替えは PR マージ時に行う:

@@ -40,3 +40,40 @@ jobs:
           cmake --build build
       - name: Test (C++)
         run: ./build/ry_tests
+
+  asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache LLVM 21
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          path: /usr/lib/llvm-21
+          key: llvm-21-ubuntu-${{ runner.os }}
+      - name: Install LLVM 21
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y libllvm21 llvm-21-dev
+      - name: Install dependencies
+        run: sudo apt-get install -y libssl-dev ninja-build libgtest-dev libgmock-dev
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-asan-${{ github.ref }}
+          restore-keys: |
+            ci-asan-
+      - name: Build (ASan)
+        run: |
+          cmake -B build-asan -G Ninja \
+            -DLLVM_DIR=/usr/lib/llvm-21/lib/cmake/llvm \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_ASAN=ON
+          cmake --build build-asan
+      - name: Test (C++ / ASan)
+        env:
+          ASAN_OPTIONS: detect_container_overflow=0:detect_leaks=0:halt_on_error=1
+        run: ./build-asan/ry_tests

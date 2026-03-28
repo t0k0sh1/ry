@@ -24,6 +24,12 @@ find_package(OpenSSL 3.0 REQUIRED)
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -219,7 +225,16 @@ else()
     target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
 
+target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 
 include(GoogleTest)
-gtest_discover_tests(ry_tests)
+if(ENABLE_ASAN)
+    # ASan 有効時は gtest_discover_tests を使わない（ビルド時のバイナリ実行で
+    # LLVM の container-overflow false positive が発生するため）
+    add_test(NAME ry_tests COMMAND ry_tests)
+    set_tests_properties(ry_tests PROPERTIES
+        ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+else()
+    gtest_discover_tests(ry_tests)
+endif()
