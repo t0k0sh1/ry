@@ -293,6 +293,11 @@ private:
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
 
+    // Implicit widening conversion helpers
+    bool isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
+                              const std::string &paramTypeName) const;
+    llvm::Value *emitWideningConversion(llvm::Value *argVal, llvm::Type *paramTy);
+
     llvm::Value *emitExpr(const ExprNode &node);
     llvm::Value *emitExprVariant(const NumberExpr &e);
     llvm::Value *emitExprVariant(const FloatExpr &e);
