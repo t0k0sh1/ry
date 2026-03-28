@@ -62,6 +62,7 @@ private:
     ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
     Pattern parsePattern();
+    TypeParam parseOneTypeParam();
     TypeNodePtr parseTypeName();
     TypeNodePtr parseTypeNameSingle();
     TypeNodePtr parseFnType();

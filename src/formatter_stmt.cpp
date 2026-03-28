@@ -162,16 +162,21 @@ void Formatter::formatRecord(const RecordStmt &s) {
     dedent();
 }
 
+void Formatter::emitTypeParams(const std::vector<TypeParam> &params) {
+    if (params.empty()) return;
+    emit("<");
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0) emit(", ");
+        emit(params[i].name);
+        if (params[i].bound)
+            emit(": " + *params[i].bound);
+    }
+    emit(">");
+}
+
 void Formatter::formatEnum(const EnumStmt &s) {
     emit("enum " + s.name);
-    if (!s.type_params.empty()) {
-        emit("<");
-        for (size_t i = 0; i < s.type_params.size(); ++i) {
-            if (i > 0) emit(", ");
-            emit(s.type_params[i]);
-        }
-        emit(">");
-    }
+    emitTypeParams(s.type_params);
     emit(":");
     emitInlineComment(s.loc.line);
     emitNewline();
@@ -249,14 +254,7 @@ void Formatter::formatFn(const FnStmt &s) {
 
     if (s.is_async) emit("async ");
     emit("fn " + s.name);
-    if (!s.type_params.empty()) {
-        emit("<");
-        for (size_t i = 0; i < s.type_params.size(); ++i) {
-            if (i > 0) emit(", ");
-            emit(s.type_params[i]);
-        }
-        emit(">");
-    }
+    emitTypeParams(s.type_params);
     emit("(" + formatParams(s.params) + ")");
     if (s.return_type) {
         emit(" -> " + s.return_type->toString());

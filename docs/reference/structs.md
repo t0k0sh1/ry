@@ -192,6 +192,7 @@ handle(derr)  # OK — coerced to Error (grandparent)
 | Auto `==` / `to_str` | Includes all inherited fields |
 | Invariant inheritance | Parent `invariant:` clauses are checked when constructing or modifying child records |
 | Subtype coercion | Applies to: function args, return, `Err()`, field assignment, `?` operator |
+| Generic bounds | `<T: RecordName>` constrains type parameter to subtypes of the record |
 | `@const` | Applies to all fields including inherited |
 
 ---

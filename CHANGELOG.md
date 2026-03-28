@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Auto-slice Error subtypes in `Err()` for Result return type coercion (#354)
 - Subtype coercion for field assignment (#359)
 - Subtype coercion for `?` error propagation operator (#360)
+- Generic type constraints with record bounds (`<T: RecordName>`) (#297)
 - `@inline` directive for function inlining hints (#299)
 - Explicit value assignment for simple enum variants (#309)
 - Named fields in ADT enum variants (#308)

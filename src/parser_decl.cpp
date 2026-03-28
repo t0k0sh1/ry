@@ -3,6 +3,24 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
+
+TypeParam Parser::parseOneTypeParam() {
+    Token tp = lex_.peek();
+    if (tp.kind != TokenKind::Ident)
+        parseError(tp.line, "expected type parameter name");
+    lex_.next();
+    TypeParam param;
+    param.name = tp.value;
+    if (lex_.peek().kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+        Token bound = lex_.peek();
+        if (bound.kind != TokenKind::Ident)
+            parseError(bound.line, "expected type constraint name after ':'");
+        lex_.next();
+        param.bound = bound.value;
+    }
+    return param;
+}
 #include <unordered_set>
 
 static bool isSnakeCase(const std::string &name) {
@@ -103,15 +121,11 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
-        // Parse optional type parameters: fn name<T, U>(...)
+        // Parse optional type parameters: fn name<T, U>(...) or fn name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
             for (;;) {
-                Token tp = lex_.peek();
-                if (tp.kind != TokenKind::Ident)
-                    parseError(tp.line, "expected type parameter name");
-                lex_.next();
-                fnStmt->type_params.push_back(tp.value);
+                fnStmt->type_params.push_back(parseOneTypeParam());
                 if (lex_.peek().kind != TokenKind::Comma)
                     break;
                 lex_.next(); // consume ','
@@ -435,16 +449,12 @@ StmtNode Parser::parseEnumStatement() {
     if (!isPascalCase(nameTok.value))
         parseError(nameTok.line, "enum name '" + nameTok.value + "' must be PascalCase");
 
-    // Optional type parameters: enum Name<T, U>:
-    std::vector<std::string> typeParams;
+    // Optional type parameters: enum Name<T, U>: or enum Name<T: Bound>:
+    std::vector<TypeParam> typeParams;
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         for (;;) {
-            Token tp = lex_.peek();
-            if (tp.kind != TokenKind::Ident)
-                parseError(tp.line, "expected type parameter name");
-            lex_.next();
-            typeParams.push_back(tp.value);
+            typeParams.push_back(parseOneTypeParam());
             if (lex_.peek().kind != TokenKind::Comma)
                 break;
             lex_.next(); // consume ','

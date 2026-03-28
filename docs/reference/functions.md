@@ -370,9 +370,35 @@ result = pick_first(1, "x")       # T = int, U = str, result = 1
 result = pick_first("hello", 42)  # T = str, U = int, result = "hello"
 ```
 
+### Type Constraints (Bounds)
+
+Type parameters can be constrained with record types using `: RecordName` syntax. The concrete type must be the bound type itself or a subtype of it.
+
+```python
+record Animal:
+    name: str
+    legs: int
+
+record Dog < Animal:
+    breed: str
+
+fn get_name<T: Animal>(a: T) -> str:
+    return a.name
+
+get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
+get_name(Animal("Cat", 4))      # OK — exact type match
+```
+
+Bounded and unbounded type parameters can be mixed:
+
+```python
+fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+    return a.name
+```
+
 ### How It Works
 
-Generic functions use **monomorphization**: a specialized version of the function is generated for each unique combination of type arguments. The same instantiation is cached and reused across multiple calls.
+Generic functions use **monomorphization**: a specialized version of the function is generated for each unique combination of type arguments. The same instantiation is cached and reused across multiple calls. When type constraints are present, they are validated at instantiation time.
 
 ---
 

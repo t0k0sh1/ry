@@ -107,6 +107,11 @@ inline bool isSubscriptOperator(const std::string &name) {
     return name == "operator[]" || name == "operator[]=";
 }
 
+struct TypeParam {
+    std::string name;
+    std::optional<std::string> bound;    // record name constraint; validated at instantiation
+};
+
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
@@ -240,7 +245,7 @@ struct EnumVariant {
 
 struct EnumStmt {
     std::string name;
-    std::vector<std::string> type_params;  // for generics
+    std::vector<TypeParam> type_params;  // for generics: <T, U> or <T: Bound>
     std::vector<EnumVariant> variants;
     SourceLocation loc;
 };
@@ -347,7 +352,7 @@ struct AwaitStmt {
 
 struct FnStmt {
     std::string name;
-    std::vector<std::string> type_params;  // for generics: <T, U>
+    std::vector<TypeParam> type_params;  // for generics: <T, U> or <T: Bound>
     std::vector<FnParam> params;
     TypeNodePtr return_type;
     std::vector<StmtNode> body;
