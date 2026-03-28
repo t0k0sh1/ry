@@ -486,3 +486,41 @@ v2 = Vec2(3.0, 4.0)
 v3 = v1 + v2    # Vec2(4.0, 6.0)
 v4 = -v1        # Vec2(-1.0, -2.0)
 ```
+
+---
+
+## Checked/Saturating Arithmetic
+
+Built-in functions for explicit overflow control on low-level integer types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`). Both arguments must be the same type.
+
+| Function | Returns | Behavior |
+|----------|---------|----------|
+| `checked_add(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `checked_sub(a, b)` | `Result<T, Error>` | Returns `Err` on underflow |
+| `checked_mul(a, b)` | `Result<T, Error>` | Returns `Err` on overflow |
+| `saturating_add(a, b)` | `T` | Clamps to type min/max on overflow |
+| `saturating_sub(a, b)` | `T` | Clamps to type min/max on underflow |
+| `saturating_mul(a, b)` | `T` | Clamps to type min/max on overflow |
+| `wrapping_add(a, b)` | `T` | Explicit wrapping (same as `+`) |
+| `wrapping_sub(a, b)` | `T` | Explicit wrapping (same as `-`) |
+| `wrapping_mul(a, b)` | `T` | Explicit wrapping (same as `*`) |
+
+```python
+# Checked: returns Result, use match or ? to handle
+r = checked_add(2147483647i32, 1i32)
+match r:
+  case Ok(v):
+    print(v)
+  case Err(e):
+    print("overflow!")   # prints "overflow!"
+
+# Saturating: clamps to bounds
+v = saturating_add(2147483647i32, 100i32)
+print(v as int)   # 2147483647
+
+# Wrapping: self-documenting wrapping behavior
+v = wrapping_add(2147483647i32, 1i32)
+print(v as int)   # -2147483648
+```
+
+> **Note**: These functions do not support floating-point types (`f32`) or the high-level `int` type. The default `+`, `-`, `*` operators on low-level integers use wrapping behavior (two's complement for signed, modular for unsigned).

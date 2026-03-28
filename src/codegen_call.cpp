@@ -705,6 +705,27 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "has_key");
     }
 
+    // checked/saturating/wrapping arithmetic dispatch
+    // Common pattern: emit args, propagate suffix metadata (#311), call handler
+    auto dispatchArith = [&](auto emitFn) -> llvm::Value* {
+        requireArgs(e, 2);
+        llvm::Value *lhs = emitExpr(*e.args[0]);
+        llvm::Value *rhs = emitExpr(*e.args[1]);
+        std::string hint = getExprLowLevelSuffix(*e.args[0]);
+        if (hint.empty()) hint = getExprLowLevelSuffix(*e.args[1]);
+        if (!hint.empty()) {
+            if (getLowLevelTypeName(lhs).empty()) low_level_type_names_[lhs] = hint;
+            if (getLowLevelTypeName(rhs).empty()) low_level_type_names_[rhs] = hint;
+        }
+        return (this->*emitFn)(e.callee, lhs, rhs);
+    };
+
+    if (e.callee == "checked_add" || e.callee == "checked_sub" || e.callee == "checked_mul")
+        return dispatchArith(&CodeGen::emitCheckedArithmetic);
+    if (e.callee == "saturating_add" || e.callee == "saturating_sub" || e.callee == "saturating_mul")
+        return dispatchArith(&CodeGen::emitSaturatingArithmetic);
+    if (e.callee == "wrapping_add" || e.callee == "wrapping_sub" || e.callee == "wrapping_mul")
+        return dispatchArith(&CodeGen::emitWrappingArithmetic);
 
     return nullptr;
 }

@@ -658,3 +658,113 @@ TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
         "buf: [u8; 1] = [0]\n"
         "buf[0] = 256"), std::runtime_error);
 }
+
+// ===== Checked/Saturating/Wrapping Arithmetic =====
+
+TEST_F(CodeGenTest, CheckedAddOk) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(1i32, 2i32)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(v as int)\n"
+        "  case Err(e):\n"
+        "    print(\"err\")"), "3\n");
+}
+
+TEST_F(CodeGenTest, CheckedAddOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(2147483647i32, 1i32)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(\"ok\")\n"
+        "  case Err(e):\n"
+        "    print(\"overflow\")"), "overflow\n");
+}
+
+TEST_F(CodeGenTest, CheckedSubOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_sub(-2147483648i32, 1i32)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(\"ok\")\n"
+        "  case Err(e):\n"
+        "    print(\"overflow\")"), "overflow\n");
+}
+
+TEST_F(CodeGenTest, CheckedMulOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_mul(100000i32, 100000i32)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(\"ok\")\n"
+        "  case Err(e):\n"
+        "    print(\"overflow\")"), "overflow\n");
+}
+
+TEST_F(CodeGenTest, CheckedUnsignedOverflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(255u8, 1u8)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(\"ok\")\n"
+        "  case Err(e):\n"
+        "    print(\"overflow\")"), "overflow\n");
+}
+
+TEST_F(CodeGenTest, CheckedI64Overflow) {
+    EXPECT_EQ(runSource(
+        "r = checked_add(9223372036854775807i64, 1i64)\n"
+        "match r:\n"
+        "  case Ok(v):\n"
+        "    print(\"ok\")\n"
+        "  case Err(e):\n"
+        "    print(\"overflow\")"), "overflow\n");
+}
+
+TEST_F(CodeGenTest, SaturatingAddMax) {
+    EXPECT_EQ(runSource(
+        "v = saturating_add(2147483647i32, 100i32)\n"
+        "print(v as int)"), "2147483647\n");
+}
+
+TEST_F(CodeGenTest, SaturatingSubMin) {
+    EXPECT_EQ(runSource(
+        "v = saturating_sub(-2147483648i32, 1i32)\n"
+        "print(v as int)"), "-2147483648\n");
+}
+
+TEST_F(CodeGenTest, SaturatingMulMax) {
+    EXPECT_EQ(runSource(
+        "v = saturating_mul(100000i32, 100000i32)\n"
+        "print(v as int)"), "2147483647\n");
+}
+
+TEST_F(CodeGenTest, SaturatingUnsigned) {
+    EXPECT_EQ(runSource(
+        "v = saturating_add(250u8, 10u8)\n"
+        "print(v as int)"), "255\n");
+}
+
+TEST_F(CodeGenTest, WrappingAdd) {
+    EXPECT_EQ(runSource(
+        "v = wrapping_add(2147483647i32, 1i32)\n"
+        "print(v as int)"), "-2147483648\n");
+}
+
+TEST_F(CodeGenTest, WrappingSubUnsigned) {
+    EXPECT_EQ(runSource(
+        "v = wrapping_sub(0u8, 1u8)\n"
+        "print(v as int)"), "255\n");
+}
+
+TEST_F(CodeGenTest, CheckedTypeMismatch) {
+    EXPECT_THROW(runSource("checked_add(1i32, 1i16)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, CheckedNonLowLevel) {
+    EXPECT_THROW(runSource("checked_add(1, 2)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, CheckedFloat) {
+    EXPECT_THROW(runSource("checked_add(1.0f32, 2.0f32)"), std::runtime_error);
+}
