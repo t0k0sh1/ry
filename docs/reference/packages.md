@@ -23,7 +23,7 @@ Imports all functions and types from the package.
 ### Selective Import
 
 ```python
-from math import add
+from math import sqrt
 ```
 
 Imports only the specified definition.
@@ -31,7 +31,7 @@ Imports only the specified definition.
 ### Multiple Selective Import
 
 ```python
-from math import add, sub
+from math import sqrt, PI
 ```
 
 Imports multiple definitions separated by commas.
@@ -79,7 +79,7 @@ fn public_api() -> int:  # public — importable
 
 ```
 mypackage/
-  math.ry      # fn add(), fn sub()
+  calc.ry      # fn add(), fn sub()
   string.ry    # fn concat()
 ```
 
@@ -210,7 +210,7 @@ from math   # Skipped
 ### Single File Package
 
 ```python
-# math.ry
+# calc.ry
 fn add(a: int, b: int) -> int:
     return a + b
 
@@ -220,7 +220,7 @@ fn sub(a: int, b: int) -> int:
 
 ```python
 # main.ry
-from math import add, sub
+from calc import add, sub
 
 print(add(1, 2))   # 3
 print(sub(5, 3))   # 2
@@ -230,7 +230,7 @@ print(sub(5, 3))   # 2
 
 ```
 mylib/
-  math.ry
+  calc.ry
   string.ry
 ```
 

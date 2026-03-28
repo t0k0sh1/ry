@@ -102,38 +102,42 @@ match connect("127.0.0.1", 8080):
         print("connect failed")
 ```
 
-### Concurrent Echo Server with `spawn`
+### Concurrent Echo Server with `async fn`
 
 ```python
-fn echo_server(port: int) -> str:
-    match bind("127.0.0.1", port):
-        case Ok(server):
-            match listen(server, 1):
-                case Ok(_):
-                    match accept(server):
-                        case Ok(conn):
-                            match recv(conn, 4096):
-                                case Ok(data):
-                                    match send(conn, data):
-                                        case Ok(_):
-                                            ...
-                                        case Err(e):
-                                            ...
-                                case Err(e):
-                                    ...
-                            close(conn)
+from net import bind, listen, accept, connect, listener_port
+from io import str_to_bytes, bytes_to_str
+
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
                         case Err(e):
                             ...
                 case Err(e):
                     ...
-            close(server)
+            close(conn)
         case Err(e):
             ...
+    close(server)
     return "done"
 
-t: Task<str> = spawn echo_server(8080)
-# ... client code ...
-join(t)
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                # ... client code using port ...
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        ...
 ```
 
 ## Timeout Configuration

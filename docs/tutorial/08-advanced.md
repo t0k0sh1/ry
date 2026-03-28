@@ -218,40 +218,60 @@ for i in range(8):
 
 ## Networking (TCP Sockets)
 
-Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions work with TCP sockets.
+Ry provides TCP socket support through the `net` module. The `send`, `recv`, and `close` functions work with TCP sockets. All network operations return `Result` types.
 
 ```python
-from net import bind, listen, accept, connect
+from net import bind, listen, accept, connect, listener_port
 from io import str_to_bytes, bytes_to_str
 
-fn echo_server(port: int) -> str:
-    match bind("127.0.0.1", port):
-        case Some(server):
-            listen(server, 1)
-            match accept(server):
-                case Some(conn):
-                    data: List<u8> = recv(conn, 4096)
-                    send(conn, data)
-                    close(conn)
-                case None:
+async fn echo_server(server: TcpListener) -> str:
+    match accept(server):
+        case Ok(conn):
+            match recv(conn, 4096):
+                case Ok(data):
+                    match send(conn, data):
+                        case Ok(_):
+                            ...
+                        case Err(e):
+                            ...
+                case Err(e):
                     ...
-            close(server)
-        case None:
+            close(conn)
+        case Err(e):
             ...
+    close(server)
     return "done"
 
-t: Task<str> = spawn echo_server(8080)
-
-match connect("127.0.0.1", 8080):
-    case Some(conn):
-        send(conn, str_to_bytes("hello"))
-        resp: List<u8> = recv(conn, 4096)
-        print(bytes_to_str(resp))   # hello
-        close(conn)
-    case None:
-        print("connect failed")
-
-join(t)
+match bind("127.0.0.1", 0):
+    case Ok(server):
+        match listen(server, 1):
+            case Ok(_):
+                port = listener_port(server)
+                t = echo_server(server)
+                match connect("127.0.0.1", port):
+                    case Ok(conn):
+                        match send(conn, str_to_bytes("hello")):
+                            case Ok(_):
+                                ...
+                            case Err(e):
+                                ...
+                        match recv(conn, 4096):
+                            case Ok(resp):
+                                match bytes_to_str(resp):
+                                    case Ok(s):
+                                        print(s)   # hello
+                                    case Err(e):
+                                        ...
+                            case Err(e):
+                                ...
+                        close(conn)
+                    case Err(e):
+                        print("connect failed")
+                block_on(t)
+            case Err(e):
+                ...
+    case Err(e):
+        print("bind failed")
 ```
 
 See [Network Reference](../reference/net.md) for the full API.
