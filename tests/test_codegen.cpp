@@ -600,91 +600,91 @@ TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
 }
 
 // ============================================================
-// Fixed-length array [T; N]
+// Fixed-length array T[N]
 // ============================================================
 
 TEST_F(CodeGenTest, ArrayBasicDecl) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 4] = [1, 2, 3, 4]\n"
+        "buf: i32[4] = [1, 2, 3, 4]\n"
         "print(buf[0])\n"
         "print(buf[3])"), "1\n4\n");
 }
 
 TEST_F(CodeGenTest, ArrayIndexRead) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 4] = [10, 20, 30, 40]\n"
+        "buf: i32[4] = [10, 20, 30, 40]\n"
         "print(buf[2])"), "30\n");
 }
 
 TEST_F(CodeGenTest, ArrayIndexWrite) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 3] = [0, 0, 0]\n"
+        "buf: i32[3] = [0, 0, 0]\n"
         "buf[1] = 42\n"
         "print(buf[1])"), "42\n");
 }
 
 TEST_F(CodeGenTest, ArrayLength) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 8] = [1, 2, 3, 4, 5, 6, 7, 8]\n"
+        "buf: i32[8] = [1, 2, 3, 4, 5, 6, 7, 8]\n"
         "print(length(buf))"), "8\n");
 }
 
 TEST_F(CodeGenTest, ArrayPrint) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 3] = [10, 20, 30]\n"
+        "buf: i32[3] = [10, 20, 30]\n"
         "print(buf)"), "[10, 20, 30]\n");
 }
 
 TEST_F(CodeGenTest, ArrayU8) {
     EXPECT_EQ(runSource(
-        "buf: [u8; 3] = [65, 66, 67]\n"
+        "buf: u8[3] = [65, 66, 67]\n"
         "print(buf[0])\n"
         "print(buf[2])"), "65\n67\n");
 }
 
 TEST_F(CodeGenTest, ArrayF32) {
     EXPECT_EQ(runSource(
-        "buf: [f32; 2] = [1.5, 2.5]\n"
+        "buf: f32[2] = [1.5, 2.5]\n"
         "print(buf[0])\n"
         "print(buf[1])"), "1.5\n2.5\n");
 }
 
 TEST_F(CodeGenTest, ArrayI16) {
     EXPECT_EQ(runSource(
-        "buf: [i16; 2] = [100, 200]\n"
+        "buf: i16[2] = [100, 200]\n"
         "print(buf[0])\n"
         "print(buf[1])"), "100\n200\n");
 }
 
 TEST_F(CodeGenTest, ArraySizeMismatch) {
-    EXPECT_THROW(runSource("buf: [i32; 4] = [1, 2]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: i32[4] = [1, 2]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayNonLowLevelType) {
-    EXPECT_THROW(runSource("buf: [str; 2] = [\"a\", \"b\"]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: str[2] = [\"a\", \"b\"]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayBoundsError) {
     EXPECT_THROW(runSource(
-        "buf: [i32; 2] = [1, 2]\n"
+        "buf: i32[2] = [1, 2]\n"
         "print(buf[5])"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayInitRangeCheck) {
     // i8 out of range
-    EXPECT_THROW(runSource("buf: [i8; 1] = [999]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: i8[1] = [999]"), std::runtime_error);
     // u8 out of range
-    EXPECT_THROW(runSource("buf: [u8; 1] = [256]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: u8[1] = [256]"), std::runtime_error);
     // u8 negative
-    EXPECT_THROW(runSource("buf: [u8; 1] = [-1]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: u8[1] = [-1]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
     EXPECT_THROW(runSource(
-        "buf: [i8; 1] = [0]\n"
+        "buf: i8[1] = [0]\n"
         "buf[0] = 999"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "buf: [u8; 1] = [0]\n"
+        "buf: u8[1] = [0]\n"
         "buf[0] = 256"), std::runtime_error);
 }
 

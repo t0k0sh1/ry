@@ -83,13 +83,12 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return unionTy;
     }
 
-    // Fixed-length array type: [T; N]
-    if (!typeName.empty() && typeName.front() == '[' && typeName.back() == ']') {
-        size_t semiPos = typeName.find(';');
-        if (semiPos != std::string::npos) {
-            std::string elemStr = typeName.substr(1, semiPos - 1);
-            while (!elemStr.empty() && elemStr.back() == ' ') elemStr.pop_back();
-            std::string sizeStr = typeName.substr(semiPos + 1, typeName.size() - semiPos - 2);
+    // Fixed-length array type: T[N]
+    if (!typeName.empty() && typeName.back() == ']') {
+        size_t bracketPos = typeName.find('[');
+        if (bracketPos != std::string::npos && bracketPos > 0) {
+            std::string elemStr = typeName.substr(0, bracketPos);
+            std::string sizeStr = typeName.substr(bracketPos + 1, typeName.size() - bracketPos - 2);
             size_t s = sizeStr.find_first_not_of(' ');
             if (s != std::string::npos) sizeStr = sizeStr.substr(s);
             while (!sizeStr.empty() && sizeStr.back() == ' ') sizeStr.pop_back();

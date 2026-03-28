@@ -641,23 +641,6 @@ TypeNodePtr Parser::parseTypeName() {
 }
 
 TypeNodePtr Parser::parseTypeNameSingle() {
-    // Fixed-length array type: [T; N]
-    if (lex_.peek().kind == TokenKind::LBracket) {
-        lex_.next(); // consume '['
-        auto elemType = parseTypeNameSingle();
-        if (lex_.peek().kind != TokenKind::Semi)
-            parseError("expected ';' in array type [T; N]");
-        lex_.next(); // consume ';'
-        if (lex_.peek().kind != TokenKind::Number)
-            parseError("expected integer size in array type [T; N]");
-        uint64_t size = std::stoull(lex_.peek().value);
-        lex_.next(); // consume number
-        if (lex_.peek().kind != TokenKind::RBracket)
-            parseError("expected ']' in array type");
-        lex_.next(); // consume ']'
-        return TypeNode::makeArray(std::move(elemType), size);
-    }
-
     // Tuple type: (int, float)
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('
@@ -759,6 +742,19 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         result = TypeNode::makeGeneric(name, std::move(typeArgs));
     } else {
         result = TypeNode::makeBasic(name);
+    }
+
+    // Postfix array type: T[N]
+    if (lex_.peek().kind == TokenKind::LBracket) {
+        lex_.next(); // consume '['
+        if (lex_.peek().kind != TokenKind::Number)
+            parseError("expected integer size in array type T[N]");
+        uint64_t size = std::stoull(lex_.peek().value);
+        lex_.next(); // consume number
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']' in array type T[N]");
+        lex_.next(); // consume ']'
+        result = TypeNode::makeArray(std::move(result), size);
     }
 
     // Optional type suffix: int? => wraps in Option<T>

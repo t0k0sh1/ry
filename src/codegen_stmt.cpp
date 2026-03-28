@@ -143,51 +143,50 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
-    // Fixed-length array declaration: [T; N] = [elem, ...]
-    if (annot && !annot->empty() && annot->front() == '[' &&
-        annot->back() == ']' && annot->find(';') != std::string::npos) {
-        llvm::Type *annotTy = resolveType(*annot);
-        auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
-        if (!arrTy) codegenError("invalid array type: " + *annot);
+    // Fixed-length array declaration: T[N] = [elem, ...]
+    if (annot && !annot->empty() && annot->back() == ']') {
+        size_t bracketPos = annot->find('[');
+        if (bracketPos != std::string::npos && bracketPos > 0) {
+            llvm::Type *annotTy = resolveType(*annot);
+            auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
+            if (!arrTy) codegenError("invalid array type: " + *annot);
 
-        llvm::Type *elemTy = arrTy->getElementType();
-        uint64_t arrSize = arrTy->getNumElements();
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
 
-        // Parse element type name from annotation "[elemType; N]"
-        size_t semiPos = annot->find(';');
-        std::string elemTypeName = annot->substr(1, semiPos - 1);
-        while (!elemTypeName.empty() && elemTypeName.back() == ' ') elemTypeName.pop_back();
+            std::string elemTypeName = annot->substr(0, bracketPos);
 
-        auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
-        if (!le)
-            codegenError("array type requires list literal initializer");
-        if ((*le)->elements.size() != arrSize)
-            codegenError("array size mismatch: expected " + std::to_string(arrSize) +
-                         " elements, got " + std::to_string((*le)->elements.size()));
+            auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+            if (!le)
+                codegenError("array type requires list literal initializer");
+            if ((*le)->elements.size() != arrSize)
+                codegenError("array size mismatch: expected " + std::to_string(arrSize) +
+                             " elements, got " + std::to_string((*le)->elements.size()));
 
-        llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
+            llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
 
-        for (uint64_t i = 0; i < arrSize; ++i) {
-            llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
-            if (elemVal->getType() != elemTy) {
-                llvm::Value *coerced = coerceToLowLevelType(
-                    elemVal, elemTy, elemTypeName,
-                    " at index " + std::to_string(i), "arr_trunc");
-                if (coerced) {
-                    elemVal = coerced;
-                } else {
-                    codegenError("array element type mismatch at index " + std::to_string(i));
+            for (uint64_t i = 0; i < arrSize; ++i) {
+                llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
+                if (elemVal->getType() != elemTy) {
+                    llvm::Value *coerced = coerceToLowLevelType(
+                        elemVal, elemTy, elemTypeName,
+                        " at index " + std::to_string(i), "arr_trunc");
+                    if (coerced) {
+                        elemVal = coerced;
+                    } else {
+                        codegenError("array element type mismatch at index " + std::to_string(i));
+                    }
                 }
+                llvm::Value *elemPtr = builder_.CreateGEP(
+                    arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
+                builder_.CreateStore(elemVal, elemPtr);
             }
-            llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
-            builder_.CreateStore(elemVal, elemPtr);
-        }
 
-        array_elem_type_names_[ptr] = elemTypeName;
-        if (is_immutable)
-            immutable_scope_stack_.back().insert(name);
-        return;
+            array_elem_type_names_[ptr] = elemTypeName;
+            if (is_immutable)
+                immutable_scope_stack_.back().insert(name);
+            return;
+        }
     }
 
     llvm::Value *val = emitExpr(value);

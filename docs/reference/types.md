@@ -35,7 +35,7 @@
 | `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
 | `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
 | `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
-| `[T; N]` | `[N x T]` | `buf: [i32; 8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
+| `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
 
 ## Type Annotation Syntax
 
@@ -85,7 +85,7 @@ a: any = 42
 | `u32` | Low-level 32-bit unsigned integer (no implicit conversion) |
 | `u64` | Low-level 64-bit unsigned integer (no implicit conversion) |
 | `f32` | Low-level 32-bit floating-point (no implicit conversion) |
-| `[T; N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `length()` |
+| `T[N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `length()` |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
 ## Type Aliases
