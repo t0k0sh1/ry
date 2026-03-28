@@ -127,8 +127,7 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
     llvm::Value *rInt = builder_.CreatePtrToInt(result, i64Ty_, "r_int");
     llvm::Value *byteOffset = builder_.CreateSub(rInt, sInt, "find_byte_offset");
     // Convert byte offset to character index
-    auto charIdxTy = llvm::FunctionType::get(i64Ty_, {ptrTy_, i64Ty_}, false);
-    auto charIdxFn = mod_->getOrInsertFunction("__ry_utf8_char_index", charIdxTy);
+    auto charIdxFn = getRuntimeFn("__ry_utf8_char_index", i64Ty_, {ptrTy_, i64Ty_});
     llvm::Value *charIdx = builder_.CreateCall(charIdxFn, {s, byteOffset}, "find_char_idx");
     llvm::Value *someVal = buildSomeValue(charIdx, optTy);
     builder_.CreateBr(mergeBB);
@@ -155,8 +154,7 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("substring() requires str as first argument");
 
-    auto substrTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-    auto substrFn = mod_->getOrInsertFunction("__ry_utf8_substring", substrTy);
+    auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
     return builder_.CreateCall(substrFn, {s, start, end}, "substring");
 }
 
@@ -168,8 +166,7 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("char_at() requires str as first argument");
 
-    auto charAtTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-    auto charAtFn = mod_->getOrInsertFunction("__ry_utf8_char_at", charAtTy);
+    auto charAtFn = getRuntimeFn("__ry_utf8_char_at", ptrTy_, {ptrTy_, i64Ty_});
     return builder_.CreateCall(charAtFn, {s, idx}, "char_at");
 }
 
@@ -596,7 +593,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
         llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "rev_new_data");
         builder_.CreateStore(newData, newDataField);
 
-        list_element_types_[newHeader] = elemTy;
+        type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
     }
 
@@ -605,8 +602,7 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("reverse() requires list or str argument");
 
-    auto revTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
-    auto revFn = mod_->getOrInsertFunction("__ry_utf8_reverse", revTy);
+    auto revFn = getRuntimeFn("__ry_utf8_reverse", ptrTy_, {ptrTy_});
     return builder_.CreateCall(revFn, {s}, "str_rev");
 }
 
@@ -750,7 +746,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "split_data_field");
     builder_.CreateStore(dataPtr, dataPtrField);
 
-    list_element_types_[headerPtr] = ptrTy_;
+    type_meta_[TM_ListElem][headerPtr] = ptrTy_;
     return headerPtr;
 }
 

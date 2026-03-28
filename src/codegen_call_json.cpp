@@ -2,9 +2,10 @@
 #include "ry/diagnostic.hpp"
 
 bool CodeGen::isJsonValue(llvm::Value *val) {
-    if (json_value_values_.count(val)) return true;
+    if (resource_sets_[RK_JsonValue].count(val)) return true;
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-        return json_value_values_.count(load->getPointerOperand());
+        if (load->getType()->isPointerTy())
+            return resource_sets_[RK_JsonValue].count(load->getPointerOperand()) > 0;
     return false;
 }
 
@@ -15,7 +16,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
     // Helper: wrap ptr as Result and optionally track as JsonValue
     auto wrapJsonPtrResult = [&](llvm::Value *ptr, bool trackJson = false) -> llvm::Value * {
         llvm::Value *result = wrapPtrAsResult(ptr);
-        if (trackJson) json_value_values_.insert(result);
+        if (trackJson) resource_sets_[RK_JsonValue].insert(result);
         return result;
     };
 
@@ -190,7 +191,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_keys", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {val}, "json_keys");
-        list_element_types_[result] = ptrTy_;
+        type_meta_[TM_ListElem][result] = ptrTy_;
         return result;
     }
 
@@ -200,8 +201,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_free() requires a JsonValue argument");
-        auto fnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto fn = mod_->getOrInsertFunction("__ry_json_free", fnTy);
+        auto fn = getRuntimeFn("__ry_json_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
         builder_.CreateCall(fn, {val});
         return llvm::ConstantInt::get(i8Ty_, 0); // Unit
     }

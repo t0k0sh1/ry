@@ -59,14 +59,22 @@ add_library(ry_lib STATIC
     src/parser_expr.cpp
     src/parser_decl.cpp
     src/codegen.cpp
+    src/codegen_type.cpp
     src/codegen_builtin.cpp
+    src/codegen_print.cpp
+    src/codegen_match.cpp
     src/codegen_test.cpp
     src/codegen_stmt.cpp
+    src/codegen_stmt_loop.cpp
     src/codegen_fn.cpp
     src/codegen_expr.cpp
+    src/codegen_expr_literal.cpp
+    src/codegen_expr_cast.cpp
     src/codegen_call.cpp
+    src/codegen_call_dispatch.cpp
     src/codegen_call_string.cpp
     src/codegen_call_collection.cpp
+    src/codegen_call_set_ops.cpp
     src/codegen_call_higher_order.cpp
     src/codegen_call_io.cpp
     src/codegen_call_iterator.cpp
@@ -77,6 +85,7 @@ add_library(ry_lib STATIC
     src/test_runtime.cpp
     src/runtime_hash.cpp
     src/runtime_regex.cpp
+    src/runtime_regex_parser.cpp
     src/runtime_utf8.cpp
     src/runtime_sort.cpp
     src/project_config.cpp
@@ -92,6 +101,7 @@ add_library(ry_lib STATIC
     src/runtime_json.cpp
     src/codegen_call_json.cpp
     src/formatter.cpp
+    src/formatter_stmt.cpp
     src/file_watcher.cpp
     src/coverage_runtime.cpp
     src/dotenv.cpp
