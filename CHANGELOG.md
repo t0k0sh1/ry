@@ -53,6 +53,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `fail()` helper in test framework (#177)
 - HTTP automatic redirect following for client requests (#148)
 - Self-update artifact checksum verification (#116)
+- Linux x86_64 (amd64) release build in CI (#154)
+- Linux ARM64 (aarch64) release build in CI (#155)
 
 ### Changed
 

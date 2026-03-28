@@ -27,11 +27,12 @@ curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
-# Install standard library
+# Install standard library (clean replace)
 STD_DIR="$RY_HOME/lib/std"
-mkdir -p "$STD_DIR"
 if [ -d "$TMPDIR/lib/std" ]; then
-    cp "$TMPDIR/lib/std/"* "$STD_DIR/"
+    rm -rf "$STD_DIR"
+    mkdir -p "$STD_DIR"
+    cp -r "$TMPDIR/lib/std/." "$STD_DIR/"
     echo "Standard library installed to $STD_DIR"
 fi
 
