@@ -10,6 +10,7 @@ echo '<code>' | ry                  # Run code from stdin
 ry test [options] [<file> | <dir>]  # Run tests
 ry init                             # Initialize a project
 ry new <project-name>               # Create a new project
+ry run [<script-name>]              # Run a project script
 ry fmt [options] [<file> | <dir>]   # Format source files
 ry self-update [options]            # Update ry itself
 ```
@@ -83,6 +84,32 @@ my-project/
 4. Creates the `src/` directory inside it
 5. Generates `package.toml` (`name` is set to the given project name)
 6. Generates `src/main.ry`
+
+---
+
+## `ry run` - Run Project Scripts
+
+Executes a script defined in the `[scripts]` section of `package.toml`.
+
+```bash
+ry run              # List all available scripts
+ry run build        # Run the "build" script
+ry run test         # Run the "test" script
+```
+
+### Behavior
+
+1. Searches for `package.toml` from the current directory upward
+2. Without arguments, lists all available scripts and their commands
+3. With a script name, executes the corresponding shell command via `/bin/sh -c`
+4. The exit code of the executed command is propagated
+5. If the script name is not found, shows an error with a list of available scripts
+
+### Notes
+
+- Does not require LLVM initialization (fast startup)
+- Commands are executed in the current working directory
+- Shell features (pipes, redirects, etc.) are supported since commands run through the shell
 
 ---
 
@@ -191,6 +218,11 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
+
+[scripts]
+build = "cmake --preset default && cmake --build build"
+test = "./build/ry_tests"
+clean = "rm -rf build"
 ```
 
 ### `[project]` Section
@@ -206,6 +238,14 @@ src = "src"
 | Key | Description |
 |------|------|
 | `src` | Source code directory |
+
+### `[scripts]` Section
+
+Defines named scripts that can be executed with `ry run <name>`. Each key is a script name and the value is a shell command string.
+
+| Key | Description |
+|------|------|
+| `<name>` | Shell command to execute (run with `ry run <name>`) |
 
 ### TOML Subset Specification
 

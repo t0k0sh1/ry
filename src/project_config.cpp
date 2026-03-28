@@ -1,9 +1,14 @@
 #include "ry/project_config.hpp"
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
 #include <unordered_map>
 
 namespace fs = std::filesystem;
@@ -72,6 +77,10 @@ ProjectConfig ProjectConfigParser::load(const std::string &toml_content) {
         if (it != paths->second.end()) {
             config.dev_stdlib_dir = it->second;
         }
+    }
+    auto scripts_it = sections.find("scripts");
+    if (scripts_it != sections.end()) {
+        config.scripts = scripts_it->second;
     }
     return config;
 }
@@ -194,4 +203,70 @@ int cmd_new(int argc, char *argv[]) {
 
     std::cout << "Created ry project '" << project_name << "'\n";
     return 0;
+}
+
+// --- cmd_run ---
+
+static void printScriptList(std::ostream &out,
+                            const std::unordered_map<std::string, std::string> &scripts,
+                            bool show_commands) {
+    std::map<std::string, std::string> sorted(scripts.begin(), scripts.end());
+    for (const auto &[name, cmd] : sorted) {
+        out << "  " << name;
+        if (show_commands) out << " = \"" << cmd << "\"";
+        out << "\n";
+    }
+}
+
+int cmd_run(int argc, char *argv[]) {
+    auto root = findProjectRoot();
+    if (!root) {
+        std::cerr << "Error: package.toml not found. Run 'ry init' first.\n";
+        return 1;
+    }
+
+    std::ifstream f(fs::path(*root) / "package.toml");
+    if (!f) {
+        std::cerr << "Error: could not read package.toml\n";
+        return 1;
+    }
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>());
+    ProjectConfig config = ProjectConfigParser::load(content);
+
+    if (argc == 0) {
+        if (config.scripts.empty()) {
+            std::cout << "No scripts defined in package.toml.\n";
+            std::cout << "Add a [scripts] section to define scripts.\n";
+            return 0;
+        }
+        std::cout << "Available scripts:\n";
+        printScriptList(std::cout, config.scripts, true);
+        return 0;
+    }
+
+    std::string script_name = argv[0];
+    auto it = config.scripts.find(script_name);
+    if (it == config.scripts.end()) {
+        std::cerr << "Error: unknown script '" << script_name << "'\n";
+        if (!config.scripts.empty()) {
+            std::cerr << "\nAvailable scripts:\n";
+            printScriptList(std::cerr, config.scripts, false);
+        }
+        return 1;
+    }
+
+    int status = std::system(it->second.c_str());
+    if (status == -1) {
+        std::cerr << "Error: failed to execute command\n";
+        return 1;
+    }
+#ifdef _WIN32
+    return status;
+#else
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    return 1;
+#endif
 }

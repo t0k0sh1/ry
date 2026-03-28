@@ -754,11 +754,7 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "block_on" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
         s.callee == "shutdown" ||
-        s.callee == "json_free" ||
-        s.callee == "copy" || s.callee == "move" ||
-        s.callee == "remove" || s.callee == "remove_all" ||
-        s.callee == "make_dir" || s.callee == "make_dir_all" ||
-        s.callee == "chmod" || s.callee == "symlink") {
+        s.callee == "json_free") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
@@ -814,6 +810,15 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (tryCallOperator(s.callee, s.args))
         return;
+    // Route @native function calls through the full CallExpr dispatch chain
+    // so that stdlib dispatchers (emitBuiltinThread, etc.) can handle them.
+    if (native_fn_arg_counts_.count(s.callee)) {
+        auto ce = std::make_unique<CallExpr>();
+        ce->callee = s.callee;
+        ce->args = std::move(s.args);
+        emitExprVariant(ce);
+        return;
+    }
     emitUserFnCall(s.callee, s.args);
 }
 

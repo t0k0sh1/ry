@@ -113,6 +113,8 @@ add_library(ry_lib STATIC
     src/codegen_call_path.cpp
     src/runtime_filesystem.cpp
     src/codegen_call_filesystem.cpp
+    src/runtime_thread.cpp
+    src/codegen_call_thread.cpp
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp

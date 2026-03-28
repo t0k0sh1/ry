@@ -22,6 +22,7 @@
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
 - **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
+- **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code
@@ -123,9 +124,12 @@ echo '<code>' | ry         # Run code from stdin
 ry test [options] [path]   # Run tests (*.test.ry)
 ry init                    # Initialize a project in current directory
 ry new <name>              # Create a new project
+ry run [<script-name>]     # Run a project script
 ry fmt [options] [path]    # Format source files
 ry self-update             # Update ry itself
 ```
+
+The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Set `RY_REQUIRE_SIGNATURE=1` to enforce signature verification (by default, missing signatures produce a warning).
 
 Stdin also supports here-documents:
 

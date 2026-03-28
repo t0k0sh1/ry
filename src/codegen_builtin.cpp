@@ -67,6 +67,13 @@ bool CodeGen::isTlsStream(llvm::Value *val) { return lookupValueSet(resource_set
 bool CodeGen::isHttpRequest(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpRequest], val); }
 bool CodeGen::isHttpResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpResponse], val); }
 bool CodeGen::isHttpClientResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpClientResponse], val); }
+bool CodeGen::isThread(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Thread], val); }
+bool CodeGen::isLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Lock], val); }
+bool CodeGen::isRWLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_RWLock], val); }
+bool CodeGen::isSemaphore(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Semaphore], val); }
+bool CodeGen::isBarrier(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Barrier], val); }
+bool CodeGen::isAtomicInt(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicInt], val); }
+bool CodeGen::isAtomicBool(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicBool], val); }
 
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)

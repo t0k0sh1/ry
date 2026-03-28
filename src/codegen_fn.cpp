@@ -10,6 +10,9 @@ void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Valu
         {"TlsStream", RK_TlsStream}, {"HttpRequest", RK_HttpRequest},
         {"HttpResponse", RK_HttpResponse}, {"HttpClientResponse", RK_HttpClientResponse},
         {"JsonValue", RK_JsonValue},
+        {"Thread", RK_Thread}, {"Lock", RK_Lock}, {"RWLock", RK_RWLock},
+        {"Semaphore", RK_Semaphore}, {"Barrier", RK_Barrier},
+        {"AtomicInt", RK_AtomicInt}, {"AtomicBool", RK_AtomicBool},
     };
     for (auto &[name, rk] : table)
         if (typeName == name) { resource_sets_[rk].insert(val); return; }
