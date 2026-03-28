@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nested type parameter parsing (`>>`) (#263)
 - Record auto-generated `operator==` and `operator!=` (#305)
 - Record auto-generated `to_str` (#306)
+- Record subtyping with `<` syntax for field inheritance and subtype coercion (#307)
 - `@inline` directive for function inlining hints (#299)
 - Explicit value assignment for simple enum variants (#309)
 - Named fields in ADT enum variants (#308)

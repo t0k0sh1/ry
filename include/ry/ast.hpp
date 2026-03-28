@@ -49,6 +49,7 @@ struct TypeNode {
     static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
     static TypeNodePtr makeOptional(TypeNodePtr inner);
     static TypeNodePtr makeRange(std::string start, std::string end);
+    static TypeNodePtr clone(const TypeNodePtr &src);
 };
 
 // ===== Directive =====
@@ -217,7 +218,7 @@ struct IndexAssignStmt {
 
 struct FieldDef { std::string name; TypeNodePtr type; std::vector<Directive> directives; };
 
-struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
+struct RecordStmt { std::string name; std::optional<std::string> parent_name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
 struct TypeAliasStmt { std::string name; TypeNodePtr target_type; SourceLocation loc; };
 

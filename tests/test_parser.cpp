@@ -258,6 +258,29 @@ TEST(ParserTest, TypeDefinition) {
     EXPECT_EQ(ts.fields[1].type->toString(), "int");
 }
 
+TEST(ParserTest, RecordSubtyping) {
+    Program prog = parseStr("record HttpError < Error:\n    status: int\n    url: str");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<RecordStmt>(prog[0]));
+    const auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "HttpError");
+    ASSERT_TRUE(ts.parent_name.has_value());
+    EXPECT_EQ(*ts.parent_name, "Error");
+    ASSERT_EQ(ts.fields.size(), 2u);
+    EXPECT_EQ(ts.fields[0].name, "status");
+    EXPECT_EQ(ts.fields[0].type->toString(), "int");
+    EXPECT_EQ(ts.fields[1].name, "url");
+    EXPECT_EQ(ts.fields[1].type->toString(), "str");
+}
+
+TEST(ParserTest, RecordWithoutParent) {
+    Program prog = parseStr("record Point:\n    x: int\n    y: int");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &ts = std::get<RecordStmt>(prog[0]);
+    EXPECT_EQ(ts.name, "Point");
+    EXPECT_FALSE(ts.parent_name.has_value());
+}
+
 TEST(ParserTest, FieldAccessSimple) {
     Program prog = parseStr("x = p.x");
     ASSERT_EQ(prog.size(), 1u);

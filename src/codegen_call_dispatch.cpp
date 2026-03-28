@@ -203,6 +203,11 @@ std::vector<llvm::Value*> CodeGen::coerceCallArgs(const FnTypeInfo &info,
         if (args[i]->getType() == info.paramTypes[i])
             continue;
 
+        if (auto *sliced = tryEmitSubtypeCoerce(args[i], info.paramTypes[i])) {
+            args[i] = sliced;
+            continue;
+        }
+
         if (isAnyType(info.paramTypes[i])) {
             args[i] = wrapInAny(args[i]);
             continue;

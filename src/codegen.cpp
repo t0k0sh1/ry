@@ -27,6 +27,12 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     builtins_["exit"] = [this](const std::vector<ExprPtr> &args) { emitExit(args); };
 
     errorTy_ = llvm::StructType::create(*ctx_, {ptrTy_, i64Ty_}, "Error");
+    {
+        std::vector<FieldDef> errorFields;
+        errorFields.push_back({"message", TypeNode::makeBasic("str"), {}});
+        errorFields.push_back({"code", TypeNode::makeBasic("int"), {}});
+        struct_types_["Error"] = {errorTy_, std::move(errorFields), {}, ""};
+    }
 
     listHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_}, "ListHeader");
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
@@ -341,6 +347,43 @@ std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, 
 }
 
 
+// ===== B3.4: Record subtype helpers =====
+
+bool CodeGen::isSubtypeOf(const std::string &childType, const std::string &parentType) const {
+    std::string current = childType;
+    while (!current.empty()) {
+        auto it = struct_types_.find(current);
+        if (it == struct_types_.end()) return false;
+        if (it->second.parent_name == parentType) return true;
+        current = it->second.parent_name;
+    }
+    return false;
+}
+
+llvm::Value *CodeGen::emitSubtypeSlice(llvm::Value *childVal,
+                                         const std::string &childTypeName,
+                                         const std::string &parentTypeName) {
+    auto pit = struct_types_.find(parentTypeName);
+    if (pit == struct_types_.end())
+        codegenError("unknown parent type: " + parentTypeName);
+    llvm::Value *result = llvm::UndefValue::get(pit->second.llvmType);
+    for (unsigned i = 0; i < pit->second.fields.size(); ++i) {
+        llvm::Value *field = builder_.CreateExtractValue(childVal, i, "slice." + std::to_string(i));
+        result = builder_.CreateInsertValue(result, field, i);
+    }
+    return result;
+}
+
+llvm::Value *CodeGen::tryEmitSubtypeCoerce(llvm::Value *val, llvm::Type *targetTy) {
+    auto *argST = llvm::dyn_cast<llvm::StructType>(val->getType());
+    auto *paramST = llvm::dyn_cast<llvm::StructType>(targetTy);
+    if (!argST || !paramST) return nullptr;
+    std::string argName = argST->getName().str();
+    std::string paramName = paramST->getName().str();
+    if (!isSubtypeOf(argName, paramName)) return nullptr;
+    return emitSubtypeSlice(val, argName, paramName);
+}
+
 // ===== B3.5: Implicit widening conversion helpers =====
 
 bool CodeGen::isWideningConversion(llvm::Value *argVal, llvm::Type *paramTy,
@@ -409,6 +452,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     struct RankedCandidate {
         OverloadEntry *entry;
         int exactMatches = 0;
+        int subtypeMatches = 0;
         int wideningMatches = 0;
         int unionMatches = 0;
         int anyMatches = 0;
@@ -418,6 +462,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     auto isBetterCandidate = [](const RankedCandidate &lhs, const RankedCandidate &rhs) {
         if (lhs.exactMatches != rhs.exactMatches)
             return lhs.exactMatches > rhs.exactMatches;
+        if (lhs.subtypeMatches != rhs.subtypeMatches)
+            return lhs.subtypeMatches > rhs.subtypeMatches;
         if (lhs.wideningMatches != rhs.wideningMatches)
             return lhs.wideningMatches > rhs.wideningMatches;
         if (lhs.unionMatches != rhs.unionMatches)
@@ -435,7 +481,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         if (args.size() < entry.minArity || args.size() > entry.paramTypes.size())
             continue;
         bool match = true;
-        RankedCandidate candidate{&entry, 0, 0, 0, 0,
+        RankedCandidate candidate{&entry, 0, 0, 0, 0, 0,
                                   static_cast<int>(entry.paramTypes.size() - args.size())};
         for (size_t i = 0; i < args.size(); ++i) {
             std::string resolvedParamTypeName =
@@ -448,6 +494,15 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
             if (emittedArgs[i]->getType() == entry.paramTypes[i]) {
                 candidate.exactMatches++;
                 continue;
+            }
+
+            if (auto *argST = llvm::dyn_cast<llvm::StructType>(emittedArgs[i]->getType())) {
+                if (auto *paramST = llvm::dyn_cast<llvm::StructType>(entry.paramTypes[i])) {
+                    if (isSubtypeOf(argST->getName().str(), paramST->getName().str())) {
+                        candidate.subtypeMatches++;
+                        continue;
+                    }
+                }
             }
 
             if (isWideningConversion(emittedArgs[i], entry.paramTypes[i], resolvedParamTypeName)) {
@@ -509,6 +564,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isWideningConversion(emittedArgs[i], chosen->paramTypes[i], resolvedParamTypeName)) {
             outArgVals.push_back(emitWideningConversion(emittedArgs[i], chosen->paramTypes[i]));
+        } else if (auto *sliced = tryEmitSubtypeCoerce(emittedArgs[i], chosen->paramTypes[i])) {
+            outArgVals.push_back(sliced);
         } else if (emittedArgs[i]->getType() != chosen->paramTypes[i] &&
                    isAnyType(chosen->paramTypes[i])) {
             outArgVals.push_back(wrapInAny(emittedArgs[i]));
@@ -538,6 +595,8 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
         if (defVal->getType() != chosen->paramTypes[i] &&
             isWideningConversion(defVal, chosen->paramTypes[i], resolvedParamTypeName)) {
             outArgVals.push_back(emitWideningConversion(defVal, chosen->paramTypes[i]));
+        } else if (auto *sliced = tryEmitSubtypeCoerce(defVal, chosen->paramTypes[i])) {
+            outArgVals.push_back(sliced);
         } else if (defVal->getType() != chosen->paramTypes[i] &&
                    isAnyType(chosen->paramTypes[i])) {
             outArgVals.push_back(wrapInAny(defVal));

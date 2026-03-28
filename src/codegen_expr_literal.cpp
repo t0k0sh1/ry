@@ -5,19 +5,48 @@ void CodeGen::emitStmt(RecordStmt &s) {
     if (struct_types_.count(s.name))
         codegenError("redefined type: " + s.name);
 
-    std::vector<llvm::Type*> fieldTypes;
+    std::string parentName;
+    std::vector<FieldDef> allFields;
+
+    if (s.parent_name) {
+        parentName = *s.parent_name;
+        auto pit = struct_types_.find(parentName);
+        if (pit == struct_types_.end())
+            codegenError("parent record '" + parentName + "' not defined");
+
+        const auto &parentInfo = pit->second;
+
+        // Parent fields are pre-flattened (include all ancestors), so no recursion needed
+        for (auto &pf : parentInfo.fields)
+            allFields.push_back({pf.name, TypeNode::clone(pf.type), {}});
+
+        std::unordered_set<std::string> parentFieldNames;
+        for (auto &pf : parentInfo.fields)
+            parentFieldNames.insert(pf.name);
+        for (auto &cf : s.fields) {
+            if (parentFieldNames.count(cf.name))
+                codegenError("field '" + cf.name + "' in '" + s.name +
+                             "' conflicts with inherited field from '" + parentName + "'");
+        }
+    }
+
     for (auto &f : s.fields)
+        allFields.push_back({f.name, TypeNode::clone(f.type), std::move(f.directives)});
+
+    std::vector<llvm::Type*> fieldTypes;
+    for (auto &f : allFields)
         fieldTypes.push_back(resolveType(f.type->toString()));
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
     if (hasDirective(s.directives, "deprecated"))
         deprecated_types_.insert(s.name);
-    for (auto &f : s.fields) {
+    for (auto &f : allFields) {
         if (hasDirective(f.directives, "deprecated"))
             deprecated_fields_.insert(s.name + "." + f.name);
     }
 
-    struct_types_[s.name] = {structTy, std::move(s.fields), std::move(s.invariants)};
+    struct_types_[s.name] = {structTy, std::move(allFields), std::move(s.invariants),
+                             parentName};
 }
 
 llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
