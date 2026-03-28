@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
@@ -113,6 +114,7 @@ extern "C" void *__ry_lock_new() {
 }
 
 extern "C" int64_t __ry_lock_acquire(void *lock_ptr) {
+    if (!lock_ptr) { __ry_set_last_error("lock_acquire: null handle"); return -1; }
     auto *lock = static_cast<LockHandle *>(lock_ptr);
     try {
         lock->mu.lock();
@@ -124,9 +126,14 @@ extern "C" int64_t __ry_lock_acquire(void *lock_ptr) {
 }
 
 extern "C" int64_t __ry_lock_release(void *lock_ptr) {
+    if (!lock_ptr) { __ry_set_last_error("lock_release: null handle"); return -1; }
     auto *lock = static_cast<LockHandle *>(lock_ptr);
     lock->mu.unlock();
     return 0;
+}
+
+extern "C" void __ry_lock_free(void *lock_ptr) {
+    delete static_cast<LockHandle *>(lock_ptr);
 }
 
 // ===== RWLock =====
@@ -136,19 +143,29 @@ extern "C" void *__ry_rwlock_new() {
 }
 
 extern "C" int64_t __ry_rwlock_read_lock(void *rwlock_ptr) {
+    if (!rwlock_ptr) { __ry_set_last_error("rwlock_read_lock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
     try {
         rwlock->mu.lock_shared();
-        std::lock_guard<std::mutex> g(rwlock->mode_mu);
-        rwlock->shared_holders[std::this_thread::get_id()]++;
     } catch (const std::exception &ex) {
         __ry_set_last_error(ex.what());
+        return -1;
+    }
+    // Track shared ownership after lock_shared succeeds — done outside try
+    // so a map allocation failure doesn't leave the shared lock held.
+    try {
+        std::lock_guard<std::mutex> g(rwlock->mode_mu);
+        rwlock->shared_holders[std::this_thread::get_id()]++;
+    } catch (...) {
+        rwlock->mu.unlock_shared();
+        __ry_set_last_error("rwlock_read_lock: internal tracking failure");
         return -1;
     }
     return 0;
 }
 
 extern "C" int64_t __ry_rwlock_write_lock(void *rwlock_ptr) {
+    if (!rwlock_ptr) { __ry_set_last_error("rwlock_write_lock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
     try {
         rwlock->mu.lock();
@@ -160,6 +177,7 @@ extern "C" int64_t __ry_rwlock_write_lock(void *rwlock_ptr) {
 }
 
 extern "C" int64_t __ry_rwlock_unlock(void *rwlock_ptr) {
+    if (!rwlock_ptr) { __ry_set_last_error("rwlock_unlock: null handle"); return -1; }
     auto *rwlock = static_cast<RWLockHandle *>(rwlock_ptr);
     {
         std::lock_guard<std::mutex> g(rwlock->mode_mu);
@@ -176,6 +194,10 @@ extern "C" int64_t __ry_rwlock_unlock(void *rwlock_ptr) {
     return 0;
 }
 
+extern "C" void __ry_rwlock_free(void *rwlock_ptr) {
+    delete static_cast<RWLockHandle *>(rwlock_ptr);
+}
+
 // ===== Semaphore (C++17 compatible: mutex + cv) =====
 
 extern "C" void *__ry_semaphore_new(int64_t count) {
@@ -187,6 +209,7 @@ extern "C" void *__ry_semaphore_new(int64_t count) {
 }
 
 extern "C" int64_t __ry_semaphore_acquire(void *sem_ptr) {
+    if (!sem_ptr) { __ry_set_last_error("semaphore_acquire: null handle"); return -1; }
     auto *sem = static_cast<SemaphoreHandle *>(sem_ptr);
     std::unique_lock<std::mutex> lock(sem->mu);
     sem->cv.wait(lock, [sem]() { return sem->count > 0; });
@@ -195,6 +218,7 @@ extern "C" int64_t __ry_semaphore_acquire(void *sem_ptr) {
 }
 
 extern "C" int64_t __ry_semaphore_release(void *sem_ptr) {
+    if (!sem_ptr) { __ry_set_last_error("semaphore_release: null handle"); return -1; }
     auto *sem = static_cast<SemaphoreHandle *>(sem_ptr);
     {
         std::lock_guard<std::mutex> lock(sem->mu);
@@ -202,6 +226,10 @@ extern "C" int64_t __ry_semaphore_release(void *sem_ptr) {
     }
     sem->cv.notify_one();
     return 0;
+}
+
+extern "C" void __ry_semaphore_free(void *sem_ptr) {
+    delete static_cast<SemaphoreHandle *>(sem_ptr);
 }
 
 // ===== Barrier (C++17 compatible: mutex + cv) =====
@@ -215,6 +243,7 @@ extern "C" void *__ry_barrier_new(int64_t count) {
 }
 
 extern "C" int64_t __ry_barrier_wait(void *barrier_ptr) {
+    if (!barrier_ptr) { __ry_set_last_error("barrier_wait: null handle"); return -1; }
     auto *barrier = static_cast<BarrierHandle *>(barrier_ptr);
     std::unique_lock<std::mutex> lock(barrier->mu);
     int64_t gen = barrier->generation;
@@ -232,6 +261,10 @@ extern "C" int64_t __ry_barrier_wait(void *barrier_ptr) {
     return 0;
 }
 
+extern "C" void __ry_barrier_free(void *barrier_ptr) {
+    delete static_cast<BarrierHandle *>(barrier_ptr);
+}
+
 // ===== AtomicInt =====
 
 extern "C" void *__ry_atomic_int_new(int64_t value) {
@@ -239,24 +272,33 @@ extern "C" void *__ry_atomic_int_new(int64_t value) {
 }
 
 extern "C" int64_t __ry_atomic_int_load(void *a) {
+    if (!a) return 0;
     return static_cast<std::atomic<int64_t> *>(a)->load(std::memory_order_seq_cst);
 }
 
 extern "C" void __ry_atomic_int_store(void *a, int64_t value) {
+    if (!a) return;
     static_cast<std::atomic<int64_t> *>(a)->store(value, std::memory_order_seq_cst);
 }
 
 extern "C" int64_t __ry_atomic_int_add(void *a, int64_t delta) {
+    if (!a) return 0;
     return static_cast<std::atomic<int64_t> *>(a)->fetch_add(delta, std::memory_order_seq_cst);
 }
 
 extern "C" int64_t __ry_atomic_int_sub(void *a, int64_t delta) {
+    if (!a) return 0;
     return static_cast<std::atomic<int64_t> *>(a)->fetch_sub(delta, std::memory_order_seq_cst);
 }
 
 extern "C" int64_t __ry_atomic_int_cas(void *a, int64_t expected, int64_t desired) {
+    if (!a) return 0;
     auto *atom = static_cast<std::atomic<int64_t> *>(a);
     return atom->compare_exchange_strong(expected, desired, std::memory_order_seq_cst) ? 1 : 0;
+}
+
+extern "C" void __ry_atomic_int_free(void *a) {
+    delete static_cast<std::atomic<int64_t> *>(a);
 }
 
 // ===== AtomicBool =====
@@ -266,9 +308,15 @@ extern "C" void *__ry_atomic_bool_new(int64_t value) {
 }
 
 extern "C" int64_t __ry_atomic_bool_load(void *a) {
+    if (!a) return 0;
     return static_cast<std::atomic<bool> *>(a)->load(std::memory_order_seq_cst) ? 1 : 0;
 }
 
 extern "C" void __ry_atomic_bool_store(void *a, int64_t value) {
+    if (!a) return;
     static_cast<std::atomic<bool> *>(a)->store(value != 0, std::memory_order_seq_cst);
+}
+
+extern "C" void __ry_atomic_bool_free(void *a) {
+    delete static_cast<std::atomic<bool> *>(a);
 }

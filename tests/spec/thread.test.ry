@@ -73,43 +73,53 @@ describe("RWLock", fn():
 
 describe("Semaphore", fn():
   it("limits concurrent access", fn():
-    sem = semaphore_new(2)
-    counter = atomic_int_new(0)
+    sem_result = semaphore_new(2)
+    expect(sem_result).to_be_ok()
+    match sem_result:
+      case Ok(sem):
+        counter = atomic_int_new(0)
 
-    t1 = thread_spawn(fn():
-      semaphore_acquire(sem)
-      atomic_int_add(counter, 1)
-      semaphore_release(sem)
-    )
-    t2 = thread_spawn(fn():
-      semaphore_acquire(sem)
-      atomic_int_add(counter, 1)
-      semaphore_release(sem)
-    )
+        t1 = thread_spawn(fn():
+          semaphore_acquire(sem)
+          atomic_int_add(counter, 1)
+          semaphore_release(sem)
+        )
+        t2 = thread_spawn(fn():
+          semaphore_acquire(sem)
+          atomic_int_add(counter, 1)
+          semaphore_release(sem)
+        )
 
-    thread_join(t1)
-    thread_join(t2)
-    expect(atomic_int_load(counter)).to_eq(2)
+        thread_join(t1)
+        thread_join(t2)
+        expect(atomic_int_load(counter)).to_eq(2)
+      case Err(e):
+        fail("semaphore_new failed")
   )
 )
 
 describe("Barrier", fn():
   it("synchronizes threads", fn():
-    barrier = barrier_new(2)
-    counter = atomic_int_new(0)
+    barrier_result = barrier_new(2)
+    expect(barrier_result).to_be_ok()
+    match barrier_result:
+      case Ok(barrier):
+        counter = atomic_int_new(0)
 
-    t1 = thread_spawn(fn():
-      atomic_int_add(counter, 1)
-      barrier_wait(barrier)
-    )
-    t2 = thread_spawn(fn():
-      atomic_int_add(counter, 1)
-      barrier_wait(barrier)
-    )
+        t1 = thread_spawn(fn():
+          atomic_int_add(counter, 1)
+          barrier_wait(barrier)
+        )
+        t2 = thread_spawn(fn():
+          atomic_int_add(counter, 1)
+          barrier_wait(barrier)
+        )
 
-    thread_join(t1)
-    thread_join(t2)
-    expect(atomic_int_load(counter)).to_eq(2)
+        thread_join(t1)
+        thread_join(t2)
+        expect(atomic_int_load(counter)).to_eq(2)
+      case Err(e):
+        fail("barrier_new failed")
   )
 )
 

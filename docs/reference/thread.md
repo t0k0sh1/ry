@@ -67,7 +67,7 @@ print(atomic_int_load(counter))  # 1
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `semaphore_new` | `(count: int) -> Semaphore` | Creates a semaphore with the given initial count. |
+| `semaphore_new` | `(count: int) -> Result<Semaphore, Error>` | Creates a semaphore with the given initial count. Returns `Err` if count is negative. |
 | `semaphore_acquire` | `(sem: Semaphore) -> Result<Unit, Error>` | Decrements the semaphore. Blocks if count is zero. |
 | `semaphore_release` | `(sem: Semaphore) -> Result<Unit, Error>` | Increments the semaphore and wakes a waiting thread. |
 
@@ -75,7 +75,7 @@ print(atomic_int_load(counter))  # 1
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `barrier_new` | `(count: int) -> Barrier` | Creates a barrier that synchronizes `count` threads. |
+| `barrier_new` | `(count: int) -> Result<Barrier, Error>` | Creates a barrier that synchronizes `count` threads. Returns `Err` if count is not positive. |
 | `barrier_wait` | `(barrier: Barrier) -> Result<Unit, Error>` | Blocks until all `count` threads have called `barrier_wait`. |
 
 ## AtomicInt

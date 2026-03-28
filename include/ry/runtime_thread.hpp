@@ -13,21 +13,25 @@ int64_t __ry_thread_join(void *thread);
 void *__ry_lock_new();
 int64_t __ry_lock_acquire(void *lock);
 int64_t __ry_lock_release(void *lock);
+void __ry_lock_free(void *lock);
 
 // RWLock
 void *__ry_rwlock_new();
 int64_t __ry_rwlock_read_lock(void *rwlock);
 int64_t __ry_rwlock_write_lock(void *rwlock);
 int64_t __ry_rwlock_unlock(void *rwlock);
+void __ry_rwlock_free(void *rwlock);
 
 // Semaphore
 void *__ry_semaphore_new(int64_t count);
 int64_t __ry_semaphore_acquire(void *sem);
 int64_t __ry_semaphore_release(void *sem);
+void __ry_semaphore_free(void *sem);
 
 // Barrier
 void *__ry_barrier_new(int64_t count);
 int64_t __ry_barrier_wait(void *barrier);
+void __ry_barrier_free(void *barrier);
 
 // AtomicInt
 void *__ry_atomic_int_new(int64_t value);
@@ -36,10 +40,12 @@ void __ry_atomic_int_store(void *a, int64_t value);
 int64_t __ry_atomic_int_add(void *a, int64_t delta);
 int64_t __ry_atomic_int_sub(void *a, int64_t delta);
 int64_t __ry_atomic_int_cas(void *a, int64_t expected, int64_t desired);
+void __ry_atomic_int_free(void *a);
 
 // AtomicBool
 void *__ry_atomic_bool_new(int64_t value);
 int64_t __ry_atomic_bool_load(void *a);
 void __ry_atomic_bool_store(void *a, int64_t value);
+void __ry_atomic_bool_free(void *a);
 
 }

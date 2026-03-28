@@ -15,6 +15,9 @@ fn lock_acquire(lock: Lock) -> Result<Unit, Error>
 @native
 fn lock_release(lock: Lock) -> Result<Unit, Error>
 
+@native
+fn lock_free(lock: Lock) -> Unit
+
 # RWLock (read-write lock)
 @native
 fn rwlock_new() -> RWLock
@@ -28,9 +31,12 @@ fn rwlock_write_lock(rwlock: RWLock) -> Result<Unit, Error>
 @native
 fn rwlock_unlock(rwlock: RWLock) -> Result<Unit, Error>
 
+@native
+fn rwlock_free(rwlock: RWLock) -> Unit
+
 # Semaphore
 @native
-fn semaphore_new(count: int) -> Semaphore
+fn semaphore_new(count: int) -> Result<Semaphore, Error>
 
 @native
 fn semaphore_acquire(sem: Semaphore) -> Result<Unit, Error>
@@ -38,12 +44,18 @@ fn semaphore_acquire(sem: Semaphore) -> Result<Unit, Error>
 @native
 fn semaphore_release(sem: Semaphore) -> Result<Unit, Error>
 
+@native
+fn semaphore_free(sem: Semaphore) -> Unit
+
 # Barrier
 @native
-fn barrier_new(count: int) -> Barrier
+fn barrier_new(count: int) -> Result<Barrier, Error>
 
 @native
 fn barrier_wait(barrier: Barrier) -> Result<Unit, Error>
+
+@native
+fn barrier_free(barrier: Barrier) -> Unit
 
 # AtomicInt
 @native
@@ -64,6 +76,9 @@ fn atomic_int_sub(a: AtomicInt, delta: int) -> int
 @native
 fn atomic_int_cas(a: AtomicInt, expected: int, desired: int) -> bool
 
+@native
+fn atomic_int_free(a: AtomicInt) -> Unit
+
 # AtomicBool
 @native
 fn atomic_bool_new(value: bool) -> AtomicBool
@@ -73,3 +88,6 @@ fn atomic_bool_load(a: AtomicBool) -> bool
 
 @native
 fn atomic_bool_store(a: AtomicBool, value: bool) -> Unit
+
+@native
+fn atomic_bool_free(a: AtomicBool) -> Unit
