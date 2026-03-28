@@ -594,6 +594,7 @@ private:
     llvm::Value *emitBuiltinJson(const CallExpr &e);
     llvm::Value *emitBuiltinBase64(const CallExpr &e);
     llvm::Value *emitBuiltinPath(const CallExpr &e);
+    llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
     llvm::Value *emitBuiltinThread(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
