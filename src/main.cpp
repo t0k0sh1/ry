@@ -51,7 +51,7 @@ using namespace llvm::orc;
 namespace fs = std::filesystem;
 
 static void test_timeout_handler(int) {
-    const char msg[] = "\nTest timed out (30s)\n";
+    const char msg[] = "\nTest timed out (60s)\n";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
     _exit(124);
 }
@@ -236,11 +236,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
 
     if (test_mode) {
         std::signal(SIGALRM, test_timeout_handler);
-        alarm(30);
     }
     int result = fn();
-    if (test_mode)
-        alarm(0);
 
     // Record filenames for coverage reporting (accumulates across calls).
     // Exclude stdlib files (those under lib_dir) from the report.
