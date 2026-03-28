@@ -1,7 +1,5 @@
 #include "ry/codegen.hpp"
 
-#include <unordered_map>
-
 bool CodeGen::isAnyType(llvm::Type *ty) const {
     return ty == anyTy_;
 }
@@ -22,22 +20,16 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
     if (val->getType() != ptrTy_) return false;
 
     // Collection types
-    if (lookupCollectionType(list_element_types_, val)) return true;
-    if (lookupCollectionType(map_key_types_, val)) return true;
-    if (lookupCollectionType(map_value_types_, val)) return true;
-    if (lookupCollectionType(set_element_types_, val)) return true;
-    if (lookupCollectionType(nested_list_element_types_, val)) return true;
-    if (lookupCollectionType(iterator_element_types_, val)) return true;
-    if (lookupCollectionType(task_result_types_, val)) return true;
+    for (int i = 0; i < TM_COUNT; ++i)
+        if (lookupCollectionType(type_meta_[i], val)) return true;
 
     // Resource types
-    if (isTcpListener(val)) return true;
-    if (isTcpStream(val)) return true;
-    if (isTlsStream(val)) return true;
-    if (isHttpRequest(val)) return true;
-    if (isHttpResponse(val)) return true;
-    if (isHttpClientResponse(val)) return true;
-    if (isJsonValue(val)) return true;
+    for (int i = 0; i < RK_COUNT; ++i) {
+        if (resource_sets_[i].count(val)) return true;
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            if (load->getType()->isPointerTy() && resource_sets_[i].count(load->getPointerOperand()))
+                return true;
+    }
 
     // Function pointers
     if (fn_type_info_.count(val)) return true;

@@ -99,7 +99,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
                 builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, iterator_element_types_, "iter_header");
+                i64Ty_, mallocFn, nextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem], "iter_header");
         };
 
         // Try List (data at index 2, len at index 0)
@@ -177,7 +177,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
                 builder_.CreateStructGEP(stateTy, stateAlloc, 3));
 
             return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, iterator_element_types_, "iter_header");
+                i64Ty_, mallocFn, nextFn, stateAlloc, tupleTy, type_meta_[TM_IteratorElem], "iter_header");
         }
 
         codegenError("iter() argument must be a List, Set, or Map");
@@ -260,13 +260,13 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(builder_.CreateLoad(ptrTy_, dataVar, "tl_final_data"),
             builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
 
-        list_element_types_[headerPtr] = elemTy;
+        type_meta_[TM_ListElem][headerPtr] = elemTy;
 
         // Propagate nested list metadata for flatten() support
         {
             llvm::Type *nestedTy = getNestedListElementType(iterVal);
             if (nestedTy)
-                nested_list_element_types_[headerPtr] = nestedTy;
+                type_meta_[TM_NestedListElem][headerPtr] = nestedTy;
         }
 
         return headerPtr;
@@ -363,7 +363,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, iterator_element_types_, "filter_iter");
+            i64Ty_, mallocFn, filterNextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem], "filter_iter");
     }
 
     // map(iter, transform) → new Iterator with transformed element type
@@ -437,7 +437,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(lambdaVal, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, iterator_element_types_, "map_iter");
+            i64Ty_, mallocFn, mapNextFn, stateAlloc, outElemTy, type_meta_[TM_IteratorElem], "map_iter");
     }
 
     // take(iter, n) → new Iterator that yields at most n elements
@@ -501,7 +501,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         builder_.CreateStore(n, builder_.CreateStructGEP(stateTy, stateAlloc, 2));
 
         return emitIteratorHeaderAlloc(builder_, *mod_, iteratorHeaderTy_,
-            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, iterator_element_types_, "take_iter");
+            i64Ty_, mallocFn, takeNextFn, stateAlloc, elemTy, type_meta_[TM_IteratorElem], "take_iter");
     }
 
     return nullptr;

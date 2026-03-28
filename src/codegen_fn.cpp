@@ -5,13 +5,14 @@
 #include <llvm/Support/raw_ostream.h>
 
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
-    if (typeName == "TcpListener") tcp_listener_values_.insert(val);
-    else if (typeName == "TcpStream")   tcp_stream_values_.insert(val);
-    else if (typeName == "TlsStream")   tls_stream_values_.insert(val);
-    else if (typeName == "HttpRequest")  http_request_values_.insert(val);
-    else if (typeName == "HttpResponse") http_response_values_.insert(val);
-    else if (typeName == "HttpClientResponse") http_client_response_values_.insert(val);
-    else if (typeName == "JsonValue") json_value_values_.insert(val);
+    static const std::pair<const char*, ResourceKind> table[] = {
+        {"TcpListener", RK_TcpListener}, {"TcpStream", RK_TcpStream},
+        {"TlsStream", RK_TlsStream}, {"HttpRequest", RK_HttpRequest},
+        {"HttpResponse", RK_HttpResponse}, {"HttpClientResponse", RK_HttpClientResponse},
+        {"JsonValue", RK_JsonValue},
+    };
+    for (auto &[name, rk] : table)
+        if (typeName == name) { resource_sets_[rk].insert(val); return; }
 }
 
 void CodeGen::emitStmt(AwaitStmt &s) {
@@ -247,12 +248,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             const std::string &ptype = s->params[idx].type;
             if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
-                list_element_types_[alloca] = resolveType(inner);
+                type_meta_[TM_ListElem][alloca] = resolveType(inner);
             }
             // Track set element type for set parameters
             if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(4, ptype.size() - 5);
-                set_element_types_[alloca] = resolveType(inner);
+                type_meta_[TM_SetElem][alloca] = resolveType(inner);
             }
             // Track enum type for enum parameters
             if (enum_types_.count(ptype)) {
@@ -261,12 +262,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track map key/value types for map parameters
             if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) map_key_types_[alloca] = kTy;
-                if (vTy) map_value_types_[alloca] = vTy;
+                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
+                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
             }
             if (ptype.size() > 5 && ptype.compare(0, 5, "Task<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
-                task_result_types_[alloca] = resolveType(inner);
+                type_meta_[TM_TaskResult][alloca] = resolveType(inner);
             }
             registerResourceByTypeName(ptype, alloca);
             // Track low-level type metadata for parameters
@@ -610,10 +611,10 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
             origin = load->getPointerOperand();
 
-        auto lit = list_element_types_.find(origin);
-        if (lit == list_element_types_.end())
-            lit = list_element_types_.find(val);
-        if (lit != list_element_types_.end())
+        auto lit = type_meta_[TM_ListElem].find(origin);
+        if (lit == type_meta_[TM_ListElem].end())
+            lit = type_meta_[TM_ListElem].find(val);
+        if (lit != type_meta_[TM_ListElem].end())
             return "List<" + reverseResolveType(
                 llvm::UndefValue::get(lit->second)) + ">";
 
@@ -779,18 +780,18 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             // Track collection element types
             if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(5, ptype.size() - 6);
-                list_element_types_[alloca] = resolveType(inner);
+                type_meta_[TM_ListElem][alloca] = resolveType(inner);
             }
             if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
                 std::string inner = ptype.substr(4, ptype.size() - 5);
-                set_element_types_[alloca] = resolveType(inner);
+                type_meta_[TM_SetElem][alloca] = resolveType(inner);
             }
             if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
             if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
                 auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) map_key_types_[alloca] = kTy;
-                if (vTy) map_value_types_[alloca] = vTy;
+                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
+                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
             }
             registerResourceByTypeName(ptype, alloca);
             // Track low-level type metadata for parameters

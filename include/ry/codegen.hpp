@@ -70,13 +70,11 @@ private:
     std::unordered_map<std::string, std::string> type_aliases_;
     std::unordered_map<llvm::Type*, llvm::StructType*> option_types_;
     std::map<std::pair<llvm::Type*, llvm::Type*>, llvm::StructType*> result_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> list_element_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> map_key_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> map_value_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> set_element_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> nested_list_element_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> task_result_types_;
-    std::unordered_map<llvm::Value*, llvm::Type*> iterator_element_types_;
+    enum TypeMeta {
+        TM_ListElem, TM_MapKey, TM_MapValue, TM_SetElem,
+        TM_NestedListElem, TM_TaskResult, TM_IteratorElem, TM_COUNT
+    };
+    std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[TM_COUNT];
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
     int iterator_fn_counter_ = 0;
 
@@ -377,6 +375,10 @@ private:
     llvm::Value *emitMapKeyLookup(llvm::Value *mapPtr, llvm::Value *key, llvm::Type *keyTy);
     llvm::Value *emitIsWhitespace(llvm::Value *ch);
 
+    // Runtime function helper: getOrInsertFunction with inline FunctionType creation
+    llvm::FunctionCallee getRuntimeFn(const char *name, llvm::Type *retTy,
+                                       llvm::ArrayRef<llvm::Type*> argTys);
+
     // C stdlib function helpers
     llvm::FunctionCallee getStdlibMalloc();
     llvm::FunctionCallee getStdlibRealloc();
@@ -567,16 +569,14 @@ private:
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
+    enum ResourceKind : int {
+        RK_TcpListener, RK_TcpStream, RK_TlsStream,
+        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue, RK_COUNT
+    };
+    std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
+
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
-                                 const std::string &errMsg,
-                                 std::unordered_set<llvm::Value*> &trackingSet);
-    std::unordered_set<llvm::Value*> tcp_listener_values_;
-    std::unordered_set<llvm::Value*> tcp_stream_values_;
-    std::unordered_set<llvm::Value*> tls_stream_values_;
-    std::unordered_set<llvm::Value*> http_request_values_;
-    std::unordered_set<llvm::Value*> http_response_values_;
-    std::unordered_set<llvm::Value*> http_client_response_values_;
-    std::unordered_set<llvm::Value*> json_value_values_;
+                                 const std::string &errMsg, ResourceKind rk);
     llvm::Value *emitBuiltinIterator(const CallExpr &e);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,

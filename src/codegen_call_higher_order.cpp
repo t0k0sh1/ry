@@ -99,7 +99,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "filter_len_ptr");
         builder_.CreateStore(finalLen, newLenPtr);
 
-        list_element_types_[newHeader] = elemTy;
+        type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
     }
 
@@ -177,7 +177,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         builder_.CreateBr(condBB);
 
         builder_.SetInsertPoint(endBB);
-        list_element_types_[newHeader] = outElemTy;
+        type_meta_[TM_ListElem][newHeader] = outElemTy;
         return newHeader;
     }
 
@@ -682,12 +682,11 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
         ? compVal
         : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
-    auto timsortTy = llvm::FunctionType::get(
-        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_}, false);
-    auto timsortFn = mod_->getOrInsertFunction("__ry_timsort", timsortTy);
+    auto timsortFn = getRuntimeFn("__ry_timsort",
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, i64Ty_, i64Ty_, ptrTy_, ptrTy_});
     builder_.CreateCall(timsortFn, {newData, srcLen, elemSizeConst, trampFn, cmpCtx});
 
     // Return sorted list
-    list_element_types_[newHeader] = elemTy;
+    type_meta_[TM_ListElem][newHeader] = elemTy;
     return newHeader;
 }
