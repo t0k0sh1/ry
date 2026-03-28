@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/coverage_runtime.hpp"
 #include "ry/diagnostic.hpp"
+#include <climits>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
@@ -853,6 +854,63 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
+}
+
+void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
+                               const std::string &errMsg, const std::string &globalName,
+                               const std::string &bbPrefix) {
+    if (index->getType() == i1Ty_)
+        index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
+
+    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
+        if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
+            int64_t idx = ci->getSExtValue();
+            uint64_t sz = cs->getZExtValue();
+            if (idx < 0 || (uint64_t)idx >= sz)
+                codegenError("index " + std::to_string(idx) +
+                             " out of bounds (size " + std::to_string(sz) + ")");
+            return;
+        }
+    }
+
+    llvm::Value *negCheck = builder_.CreateICmpSLT(
+        index, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_neg");
+    llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
+    llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
+    llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
+    builder_.CreateCondBr(oob, oobBB, okBB);
+    builder_.SetInsertPoint(oobBB);
+    emitRuntimeError(errMsg, globalName);
+    builder_.SetInsertPoint(okBB);
+}
+
+llvm::Value *CodeGen::coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
+                                            const std::string &typeName,
+                                            const std::string &context,
+                                            const std::string &truncName) {
+    if (val->getType() == f64Ty_ && targetTy == f32Ty_)
+        return builder_.CreateFPTrunc(val, f32Ty_, truncName);
+
+    if (val->getType() == i64Ty_ && (targetTy == i8Ty_ || targetTy == i16Ty_ || targetTy == i32Ty_)) {
+        if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+            int64_t v = ci->getSExtValue();
+            bool isUnsigned = (!typeName.empty() && typeName[0] == 'u');
+            bool outOfRange = false;
+            if (targetTy == i8Ty_) {
+                outOfRange = isUnsigned ? (v < 0 || v > 255) : (v < INT8_MIN || v > INT8_MAX);
+            } else if (targetTy == i16Ty_) {
+                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT16_MAX) : (v < INT16_MIN || v > INT16_MAX);
+            } else {
+                outOfRange = isUnsigned ? (v < 0 || v > (int64_t)UINT32_MAX) : (v < INT32_MIN || v > INT32_MAX);
+            }
+            if (outOfRange)
+                codegenError(typeName + " value out of range" + context + ": " + std::to_string(v));
+        }
+        return builder_.CreateTrunc(val, targetTy, truncName);
+    }
+
+    return nullptr;
 }
 
 void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
