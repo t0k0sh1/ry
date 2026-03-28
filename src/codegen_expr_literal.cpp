@@ -337,21 +337,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     llvm::Value *headerPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "set_header");
 
-    // Allocate elements array
+    // Allocate elements array (capacity = total element count)
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *elemsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
 
-    // Store elements
-    for (int64_t i = 0; i < count; ++i) {
-        llvm::Value *ep = builder_.CreateGEP(elemTy, elemsPtr,
-            {llvm::ConstantInt::get(i64Ty_, i)}, "set_elem_ptr");
-        builder_.CreateStore(vals[i], ep);
-    }
-
-    // Store header fields: length, capacity, elements_ptr
+    // Initialize header: length=0, capacity=count, elements pointer
     llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0, "set_len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
+    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
 
     llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1, "set_cap_ptr");
     builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
@@ -359,31 +352,38 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
     builder_.CreateStore(elemsPtr, elemsPtrField);
 
-    // Initialize hash table buckets via rehash
+    // Initialize empty hash table buckets
     int64_t initBucketCount = 8;
     while (initBucketCount * 3 < count * 4) initBucketCount *= 2;
-    {
-        std::string rehashName;
-        if (elemTy == ptrTy_) {
-            rehashName = "__ry_ht_rehash_str";
-        } else if (elemTy->isDoubleTy()) {
-            rehashName = "__ry_ht_rehash_f64";
-        } else {
-            rehashName = "__ry_ht_rehash_i64";
-        }
-        llvm::FunctionType *rehashTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_, i64Ty_}, false);
-        llvm::FunctionCallee rehashFn = mod_->getOrInsertFunction(rehashName, rehashTy);
-        llvm::Value *buckets = builder_.CreateCall(rehashFn,
-            {elemsPtr, llvm::ConstantInt::get(i64Ty_, count),
-             llvm::ConstantInt::get(i64Ty_, initBucketCount)}, "set_buckets");
-        llvm::Value *bcPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 3, "set_bc_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, initBucketCount), bcPtr);
-        llvm::Value *bpPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 4, "set_bp_ptr");
-        builder_.CreateStore(buckets, bpPtr);
-    }
+    emitBucketInit(headerPtr, setHeaderTy_, kSetLayout.bucketCountIdx,
+                   kSetLayout.bucketsPtrIdx, initBucketCount);
 
-    // Track element type
+    // Track element type (must be set before emitSetElementLookup)
     type_meta_[TM_SetElem][headerPtr] = elemTy;
+
+    // Insert elements with deduplication (same pattern as add())
+    for (int64_t i = 0; i < count; ++i) {
+        llvm::Value *idx = emitSetElementLookup(headerPtr, vals[i], elemTy);
+        llvm::Value *found = builder_.CreateICmpSGE(idx, llvm::ConstantInt::get(i64Ty_, 0), "found");
+
+        llvm::BasicBlock *insertBB = llvm::BasicBlock::Create(*ctx_, "setlit.insert", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "setlit.next", fn_);
+        builder_.CreateCondBr(found, nextBB, insertBB);
+
+        builder_.SetInsertPoint(insertBB);
+        llvm::Value *curLen = builder_.CreateLoad(i64Ty_, lenPtr, "cur_len");
+        llvm::Value *curElems = builder_.CreateLoad(ptrTy_, elemsPtrField, "cur_elems");
+        llvm::Value *ep = builder_.CreateGEP(elemTy, curElems, {curLen}, "set_elem_ptr");
+        builder_.CreateStore(vals[i], ep);
+        llvm::Value *newLen = builder_.CreateAdd(curLen, llvm::ConstantInt::get(i64Ty_, 1), "new_len");
+        builder_.CreateStore(newLen, lenPtr);
+        emitBucketInsertAndRehashCheck(headerPtr, setHeaderTy_,
+            kSetLayout.lenIdx, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx,
+            vals[i], elemTy, curLen);
+        builder_.CreateBr(nextBB);
+
+        builder_.SetInsertPoint(nextBB);
+    }
 
     return headerPtr;
 }
