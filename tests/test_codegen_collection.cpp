@@ -2085,3 +2085,116 @@ TEST_F(CodeGenTest, ForThreeVarCountMismatch) {
         "    print(a)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+// ===== operator[] / operator[]= / operator in =====
+
+TEST_F(CodeGenTest, OperatorSubscriptReadSingleIndex) {
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "    y: int\n"
+        "    z: int\n"
+        "fn operator[](p: Point, i: int) -> int:\n"
+        "    if i == 0:\n"
+        "        return p.x\n"
+        "    if i == 1:\n"
+        "        return p.y\n"
+        "    return p.z\n"
+        "p = Point(10, 20, 30)\n"
+        "print(p[0])\n"
+        "print(p[2])";
+    EXPECT_EQ(runSource(src), "10\n30\n");
+}
+
+TEST_F(CodeGenTest, OperatorSubscriptReadMultiIndex) {
+    std::string src =
+        "record Grid:\n"
+        "    a: int\n"
+        "    b: int\n"
+        "    c: int\n"
+        "    d: int\n"
+        "fn operator[](g: Grid, row: int, col: int) -> int:\n"
+        "    if row == 0 and col == 0:\n"
+        "        return g.a\n"
+        "    if row == 0 and col == 1:\n"
+        "        return g.b\n"
+        "    if row == 1 and col == 0:\n"
+        "        return g.c\n"
+        "    return g.d\n"
+        "g = Grid(1, 2, 3, 4)\n"
+        "print(g[0, 1])\n"
+        "print(g[1, 0])";
+    EXPECT_EQ(runSource(src), "2\n3\n");
+}
+
+TEST_F(CodeGenTest, OperatorSubscriptWrite) {
+    // operator[]= dispatches correctly (uses side effect to verify)
+    std::string src =
+        "record Counter:\n"
+        "    count: int\n"
+        "fn operator[]=(c: Counter, key: int, value: int):\n"
+        "    print(key)\n"
+        "    print(value)\n"
+        "c = Counter(0)\n"
+        "c[3] = 42";
+    EXPECT_EQ(runSource(src), "3\n42\n");
+}
+
+TEST_F(CodeGenTest, OperatorIn) {
+    std::string src =
+        "record Range:\n"
+        "    start: int\n"
+        "    end_val: int\n"
+        "fn operator in(value: int, r: Range) -> bool:\n"
+        "    return value >= r.start and value < r.end_val\n"
+        "r = Range(1, 10)\n"
+        "print(5 in r)\n"
+        "print(15 in r)\n"
+        "print(5 not in r)";
+    EXPECT_EQ(runSource(src), "true\nfalse\nfalse\n");
+}
+
+TEST_F(CodeGenTest, OperatorInFallbackBuiltin) {
+    // Built-in in should still work for lists/maps/sets
+    EXPECT_EQ(runSource("print(2 in [1, 2, 3])"), "true\n");
+    EXPECT_EQ(runSource("print(\"a\" in {\"a\": 1})"), "true\n");
+    EXPECT_EQ(runSource("print(5 in [1, 2, 3])"), "false\n");
+}
+
+TEST_F(CodeGenTest, OperatorSubscriptParamValidation) {
+    // operator[] with < 2 params should fail
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator[](f: Foo) -> int:\n"
+        "    return f.x\n"), std::runtime_error);
+    // operator[]= with < 3 params should fail
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator[]=(f: Foo, v: int):\n"
+        "    f.x = v\n"), std::runtime_error);
+    // operator in with != 2 params should fail
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator in(a: int) -> bool:\n"
+        "    return true\n"), std::runtime_error);
+    // operator in must return bool
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator in(a: int, f: Foo) -> int:\n"
+        "    return 1\n"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, BuiltinIndexStillWorks) {
+    // List indexing
+    EXPECT_EQ(runSource("xs = [10, 20, 30]\nprint(xs[1])"), "20\n");
+    // Map indexing
+    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(m[\"b\"])"), "2\n");
+    // List index assignment
+    EXPECT_EQ(runSource("xs = [1, 2, 3]\nxs[0] = 99\nprint(xs[0])"), "99\n");
+    // Map index assignment
+    EXPECT_EQ(runSource("m = {\"a\": 1}\nm[\"b\"] = 2\nprint(m[\"b\"])"), "2\n");
+}

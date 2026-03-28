@@ -51,7 +51,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
                 for (auto &el : v->elements) scanExpr(*el);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IndexExpr>>) {
-                scanExpr(*v->object); scanExpr(*v->index);
+                scanExpr(*v->object); for (auto &idx : v->indices) scanExpr(*idx);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MapExpr>>) {
                 for (auto &k : v->keys) scanExpr(*k);
                 for (auto &val : v->values) scanExpr(*val);
@@ -72,7 +72,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, IndexAssignStmt>) {
-                scanExpr(*s.object); scanExpr(*s.index); scanExpr(*s.value);
+                scanExpr(*s.object); for (auto &idx : s.indices) scanExpr(*idx); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, FieldAssignStmt>) {
                 scanExpr(*s.object); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {

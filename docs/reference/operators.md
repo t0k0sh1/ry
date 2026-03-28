@@ -296,6 +296,8 @@ fn operator-(a: MyType) -> MyType:
 | Comparison (binary) | `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise (binary) | `&` `\|` `^` `<<` `>>` `>>>` |
 | Logical (binary) | `and` `or` |
+| Membership | `in` |
+| Subscript | `[]` (read), `[]=` (write) |
 | Unary | `-` `~` `not` |
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
 
@@ -307,6 +309,7 @@ Comparison and logical operators must return `bool`:
 |---|---|---|
 | Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
 | Logical | `and` `or` `not` | `bool` |
+| Membership | `in` | `bool` |
 
 ```python
 # OK
@@ -372,3 +375,54 @@ v += Vec2(3.0, 4.0)  # calls operator+= directly
 ```
 
 Compound assignment operators require exactly 2 parameters and have no return type constraint.
+
+### Subscript Operator Overloading
+
+The `[]` (read) and `[]=` (write) operators enable custom subscript behavior for user-defined types. Multi-index access (e.g., `m[row, col]`) is supported.
+
+```python
+record Grid:
+    a: int
+    b: int
+    c: int
+    d: int
+
+# Read: requires 2+ parameters (object + indices)
+fn operator[](g: Grid, row: int, col: int) -> int:
+    if row == 0 and col == 0:
+        return g.a
+    if row == 0 and col == 1:
+        return g.b
+    if row == 1 and col == 0:
+        return g.c
+    return g.d
+
+# Write: requires 3+ parameters (object + indices + value)
+fn operator[]=(g: Grid, row: int, col: int, value: int):
+    ...
+
+g = Grid(1, 2, 3, 4)
+print(g[0, 1])    # 2
+g[1, 0] = 99
+```
+
+User-defined subscript operators are tried first; if no match is found, built-in subscript behavior (for lists, maps, and arrays) is used as a fallback.
+
+### Membership Operator Overloading
+
+The `in` operator can be overloaded to define custom membership tests. Must return `bool`.
+
+```python
+record Range:
+    lo: int
+    hi: int
+
+fn operator in(value: int, r: Range) -> bool:
+    return value >= r.lo and value < r.hi
+
+r = Range(1, 10)
+print(5 in r)       # true
+print(15 not in r)  # true
+```
+
+User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, and lists) is used as a fallback. `not in` is automatically supported when `in` is defined.

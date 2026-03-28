@@ -709,13 +709,18 @@ ExprPtr Parser::parsePostfix() {
         }
         if (lex_.peek().kind == TokenKind::LBracket) {
             Token lbTok = lex_.next(); // consume '['
-            ExprPtr index = parseTernary();
+            std::vector<ExprPtr> indices;
+            indices.push_back(parseTernary());
+            while (lex_.peek().kind == TokenKind::Comma) {
+                lex_.next(); // consume ','
+                indices.push_back(parseTernary());
+            }
             if (lex_.peek().kind != TokenKind::RBracket)
                 parseError("expected ']'");
             lex_.next(); // consume ']'
             auto idx = std::make_unique<IndexExpr>();
             idx->object = std::move(expr);
-            idx->index = std::move(index);
+            idx->indices = std::move(indices);
             auto node = std::make_unique<ExprNode>();
             node->data = std::move(idx);
             node->loc = locFromToken(lbTok);

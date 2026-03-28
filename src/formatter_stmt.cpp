@@ -330,7 +330,12 @@ void Formatter::formatMatch(const MatchStmt &s) {
 }
 
 void Formatter::formatIndexAssign(const IndexAssignStmt &s) {
-    emit(formatExpr(*s.object) + "[" + formatExpr(*s.index) + "] = " + formatExpr(*s.value));
+    std::string idxStr;
+    for (size_t i = 0; i < s.indices.size(); ++i) {
+        if (i > 0) idxStr += ", ";
+        idxStr += formatExpr(*s.indices[i]);
+    }
+    emit(formatExpr(*s.object) + "[" + idxStr + "] = " + formatExpr(*s.value));
     emitInlineComment(s.loc.line);
     emitNewline();
     last_emitted_line_ = s.loc.line;

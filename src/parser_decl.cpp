@@ -71,6 +71,23 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                 opName = opTok.value;
                 lex_.next(); // consume operator
                 break;
+            case TokenKind::LBracket: {
+                lex_.next(); // consume '['
+                if (lex_.peek().kind != TokenKind::RBracket)
+                    parseError("expected ']' after '[' in operator declaration");
+                lex_.next(); // consume ']'
+                if (lex_.peek().kind == TokenKind::Equals) {
+                    lex_.next(); // consume '='
+                    opName = "[]=";
+                } else {
+                    opName = "[]";
+                }
+                break;
+            }
+            case TokenKind::In:
+                opName = "in";
+                lex_.next(); // consume 'in'
+                break;
             default:
                 parseError(opTok.line, "expected operator symbol after 'operator'");
         }
@@ -172,6 +189,15 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         } else if (isCompoundAssignOperator(opName)) {
             if (nParams != 2)
                 parseError("compound assignment operator requires exactly 2 parameters");
+        } else if (opName == "operator[]") {
+            if (nParams < 2)
+                parseError("operator[] requires at least 2 parameters (object + index)");
+        } else if (opName == "operator[]=") {
+            if (nParams < 3)
+                parseError("operator[]= requires at least 3 parameters (object + index + value)");
+        } else if (opName == "operatorin") {
+            if (nParams != 2)
+                parseError("operator in requires exactly 2 parameters");
         } else if (nParams != 1 && nParams != 2) {
             parseError("operator function requires 1 or 2 parameters");
         }

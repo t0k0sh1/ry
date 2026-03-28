@@ -414,7 +414,17 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *objPtr = emitExpr(*e->object);
-    llvm::Value *index = emitExpr(*e->index);
+
+    llvm::SmallVector<llvm::Value*, 2> indexValues;
+    for (auto &idx : e->indices)
+        indexValues.push_back(emitExpr(*idx));
+
+    if (llvm::Value *result = trySubscriptOperatorCall(objPtr, indexValues))
+        return result;
+    if (indexValues.size() > 1)
+        codegenError("multi-index requires operator[] overload");
+
+    llvm::Value *index = indexValues[0];
 
     // Fixed-length array index access
     if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {

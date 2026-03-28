@@ -148,44 +148,53 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
 
 // ===== Operator overload helpers =====
 
-llvm::Value *CodeGen::tryOperatorCall(const std::string &opFnName,
-                                       llvm::Value *lhs, llvm::Value *rhs) {
+llvm::Value *CodeGen::findAndCallOverload(const std::string &opFnName,
+                                           llvm::ArrayRef<llvm::Value*> args,
+                                           const char *callName) {
     auto fit = functions_.find(opFnName);
-    if (fit == functions_.end())
-        return nullptr;
-
-    llvm::Type *lhsTy = lhs->getType();
-    llvm::Type *rhsTy = rhs->getType();
+    if (fit == functions_.end()) return nullptr;
 
     for (auto &entry : fit->second) {
-        if (entry.paramTypes.size() == 2 &&
-            entry.paramTypes[0] == lhsTy &&
-            entry.paramTypes[1] == rhsTy) {
-            if (entry.func->getReturnType()->isVoidTy())
-                return builder_.CreateCall(entry.func, {lhs, rhs});
-            return builder_.CreateCall(entry.func, {lhs, rhs}, "opcall");
+        if (entry.paramTypes.size() != args.size()) continue;
+        bool match = true;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (entry.paramTypes[i] != args[i]->getType()) {
+                match = false; break;
+            }
         }
+        if (!match) continue;
+        if (entry.func->getReturnType()->isVoidTy())
+            return builder_.CreateCall(entry.func, args);
+        return builder_.CreateCall(entry.func, args, callName);
     }
     return nullptr;
 }
 
+llvm::Value *CodeGen::tryOperatorCall(const std::string &opFnName,
+                                       llvm::Value *lhs, llvm::Value *rhs) {
+    return findAndCallOverload(opFnName, {lhs, rhs}, "opcall");
+}
+
 llvm::Value *CodeGen::tryUnaryOperatorCall(const std::string &opFnName,
                                             llvm::Value *operand) {
-    auto fit = functions_.find(opFnName);
-    if (fit == functions_.end())
-        return nullptr;
+    return findAndCallOverload(opFnName, {operand}, "opcall");
+}
 
-    llvm::Type *opTy = operand->getType();
+llvm::Value *CodeGen::trySubscriptOperatorCall(
+    llvm::Value *object, llvm::ArrayRef<llvm::Value*> indices) {
+    llvm::SmallVector<llvm::Value*, 4> args;
+    args.push_back(object);
+    args.append(indices.begin(), indices.end());
+    return findAndCallOverload("operator[]", args, "subscript");
+}
 
-    for (auto &entry : fit->second) {
-        if (entry.paramTypes.size() == 1 &&
-            entry.paramTypes[0] == opTy) {
-            if (entry.func->getReturnType()->isVoidTy())
-                return builder_.CreateCall(entry.func, {operand});
-            return builder_.CreateCall(entry.func, {operand}, "opcall");
-        }
-    }
-    return nullptr;
+bool CodeGen::trySubscriptAssignOperatorCall(
+    llvm::Value *object, llvm::ArrayRef<llvm::Value*> indices, llvm::Value *value) {
+    llvm::SmallVector<llvm::Value*, 4> args;
+    args.push_back(object);
+    args.append(indices.begin(), indices.end());
+    args.push_back(value);
+    return findAndCallOverload("operator[]=", args, "subscr_assign") != nullptr;
 }
 
 // ===== B2: BinaryExpr sub-dispatchers =====
@@ -525,6 +534,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     if (e->op == "in" || e->op == "not in") {
         llvm::Value *elem = emitExpr(*e->lhs);
         llvm::Value *container = emitExpr(*e->rhs);
+
+        if (auto *result = tryOperatorCall("operatorin", elem, container)) {
+            if (e->op == "not in")
+                result = builder_.CreateNot(result, "user_not_in");
+            return result;
+        }
 
         // Try set
         llvm::Type *setElemTy = getSetElementType(container);

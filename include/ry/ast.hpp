@@ -82,7 +82,8 @@ inline bool isBoolConstrainedOperator(const std::string &name) {
     return name == "operator==" || name == "operator!=" ||
            name == "operator<"  || name == "operator<=" ||
            name == "operator>"  || name == "operator>=" ||
-           name == "operatornot" || name == "operatorand" || name == "operatoror";
+           name == "operatornot" || name == "operatorand" || name == "operatoror" ||
+           name == "operatorin";
 }
 
 // Strips the "operator" prefix from an operator function name.
@@ -99,6 +100,10 @@ inline bool isCompoundAssignOperator(const std::string &name) {
            name == "operator&=" || name == "operator|=" ||
            name == "operator^=" ||
            name == "operator<<=" || name == "operator>>=";
+}
+
+inline bool isSubscriptOperator(const std::string &name) {
+    return name == "operator[]" || name == "operator[]=";
 }
 
 struct NumberExpr   { int64_t value; std::string suffix; };
@@ -184,7 +189,7 @@ struct ListExpr {
 
 struct IndexExpr {
     ExprPtr object;
-    ExprPtr index;
+    std::vector<ExprPtr> indices;
 };
 
 struct MapExpr {
@@ -210,7 +215,7 @@ struct ImportStmt {
 
 struct IndexAssignStmt {
     ExprPtr object;
-    ExprPtr index;
+    std::vector<ExprPtr> indices;
     ExprPtr value;
     SourceLocation loc;
 };
