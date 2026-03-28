@@ -49,6 +49,7 @@ For detailed language specifications, see the reference pages below.
 | [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/recv/close for TCP sockets |
 | [HTTP Server](reference/http.md) | http_listen, http_method, http_path, http_header, http_body, http_response |
 | [Base64](reference/base64.md) | encode, decode, encode_url_safe, decode_url_safe |
+| [Path](reference/path.md) | join, basename, dirname, extension, resolve, is_absolute |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and package.toml specification |
