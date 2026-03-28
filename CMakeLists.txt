@@ -225,7 +225,16 @@ else()
     target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
 
+target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 
 include(GoogleTest)
-gtest_discover_tests(ry_tests)
+if(ENABLE_ASAN)
+    # ASan 有効時は gtest_discover_tests を使わない（ビルド時のバイナリ実行で
+    # LLVM の container-overflow false positive が発生するため）
+    add_test(NAME ry_tests COMMAND ry_tests)
+    set_tests_properties(ry_tests PROPERTIES
+        ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+else()
+    gtest_discover_tests(ry_tests)
+endif()
