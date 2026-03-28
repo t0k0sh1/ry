@@ -2,6 +2,36 @@
 
 # Project Management
 
+## CLI Overview
+
+```bash
+ry <file.ry> [args...]              # Run a Ry script
+echo '<code>' | ry                  # Run code from stdin
+ry test [options] [<file> | <dir>]  # Run tests
+ry init                             # Initialize a project
+ry new <project-name>               # Create a new project
+ry fmt [options] [<file> | <dir>]   # Format source files
+ry self-update [options]            # Update ry itself
+```
+
+### Global Options
+
+| Option | Description |
+|---|---|
+| `-h`, `--help` | Show help |
+| `-v`, `--version` | Show version |
+| `--env=<env>` | Set environment (`production`\|`development`\|`internal`). Overrides the `RY_ENV` environment variable. |
+
+### Stdin Execution
+
+When no file argument is given and stdin is not a terminal, `ry` reads source code from stdin and executes it:
+
+```bash
+echo 'print("hello")' | ry
+```
+
+---
+
 ## `ry init` - Project Initialization
 
 Initializes the current directory as a Ry project.
@@ -88,6 +118,36 @@ ry fmt --check src/        # Check specific directory
 - Does not require LLVM initialization (fast startup)
 - Compound assignment operators (`+=`, `-=`, etc.) are represented in their desugared form (`x = x + expr`) after formatting, because the parser desugars them during parsing
 - Hex (`0xFF`) and binary (`0b1010`) number literals are converted to decimal notation
+
+---
+
+## `ry test` - Run Tests
+
+Discovers and runs test files (`*.test.ry`). See [Testing](testing.md) for full test syntax documentation.
+
+```bash
+ry test                        # Auto-discover and run all *.test.ry files
+ry test tests/spec             # Run all tests under a directory
+ry test test_file.ry           # Run a specific test file
+ry test -p                     # Run tests in parallel
+ry test -w                     # Watch mode: re-run on file change
+ry test --coverage             # Collect line coverage information
+```
+
+### Options
+
+| Option | Description |
+|---|---|
+| `-p`, `--parallel` | Run tests in parallel |
+| `-w`, `--watch` | Watch for changes and re-run |
+| `--coverage`, `--cov` | Collect coverage information |
+| `-h`, `--help` | Show help |
+
+### Behavior
+
+1. Without arguments, searches for `package.toml` to find the project root and recursively discovers `*.test.ry` files (skipping `.git`, `build`, `node_modules`)
+2. Exit code is 0 if all tests passed, 1 if any failed
+3. `--coverage` with `--parallel` falls back to sequential execution
 
 ---
 

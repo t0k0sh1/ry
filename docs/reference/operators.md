@@ -8,7 +8,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Precedence | Operator | Description | Associativity |
 |---|---|---|---|
-| 0 | `?` | Error propagation (postfix) | Left |
+| 0 | `?` `!!` | Error propagation (postfix) | Left |
 | 1 | `()` | Grouping | -- |
 | 2 | `+x` `-x` `~x` | Unary plus, unary minus, bitwise NOT | Right |
 | 3 | `**` | Exponentiation | Right |
@@ -113,9 +113,11 @@ masked = flags & 0b0011   # 3
 shifted = 1 << 8          # 256
 ```
 
-## Error Propagation Operator (`?`)
+## Error Propagation Operator (`?` / `!!`)
 
 The postfix `?` operator unwraps a `Result` value. If the value is `Ok(v)`, it evaluates to `v`. If the value is `Err(e)`, the enclosing function immediately returns `Err(e)`.
+
+The `!!` operator is an alias for `?` with identical semantics. Both can be used interchangeably.
 
 The enclosing function must have a `Result` return type.
 
@@ -127,7 +129,7 @@ fn safe_divide(a: int, b: int) -> Result<int, Error>:
 
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # returns Err early if b == 0
-    y = safe_divide(x, c)?    # returns Err early if c == 0
+    y = safe_divide(x, c)!!
     return Ok(y + 1)
 ```
 
