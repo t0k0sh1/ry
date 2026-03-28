@@ -2198,3 +2198,70 @@ TEST_F(CodeGenTest, BuiltinIndexStillWorks) {
     // Map index assignment
     EXPECT_EQ(runSource("m = {\"a\": 1}\nm[\"b\"] = 2\nprint(m[\"b\"])"), "2\n");
 }
+
+TEST_F(CodeGenTest, OperatorCallSingleArg) {
+    std::string src =
+        "record Adder:\n"
+        "    base: int\n"
+        "fn operator()(a: Adder, x: int) -> int:\n"
+        "    return a.base + x\n"
+        "add5 = Adder(5)\n"
+        "print(add5(10))";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, OperatorCallMultiArg) {
+    std::string src =
+        "record Multiplier:\n"
+        "    factor: int\n"
+        "fn operator()(m: Multiplier, x: int, y: int) -> int:\n"
+        "    return m.factor * (x + y)\n"
+        "mul = Multiplier(3)\n"
+        "print(mul(4, 5))";
+    EXPECT_EQ(runSource(src), "27\n");
+}
+
+TEST_F(CodeGenTest, OperatorCallVoid) {
+    std::string src =
+        "record Printer:\n"
+        "    prefix: str\n"
+        "fn operator()(p: Printer, msg: str):\n"
+        "    print(p.prefix + msg)\n"
+        "p = Printer(\">> \")\n"
+        "p(\"hello\")";
+    EXPECT_EQ(runSource(src), ">> hello\n");
+}
+
+TEST_F(CodeGenTest, OperatorAs) {
+    std::string src =
+        "record Celsius:\n"
+        "    value: int\n"
+        "record Fahrenheit:\n"
+        "    value: int\n"
+        "fn operator as(c: Celsius) -> Fahrenheit:\n"
+        "    return Fahrenheit(c.value * 9 // 5 + 32)\n"
+        "c = Celsius(100)\n"
+        "f = c as Fahrenheit\n"
+        "print(f.value)";
+    EXPECT_EQ(runSource(src), "212\n");
+}
+
+TEST_F(CodeGenTest, OperatorAsFallbackBuiltin) {
+    EXPECT_EQ(runSource("x = 42\nprint(x as float)"), "42\n");
+}
+
+TEST_F(CodeGenTest, OperatorCallParamValidation) {
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator()(f: Foo) -> int:\n"
+        "    return f.x\n"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, OperatorAsParamValidation) {
+    EXPECT_THROW(runSource(
+        "record Foo:\n"
+        "    x: int\n"
+        "fn operator as(a: int, b: int) -> int:\n"
+        "    return a\n"), std::runtime_error);
+}

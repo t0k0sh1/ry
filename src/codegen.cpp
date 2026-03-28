@@ -807,6 +807,8 @@ void CodeGen::emitStmt(CallStmt &s) {
             return;
         }
     }
+    if (tryCallOperator(s.callee, s.args))
+        return;
     emitUserFnCall(s.callee, s.args);
 }
 

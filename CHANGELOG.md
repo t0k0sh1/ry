@@ -30,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Named fields in ADT enum variants (#308)
 - Subscript operator overloading `operator[]` / `operator[]=` with multi-index support (#202)
 - Membership operator overloading `operator in` for user-defined types (#202)
+- Call operator overloading `operator()` for callable records (#202)
+- Cast operator overloading `operator as` for user-defined type conversions (#202)
 - Compound assignment operator overloading with in-place optimization (#204)
 - Enforce bool return type for comparison and logical operator overloads (#203)
 - N-element tuple destructuring in for loops (#302)

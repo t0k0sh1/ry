@@ -197,6 +197,20 @@ bool CodeGen::trySubscriptAssignOperatorCall(
     return findAndCallOverload("operator[]=", args, "subscr_assign") != nullptr;
 }
 
+llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
+                                       const std::vector<ExprPtr> &args) {
+    llvm::AllocaInst *varPtr = findVar(callee);
+    if (!varPtr) return nullptr;
+    llvm::Type *allocTy = varPtr->getAllocatedType();
+    if (!allocTy->isStructTy()) return nullptr;
+    llvm::Value *obj = builder_.CreateLoad(allocTy, varPtr, callee + ".val");
+    llvm::SmallVector<llvm::Value*, 4> callArgs;
+    callArgs.push_back(obj);
+    for (auto &arg : args)
+        callArgs.push_back(emitExpr(*arg));
+    return findAndCallOverload("operator()", callArgs, "call_op");
+}
+
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,

@@ -439,6 +439,8 @@ fn operator<op>(a: type) -> return_type:
 | Logical (binary) | `and` `or` |
 | Membership | `in` |
 | Subscript | `[]` (read), `[]=` (write) |
+| Call | `()` |
+| Cast | `as` |
 | Unary | `-` `~` `not` |
 
 ### Return Type Constraints
@@ -450,6 +452,7 @@ Comparison, logical, and membership operators must return `bool`:
 | Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
 | Logical | `and` `or` `not` | `bool` |
 | Membership | `in` | `bool` |
+| Cast | `as` | Required (target type) |
 
 ```python
 # OK
