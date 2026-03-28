@@ -428,6 +428,12 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         return builder_.CreateCall(powFn, {lhs, rhs}, "pow");
     }
 
+    // Auto-convert non-str to str for + operator (#393)
+    if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() != ptrTy_)
+        rhs = valueToString(rhs);
+    else if (op == "+" && rhs->getType() == ptrTy_ && lhs->getType() != ptrTy_)
+        lhs = valueToString(lhs);
+
     // String concatenation
     if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
         auto strlenFn = getStdlibStrlen();

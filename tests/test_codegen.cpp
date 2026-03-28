@@ -164,19 +164,14 @@ TEST_F(CodeGenTest, StringTypeMismatch) {
 }
 
 TEST_F(CodeGenTest, StringBinaryOpTypeMismatch) {
-    // Arithmetic: str op int
-    EXPECT_THROW(runSource("print(\"abc\" + 2)"), std::runtime_error);
+    // Non-+ arithmetic ops with str still error
     EXPECT_THROW(runSource("print(\"abc\" - 2)"), std::runtime_error);
     EXPECT_THROW(runSource("print(\"abc\" / 2)"), std::runtime_error);
     EXPECT_THROW(runSource("print(\"abc\" // 2)"), std::runtime_error);
     EXPECT_THROW(runSource("print(\"abc\" % 2)"), std::runtime_error);
     EXPECT_THROW(runSource("print(\"abc\" ** 2)"), std::runtime_error);
-    // Reverse: int op str
-    EXPECT_THROW(runSource("print(2 + \"abc\")"), std::runtime_error);
     EXPECT_THROW(runSource("print(2 - \"abc\")"), std::runtime_error);
     EXPECT_THROW(runSource("print(2 / \"abc\")"), std::runtime_error);
-    // str op float
-    EXPECT_THROW(runSource("print(\"abc\" + 1.5)"), std::runtime_error);
     EXPECT_THROW(runSource("print(\"abc\" - 1.5)"), std::runtime_error);
     // Comparison: str vs int
     EXPECT_THROW(runSource("print(\"abc\" == 2)"), std::runtime_error);
@@ -190,6 +185,17 @@ TEST_F(CodeGenTest, StringBinaryOpTypeMismatch) {
     EXPECT_EQ(runSource("print(\"ab\" * 3)"), "ababab\n");
     EXPECT_EQ(runSource("print(\"ab\" == \"ab\")"), "true\n");
     EXPECT_EQ(runSource("print(\"ab\" < \"cd\")"), "true\n");
+}
+
+// ===== String auto-concatenation (#393) =====
+
+TEST_F(CodeGenTest, StringAutoConcat) {
+    EXPECT_EQ(runSource("print(\"abc\" + 2)"), "abc2\n");
+    EXPECT_EQ(runSource("print(\"value: \" + 42)"), "value: 42\n");
+    EXPECT_EQ(runSource("print(1 + \"abc\")"), "1abc\n");
+    EXPECT_EQ(runSource("print(\"pi=\" + 3.14)"), "pi=3.14\n");
+    EXPECT_EQ(runSource("print(\"ok=\" + true)"), "ok=true\n");
+    EXPECT_EQ(runSource("print(false + \" is false\")"), "false is false\n");
 }
 
 // ===== Type change throws =====

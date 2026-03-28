@@ -30,7 +30,7 @@ Lower numbers indicate higher precedence (evaluated first).
 
 | Operator | Description | Example |
 |---|---|---|
-| `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"` |
+| `+` | Addition / string concatenation | `1 + 2` -> `3`, `"a" + "b"` -> `"ab"`, `"x" + 1` -> `"x1"` |
 | `-` | Subtraction | `5 - 3` -> `2` |
 | `*` | Multiplication / string repetition | `4 * 3` -> `12`, `"ab" * 3` -> `"ababab"` |
 | `/` | Division (always float) | `7 / 2` -> `3.5` |
@@ -45,7 +45,11 @@ a = 10 // 3    # 3 (int)
 b = 10 / 3     # 3.3333... (float)
 c = 2 ** 8     # 256.0 (float)
 s = "foo" + "bar"  # "foobar"
+t = "val=" + 42    # "val=42"
+u = 3.14 + "!"    # "3.14!"
 ```
+
+When one operand of `+` is `str` and the other is `int`, `float`, or `bool`, the non-`str` operand is automatically converted to its string representation and concatenated.
 
 ## Comparison Operators
 
@@ -267,6 +271,8 @@ f++           # f = 2.5 (int 1 is promoted to float)
 | `%` | int | int | int |
 | `%` | float or int (one is float) | -- | float |
 | `+` | str | str | str |
+| `+` | str | int / float / bool | str |
+| `+` | int / float / bool | str | str |
 | `== != < <= > >=` | numeric / bool / str | same type | bool |
 | `*` | str | int | str |
 | `in` | any | Set<T> / List<T> / Map<K, V> | bool |
