@@ -73,7 +73,7 @@ TEST(ProjectConfigParser, LoadInvalidLine) {
 TEST(FindProjectRoot, FindsInCurrentDir) {
     auto tmpdir = fs::temp_directory_path() / "ry_test_find_root";
     fs::create_directories(tmpdir);
-    { std::ofstream f(tmpdir / "ry.toml"); f << "[project]\n"; }
+    { std::ofstream f(tmpdir / "package.toml"); f << "[project]\n"; }
 
     auto result = findProjectRoot(tmpdir.string());
     ASSERT_TRUE(result.has_value());
@@ -86,7 +86,7 @@ TEST(FindProjectRoot, FindsInParentDir) {
     auto tmpdir = fs::temp_directory_path() / "ry_test_find_parent";
     auto subdir = tmpdir / "sub" / "deep";
     fs::create_directories(subdir);
-    { std::ofstream f(tmpdir / "ry.toml"); f << "[project]\n"; }
+    { std::ofstream f(tmpdir / "package.toml"); f << "[project]\n"; }
 
     auto result = findProjectRoot(subdir.string());
     ASSERT_TRUE(result.has_value());
@@ -128,13 +128,13 @@ protected:
 TEST_F(CmdInitTest, CreatesProjectStructure) {
     ASSERT_EQ(cmd_init(), 0);
 
-    EXPECT_TRUE(fs::exists(tmpdir / "ry.toml"));
+    EXPECT_TRUE(fs::exists(tmpdir / "package.toml"));
     EXPECT_TRUE(fs::is_directory(tmpdir / "src"));
     EXPECT_FALSE(fs::exists(tmpdir / "test"));
     EXPECT_TRUE(fs::exists(tmpdir / "src" / "main.ry"));
 
-    // Verify ry.toml content
-    std::ifstream f(tmpdir / "ry.toml");
+    // Verify package.toml content
+    std::ifstream f(tmpdir / "package.toml");
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
     auto config = ProjectConfigParser::load(content);
@@ -150,7 +150,7 @@ TEST_F(CmdInitTest, CreatesProjectStructure) {
 }
 
 TEST_F(CmdInitTest, FailsIfRyTomlExists) {
-    { std::ofstream f(tmpdir / "ry.toml"); f << "existing"; }
+    { std::ofstream f(tmpdir / "package.toml"); f << "existing"; }
     EXPECT_EQ(cmd_init(), 1);
 }
 
@@ -193,12 +193,12 @@ TEST_F(CmdNewTest, CreatesProjectStructure) {
     ASSERT_EQ(cmd_new(1, argv), 0);
 
     auto project_dir = tmpdir / "my-app";
-    EXPECT_TRUE(fs::exists(project_dir / "ry.toml"));
+    EXPECT_TRUE(fs::exists(project_dir / "package.toml"));
     EXPECT_TRUE(fs::is_directory(project_dir / "src"));
     EXPECT_TRUE(fs::exists(project_dir / "src" / "main.ry"));
 
-    // Verify ry.toml content
-    std::ifstream f(project_dir / "ry.toml");
+    // Verify package.toml content
+    std::ifstream f(project_dir / "package.toml");
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
     auto config = ProjectConfigParser::load(content);

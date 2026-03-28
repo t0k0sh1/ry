@@ -27,7 +27,7 @@ ry test --cov        # --coverage の短縮形
 
 `ry test` を引数なしで実行すると:
 
-1. `ry.toml` を探してプロジェクトルートを特定
+1. `package.toml` を探してプロジェクトルートを特定
 2. プロジェクトルート以下の `*.test.ry` ファイルを再帰的に検出（`.git`、`build`、`node_modules` はスキップ）
 3. 各ファイルを実行し、結果を集計
 

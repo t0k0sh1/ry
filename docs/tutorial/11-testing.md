@@ -19,7 +19,7 @@ ry test -p                    # Run all tests in parallel (-p or --parallel)
 
 The exit code is `0` if all tests pass, `1` if any test fails.
 
-When run without arguments, `ry test` searches for `ry.toml` to find the project root, then recursively discovers all `*.test.ry` files.
+When run without arguments, `ry test` searches for `package.toml` to find the project root, then recursively discovers all `*.test.ry` files.
 
 ---
 

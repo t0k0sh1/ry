@@ -14,16 +14,16 @@ ry init
 
 ```
 my-project/
-  ry.toml          # 專案設定檔
+  package.toml          # 專案設定檔
   src/
     main.ry        # 進入點（範例程式碼）
 ```
 
 ### 行為
 
-1. 若 `ry.toml` 已存在則錯誤結束
+1. 若 `package.toml` 已存在則錯誤結束
 2. 建立 `src/` 目錄（若不存在）
-3. 生成 `ry.toml`（`name` 為當前目錄名稱）
+3. 生成 `package.toml`（`name` 為當前目錄名稱）
 4. 生成 `src/main.ry`（若已存在則跳過）
 
 ---
@@ -40,7 +40,7 @@ ry new my-project
 
 ```
 my-project/
-  ry.toml          # 專案設定檔
+  package.toml          # 專案設定檔
   src/
     main.ry        # 進入點（範例程式碼）
 ```
@@ -51,7 +51,7 @@ my-project/
 2. 若同名目錄已存在則錯誤結束
 3. 建立 `<project-name>/` 目錄
 4. 在其中建立 `src/` 目錄
-5. 生成 `ry.toml`（`name` 為指定的專案名稱）
+5. 生成 `package.toml`（`name` 為指定的專案名稱）
 6. 生成 `src/main.ry`
 
 ---
@@ -61,7 +61,7 @@ my-project/
 以一致的 2 空格縮排和標準風格格式化 `.ry` 原始碼檔案。
 
 ```bash
-ry fmt                     # 格式化專案中所有 .ry 檔案（需要 ry.toml）
+ry fmt                     # 格式化專案中所有 .ry 檔案（需要 package.toml）
 ry fmt src/main.ry         # 格式化單一檔案
 ry fmt src/                # 遞迴格式化目錄中所有 .ry 檔案
 ry fmt --check             # 檢查檔案是否已格式化（未格式化則 exit 1）
@@ -119,7 +119,7 @@ ry self-update v0.0.1       # 更新至指定版本
 
 ---
 
-## `ry.toml` 設定檔
+## `package.toml` 設定檔
 
 以 TOML 格式記述專案的中繼資料與路徑設定。
 
@@ -149,7 +149,7 @@ src = "src"
 
 ### TOML 子集規格
 
-`ry.toml` 支援以下 TOML 子集。
+`package.toml` 支援以下 TOML 子集。
 
 - 區段標頭：`[section]`
 - 鍵值對：`key = "value"`（僅字串值）

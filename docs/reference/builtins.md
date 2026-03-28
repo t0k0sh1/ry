@@ -286,7 +286,7 @@ sleep(0)       # returns immediately
 
 Returns the value of an environment variable. The one-argument form returns `Option<str>` (`Some(value)` if set, `None` if not). The two-argument form returns the value or `default` if the variable is not set.
 
-If a `.env` file exists in the project root (the directory containing `ry.toml`), its entries are automatically loaded into the process environment at startup. Existing environment variables are not overwritten by `.env` values.
+If a `.env` file exists in the project root (the directory containing `package.toml`), its entries are automatically loaded into the process environment at startup. Existing environment variables are not overwritten by `.env` values.
 
 > **Security note:** `.env` files typically contain secrets (API keys, database passwords, tokens, etc.). Do **not** commit `.env` to version control (add it to `.gitignore` or equivalent), and treat its contents as sensitive configuration.
 

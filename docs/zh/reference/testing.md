@@ -27,7 +27,7 @@ ry test --cov        # --coverage 的縮寫
 
 不帶引數執行 `ry test` 時：
 
-1. 搜尋 `ry.toml` 以找到專案根目錄
+1. 搜尋 `package.toml` 以找到專案根目錄
 2. 在專案根目錄下遞迴探索所有 `*.test.ry` 檔案（`.git`、`build`、`node_modules` 會被跳過）
 3. 逐一執行並彙總結果
 

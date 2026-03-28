@@ -40,7 +40,7 @@ cd my-project
 
 這將產生以下檔案和目錄：
 
-- `ry.toml` — 專案設定檔
+- `package.toml` — 專案設定檔
 - `src/main.ry` — 進入點（附帶範例程式碼）
 
 若要將當前目錄初始化為專案，請使用 `ry init`：

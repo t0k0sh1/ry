@@ -14,16 +14,16 @@ ry init
 
 ```
 my-project/
-  ry.toml          # プロジェクト設定ファイル
+  package.toml          # プロジェクト設定ファイル
   src/
     main.ry        # エントリポイント（サンプルコード）
 ```
 
 ### 動作
 
-1. `ry.toml` が既に存在する場合はエラー終了する
+1. `package.toml` が既に存在する場合はエラー終了する
 2. `src/` ディレクトリを作成（存在しなければ）
-3. `ry.toml` を生成（`name` はカレントディレクトリ名）
+3. `package.toml` を生成（`name` はカレントディレクトリ名）
 4. `src/main.ry` を生成（存在しなければスキップ）
 
 ---
@@ -40,7 +40,7 @@ ry new my-project
 
 ```
 my-project/
-  ry.toml          # プロジェクト設定ファイル
+  package.toml          # プロジェクト設定ファイル
   src/
     main.ry        # エントリポイント（サンプルコード）
 ```
@@ -51,7 +51,7 @@ my-project/
 2. 同名のディレクトリが既に存在する場合はエラー終了する
 3. `<project-name>/` ディレクトリを作成
 4. その中に `src/` ディレクトリを作成
-5. `ry.toml` を生成（`name` は指定されたプロジェクト名）
+5. `package.toml` を生成（`name` は指定されたプロジェクト名）
 6. `src/main.ry` を生成
 
 ---
@@ -61,7 +61,7 @@ my-project/
 `.ry` ソースファイルを一貫した2スペースインデントと正規スタイルでフォーマットします。
 
 ```bash
-ry fmt                     # プロジェクト内の全 .ry ファイルをフォーマット（ry.toml 必要）
+ry fmt                     # プロジェクト内の全 .ry ファイルをフォーマット（package.toml 必要）
 ry fmt src/main.ry         # 単一ファイルをフォーマット
 ry fmt src/                # ディレクトリ内の全 .ry ファイルを再帰的にフォーマット
 ry fmt --check             # フォーマット済みか確認（未フォーマットなら exit 1）
@@ -119,7 +119,7 @@ ry self-update v0.0.1       # 指定バージョンに更新
 
 ---
 
-## `ry.toml` 設定ファイル
+## `package.toml` 設定ファイル
 
 プロジェクトのメタデータとパス設定を TOML 形式で記述します。
 
@@ -149,7 +149,7 @@ src = "src"
 
 ### TOML サブセット仕様
 
-`ry.toml` は以下の TOML サブセットをサポートします。
+`package.toml` は以下の TOML サブセットをサポートします。
 
 - セクションヘッダ: `[section]`
 - キー・値ペア: `key = "value"`（文字列値のみ）

@@ -615,7 +615,7 @@ int main(int argc, char *argv[]) {
             // ry test [-p] [-w] — discover from project root
             auto root = findProjectRoot();
             if (!root) {
-                errs() << "Error: ry.toml not found. Run 'ry init' first.\n";
+                errs() << "Error: package.toml not found. Run 'ry init' first.\n";
                 return 1;
             }
             if (watch) {
