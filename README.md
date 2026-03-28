@@ -123,6 +123,7 @@ echo '<code>' | ry         # Run code from stdin
 ry test [options] [path]   # Run tests (*.test.ry)
 ry init                    # Initialize a project in current directory
 ry new <name>              # Create a new project
+ry run [<script-name>]     # Run a project script
 ry fmt [options] [path]    # Format source files
 ry self-update             # Update ry itself
 ```
