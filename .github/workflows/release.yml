@@ -65,6 +65,15 @@ jobs:
           cd dist
           tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry lib/
           shasum -a 256 ry-*.tar.gz > checksums.txt
+      - name: Extract changelog
+        if: env.SKIP != 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${VERSION#v}"
+          awk "/^## \\[$VERSION\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md > release_notes.txt
+          if [ ! -s release_notes.txt ]; then
+            echo "No changelog entries for $VERSION." > release_notes.txt
+          fi
       - name: Create Release
         if: env.SKIP != 'true'
         env:
@@ -72,6 +81,6 @@ jobs:
         run: |
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
-            --generate-notes \
+            --notes-file release_notes.txt \
             --latest \
             dist/ry-*.tar.gz dist/checksums.txt
