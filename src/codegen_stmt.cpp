@@ -12,17 +12,22 @@ void CodeGen::emitDeprecationWarning(const std::string &name) {
 // ===== B3: emitVarDecl =====
 
 void CodeGen::emitVarDecl(const std::string &name,
-                           const std::optional<std::string> &type_annotation,
+                           const TypeNodePtr &type_annotation,
                            ExprNode &value, bool is_immutable) {
     if (scope_stack_.back().count(name))
         codegenError("redeclared variable: " + name);
 
+    // Convert TypeNodePtr to string for codegen (Phase 1 bridge)
+    std::optional<std::string> annot;
+    if (type_annotation)
+        annot = type_annotation->toString();
+
     // Handle empty set/map literal with type annotation
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
-        if (!type_annotation)
+        if (!annot)
             codegenError("empty {} literal requires type annotation");
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Set<") {
-            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+        if (annot->size() > 4 && annot->substr(0, 4) == "Set<") {
+            std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
             auto mallocFn = getStdlibMalloc();
@@ -52,10 +57,10 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (type_annotation->size() > 4 && type_annotation->substr(0, 4) == "Map<") {
-            auto [keyTy, valTy] = parseMapTypeAnnotation(*type_annotation);
+        if (annot->size() > 4 && annot->substr(0, 4) == "Map<") {
+            auto [keyTy, valTy] = parseMapTypeAnnotation(*annot);
             if (!keyTy || !valTy)
-                codegenError("invalid map type annotation: " + *type_annotation);
+                codegenError("invalid map type annotation: " + *annot);
 
             auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
@@ -97,9 +102,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                   (std::holds_alternative<VariableExpr>(value.data) &&
                    std::get<VariableExpr>(value.data).name == "None");
     if (isNone) {
-        if (!type_annotation)
+        if (!annot)
             codegenError("type annotation required for None");
-        llvm::Type *annotTy = resolveType(*type_annotation);
+        llvm::Type *annotTy = resolveType(*annot);
         if (!isOptionType(annotTy))
             codegenError("None can only be assigned to Option type");
         llvm::Value *val = buildNoneValue(annotTy);
@@ -113,8 +118,8 @@ void CodeGen::emitVarDecl(const std::string &name,
     // Resolve type alias and parse constraint once for the entire function
     std::string resolvedAnnot;
     std::optional<TypeConstraint> constraint;
-    if (type_annotation) {
-        resolvedAnnot = resolveTypeAlias(*type_annotation);
+    if (annot) {
+        resolvedAnnot = resolveTypeAlias(*annot);
         constraint = parseTypeConstraint(resolvedAnnot);
 
         // Pre-emit compile-time check for string literal constraints
@@ -139,18 +144,18 @@ void CodeGen::emitVarDecl(const std::string &name,
     }
 
     // Fixed-length array declaration: [T; N] = [elem, ...]
-    if (type_annotation && !type_annotation->empty() && type_annotation->front() == '[' &&
-        type_annotation->back() == ']' && type_annotation->find(';') != std::string::npos) {
-        llvm::Type *annotTy = resolveType(*type_annotation);
+    if (annot && !annot->empty() && annot->front() == '[' &&
+        annot->back() == ']' && annot->find(';') != std::string::npos) {
+        llvm::Type *annotTy = resolveType(*annot);
         auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
-        if (!arrTy) codegenError("invalid array type: " + *type_annotation);
+        if (!arrTy) codegenError("invalid array type: " + *annot);
 
         llvm::Type *elemTy = arrTy->getElementType();
         uint64_t arrSize = arrTy->getNumElements();
 
         // Parse element type name from annotation "[elemType; N]"
-        size_t semiPos = type_annotation->find(';');
-        std::string elemTypeName = type_annotation->substr(1, semiPos - 1);
+        size_t semiPos = annot->find(';');
+        std::string elemTypeName = annot->substr(1, semiPos - 1);
         while (!elemTypeName.empty() && elemTypeName.back() == ' ') elemTypeName.pop_back();
 
         auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
@@ -202,20 +207,20 @@ void CodeGen::emitVarDecl(const std::string &name,
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
-    if (type_annotation) {
+    if (annot) {
         if (constraint) {
             // Literal/range type: resolve to base type and check constraint
             llvm::Type *annotTy = resolveType(resolvedAnnot);
             if (annotTy != newTy)
                 codegenError(
-                    "type error: annotation '" + *type_annotation +
+                    "type error: annotation '" + *annot +
                     "' does not match expression type for variable '" + name + "'");
             emitConstraintCheck(val, *constraint, name);
         } else {
-            llvm::Type *annotTy = resolveType(*type_annotation);
+            llvm::Type *annotTy = resolveType(*annot);
             if (annotTy != newTy) {
                 if (annotTy == i8Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *type_annotation;
+                    const std::string &ann = *annot;
                     if (ann == "i8") {
                         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
                             int64_t v = ci->getSExtValue();
@@ -235,7 +240,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = builder_.CreateTrunc(val, i8Ty_, "i8trunc");
                     newTy = i8Ty_;
                 } else if (annotTy == i32Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *type_annotation;
+                    const std::string &ann = *annot;
                     if (ann == "u32") {
                         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
                             int64_t v = ci->getSExtValue();
@@ -254,7 +259,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     val = builder_.CreateTrunc(val, i32Ty_, "i32trunc");
                     newTy = i32Ty_;
                 } else if (annotTy == i16Ty_ && newTy == i64Ty_) {
-                    const std::string &ann = *type_annotation;
+                    const std::string &ann = *annot;
                     if (ann == "u16") {
                         if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
                             int64_t v = ci->getSExtValue();
@@ -286,7 +291,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                     llvm::Type *innerTy = optTy->getElementType(1);
                     if (val->getType() != innerTy)
                         codegenError(
-                            "type error: annotation '" + *type_annotation +
+                            "type error: annotation '" + *annot +
                             "' does not match expression type for variable '" + name + "'");
                     val = buildSomeValue(val, annotTy);
                     newTy = annotTy;
@@ -296,12 +301,12 @@ void CodeGen::emitVarDecl(const std::string &name,
                 } else if (isAnyType(newTy) && canAnyHoldType(annotTy)) {
                     val = unwrapFromAny(val, annotTy);
                     newTy = annotTy;
-                } else if (isUnionType(*type_annotation)) {
-                    val = wrapInUnion(val, *type_annotation);
+                } else if (isUnionType(*annot)) {
+                    val = wrapInUnion(val, *annot);
                     newTy = val->getType();
                 } else {
                     codegenError(
-                        "type error: annotation '" + *type_annotation +
+                        "type error: annotation '" + *annot +
                         "' does not match expression type for variable '" + name + "'");
                 }
             }
@@ -312,8 +317,8 @@ void CodeGen::emitVarDecl(const std::string &name,
     builder_.CreateStore(val, ptr);
 
     // Track low-level type metadata
-    if (type_annotation) {
-        const std::string &ann = *type_annotation;
+    if (annot) {
+        const std::string &ann = *annot;
         if (isLowLevelTypeName(ann))
             low_level_type_names_[ptr] = ann;
     } else {
@@ -332,8 +337,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         type_constraints_[ptr] = *constraint;
 
     // Track union value type (skip literal unions which use base types directly)
-    if (type_annotation && isUnionType(*type_annotation) && !constraint) {
-        union_value_types_[ptr] = normalizeUnionType(*type_annotation);
+    if (annot && isUnionType(*annot) && !constraint) {
+        union_value_types_[ptr] = normalizeUnionType(*annot);
     }
 
     // Track collection metadata for Option/Result wrapping a collection
@@ -341,8 +346,8 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (isOptionType(newTy) || isResultType(newTy)) {
         propagateCollectionMetadata(val, ptr);
         // Extract inner collection type from Option<Map<K,V>> or Result<Map<K,V>, E>
-        if (type_annotation && type_meta_[TM_MapKey].find(ptr) == type_meta_[TM_MapKey].end()) {
-            std::string ann = *type_annotation;
+        if (annot && type_meta_[TM_MapKey].find(ptr) == type_meta_[TM_MapKey].end()) {
+            std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
                 inner = ann.substr(7, ann.size() - 8);
@@ -381,9 +386,9 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (newTy == ptrTy_) {
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
-        if (!elemTy && type_annotation && type_annotation->size() > 5 &&
-            type_annotation->substr(0, 5) == "List<") {
-            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+        if (!elemTy && annot && annot->size() > 5 &&
+            annot->substr(0, 5) == "List<") {
+            std::string inner = annot->substr(5, annot->size() - 6);
             elemTy = resolveType(inner);
         }
         if (elemTy)
@@ -419,9 +424,9 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
         }
         // From type annotation: Map<K, V>
-        if (!keyTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "Map<") {
-            std::tie(keyTy, valTy) = parseMapTypeAnnotation(*type_annotation);
+        if (!keyTy && annot && annot->size() > 4 &&
+            annot->substr(0, 4) == "Map<") {
+            std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
         if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
         if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
@@ -433,9 +438,9 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setElemTy = getSetElementType(load->getPointerOperand());
             }
         }
-        if (!setElemTy && type_annotation && type_annotation->size() > 4 &&
-            type_annotation->substr(0, 4) == "Set<") {
-            std::string inner = type_annotation->substr(4, type_annotation->size() - 5);
+        if (!setElemTy && annot && annot->size() > 4 &&
+            annot->substr(0, 4) == "Set<") {
+            std::string inner = annot->substr(4, annot->size() - 5);
             setElemTy = resolveType(inner);
         }
         if (setElemTy)
@@ -443,9 +448,9 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         // --- Task tracking ---
         llvm::Type *taskTy = getTaskResultType(val);
-        if (!taskTy && type_annotation && type_annotation->size() > 5 &&
-            type_annotation->substr(0, 5) == "Task<" && type_annotation->back() == '>') {
-            std::string inner = type_annotation->substr(5, type_annotation->size() - 6);
+        if (!taskTy && annot && annot->size() > 5 &&
+            annot->substr(0, 5) == "Task<" && annot->back() == '>') {
+            std::string inner = annot->substr(5, annot->size() - 6);
             taskTy = resolveType(inner);
         }
         if (taskTy)
@@ -455,7 +460,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         auto fnIt = fn_type_info_.find(val);
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
-        } else if (type_annotation) {
+        } else if (annot) {
             if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
                 fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
@@ -477,16 +482,16 @@ void CodeGen::emitVarDecl(const std::string &name,
     // These must be outside the ptrTy_ guard because resources can be
     // wrapped in Result<T, Error> structs (e.g., http_get() returns a struct).
     propagateResourceTrackingWide(val, ptr);
-    if (type_annotation)
-        registerResourceByTypeName(*type_annotation, ptr);
+    if (annot)
+        registerResourceByTypeName(*annot, ptr);
 
     // --- Enum value tracking (works for i64 values, not just ptr) ---
     {
         auto evIt = enum_value_types_.find(val);
         if (evIt != enum_value_types_.end())
             enum_value_types_[ptr] = evIt->second;
-        else if (type_annotation && enum_types_.count(*type_annotation))
-            enum_value_types_[ptr] = *type_annotation;
+        else if (annot && enum_types_.count(*annot))
+            enum_value_types_[ptr] = *annot;
     }
 
     if (is_immutable)
@@ -689,7 +694,7 @@ void CodeGen::emitStmt(EnumStmt &s) {
         GenericEnumTemplate tmpl;
         tmpl.name = s.name;
         tmpl.typeParams = s.type_params;
-        tmpl.variants = s.variants;
+        tmpl.variants = std::move(s.variants);
         generic_enum_templates_[s.name] = std::move(tmpl);
         return;
     }
@@ -732,8 +737,9 @@ void CodeGen::emitStmt(EnumStmt &s) {
         if (!s.variants[i].field_types.empty()) {
             VariantFieldInfo vfi;
             for (auto &ft : s.variants[i].field_types) {
-                vfi.fieldTypes.push_back(resolveType(ft));
-                vfi.fieldTypeNames.push_back(ft);
+                std::string ftStr = ft->toString();
+                vfi.fieldTypes.push_back(resolveType(ftStr));
+                vfi.fieldTypeNames.push_back(ftStr);
             }
             info.variantFields[s.variants[i].name] = std::move(vfi);
         }

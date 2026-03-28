@@ -62,8 +62,9 @@ private:
     ExprPtr parseTrailingBlockAsLambda();
     StmtNode parseMatchStatement();
     Pattern parsePattern();
-    std::string parseTypeName();
-    std::string parseTypeNameSingle();
+    TypeNodePtr parseTypeName();
+    TypeNodePtr parseTypeNameSingle();
+    TypeNodePtr parseFnType();
     std::vector<StmtNode> parseBlock();
     std::vector<ExprPtr> parseArgList();
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);

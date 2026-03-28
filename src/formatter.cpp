@@ -289,7 +289,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             }
             return "{" + elems + "}";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<CastExpr>>) {
-            return formatExpr(*v->value) + " as " + v->target_type;
+            return formatExpr(*v->value) + " as " + v->target_type->toString();
         } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {
             return formatExpr(*v->condition) + " ? " + formatExpr(*v->true_expr) + " : " + formatExpr(*v->false_expr);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
@@ -320,7 +320,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return result;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
             std::string result = "fn(" + formatParams(v->params) + ")";
-            if (!v->return_type.empty()) result += " -> " + v->return_type;
+            if (v->return_type) result += " -> " + v->return_type->toString();
             if (v->expr_body) {
                 result += " => " + formatExpr(*v->expr_body);
                 return result;
@@ -350,7 +350,7 @@ std::string Formatter::formatParams(const std::vector<FnParam> &params) {
     std::string result;
     for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0) result += ", ";
-        result += params[i].name + ": " + params[i].type;
+        result += params[i].name + ": " + params[i].type->toString();
         if (params[i].default_value)
             result += " = " + formatExpr(*params[i].default_value);
     }

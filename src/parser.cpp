@@ -351,10 +351,10 @@ StmtNode Parser::parseStatement() {
     if (next.kind == TokenKind::Colon) {
         // Type-annotated declaration: x: int = 42 or @native @const PI: float
         lex_.next(); // consume ':'
-        std::string typeAnnotation = parseTypeName();
+        auto typeAnnotation = parseTypeName();
         AssignStmt s;
         s.name = first.value;
-        s.type_annotation = typeAnnotation;
+        s.type_annotation = std::move(typeAnnotation);
         s.directives = std::move(directives);
         s.loc = locFromToken(first);
         if (lex_.peek().kind == TokenKind::Equals) {

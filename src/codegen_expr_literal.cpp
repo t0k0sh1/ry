@@ -7,7 +7,7 @@ void CodeGen::emitStmt(RecordStmt &s) {
 
     std::vector<llvm::Type*> fieldTypes;
     for (auto &f : s.fields)
-        fieldTypes.push_back(resolveType(f.type));
+        fieldTypes.push_back(resolveType(f.type->toString()));
 
     llvm::StructType *structTy = llvm::StructType::create(*ctx_, fieldTypes, s.name);
     if (hasDirective(s.directives, "deprecated"))

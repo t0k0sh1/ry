@@ -13,6 +13,44 @@
 struct ExprNode;
 using ExprPtr = std::unique_ptr<ExprNode>;
 
+// ===== Type AST nodes =====
+
+struct TypeNode;
+using TypeNodePtr = std::unique_ptr<TypeNode>;
+
+struct BasicType    { std::string name; };
+struct GenericType  { std::string name; std::vector<TypeNodePtr> type_args; };
+struct ArrayType    { TypeNodePtr element_type; uint64_t size; };
+struct TupleType    { std::vector<TypeNodePtr> elements; };
+struct FnType       { std::vector<TypeNodePtr> param_types; TypeNodePtr return_type; };
+struct UnionType    { std::vector<TypeNodePtr> components; };
+struct OptionalType { TypeNodePtr inner; };
+struct RangeType    { std::string start; std::string end; };
+
+struct TypeNode {
+    std::variant<
+        BasicType,
+        GenericType,
+        ArrayType,
+        TupleType,
+        FnType,
+        UnionType,
+        OptionalType,
+        RangeType
+    > data;
+
+    std::string toString() const;
+
+    static TypeNodePtr makeBasic(std::string name);
+    static TypeNodePtr makeGeneric(std::string name, std::vector<TypeNodePtr> args);
+    static TypeNodePtr makeArray(TypeNodePtr elem, uint64_t size);
+    static TypeNodePtr makeTuple(std::vector<TypeNodePtr> elems);
+    static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret);
+    static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
+    static TypeNodePtr makeOptional(TypeNodePtr inner);
+    static TypeNodePtr makeRange(std::string start, std::string end);
+};
+
 // ===== Directive =====
 
 struct DirectiveParam {
@@ -158,11 +196,11 @@ struct SetExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct AssignStmt { std::string name; std::optional<std::string> type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
+struct AssignStmt { std::string name; TypeNodePtr type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
-struct FnParam { std::string name; std::string type; ExprPtr default_value; };
+struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; };
 
 struct ImportStmt {
     std::string module_path;              // "utils/math" (resolved to dir or .ry file)
@@ -177,11 +215,11 @@ struct IndexAssignStmt {
     SourceLocation loc;
 };
 
-struct FieldDef { std::string name; std::string type; std::vector<Directive> directives; };
+struct FieldDef { std::string name; TypeNodePtr type; std::vector<Directive> directives; };
 
 struct RecordStmt { std::string name; std::vector<FieldDef> fields; std::vector<ExprPtr> invariants; std::vector<Directive> directives; SourceLocation loc; };
 
-struct TypeAliasStmt { std::string name; std::string target_type; SourceLocation loc; };
+struct TypeAliasStmt { std::string name; TypeNodePtr target_type; SourceLocation loc; };
 
 struct BreakStmt { SourceLocation loc; };
 struct ContinueStmt { SourceLocation loc; };
@@ -189,7 +227,7 @@ struct EllipsisStmt { SourceLocation loc; };
 
 struct EnumVariant {
     std::string name;
-    std::vector<std::string> field_types;  // empty = no associated data
+    std::vector<TypeNodePtr> field_types;  // empty = no associated data
     std::vector<std::string> field_names;  // parallel to field_types; empty when unnamed
     std::optional<int64_t> explicit_value;
 };
@@ -269,7 +307,7 @@ struct ForStmt {
 
 struct CastExpr {
     ExprPtr value;
-    std::string target_type;
+    TypeNodePtr target_type;
 };
 
 struct TernaryExpr {
@@ -305,7 +343,7 @@ struct FnStmt {
     std::string name;
     std::vector<std::string> type_params;  // for generics: <T, U>
     std::vector<FnParam> params;
-    std::string return_type;
+    TypeNodePtr return_type;
     std::vector<StmtNode> body;
     bool is_operator = false;
     bool is_async = false;
@@ -318,7 +356,7 @@ struct FnStmt {
 
 struct LambdaExpr {
     std::vector<FnParam> params;
-    std::string return_type;
+    TypeNodePtr return_type;
     std::vector<StmtNode> body;   // multi-line lambda
     ExprPtr expr_body;            // single-expression lambda (if non-null, use this)
 };

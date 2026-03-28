@@ -4,7 +4,7 @@
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Value *val = emitExpr(*e->value);
     llvm::Type *srcTy = val->getType();
-    const std::string &target = e->target_type;
+    const std::string target = e->target_type->toString();
 
     if (target == "float") {
         if (srcTy->isDoubleTy()) return val;
@@ -264,7 +264,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 void CodeGen::emitStmt(TypeAliasStmt &s) {
     // Type aliases are resolved at compile time via resolveType()
     // Store the alias mapping for later lookup
-    type_aliases_[s.name] = s.target_type;
+    type_aliases_[s.name] = s.target_type->toString();
 }
 
 // ===== RangeExpr =====

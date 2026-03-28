@@ -14,7 +14,7 @@ TEST(ParserTest, LetSimpleInt) {
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    EXPECT_FALSE(s.type_annotation.has_value());
+    EXPECT_EQ(s.type_annotation, nullptr);
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
@@ -25,7 +25,7 @@ TEST(ParserTest, VarSimpleInt) {
     ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    EXPECT_FALSE(s.type_annotation.has_value());
+    EXPECT_EQ(s.type_annotation, nullptr);
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
@@ -35,8 +35,8 @@ TEST(ParserTest, LetWithTypeAnnotation) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "int");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"int");
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
@@ -45,8 +45,8 @@ TEST(ParserTest, VarWithTypeAnnotation) {
     Program prog = parseStr("y: float = 3.14");
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "y");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "float");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"float");
     ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
 }
 
@@ -211,8 +211,8 @@ TEST(ParserTest, TypeAnnotationInt) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "int");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"int");
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(s.value->data));
     EXPECT_EQ(std::get<NumberExpr>(s.value->data).value, 42);
 }
@@ -221,8 +221,8 @@ TEST(ParserTest, TypeAnnotationFloat) {
     Program prog = parseStr("y: float = 3.14");
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "y");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "float");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"float");
     ASSERT_TRUE(std::holds_alternative<FloatExpr>(s.value->data));
 }
 
@@ -230,8 +230,8 @@ TEST(ParserTest, TypeAnnotationBool) {
     Program prog = parseStr("z: bool = true");
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "z");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "bool");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"bool");
     ASSERT_TRUE(std::holds_alternative<BoolExpr>(s.value->data));
 }
 
@@ -239,8 +239,8 @@ TEST(ParserTest, TypeAnnotationAcceptsUserDefinedType) {
     Program prog = parseStr("x: Point = p");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "Point");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"Point");
 }
 
 // ===== type パーサーテスト =====
@@ -253,9 +253,9 @@ TEST(ParserTest, TypeDefinition) {
     EXPECT_EQ(ts.name, "Point");
     ASSERT_EQ(ts.fields.size(), 2u);
     EXPECT_EQ(ts.fields[0].name, "x");
-    EXPECT_EQ(ts.fields[0].type, "int");
+    EXPECT_EQ(ts.fields[0].type->toString(), "int");
     EXPECT_EQ(ts.fields[1].name, "y");
-    EXPECT_EQ(ts.fields[1].type, "int");
+    EXPECT_EQ(ts.fields[1].type->toString(), "int");
 }
 
 TEST(ParserTest, FieldAccessSimple) {
@@ -298,8 +298,8 @@ TEST(ParserTest, LetStringWithTypeAnnotation) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "s");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "str");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"str");
     ASSERT_TRUE(std::holds_alternative<StringExpr>(s.value->data));
     EXPECT_EQ(std::get<StringExpr>(s.value->data).value, "world");
 }
@@ -311,8 +311,8 @@ TEST(ParserTest, TypeAnnotationMissingEqualsThrows) {
 TEST(ParserTest, TypeAnnotationMixedWithInference) {
     Program prog = parseStr("a: int = 1\nb = 2");
     ASSERT_EQ(prog.size(), 2u);
-    EXPECT_TRUE(std::get<AssignStmt>(prog[0]).type_annotation.has_value());
-    EXPECT_FALSE(std::get<AssignStmt>(prog[1]).type_annotation.has_value());
+    EXPECT_TRUE(std::get<AssignStmt>(prog[0]).type_annotation != nullptr);
+    EXPECT_EQ(std::get<AssignStmt>(prog[1]).type_annotation, nullptr);
 }
 
 TEST(ParserTest, BareAssignmentWithoutDeclaration) {
@@ -329,8 +329,8 @@ TEST(ParserTest, TypeAnnotationWithoutValue) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "int");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"int");
 }
 
 // ===== if/elif/else パーサーテスト =====
@@ -412,10 +412,10 @@ TEST(ParserTest, FnSimple) {
     EXPECT_EQ(fn.name, "add");
     ASSERT_EQ(fn.params.size(), 2u);
     EXPECT_EQ(fn.params[0].name, "a");
-    EXPECT_EQ(fn.params[0].type, "int");
+    EXPECT_EQ(fn.params[0].type->toString(), "int");
     EXPECT_EQ(fn.params[1].name, "b");
-    EXPECT_EQ(fn.params[1].type, "int");
-    EXPECT_EQ(fn.return_type, "int");
+    EXPECT_EQ(fn.params[1].type->toString(), "int");
+    EXPECT_EQ(fn.return_type->toString(), "int");
     ASSERT_EQ(fn.body.size(), 1u);
     EXPECT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
 }
@@ -455,7 +455,7 @@ TEST(ParserTest, FnReturnTypeOmitted) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fn.name, "f");
-    EXPECT_EQ(fn.return_type, "");
+    EXPECT_EQ(fn.return_type, nullptr);
     ASSERT_EQ(fn.body.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
     const auto &ret = std::get<ReturnStmt>(fn.body[0]);
@@ -465,7 +465,7 @@ TEST(ParserTest, FnReturnTypeOmitted) {
 TEST(ParserTest, FnExplicitUnitReturn) {
     Program prog = parseStr("fn f() -> Unit:\n    return");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type, "Unit");
+    EXPECT_EQ(fn.return_type->toString(), "Unit");
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
@@ -474,7 +474,7 @@ TEST(ParserTest, LambdaReturnTypeOmitted) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
-    EXPECT_EQ(lambda->return_type, "");
+    EXPECT_EQ(lambda->return_type, nullptr);
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {
@@ -483,28 +483,28 @@ TEST(ParserTest, LambdaExplicitReturnType) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
-    EXPECT_EQ(lambda->return_type, "int");
+    EXPECT_EQ(lambda->return_type->toString(), "int");
 }
 
 TEST(ParserTest, TypeAnnotationOptionInt) {
     Program prog = parseStr("x: Option<int> = None");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "Option<int>");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"Option<int>");
 }
 
 TEST(ParserTest, FnParamOptionType) {
     Program prog = parseStr("fn f(x: Option<int>) -> int:\n    return 0");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     ASSERT_EQ(fn.params.size(), 1u);
-    EXPECT_EQ(fn.params[0].type, "Option<int>");
+    EXPECT_EQ(fn.params[0].type->toString(), "Option<int>");
 }
 
 TEST(ParserTest, FnReturnOptionType) {
     Program prog = parseStr("fn f() -> Option<int>:\n    return Some(1)");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type, "Option<int>");
+    EXPECT_EQ(fn.return_type->toString(), "Option<int>");
 }
 
 // ===== import パーサーテスト =====
@@ -591,8 +591,8 @@ TEST(ParserTest, TupleThreeElements) {
 TEST(ParserTest, TupleTypeAnnotation) {
     Program prog = parseStr("t: (int, float) = (1, 3.14)");
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "(int, float)");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"(int, float)");
 }
 
 TEST(ParserTest, TupleIndexAccess) {
@@ -609,7 +609,7 @@ TEST(ParserTest, TupleIndexAccess) {
 TEST(ParserTest, FnReturnTupleType) {
     Program prog = parseStr("fn swap(a: int, b: int) -> (int, int):\n    return (b, a)");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type, "(int, int)");
+    EXPECT_EQ(fn.return_type->toString(), "(int, int)");
 }
 
 TEST(ParserTest, ParenGroupingStillWorks) {
@@ -721,8 +721,8 @@ TEST(ParserTest, MapTypeAnnotation) {
     Program prog = parseStr("m: Map<str, int> = {\"a\": 1}");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "Map<str, int>");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"Map<str, int>");
 }
 
 // ===== Operator overloading =====
@@ -739,10 +739,10 @@ TEST(ParserTest, OperatorFnBinaryPlus) {
     EXPECT_TRUE(fn->is_operator);
     ASSERT_EQ(fn->params.size(), 2u);
     EXPECT_EQ(fn->params[0].name, "a");
-    EXPECT_EQ(fn->params[0].type, "Vec2");
+    EXPECT_EQ(fn->params[0].type->toString(), "Vec2");
     EXPECT_EQ(fn->params[1].name, "b");
-    EXPECT_EQ(fn->params[1].type, "Vec2");
-    EXPECT_EQ(fn->return_type, "Vec2");
+    EXPECT_EQ(fn->params[1].type->toString(), "Vec2");
+    EXPECT_EQ(fn->return_type->toString(), "Vec2");
 }
 
 TEST(ParserTest, OperatorFnUnaryMinus) {
@@ -914,8 +914,8 @@ TEST(ParserTest, OperatorFnCompoundPlusEq) {
     EXPECT_TRUE(fn->is_operator);
     ASSERT_EQ(fn->params.size(), 2u);
     EXPECT_EQ(fn->params[0].name, "a");
-    EXPECT_EQ(fn->params[0].type, "Vec2");
-    EXPECT_EQ(fn->return_type, "Vec2");
+    EXPECT_EQ(fn->params[0].type->toString(), "Vec2");
+    EXPECT_EQ(fn->return_type->toString(), "Vec2");
 }
 
 TEST(ParserTest, OperatorFnCompoundAssignRequiresTwoParams) {
@@ -959,8 +959,8 @@ TEST(ParserTest, SetTypeAnnotation) {
     Program prog = parseStr("s: Set<int> = {1}");
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "Set<int>");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"Set<int>");
 }
 
 TEST(ParserTest, InOperator) {
@@ -1019,21 +1019,21 @@ TEST(ParserTest, LetUnionTypeAnnotation) {
     ASSERT_EQ(prog.size(), 1u);
     const auto &s = std::get<AssignStmt>(prog[0]);
     EXPECT_EQ(s.name, "x");
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "int | str");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"int | str");
 }
 
 TEST(ParserTest, FnUnionParam) {
     Program prog = parseStr("fn f(x: int | str) -> int:\n    return 0");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
     ASSERT_EQ(fn.params.size(), 1u);
-    EXPECT_EQ(fn.params[0].type, "int | str");
+    EXPECT_EQ(fn.params[0].type->toString(), "int | str");
 }
 
 TEST(ParserTest, FnUnionReturn) {
     Program prog = parseStr("fn f() -> int | str:\n    return 0");
     const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type, "int | str");
+    EXPECT_EQ(fn.return_type->toString(), "int | str");
 }
 
 // ===== >>> パーサーテスト =====
@@ -1075,8 +1075,8 @@ TEST(ParserTest, NotStillWorksAfterNotIn) {
 TEST(ParserTest, UnionThreeTypes) {
     Program prog = parseStr("x: int | float | str = 42");
     const auto &s = std::get<AssignStmt>(prog[0]);
-    ASSERT_TRUE(s.type_annotation.has_value());
-    EXPECT_EQ(*s.type_annotation, "int | float | str");
+    ASSERT_TRUE(s.type_annotation != nullptr);
+    EXPECT_EQ(s.type_annotation->toString(),"int | float | str");
 }
 
 // ===== Contract (Design by Contract) tests =====
@@ -1219,7 +1219,7 @@ TEST(ParserTest, TypeAlias) {
     ASSERT_TRUE(std::holds_alternative<TypeAliasStmt>(prog[0]));
     auto &ta = std::get<TypeAliasStmt>(prog[0]);
     EXPECT_EQ(ta.name, "MyInt");
-    EXPECT_EQ(ta.target_type, "int");
+    EXPECT_EQ(ta.target_type->toString(), "int");
 }
 
 // ===== for k, v in map =====
@@ -1268,7 +1268,7 @@ TEST(ParserTest, AsyncFnParsing) {
     auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_TRUE(fn->is_async);
     EXPECT_EQ(fn->name, "add");
-    EXPECT_EQ(fn->return_type, "int");
+    EXPECT_EQ(fn->return_type->toString(), "int");
 }
 
 TEST(ParserTest, AwaitExprParsing) {
@@ -1417,14 +1417,14 @@ TEST(ParserTest, EnumNamedFields) {
     // Circle
     EXPECT_EQ(es.variants[0].name, "Circle");
     ASSERT_EQ(es.variants[0].field_types.size(), 1u);
-    EXPECT_EQ(es.variants[0].field_types[0], "float");
+    EXPECT_EQ(es.variants[0].field_types[0]->toString(), "float");
     ASSERT_EQ(es.variants[0].field_names.size(), 1u);
     EXPECT_EQ(es.variants[0].field_names[0], "radius");
     // Rect
     EXPECT_EQ(es.variants[1].name, "Rect");
     ASSERT_EQ(es.variants[1].field_types.size(), 2u);
-    EXPECT_EQ(es.variants[1].field_types[0], "float");
-    EXPECT_EQ(es.variants[1].field_types[1], "float");
+    EXPECT_EQ(es.variants[1].field_types[0]->toString(), "float");
+    EXPECT_EQ(es.variants[1].field_types[1]->toString(), "float");
     ASSERT_EQ(es.variants[1].field_names.size(), 2u);
     EXPECT_EQ(es.variants[1].field_names[0], "width");
     EXPECT_EQ(es.variants[1].field_names[1], "height");
@@ -1461,7 +1461,7 @@ TEST(ParserTest, EnumNamedFieldsGeneric) {
     ASSERT_EQ(es.variants[0].field_names.size(), 1u);
     EXPECT_EQ(es.variants[0].field_names[0], "value");
     ASSERT_EQ(es.variants[0].field_types.size(), 1u);
-    EXPECT_EQ(es.variants[0].field_types[0], "T");
+    EXPECT_EQ(es.variants[0].field_types[0]->toString(), "T");
 }
 
 TEST(ParserTest, PascalCaseTypeAliasRequired) {
@@ -1472,7 +1472,7 @@ TEST(ParserTest, TypeAliasFnType) {
     Program prog = parseStr("type Callback = fn(int, int) -> int");
     auto &ta = std::get<TypeAliasStmt>(prog[0]);
     EXPECT_EQ(ta.name, "Callback");
-    EXPECT_EQ(ta.target_type, "fn(int, int) -> int");
+    EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
 }
 
 TEST(ParserTest, SnakeCaseForLoopVariable) {
@@ -1565,7 +1565,7 @@ TEST(ParserTest, NativeFnDeclaration) {
     auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fs->name, "contains");
     EXPECT_EQ(fs->params.size(), 2u);
-    EXPECT_EQ(fs->return_type, "bool");
+    EXPECT_EQ(fs->return_type->toString(), "bool");
     EXPECT_TRUE(fs->body.empty());
     ASSERT_EQ(fs->directives.size(), 1u);
     EXPECT_EQ(fs->directives[0].name, "native");
