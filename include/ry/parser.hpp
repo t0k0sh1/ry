@@ -110,7 +110,10 @@ inline constexpr const char *kNumericSuffixes[] = {
 };
 
 inline std::pair<std::string, std::string> splitNumericSuffix(const std::string &s) {
+    bool isHex = s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
     for (const char *suf : kNumericSuffixes) {
+        // Skip f32/f64 for hex literals — 'f' is a valid hex digit
+        if (isHex && suf[0] == 'f') continue;
         size_t len = std::strlen(suf);
         if (s.size() > len && s.compare(s.size() - len, len, suf) == 0) {
             char before = s[s.size() - len - 1];
@@ -133,7 +136,7 @@ inline int64_t parseIntLiteral(const std::string &s) {
     std::string clean = stripUnderscores(s);
     if (clean.size() > 2 && clean[0] == '0') {
         if (clean[1] == 'x' || clean[1] == 'X') return std::stoll(clean, nullptr, 16);
-        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.c_str() + 2, nullptr, 2);
+        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.substr(2), nullptr, 2);
     }
     return std::stoll(clean);
 }
