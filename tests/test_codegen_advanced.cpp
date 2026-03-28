@@ -1334,3 +1334,35 @@ TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
         "print(pair_name(Dog(\"Rex\", \"Lab\"), 42))";
     EXPECT_EQ(runSource(src), "Rex\n");
 }
+
+// ===== Tail Call Optimization (#214) =====
+
+TEST_F(CodeGenTest, TailCallOptimization) {
+    // Deep self-recursive tail call should not stack overflow
+    EXPECT_EQ(runSource(
+        "fn sum_to(n: int, acc: int) -> int:\n"
+        "  if n <= 0:\n"
+        "    return acc\n"
+        "  return sum_to(n - 1, acc + n)\n"
+        "print(sum_to(1000000, 0))"), "500000500000\n");
+}
+
+TEST_F(CodeGenTest, TailCallFactorial) {
+    // Tail-recursive factorial with accumulator
+    EXPECT_EQ(runSource(
+        "fn factorial(n: int, acc: int) -> int:\n"
+        "  if n <= 1:\n"
+        "    return acc\n"
+        "  return factorial(n - 1, n * acc)\n"
+        "print(factorial(20, 1))"), "2432902008176640000\n");
+}
+
+TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
+    // n * factorial(n-1) is NOT a tail call — should still work for small N
+    EXPECT_EQ(runSource(
+        "fn factorial(n: int) -> int:\n"
+        "  if n <= 1:\n"
+        "    return 1\n"
+        "  return n * factorial(n - 1)\n"
+        "print(factorial(10))"), "3628800\n");
+}
