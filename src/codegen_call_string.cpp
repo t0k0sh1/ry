@@ -752,16 +752,14 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
 
 // join(list, sep) → str
 llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
-    if (e.args.size() != 2) {
-        codegenError("join() expects 2 arguments (List<str>, str)");
-        return nullptr;
-    }
+    if (e.args.size() != 2)
+        return nullptr; // Not the builtin join(List<str>, str); fall through
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Value *sep = emitExpr(*e.args[1]);
     if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
         codegenError("join() requires List<str> and str arguments");
     if (getListElementType(listPtr) != ptrTy_)
-        codegenError("join() requires List<str> as first argument");
+        return nullptr; // First arg is not a List<str>; fall through to stdlib
     auto strlenFn = getStdlibStrlen();
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
