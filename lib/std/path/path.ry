@@ -1,0 +1,25 @@
+# File path operations
+
+@native
+fn join(a: str, b: str) -> str
+
+@native
+fn join(a: str, b: str, c: str) -> str
+
+@native
+fn join(a: str, b: str, c: str, d: str) -> str
+
+@native
+fn basename(p: str) -> str
+
+@native
+fn dirname(p: str) -> str
+
+@native
+fn extension(p: str) -> str
+
+@native
+fn resolve(p: str) -> Result<str, Error>
+
+@native
+fn is_absolute(p: str) -> bool

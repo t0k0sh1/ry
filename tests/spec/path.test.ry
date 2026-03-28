@@ -1,0 +1,119 @@
+from path import join, basename, dirname, extension, resolve, is_absolute
+
+describe("path", fn():
+  describe("join", fn():
+    it("joins two parts", fn():
+      expect(join("/tmp", "file.txt")).to_eq("/tmp/file.txt")
+    )
+    it("joins three parts", fn():
+      expect(join("/tmp", "data", "file.txt")).to_eq("/tmp/data/file.txt")
+    )
+    it("joins four parts", fn():
+      expect(join("/tmp", "a", "b", "file.txt")).to_eq("/tmp/a/b/file.txt")
+    )
+    it("absolute second arg replaces first", fn():
+      expect(join("/tmp", "/usr")).to_eq("/usr")
+    )
+    it("handles trailing slash", fn():
+      expect(join("/tmp/", "file.txt")).to_eq("/tmp/file.txt")
+    )
+    it("join from root", fn():
+      expect(join("/", "tmp")).to_eq("/tmp")
+    )
+    it("empty first arg", fn():
+      expect(join("", "file.txt")).to_eq("file.txt")
+    )
+    it("empty second arg", fn():
+      expect(join("/tmp", "")).to_eq("/tmp")
+    )
+  )
+
+  describe("basename", fn():
+    it("extracts filename", fn():
+      expect(basename("/tmp/data/file.txt")).to_eq("file.txt")
+    )
+    it("root path", fn():
+      expect(basename("/")).to_eq("")
+    )
+    it("no directory", fn():
+      expect(basename("file.txt")).to_eq("file.txt")
+    )
+    it("trailing slash", fn():
+      expect(basename("/tmp/data/")).to_eq("data")
+    )
+    it("empty string", fn():
+      expect(basename("")).to_eq("")
+    )
+  )
+
+  describe("dirname", fn():
+    it("extracts directory", fn():
+      expect(dirname("/tmp/data/file.txt")).to_eq("/tmp/data")
+    )
+    it("root file", fn():
+      expect(dirname("/file.txt")).to_eq("/")
+    )
+    it("no directory", fn():
+      expect(dirname("file.txt")).to_eq(".")
+    )
+    it("root path", fn():
+      expect(dirname("/")).to_eq("/")
+    )
+    it("empty string", fn():
+      expect(dirname("")).to_eq(".")
+    )
+  )
+
+  describe("extension", fn():
+    it("extracts extension", fn():
+      expect(extension("/tmp/file.txt")).to_eq(".txt")
+    )
+    it("no extension", fn():
+      expect(extension("/tmp/file")).to_eq("")
+    )
+    it("hidden file no ext", fn():
+      expect(extension(".gitignore")).to_eq("")
+    )
+    it("hidden file with ext", fn():
+      expect(extension(".config.json")).to_eq(".json")
+    )
+    it("multiple dots", fn():
+      expect(extension("archive.tar.gz")).to_eq(".gz")
+    )
+    it("empty string", fn():
+      expect(extension("")).to_eq("")
+    )
+    it("dot in directory", fn():
+      expect(extension("/usr/local.d/file")).to_eq("")
+    )
+  )
+
+  describe("is_absolute", fn():
+    it("absolute path", fn():
+      expect(is_absolute("/tmp")).to_eq(true)
+    )
+    it("relative path", fn():
+      expect(is_absolute("tmp/file")).to_eq(false)
+    )
+    it("empty string", fn():
+      expect(is_absolute("")).to_eq(false)
+    )
+  )
+
+  describe("resolve", fn():
+    it("resolves existing path", fn():
+      match resolve("/tmp"):
+        case Ok(s):
+          expect(is_absolute(s)).to_eq(true)
+        case Err(e):
+          fail("unexpected error: " + e.message)
+    )
+    it("fails for non-existent path", fn():
+      match resolve("/nonexistent_path_xyz_12345"):
+        case Ok(s):
+          fail("expected error but got Ok")
+        case Err(e):
+          expect(e.message).to_contain("cannot resolve")
+    )
+  )
+)
