@@ -82,3 +82,43 @@ describe("operator in", fn():
     expect("c" in m).to_be_false()
   )
 )
+
+describe("operator()", fn():
+  it("callable record", fn():
+    record Adder:
+      base: int
+    fn operator()(a: Adder, x: int) -> int:
+      return a.base + x
+    add5 = Adder(5)
+    expect(add5(10)).to_eq(15)
+  )
+
+  it("multi-arg callable", fn():
+    record Calc:
+      base: int
+    fn operator()(c: Calc, x: int, y: int) -> int:
+      return c.base + x * y
+    calc = Calc(10)
+    expect(calc(3, 4)).to_eq(22)
+  )
+)
+
+describe("operator as", fn():
+  it("custom cast", fn():
+    record Celsius:
+      value: int
+    record Fahrenheit:
+      value: int
+    fn operator as(c: Celsius) -> Fahrenheit:
+      return Fahrenheit(c.value * 9 // 5 + 32)
+    c = Celsius(100)
+    f = c as Fahrenheit
+    expect(f.value).to_eq(212)
+  )
+
+  it("built-in cast still works", fn():
+    x: float = 42 as float
+    expect(x + 0.5).to_eq(42.5)
+    expect(3.14 as int).to_eq(3)
+  )
+)

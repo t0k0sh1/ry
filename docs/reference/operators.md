@@ -298,6 +298,8 @@ fn operator-(a: MyType) -> MyType:
 | Logical (binary) | `and` `or` |
 | Membership | `in` |
 | Subscript | `[]` (read), `[]=` (write) |
+| Call | `()` |
+| Cast | `as` |
 | Unary | `-` `~` `not` |
 | Compound assignment | `+=` `-=` `*=` `/=` `%=` `//=` `**=` `&=` `\|=` `^=` `<<=` `>>=` |
 
@@ -310,6 +312,7 @@ Comparison and logical operators must return `bool`:
 | Comparison | `==` `!=` `<` `<=` `>` `>=` | `bool` |
 | Logical | `and` `or` `not` | `bool` |
 | Membership | `in` | `bool` |
+| Cast | `as` | Required (target type) |
 
 ```python
 # OK
@@ -426,3 +429,40 @@ print(15 not in r)  # true
 ```
 
 User-defined `in` operators are tried first; if no match is found, built-in behavior (for sets, maps, and lists) is used as a fallback. `not in` is automatically supported when `in` is defined.
+
+### Call Operator Overloading
+
+The `()` operator enables records to behave as callable objects. Requires at least 2 parameters (object + arguments).
+
+```python
+record Adder:
+    base: int
+
+fn operator()(a: Adder, x: int) -> int:
+    return a.base + x
+
+add5 = Adder(5)
+print(add5(10))    # 15
+```
+
+When a variable holding a record value is called like a function, the compiler tries `operator()` overloads first. If no match is found, other call resolution strategies (functions, constructors, lambdas) take precedence.
+
+### Cast Operator Overloading
+
+The `as` operator can be overloaded to define custom type conversions. Takes exactly 1 parameter (the source value) and must specify a return type (the target type). Dispatch matches by source type and return type.
+
+```python
+record Celsius:
+    value: int
+
+record Fahrenheit:
+    value: int
+
+fn operator as(c: Celsius) -> Fahrenheit:
+    return Fahrenheit(c.value * 9 // 5 + 32)
+
+c = Celsius(100)
+f = c as Fahrenheit   # Fahrenheit(212)
+```
+
+User-defined `as` operators are tried first; if no match is found, built-in casts (int, float, bool, str, etc.) are used as a fallback.

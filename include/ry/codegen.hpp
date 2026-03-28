@@ -358,6 +358,8 @@ private:
                                       llvm::Value *operand);
     llvm::Value *trySubscriptOperatorCall(llvm::Value *object,
                                            llvm::ArrayRef<llvm::Value*> indices);
+    llvm::Value *tryCallOperator(const std::string &callee,
+                                 const std::vector<ExprPtr> &args);
     bool trySubscriptAssignOperatorCall(llvm::Value *object,
                                          llvm::ArrayRef<llvm::Value*> indices,
                                          llvm::Value *value);

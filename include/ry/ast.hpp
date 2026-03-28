@@ -103,10 +103,6 @@ inline bool isCompoundAssignOperator(const std::string &name) {
            name == "operator<<=" || name == "operator>>=";
 }
 
-inline bool isSubscriptOperator(const std::string &name) {
-    return name == "operator[]" || name == "operator[]=";
-}
-
 struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };

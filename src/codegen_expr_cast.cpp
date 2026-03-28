@@ -6,6 +6,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Type *srcTy = val->getType();
     const std::string target = e->target_type->toString();
 
+    // Try user-defined operator as (matches by source type + return type)
+    auto fit = functions_.find("operatoras");
+    if (fit != functions_.end()) {
+        auto sit = struct_types_.find(target);
+        if (sit != struct_types_.end()) {
+            llvm::Type *targetTy = sit->second.llvmType;
+            for (auto &entry : fit->second) {
+                if (entry.paramTypes.size() == 1 &&
+                    entry.paramTypes[0] == srcTy &&
+                    entry.func->getReturnType() == targetTy) {
+                    return builder_.CreateCall(entry.func, {val}, "cast_op");
+                }
+            }
+        }
+    }
+
     if (target == "float") {
         if (srcTy->isDoubleTy()) return val;
         if (srcTy == f32Ty_) return builder_.CreateFPExt(val, f64Ty_, "cast_f");
