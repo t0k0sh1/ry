@@ -543,6 +543,23 @@ std::string Parser::parseTypeName() {
 }
 
 std::string Parser::parseTypeNameSingle() {
+    // Fixed-length array type: [T; N]
+    if (lex_.peek().kind == TokenKind::LBracket) {
+        lex_.next(); // consume '['
+        std::string elemType = parseTypeNameSingle();
+        if (lex_.peek().kind != TokenKind::Semi)
+            parseError("expected ';' in array type [T; N]");
+        lex_.next(); // consume ';'
+        if (lex_.peek().kind != TokenKind::Number)
+            parseError("expected integer size in array type [T; N]");
+        std::string size = lex_.peek().value;
+        lex_.next(); // consume number
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']' in array type");
+        lex_.next(); // consume ']'
+        return "[" + elemType + "; " + size + "]";
+    }
+
     // Tuple type: (int, float)
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('

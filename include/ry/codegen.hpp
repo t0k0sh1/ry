@@ -76,6 +76,11 @@ private:
     };
     std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[TM_COUNT];
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
+
+    // Fixed-length array element type names (e.g., "i32", "u8")
+    // elementType and size are derivable from AllocaInst->getAllocatedType()
+    std::unordered_map<llvm::AllocaInst*, std::string> array_elem_type_names_;
+
     int iterator_fn_counter_ = 0;
 
     struct UnionTypeInfo {

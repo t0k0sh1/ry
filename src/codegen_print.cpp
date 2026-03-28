@@ -207,6 +207,62 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
         return;
     }
 
+    // Fixed-length array printing via IR loop (avoids O(N) inline unrolling)
+    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(val)) {
+        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
+
+            llvm::Constant *lbracket = cachedGlobalString("[", ".fmt_arr_lb");
+            llvm::Constant *rbracket = cachedGlobalString("]\n", ".fmt_arr_rb");
+            llvm::Constant *comma = cachedGlobalString(", ", ".fmt_arr_comma");
+            builder_.CreateCall(printfFn, {lbracket});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "arr_print.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "arr_print.body", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "arr_print.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "arr_print_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            llvm::Value *cond = builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, arrSize), "arr_print_cond");
+            builder_.CreateCondBr(cond, bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+
+            // Print comma separator if not first element
+            llvm::Value *notFirst = builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0), "not_first");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "arr_print.comma", fn_);
+            llvm::BasicBlock *elemBB = llvm::BasicBlock::Create(*ctx_, "arr_print.elem", fn_);
+            builder_.CreateCondBr(notFirst, commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(printfFn, {comma});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *iElem = builder_.CreateLoad(i64Ty_, iVar, "i_elem");
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai,
+                {llvm::ConstantInt::get(i64Ty_, 0), iElem},
+                "arr_print_ptr");
+            llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "arr_print_elem");
+            emitPrintValue(elem, elemTy, printfFn, "_arr");
+
+            llvm::Value *iNext = builder_.CreateAdd(iElem, llvm::ConstantInt::get(i64Ty_, 1), "i_next");
+            builder_.CreateStore(iNext, iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(printfFn, {rbracket});
+            return;
+        }
+    }
+
     // Set/Map/List printing: check if ptr type
     if (val->getType() == ptrTy_) {
         // Check if it's a set

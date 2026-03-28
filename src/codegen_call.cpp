@@ -584,12 +584,17 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // length(xs) → list/map length
+    // length(xs) → list/map/array length
     if (e.callee == "length") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
+        // Fixed-length array: return compile-time constant
+        if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(ptr)) {
+            if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType()))
+                return llvm::ConstantInt::get(i64Ty_, arrTy->getNumElements());
+        }
         if (ptr->getType() != ptrTy_)
-            codegenError("length() requires list, map, or str argument");
+            codegenError("length() requires list, map, array, or str argument");
         // Check if it's a set
         if (getSetElementType(ptr))
             return loadSetHeader(ptr, "set").len;

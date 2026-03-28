@@ -78,6 +78,9 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
         if (deprecated_variables_.count(e.name))
             emitDeprecationWarning(e.name);
         llvm::Type *ty = alloca->getAllocatedType();
+        // Fixed-length arrays: return alloca pointer for GEP-based indexing
+        if (llvm::isa<llvm::ArrayType>(ty))
+            return alloca;
         return builder_.CreateLoad(ty, alloca, e.name);
     }
     // Check native constants (PI, E, Inf, NaN) after local scope

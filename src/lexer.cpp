@@ -362,6 +362,7 @@ Token Lexer::readToken() {
     }
     if (c == '[') { ++pos_; ++col_; return {TokenKind::LBracket, "[", line_, startCol}; }
     if (c == ']') { ++pos_; ++col_; return {TokenKind::RBracket, "]", line_, startCol}; }
+    if (c == ';') { ++pos_; ++col_; return {TokenKind::Semi, ";", line_, startCol}; }
     if (c == '{') {
         ++pos_; ++col_;
         if (fstring_brace_depth_ > 0)

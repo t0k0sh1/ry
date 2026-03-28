@@ -416,6 +416,48 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *objPtr = emitExpr(*e->object);
     llvm::Value *index = emitExpr(*e->index);
 
+    // Fixed-length array index access
+    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
+        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
+
+            if (index->getType() == i1Ty_)
+                index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
+
+            // Bounds check
+            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
+                int64_t idx = ci->getSExtValue();
+                if (idx < 0 || (uint64_t)idx >= arrSize)
+                    codegenError("array index " + std::to_string(idx) +
+                                 " out of bounds (size " + std::to_string(arrSize) + ")");
+            } else {
+                // Runtime bounds check
+                llvm::Value *negCheck = builder_.CreateICmpSLT(
+                    index, llvm::ConstantInt::get(i64Ty_, 0), "arr_neg");
+                llvm::Value *overCheck = builder_.CreateICmpSGE(
+                    index, llvm::ConstantInt::get(i64Ty_, arrSize), "arr_over");
+                llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "arr_oob");
+                llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "arr.oob", fn_);
+                llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "arr.ok", fn_);
+                builder_.CreateCondBr(oob, oobBB, okBB);
+                builder_.SetInsertPoint(oobBB);
+                emitRuntimeError("runtime error: array index out of range\n", ".arr_idx_err");
+                builder_.SetInsertPoint(okBB);
+            }
+
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
+            llvm::Value *result = builder_.CreateLoad(elemTy, elemPtr, "arr_elem");
+
+            auto ait = array_elem_type_names_.find(ai);
+            if (ait != array_elem_type_names_.end())
+                low_level_type_names_[result] = ait->second;
+
+            return result;
+        }
+    }
+
     if (objPtr->getType() != ptrTy_)
         codegenError("index operator requires list or map");
 
