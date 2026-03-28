@@ -108,6 +108,7 @@ add_library(ry_lib STATIC
     src/runtime_tls.cpp
     src/runtime_base64.cpp
     src/codegen_call_base64.cpp
+    src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
 )

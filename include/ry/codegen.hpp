@@ -296,6 +296,12 @@ private:
     bool isLowLevelTy(llvm::Value *val) const;
     void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
 
+    // Checked/Saturating/Wrapping arithmetic helpers
+    void validateCheckedArithArgs(llvm::Value *lhs, llvm::Value *rhs, const std::string &callee);
+    llvm::Value *emitCheckedArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitSaturatingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitWrappingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
+
     // Type promotion helpers (B1)
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
