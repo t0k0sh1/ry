@@ -155,6 +155,63 @@ TEST_F(CodeGenTest, InvariantViolatedAfterFieldAssign) {
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
+// ===== Inherited invariant tests =====
+
+TEST_F(CodeGenTest, InheritedInvariantSatisfied) {
+    std::string src =
+        "record Positive:\n"
+        "    value: int\n"
+        "    invariant:\n"
+        "        value > 0\n"
+        "record NamedPositive < Positive:\n"
+        "    name: str\n"
+        "np = NamedPositive(42, \"good\")\n"
+        "print(np.value)";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
+TEST_F(CodeGenTest, InheritedInvariantViolated) {
+    std::string src =
+        "record Positive:\n"
+        "    value: int\n"
+        "    invariant:\n"
+        "        value > 0\n"
+        "record NamedPositive < Positive:\n"
+        "    name: str\n"
+        "np = NamedPositive(-1, \"bad\")\n"
+        "print(np.value)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, InheritedInvariantViolatedAfterFieldAssign) {
+    std::string src =
+        "record Positive:\n"
+        "    value: int\n"
+        "    invariant:\n"
+        "        value > 0\n"
+        "record NamedPositive < Positive:\n"
+        "    name: str\n"
+        "np = NamedPositive(42, \"good\")\n"
+        "np.value = -1\n"
+        "print(np.value)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, DeepInheritedInvariantViolated) {
+    std::string src =
+        "record Positive:\n"
+        "    value: int\n"
+        "    invariant:\n"
+        "        value > 0\n"
+        "record NamedPositive < Positive:\n"
+        "    name: str\n"
+        "record TaggedPositive < NamedPositive:\n"
+        "    tag: int\n"
+        "tp = TaggedPositive(-1, \"bad\", 0)\n"
+        "print(tp.value)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
 // ===== Nested function with contract: FnScope protects contract state =====
 
 TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {

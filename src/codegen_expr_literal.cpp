@@ -68,9 +68,7 @@ llvm::Value *CodeGen::emitStructConstructor(const StructInfo &info,
         result = builder_.CreateInsertValue(result, val, i);
     }
 
-    // Check invariants after construction
-    if (!info.invariants.empty())
-        emitInvariantCheck(name, info, result);
+    emitInvariantCheck(name, info, result);
 
     return result;
 }

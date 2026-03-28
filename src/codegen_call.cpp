@@ -650,13 +650,15 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "Err") {
         requireArgs(e, 1);
         llvm::Value *inner = emitExpr(*e.args[0]);
-        // Determine the ok type from the enclosing function's return type
         llvm::Type *okTy = i8Ty_; // default: Unit (i8 dummy)
         if (fn_) {
             llvm::Type *retTy = fn_->getReturnType();
             if (isResultType(retTy)) {
                 auto *retStructTy = llvm::cast<llvm::StructType>(retTy);
                 okTy = retStructTy->getElementType(1);
+                llvm::Type *expectedErrTy = retStructTy->getElementType(2);
+                if (auto *sliced = tryEmitSubtypeCoerce(inner, expectedErrTy))
+                    inner = sliced;
             }
         }
         llvm::StructType *resTy = getResultType(okTy, inner->getType());
