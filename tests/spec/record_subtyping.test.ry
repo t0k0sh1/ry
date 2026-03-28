@@ -45,6 +45,54 @@ describe("deep inheritance", fn():
   )
 )
 
+# --- #355: Invariant inheritance ---
+record Positive:
+  value: int
+  invariant:
+    value > 0
+
+record NamedPositive < Positive:
+  name: str
+
+describe("invariant inheritance", fn():
+  it("child with valid parent fields succeeds", fn():
+    np = NamedPositive(42, "good")
+    expect(np.value).to_eq(42)
+    expect(np.name).to_eq("good")
+  )
+)
+
+# --- #354: Err() auto-slicing ---
+record ApiError < Error:
+  endpoint: str
+
+fn fetch_data(url: str) -> Result<int, Error>:
+  return Err(ApiError("not found", 404, url))
+
+describe("Err auto-slicing", fn():
+  it("Err(subtype) auto-slices to Error in Result", fn():
+    result = fetch_data("/api")
+    match result:
+      case Err(e):
+        expect(e.message).to_eq("not found")
+        expect(e.code).to_eq(404)
+      case Ok(_):
+        expect(false).to_be_true()
+  )
+)
+
+# --- return subtype coercion ---
+fn to_error(msg: str) -> Error:
+  return ApiError(msg, 500, "/internal")
+
+describe("return subtype coercion", fn():
+  it("return subtype auto-slices to parent return type", fn():
+    e = to_error("fail")
+    expect(e.message).to_eq("fail")
+    expect(e.code).to_eq(500)
+  )
+)
+
 record Animal:
   name: str
   legs: int

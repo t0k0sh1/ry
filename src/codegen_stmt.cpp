@@ -597,9 +597,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
     llvm::Value *updated = builder_.CreateInsertValue(current, newVal, fieldIdx, "struct_upd");
     builder_.CreateStore(updated, ptr);
 
-    // Check invariants after field assignment
-    if (!info.invariants.empty())
-        emitInvariantCheck(typeName, info, updated);
+    emitInvariantCheck(typeName, info, updated);
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {

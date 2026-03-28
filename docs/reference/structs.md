@@ -190,6 +190,7 @@ handle(derr)  # OK — coerced to Error (grandparent)
 | Deep inheritance | `record C < B:` where `record B < A:` — allowed |
 | Name collision | Child field with same name as parent field → compile error |
 | Auto `==` / `to_str` | Includes all inherited fields |
+| Invariant inheritance | Parent `invariant:` clauses are checked when constructing or modifying child records |
 | `@const` | Applies to all fields including inherited |
 
 ---

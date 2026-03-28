@@ -51,6 +51,8 @@ void CodeGen::emitStmt(ReturnStmt &s) {
                 val = wrapInAny(val);
             } else if (isUnionType(current_fn_return_type_)) {
                 val = wrapInUnion(val, current_fn_return_type_);
+            } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
+                val = sliced;
             } else {
                 // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
                 auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
@@ -493,7 +495,20 @@ void CodeGen::emitContractCheck(const std::string &kind, const std::string &fn_n
 
 void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &info,
                                   llvm::Value *structVal) {
-    if (info.invariants.empty()) return;
+    if (info.invariants.empty() && info.parent_name.empty()) return;
+
+    std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
+    for (auto &inv : info.invariants)
+        allInvariants.push_back({typeName, &inv});
+    const std::string *parent = &info.parent_name;
+    while (!parent->empty()) {
+        auto pit = struct_types_.find(*parent);
+        if (pit == struct_types_.end()) break;
+        for (auto &inv : pit->second.invariants)
+            allInvariants.push_back({*parent, &inv});
+        parent = &pit->second.parent_name;
+    }
+    if (allInvariants.empty()) return;
 
     pushScope();
     for (unsigned f = 0; f < info.fields.size(); ++f) {
@@ -503,8 +518,8 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
         builder_.CreateStore(fieldVal, fieldAlloca);
         scope_stack_.back()[info.fields[f].name] = fieldAlloca;
     }
-    for (int i = 0; i < static_cast<int>(info.invariants.size()); ++i)
-        emitContractCheck("invariant", typeName, info.invariants[i]);
+    for (auto &[name, inv] : allInvariants)
+        emitContractCheck("invariant", name, *inv);
     popScope();
 }
 

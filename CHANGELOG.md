@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Record auto-generated `operator==` and `operator!=` (#305)
 - Record auto-generated `to_str` (#306)
 - Record subtyping with `<` syntax for field inheritance and subtype coercion (#307)
+- Record invariant inheritance: parent `invariant:` clauses are checked on child construction (#355)
+- Auto-slice Error subtypes in `Err()` for Result return type coercion (#354)
 - `@inline` directive for function inlining hints (#299)
 - Explicit value assignment for simple enum variants (#309)
 - Named fields in ADT enum variants (#308)
