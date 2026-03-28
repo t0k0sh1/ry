@@ -114,7 +114,7 @@ inline std::pair<std::string, std::string> splitNumericSuffix(const std::string 
         size_t len = std::strlen(suf);
         if (s.size() > len && s.compare(s.size() - len, len, suf) == 0) {
             char before = s[s.size() - len - 1];
-            if (std::isdigit(before))
+            if (std::isxdigit(static_cast<unsigned char>(before)))
                 return {s.substr(0, s.size() - len), suf};
         }
     }
