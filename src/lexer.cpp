@@ -95,7 +95,7 @@ void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
         // Avoid matching partial identifiers like `42i32x`
         if (pos_ + len < src_.size()) {
             char after = src_[pos_ + len];
-            if (std::isalnum(after) || after == '_') continue;
+            if (std::isalnum(static_cast<unsigned char>(after)) || after == '_') continue;
         }
         pos_ += len;
         col_ += static_cast<int>(len);
@@ -360,7 +360,7 @@ Token Lexer::readToken() {
             }
             return {TokenKind::DotDot, "..", line_, startCol};
         }
-        if (pos_ < src_.size() && std::isdigit(src_[pos_]) &&
+        if (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_])) &&
             prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::Number &&
             prev_kind_ != TokenKind::Float && prev_kind_ != TokenKind::String &&
             prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
@@ -368,7 +368,7 @@ Token Lexer::readToken() {
             prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
             prev_kind_ != TokenKind::FStringEnd) {
             size_t start = pos_ - 1;
-            while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+            while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
             TokenKind numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -475,16 +475,16 @@ Token Lexer::readToken() {
         return {TokenKind::String, str, line_, startCol};
     }
 
-    if (std::isdigit(c)) {
+    if (std::isdigit(static_cast<unsigned char>(c))) {
         size_t start = pos_;
         TokenKind numKind = TokenKind::Number;
         if (c == '0' && pos_ + 1 < src_.size()) {
             char next = src_[pos_ + 1];
             if (next == 'x' || next == 'X') {
                 pos_ += 2; col_ += 2;
-                if (pos_ >= src_.size() || !std::isxdigit(src_[pos_]))
+                if (pos_ >= src_.size() || !std::isxdigit(static_cast<unsigned char>(src_[pos_])))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
-                while (pos_ < src_.size() && std::isxdigit(src_[pos_])) { ++pos_; ++col_; }
+                while (pos_ < src_.size() && std::isxdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
                 tryConsumeNumericSuffix(numKind);
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
@@ -497,11 +497,11 @@ Token Lexer::readToken() {
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
-        while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+        while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
         if (pos_ < src_.size() && src_[pos_] == '.' &&
-            pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])) {
+            pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
             ++pos_; ++col_;
-            while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+            while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
             numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -510,9 +510,9 @@ Token Lexer::readToken() {
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 
-    if (std::isalpha(c) || c == '_') {
+    if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
         size_t start = pos_;
-        while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_')) { ++pos_; ++col_; }
+        while (pos_ < src_.size() && (std::isalnum(static_cast<unsigned char>(src_[pos_])) || src_[pos_] == '_')) { ++pos_; ++col_; }
         // Allow trailing '!' for mutating method names (e.g., sort!, reverse!)
         // but not '!=' which is the not-equal operator
         if (pos_ < src_.size() && src_[pos_] == '!' &&

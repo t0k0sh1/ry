@@ -1161,4 +1161,13 @@ TEST(LexerTest, LeadingDotFloat) {
         EXPECT_EQ(toks[1].kind, TokenKind::Number);
         EXPECT_EQ(toks[1].value, "5");
     }
+    {
+        auto toks = tokenize("t.0");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].value, "t");
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "0");
+    }
 }
