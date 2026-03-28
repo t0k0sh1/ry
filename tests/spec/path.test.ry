@@ -17,6 +17,9 @@ describe("path", fn():
     it("handles trailing slash", fn():
       expect(join("/tmp/", "file.txt")).to_eq("/tmp/file.txt")
     )
+    it("join from root", fn():
+      expect(join("/", "tmp")).to_eq("/tmp")
+    )
     it("empty first arg", fn():
       expect(join("", "file.txt")).to_eq("file.txt")
     )

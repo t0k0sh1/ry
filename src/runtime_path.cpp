@@ -56,15 +56,16 @@ static char *join2_impl(const char *a, const char *b) {
     if (b[0] == '/') return strdup(b);
 
     size_t a_len = strip_trailing(a, strlen(a));
-
-    // b does not start with '/' (guarded above), so no leading-slash stripping needed
     size_t b_len = strlen(b);
 
-    size_t out_len = a_len + 1 + b_len;
+    // If a ends with '/' (root path), don't insert an extra separator
+    bool need_sep = (a[a_len - 1] != '/');
+    size_t out_len = a_len + (need_sep ? 1 : 0) + b_len;
     char *out = (char *)malloc(out_len + 1);
     memcpy(out, a, a_len);
-    out[a_len] = '/';
-    memcpy(out + a_len + 1, b, b_len);
+    if (need_sep)
+        out[a_len] = '/';
+    memcpy(out + a_len + (need_sep ? 1 : 0), b, b_len);
     out[out_len] = '\0';
     return out;
 }

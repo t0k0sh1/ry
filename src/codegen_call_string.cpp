@@ -758,8 +758,11 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     llvm::Value *sep = emitExpr(*e.args[1]);
     if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
         codegenError("join() requires List<str> and str arguments");
-    if (getListElementType(listPtr) != ptrTy_)
-        return nullptr; // First arg is not a List<str>; fall through to stdlib
+    llvm::Type *elemTy = getListElementType(listPtr);
+    if (!elemTy)
+        return nullptr; // First arg is not a list; fall through to stdlib
+    if (elemTy != ptrTy_)
+        codegenError("join() requires List<str> as first argument");
     auto strlenFn = getStdlibStrlen();
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();

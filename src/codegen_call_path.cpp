@@ -1,10 +1,7 @@
 #include "ry/codegen.hpp"
 
 llvm::Value *CodeGen::emitBuiltinPath(const CallExpr &e) {
-    // Use "basename" as a package-specific sentinel: if it is registered
-    // in native_fn_arg_counts_, the path package was explicitly imported.
-    // This avoids false positives from names shared with builtins (e.g. "join").
-    if (!native_fn_arg_counts_.count("basename"))
+    if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
 
     // Helper: call a __ry_path_* function with 1 str arg, returning str
