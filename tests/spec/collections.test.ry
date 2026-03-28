@@ -395,6 +395,24 @@ describe("Set", fn():
     expect(is_superset(a, b)).to_be_true()
     expect(is_superset(b, a)).to_be_false()
   )
+  it("literal dedup int", fn():
+    s = {1, 2, 3, 2, 1}
+    expect(s).to_have_length(3)
+    expect(s).to_contain(1)
+    expect(s).to_contain(2)
+    expect(s).to_contain(3)
+  )
+  it("literal dedup all same", fn():
+    s = {1, 1, 1}
+    expect(s).to_have_length(1)
+    expect(s).to_contain(1)
+  )
+  it("literal dedup string", fn():
+    s = {"a", "b", "a"}
+    expect(s).to_have_length(2)
+    expect(s).to_contain("a")
+    expect(s).to_contain("b")
+  )
 )
 
 describe("Tuple", fn():
