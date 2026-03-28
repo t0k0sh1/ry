@@ -14,7 +14,7 @@ std::string TypeNode::toString() const {
             result += ">";
             return result;
         } else if constexpr (std::is_same_v<T, ArrayType>) {
-            return "[" + v.element_type->toString() + "; " + std::to_string(v.size) + "]";
+            return v.element_type->toString() + "[" + std::to_string(v.size) + "]";
         } else if constexpr (std::is_same_v<T, TupleType>) {
             std::string result = "(";
             for (size_t i = 0; i < v.elements.size(); ++i) {
