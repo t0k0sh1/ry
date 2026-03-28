@@ -138,6 +138,67 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
+    // Fixed-length array declaration: [T; N] = [elem, ...]
+    if (type_annotation && !type_annotation->empty() && type_annotation->front() == '[' &&
+        type_annotation->back() == ']' && type_annotation->find(';') != std::string::npos) {
+        llvm::Type *annotTy = resolveType(*type_annotation);
+        auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
+        if (!arrTy) codegenError("invalid array type: " + *type_annotation);
+
+        llvm::Type *elemTy = arrTy->getElementType();
+        uint64_t arrSize = arrTy->getNumElements();
+
+        // Parse element type name from annotation "[elemType; N]"
+        size_t semiPos = type_annotation->find(';');
+        std::string elemTypeName = type_annotation->substr(1, semiPos - 1);
+        while (!elemTypeName.empty() && elemTypeName.back() == ' ') elemTypeName.pop_back();
+
+        auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+        if (!le)
+            codegenError("array type requires list literal initializer");
+        if ((*le)->elements.size() != arrSize)
+            codegenError("array size mismatch: expected " + std::to_string(arrSize) +
+                         " elements, got " + std::to_string((*le)->elements.size()));
+
+        llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
+
+        for (uint64_t i = 0; i < arrSize; ++i) {
+            llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
+            if (elemVal->getType() != elemTy) {
+                if (elemVal->getType() == i64Ty_ && (elemTy == i8Ty_ || elemTy == i16Ty_ || elemTy == i32Ty_)) {
+                    // Range check for constant int literals
+                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(elemVal)) {
+                        int64_t v = ci->getSExtValue();
+                        bool isUnsigned = (elemTypeName[0] == 'u');
+                        if (elemTy == i8Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > 255) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                            else { if (v < INT8_MIN || v > INT8_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                        } else if (elemTy == i16Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT16_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                            else { if (v < INT16_MIN || v > INT16_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                        } else if (elemTy == i32Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT32_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                            else { if (v < INT32_MIN || v > INT32_MAX) codegenError(elemTypeName + " value out of range at index " + std::to_string(i) + ": " + std::to_string(v)); }
+                        }
+                    }
+                    elemVal = builder_.CreateTrunc(elemVal, elemTy, "arr_trunc");
+                } else if (elemVal->getType() == f64Ty_ && elemTy == f32Ty_) {
+                    elemVal = builder_.CreateFPTrunc(elemVal, f32Ty_, "arr_ftrunc");
+                } else {
+                    codegenError("array element type mismatch at index " + std::to_string(i));
+                }
+            }
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
+            builder_.CreateStore(elemVal, elemPtr);
+        }
+
+        array_elem_type_names_[ptr] = elemTypeName;
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
+        return;
+    }
+
     llvm::Value *val = emitExpr(value);
     llvm::Type *newTy = val->getType();
 
@@ -782,6 +843,68 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *objPtr = emitExpr(*s.object);
     llvm::Value *key = emitExpr(*s.index);
     llvm::Value *val = emitExpr(*s.value);
+
+    // Fixed-length array index assignment
+    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(objPtr)) {
+        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
+
+            if (key->getType() == i1Ty_)
+                key = builder_.CreateZExt(key, i64Ty_, "idx_ext");
+
+            // Bounds check
+            if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(key)) {
+                int64_t idx = ci->getSExtValue();
+                if (idx < 0 || (uint64_t)idx >= arrSize)
+                    codegenError("array index " + std::to_string(idx) +
+                                 " out of bounds (size " + std::to_string(arrSize) + ")");
+            } else {
+                llvm::Value *negCheck = builder_.CreateICmpSLT(
+                    key, llvm::ConstantInt::get(i64Ty_, 0), "arr_neg");
+                llvm::Value *overCheck = builder_.CreateICmpSGE(
+                    key, llvm::ConstantInt::get(i64Ty_, arrSize), "arr_over");
+                llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, "arr_oob");
+                llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, "arr_assign.oob", fn_);
+                llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "arr_assign.ok", fn_);
+                builder_.CreateCondBr(oob, oobBB, okBB);
+                builder_.SetInsertPoint(oobBB);
+                emitRuntimeError("runtime error: array index out of range\n", ".arr_assign_err");
+                builder_.SetInsertPoint(okBB);
+            }
+
+            if (val->getType() != elemTy) {
+                if (val->getType() == i64Ty_ && (elemTy == i8Ty_ || elemTy == i16Ty_ || elemTy == i32Ty_)) {
+                    if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(val)) {
+                        int64_t v = ci->getSExtValue();
+                        auto nit = array_elem_type_names_.find(ai);
+                        std::string tn = (nit != array_elem_type_names_.end()) ? nit->second : "i32";
+                        bool isUnsigned = (tn[0] == 'u');
+                        if (elemTy == i8Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > 255) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                            else { if (v < INT8_MIN || v > INT8_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                        } else if (elemTy == i16Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT16_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                            else { if (v < INT16_MIN || v > INT16_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                        } else if (elemTy == i32Ty_) {
+                            if (isUnsigned) { if (v < 0 || v > (int64_t)UINT32_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                            else { if (v < INT32_MIN || v > INT32_MAX) codegenError(tn + " value out of range: " + std::to_string(v)); }
+                        }
+                    }
+                    val = builder_.CreateTrunc(val, elemTy, "arr_assign_trunc");
+                } else if (val->getType() == f64Ty_ && elemTy == f32Ty_) {
+                    val = builder_.CreateFPTrunc(val, f32Ty_, "arr_assign_ftrunc");
+                } else {
+                    codegenError("array element type mismatch in index assignment");
+                }
+            }
+
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), key}, "arr_assign_ptr");
+            builder_.CreateStore(val, elemPtr);
+            return;
+        }
+    }
 
     if (objPtr->getType() != ptrTy_)
         codegenError("index assignment requires list or map");

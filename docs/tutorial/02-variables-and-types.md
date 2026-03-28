@@ -104,6 +104,20 @@ q = x / y          # Unsigned division (UDiv)
 >
 > **Note**: Arithmetic on low-level integers wraps on overflow. Signed types use two's complement, unsigned types use modular arithmetic. Use the high-level `int` type (64-bit) if overflow is a concern.
 
+### Fixed-Length Arrays
+
+For low-level types, Ry provides fixed-length contiguous arrays `[T; N]`. These are stack-allocated with compile-time known size.
+
+```python
+buf: [i32; 4] = [1, 2, 3, 4]
+print(buf[0])          # 1
+buf[2] = 99
+print(buf[2])          # 99
+print(length(buf))     # 4
+
+pixels: [u8; 3] = [255, 128, 0]
+```
+
 ---
 
 ## String Operations
