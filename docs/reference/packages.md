@@ -106,6 +106,7 @@ The following sub-packages require explicit import:
 |---------|-------------|
 | [`math`](math.md) | Mathematical constants and functions |
 | [`io`](io.md) | File I/O, standard input, and byte conversions |
+| [`path`](path.md) | File path operations (join, basename, dirname, etc.) |
 
 ```python
 from math import sqrt, PI, sin
