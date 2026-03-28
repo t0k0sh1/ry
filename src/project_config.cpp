@@ -88,7 +88,7 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
     dir = fs::absolute(dir);
 
     while (true) {
-        if (fs::exists(dir / "ry.toml")) {
+        if (fs::exists(dir / "package.toml")) {
             return dir.string();
         }
         auto parent = dir.parent_path();
@@ -109,7 +109,7 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
         return 1;
     }
 
-    // 2. Generate ry.toml
+    // 2. Generate package.toml
     ProjectConfig config;
     config.name     = project_name;
     config.version  = "0.1.0";
@@ -117,9 +117,9 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
     config.src_dir  = "src";
 
     {
-        std::ofstream f(project_dir / "ry.toml");
+        std::ofstream f(project_dir / "package.toml");
         if (!f) {
-            std::cerr << "Error: failed to create ry.toml\n";
+            std::cerr << "Error: failed to create package.toml\n";
             return 1;
         }
         f << ProjectConfigParser::serialize(config);
@@ -144,8 +144,8 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
 int cmd_init() {
     fs::path cwd = fs::current_path();
 
-    if (fs::exists(cwd / "ry.toml")) {
-        std::cerr << "Error: ry.toml already exists\n";
+    if (fs::exists(cwd / "package.toml")) {
+        std::cerr << "Error: package.toml already exists\n";
         return 1;
     }
 

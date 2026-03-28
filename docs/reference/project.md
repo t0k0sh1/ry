@@ -14,16 +14,16 @@ ry init
 
 ```
 my-project/
-  ry.toml          # Project configuration file
+  package.toml          # Project configuration file
   src/
     main.ry        # Entry point (sample code)
 ```
 
 ### Behavior
 
-1. Exits with an error if `ry.toml` already exists
+1. Exits with an error if `package.toml` already exists
 2. Creates the `src/` directory (if it doesn't exist)
-3. Generates `ry.toml` (`name` is set to the current directory name)
+3. Generates `package.toml` (`name` is set to the current directory name)
 4. Generates `src/main.ry` (skipped if it already exists)
 
 ---
@@ -40,7 +40,7 @@ ry new my-project
 
 ```
 my-project/
-  ry.toml          # Project configuration file
+  package.toml          # Project configuration file
   src/
     main.ry        # Entry point (sample code)
 ```
@@ -51,7 +51,7 @@ my-project/
 2. Exits with an error if the directory already exists
 3. Creates the `<project-name>/` directory
 4. Creates the `src/` directory inside it
-5. Generates `ry.toml` (`name` is set to the given project name)
+5. Generates `package.toml` (`name` is set to the given project name)
 6. Generates `src/main.ry`
 
 ---
@@ -61,7 +61,7 @@ my-project/
 Formats `.ry` source files with consistent 2-space indentation and canonical style.
 
 ```bash
-ry fmt                     # Format all .ry files in the project (requires ry.toml)
+ry fmt                     # Format all .ry files in the project (requires package.toml)
 ry fmt src/main.ry         # Format a single file
 ry fmt src/                # Format all .ry files in a directory (recursive)
 ry fmt --check             # Check if files are formatted (exit 1 if not)
@@ -119,7 +119,7 @@ ry self-update v0.0.1       # Update to a specified version
 
 ---
 
-## `ry.toml` Configuration File
+## `package.toml` Configuration File
 
 Describes project metadata and path settings in TOML format.
 
@@ -149,7 +149,7 @@ src = "src"
 
 ### TOML Subset Specification
 
-`ry.toml` supports the following TOML subset.
+`package.toml` supports the following TOML subset.
 
 - Section headers: `[section]`
 - Key-value pairs: `key = "value"` (string values only)

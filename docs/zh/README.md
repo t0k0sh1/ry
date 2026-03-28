@@ -49,7 +49,7 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | [Base64](reference/base64.md) | encode、decode、encode_url_safe、decode_url_safe |
 | [套件系統](reference/packages.md) | from/import 的文法、目錄套件、std、RY_HOME |
 | [測試功能](reference/testing.md) | 使用 describe/it/expect 進行測試 |
-| [專案管理](reference/project.md) | ry init 與 ry.toml 的規格 |
+| [專案管理](reference/project.md) | ry init 與 package.toml 的規格 |
 | [契約式設計](reference/contracts.md) | require、ensure、invariant、old、result |
 | [指令](reference/directives.md) | @deprecated 與編譯時元資料 |
 | [錯誤一覽](reference/errors.md) | 編譯錯誤與執行時錯誤的說明 |

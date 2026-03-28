@@ -651,7 +651,7 @@ int cmd_fmt(int argc, char *argv[]) {
     if (targets.empty()) {
         auto root = findProjectRoot();
         if (!root) {
-            std::cerr << "Error: ry.toml not found. Specify a file or directory.\n";
+            std::cerr << "Error: package.toml not found. Specify a file or directory.\n";
             return 1;
         }
         targets.push_back(*root);

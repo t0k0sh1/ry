@@ -40,7 +40,7 @@ cd my-project
 
 This generates the following files and directories:
 
-- `ry.toml` -- Project configuration file
+- `package.toml` -- Project configuration file
 - `src/main.ry` -- Entry point (with sample code)
 
 To initialize the current directory as a project instead, use `ry init`:

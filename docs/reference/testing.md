@@ -27,7 +27,7 @@ The exit code is 0 if all tests passed, 1 if any test failed.
 
 When `ry test` is run without arguments, it:
 
-1. Searches for `ry.toml` to find the project root
+1. Searches for `package.toml` to find the project root
 2. Recursively discovers all `*.test.ry` files under the project root (`.git`, `build`, `node_modules` are skipped)
 3. Runs each file and aggregates results
 

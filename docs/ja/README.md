@@ -49,7 +49,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [Base64](reference/base64.md) | encode・decode・encode_url_safe・decode_url_safe |
 | [パッケージシステム](reference/packages.md) | from/import の文法・ディレクトリパッケージ・std・RY_HOME |
 | [テスト機能](reference/testing.md) | describe/it/expect によるテスト |
-| [プロジェクト管理](reference/project.md) | ry init・ry.toml の仕様 |
+| [プロジェクト管理](reference/project.md) | ry init・package.toml の仕様 |
 | [契約による設計](reference/contracts.md) | require・ensure・invariant・old・result |
 | [ディレクティブ](reference/directives.md) | @deprecated とコンパイル時メタデータ |
 | [エラー一覧](reference/errors.md) | コンパイルエラーと実行時エラーの説明 |
