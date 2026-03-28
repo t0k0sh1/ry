@@ -39,8 +39,8 @@ These functions are built-in and work with TCP socket types. No import needed.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `send` | `(stream: TcpStream\|TlsStream, data: List<byte>) -> Result<int, Error>` | Sends bytes through a TCP or TLS connection. Returns `Ok` with the number of bytes sent, or `Err` on failure. |
-| `recv` | `(stream: TcpStream\|TlsStream, max: int) -> Result<List<byte>, Error>` | Receives up to `max` bytes. Returns `Ok` with an empty list on connection close, or `Err` on error. |
+| `send` | `(stream: TcpStream\|TlsStream, data: List<u8>) -> Result<int, Error>` | Sends bytes through a TCP or TLS connection. Returns `Ok` with the number of bytes sent, or `Err` on failure. |
+| `recv` | `(stream: TcpStream\|TlsStream, max: int) -> Result<List<u8>, Error>` | Receives up to `max` bytes. Returns `Ok` with an empty list on connection close, or `Err` on error. |
 | `close` | `(handle: TcpStream\|TlsStream) -> Unit` | Closes a TCP or TLS stream. |
 | `close` | `(handle: TcpListener) -> Unit` | Closes a TCP listener. |
 
@@ -161,9 +161,9 @@ Pass `0` to disable the timeout (wait indefinitely).
 ## Error Handling
 
 - All TCP functions except `close()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
-- `recv()` returns `Ok` with an empty `List<byte>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
+- `recv()` returns `Ok` with an empty `List<u8>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 
 ## Byte Conversion
 
-TCP operations work with `List<byte>`. Use `str_to_bytes()` and `bytes_to_str()` from `io` to convert between strings and byte lists.
+TCP operations work with `List<u8>`. Use `str_to_bytes()` and `bytes_to_str()` from `io` to convert between strings and byte lists.

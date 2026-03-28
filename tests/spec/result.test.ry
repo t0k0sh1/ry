@@ -75,7 +75,7 @@ describe("Result type", fn():
   )
   it("match Ok with wildcard for Unit result", fn():
     fn unit_ok() -> Result<Unit, Error>:
-      return Ok(0 as byte)
+      return Ok(0 as u8)
     match unit_ok():
       case Ok(_):
         expect(true).to_eq(true)

@@ -62,7 +62,7 @@ A compile error occurs if the type annotation does not match the actual type of 
 | Type | Description | Literal Examples |
 |------|-------------|-----------------|
 | `int` | 64-bit integer | `0`, `42`, `-10` |
-| `byte` | Unsigned 8-bit integer (0-255) | `b: byte = 42` |
+| `u8` | Unsigned 8-bit integer (0-255) | `b: u8 = 42` |
 | `float` | 64-bit floating-point number | `0.0`, `3.14`, `-1.5` |
 | `bool` | Boolean | `true`, `false` |
 | `str` | String | `"hello"`, `""` |

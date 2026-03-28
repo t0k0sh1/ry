@@ -26,15 +26,15 @@ from io import read_text, write_text, file_exists
 | `append_text` | `(str, str) -> Unit` | ファイル末尾に文字列を追記 |
 | `file_exists` | `(str) -> bool` | ファイル存在チェック |
 | `delete_file` | `(str) -> Unit` | ファイル削除 |
-| `read_bytes` | `(str) -> List<byte>` | ファイルをバイト列として読み取り |
-| `write_bytes` | `(str, List<byte>) -> Unit` | バイト列をファイルに書き込み |
+| `read_bytes` | `(str) -> List<u8>` | ファイルをバイト列として読み取り |
+| `write_bytes` | `(str, List<u8>) -> Unit` | バイト列をファイルに書き込み |
 
 ### バイト列変換
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `str_to_bytes` | `(str) -> List<byte>` | 文字列を UTF-8 バイト列に変換 |
-| `bytes_to_str` | `(List<byte>) -> str` | バイト列を文字列に変換 |
+| `str_to_bytes` | `(str) -> List<u8>` | 文字列を UTF-8 バイト列に変換 |
+| `bytes_to_str` | `(List<u8>) -> str` | バイト列を文字列に変換 |
 
 ## 使用例
 
@@ -94,6 +94,6 @@ print(f"Hello, {name}!")
 
 ## 備考
 
-- `List<byte>` をバッファ型として使用します。標準的なリスト操作（`length()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
+- `List<u8>` をバッファ型として使用します。標準的なリスト操作（`length()`、`append()`、`slice()`、インデックスアクセス）がすべてバイトリストで使えます。
 - ファイルパスは絶対パスを指定しない限り、カレントディレクトリからの相対パスとなります。
 - `write_text` と `write_bytes` は既存ファイルを上書きします。既存ファイルに追記するには `append_text` を使用してください。

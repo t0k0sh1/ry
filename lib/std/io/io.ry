@@ -24,14 +24,14 @@ fn file_exists(path: str) -> bool
 fn delete_file(path: str) -> Unit
 
 @native
-fn read_bytes(path: str) -> List<byte>
+fn read_bytes(path: str) -> List<u8>
 
 @native
-fn write_bytes(path: str, data: List<byte>) -> Unit
+fn write_bytes(path: str, data: List<u8>) -> Unit
 
 # Byte conversions
 @native
-fn str_to_bytes(string: str) -> List<byte>
+fn str_to_bytes(string: str) -> List<u8>
 
 @native
-fn bytes_to_str(bytes: List<byte>) -> str
+fn bytes_to_str(bytes: List<u8>) -> str

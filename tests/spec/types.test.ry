@@ -49,13 +49,13 @@ describe("str", fn():
   )
 )
 
-describe("byte", fn():
+describe("u8", fn():
   it("as int", fn():
-    b: byte = 42
+    b: u8 = 42
     expect(b as int).to_eq(42)
   )
   it("max value", fn():
-    b: byte = 255
+    b: u8 = 255
     expect(b as int).to_eq(255)
   )
 )

@@ -7,7 +7,7 @@
 | Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
 | `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64-bit signed integer |
-| `byte` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: byte = 42` |
+| `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
 | `float` | f64 | `3.14`, `0.5` | 64-bit floating-point number |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
@@ -42,7 +42,7 @@ You can explicitly specify the type when declaring a variable. The annotation ca
 
 ```python
 x: int = 42
-b: byte = 255
+b: u8 = 255
 f: float = 3.14
 s: str = "hello"
 b: bool = true
@@ -61,7 +61,7 @@ a: any = 42
 | Type Name | Notes |
 |---|---|
 | `int` | Built-in scalar type |
-| `byte` | Built-in scalar type (unsigned 0-255) |
+| `u8` | Built-in scalar type (unsigned 0-255) |
 | `float` | Built-in scalar type |
 | `bool` | Built-in scalar type |
 | `str` | Built-in string type |
@@ -238,7 +238,7 @@ x = 42 as float     # 42.0
 y = 3.14 as int      # 3
 z = 1 as bool        # true
 s = 42 as str         # "42"
-b = 255 as byte       # byte value 255
+b = 255 as u8         # u8 value 255
 ```
 
 ### Supported Casts
@@ -250,8 +250,8 @@ b = 255 as byte       # byte value 255
 | `int` | `bool` | `0` -> `false`, non-zero -> `true` |
 | `bool` | `int` | `false` -> `0`, `true` -> `1` |
 | `int` / `float` / `bool` | `str` | String representation |
-| `int` | `byte` | Truncation (lower 8 bits) |
-| `byte` | `int` | Zero extension |
+| `int` | `u8` | Truncation (lower 8 bits) |
+| `u8` | `int` | Zero extension |
 
 | `int` | `i8` / `i16` / `i32` / `i64` | Truncation (or identity for i64) |
 | `i8` / `i16` / `i32` / `i64` | `int` | Sign extension (`SExt`) |
@@ -390,7 +390,7 @@ When the return value is not meaningful, use `Result<Unit, Error>`:
 
 ```python
 fn save(path: str, data: str) -> Result<Unit, Error>:
-    return Ok(0 as byte)   # Unit placeholder
+    return Ok(0 as u8)   # Unit placeholder
 
 match save("/tmp/test.txt", "hello"):
     case Ok(_):
@@ -585,7 +585,7 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 | Operation | Left | Right | Result Type | Notes |
 |---|---|---|---|---|
 | `+` `-` `*` | int | int | int | |
-| `+` `-` `*` | byte | byte or int | int | byte is ZExt-promoted to int during operations |
+| `+` `-` `*` | u8 | u8 | u8 | Low-level type: native-width unsigned operations, no implicit promotion |
 | `+` `-` `*` | float or int | float or int (one is float) | float | Implicit float promotion |
 | `/` | any numeric | any numeric | float | Always float |
 | `//` | any numeric | any numeric | int or float | Floor division (toward -∞); int for int operands, float if either is float |
@@ -624,7 +624,7 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 
 ## Type Safety Constraints
 
-- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `byte` is automatically promoted to `int` during operations (ZExt). Narrowing conversion from an `int` literal to `byte` is only allowed with a type annotation `b: byte = 42`.
+- **No implicit type conversions** -- Mixing `int` and `float` triggers float promotion, but no other implicit conversions exist. `u8` is a low-level type that operates at native width with unsigned semantics; mixing `u8` with `int` in arithmetic is a compile error. Narrowing conversion from an `int` literal to `u8` is only allowed with a type annotation `b: u8 = 42`.
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.

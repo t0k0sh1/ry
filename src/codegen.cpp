@@ -319,7 +319,7 @@ llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
     if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
-        return builder_.CreateZExt(v, i64Ty_, "byteext");
+        return builder_.CreateZExt(v, i64Ty_, "u8ext");
     return v;
 }
 

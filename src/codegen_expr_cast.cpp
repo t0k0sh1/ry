@@ -17,7 +17,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
             if (name == "i8") {
                 val = builder_.CreateSExt(val, i64Ty_, "i8_ext");
             } else {
-                val = builder_.CreateZExt(val, i64Ty_, "byte_ext");
+                val = builder_.CreateZExt(val, i64Ty_, "u8_ext");
             }
         }
         else if (srcTy == i16Ty_) {
@@ -65,12 +65,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     }
     if (target == "str") {
         return valueToString(val);
-    }
-    if (target == "byte") {
-        if (srcTy == i8Ty_) return val;
-        if (srcTy == i64Ty_) return builder_.CreateTrunc(val, i8Ty_, "cast_byte");
-        if (srcTy == i1Ty_) return builder_.CreateZExt(val, i8Ty_, "cast_byte");
-        codegenError("cannot cast to byte");
     }
     // Low-level type casts — helper lambda for metadata
     // Skip metadata for Constant values to avoid ConstantInt sharing corruption (#311).

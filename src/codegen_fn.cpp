@@ -599,7 +599,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     if (ty == i64Ty_) return "int";
     if (ty == f64Ty_) return "float";
     if (ty == i1Ty_)  return "bool";
-    if (ty == i8Ty_)  return "byte";
+    if (ty == i8Ty_)  return "u8";
     if (ty == i16Ty_) return "i16";
     if (ty == i32Ty_) return "i32";
     if (ty == f32Ty_) return "f32";
@@ -668,7 +668,7 @@ std::vector<std::string> CodeGen::inferTypeArgs(
             if (argTy == i64Ty_)  resolved = "int";
             else if (argTy == f64Ty_) resolved = "float";
             else if (argTy == i1Ty_)  resolved = "bool";
-            else if (argTy == i8Ty_)  resolved = "byte";
+            else if (argTy == i8Ty_)  resolved = "u8";
             else if (argTy == ptrTy_) resolved = "str";
             else if (isAnyType(argTy)) resolved = "any";
             else resolved = "any";

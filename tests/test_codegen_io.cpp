@@ -26,13 +26,13 @@ fn file_exists(path: str) -> bool
 @native
 fn delete_file(path: str) -> Result<Unit, Error>
 @native
-fn read_bytes(path: str) -> Result<List<byte>, Error>
+fn read_bytes(path: str) -> Result<List<u8>, Error>
 @native
-fn write_bytes(path: str, data: List<byte>) -> Result<Unit, Error>
+fn write_bytes(path: str, data: List<u8>) -> Result<Unit, Error>
 @native
-fn str_to_bytes(s: str) -> List<byte>
+fn str_to_bytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 )";
 
 // ============================================================

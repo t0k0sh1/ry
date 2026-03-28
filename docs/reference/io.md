@@ -26,15 +26,15 @@ from io import read_text, write_text, file_exists
 | `append_text` | `(str, str) -> Result<Unit, Error>` | Appends a string to the end of a file |
 | `file_exists` | `(str) -> bool` | Checks if a file exists |
 | `delete_file` | `(str) -> Result<Unit, Error>` | Deletes a file |
-| `read_bytes` | `(str) -> Result<List<byte>, Error>` | Reads a file as a byte list |
-| `write_bytes` | `(str, List<byte>) -> Result<Unit, Error>` | Writes a byte list to a file |
+| `read_bytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
+| `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
 
 ### Byte Conversions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `str_to_bytes` | `(str) -> List<byte>` | Converts a string to UTF-8 bytes |
-| `bytes_to_str` | `(List<byte>) -> Result<str, Error>` | Converts a byte list to a string |
+| `str_to_bytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
+| `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | Converts a byte list to a string |
 
 ## Examples
 
@@ -115,6 +115,6 @@ match read_text("missing.txt"):
 
 ## Notes
 
-- `List<byte>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
+- `List<u8>` is used as the buffer type. Standard list operations (`length()`, `append()`, `slice()`, index access) all work with byte lists.
 - File paths are relative to the current working directory unless absolute paths are specified.
 - `write_text` and `write_bytes` overwrite existing files. Use `append_text` to add content to existing files.

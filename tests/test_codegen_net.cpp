@@ -19,9 +19,9 @@ fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
 fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 @native
-fn str_to_bytes(s: str) -> List<byte>
+fn str_to_bytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<byte>) -> Result<str, Error>
+fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
 fn set_timeout(stream: TcpStream, ms: int) -> Unit
 @native

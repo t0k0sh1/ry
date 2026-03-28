@@ -12,7 +12,6 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     // Built-in primitive types first (cannot be shadowed by aliases)
     if (typeName == "int")   return i64Ty_;
-    if (typeName == "byte")  return i8Ty_;
     if (typeName == "float") return f64Ty_;
     if (typeName == "bool")  return i1Ty_;
     if (typeName == "str")   return ptrTy_;
