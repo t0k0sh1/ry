@@ -20,6 +20,7 @@
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
+- **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 

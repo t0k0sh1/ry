@@ -754,7 +754,11 @@ void CodeGen::emitStmt(CallStmt &s) {
         s.callee == "block_on" ||
         s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
         s.callee == "shutdown" ||
-        s.callee == "json_free") {
+        s.callee == "json_free" ||
+        s.callee == "copy" || s.callee == "move" ||
+        s.callee == "remove" || s.callee == "remove_all" ||
+        s.callee == "make_dir" || s.callee == "make_dir_all" ||
+        s.callee == "chmod" || s.callee == "symlink") {
         auto ce = std::make_unique<CallExpr>();
         ce->callee = s.callee;
         ce->args = std::move(s.args);
