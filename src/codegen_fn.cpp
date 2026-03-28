@@ -42,6 +42,20 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         }
     } else {
         llvm::Value *val = emitExpr(*s.value);
+
+        // Tail call optimization: self-recursive tail call → musttail
+        if (!current_postconditions_) {
+            if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
+                if (ci->getCalledFunction() == fn_) {
+                    ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
+                    builder_.CreateRet(val);
+                    llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+                    builder_.SetInsertPoint(dead);
+                    return;
+                }
+            }
+        }
+
         llvm::Type *retTy = fn_->getReturnType();
         if (retTy->isVoidTy())
             codegenError("cannot return a value from Unit function '" +
