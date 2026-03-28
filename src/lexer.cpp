@@ -4,6 +4,31 @@
 #include <stdexcept>
 #include <unordered_map>
 
+static const auto isDecDigit = [](unsigned char c) { return std::isdigit(c) != 0; };
+static const auto isHexDigit = [](unsigned char c) { return std::isxdigit(c) != 0; };
+static const auto isBinDigit = [](unsigned char c) { return c == '0' || c == '1'; };
+
+// Consume digits with optional underscore separators.
+// Underscore must appear between two valid digits (no leading/trailing/consecutive _).
+template <typename Pred>
+static void consumeDigitsWithSeparators(const std::string &src, size_t &pos,
+                                        int &col, int line, Pred isValid) {
+    while (pos < src.size()) {
+        if (isValid(static_cast<unsigned char>(src[pos]))) {
+            ++pos; ++col;
+        } else if (src[pos] == '_') {
+            if (pos + 1 >= src.size() ||
+                !isValid(static_cast<unsigned char>(src[pos + 1])))
+                throw std::runtime_error(
+                    "line " + std::to_string(line) +
+                    ": invalid underscore in numeric literal");
+            ++pos; ++col;
+        } else {
+            break;
+        }
+    }
+}
+
 static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"and",       TokenKind::And},
     {"or",        TokenKind::Or},
@@ -368,7 +393,8 @@ Token Lexer::readToken() {
             prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
             prev_kind_ != TokenKind::FStringEnd) {
             size_t start = pos_ - 1;
-            while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
+            consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                isDecDigit);
             TokenKind numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -484,7 +510,8 @@ Token Lexer::readToken() {
                 pos_ += 2; col_ += 2;
                 if (pos_ >= src_.size() || !std::isxdigit(static_cast<unsigned char>(src_[pos_])))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
-                while (pos_ < src_.size() && std::isxdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
+                consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                    isHexDigit);
                 tryConsumeNumericSuffix(numKind);
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
@@ -492,16 +519,19 @@ Token Lexer::readToken() {
                 pos_ += 2; col_ += 2;
                 if (pos_ >= src_.size() || (src_[pos_] != '0' && src_[pos_] != '1'))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid binary literal");
-                while (pos_ < src_.size() && (src_[pos_] == '0' || src_[pos_] == '1')) { ++pos_; ++col_; }
+                consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                    isBinDigit);
                 tryConsumeNumericSuffix(numKind);
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
-        while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
+        consumeDigitsWithSeparators(src_, pos_, col_, line_,
+            isDecDigit);
         if (pos_ < src_.size() && src_[pos_] == '.' &&
             pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
             ++pos_; ++col_;
-            while (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_]))) { ++pos_; ++col_; }
+            consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                isDecDigit);
             numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};

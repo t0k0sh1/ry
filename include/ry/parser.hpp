@@ -110,21 +110,37 @@ inline constexpr const char *kNumericSuffixes[] = {
 };
 
 inline std::pair<std::string, std::string> splitNumericSuffix(const std::string &s) {
+    bool isHex = s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
     for (const char *suf : kNumericSuffixes) {
+        // Skip f32/f64 for hex literals — 'f' is a valid hex digit
+        if (isHex && suf[0] == 'f') continue;
         size_t len = std::strlen(suf);
         if (s.size() > len && s.compare(s.size() - len, len, suf) == 0) {
             char before = s[s.size() - len - 1];
-            if (std::isdigit(before))
+            if (std::isxdigit(static_cast<unsigned char>(before)))
                 return {s.substr(0, s.size() - len), suf};
         }
     }
     return {s, ""};
 }
 
+inline std::string stripUnderscores(const std::string &s) {
+    std::string r;
+    r.reserve(s.size());
+    for (char c : s)
+        if (c != '_') r += c;
+    return r;
+}
+
 inline int64_t parseIntLiteral(const std::string &s) {
-    if (s.size() > 2 && s[0] == '0') {
-        if (s[1] == 'x' || s[1] == 'X') return std::stoll(s, nullptr, 16);
-        if (s[1] == 'b' || s[1] == 'B') return std::stoll(s.substr(2), nullptr, 2);
+    std::string clean = stripUnderscores(s);
+    if (clean.size() > 2 && clean[0] == '0') {
+        if (clean[1] == 'x' || clean[1] == 'X') return std::stoll(clean, nullptr, 16);
+        if (clean[1] == 'b' || clean[1] == 'B') return std::stoll(clean.substr(2), nullptr, 2);
     }
-    return std::stoll(s);
+    return std::stoll(clean);
+}
+
+inline double parseFloatLiteral(const std::string &s) {
+    return std::stod(stripUnderscores(s));
 }
