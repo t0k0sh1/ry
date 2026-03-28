@@ -41,6 +41,7 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
 
 Token Lexer::next() {
     Token t = current_;
+    prev_kind_ = t.kind;
     current_ = readToken();
     return t;
 }
@@ -62,7 +63,7 @@ bool Lexer::consumeGreaterInTypeContext() {
 }
 
 Lexer::State Lexer::saveState() const {
-    return {pos_, line_, col_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_};
+    return {pos_, line_, col_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_, prev_kind_};
 }
 
 void Lexer::restoreState(State s) {
@@ -74,6 +75,7 @@ void Lexer::restoreState(State s) {
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
     fstring_brace_depth_ = s.fstring_brace_depth;
+    prev_kind_ = s.prev_kind;
 }
 
 void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
@@ -358,7 +360,13 @@ Token Lexer::readToken() {
             }
             return {TokenKind::DotDot, "..", line_, startCol};
         }
-        if (pos_ < src_.size() && std::isdigit(src_[pos_])) {
+        if (pos_ < src_.size() && std::isdigit(src_[pos_]) &&
+            prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::Number &&
+            prev_kind_ != TokenKind::Float && prev_kind_ != TokenKind::String &&
+            prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
+            prev_kind_ != TokenKind::RBrace && prev_kind_ != TokenKind::True &&
+            prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
+            prev_kind_ != TokenKind::FStringEnd) {
             size_t start = pos_ - 1;
             while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
             TokenKind numKind = TokenKind::Float;
