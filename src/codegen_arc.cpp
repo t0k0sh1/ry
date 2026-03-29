@@ -1093,6 +1093,9 @@ bool CodeGen::isPotentiallyCyclic(const std::string &typeName) const {
     if (checkInner("Option<")) return true;
     if (checkInner("List<")) return true;
     if (checkInner("Set<")) return true;
+    // Unwrap T? suffix (OptionalType::toString() produces "T?")
+    if (typeName.size() > 1 && typeName.back() == '?')
+        return isPotentiallyCyclic(typeName.substr(0, typeName.size() - 1));
     // Map<K,V> — check both K and V
     if (typeName.size() > 5 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);

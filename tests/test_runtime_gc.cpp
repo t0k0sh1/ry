@@ -76,9 +76,9 @@ void dtorPairNode(void *data) {
 }
 
 // Struct with a non-pointer prefix field followed by an ARC pointer field.
-// The int64_t label verifies that the GC correctly skips non-pointer fields
-// when traversing record-type layouts (createStructVisitFunction generates
-// code that iterates fields by type, only visiting ptrTy_ fields).
+// The int64_t label models non-pointer data preceding a GC-managed pointer;
+// the runtime GC tests use visitContainer to ensure only the pointer field
+// is reported to the collector.
 struct ContainerData {
     int64_t label;
     void *child_header;
