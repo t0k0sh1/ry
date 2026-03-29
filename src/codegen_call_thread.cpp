@@ -345,10 +345,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *lock = emitExpr(*e.args[0]);
         if (!isLock(lock))
             codegenError("lock_free() requires Lock argument");
-        auto fn = getRuntimeFn("__ry_lock_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {lock});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(lock, RK_Lock, *e.args[0]);
     }
 
     // ----- RWLock -----
@@ -391,10 +388,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *rwlock = emitExpr(*e.args[0]);
         if (!isRWLock(rwlock))
             codegenError("rwlock_free() requires RWLock argument");
-        auto fn = getRuntimeFn("__ry_rwlock_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {rwlock});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(rwlock, RK_RWLock, *e.args[0]);
     }
 
     // ----- Semaphore -----
@@ -430,10 +424,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *sem = emitExpr(*e.args[0]);
         if (!isSemaphore(sem))
             codegenError("semaphore_free() requires Semaphore argument");
-        auto fn = getRuntimeFn("__ry_semaphore_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {sem});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(sem, RK_Semaphore, *e.args[0]);
     }
 
     // ----- Barrier -----
@@ -460,10 +451,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *barrier = emitExpr(*e.args[0]);
         if (!isBarrier(barrier))
             codegenError("barrier_free() requires Barrier argument");
-        auto fn = getRuntimeFn("__ry_barrier_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {barrier});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(barrier, RK_Barrier, *e.args[0]);
     }
 
     // ----- AtomicInt -----
@@ -527,10 +515,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *atom = emitExpr(*e.args[0]);
         if (!isAtomicInt(atom))
             codegenError("atomic_int_free() requires AtomicInt argument");
-        auto fn = getRuntimeFn("__ry_atomic_int_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {atom});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(atom, RK_AtomicInt, *e.args[0]);
     }
 
     // ----- AtomicBool -----
@@ -572,10 +557,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
         llvm::Value *atom = emitExpr(*e.args[0]);
         if (!isAtomicBool(atom))
             codegenError("atomic_bool_free() requires AtomicBool argument");
-        auto fn = getRuntimeFn("__ry_atomic_bool_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {atom});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0);
+        return emitResourceFree(atom, RK_AtomicBool, *e.args[0]);
     }
 
     return nullptr;

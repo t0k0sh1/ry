@@ -611,6 +611,17 @@ void CodeGen::emitStmt(AssignStmt &s) {
     else if (isArcManaged(ptr)) {
         tryRetainArcSource(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
+        // Null check: old value may have been nullified by explicit free/close
+        auto *isOldNull = builder_.CreateICmpEQ(
+            oldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            s.name + ".arc_old_null");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
+        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
+        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
+
+        builder_.SetInsertPoint(releaseBB);
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);
         // Look up GC visit function for potentially cyclic types on reassignment.
         llvm::Function *gcVisitFn = nullptr;
@@ -618,7 +629,10 @@ void CodeGen::emitStmt(AssignStmt &s) {
         if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
             gcVisitFn = getOrCreateVisitFunction(evIt->second);
         }
-        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr), gcVisitFn);
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
+        builder_.CreateBr(storeBB);
+
+        builder_.SetInsertPoint(storeBB);
     }
 
     builder_.CreateStore(val, ptr);

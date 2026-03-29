@@ -466,26 +466,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "close") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        auto *voidPtrFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        if (isTcpListener(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
-            builder_.CreateCall(fn, {val});
-            nullifyResourceVar(*e.args[0]);
-            return llvm::ConstantInt::get(i8Ty_, 0);
-        }
-        if (isTcpStream(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
-            builder_.CreateCall(fn, {val});
-            nullifyResourceVar(*e.args[0]);
-            return llvm::ConstantInt::get(i8Ty_, 0);
-        }
-        if (isTlsStream(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tls_close", voidPtrFnTy);
-            builder_.CreateCall(fn, {val});
-            nullifyResourceVar(*e.args[0]);
-            return llvm::ConstantInt::get(i8Ty_, 0);
-        }
+        if (isTcpListener(val))
+            return emitResourceFree(val, RK_TcpListener, *e.args[0]);
+        if (isTcpStream(val))
+            return emitResourceFree(val, RK_TcpStream, *e.args[0]);
+        if (isTlsStream(val))
+            return emitResourceFree(val, RK_TlsStream, *e.args[0]);
         codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
     }
 
