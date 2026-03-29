@@ -231,7 +231,7 @@ static std::string build_release_asset_url(const std::string &tag, const std::st
 }
 
 std::string build_download_url(const std::string &tag, const PlatformInfo &platform) {
-    return build_release_asset_url(tag, "ry-" + platform.os + "-" + platform.arch + ".tar.gz");
+    return build_release_asset_url(tag, "ry-" + tag + "-" + platform.os + "-" + platform.arch + ".tar.gz");
 }
 
 UpdateTarget resolve_update_target(const std::string &mode, const PlatformInfo &platform) {
