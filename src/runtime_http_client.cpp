@@ -191,7 +191,12 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
         return nullptr;
     }
 
-    auto *resp = new (arc_alloc(sizeof(HttpClientResponseHandle))) HttpClientResponseHandle{};
+    void *resp_mem = arc_alloc(sizeof(HttpClientResponseHandle));
+    if (!resp_mem) {
+        for (auto &h : parsed_headers) { free(h.key); free(h.val); }
+        return nullptr;
+    }
+    auto *resp = new (resp_mem) HttpClientResponseHandle{};
     resp->status = status_code;
     resp->body_len = (int64_t)body_data.size();
     resp->body = checked_memdup(body_data.data(), body_data.size());

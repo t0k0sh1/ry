@@ -481,8 +481,9 @@ extern "C" void *__ry_http_read_request(void *stream) {
     std::string raw = recv_all(handle->fd, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
 
-    auto *req = new (arc_alloc(sizeof(HttpRequestHandle))) HttpRequestHandle{};
-    if (!req) return nullptr;
+    void *req_mem = arc_alloc(sizeof(HttpRequestHandle));
+    if (!req_mem) return nullptr;
+    auto *req = new (req_mem) HttpRequestHandle{};
 
     size_t line_end;
     if (!parse_request_line(raw, req, line_end)) {
@@ -551,7 +552,9 @@ extern "C" void *__ry_http_cookies(void *r) {
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
-    auto *resp = new (arc_alloc(sizeof(HttpResponseHandle))) HttpResponseHandle{};
+    void *resp_mem = arc_alloc(sizeof(HttpResponseHandle));
+    if (!resp_mem) return nullptr;
+    auto *resp = new (resp_mem) HttpResponseHandle{};
     resp->status = status;
     const char *b = body ? body : "";
     resp->body_len = (int64_t)strlen(b);

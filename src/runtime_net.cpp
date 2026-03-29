@@ -379,13 +379,20 @@ extern "C" void __ry_tcp_set_send_timeout(void *stream, int64_t ms) {
 extern "C" void __ry_tcp_cleanup(void *handle) {
     if (!handle) return;
     auto *h = static_cast<TcpStreamHandle *>(handle);
-    if (h->fd >= 0) { shutdown(h->fd, SHUT_RDWR); ::close(h->fd); }
+    if (h->fd >= 0) {
+        shutdown(h->fd, SHUT_RDWR);
+        ::close(h->fd);
+        h->fd = -1;
+    }
 }
 
 extern "C" void __ry_tcp_listener_cleanup(void *listener) {
     if (!listener) return;
     auto *h = static_cast<TcpListenerHandle *>(listener);
-    if (h->fd >= 0) ::close(h->fd);
+    if (h->fd >= 0) {
+        ::close(h->fd);
+        h->fd = -1;
+    }
 }
 
 extern "C" int64_t __ry_listener_port(void *listener) {

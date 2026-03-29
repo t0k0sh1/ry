@@ -155,7 +155,14 @@ CodeGen::ResourceKind CodeGen::detectResourceKind(llvm::Value *val) {
     for (int i = 0; i < RK_COUNT; ++i)
         if (resource_sets_[i].count(val))
             return static_cast<ResourceKind>(i);
-    return RK_COUNT; // sentinel: not a resource
+    // Resolve through LoadInst (e.g., `b = a` where `a` is a resource variable)
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto *ptr = load->getPointerOperand();
+        for (int i = 0; i < RK_COUNT; ++i)
+            if (resource_sets_[i].count(ptr))
+                return static_cast<ResourceKind>(i);
+    }
+    return RK_COUNT;
 }
 
 
@@ -180,33 +187,30 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
     static const struct {
         ResourceKind kind;
         const char *dtorName;
-        const char *freeFnName;
-        bool isVoidReturn; // true: void(ptr), false: i64(ptr) (e.g. thread_join)
+        const char *cleanupFnName;
     } table[] = {
-        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",  "__ry_tcp_listener_cleanup",      true},
-        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",    "__ry_tcp_cleanup",               true},
-        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",    "__ry_tls_cleanup",               true},
-        {RK_HttpRequest,         "__ry_arc_dtor_http_request",  "__ry_http_request_cleanup",      true},
-        {RK_HttpResponse,        "__ry_arc_dtor_http_response", "__ry_http_response_cleanup",     true},
-        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response", "__ry_http_client_response_cleanup", true},
-        {RK_JsonValue,           "__ry_arc_dtor_json_value",    "__ry_json_cleanup",              true},
-        {RK_Thread,              "__ry_arc_dtor_thread",        "__ry_thread_join",               false},
-        {RK_Lock,                "__ry_arc_dtor_lock",          "__ry_lock_cleanup",              true},
-        {RK_RWLock,              "__ry_arc_dtor_rwlock",        "__ry_rwlock_cleanup",            true},
-        {RK_Semaphore,           "__ry_arc_dtor_semaphore",     "__ry_semaphore_cleanup",         true},
-        {RK_Barrier,             "__ry_arc_dtor_barrier",       "__ry_barrier_cleanup",           true},
-        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",    "__ry_atomic_int_cleanup",        true},
-        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",   "__ry_atomic_bool_cleanup",       true},
+        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",          "__ry_tcp_listener_cleanup"},
+        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",            "__ry_tcp_cleanup"},
+        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",            "__ry_tls_cleanup"},
+        {RK_HttpRequest,         "__ry_arc_dtor_http_request",          "__ry_http_request_cleanup"},
+        {RK_HttpResponse,        "__ry_arc_dtor_http_response",         "__ry_http_response_cleanup"},
+        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response",  "__ry_http_client_response_cleanup"},
+        {RK_JsonValue,           "__ry_arc_dtor_json_value",            "__ry_json_cleanup"},
+        {RK_Thread,              "__ry_arc_dtor_thread",                "__ry_thread_cleanup"},
+        {RK_Lock,                "__ry_arc_dtor_lock",                  "__ry_lock_cleanup"},
+        {RK_RWLock,              "__ry_arc_dtor_rwlock",                "__ry_rwlock_cleanup"},
+        {RK_Semaphore,           "__ry_arc_dtor_semaphore",             "__ry_semaphore_cleanup"},
+        {RK_Barrier,             "__ry_arc_dtor_barrier",               "__ry_barrier_cleanup"},
+        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",            "__ry_atomic_int_cleanup"},
+        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",           "__ry_atomic_bool_cleanup"},
     };
 
     const char *dtorName = nullptr;
-    const char *freeFnName = nullptr;
-    bool isVoidReturn = true;
+    const char *cleanupFnName = nullptr;
     for (auto &entry : table) {
         if (entry.kind == rk) {
             dtorName = entry.dtorName;
-            freeFnName = entry.freeFnName;
-            isVoidReturn = entry.isVoidReturn;
+            cleanupFnName = entry.cleanupFnName;
             break;
         }
     }
@@ -224,19 +228,10 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
     auto savedPt = builder_.GetInsertPoint();
     builder_.SetInsertPoint(entryBB);
 
-    // dataPtr is the resource handle itself (runtime-side ARC: the handle
-    // is placement-new'd directly into the ARC data area).
     auto *dataPtr = dtorFn->getArg(0);
-
-    if (isVoidReturn) {
-        auto cleanupTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto cleanupFn = mod_->getOrInsertFunction(freeFnName, cleanupTy);
-        builder_.CreateCall(cleanupFn, {dataPtr});
-    } else {
-        auto cleanupTy = llvm::FunctionType::get(i64Ty_, {ptrTy_}, false);
-        auto cleanupFn = mod_->getOrInsertFunction(freeFnName, cleanupTy);
-        builder_.CreateCall(cleanupFn, {dataPtr});
-    }
+    auto cleanupTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto cleanupFn = mod_->getOrInsertFunction(cleanupFnName, cleanupTy);
+    builder_.CreateCall(cleanupFn, {dataPtr});
     builder_.CreateRetVoid();
 
     if (savedBB)

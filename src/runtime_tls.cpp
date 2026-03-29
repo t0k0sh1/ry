@@ -189,9 +189,15 @@ extern "C" void __ry_tls_close(void *tls_stream) {
 extern "C" void __ry_tls_cleanup(void *tls_stream) {
     if (!tls_stream) return;
     auto *handle = (TlsStreamHandle *)tls_stream;
-    SSL_shutdown(handle->ssl);
-    SSL_free(handle->ssl);
-    ::close(handle->fd);
+    if (handle->ssl) {
+        SSL_shutdown(handle->ssl);
+        SSL_free(handle->ssl);
+        handle->ssl = nullptr;
+    }
+    if (handle->fd >= 0) {
+        ::close(handle->fd);
+        handle->fd = -1;
+    }
 }
 
 // ============================================================

@@ -110,8 +110,12 @@ extern "C" int64_t __ry_thread_join(void *thread_ptr) {
 extern "C" void __ry_thread_cleanup(void *thread_ptr) {
     auto *handle = static_cast<ThreadHandle *>(thread_ptr);
     if (!handle) return;
-    if (handle->thread.joinable())
-        handle->thread.join();
+    try {
+        if (handle->thread.joinable())
+            handle->thread.join();
+    } catch (...) {
+        // Swallow exceptions to prevent them from crossing extern "C" boundary.
+    }
     handle->~ThreadHandle();
 }
 

@@ -308,7 +308,9 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
             codegenError("thread_join() requires Thread argument");
         auto fn = getRuntimeFn("__ry_thread_join", i64Ty_, {ptrTy_});
         llvm::Value *status = builder_.CreateCall(fn, {thread}, "join_status");
-        nullifyResourceVar(*e.args[0]);
+        // Don't nullify: __ry_thread_join only joins (no free). ARC cleanup at
+        // scope exit will call __ry_thread_cleanup which sees joinable()==false
+        // and just destructs the handle, then ARC frees the block.
         return wrapStatusAsResult(status);
     }
 
