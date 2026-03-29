@@ -1,12 +1,21 @@
 # String operations
 @native
-fn contains(string: str, substring: str) -> bool
+fn _contains(string: str, substring: str, ignore_case: bool) -> bool
+
+fn contains(string: str, substring: str, ignore_case: bool = false) -> bool:
+    return _contains(string, substring, ignore_case)
 
 @native
-fn starts_with(string: str, prefix: str) -> bool
+fn _starts_with(string: str, prefix: str, ignore_case: bool) -> bool
+
+fn starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool:
+    return _starts_with(string, prefix, ignore_case)
 
 @native
-fn ends_with(string: str, suffix: str) -> bool
+fn _ends_with(string: str, suffix: str, ignore_case: bool) -> bool
+
+fn ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool:
+    return _ends_with(string, suffix, ignore_case)
 
 @native
 fn find(string: str, substring: str) -> Option<int>

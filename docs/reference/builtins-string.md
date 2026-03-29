@@ -12,9 +12,9 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `contains` | `(str, str) -> bool` | Returns whether a substring is contained |
-| `starts_with` | `(str, str) -> bool` | Returns whether it starts with a prefix |
-| `ends_with` | `(str, str) -> bool` | Returns whether it ends with a suffix |
+| `contains` | `(str, str, bool = false) -> bool` | Returns whether a substring is contained |
+| `starts_with` | `(str, str, bool = false) -> bool` | Returns whether it starts with a prefix |
+| `ends_with` | `(str, str, bool = false) -> bool` | Returns whether it ends with a suffix |
 | `find` | `(str, str) -> Option<int>` | Returns the character position of a substring (`None` if not found) |
 
 ### Extraction and Transformation
@@ -67,39 +67,42 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 ## contains
 
-**Signature:** `contains(string: str, substring: str) -> bool`
+**Signature:** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` contains the substring `substring`.
+Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(contains("hello", "ell"))   # true
-print("hello".contains("xyz"))    # false (UFCS)
+print(contains("hello", "ell"))              # true
+print("hello".contains("xyz"))               # false (UFCS)
+print(contains("Hello World", "hello", true))  # true (case-insensitive)
 ```
 
 ---
 
 ## starts_with
 
-**Signature:** `starts_with(string: str, prefix: str) -> bool`
+**Signature:** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` starts with `prefix`.
+Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(starts_with("hello", "hel"))   # true
-print("hello".starts_with("world"))  # false (UFCS)
+print(starts_with("hello", "hel"))              # true
+print("hello".starts_with("world"))              # false (UFCS)
+print(starts_with("Hello", "hello", true))  # true (case-insensitive)
 ```
 
 ---
 
 ## ends_with
 
-**Signature:** `ends_with(string: str, suffix: str) -> bool`
+**Signature:** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` ends with `suffix`.
+Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(ends_with("hello", "llo"))   # true
-print("hello".ends_with("world"))  # false (UFCS)
+print(ends_with("hello", "llo"))              # true
+print("hello".ends_with("world"))              # false (UFCS)
+print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
 ```
 
 ---

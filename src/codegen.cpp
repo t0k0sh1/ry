@@ -936,6 +936,16 @@ llvm::FunctionCallee CodeGen::getStdlibStrstr() {
     return mod_->getOrInsertFunction("strstr", ty);
 }
 
+llvm::FunctionCallee CodeGen::getStdlibStrcasestr() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcasestr", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrncasecmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("strncasecmp", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibStrcpy() {
     auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
     return mod_->getOrInsertFunction("strcpy", ty);
