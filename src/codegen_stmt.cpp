@@ -441,8 +441,13 @@ void CodeGen::emitVarDecl(const std::string &name,
                             type_meta_[TM_MapKey].count(ptr) ||
                             type_meta_[TM_SetElem].count(ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
-        if (isCollection || isArcOwned || tryRetainArcSource(val))
+        auto detectedRK = detectResourceKind(val);
+        bool isResource = (detectedRK != RK_COUNT);
+        if (isCollection || isArcOwned || isResource || tryRetainArcSource(val)) {
             markArcManaged(ptr);
+            if (isResource)
+                resource_managed_vars_[ptr] = detectedRK;
+        }
         }
     }
 

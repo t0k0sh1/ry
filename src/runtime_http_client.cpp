@@ -1,6 +1,7 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_net_types.hpp"
+#include "ry/runtime_arc.hpp"
 
 // =====================================================================
 // HTTP Client — URL parsing, response reading, redirect handling
@@ -190,7 +191,7 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
         return nullptr;
     }
 
-    auto *resp = (HttpClientResponseHandle *)checked_malloc(sizeof(HttpClientResponseHandle));
+    auto *resp = new (arc_alloc(sizeof(HttpClientResponseHandle))) HttpClientResponseHandle{};
     resp->status = status_code;
     resp->body_len = (int64_t)body_data.size();
     resp->body = checked_memdup(body_data.data(), body_data.size());
@@ -492,10 +493,17 @@ extern "C" const char *__ry_http_client_header(void *r, const char *key) {
     return find_in_kv_pairs_ci(resp->header_keys, resp->header_values, resp->header_count, key);
 }
 
-extern "C" void __ry_http_client_response_free(void *r) {
+// Free internal fields of an HttpClientResponseHandle but NOT the handle memory itself.
+// Used by ARC weak-reference cleanup paths.
+extern "C" void __ry_http_client_response_cleanup(void *r) {
     if (!r) return;
     auto *resp = (HttpClientResponseHandle *)r;
     free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
     free(resp->body);
-    free(resp);
+}
+
+extern "C" void __ry_http_client_response_free(void *r) {
+    if (!r) return;
+    __ry_http_client_response_cleanup(r);
+    arc_free(r);
 }

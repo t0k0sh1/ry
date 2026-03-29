@@ -1,4 +1,5 @@
 #include "ry/runtime_tls.hpp"
+#include "ry/runtime_arc.hpp"
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_io.hpp"
 
@@ -111,13 +112,14 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
         return nullptr;
     }
 
-    auto *handle = new (std::nothrow) TlsStreamHandle;
-    if (!handle) {
+    void *mem = arc_alloc(sizeof(TlsStreamHandle));
+    if (!mem) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
         return nullptr;
     }
+    auto *handle = new (mem) TlsStreamHandle;
     handle->fd = fd;
     handle->ssl = ssl;
     return handle;
@@ -181,7 +183,15 @@ extern "C" void __ry_tls_close(void *tls_stream) {
     SSL_shutdown(handle->ssl);
     SSL_free(handle->ssl);
     ::close(handle->fd);
-    delete handle;
+    arc_free(tls_stream);
+}
+
+extern "C" void __ry_tls_cleanup(void *tls_stream) {
+    if (!tls_stream) return;
+    auto *handle = (TlsStreamHandle *)tls_stream;
+    SSL_shutdown(handle->ssl);
+    SSL_free(handle->ssl);
+    ::close(handle->fd);
 }
 
 // ============================================================
@@ -192,7 +202,7 @@ void __ry_tls_take_ownership(void *tls_stream, int *out_fd, SSL **out_ssl) {
     auto *handle = (TlsStreamHandle *)tls_stream;
     *out_fd = handle->fd;
     *out_ssl = handle->ssl;
-    delete handle;
+    arc_free(tls_stream);
 }
 
 // ============================================================
