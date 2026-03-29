@@ -460,7 +460,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             uint64_t arrSize = arrTy->getNumElements();
 
             emitBoundsCheck(index, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: array index out of range\n", ".arr_idx_err", "arr");
+                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_idx_err", "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
@@ -520,7 +520,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
     emitBoundsCheck(index, length,
-                    "runtime error: list index out of range\n", ".idx_err", "index");
+                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_err", "index");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");

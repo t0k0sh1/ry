@@ -124,10 +124,13 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
+Out-of-range indices are clamped to `[0, length]`. If `end < start` after clamping, returns an empty string.
+
 ```python
 print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
+print(substring("hello", -1, 100))      # hello (clamped)
 ```
 
 ---
@@ -136,10 +139,13 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **Signature:** `char_at(string: str, i: int) -> str`
 
-Returns the UTF-8 character at position `i` in string `string` as a string.
+Returns the UTF-8 character at position `i` in string `string` as a string. Raises a runtime error if the index is out of bounds.
+
+Negative indices wrap around from the end (Python-style): `-1` refers to the last character, `-2` to the second-to-last, and so on.
 
 ```python
-print(char_at("hello", 0))   # h
+print(char_at("hello", 0))    # h
+print(char_at("hello", -1))   # o (last character)
 print("abc".char_at(2))       # c (UFCS)
 ```
 

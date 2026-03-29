@@ -145,7 +145,7 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
     return phi;
 }
 
-// substring(s, start, end) → str (UTF-8 character indices)
+// substring(s, start, end) → str (UTF-8 character indices, clamped)
 llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     requireArgs(e, 3);
     llvm::Value *s = emitExpr(*e.args[0]);
@@ -154,8 +154,21 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("substring() requires str as first argument");
 
+    // Clamp start and end to be non-negative; let the runtime clamp to string length.
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+
+    llvm::Value *clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSLT(start, zero), zero, start, "substr_cstart");
+
+    llvm::Value *clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(end, zero), zero, end, "substr_cend");
+
+    // Ensure end >= start
+    clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
+
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
-    return builder_.CreateCall(substrFn, {s, start, end}, "substring");
+    return builder_.CreateCall(substrFn, {s, clampedStart, clampedEnd}, "substring");
 }
 
 // char_at(s, i) → str (single UTF-8 character as string)
@@ -165,6 +178,12 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     llvm::Value *idx = emitExpr(*e.args[1]);
     if (s->getType() != ptrTy_)
         codegenError("char_at() requires str as first argument");
+
+    auto utf8LenFn = getRuntimeFn("__ry_utf8_len", i64Ty_, {ptrTy_});
+    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s}, "char_at_len");
+    emitBoundsCheck(idx, charLen,
+                    "runtime error: index %lld out of bounds for string of length %lld\n",
+                    ".str_idx_err", "str_idx");
 
     auto charAtFn = getRuntimeFn("__ry_utf8_char_at", ptrTy_, {ptrTy_, i64Ty_});
     return builder_.CreateCall(charAtFn, {s, idx}, "char_at");

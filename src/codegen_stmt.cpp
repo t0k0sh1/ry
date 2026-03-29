@@ -782,7 +782,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             uint64_t arrSize = arrTy->getNumElements();
 
             emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: array index out of range\n", ".arr_assign_err", "arr_assign");
+                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_assign_err", "arr_assign");
 
             if (val->getType() != elemTy) {
                 auto nit = array_elem_type_names_.find(ai);
@@ -926,7 +926,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
     emitBoundsCheck(key, length,
-                    "runtime error: list index out of range\n", ".idx_assign_err", "idx_assign");
+                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_assign_err", "idx_assign");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");

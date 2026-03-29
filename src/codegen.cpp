@@ -909,8 +909,8 @@ llvm::FunctionCallee CodeGen::getStdlibExit() {
     return mod_->getOrInsertFunction("exit", ty);
 }
 
-void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    // fprintf(stderr, message)
+void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName,
+                                llvm::ArrayRef<llvm::Value *> extraArgs) {
     auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
     auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
 #ifdef __APPLE__
@@ -921,10 +921,25 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
     llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
     llvm::Constant *errMsg = cachedGlobalString(message, globalName);
-    builder_.CreateCall(fprintfFn, {stderrVal, errMsg});
+    llvm::SmallVector<llvm::Value *, 4> args = {stderrVal, errMsg};
+    args.append(extraArgs.begin(), extraArgs.end());
+    builder_.CreateCall(fprintfFn, args);
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
+}
+
+void CodeGen::emitBoundsError(llvm::Value *index, llvm::Value *size,
+                               const std::string &fmtMsg, const std::string &globalName) {
+    emitRuntimeError(fmtMsg, globalName, {index, size});
+}
+
+llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
+                                              const std::string &prefix) {
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *isNeg = builder_.CreateICmpSLT(idx, zero, prefix + "_is_neg");
+    llvm::Value *wrapped = builder_.CreateAdd(idx, wrapBase, prefix + "_wrapped");
+    return builder_.CreateSelect(isNeg, wrapped, idx, prefix + "_idx");
 }
 
 void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
@@ -933,26 +948,33 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
     if (index->getType() == i1Ty_)
         index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
 
+    // Compile-time constant check with negative index wrap-around
     if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
         if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
             int64_t idx = ci->getSExtValue();
-            uint64_t sz = cs->getZExtValue();
-            if (idx < 0 || (uint64_t)idx >= sz)
-                codegenError("index " + std::to_string(idx) +
+            int64_t sz = static_cast<int64_t>(cs->getZExtValue());
+            if (idx < 0) idx += sz;
+            if (idx < 0 || idx >= sz)
+                codegenError("index " + std::to_string(ci->getSExtValue()) +
                              " out of bounds (size " + std::to_string(sz) + ")");
+            index = llvm::ConstantInt::get(i64Ty_, idx);
             return;
         }
     }
 
+    llvm::Value *origIndex = index;
+    index = emitNegativeIndexWrap(index, size, bbPrefix);
+
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
     llvm::Value *negCheck = builder_.CreateICmpSLT(
-        index, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_neg");
+        index, zero, bbPrefix + "_neg");
     llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
     llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
     llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
     builder_.CreateCondBr(oob, oobBB, okBB);
     builder_.SetInsertPoint(oobBB);
-    emitRuntimeError(errMsg, globalName);
+    emitBoundsError(origIndex, size, errMsg, globalName);
     builder_.SetInsertPoint(okBB);
 }
 

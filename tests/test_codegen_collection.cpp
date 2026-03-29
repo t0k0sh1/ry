@@ -60,9 +60,18 @@ TEST_F(CodeGenTest, ListEmpty) {
 }
 
 TEST_F(CodeGenTest, ListNegativeIndex) {
+    // Negative index wraps around (Python-style): -1 → last element
     std::string src =
         "xs = [1, 2, 3]\n"
         "print(xs[-1])";
+    EXPECT_EQ(runSource(src), "3\n");
+}
+
+TEST_F(CodeGenTest, ListNegativeIndexOutOfBounds) {
+    // -4 wraps to -1 which is still out of bounds for a list of length 3
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "print(xs[-4])";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
@@ -944,9 +953,18 @@ TEST_F(CodeGenTest, ListIndexAssignOutOfRange) {
 }
 
 TEST_F(CodeGenTest, ListIndexAssignNegative) {
+    // Negative index wraps around for assignment too
     std::string src =
         "xs = [1, 2, 3]\n"
-        "xs[-1] = 99";
+        "xs[-1] = 99\n"
+        "print(xs[2])";
+    EXPECT_EQ(runSource(src), "99\n");
+}
+
+TEST_F(CodeGenTest, ListIndexAssignNegativeOOB) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "xs[-4] = 99";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
 
@@ -2264,4 +2282,100 @@ TEST_F(CodeGenTest, OperatorAsParamValidation) {
         "    x: int\n"
         "fn operator as(a: int, b: int) -> int:\n"
         "    return a\n"), std::runtime_error);
+}
+
+// ===== Bounds checking tests =====
+
+TEST_F(CodeGenTest, ListNegativeIndexWrapAll) {
+    // -1 → last, -2 → second to last, -3 → first
+    EXPECT_EQ(runSource("xs = [10, 20, 30]\nprint(xs[-1])"), "30\n");
+    EXPECT_EQ(runSource("xs = [10, 20, 30]\nprint(xs[-2])"), "20\n");
+    EXPECT_EQ(runSource("xs = [10, 20, 30]\nprint(xs[-3])"), "10\n");
+}
+
+TEST_F(CodeGenTest, StringCharAtOutOfRange) {
+    std::string src = "print(char_at(\"hello\", 5))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, StringCharAtNegativeIndex) {
+    // Negative index wraps around for char_at
+    EXPECT_EQ(runSource("print(char_at(\"hello\", -1))"), "o\n");
+    EXPECT_EQ(runSource("print(char_at(\"hello\", -5))"), "h\n");
+}
+
+TEST_F(CodeGenTest, StringCharAtNegativeOOB) {
+    std::string src = "print(char_at(\"hello\", -6))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, StringCharAtEmptyString) {
+    std::string src = "print(char_at(\"\", 0))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, StringCharAtUTF8) {
+    // UTF-8 string indexing
+    EXPECT_EQ(runSource("print(char_at(\"あいう\", 0))"), "あ\n");
+    EXPECT_EQ(runSource("print(char_at(\"あいう\", -1))"), "う\n");
+}
+
+TEST_F(CodeGenTest, StringCharAtUTF8OutOfRange) {
+    std::string src = "print(char_at(\"あいう\", 3))";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, SubstringClamp) {
+    // Out-of-range values are clamped
+    EXPECT_EQ(runSource("print(substring(\"hello\", -1, 10))"), "hello\n");
+    EXPECT_EQ(runSource("print(substring(\"hello\", 0, 100))"), "hello\n");
+    EXPECT_EQ(runSource("print(substring(\"hello\", 3, 1))"), "\n");
+    EXPECT_EQ(runSource("print(substring(\"hello\", -5, -2))"), "\n");
+}
+
+TEST_F(CodeGenTest, ArrayNegativeIndexWrap) {
+    std::string src =
+        "buf: i32[3] = [10, 20, 30]\n"
+        "print(buf[-1] as int)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
+
+TEST_F(CodeGenTest, ArrayNegativeIndexOOB) {
+    std::string src =
+        "buf: i32[3] = [10, 20, 30]\n"
+        "print(buf[-4])";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, InsertNegativeIndex) {
+    // insert at -1 wraps to len+1-1 = len (append position)
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "insert(xs, -1, 99)\n"
+        "print(length(xs))\n"
+        "print(xs[3])";
+    EXPECT_EQ(runSource(src), "4\n99\n");
+}
+
+TEST_F(CodeGenTest, InsertNegativeIndexOOB) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "insert(xs, -5, 99)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, RemoveAtNegativeIndex) {
+    // remove_at(xs, -1) removes the last element
+    std::string src =
+        "xs = [10, 20, 30]\n"
+        "v = remove_at(xs, -1)\n"
+        "print(v)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
+
+TEST_F(CodeGenTest, RemoveAtNegativeIndexOOB) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "remove_at(xs, -4)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
