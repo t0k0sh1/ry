@@ -42,6 +42,21 @@ private:
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
+
+    // ARC infrastructure
+    llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
+    static constexpr uint64_t ARC_HEADER_SIZE = 16;
+    std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
+
+    // ARC emit methods
+    llvm::Value *emitArcAlloc(llvm::Value *dataSize);
+    void emitArcRetain(llvm::Value *headerPtr, bool atomic = false);
+    void emitArcRelease(llvm::Value *headerPtr, bool atomic = false,
+                        llvm::FunctionCallee destructor = {});
+    llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
+    bool isArcAtomic(llvm::Value *val) const;
+    void markArcAtomic(llvm::Value *val);
+
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     static constexpr int64_t TAG_INT   = 0;
