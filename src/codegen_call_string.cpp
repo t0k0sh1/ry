@@ -233,6 +233,20 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("substring() requires str as first argument");
 
+    // Fast path: both indices are compile-time constants satisfying sv >= 0, ev >= 0, ev >= sv.
+    // All three clamping selects are provably no-ops, so skip them and call the runtime directly.
+    if (auto *ciStart = llvm::dyn_cast<llvm::ConstantInt>(start)) {
+        if (auto *ciEnd = llvm::dyn_cast<llvm::ConstantInt>(end)) {
+            int64_t sv = ciStart->getSExtValue();
+            int64_t ev = ciEnd->getSExtValue();
+            if (sv >= 0 && ev >= 0 && ev >= sv) {
+                auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_,
+                                             {ptrTy_, i64Ty_, i64Ty_});
+                return builder_.CreateCall(substrFn, {s, start, end}, "substring");
+            }
+        }
+    }
+
     // Clamp start and end to be non-negative; let the runtime clamp to string length.
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
 
