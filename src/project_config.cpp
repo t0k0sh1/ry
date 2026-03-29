@@ -1,4 +1,5 @@
 #include "ry/project_config.hpp"
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -116,6 +117,12 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir) {
 
 // --- scaffold_project (shared helper) ---
 
+static std::string normalizePackageName(const std::string &name) {
+    std::string result = name;
+    std::replace(result.begin(), result.end(), '-', '_');
+    return result;
+}
+
 static int scaffold_project(const fs::path &project_dir, const std::string &project_name) {
     // 1. Create directories
     std::error_code ec;
@@ -125,9 +132,9 @@ static int scaffold_project(const fs::path &project_dir, const std::string &proj
         return 1;
     }
 
-    // 2. Generate package.toml
+    // 2. Generate package.toml (normalize hyphens to underscores in package name)
     ProjectConfig config;
-    config.name     = project_name;
+    config.name     = normalizePackageName(project_name);
     config.version  = "0.1.0";
     config.entry    = "src/main.ry";
     config.src_dir  = "src";

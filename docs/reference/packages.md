@@ -36,6 +36,31 @@ from math import sqrt, PI
 
 Imports multiple definitions separated by commas.
 
+### Relative Import
+
+```python
+from .helper import greet
+```
+
+Imports from a module relative to the current file's directory. The `.` prefix restricts resolution to the current directory only (standard library and other search paths are not searched).
+
+### Relative Import from Subdirectory
+
+```python
+from .utils import helper_fn
+from .utils.calc import add
+```
+
+Imports from a subdirectory relative to the current file's directory.
+
+### Relative Import All from Current Directory
+
+```python
+from . import add, sub
+```
+
+Imports specific symbols from the current directory package (all `.ry` files in the directory, excluding `_`-prefixed and `.test.ry` files).
+
 ---
 
 ## Package Resolution
@@ -59,6 +84,7 @@ For each search path, the system checks:
 When a package resolves to a directory:
 - All `.ry` files in the directory are automatically loaded
 - Files starting with `_` are excluded
+- Test files (`.test.ry`) are excluded
 - No special entry file (like `__init__.py`) is needed
 - All functions and types defined in the directory's files are exported
 
@@ -193,6 +219,9 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 | Allowed location | Top level only (not inside functions or blocks) |
 | Duplicate imports | Automatically skipped (no error) |
 | Circular imports | Compile error |
+| Relative imports | `from .` and `from .pkg` resolve only against the current file's directory |
+| Parent directory imports | `from ..` is not supported |
+| Package names | Only letters, digits, and underscores are allowed (no hyphens) |
 
 ```python
 # Error example: Import inside a block

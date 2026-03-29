@@ -189,20 +189,48 @@ std::vector<Directive> Parser::parseDirectives() {
 }
 
 StmtNode Parser::parseImportStatement() {
+    static constexpr const char *kHyphenError =
+        "hyphens '-' are not allowed in package names; "
+        "use underscores '_' instead";
+
+    // Parse dot-separated path segments: ident ('.' ident)*
+    // Checks for hyphens after each segment and after each dot.
+    auto parseDotPath = [&](std::string &path) {
+        if (lex_.peek().kind == TokenKind::Minus)
+            parseError(lex_.peek().line, kHyphenError);
+        while (lex_.peek().kind == TokenKind::Dot) {
+            lex_.next();
+            Token part = lex_.peek();
+            if (part.kind == TokenKind::Minus)
+                parseError(part.line, kHyphenError);
+            if (part.kind != TokenKind::Ident)
+                parseError(part.line, "expected identifier after '.'");
+            path += "/" + lex_.next().value;
+        }
+    };
+
     Token fromTok = lex_.next(); // consume 'from'
 
+    std::string modulePath;
     Token modTok = lex_.peek();
-    if (modTok.kind != TokenKind::Ident)
-        parseError(modTok.line, "expected package name after 'from'");
-    std::string modulePath = lex_.next().value;
 
-    while (lex_.peek().kind == TokenKind::Dot) {
-        lex_.next(); // consume '.'
-        Token part = lex_.peek();
-        if (part.kind != TokenKind::Ident)
-            parseError(part.line, "expected identifier after '.'");
-        modulePath += "/" + lex_.next().value;
+    if (modTok.kind == TokenKind::DotDot) {
+        parseError(modTok.line,
+            "parent directory imports ('from ..') are not supported");
+    } else if (modTok.kind == TokenKind::Dot) {
+        lex_.next();
+        modulePath = ".";
+        if (lex_.peek().kind == TokenKind::Ident) {
+            modulePath += "/" + lex_.next().value;
+            parseDotPath(modulePath);
+        }
+    } else if (modTok.kind == TokenKind::Ident) {
+        modulePath = lex_.next().value;
+        parseDotPath(modulePath);
+    } else {
+        parseError(modTok.line, "expected package name after 'from'");
     }
+
     std::vector<std::string> names;
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
