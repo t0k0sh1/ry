@@ -67,6 +67,13 @@ TEST(Formatter, StatementFormatting) {
     EXPECT_EQ(fmt("x: int = 42\n"), "x: int = 42\n");
     // Import
     EXPECT_EQ(fmt("from io import print, println\n"), "from io import print, println\n");
+    // Relative imports
+    EXPECT_EQ(fmt("from . import add\n"), "from . import add\n");
+    EXPECT_EQ(fmt("from .utils import helper\n"), "from .utils import helper\n");
+    EXPECT_EQ(fmt("from .utils.calc import add\n"), "from .utils.calc import add\n");
+    // Wildcard import (no 'import' keyword)
+    EXPECT_EQ(fmt("from math\n"), "from math\n");
+    EXPECT_EQ(fmt("from .\n"), "from .\n");
     // Return
     {
         auto src = "fn f() -> int:\n    return 42\n";

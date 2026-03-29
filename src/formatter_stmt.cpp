@@ -114,15 +114,29 @@ void Formatter::formatReturn(const ReturnStmt &s) {
 }
 
 void Formatter::formatImport(const ImportStmt &s) {
-    // Parser converts "std.io" to "std/io", convert back to dot notation
+    // Convert internal path back to dot notation.
+    // Relative paths: "." stays ".", "./utils/calc" becomes ".utils.calc"
+    // Absolute paths: "std/io" becomes "std.io"
     std::string path = s.module_path;
-    for (auto &c : path) {
-        if (c == '/') c = '.';
+    if (path.size() >= 2 && path[0] == '.' && path[1] == '/') {
+        // Relative: strip "./" prefix, convert '/' to '.', prepend '.'
+        std::string rest = path.substr(2);
+        for (auto &c : rest) {
+            if (c == '/') c = '.';
+        }
+        path = "." + rest;
+    } else if (path != ".") {
+        for (auto &c : path) {
+            if (c == '/') c = '.';
+        }
     }
-    emit("from " + path + " import ");
-    for (size_t i = 0; i < s.names.size(); ++i) {
-        if (i > 0) emit(", ");
-        emit(s.names[i]);
+    emit("from " + path);
+    if (!s.names.empty()) {
+        emit(" import ");
+        for (size_t i = 0; i < s.names.size(); ++i) {
+            if (i > 0) emit(", ");
+            emit(s.names[i]);
+        }
     }
     emitInlineComment(s.loc.line);
     emitNewline();

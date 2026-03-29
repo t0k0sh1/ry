@@ -220,6 +220,8 @@ StmtNode Parser::parseImportStatement() {
     } else if (modTok.kind == TokenKind::Dot) {
         lex_.next();
         modulePath = ".";
+        if (lex_.peek().kind == TokenKind::Minus)
+            parseError(lex_.peek().line, kHyphenError);
         if (lex_.peek().kind == TokenKind::Ident) {
             modulePath += "/" + lex_.next().value;
             parseDotPath(modulePath);

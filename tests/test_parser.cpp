@@ -650,6 +650,17 @@ TEST(ParserTest, ImportHyphenError) {
     }
 }
 
+TEST(ParserTest, ImportRelativeHyphenError) {
+    try {
+        parseStr("from .-pkg import add");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("hyphens"), std::string::npos)
+            << "Error message should mention hyphens: " << msg;
+    }
+}
+
 TEST(ParserTest, ImportParentDirError) {
     EXPECT_THROW(parseStr("from .. import add"), std::runtime_error);
 }
