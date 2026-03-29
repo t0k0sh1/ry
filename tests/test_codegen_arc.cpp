@@ -1,6 +1,7 @@
 #include "test_codegen_common.hpp"
 #include <cstdint>
 #include <cstdlib>
+#include <cstddef>
 #include <cstring>
 
 // ============================================================

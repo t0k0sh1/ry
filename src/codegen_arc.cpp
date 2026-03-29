@@ -66,7 +66,21 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
         auto *dataPtr = emitArcGetDataPtr(headerPtr);
         builder_.CreateCall(destructor, {dataPtr});
     }
+    // Only free the entire block when no weak references remain.
+    // When weak_count > 0, the header must stay alive for weak ref resolution.
+    auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "arc_weak_ptr");
+    auto *weakCount = builder_.CreateLoad(i64Ty_, weakPtr, "arc_weak");
+    auto *noWeak = builder_.CreateICmpEQ(weakCount, llvm::ConstantInt::get(i64Ty_, 0), "arc_no_weak");
+
+    auto *realFreeBB = llvm::BasicBlock::Create(*ctx_, "arc.free", fn);
+    auto *skipFreeBB = llvm::BasicBlock::Create(*ctx_, "arc.skip_free", fn);
+    builder_.CreateCondBr(noWeak, realFreeBB, skipFreeBB);
+
+    builder_.SetInsertPoint(realFreeBB);
     builder_.CreateCall(getStdlibFree(), {headerPtr});
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(skipFreeBB);
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(doneBB);
@@ -75,8 +89,16 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
 bool CodeGen::isArcAtomic(llvm::Value *val) const {
     if (arc_atomic_values_.count(val))
         return true;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-        return arc_atomic_values_.count(load->getPointerOperand()) > 0;
+    if (auto *stripped = val->stripPointerCasts())
+        if (arc_atomic_values_.count(stripped))
+            return true;
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto *ptr = load->getPointerOperand();
+        if (arc_atomic_values_.count(ptr))
+            return true;
+        if (auto *strippedPtr = ptr->stripPointerCasts())
+            return arc_atomic_values_.count(strippedPtr) > 0;
+    }
     return false;
 }
 
