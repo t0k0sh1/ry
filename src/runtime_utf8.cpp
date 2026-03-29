@@ -46,6 +46,58 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
     exit(1);
 }
 
+char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
+    const char *end = s + strlen(s);
+    const char *p = s;
+
+    if (i >= 0) {
+        // Positive index: single forward scan, stop at target — O(i).
+        int64_t idx = 0;
+        while (*p) {
+            int len = utf8_char_len_safe(p, (size_t)(end - p));
+            if (idx == i) {
+                char *buf = static_cast<char *>(malloc(len + 1));
+                memcpy(buf, p, len);
+                buf[len] = '\0';
+                return buf;
+            }
+            p += len;
+            ++idx;
+        }
+        // Fell through: index out of bounds. idx == string length.
+        fprintf(stderr,
+                "runtime error: index %lld out of bounds for string of length %lld\n",
+                (long long)i, (long long)idx);
+        exit(1);
+    }
+
+    // Negative index: count all codepoints to resolve wrap.
+    int64_t count = 0;
+    while (*p) {
+        p += utf8_char_len_safe(p, (size_t)(end - p));
+        ++count;
+    }
+
+    if (i < -count) {
+        fprintf(stderr,
+                "runtime error: index %lld out of bounds for string of length %lld\n",
+                (long long)i, (long long)count);
+        exit(1);
+    }
+    int64_t resolved = i + count;
+
+    // Second pass: scan to the resolved position — O(resolved).
+    p = s;
+    for (int64_t idx = 0; idx < resolved; ++idx)
+        p += utf8_char_len_safe(p, (size_t)(end - p));
+
+    int len = utf8_char_len_safe(p, (size_t)(end - p));
+    char *buf = static_cast<char *>(malloc(len + 1));
+    memcpy(buf, p, len);
+    buf[len] = '\0';
+    return buf;
+}
+
 char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
     const char *strEnd = s + strlen(s);
     const char *p = s;
