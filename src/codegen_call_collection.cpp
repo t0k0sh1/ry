@@ -589,15 +589,20 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 
         auto lf = loadListHeader(listPtr, "ins");
 
-        // Bounds check
+        // insert() valid range is [0, len], so negative index -k maps to len+1-k.
+        // This differs from remove_at() which wraps against len (valid range [0, len-1]).
+        llvm::Value *wrapBase = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_wrap_base");
+        idx = emitNegativeIndexWrap(idx, wrapBase, "ins");
+
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0)),
+            builder_.CreateICmpSLT(idx, zero),
             builder_.CreateICmpSGT(idx, lf.len), "ins_oob");
         llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "ins.err", fn_);
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "ins.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitRuntimeError("runtime error: insert() index out of bounds\n", ".ins_oob_err");
+        emitBoundsError(idx, lf.len, "runtime error: index %lld out of bounds for insert() on list of length %lld\n", ".ins_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Check if realloc needed
@@ -658,15 +663,17 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
 
         auto lf = loadListHeader(listPtr, "rmat");
 
-        // Bounds check
+        idx = emitNegativeIndexWrap(idx, lf.len, "rmat");
+
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0)),
+            builder_.CreateICmpSLT(idx, zero),
             builder_.CreateICmpSGE(idx, lf.len), "rmat_oob");
         llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "rmat.err", fn_);
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "rmat.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitRuntimeError("runtime error: remove_at() index out of bounds\n", ".rmat_oob_err");
+        emitBoundsError(idx, lf.len, "runtime error: index %lld out of bounds for remove_at() on list of length %lld\n", ".rmat_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Save element to return

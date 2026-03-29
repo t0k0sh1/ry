@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -40,10 +41,9 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
         }
         p += len;
     }
-    // Out of bounds: return empty string
-    char *buf = static_cast<char *>(malloc(1));
-    buf[0] = '\0';
-    return buf;
+    // Safety net: codegen should have caught this via emitBoundsCheck
+    fprintf(stderr, "runtime error: char_at() index out of bounds\n");
+    exit(1);
 }
 
 char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {

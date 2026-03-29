@@ -402,7 +402,12 @@ private:
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
-    void emitRuntimeError(const std::string &message, const std::string &globalName);
+    void emitRuntimeError(const std::string &message, const std::string &globalName,
+                          llvm::ArrayRef<llvm::Value *> extraArgs = {});
+    void emitBoundsError(llvm::Value *index, llvm::Value *size,
+                         const std::string &fmtMsg, const std::string &globalName);
+    llvm::Value *emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
+                                        const std::string &prefix);
     void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
                          const std::string &errMsg, const std::string &globalName,
                          const std::string &bbPrefix);

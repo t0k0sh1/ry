@@ -77,12 +77,25 @@ print(xs[0])   # 1
 print(xs[2])   # 3
 ```
 
+Negative indices wrap around from the end (Python-style):
+
+```python
+xs = [10, 20, 30]
+print(xs[-1])   # 30 (last element)
+print(xs[-2])   # 20
+print(xs[-3])   # 10
+```
+
+Out-of-bounds access (including negative indices that exceed the list length) raises a runtime error.
+
 ### Index Assignment
 
 ```python
 xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
+xs[-1] = 42    # assigns to last element
+print(xs[2])   # 42
 ```
 
 ### length
