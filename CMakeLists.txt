@@ -124,6 +124,7 @@ add_library(ry_lib STATIC
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
+    src/codegen_arc.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -207,6 +208,7 @@ add_executable(ry_tests
     tests/test_runtime_any.cpp
     tests/test_stdin.cpp
     tests/test_help.cpp
+    tests/test_codegen_arc.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
