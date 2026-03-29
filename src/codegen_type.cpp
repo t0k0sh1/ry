@@ -32,9 +32,17 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // Weak reference type: "weak str", "weak List<int>"
     if (isWeakTypeName(typeName)) {
         std::string inner = weakInnerTypeName(typeName);
-        llvm::Type *innerTy = resolveType(inner);
-        if (innerTy != ptrTy_)
-            codegenError("weak references require an ARC-managed type (str or collection), got: " + inner);
+        // Resolve aliases to canonical name
+        auto aliasIt = type_aliases_.find(inner);
+        std::string canonical = (aliasIt != type_aliases_.end()) ? resolveTypeAlias(inner) : inner;
+        // Extract base type name (before generic args)
+        std::string base = canonical;
+        auto ltPos = base.find('<');
+        if (ltPos != std::string::npos)
+            base = base.substr(0, ltPos);
+        if (base != "str" && base != "List" && base != "Map" && base != "Set")
+            codegenError("weak references require an ARC-managed type (str, List, Map, Set), got: " + inner);
+        resolveType(inner);  // validate inner type exists
         return ptrTy_;  // weak ref stores a header pointer
     }
 

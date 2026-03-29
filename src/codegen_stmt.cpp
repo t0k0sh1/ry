@@ -411,9 +411,29 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         // --- Weak reference tracking ---
         if (annot && isWeakTypeName(*annot)) {
+            if (!std::get_if<std::unique_ptr<WeakExpr>>(&value.data))
+                codegenError("weak-typed variable must be initialized with a 'weak' expression");
             emitWeakRetain(val);
             markWeakManaged(ptr);
-            weak_inner_type_names_[ptr] = weakInnerTypeName(*annot);
+            std::string innerName = weakInnerTypeName(*annot);
+            weak_inner_type_names_[ptr] = innerName;
+            // Set collection metadata on weak alloca so it propagates through upgrade
+            auto ltPos = innerName.find('<');
+            if (ltPos != std::string::npos) {
+                std::string baseName = innerName.substr(0, ltPos);
+                std::string args = innerName.substr(ltPos + 1, innerName.size() - ltPos - 2);
+                if (baseName == "List")
+                    type_meta_[TM_ListElem][ptr] = resolveType(args);
+                else if (baseName == "Set")
+                    type_meta_[TM_SetElem][ptr] = resolveType(args);
+                else if (baseName == "Map") {
+                    auto commaPos = args.find(", ");
+                    if (commaPos != std::string::npos) {
+                        type_meta_[TM_MapKey][ptr] = resolveType(args.substr(0, commaPos));
+                        type_meta_[TM_MapValue][ptr] = resolveType(args.substr(commaPos + 2));
+                    }
+                }
+            }
         }
         // --- ARC tracking ---
         else {
@@ -556,6 +576,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     // Weak ref reassignment: retain new, release old
     if (isWeakManaged(ptr)) {
+        if (!std::get_if<std::unique_ptr<WeakExpr>>(&s.value->data))
+            codegenError("weak variable must be reassigned with a 'weak' expression");
         emitWeakRetain(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".weak_old");
         emitWeakRelease(oldVal);

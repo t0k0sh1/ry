@@ -189,32 +189,51 @@ bool CodeGen::isWeakManaged(llvm::AllocaInst *alloca) const {
 }
 
 void CodeGen::emitWeakRetain(llvm::Value *headerPtr) {
+    // Skip immortal objects (strong_count == ARC_IMMORTAL) — e.g. string literals
+    auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_retain_strong");
+    auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "weak_retain_sc");
+    auto *isImmortal = builder_.CreateICmpEQ(strong, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_retain_immortal");
+
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    auto *retainBB = llvm::BasicBlock::Create(*ctx_, "weak.retain", fn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.retain.done", fn);
+    builder_.CreateCondBr(isImmortal, doneBB, retainBB);
+
+    builder_.SetInsertPoint(retainBB);
     auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_retain_ptr");
-    // Always atomic for thread safety
     builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, weakPtr,
                              llvm::ConstantInt::get(i64Ty_, 1),
                              llvm::MaybeAlign(),
                              llvm::AtomicOrdering::SequentiallyConsistent);
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
 }
 
 void CodeGen::emitWeakRelease(llvm::Value *headerPtr) {
+    // Skip immortal objects (strong_count == ARC_IMMORTAL) — e.g. string literals
+    auto *strongCheckPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_rel_strong");
+    auto *strongCheck = builder_.CreateLoad(i64Ty_, strongCheckPtr, "weak_rel_sc");
+    auto *isImmortal = builder_.CreateICmpEQ(strongCheck, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_rel_immortal");
+
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "weak.release.body", fn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.done", fn);
+    builder_.CreateCondBr(isImmortal, doneBB, releaseBB);
+
+    builder_.SetInsertPoint(releaseBB);
     auto *weakPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 1, "weak_rel_ptr");
-    // Atomic decrement; old value returned
     auto *oldWeak = builder_.CreateAtomicRMW(
         llvm::AtomicRMWInst::Sub, weakPtr,
         llvm::ConstantInt::get(i64Ty_, 1),
         llvm::MaybeAlign(),
         llvm::AtomicOrdering::SequentiallyConsistent);
-    // weak_count was 1 → now 0
     auto *isZeroWeak = builder_.CreateICmpEQ(oldWeak, llvm::ConstantInt::get(i64Ty_, 1), "weak_zero");
 
-    auto *fn = builder_.GetInsertBlock()->getParent();
     auto *checkStrongBB = llvm::BasicBlock::Create(*ctx_, "weak.check_strong", fn);
     auto *freeBB = llvm::BasicBlock::Create(*ctx_, "weak.free", fn);
-    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.done", fn);
     builder_.CreateCondBr(isZeroWeak, checkStrongBB, doneBB);
 
-    // Check if strong_count is also 0 → free the header
     builder_.SetInsertPoint(checkStrongBB);
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_strong_ptr");
     auto *strong = builder_.CreateLoad(i64Ty_, strongPtr, "weak_strong");
@@ -239,13 +258,25 @@ llvm::Value *CodeGen::emitWeakUpgrade(llvm::Value *headerPtr,
     auto *strongPtr = builder_.CreateStructGEP(arcHeaderTy_, headerPtr, 0, "weak_up_strong_ptr");
 
     auto *fn = builder_.GetInsertBlock()->getParent();
+    auto *immortalBB = llvm::BasicBlock::Create(*ctx_, "weak.immortal", fn);
     auto *loopBB = llvm::BasicBlock::Create(*ctx_, "weak.cas_loop", fn);
     auto *tryIncBB = llvm::BasicBlock::Create(*ctx_, "weak.try_inc", fn);
     auto *successBB = llvm::BasicBlock::Create(*ctx_, "weak.success", fn);
     auto *deadBB = llvm::BasicBlock::Create(*ctx_, "weak.dead", fn);
     auto *doneBB = llvm::BasicBlock::Create(*ctx_, "weak.upgrade_done", fn);
 
-    builder_.CreateBr(loopBB);
+    // Immortal objects are always alive — skip CAS and return Some directly
+    auto *initCur = builder_.CreateLoad(i64Ty_, strongPtr, "weak_up_init");
+    initCur->setAtomic(llvm::AtomicOrdering::Acquire);
+    auto *isImmortal = builder_.CreateICmpEQ(initCur, llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL), "weak_up_immortal");
+    builder_.CreateCondBr(isImmortal, immortalBB, loopBB);
+
+    // Immortal path: return Some(data_ptr) without incrementing
+    builder_.SetInsertPoint(immortalBB);
+    auto *immortalDataPtr = emitArcGetDataPtr(headerPtr);
+    auto *immortalSome = buildSomeValue(immortalDataPtr, optionTy);
+    builder_.CreateStore(immortalSome, resultAlloca);
+    builder_.CreateBr(doneBB);
 
     // CAS loop
     builder_.SetInsertPoint(loopBB);

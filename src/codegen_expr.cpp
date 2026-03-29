@@ -83,7 +83,11 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
             auto it = weak_inner_type_names_.find(alloca);
             if (it == weak_inner_type_names_.end())
                 codegenError("internal: weak variable missing inner type name: " + e.name);
-            return emitWeakUpgrade(headerPtr, it->second);
+            auto *result = emitWeakUpgrade(headerPtr, it->second);
+            // Propagate collection metadata from the original weak alloca to the
+            // upgrade result so that match bindings inherit element types
+            propagateAllMetadata(alloca, result);
+            return result;
         }
         llvm::Type *ty = alloca->getAllocatedType();
         // Fixed-length arrays: return alloca pointer for GEP-based indexing
@@ -888,6 +892,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     llvm::Value *val = emitExpr(*e->operand);
-    // val is a data pointer from an ARC-managed value; convert to header pointer
+    if (val->getType() != ptrTy_)
+        codegenError("weak can only be applied to ARC-managed reference values (str, List, Map, Set)");
     return emitArcGetHeaderFromData(val);
 }
