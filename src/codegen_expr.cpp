@@ -77,6 +77,14 @@ llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     if (alloca) {
         if (deprecated_variables_.count(e.name))
             emitDeprecationWarning(e.name);
+        // Weak reference auto-upgrade: access returns Option<T>
+        if (isWeakManaged(alloca)) {
+            auto *headerPtr = builder_.CreateLoad(ptrTy_, alloca, e.name + ".weak_hdr");
+            auto it = weak_inner_type_names_.find(alloca);
+            if (it == weak_inner_type_names_.end())
+                codegenError("internal: weak variable missing inner type name: " + e.name);
+            return emitWeakUpgrade(headerPtr, it->second);
+        }
         llvm::Type *ty = alloca->getAllocatedType();
         // Fixed-length arrays: return alloca pointer for GEP-based indexing
         if (llvm::isa<llvm::ArrayType>(ty))
@@ -876,4 +884,10 @@ llvm::Value *CodeGen::emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, 
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
     return emitTaskWait(emitExpr(*e->operand), "__ry_task_join", "await");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
+    llvm::Value *val = emitExpr(*e->operand);
+    // val is a data pointer from an ARC-managed value; convert to header pointer
+    return emitArcGetHeaderFromData(val);
 }

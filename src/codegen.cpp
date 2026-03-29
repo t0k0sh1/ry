@@ -99,6 +99,8 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
     savedArcManaged_ = std::move(cg_.arc_managed_vars_);
     savedArcOwned_ = std::move(cg_.arc_owned_values_);
+    savedWeakManaged_ = std::move(cg_.weak_managed_vars_);
+    savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -109,6 +111,8 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
     cg_.arc_owned_values_.clear();
+    cg_.weak_managed_vars_.clear();
+    cg_.weak_inner_type_names_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -120,6 +124,8 @@ CodeGen::FnScope::~FnScope() {
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.arc_managed_vars_ = std::move(savedArcManaged_);
     cg_.arc_owned_values_ = std::move(savedArcOwned_);
+    cg_.weak_managed_vars_ = std::move(savedWeakManaged_);
+    cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
@@ -179,6 +185,12 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
     for (size_t i = scope_stack_.size(); i > targetDepth; --i) {
         auto &scope = scope_stack_[i - 1];
         for (auto &[name, alloca] : scope) {
+            if (weak_managed_vars_.count(alloca)) {
+                emitWeakReleaseVar(name, alloca);
+                weak_managed_vars_.erase(alloca);
+                weak_inner_type_names_.erase(alloca);
+                continue;
+            }
             if (!arc_managed_vars_.count(alloca)) continue;
             emitArcReleaseVar(name, alloca);
             arc_managed_vars_.erase(alloca);

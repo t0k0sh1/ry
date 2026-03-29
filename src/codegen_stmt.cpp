@@ -409,13 +409,21 @@ void CodeGen::emitVarDecl(const std::string &name,
                 type_meta_[TM_IteratorElem][ptr] = iterElemTy;
         }
 
+        // --- Weak reference tracking ---
+        if (annot && isWeakTypeName(*annot)) {
+            emitWeakRetain(val);
+            markWeakManaged(ptr);
+            weak_inner_type_names_[ptr] = weakInnerTypeName(*annot);
+        }
         // --- ARC tracking ---
+        else {
         bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
                             type_meta_[TM_MapKey].count(ptr) ||
                             type_meta_[TM_SetElem].count(ptr);
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         if (isCollection || isArcOwned || tryRetainArcSource(val))
             markArcManaged(ptr);
+        }
     }
 
     // --- Resource type tracking ---
@@ -546,8 +554,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
         emitConstraintCheck(val, tcIt->second, s.name);
     }
 
+    // Weak ref reassignment: retain new, release old
+    if (isWeakManaged(ptr)) {
+        emitWeakRetain(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".weak_old");
+        emitWeakRelease(oldVal);
+    }
     // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
-    if (isArcManaged(ptr)) {
+    else if (isArcManaged(ptr)) {
         tryRetainArcSource(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);

@@ -29,6 +29,15 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "u64")   return i64Ty_;
     if (typeName == "f32")   return f32Ty_;
 
+    // Weak reference type: "weak str", "weak List<int>"
+    if (isWeakTypeName(typeName)) {
+        std::string inner = weakInnerTypeName(typeName);
+        llvm::Type *innerTy = resolveType(inner);
+        if (innerTy != ptrTy_)
+            codegenError("weak references require an ARC-managed type (str or collection), got: " + inner);
+        return ptrTy_;  // weak ref stores a header pointer
+    }
+
     // Optional type suffix: "int?" -> Option<int>
     if (!typeName.empty() && typeName.back() == '?') {
         std::string inner = typeName.substr(0, typeName.size() - 1);

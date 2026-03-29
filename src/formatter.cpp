@@ -303,6 +303,8 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             return formatExpr(*v->operand) + "?";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<AwaitExpr>>) {
             return "await " + formatExpr(*v->operand);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WeakExpr>>) {
+            return "weak " + formatExpr(*v->operand);
         } else if constexpr (std::is_same_v<T, std::unique_ptr<InterpolatedStringExpr>>) {
             std::string result = "f\"";
             for (size_t i = 0; i < v->parts.size(); ++i) {

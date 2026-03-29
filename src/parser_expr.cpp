@@ -295,6 +295,17 @@ ExprPtr Parser::parsePrimary() {
         lambdaNode->loc = locFromToken(t);
         return lambdaNode;
     }
+    // weak expr — create weak reference from strong reference
+    if (t.kind == TokenKind::Ident && t.value == "weak") {
+        lex_.next(); // consume 'weak'
+        ExprPtr operand = parsePrimary();
+        auto weakExpr = std::make_unique<WeakExpr>();
+        weakExpr->operand = std::move(operand);
+        auto node = std::make_unique<ExprNode>();
+        node->data = std::move(weakExpr);
+        node->loc = locFromToken(t);
+        return node;
+    }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
         if (lex_.peek().kind == TokenKind::LBracket) {
