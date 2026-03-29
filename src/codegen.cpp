@@ -267,6 +267,9 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     if (test_mode_)
         collectMockedFunctions(prog, mocked_functions_);
 
+    // Pre-pass: compute potentially cyclic types for GC candidate tracking
+    computeCyclicTypes(prog);
+
     llvm::FunctionType *ft = llvm::FunctionType::get(i32Ty_, false);
     fn_ = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__ry_main__", *mod_);
     llvm::BasicBlock *bb = llvm::BasicBlock::Create(*ctx_, "entry", fn_);

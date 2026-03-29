@@ -52,6 +52,7 @@ For detailed language specifications, see the reference pages below.
 | [Path](reference/path.md) | join, basename, dirname, extension, resolve, is_absolute |
 | [Filesystem](reference/filesystem.md) | list_dir, walk, glob_files, copy, move, remove, make_dir, chmod, symlink |
 | [Thread](reference/thread.md) | thread_spawn, thread_join, Lock, RWLock, Semaphore, Barrier, AtomicInt, AtomicBool |
+| [GC](reference/gc.md) | collect, enable, disable, set_threshold — cycle collector for ARC |
 | [Package System](reference/packages.md) | from/import syntax, directory packages, std, RY_HOME |
 | [Testing](reference/testing.md) | Testing with describe/it/expect |
 | [Project Management](reference/project.md) | ry init and package.toml specification |
