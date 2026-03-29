@@ -17,10 +17,11 @@ struct GcObjectInfo {
 };
 
 struct GcState {
-    std::mutex                                   mutex;
+    std::recursive_mutex                         mutex;
     std::unordered_map<void *, GcObjectInfo>     candidates;
     bool                                         enabled    = true;
     int64_t                                      threshold  = 700;
+    bool                                         collecting = false;
 };
 
 static GcState &gc() {
@@ -75,14 +76,8 @@ static void mark_reachable(CollectCtx &ctx, void *headerPtr) {
     // A local (not static) vector avoids iterator-invalidation across recursive calls.
     std::vector<void *> children;
 
-    auto gather_visitor = [](void *child) {
-        // Access the thread-local vector indirectly — the lambda is a plain
-        // function pointer passed to visit_fn, so we use a thread-local relay.
-        // However, since gather_visitor is only used inside mark_reachable which
-        // is single-threaded within the GC lock, we store the vector pointer in
-        // a thread-local for the callback.
-    };
-    // Instead of a lambda that captures, use a simple thread-local pointer.
+    // Use a thread-local pointer so the non-capturing gather callback
+    // can access the current children vector.
     static thread_local std::vector<void *> *tl_children = nullptr;
     tl_children = &children;
 
@@ -101,8 +96,10 @@ static void mark_reachable(CollectCtx &ctx, void *headerPtr) {
 
 static int64_t collect_locked() {
     auto &g = gc();
-    if (g.candidates.empty())
+    if (g.candidates.empty() || g.collecting)
         return 0;
+
+    g.collecting = true;
 
     CollectCtx ctx;
 
@@ -169,6 +166,7 @@ static int64_t collect_locked() {
         collected++;
     }
 
+    g.collecting = false;
     return collected;
 }
 
@@ -183,7 +181,7 @@ void __ry_gc_track(void *headerPtr, RyGcVisitFn visit_fn, RyGcDtorFn dtor_fn) {
         return;
 
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
 
     if (!g.enabled)
         return;
@@ -201,31 +199,31 @@ void __ry_gc_untrack(void *headerPtr) {
     if (!headerPtr)
         return;
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
     g.candidates.erase(headerPtr);
 }
 
 int64_t __ry_gc_collect() {
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
     return collect_locked();
 }
 
 void __ry_gc_enable() {
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
     g.enabled = true;
 }
 
 void __ry_gc_disable() {
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
     g.enabled = false;
 }
 
 void __ry_gc_set_threshold(int64_t n) {
     auto &g = gc();
-    std::lock_guard<std::mutex> lock(g.mutex);
+    std::lock_guard<std::recursive_mutex> lock(g.mutex);
     g.threshold = n;
 }
 

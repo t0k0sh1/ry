@@ -110,13 +110,12 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
     }
 
     builder_.SetInsertPoint(freeBB);
-    // Untrack from GC candidate set before freeing (if visit function was provided).
-    if (gcVisitFn) {
-        auto *gcUntrackFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        auto gcUntrackFn = mod_->getOrInsertFunction("__ry_gc_untrack", gcUntrackFnTy);
-        builder_.CreateCall(gcUntrackFn, {headerPtr});
-    }
+    // Untrack from GC candidate set before freeing. This is safe even if the
+    // object was never tracked or has already been untracked.
+    auto *gcUntrackFnTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto gcUntrackFn = mod_->getOrInsertFunction("__ry_gc_untrack", gcUntrackFnTy);
+    builder_.CreateCall(gcUntrackFn, {headerPtr});
     if (destructor) {
         auto *dataPtr = emitArcGetDataPtr(headerPtr);
         builder_.CreateCall(destructor, {dataPtr});
@@ -1037,7 +1036,41 @@ void CodeGen::computeCyclicTypes(Program &prog) {
 }
 
 bool CodeGen::isPotentiallyCyclic(const std::string &typeName) const {
-    return potentially_cyclic_types_.count(typeName) > 0;
+    if (potentially_cyclic_types_.count(typeName))
+        return true;
+    // Check wrapped types: Option<T> -> T, List<T> -> T, etc.
+    // Extract base name from generic wrappers.
+    auto checkInner = [&](const std::string &prefix) -> bool {
+        if (typeName.size() > prefix.size() + 1 &&
+            typeName.compare(0, prefix.size(), prefix) == 0 &&
+            typeName.back() == '>') {
+            std::string inner = typeName.substr(prefix.size(),
+                                                 typeName.size() - prefix.size() - 1);
+            return isPotentiallyCyclic(inner);
+        }
+        return false;
+    };
+    if (checkInner("Option<")) return true;
+    if (checkInner("List<")) return true;
+    if (checkInner("Set<")) return true;
+    // Map<K,V> — check both K and V
+    if (typeName.size() > 5 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
+        std::string inner = typeName.substr(4, typeName.size() - 5);
+        // Find the comma separating K and V (handle nested generics)
+        int depth = 0;
+        for (size_t i = 0; i < inner.size(); ++i) {
+            if (inner[i] == '<') depth++;
+            else if (inner[i] == '>') depth--;
+            else if (inner[i] == ',' && depth == 0) {
+                std::string k = inner.substr(0, i);
+                std::string v = inner.substr(i + 2); // skip ", "
+                if (isPotentiallyCyclic(k) || isPotentiallyCyclic(v))
+                    return true;
+                break;
+            }
+        }
+    }
+    return false;
 }
 
 llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
