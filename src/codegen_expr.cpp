@@ -844,6 +844,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     }
     llvm::Value *retErr = buildErrValue(errVal, retResultTy);
     emitEnsureChecks(retErr);
+    tryRetainArcSource(errVal);
+    emitScopeCleanupToDepth(0);
     builder_.CreateRet(retErr);
 
     // Ok path: extract ok value, continue

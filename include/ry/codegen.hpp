@@ -46,7 +46,10 @@ private:
     // ARC infrastructure
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
     static constexpr uint64_t ARC_HEADER_SIZE = 16;
+    static constexpr int64_t ARC_IMMORTAL = INT64_MAX;    // sentinel: never retain/release
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
+    std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
+    std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -54,8 +57,21 @@ private:
     void emitArcRelease(llvm::Value *headerPtr, bool atomic = false,
                         llvm::FunctionCallee destructor = {});
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
+    llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
     bool isArcAtomic(llvm::Value *val) const;
     void markArcAtomic(llvm::Value *val);
+    void markArcManaged(llvm::AllocaInst *alloca);
+    bool isArcManaged(llvm::AllocaInst *alloca) const;
+    void emitScopeCleanup();
+    void emitScopeCleanupToDepth(size_t targetDepth);
+    llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
+    void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
+    bool tryRetainArcSource(llvm::Value *val);
+
+    // ARC destructor generation — frees internal buffers of collections
+    enum class CollectionKind { List, Map, Set };
+    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+    std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
 
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
@@ -220,7 +236,8 @@ private:
     std::string resolveTypeAlias(const std::string &typeName);
 
     // Loop context stack for break/continue (condBB, endBB)
-    std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
+    // { condBB, endBB, scopeDepth at loop entry }
+    std::vector<std::tuple<llvm::BasicBlock*, llvm::BasicBlock*, size_t>> loop_stack_;
 
     // Indexed for-loop helper: emits loop scaffolding and calls bindVars for each iteration
     void emitIndexedForLoop(llvm::Value *length,
@@ -243,6 +260,8 @@ private:
         llvm::Function *savedFn_;
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> savedScope_;
         std::vector<std::unordered_set<std::string>> savedConstScope_;
+        std::unordered_set<llvm::AllocaInst*> savedArcManaged_;
+        std::unordered_set<llvm::Value*> savedArcOwned_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;

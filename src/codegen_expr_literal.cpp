@@ -150,16 +150,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
     int64_t count = static_cast<int64_t>(vals.size());
 
-    // Allocate list header: { i64 length, i64 capacity, ptr data }
-    auto mallocFn = getStdlibMalloc();
-
-    // Allocate header
+    // Allocate list header with ARC: [ArcHeader][ListHeader]
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "list_header");
+    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
-    // Allocate data
+    // Allocate data buffer (separate allocation, freed by destructor)
+    auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * count);
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
@@ -232,20 +230,19 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     int64_t count = static_cast<int64_t>(keyVals.size());
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
-    // Allocate MapHeader
+    // Allocate MapHeader with ARC: [ArcHeader][MapHeader]
     uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
+    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
-    // Allocate keys array
+    // Allocate keys and values arrays (separate allocations, freed by destructor)
+    auto mallocFn = getStdlibMalloc();
     uint64_t keySize = dl.getTypeAllocSize(keyTy);
     llvm::Value *keysPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * count)}, "map_keys");
 
-    // Allocate values array
     uint64_t valSize = dl.getTypeAllocSize(valTy);
     llvm::Value *valsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * count)}, "map_vals");
@@ -329,15 +326,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     int64_t count = static_cast<int64_t>(vals.size());
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
-    // Allocate SetHeader
+    // Allocate SetHeader with ARC: [ArcHeader][SetHeader]
     uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "set_header");
+    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
-    // Allocate elements array (capacity = total element count)
+    // Allocate elements array (separate allocation, freed by destructor)
+    auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *elemsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
