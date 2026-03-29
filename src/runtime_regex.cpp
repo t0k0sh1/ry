@@ -712,7 +712,7 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
 }
 
 void *__ry_regex_split(const char *pattern, const char *text) {
-    if (!pattern || !text) { std::vector<std::string> empty; return makeStringList(empty); }
+    if (!pattern || !text) return makeStringList({});
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
 

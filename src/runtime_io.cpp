@@ -1,4 +1,5 @@
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_http_types.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -72,14 +73,13 @@ extern "C" const char *__ry_read_line() {
 extern "C" const char *__ry_read_all() {
     size_t cap = 4096;
     size_t len = 0;
-    char *buf = (char *)malloc(cap);
-    if (!buf) { fprintf(stderr, "runtime error: out of memory\n"); exit(1); }
+    char *buf = (char *)checked_malloc(cap);
 
     for (;;) {
         if (len + 1 >= cap) {
             cap *= 2;
             char *newBuf = (char *)realloc(buf, cap);
-            if (!newBuf) { free(buf); fprintf(stderr, "runtime error: out of memory\n"); exit(1); }
+            if (!newBuf) { free(buf); oom_abort(); }
             buf = newBuf;
         }
         size_t to_read = cap - len - 1;

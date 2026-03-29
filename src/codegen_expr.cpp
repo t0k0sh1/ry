@@ -425,10 +425,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {
-        if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
-            codegenError("type error: operator '**' not supported between str and non-str types");
-        if (llvm::isa<llvm::StructType>(lhs->getType()) || llvm::isa<llvm::StructType>(rhs->getType()))
-            codegenError("type error: operator '**' requires numeric type, got struct");
+        ensureNumericType(lhs, "operator '**'");
+        ensureNumericType(rhs, "operator '**'");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())
