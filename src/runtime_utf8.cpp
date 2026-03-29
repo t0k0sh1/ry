@@ -78,13 +78,13 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
         ++count;
     }
 
-    int64_t resolved = i + count;
-    if (resolved < 0) {
+    if (i < -count) {
         fprintf(stderr,
                 "runtime error: index %lld out of bounds for string of length %lld\n",
                 (long long)i, (long long)count);
         exit(1);
     }
+    int64_t resolved = i + count;
 
     // Second pass: scan to the resolved position — O(resolved).
     p = s;

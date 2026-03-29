@@ -179,6 +179,9 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("char_at() requires str as first argument");
 
+    if (idx->getType()->isIntegerTy(1))
+        idx = builder_.CreateZExt(idx, i64Ty_, "char_at_idx");
+
     auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_});
     return builder_.CreateCall(fn, {s, idx}, "char_at");
 }
