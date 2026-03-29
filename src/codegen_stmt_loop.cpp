@@ -15,7 +15,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhileStmt> &s) {
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({condBB, endBB});
+    loop_stack_.push_back({condBB, endBB, scope_stack_.size()});
     pushScope();
     for (auto &stmt : s->body)
         std::visit([this](auto &st) { emitStmt(st); }, stmt);
@@ -97,7 +97,7 @@ void CodeGen::emitStmt(std::unique_ptr<ForStmt> &s) {
         builder_.CreateCondBr(hasVal, bodyBB, endBB);
 
         builder_.SetInsertPoint(bodyBB);
-        loop_stack_.push_back({condBB, endBB});
+        loop_stack_.push_back({condBB, endBB, scope_stack_.size()});
         pushScope();
 
         llvm::Value *elem = builder_.CreateExtractValue(opt, 1, "foriter_elem");
@@ -231,7 +231,7 @@ void CodeGen::emitIndexedForLoop(llvm::Value *length,
     builder_.CreateCondBr(cond, bodyBB, endBB);
 
     builder_.SetInsertPoint(bodyBB);
-    loop_stack_.push_back({stepBB, endBB});
+    loop_stack_.push_back({stepBB, endBB, scope_stack_.size()});
     pushScope();
 
     llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
@@ -259,7 +259,10 @@ void CodeGen::emitStmt(BreakStmt &s) {
     emitCoverage(s.loc);
     if (loop_stack_.empty())
         codegenError("break outside of loop");
-    builder_.CreateBr(loop_stack_.back().second);
+    // Release ARC vars from current scope down to loop's scope depth
+    size_t loopDepth = std::get<2>(loop_stack_.back());
+    emitScopeCleanupToDepth(loopDepth);
+    builder_.CreateBr(std::get<1>(loop_stack_.back()));
     // Create unreachable block for subsequent code
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "break.dead", fn_);
     builder_.SetInsertPoint(deadBB);
@@ -270,7 +273,10 @@ void CodeGen::emitStmt(ContinueStmt &s) {
     emitCoverage(s.loc);
     if (loop_stack_.empty())
         codegenError("continue outside of loop");
-    builder_.CreateBr(loop_stack_.back().first);
+    // Release ARC vars from current scope down to loop's scope depth
+    size_t loopDepth = std::get<2>(loop_stack_.back());
+    emitScopeCleanupToDepth(loopDepth);
+    builder_.CreateBr(std::get<0>(loop_stack_.back()));
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "continue.dead", fn_);
     builder_.SetInsertPoint(deadBB);
 }

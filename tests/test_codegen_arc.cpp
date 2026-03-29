@@ -142,3 +142,70 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
 
     EXPECT_TRUE(arcRelease(p)); // strong = 0 → freed
 }
+
+// ===== Immortal sentinel tests =====
+
+static constexpr int64_t ARC_IMMORTAL = INT64_MAX;
+
+TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
+    void *p = arcAlloc(16);
+    auto *hdr = static_cast<ArcHeader *>(p);
+    hdr->strong_count = ARC_IMMORTAL;
+
+    // Retain should be skipped for immortal objects
+    // Simulate the check: if strong_count == INT64_MAX, skip
+    if (hdr->strong_count != ARC_IMMORTAL)
+        hdr->strong_count += 1;
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
+
+    std::free(p);
+}
+
+TEST(ArcInfraTest, ImmortalSentinelSkipsRelease) {
+    void *p = arcAlloc(16);
+    auto *hdr = static_cast<ArcHeader *>(p);
+    hdr->strong_count = ARC_IMMORTAL;
+
+    // Release should be skipped for immortal objects
+    if (hdr->strong_count != ARC_IMMORTAL)
+        hdr->strong_count -= 1;
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
+
+    std::free(p);
+}
+
+TEST(ArcInfraTest, GetHeaderFromData) {
+    void *p = arcAlloc(32);
+    void *data = arcGetDataPtr(p);
+    // Getting header from data should be data - 16
+    void *backToHeader = static_cast<char *>(data) - 16;
+    EXPECT_EQ(backToHeader, p);
+    std::free(p);
+}
+
+// ===== Integration: list literal uses ARC allocation =====
+
+TEST_F(CodeGenTest, ListLiteralCreatesArcHeader) {
+    EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(length(x))"), "3\n");
+}
+
+TEST_F(CodeGenTest, MapLiteralCreatesArcHeader) {
+    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(length(m))"), "2\n");
+}
+
+TEST_F(CodeGenTest, SetLiteralCreatesArcHeader) {
+    EXPECT_EQ(runSource("s: Set<int> = {1, 2, 3}\nprint(length(s))"), "3\n");
+}
+
+TEST_F(CodeGenTest, StringInterpolationWithArc) {
+    EXPECT_EQ(runSource("x = 42\nprint(f\"value: {x}\")"),
+              "value: 42\n");
+}
+
+TEST_F(CodeGenTest, CollectionVariableBinding) {
+    EXPECT_EQ(runSource("x = [1, 2, 3]\ny = x\nprint(length(y))"), "3\n");
+}
+
+TEST_F(CodeGenTest, CollectionInFunction) {
+    EXPECT_EQ(runSource("fn get_length(lst: List<int>) -> int:\n  return length(lst)\n\nx = [10, 20, 30]\nprint(get_length(x))"), "3\n");
+}

@@ -37,10 +37,12 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         if (isAnyType(fn_->getReturnType())) {
             llvm::Value *unitAny = buildUnitAny();
             emitEnsureChecks(unitAny);
+            emitScopeCleanupToDepth(0);
             builder_.CreateRet(unitAny);
         } else if (!fn_->getReturnType()->isVoidTy()) {
             codegenError("return without value in non-Unit function");
         } else {
+            emitScopeCleanupToDepth(0);
             builder_.CreateRetVoid();
         }
     } else {
@@ -102,6 +104,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 
         // Emit ensure checks (postconditions) before return
         emitEnsureChecks(val);
+
+        // Release all ARC-managed variables in all scopes before return
+        emitScopeCleanupToDepth(0);
 
         builder_.CreateRet(val);
     }
@@ -316,6 +321,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 type_meta_[TM_TaskResult][alloca] = resolveType(inner);
             }
             registerResourceByTypeName(ptype, alloca);
+            // Mark ARC-managed for collection parameters
+            if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
+                markArcManaged(alloca);
+            }
             // Track low-level type metadata for parameters
             if (isLowLevelTypeName(ptype))
                 low_level_type_names_[alloca] = ptype;

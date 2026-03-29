@@ -103,6 +103,14 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     tryPropagate(fn_type_info_);
     tryPropagate(union_value_types_);
     tryPropagate(enum_value_types_);
+
+    // Propagate ARC managed status
+    auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);
+    if (dstAlloca) {
+        auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(resolved);
+        if (srcAlloca && isArcManaged(srcAlloca))
+            markArcManaged(dstAlloca);
+    }
 }
 
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {

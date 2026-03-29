@@ -62,7 +62,31 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
 llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
     auto it = global_string_cache_.find(str);
     if (it != global_string_cache_.end()) return it->second;
-    auto *gs = builder_.CreateGlobalString(str, name);
+
+    // Create global with ARC header prefix: { i64 INT64_MAX, i64 0, [N+1 x i8] "...\0" }
+    // The returned pointer points to the string data (after ARC header),
+    // so existing code uses it as char*. If ARC retain/release is called,
+    // ptr-16 leads to the immortal sentinel (INT64_MAX) which skips the op.
+    auto *strData = llvm::ConstantDataArray::getString(*ctx_, str);
+    auto *wrapTy = llvm::StructType::get(
+        *ctx_, {i64Ty_, i64Ty_, strData->getType()});
+    auto *initVal = llvm::ConstantStruct::get(wrapTy,
+        {llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL),
+         llvm::ConstantInt::get(i64Ty_, 0),
+         strData});
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, wrapTy, /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, initVal,
+        name + ".arc");
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    gv->setAlignment(llvm::Align(8));
+
+    // GEP to the string data part (index 2, then index 0 for first byte)
+    auto *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    auto *idx2 = llvm::ConstantInt::get(i32Ty_, 2);
+    auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
+        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx2, zero});
+
     global_string_cache_[str] = gs;
     return gs;
 }
@@ -73,6 +97,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedFn_ = cg_.fn_;
     savedScope_ = std::move(cg_.scope_stack_);
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
+    savedArcManaged_ = std::move(cg_.arc_managed_vars_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -81,6 +106,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
+    cg_.arc_managed_vars_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -90,6 +116,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.fn_ = savedFn_;
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
+    cg_.arc_managed_vars_ = std::move(savedArcManaged_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
@@ -135,8 +162,25 @@ void CodeGen::pushScope() {
 }
 
 void CodeGen::popScope() {
+    emitScopeCleanup();
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
+}
+
+void CodeGen::emitScopeCleanup() {
+    if (scope_stack_.empty()) return;
+    emitScopeCleanupToDepth(scope_stack_.size() - 1);
+}
+
+void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
+    for (size_t i = scope_stack_.size(); i > targetDepth; --i) {
+        auto &scope = scope_stack_[i - 1];
+        for (auto &[name, alloca] : scope) {
+            if (!arc_managed_vars_.count(alloca)) continue;
+            emitArcReleaseVar(name, alloca);
+            arc_managed_vars_.erase(alloca);
+        }
+    }
 }
 
 llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
@@ -629,6 +673,10 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             if (entry.func == fn) { matchedEntry = &entry; break; }
         }
     }
+
+    // ARC: retain arguments that are ARC-managed before passing to callee
+    for (auto *argVal : argVals)
+        tryRetainArcSource(argVal);
 
     // Check literal/range constraints on arguments at call site
     if (matchedEntry) {
