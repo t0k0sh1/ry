@@ -612,7 +612,13 @@ void CodeGen::emitStmt(AssignStmt &s) {
         tryRetainArcSource(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);
-        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr));
+        // Look up GC visit function for potentially cyclic types on reassignment.
+        llvm::Function *gcVisitFn = nullptr;
+        auto evIt = enum_value_types_.find(ptr);
+        if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
+            gcVisitFn = getOrCreateVisitFunction(evIt->second);
+        }
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr), gcVisitFn);
     }
 
     builder_.CreateStore(val, ptr);

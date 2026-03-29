@@ -55,6 +55,13 @@ private:
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
     static constexpr uint64_t ARC_HEADER_SIZE = 16;
     static constexpr int64_t ARC_IMMORTAL = INT64_MAX;    // sentinel: never retain/release
+
+    // Cycle collector — static analysis & visit function generation
+    std::unordered_set<std::string> potentially_cyclic_types_;
+    std::unordered_map<std::string, llvm::Function*> gc_visit_functions_;
+    void computeCyclicTypes(Program &prog);
+    bool isPotentiallyCyclic(const std::string &typeName) const;
+    llvm::Function *getOrCreateVisitFunction(const std::string &typeName);
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
@@ -68,7 +75,8 @@ private:
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
     void emitArcRetain(llvm::Value *headerPtr, bool atomic = false);
     void emitArcRelease(llvm::Value *headerPtr, bool atomic = false,
-                        llvm::FunctionCallee destructor = {});
+                        llvm::FunctionCallee destructor = {},
+                        llvm::Function *gcVisitFn = nullptr);
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
     llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
     bool isArcAtomic(llvm::Value *val) const;
@@ -695,6 +703,7 @@ private:
     llvm::Value *emitBuiltinPath(const CallExpr &e);
     llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
     llvm::Value *emitBuiltinThread(const CallExpr &e);
+    llvm::Value *emitBuiltinGc(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);

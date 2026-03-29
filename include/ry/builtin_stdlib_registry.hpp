@@ -9,7 +9,8 @@
     X(base64, "lib/std/base64/base64.ry", emitBuiltinBase64) \
     X(path,   "lib/std/path/path.ry",     emitBuiltinPath) \
     X(filesystem, "lib/std/filesystem/filesystem.ry", emitBuiltinFilesystem) \
-    X(thread, "lib/std/thread/thread.ry", emitBuiltinThread)
+    X(thread, "lib/std/thread/thread.ry", emitBuiltinThread) \
+    X(gc,     "lib/std/gc/gc.ry",         emitBuiltinGc)
 
 #define RY_BUILTIN_STDLIB_CONSTANTS(X) \
     X(math, PI,  Value,    3.141592653589793) \
