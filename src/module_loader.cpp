@@ -117,7 +117,8 @@ std::string ModuleLoader::resolve(const std::string &package_path,
     if (!package_path.empty() && package_path[0] == '/')
         throw std::runtime_error("invalid package path (absolute): " + package_path);
 
-    auto try_resolve = [&](const std::string &dir) -> std::string {
+    auto try_resolve = [&](const std::string &dir,
+                           const std::string &rel_path) -> std::string {
         std::error_code ec;
         std::string base_str = fs::canonical(fs::path(dir), ec).string();
         if (ec) return "";
@@ -130,7 +131,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         };
 
         // 1. Directory (package)
-        fs::path dir_candidate = fs::path(dir) / package_path;
+        fs::path dir_candidate = fs::path(dir) / rel_path;
         if (fs::is_directory(dir_candidate)) {
             std::string resolved = fs::canonical(dir_candidate).string();
             if (!is_within_base(resolved)) return "";
@@ -138,7 +139,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         }
 
         // 2. Single file (backward compatibility)
-        fs::path file_candidate = fs::path(dir) / (package_path + ".ry");
+        fs::path file_candidate = fs::path(dir) / (rel_path + ".ry");
         if (fs::is_regular_file(file_candidate)) {
             std::string resolved = fs::canonical(file_candidate).string();
             if (!is_within_base(resolved)) return "";
@@ -148,11 +149,33 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         return "";
     };
 
-    std::string result = try_resolve(referrer_dir);
+    // Relative import: "." or "./subpkg" — resolve only against referrer_dir
+    bool is_relative = (package_path == ".") ||
+                       (package_path.size() >= 2 &&
+                        package_path[0] == '.' && package_path[1] == '/');
+    if (is_relative) {
+        if (referrer_dir.empty())
+            throw std::runtime_error("relative import requires a referrer directory");
+        if (package_path == ".") {
+            std::error_code ec;
+            std::string resolved = fs::canonical(fs::path(referrer_dir), ec).string();
+            if (ec)
+                throw std::runtime_error("relative import directory not found: " +
+                                         referrer_dir);
+            return resolved;
+        }
+        std::string rel = package_path.substr(2);
+        std::string result = try_resolve(referrer_dir, rel);
+        if (!result.empty()) return result;
+        throw std::runtime_error("package not found: " + package_path);
+    }
+
+    // Absolute import: search referrer_dir first, then search_paths
+    std::string result = try_resolve(referrer_dir, package_path);
     if (!result.empty()) return result;
 
     for (const auto &dir : search_paths_) {
-        result = try_resolve(dir);
+        result = try_resolve(dir, package_path);
         if (!result.empty()) return result;
     }
 
@@ -187,6 +210,8 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
         auto filename = entry.path().filename().string();
         if (!filename.empty() && filename[0] == '_') continue;
         if (filename.size() < 3 || filename.compare(filename.size() - 3, 3, ".ry") != 0) continue;
+        // Exclude test files from package loading
+        if (filename.size() >= 8 && filename.compare(filename.size() - 8, 8, ".test.ry") == 0) continue;
         ry_files.push_back(fs::canonical(entry.path()).string());
     }
 

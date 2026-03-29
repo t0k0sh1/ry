@@ -215,12 +215,12 @@ TEST_F(CmdNewTest, CreatesProjectStructure) {
     EXPECT_TRUE(fs::is_directory(project_dir / "src"));
     EXPECT_TRUE(fs::exists(project_dir / "src" / "main.ry"));
 
-    // Verify package.toml content
+    // Verify package.toml content (hyphens normalized to underscores)
     std::ifstream f(project_dir / "package.toml");
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
     auto config = ProjectConfigParser::load(content);
-    EXPECT_EQ(config.name, "my-app");
+    EXPECT_EQ(config.name, "my_app");
     EXPECT_EQ(config.version, "0.1.0");
     EXPECT_EQ(config.entry, "src/main.ry");
 }

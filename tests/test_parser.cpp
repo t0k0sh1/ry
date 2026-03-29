@@ -594,6 +594,77 @@ TEST(ParserTest, ImportInBlockThrows) {
     EXPECT_THROW(parseStr("if true:\n    from math import add"), std::runtime_error);
 }
 
+// ===== relative import tests =====
+
+TEST(ParserTest, RelativeImportDot) {
+    Program prog = parseStr("from . import add");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ImportStmt>(prog[0]));
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, ".");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "add");
+}
+
+TEST(ParserTest, RelativeImportDotMultiple) {
+    Program prog = parseStr("from . import add, sub");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, ".");
+    ASSERT_EQ(imp.names.size(), 2u);
+    EXPECT_EQ(imp.names[0], "add");
+    EXPECT_EQ(imp.names[1], "sub");
+}
+
+TEST(ParserTest, RelativeImportDotAll) {
+    Program prog = parseStr("from .");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, ".");
+    EXPECT_TRUE(imp.names.empty());
+}
+
+TEST(ParserTest, RelativeImportDotSubpackage) {
+    Program prog = parseStr("from .utils import helper");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "./utils");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "helper");
+}
+
+TEST(ParserTest, RelativeImportDotNestedSubpackage) {
+    Program prog = parseStr("from .utils.calc import add");
+    const auto &imp = std::get<ImportStmt>(prog[0]);
+    EXPECT_EQ(imp.module_path, "./utils/calc");
+    ASSERT_EQ(imp.names.size(), 1u);
+    EXPECT_EQ(imp.names[0], "add");
+}
+
+TEST(ParserTest, ImportHyphenError) {
+    try {
+        parseStr("from ry-tutorial import add");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("hyphens"), std::string::npos)
+            << "Error message should mention hyphens: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportRelativeHyphenError) {
+    try {
+        parseStr("from .-pkg import add");
+        FAIL() << "Expected exception";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("hyphens"), std::string::npos)
+            << "Error message should mention hyphens: " << msg;
+    }
+}
+
+TEST(ParserTest, ImportParentDirError) {
+    EXPECT_THROW(parseStr("from .. import add"), std::runtime_error);
+}
+
 TEST(ParserTest, DuplicateFieldNameThrows) {
     EXPECT_THROW(parseStr("record Point:\n    x: int\n    x: int"), std::runtime_error);
 }

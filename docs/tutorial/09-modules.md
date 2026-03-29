@@ -52,6 +52,29 @@ No special entry file (like `__init__.py`) is needed. Files starting with `_` ar
 
 ---
 
+## Relative Imports
+
+Use a leading `.` to import relative to the current file's directory. This is especially useful for test files that need to import from sibling modules.
+
+```python
+from .helper import greet       # Import from helper.ry in the same directory
+from .utils import add          # Import from utils/ subdirectory
+from .utils.calc import mul     # Import from utils/calc/ nested subdirectory
+from . import add, sub          # Import symbols from the current directory package
+```
+
+Relative imports resolve **only** against the current file's directory — the standard library and other search paths are not searched. This prevents name collisions when your project has modules with the same name as standard library packages.
+
+```python
+# If your project has src/math/stats.ry:
+from .math import mean    # Always resolves to your local math package
+from math import sqrt     # Resolves to the standard library math package
+```
+
+> **Note:** Parent directory imports (`from ..`) are not supported.
+
+---
+
 ## Standard Library (`std`)
 
 The `std` package is automatically imported into every program. You don't need to write `from std` — it's always available.
