@@ -30,14 +30,15 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
-            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
+            // Allocate SetHeader with ARC
             uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-            llvm::Value *headerPtr = builder_.CreateCall(
-                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_set");
+            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
             // Initial capacity = 4
+            auto mallocFn = getStdlibMalloc();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
             llvm::Value *elemsPtr = builder_.CreateCall(
                 mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_set_elems");
@@ -53,6 +54,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             type_meta_[TM_SetElem][ptr] = elemTy;
+            markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
@@ -62,13 +64,14 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (!keyTy || !valTy)
                 codegenError("invalid map type annotation: " + *annot);
 
-            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
+            // Allocate MapHeader with ARC
             uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-            llvm::Value *headerPtr = builder_.CreateCall(
-                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_map");
+            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
+            auto mallocFn = getStdlibMalloc();
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
             uint64_t valSize = dl.getTypeAllocSize(valTy);
             llvm::Value *keysPtr = builder_.CreateCall(
@@ -90,6 +93,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(headerPtr, ptr);
             type_meta_[TM_MapKey][ptr] = keyTy;
             type_meta_[TM_MapValue][ptr] = valTy;
+            markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
@@ -404,6 +408,14 @@ void CodeGen::emitVarDecl(const std::string &name,
             if (iterElemTy)
                 type_meta_[TM_IteratorElem][ptr] = iterElemTy;
         }
+
+        // --- ARC tracking ---
+        bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
+                            type_meta_[TM_MapKey].count(ptr) ||
+                            type_meta_[TM_SetElem].count(ptr);
+        bool isArcOwned = arc_owned_values_.count(val) > 0;
+        if (isCollection || isArcOwned || tryRetainArcSource(val))
+            markArcManaged(ptr);
     }
 
     // --- Resource type tracking ---
@@ -532,6 +544,14 @@ void CodeGen::emitStmt(AssignStmt &s) {
     auto tcIt = type_constraints_.find(ptr);
     if (tcIt != type_constraints_.end()) {
         emitConstraintCheck(val, tcIt->second, s.name);
+    }
+
+    // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
+    if (isArcManaged(ptr)) {
+        tryRetainArcSource(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
+        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr));
     }
 
     builder_.CreateStore(val, ptr);

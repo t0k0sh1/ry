@@ -34,14 +34,19 @@ void *arcGetDataPtr(void *header) {
     return static_cast<char *>(header) + 16;
 }
 
-// Simulate arc_retain (non-atomic)
+static constexpr int64_t ARC_IMMORTAL_VAL = INT64_MAX;
+
+// Simulate arc_retain (non-atomic, with immortal check)
 void arcRetain(void *header) {
-    static_cast<ArcHeader *>(header)->strong_count += 1;
+    auto *hdr = static_cast<ArcHeader *>(header);
+    if (hdr->strong_count == ARC_IMMORTAL_VAL) return;
+    hdr->strong_count += 1;
 }
 
-// Simulate arc_release (non-atomic); returns true if freed
+// Simulate arc_release (non-atomic, with immortal check); returns true if freed
 bool arcRelease(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
+    if (hdr->strong_count == ARC_IMMORTAL_VAL) return false;
     hdr->strong_count -= 1;
     if (hdr->strong_count == 0) {
         std::free(header);
@@ -141,4 +146,64 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
     EXPECT_EQ(data[1], 99);
 
     EXPECT_TRUE(arcRelease(p)); // strong = 0 → freed
+}
+
+// ===== Immortal sentinel tests =====
+
+TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
+    void *p = arcAlloc(16);
+    auto *hdr = static_cast<ArcHeader *>(p);
+    hdr->strong_count = ARC_IMMORTAL_VAL;
+
+    arcRetain(p);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+
+    std::free(p);
+}
+
+TEST(ArcInfraTest, ImmortalSentinelSkipsRelease) {
+    void *p = arcAlloc(16);
+    auto *hdr = static_cast<ArcHeader *>(p);
+    hdr->strong_count = ARC_IMMORTAL_VAL;
+
+    EXPECT_FALSE(arcRelease(p));
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
+
+    std::free(p);
+}
+
+TEST(ArcInfraTest, GetHeaderFromData) {
+    void *p = arcAlloc(32);
+    void *data = arcGetDataPtr(p);
+    // Getting header from data should be data - 16
+    void *backToHeader = static_cast<char *>(data) - 16;
+    EXPECT_EQ(backToHeader, p);
+    std::free(p);
+}
+
+// ===== Integration: collection literals under ARC (functional) =====
+
+TEST_F(CodeGenTest, ListLiteralProducesCorrectLength) {
+    EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(length(x))"), "3\n");
+}
+
+TEST_F(CodeGenTest, MapLiteralProducesCorrectLength) {
+    EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(length(m))"), "2\n");
+}
+
+TEST_F(CodeGenTest, SetLiteralProducesCorrectLength) {
+    EXPECT_EQ(runSource("s: Set<int> = {1, 2, 3}\nprint(length(s))"), "3\n");
+}
+
+TEST_F(CodeGenTest, StringInterpolationWithArc) {
+    EXPECT_EQ(runSource("x = 42\nprint(f\"value: {x}\")"),
+              "value: 42\n");
+}
+
+TEST_F(CodeGenTest, CollectionVariableBinding) {
+    EXPECT_EQ(runSource("x = [1, 2, 3]\ny = x\nprint(length(y))"), "3\n");
+}
+
+TEST_F(CodeGenTest, CollectionInFunction) {
+    EXPECT_EQ(runSource("fn get_length(lst: List<int>) -> int:\n  return length(lst)\n\nx = [10, 20, 30]\nprint(get_length(x))"), "3\n");
 }

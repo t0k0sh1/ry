@@ -254,9 +254,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
         }
     }
 
-    // Allocate result buffer
+    // Allocate result buffer with ARC header
     llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "fstr_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "fstr_buf");
+    auto *arcHdr = emitArcAlloc(bufSize);
+    llvm::Value *buf = emitArcGetDataPtr(arcHdr);
 
     // Copy segments
     llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
