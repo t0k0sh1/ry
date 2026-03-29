@@ -676,11 +676,13 @@ static ListHeader *makeStringList(const std::vector<std::string> &items) {
 extern "C" {
 
 int64_t __ry_regex_match(const char *pattern, const char *text) {
+    if (!pattern || !text) return 0;
     auto cr = CompiledRegex::compile(pattern);
     return cr.fullMatch(text) ? 1 : 0;
 }
 
 int64_t __ry_regex_search(const char *pattern, const char *text) {
+    if (!pattern || !text) return -1;
     auto cr = CompiledRegex::compile(pattern);
     auto result = cr.search(text);
     return result.first;
@@ -688,6 +690,7 @@ int64_t __ry_regex_search(const char *pattern, const char *text) {
 
 const char *__ry_regex_replace(const char *pattern, const char *text,
                                 const char *replacement) {
+    if (!pattern || !text || !replacement) return text ? dupString(text, strlen(text)) : dupString("", 0);
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
     if (matches.empty()) {
@@ -709,6 +712,7 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
 }
 
 void *__ry_regex_split(const char *pattern, const char *text) {
+    if (!pattern || !text) { std::vector<std::string> empty; return makeStringList(empty); }
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
 

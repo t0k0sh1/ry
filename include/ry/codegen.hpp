@@ -454,6 +454,7 @@ private:
     llvm::Value *emitWrappingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
 
     // Type promotion helpers (B1)
+    void ensureNumericType(llvm::Value *v, const std::string &context);
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
 

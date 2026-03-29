@@ -212,6 +212,7 @@ add_executable(ry_tests
     tests/test_help.cpp
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp
+    tests/test_codegen_type_safety.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE

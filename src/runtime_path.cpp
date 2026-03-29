@@ -32,6 +32,7 @@ static size_t strip_trailing(const char *p, size_t len) {
 // Find the start of the basename component within p[0..len).
 // Returns pointer to the first char of the basename.
 static const char *find_base(const char *p, size_t len) {
+    if (len == 0) return p;
     const char *s = p + len - 1;
     while (s > p && *(s - 1) != '/')
         s--;

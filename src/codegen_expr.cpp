@@ -427,6 +427,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     if (op == "**") {
         if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
             codegenError("type error: operator '**' not supported between str and non-str types");
+        if (llvm::isa<llvm::StructType>(lhs->getType()) || llvm::isa<llvm::StructType>(rhs->getType()))
+            codegenError("type error: operator '**' requires numeric type, got struct");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())

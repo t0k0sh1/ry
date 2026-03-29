@@ -73,11 +73,14 @@ extern "C" const char *__ry_read_all() {
     size_t cap = 4096;
     size_t len = 0;
     char *buf = (char *)malloc(cap);
+    if (!buf) { fprintf(stderr, "runtime error: out of memory\n"); exit(1); }
 
     for (;;) {
         if (len + 1 >= cap) {
             cap *= 2;
-            buf = (char *)realloc(buf, cap);
+            char *newBuf = (char *)realloc(buf, cap);
+            if (!newBuf) { free(buf); fprintf(stderr, "runtime error: out of memory\n"); exit(1); }
+            buf = newBuf;
         }
         size_t to_read = cap - len - 1;
         size_t n = fread(buf + len, 1, to_read, stdin);
