@@ -50,6 +50,8 @@ private:
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
+    std::unordered_set<llvm::AllocaInst*> weak_managed_vars_; // allocas holding weak ref ptrs (header ptrs)
+    std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -67,6 +69,16 @@ private:
     llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
+
+    // Weak reference operations
+    static bool isWeakTypeName(const std::string &typeName);
+    static std::string weakInnerTypeName(const std::string &typeName);
+    void markWeakManaged(llvm::AllocaInst *alloca);
+    bool isWeakManaged(llvm::AllocaInst *alloca) const;
+    void emitWeakRetain(llvm::Value *headerPtr);
+    void emitWeakRelease(llvm::Value *headerPtr);
+    llvm::Value *emitWeakUpgrade(llvm::Value *headerPtr, const std::string &innerTypeName);
+    void emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
 
     // ARC destructor generation — frees internal buffers of collections
     enum class CollectionKind { List, Map, Set };
@@ -262,6 +274,8 @@ private:
         std::vector<std::unordered_set<std::string>> savedConstScope_;
         std::unordered_set<llvm::AllocaInst*> savedArcManaged_;
         std::unordered_set<llvm::Value*> savedArcOwned_;
+        std::unordered_set<llvm::AllocaInst*> savedWeakManaged_;
+        std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;
@@ -382,6 +396,7 @@ private:
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
     llvm::Value *structToString(llvm::Value *val);
 

@@ -35,6 +35,7 @@
 | `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
 | `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
 | `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
+| `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
 
 ## Type Annotation Syntax
@@ -199,6 +200,68 @@ fn find(xs: List<int>, val: int) -> int?:
             return Some(x)
     return none
 ```
+
+---
+
+## Weak References (`weak T`)
+
+A `weak` reference is a non-owning reference to an ARC-managed value. Unlike strong references, weak references do not increment the strong reference count. When the last strong reference is released, the referenced object is deallocated — and any surviving weak references automatically become `None`.
+
+Weak references are the user-facing mechanism for breaking reference cycles.
+
+### Creating a Weak Reference
+
+Use the `weak` keyword in both type annotation and expression position:
+
+```python
+s = "hello"
+w: weak str = weak s
+```
+
+The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`).
+
+### Accessing a Weak Reference (Upgrade)
+
+Accessing a weak variable automatically performs an **upgrade** — an atomic check-and-increment of the strong reference count. The result is always `Option<T>`:
+
+- `Some(value)` if the referent is still alive (strong count > 0)
+- `None` if the referent has been deallocated (strong count == 0)
+
+```python
+s = "alive"
+w: weak str = weak s
+match w:
+  case Some(v):
+    print(v)           # "alive"
+  case None:
+    print("deallocated")
+```
+
+The coalesce operator (`??`) also works with weak references:
+
+```python
+w: weak str = weak s
+val = w ?? "default"
+```
+
+### Reassignment
+
+Weak references can be reassigned. The old weak reference is released and the new one is retained:
+
+```python
+a = "first"
+b = "second"
+w: weak str = weak a
+w = weak b
+```
+
+### Thread Safety
+
+The upgrade operation uses a compare-and-swap (CAS) loop internally, making it safe to use across threads. This is essential since the strong reference may be released concurrently.
+
+### Scope Cleanup
+
+Weak references are automatically released when they go out of scope. If both strong and weak reference counts reach zero, the ARC header is freed.
 
 ---
 

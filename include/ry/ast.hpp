@@ -25,6 +25,7 @@ struct TupleType    { std::vector<TypeNodePtr> elements; };
 struct FnType       { std::vector<TypeNodePtr> param_types; TypeNodePtr return_type; };
 struct UnionType    { std::vector<TypeNodePtr> components; };
 struct OptionalType { TypeNodePtr inner; };
+struct WeakType     { TypeNodePtr inner; };
 struct RangeType    { std::string start; std::string end; };
 
 struct TypeNode {
@@ -36,6 +37,7 @@ struct TypeNode {
         FnType,
         UnionType,
         OptionalType,
+        WeakType,
         RangeType
     > data;
 
@@ -48,6 +50,7 @@ struct TypeNode {
     static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret);
     static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
     static TypeNodePtr makeOptional(TypeNodePtr inner);
+    static TypeNodePtr makeWeak(TypeNodePtr inner);
     static TypeNodePtr makeRange(std::string start, std::string end);
     static TypeNodePtr clone(const TypeNodePtr &src);
 };
@@ -136,6 +139,7 @@ struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
 struct AwaitExpr;
+struct WeakExpr;
 
 struct ExprNode {
     std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
@@ -156,7 +160,8 @@ struct ExprNode {
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
-                 std::unique_ptr<AwaitExpr>> data;
+                 std::unique_ptr<AwaitExpr>,
+                 std::unique_ptr<WeakExpr>> data;
     SourceLocation loc;
 };
 
@@ -337,6 +342,10 @@ struct ErrorPropagateExpr {
 };
 
 struct AwaitExpr {
+    ExprPtr operand;
+};
+
+struct WeakExpr {
     ExprPtr operand;
 };
 

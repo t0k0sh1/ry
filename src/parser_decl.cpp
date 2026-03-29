@@ -705,6 +705,13 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeBasic(name);
     }
 
+    // weak T  — weak reference type
+    if (lex_.peek().kind == TokenKind::Ident && lex_.peek().value == "weak") {
+        lex_.next(); // consume 'weak'
+        auto inner = parseTypeNameSingle();
+        return TypeNode::makeWeak(std::move(inner));
+    }
+
     Token t = lex_.peek();
     if (t.kind == TokenKind::ErrorKw) {
         lex_.next(); // consume 'Error'
