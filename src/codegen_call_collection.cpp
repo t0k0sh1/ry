@@ -34,9 +34,11 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // add(set, val) -> add element to set (no-op if already present)
     // Only intercept if first arg is a set (fall through to user function otherwise)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *setPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getSetElementType(setPtr);
     if (elemTy) {
+        setPtr = emitCowCheck(setPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
         if (elem->getType() != elemTy)
             codegenError("add() element type mismatch");
@@ -309,15 +311,18 @@ llvm::Value *CodeGen::emitMapRemove(llvm::Value *containerPtr, llvm::Value *key,
 
 llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *containerPtr = emitExpr(*e.args[0]);
 
     if (llvm::Type *elemTy = getSetElementType(containerPtr)) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
         if (elem->getType() != elemTy)
             codegenError("remove() element type mismatch");
         return emitSetRemove(containerPtr, elem, elemTy);
     }
     if (llvm::Type *listElemTy = getListElementType(containerPtr)) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
         if (val->getType() != listElemTy)
             codegenError("remove() value type mismatch with list element type");
@@ -326,6 +331,7 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     llvm::Type *keyTy = getMapKeyType(containerPtr);
     llvm::Type *valTy = getMapValueType(containerPtr);
     if (keyTy && valTy) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Map);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
             codegenError("remove() key type mismatch");
@@ -337,9 +343,11 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // append(list, val) -> mutating append
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
         if (val->getType() != elemTy)
             codegenError("append() element type mismatch");
@@ -430,9 +438,11 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
     if (e.args.size() != 1) return nullptr;
     // pop(list) -> Option<T>: remove and return last element
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::StructType *optTy = getOptionType(elemTy);
         auto lf = loadListHeader(listPtr, "pop");
 
@@ -569,9 +579,11 @@ llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
     if (e.args.size() != 3) return nullptr;
     // insert(list, index, value)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (idx->getType() != i64Ty_)
             codegenError("insert() index must be int");
@@ -650,9 +662,11 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // remove_at(list, index)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (idx->getType() != i64Ty_)
             codegenError("remove_at() index must be int");

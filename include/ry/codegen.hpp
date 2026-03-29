@@ -58,6 +58,7 @@ private:
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
+    std::unordered_set<llvm::AllocaInst*> arc_backed_vars_; // allocas that hold ARC-allocated collections (have ARC header)
     std::unordered_set<llvm::AllocaInst*> weak_managed_vars_; // allocas holding weak ref ptrs (header ptrs)
     std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
     std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
@@ -92,6 +93,14 @@ private:
     // ARC destructor generation — frees internal buffers of collections
     enum class CollectionKind { List, Map, Set };
     llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+
+    // Copy-on-Write (CoW) support
+    llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
+    llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
+    llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
+    llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
+    llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
+    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag);
     std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
     llvm::FunctionCallee getOrCreateResourceDestructor(ResourceKind rk);
     std::map<ResourceKind, llvm::FunctionCallee> resource_destructors_cache_;
@@ -288,6 +297,7 @@ private:
         std::vector<std::unordered_set<std::string>> savedConstScope_;
         std::unordered_set<llvm::AllocaInst*> savedArcManaged_;
         std::unordered_set<llvm::Value*> savedArcOwned_;
+        std::unordered_set<llvm::AllocaInst*> savedArcBacked_;
         std::unordered_set<llvm::AllocaInst*> savedWeakManaged_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;

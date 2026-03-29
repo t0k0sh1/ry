@@ -195,9 +195,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (e.args.size() < 1 || e.args.size() > 2)
             codegenError("sort!() takes 1 or 2 arguments");
 
+        llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (!elemTy) codegenError("sort!() requires a list");
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
 
         llvm::Value *sorted = emitSortCore(listPtr, e.args, "sort!");
         if (!sorted)

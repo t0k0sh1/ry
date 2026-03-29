@@ -704,9 +704,11 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
 // reverse!(list) → in-place reverse
 llvm::Value *CodeGen::emitStrOp_reverse_mut(const CallExpr &e) {
     requireArgs(e, 1);
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (!elemTy) codegenError("reverse!() requires a list");
+    listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
 
     auto lf = loadListHeader(listPtr, "revm");
     llvm::Value *len = lf.len;

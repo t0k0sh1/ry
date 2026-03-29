@@ -99,6 +99,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
     savedArcManaged_ = std::move(cg_.arc_managed_vars_);
     savedArcOwned_ = std::move(cg_.arc_owned_values_);
+    savedArcBacked_ = std::move(cg_.arc_backed_vars_);
     savedWeakManaged_ = std::move(cg_.weak_managed_vars_);
     savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
     savedResourceManaged_ = std::move(cg_.resource_managed_vars_);
@@ -126,6 +127,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.arc_managed_vars_ = std::move(savedArcManaged_);
     cg_.arc_owned_values_ = std::move(savedArcOwned_);
+    cg_.arc_backed_vars_ = std::move(savedArcBacked_);
     cg_.weak_managed_vars_ = std::move(savedWeakManaged_);
     cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
     cg_.resource_managed_vars_ = std::move(savedResourceManaged_);
