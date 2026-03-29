@@ -789,7 +789,8 @@ CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca
         return CAK_Closure;
     if (resource_managed_vars_.count(alloca))
         return CAK_Resource;
-    // Unknown ARC-managed types: skip sub-destructor (safe no-op; avoids wrong destructor)
+    if (isArcManaged(alloca))
+        return CAK_Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
     return CAK_None;
 }
 
@@ -801,8 +802,9 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
     if (!hasArc)
         return {};
 
-    // Cache key: the capturedArcKinds vector (deduplicates identical capture signatures)
-    auto it = closure_destructors_cache_.find(info.capturedArcKinds);
+    // Cache key: capturedArcKinds + capturedTypes (struct layout affects GEP offsets)
+    ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes};
+    auto it = closure_destructors_cache_.find(cacheKey);
     if (it != closure_destructors_cache_.end())
         return it->second;
 
@@ -860,11 +862,12 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         case CAK_Set:
             subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
             break;
+        case CAK_Generic:
         case CAK_Closure:
         case CAK_Resource:
         case CAK_None:
-            // Closures/resources: pass empty destructor — their own release
-            // path handles destructor dispatch via resolveDestructor
+            // Generic/closures/resources: no sub-destructor available here.
+            // CAK_Closure/CAK_Resource sub-destructors tracked in #429.
             subDtor = {};
             break;
         }
@@ -881,6 +884,6 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         builder_.SetInsertPoint(savedBB, savedPt);
 
     llvm::FunctionCallee callee(dtorTy, dtorFn);
-    closure_destructors_cache_[info.capturedArcKinds] = callee;
+    closure_destructors_cache_[cacheKey] = callee;
     return callee;
 }

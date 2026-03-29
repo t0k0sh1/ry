@@ -215,6 +215,7 @@ private:
         CAK_Set,
         CAK_Closure,
         CAK_Resource,   // generic resource (destructor not tracked per-capture)
+        CAK_Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
     };
 
     // Function type info for indirect calls (lambda / function pointers)
@@ -228,7 +229,8 @@ private:
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
-    std::map<std::vector<CapturedArcKind>, llvm::FunctionCallee> closure_destructors_cache_;
+    using ClosureDtorKey = std::pair<std::vector<CapturedArcKind>, std::vector<llvm::Type*>>;
+    std::map<ClosureDtorKey, llvm::FunctionCallee> closure_destructors_cache_;
     CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
     int lambda_counter_ = 0;
     bool test_mode_ = false;
