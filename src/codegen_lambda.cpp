@@ -12,6 +12,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     std::vector<std::string> capturedNames;
     std::vector<llvm::Value*> capturedValues;
     std::vector<llvm::Type*> capturedTypes;
+    std::vector<CapturedArcKind> capturedArcKinds;
 
     // Build a set of parameter names
     std::unordered_set<std::string> paramNames;
@@ -36,6 +37,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                             alloca->getAllocatedType(), alloca, v.name + ".cap");
                         capturedValues.push_back(val);
                         capturedTypes.push_back(val->getType());
+                        capturedArcKinds.push_back(detectCapturedArcKind(alloca));
                     }
                 }
             } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
@@ -229,6 +231,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;
+    info.capturedArcKinds = capturedArcKinds;
     fn_type_info_[func] = info;
 
     // If no captures, just return the function pointer
@@ -242,21 +245,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         closureFields.push_back(t);
     llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t closureSize = dl.getTypeAllocSize(closureTy);
-    llvm::Value *closurePtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, closureSize)}, "closure");
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
+    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
 
     // Store function pointer
     llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
     builder_.CreateStore(func, fnField);
 
-    // Store captured values
+    // Store captured values and retain ARC-managed ones
     for (size_t i = 0; i < capturedValues.size(); ++i) {
         llvm::Value *capField = builder_.CreateStructGEP(
             closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
+        if (capturedArcKinds[i] != CAK_None) {
+            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            emitArcRetain(hdr, false);
+        }
     }
 
     // Register the closure pointer with fn_type_info

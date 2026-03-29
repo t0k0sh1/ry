@@ -103,6 +103,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedWeakManaged_ = std::move(cg_.weak_managed_vars_);
     savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
     savedResourceManaged_ = std::move(cg_.resource_managed_vars_);
+    savedClosureManaged_ = std::move(cg_.closure_managed_vars_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -116,6 +117,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.weak_managed_vars_.clear();
     cg_.weak_inner_type_names_.clear();
     cg_.resource_managed_vars_.clear();
+    cg_.closure_managed_vars_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -131,6 +133,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.weak_managed_vars_ = std::move(savedWeakManaged_);
     cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
     cg_.resource_managed_vars_ = std::move(savedResourceManaged_);
+    cg_.closure_managed_vars_ = std::move(savedClosureManaged_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
