@@ -443,11 +443,15 @@ void CodeGen::emitVarDecl(const std::string &name,
         bool isArcOwned = arc_owned_values_.count(val) > 0;
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != RK_COUNT);
-        if (isCollection || isArcOwned || isResource || tryRetainArcSource(val)) {
+        bool isRetainedArc = tryRetainArcSource(val);
+        if (isCollection || isArcOwned || isResource || isRetainedArc) {
             markArcManaged(ptr);
             if (isResource)
                 resource_managed_vars_[ptr] = detectedRK;
         }
+        // Track allocas that are truly ARC-backed (have ARC header prepended)
+        if (isArcOwned || isRetainedArc)
+            arc_backed_vars_.insert(ptr);
         }
     }
 
@@ -822,6 +826,7 @@ void CodeGen::emitStmt(ImportStmt &s) {
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*s.object);
     llvm::Value *objPtr = emitExpr(*s.object);
 
     llvm::SmallVector<llvm::Value*, 2> indexValues;
@@ -869,6 +874,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
+        // CoW check for map index assignment
+        objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::Map);
+
         // Map index assignment
         llvm::Type *mapValTy = getMapValueType(objPtr);
         if (!mapValTy)
@@ -979,6 +987,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     }
 
     // List index assignment
+    objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::List);
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
         codegenError("cannot determine list element type for index assignment");

@@ -431,6 +431,37 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 
 ---
 
+## Copy-on-Write (CoW) Semantics
+
+All collection types (List, Map, Set) use **Copy-on-Write** semantics when managed by ARC. This means:
+
+- **Assignment shares data**: `b = a` does not copy the collection — both variables reference the same data. The reference count is incremented.
+- **Mutation triggers a copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), a deep copy is automatically created before the mutation. Only the mutator pays the cost.
+- **Unique owners mutate in-place**: When a collection has only one reference (`strong_count == 1`), mutations are performed in-place with zero copy overhead.
+
+```python
+a = [1, 2, 3]       # strong_count = 1
+b = a                # strong_count = 2 (shared)
+append(b, 4)         # strong_count > 1 → deep copy b, then mutate
+                     # a = [1, 2, 3]  (strong_count = 1)
+                     # b = [1, 2, 3, 4]  (strong_count = 1, new allocation)
+
+c = [10, 20]         # strong_count = 1
+append(c, 30)        # strong_count == 1 → mutate in-place (no copy)
+```
+
+### Operations that trigger CoW
+
+| Type | Mutating operations |
+|------|-------------------|
+| **List** | `append()`, `pop()`, `insert()`, `remove()`, `remove_at()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
+| **Map** | `remove()`, index assignment (`m[key] = val`) |
+| **Set** | `add()`, `remove()` |
+
+Non-mutating operations (`appended`, `slice`, `take`, `filter`, `map`, `sort`, `reverse`, `get`, `items`, etc.) create new collections and do not trigger CoW.
+
+---
+
 ## Map
 
 ### Overview
