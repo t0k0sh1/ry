@@ -4,7 +4,7 @@
 
 [← 前: パッケージ](09-modules.md) | [次: テスト →](11-testing.md)
 
-Ry は Eiffel スタイルの契約による設計をサポートしています。事前条件（`require`）、事後条件（`ensure`）、構造体不変条件（`invariant`）を使ってコードの正しさを保証します。契約違反が発生するとプログラムは終了します。詳細な仕様は[契約による設計リファレンス](../reference/contracts.md)を参照してください。
+Ry は Eiffel スタイルの契約による設計をサポートしています。事前条件（`require`）、事後条件（`ensure`）、record 不変条件（`invariant`）を使ってコードの正しさを保証します。契約違反が発生するとプログラムは終了します。詳細な仕様は[契約による設計リファレンス](../reference/contracts.md)を参照してください。
 
 ---
 
@@ -81,9 +81,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## 構造体不変条件（`invariant`）
+## Record 不変条件（`invariant`）
 
-`invariant` を使って、構造体に対して常に成り立つ必要がある条件を指定します。不変条件はコンストラクタの実行後とフィールドへの代入後にチェックされます。
+`invariant` を使って、record に対して常に成り立つ必要がある条件を指定します。不変条件は生成後とフィールドへの代入後にチェックされます。
 
 ```python
 record BankAccount:

@@ -17,7 +17,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | 03 | [演算子](tutorial/03-operators.md) | 算術・比較・論理・ビット・複合代入演算子 |
 | 04 | [制御構文](tutorial/04-control-flow.md) | if/elif/else・while・for/range・break/continue |
 | 05 | [関数定義](tutorial/05-functions.md) | fn 定義・再帰・オーバーロード・ラムダ・UFCS |
-| 06 | [構造体と列挙型](tutorial/06-structs.md) | type 定義・フィールドアクセス・メソッド・enum |
+| 06 | [Record と列挙型](tutorial/06-records.md) | type 定義・フィールドアクセス・メソッド・enum |
 | 07 | [コレクション](tutorial/07-collections.md) | タプル・リスト・マップ・セット |
 | 08 | [高度な機能](tutorial/08-advanced.md) | クロージャ・演算子オーバーロード・Option 型 |
 | 09 | [パッケージ](tutorial/09-modules.md) | パッケージ、std ライブラリ、ディレクトリパッケージ |

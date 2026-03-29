@@ -15,7 +15,7 @@
 - **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
 - **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, with operator overloading support
 - **F-String** — String interpolation with `f"Hello {name}"`
-- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (struct invariants), `old()`, `result`
+- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants), `old()`, `result`
 - **Directives** — `@deprecated` compile-time metadata annotations
 - **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
 - **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`

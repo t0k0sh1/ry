@@ -16,7 +16,7 @@
 | `/` | 除法（始終為 float） | `7 / 2` | `3.5` |
 | `//` | 整數除法（始終為 int） | `7 // 2` | `3` |
 | `%` | 取餘 | `7 % 3` | `1` |
-| `**` | 次方（始終為 float） | `2 ** 10` | `1024.0` |
+| `**` | 次方（始終為 float） | `2 ** 10` | `1024` |
 
 ```python
 a = 10
@@ -28,7 +28,7 @@ print(a * b)    # 30
 print(a / b)    # 3.3333...（float）
 print(a // b)   # 3（int）
 print(a % b)    # 1
-print(2 ** 8)   # 256.0（float）
+print(2 ** 8)   # 256（float）
 ```
 
 ---
@@ -133,7 +133,7 @@ x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24
-x /= 4    # x == 6.0（會變為 float）
+x /= 4    # x == 6（會變為 float）
 ```
 
 ---
@@ -165,18 +165,18 @@ count--       # count == 1
 ```python
 # + - * 當其中一方為 float 時結果為 float
 print(1 + 2)      # 3 (int)
-print(1 + 2.0)    # 3.0 (float)
-print(1.0 + 2)    # 3.0 (float)
+print(1 + 2.0)    # 3 (float)
+print(1.0 + 2)    # 3 (float)
 
 # / 始終為 float
-print(4 / 2)      # 2.0 (float)
+print(4 / 2)      # 2 (float)
 
 # // 始終為 int
 print(7 // 2)     # 3 (int)
 print(7.0 // 2)   # 3 (int)
 
 # ** 始終為 float
-print(2 ** 3)     # 8.0 (float)
+print(2 ** 3)     # 8 (float)
 
 # % 當兩邊皆為 int 時為 int，其中一方為 float 時為 float
 print(7 % 3)      # 1 (int)

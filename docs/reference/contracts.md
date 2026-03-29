@@ -2,7 +2,7 @@
 
 # Design by Contract (DbC)
 
-Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and struct invariants (`invariant`). Contract violations terminate the process with `exit(1)`.
+Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the process with `exit(1)`.
 
 ---
 
@@ -84,9 +84,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## Struct Invariants (`invariant`)
+## Record Invariants (`invariant`)
 
-Invariants are conditions that must always hold for a struct instance. They are checked:
+Invariants are conditions that must always hold for a record instance. They are checked:
 - After construction
 - After every field assignment
 

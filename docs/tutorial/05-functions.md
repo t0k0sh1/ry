@@ -2,7 +2,7 @@
 
 # Functions
 
-[<- Prev: Control Flow](04-control-flow.md) | [Next: Structs ->](06-structs.md)
+[<- Prev: Control Flow](04-control-flow.md) | [Next: Records ->](06-records.md)
 
 ---
 
@@ -87,4 +87,4 @@ This is the simplest form of a function with no parameters and no return value.
 
 ---
 
-[<- Prev: Control Flow](04-control-flow.md) | [Next: Structs ->](06-structs.md)
+[<- Prev: Control Flow](04-control-flow.md) | [Next: Records ->](06-records.md)

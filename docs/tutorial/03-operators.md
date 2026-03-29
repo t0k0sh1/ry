@@ -16,7 +16,7 @@
 | `/` | Division (always float) | `7 / 2` | `3.5` |
 | `//` | Integer division (always int) | `7 // 2` | `3` |
 | `%` | Modulo | `7 % 3` | `1` |
-| `**` | Exponentiation (always float) | `2 ** 10` | `1024.0` |
+| `**` | Exponentiation (always float) | `2 ** 10` | `1024` |
 
 ```python
 a = 10
@@ -28,7 +28,7 @@ print(a * b)    # 30
 print(a / b)    # 3.3333... (float)
 print(a // b)   # 3 (int)
 print(a % b)    # 1
-print(2 ** 8)   # 256.0 (float)
+print(2 ** 8)   # 256 (float)
 ```
 
 ---
@@ -133,7 +133,7 @@ x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24
-x /= 4    # x == 6.0 (becomes float)
+x /= 4    # x == 6 (becomes float)
 ```
 
 ---
@@ -165,18 +165,18 @@ The following describes the behavior when `int` and `float` are mixed in operati
 ```python
 # + - * produce float if either operand is float
 print(1 + 2)      # 3 (int)
-print(1 + 2.0)    # 3.0 (float)
-print(1.0 + 2)    # 3.0 (float)
+print(1 + 2.0)    # 3 (float)
+print(1.0 + 2)    # 3 (float)
 
 # / always produces float
-print(4 / 2)      # 2.0 (float)
+print(4 / 2)      # 2 (float)
 
 # // always produces int
 print(7 // 2)     # 3 (int)
 print(7.0 // 2)   # 3 (int)
 
 # ** always produces float
-print(2 ** 3)     # 8.0 (float)
+print(2 ** 3)     # 8 (float)
 
 # % produces int if both operands are int, float if either is float
 print(7 % 3)      # 1 (int)

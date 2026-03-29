@@ -17,7 +17,7 @@ Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮�
 | 03 | [運算子](tutorial/03-operators.md) | 算術、比較、邏輯、位元、複合賦值運算子 |
 | 04 | [控制流程](tutorial/04-control-flow.md) | if/elif/else、while、for/range、break/continue |
 | 05 | [函式定義](tutorial/05-functions.md) | fn 定義、遞迴、多載、Lambda、UFCS |
-| 06 | [結構體與列舉型別](tutorial/06-structs.md) | type 定義、欄位存取、方法、enum |
+| 06 | [Record 與列舉型別](tutorial/06-records.md) | type 定義、欄位存取、方法、enum |
 | 07 | [集合型別](tutorial/07-collections.md) | 元組、串列、映射、集合 |
 | 08 | [進階功能](tutorial/08-advanced.md) | 閉包、運算子多載、Option 型別 |
 | 09 | [套件](tutorial/09-modules.md) | 套件、std 函式庫、目錄套件 |

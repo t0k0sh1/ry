@@ -16,7 +16,7 @@
 | `/` | 除算（常に float） | `7 / 2` | `3.5` |
 | `//` | 整数除算（常に int） | `7 // 2` | `3` |
 | `%` | 剰余 | `7 % 3` | `1` |
-| `**` | 累乗（常に float） | `2 ** 10` | `1024.0` |
+| `**` | 累乗（常に float） | `2 ** 10` | `1024` |
 
 ```python
 a = 10
@@ -28,7 +28,7 @@ print(a * b)    # 30
 print(a / b)    # 3.3333...（float）
 print(a // b)   # 3（int）
 print(a % b)    # 1
-print(2 ** 8)   # 256.0（float）
+print(2 ** 8)   # 256（float）
 ```
 
 ---
@@ -133,7 +133,7 @@ x = 10
 x += 5    # x == 15
 x -= 3    # x == 12
 x *= 2    # x == 24
-x /= 4    # x == 6.0（float になる）
+x /= 4    # x == 6（float になる）
 ```
 
 ---
@@ -165,18 +165,18 @@ count--       # count == 1
 ```python
 # + - * は片方が float なら結果は float
 print(1 + 2)      # 3 (int)
-print(1 + 2.0)    # 3.0 (float)
-print(1.0 + 2)    # 3.0 (float)
+print(1 + 2.0)    # 3 (float)
+print(1.0 + 2)    # 3 (float)
 
 # / は常に float
-print(4 / 2)      # 2.0 (float)
+print(4 / 2)      # 2 (float)
 
 # // は常に int
 print(7 // 2)     # 3 (int)
 print(7.0 // 2)   # 3 (int)
 
 # ** は常に float
-print(2 ** 3)     # 8.0 (float)
+print(2 ** 3)     # 8 (float)
 
 # % は両辺 int なら int、片方 float なら float
 print(7 % 3)      # 1 (int)

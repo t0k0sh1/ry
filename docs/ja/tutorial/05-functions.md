@@ -2,7 +2,7 @@
 
 # 関数
 
-[← 前: 制御構文](04-control-flow.md) | [次: 構造体 →](06-structs.md)
+[← 前: 制御構文](04-control-flow.md) | [次: Record →](06-records.md)
 
 ---
 
@@ -87,4 +87,4 @@ greet()   # 42
 
 ---
 
-[← 前: 制御構文](04-control-flow.md) | [次: 構造体 →](06-structs.md)
+[← 前: 制御構文](04-control-flow.md) | [次: Record →](06-records.md)

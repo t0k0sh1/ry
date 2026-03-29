@@ -1,14 +1,14 @@
-[English](../../tutorial/06-structs.md) | [日本語](../../ja/tutorial/06-structs.md) | [繁體中文](06-structs.md)
+[English](../../tutorial/06-records.md) | [日本語](../../ja/tutorial/06-records.md) | [繁體中文](06-records.md)
 
-# 結構體與列舉型別
+# Record 與列舉型別
 
 [← 前一篇：函式](05-functions.md) | [下一篇：集合 →](07-collections.md)
 
 ---
 
-## 使用 record 定義結構體
+## 定義 Record
 
-使用 `record` 關鍵字定義結構體。各欄位以 `name: type` 的格式描述。
+使用 `record` 關鍵字定義 record。各欄位以 `name: type` 的格式描述。
 
 ```python
 record Point:
@@ -16,13 +16,13 @@ record Point:
     y: int
 ```
 
-結構體是堆疊上的值型別。
+Record 是堆疊上的值型別。
 
 ---
 
-## 建構式的使用方式
+## 建立實例
 
-像呼叫函式一樣使用結構體名稱來產生實例。參數按照欄位的定義順序指定。
+像呼叫函式一樣使用 record 名稱來產生實例。參數按照欄位的定義順序指定。
 
 ```python
 p = Point(10, 20)
@@ -40,7 +40,7 @@ print(p.x)   # 10
 print(p.y)   # 20
 ```
 
-> **注意**：將結構體直接傳給 `print` 會產生錯誤。請個別傳遞欄位。
+> **注意**：將 record 直接傳給 `print` 會產生錯誤。請個別傳遞欄位。
 
 ---
 
@@ -58,9 +58,9 @@ print(p.x)   # 100
 
 ---
 
-## 結構體作為函式參數
+## Record 作為函式參數
 
-可以將結構體作為函式的參數傳遞。
+可以將 record 作為函式的參數傳遞。
 
 ```python
 record Point:
@@ -77,9 +77,9 @@ print(distance_x(p1, p2))   # 6
 
 ---
 
-## 巢狀結構體
+## 巢狀 Record
 
-結構體的欄位可以使用其他結構體。
+Record 的欄位可以使用其他 record。
 
 ```python
 record Point:

@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fixed float output examples in operator tutorial to match actual `%g` formatting (e.g. `1024` not `1024.0`)
+- Added curl one-liner installer to Getting Started tutorial
+- Fixed "struct" terminology to "record" across tutorial and reference docs
 - Improved error message when hyphens are used in import paths (e.g. `from my-pkg import foo` now suggests using underscores)
 - Binary operations between `str` and non-`str` types (e.g. `"abc" - 2`, `"abc" / 2`) now raise compile-time type errors instead of producing garbage output or LLVM IR verification errors (#396)
 - `ry version` now works as an alias for `ry --version` instead of trying to execute the VERSION file on case-insensitive filesystems (#381)

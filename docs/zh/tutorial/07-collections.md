@@ -2,7 +2,7 @@
 
 # 集合
 
-[<- 上一篇：结构体](06-structs.md) | [下一篇：高级特性 ->](08-advanced.md)
+[<- 上一篇：Record](06-records.md) | [下一篇：高级特性 ->](08-advanced.md)
 
 Ry 有四种集合类型：**元组**、**列表**、**映射**、**集合**。
 
@@ -399,4 +399,4 @@ for k, v in {"a": 1, "b": 2}.iter():
 
 ---
 
-[<- 上一篇：结构体](06-structs.md) | [下一篇：高级特性 ->](08-advanced.md)
+[<- 上一篇：Record](06-records.md) | [下一篇：高级特性 ->](08-advanced.md)

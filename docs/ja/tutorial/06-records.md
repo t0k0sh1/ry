@@ -1,14 +1,14 @@
-[English](../../tutorial/06-structs.md) | [日本語](06-structs.md) | [繁體中文](../../zh/tutorial/06-structs.md)
+[English](../../tutorial/06-records.md) | [日本語](06-records.md) | [繁體中文](../../zh/tutorial/06-records.md)
 
-# 構造体と列挙型
+# Record と列挙型
 
 [← 前: 関数](05-functions.md) | [次: コレクション →](07-collections.md)
 
 ---
 
-## record による構造体定義
+## Record の定義
 
-`record` キーワードで構造体を定義します。各フィールドは `name: type` の形式で記述します。
+`record` キーワードで record を定義します。各フィールドは `name: type` の形式で記述します。
 
 ```python
 record Point:
@@ -16,13 +16,13 @@ record Point:
     y: int
 ```
 
-構造体はスタック上の値型です。
+Record はスタック上の値型です。
 
 ---
 
-## コンストラクタの使い方
+## インスタンスの生成
 
-構造体名を関数のように呼び出してインスタンスを生成します。引数はフィールドの定義順に指定します。
+record 名を関数のように呼び出してインスタンスを生成します。引数はフィールドの定義順に指定します。
 
 ```python
 p = Point(10, 20)
@@ -40,7 +40,7 @@ print(p.x)   # 10
 print(p.y)   # 20
 ```
 
-> **注意**: `print` に構造体を直接渡すとエラーになります。フィールドを個別に渡してください。
+> **注意**: `print` に record を直接渡すとエラーになります。フィールドを個別に渡してください。
 
 ---
 
@@ -58,9 +58,9 @@ print(p.x)   # 100
 
 ---
 
-## 関数の引数としての構造体
+## 関数の引数としての Record
 
-構造体を関数の引数として渡せます。
+Record を関数の引数として渡せます。
 
 ```python
 record Point:
@@ -77,9 +77,9 @@ print(distance_x(p1, p2))   # 6
 
 ---
 
-## ネスト構造体
+## ネストした Record
 
-構造体のフィールドに別の構造体を使えます。
+Record のフィールドに別の record を使えます。
 
 ```python
 record Point:
