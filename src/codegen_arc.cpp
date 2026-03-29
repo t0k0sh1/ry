@@ -591,8 +591,9 @@ llvm::Value *CodeGen::emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *e
     auto *newDataField = builder_.CreateStructGEP(listHeaderTy_, newDataPtr, 2, "cow_new_data_ptr");
     builder_.CreateStore(newBuf, newDataField);
 
-    if (elemTy == ptrTy_)
-        emitCowRetainArcElements(newBuf, oldFields.len, "list");
+    // Note: we do NOT retain ARC elements here. Collection destructors only
+    // free internal buffers and do not release ARC-managed elements, so
+    // retaining here would cause an ARC imbalance (leak).
 
     return newDataPtr;
 }
@@ -643,10 +644,7 @@ llvm::Value *CodeGen::emitCowDeepCopyMap(llvm::Value *oldDataPtr,
     auto *newBkField = builder_.CreateStructGEP(mapHeaderTy_, newDataPtr, 5, "cow_m_bk_ptr");
     builder_.CreateStore(newBuckets, newBkField);
 
-    if (keyTy == ptrTy_)
-        emitCowRetainArcElements(newKeys, oldFields.len, "mk");
-    if (valTy == ptrTy_)
-        emitCowRetainArcElements(newVals, oldFields.len, "mv");
+    // Note: no ARC element retain — see emitCowDeepCopyList for rationale.
 
     return newDataPtr;
 }
@@ -688,8 +686,7 @@ llvm::Value *CodeGen::emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *el
     auto *newBkField = builder_.CreateStructGEP(setHeaderTy_, newDataPtr, 4, "cow_s_bk_ptr");
     builder_.CreateStore(newBuckets, newBkField);
 
-    if (elemTy == ptrTy_)
-        emitCowRetainArcElements(newElems, oldFields.len, "set");
+    // Note: no ARC element retain — see emitCowDeepCopyList for rationale.
 
     return newDataPtr;
 }
@@ -699,8 +696,18 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
                                     CollectionKind kind) {
     if (!alloca)
         return dataPtr;
-    if (!arc_backed_vars_.count(alloca))
-        return dataPtr;
+    // Only apply CoW to ARC-backed collections. Fall back to checking whether
+    // the loaded value originates from an ARC-backed alloca (covers parameters
+    // and other allocation paths not tracked directly).
+    if (!arc_backed_vars_.count(alloca)) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(dataPtr)) {
+            auto *src = llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
+            if (!src || !arc_backed_vars_.count(src))
+                return dataPtr;
+        } else {
+            return dataPtr;
+        }
+    }
 
     auto *fn = builder_.GetInsertBlock()->getParent();
     auto *headerPtr = emitArcGetHeaderFromData(dataPtr);
