@@ -190,6 +190,14 @@ private:
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
     std::unordered_map<llvm::Value*, std::string> enum_value_types_;
+    llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
+    llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);
+    void emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
+                          const std::string &fieldTypeName,
+                          llvm::Value *visitorFn,
+                          llvm::FunctionType *visitorCallTy,
+                          llvm::FunctionType *visitFnTy,
+                          llvm::Function *parentFn);
 
     struct GenericEnumTemplate {
         std::string name;

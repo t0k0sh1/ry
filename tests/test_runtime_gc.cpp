@@ -75,6 +75,27 @@ void dtorPairNode(void *data) {
     node->child_b = nullptr;
 }
 
+// Struct with a non-pointer prefix field followed by an ARC pointer field.
+// The int64_t label verifies that the GC correctly skips non-pointer fields
+// when traversing record-type layouts (createStructVisitFunction generates
+// code that iterates fields by type, only visiting ptrTy_ fields).
+struct ContainerData {
+    int64_t label;
+    void *child_header;
+};
+
+void visitContainer(void *data, void (*visitor)(void *child_header)) {
+    auto *c = static_cast<ContainerData *>(data);
+    if (c->child_header) {
+        visitor(c->child_header);
+    }
+}
+
+void dtorContainer(void *data) {
+    auto *c = static_cast<ContainerData *>(data);
+    c->child_header = nullptr;
+}
+
 } // anonymous namespace
 
 // ===== Basic API tests =====
@@ -304,4 +325,62 @@ TEST(GcTest, ImmortalObjectSkipped) {
     EXPECT_EQ(collected, 0);
 
     std::free(hdrA);
+}
+
+// ===== Struct (record) visit function tests =====
+
+TEST(GcTest, StructCycleCollected) {
+    // Simulates a cycle through record types embedded in ARC objects:
+    // Container A (label=1, child -> B) <-> Container B (label=2, child -> A)
+    __ry_gc_enable();
+    __ry_gc_set_threshold(10000);
+
+    void *hdrA = gcAllocObj(sizeof(ContainerData));
+    void *hdrB = gcAllocObj(sizeof(ContainerData));
+
+    auto *dataA = static_cast<ContainerData *>(headerToData(hdrA));
+    auto *dataB = static_cast<ContainerData *>(headerToData(hdrB));
+
+    dataA->label = 1;
+    dataA->child_header = hdrB;
+    dataB->label = 2;
+    dataB->child_header = hdrA;
+
+    getHeader(hdrA)->strong_count = 1;
+    getHeader(hdrB)->strong_count = 1;
+
+    __ry_gc_track(hdrA, visitContainer, dtorContainer);
+    __ry_gc_track(hdrB, visitContainer, dtorContainer);
+
+    int64_t collected = __ry_gc_collect();
+    EXPECT_EQ(collected, 2);
+}
+
+TEST(GcTest, StructReachableNotCollected) {
+    // Container with an external reference should not be collected.
+    __ry_gc_enable();
+    __ry_gc_set_threshold(10000);
+
+    void *hdrA = gcAllocObj(sizeof(ContainerData));
+    void *hdrB = gcAllocObj(sizeof(ContainerData));
+
+    auto *dataA = static_cast<ContainerData *>(headerToData(hdrA));
+    auto *dataB = static_cast<ContainerData *>(headerToData(hdrB));
+
+    dataA->label = 1;
+    dataA->child_header = hdrB;
+    dataB->label = 2;
+    dataB->child_header = nullptr;
+
+    getHeader(hdrA)->strong_count = 2;  // external ref
+    getHeader(hdrB)->strong_count = 1;
+
+    __ry_gc_track(hdrA, visitContainer, dtorContainer);
+    __ry_gc_track(hdrB, visitContainer, dtorContainer);
+
+    int64_t collected = __ry_gc_collect();
+    EXPECT_EQ(collected, 0);
+
+    std::free(hdrA);
+    std::free(hdrB);
 }

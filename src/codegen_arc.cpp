@@ -1118,21 +1118,107 @@ llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
     if (it != gc_visit_functions_.end())
         return it->second;
 
-    // Look up enum info for this type.
+    // Try ADT enum type first.
     auto enumIt = enum_types_.find(typeName);
-    if (enumIt == enum_types_.end() || !enumIt->second.isADT) {
-        // Non-ADT types or unknown types — no visit function needed.
-        gc_visit_functions_[typeName] = nullptr;
-        return nullptr;
+    if (enumIt != enum_types_.end() && enumIt->second.isADT)
+        return createAdtVisitFunction(typeName, enumIt->second);
+
+    // Try record (struct) type.
+    auto structIt = struct_types_.find(typeName);
+    if (structIt != struct_types_.end())
+        return createStructVisitFunction(typeName, structIt->second);
+
+    // Unknown type — no visit function needed.
+    gc_visit_functions_[typeName] = nullptr;
+    return nullptr;
+}
+
+// Emit IR to visit a single potentially-cyclic field during GC traversal.
+// Handles ARC pointer fields (null check + visitor call) and embedded record
+// fields (recursive visit function call).
+void CodeGen::emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
+                                const std::string &fieldTypeName,
+                                llvm::Value *visitorFn,
+                                llvm::FunctionType *visitorCallTy,
+                                llvm::FunctionType *visitFnTy,
+                                llvm::Function *parentFn) {
+    if (fieldTy == ptrTy_) {
+        auto *fieldVal = builder_.CreateLoad(ptrTy_, fieldPtr, "gc.visit.val");
+        auto *isNull = builder_.CreateICmpEQ(
+            fieldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "gc.visit.null");
+        auto *visitBB = llvm::BasicBlock::Create(*ctx_, "gc.visit.ptr", parentFn);
+        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "gc.skip.ptr", parentFn);
+        builder_.CreateCondBr(isNull, skipBB, visitBB);
+
+        builder_.SetInsertPoint(visitBB);
+        auto *hdr = emitArcGetHeaderFromData(fieldVal);
+        builder_.CreateCall(visitorCallTy, visitorFn, {hdr});
+        builder_.CreateBr(skipBB);
+
+        builder_.SetInsertPoint(skipBB);
+    } else if (llvm::isa<llvm::StructType>(fieldTy)) {
+        if (auto *nestedVisitFn = getOrCreateVisitFunction(fieldTypeName))
+            builder_.CreateCall(visitFnTy, nestedVisitFn, {fieldPtr, visitorFn});
     }
+}
 
-    const EnumInfo &info = enumIt->second;
+// Visit function for record (struct) types: iterate fixed-layout fields.
+llvm::Function *CodeGen::createStructVisitFunction(const std::string &typeName,
+                                                    const StructInfo &info) {
+    gc_visit_functions_[typeName] = nullptr;
 
-    // Save current insertion point.
     auto *savedBB = builder_.GetInsertBlock();
     auto savedPt = builder_.GetInsertPoint();
 
-    // Create visit function: void @__ry_gc_visit_<TypeName>(ptr %data, ptr %visitor_fn)
+    auto *visitFnTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
+    auto *visitFn = llvm::Function::Create(
+        visitFnTy, llvm::Function::InternalLinkage,
+        "__ry_gc_visit_" + typeName, *mod_);
+    visitFn->setDoesNotThrow();
+
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", visitFn);
+    builder_.SetInsertPoint(entryBB);
+
+    llvm::Value *dataPtr = visitFn->getArg(0);
+    llvm::Value *visitorFnArg = visitFn->getArg(1);
+
+    auto *visitorCallTy = llvm::FunctionType::get(
+        llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+
+    for (unsigned i = 0; i < info.fields.size(); ++i) {
+        llvm::Type *fieldTy = info.llvmType->getElementType(i);
+        const std::string fieldTypeName = info.fields[i].type->toString();
+
+        if (!isPotentiallyCyclic(fieldTypeName))
+            continue;
+
+        auto *fieldPtr = builder_.CreateStructGEP(info.llvmType, dataPtr, i,
+                                                   "gc.struct.field." + std::to_string(i));
+        emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
+                         visitorFnArg, visitorCallTy, visitFnTy, visitFn);
+    }
+
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    gc_visit_functions_[typeName] = visitFn;
+    return visitFn;
+}
+
+// Visit function for ADT enum types: switch on tag, visit variant fields.
+llvm::Function *CodeGen::createAdtVisitFunction(const std::string &typeName,
+                                                  const EnumInfo &info) {
+    // Insert a placeholder to break mutual recursion.
+    gc_visit_functions_[typeName] = nullptr;
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+
     auto *visitFnTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_, ptrTy_}, false);
     auto *visitFn = llvm::Function::Create(
@@ -1200,32 +1286,13 @@ llvm::Function *CodeGen::getOrCreateVisitFunction(const std::string &typeName) {
             uint64_t align = dl.getABITypeAlign(fieldTy).value();
             offset = (offset + align - 1) / align * align;
 
-            // Only visit fields that are potentially cyclic ARC types.
             if (isPotentiallyCyclic(fieldTypeName)) {
                 auto *fieldPtr = builder_.CreateGEP(
                     i8Ty_, payloadPtr,
                     llvm::ConstantInt::get(i64Ty_, offset),
                     "gc.field." + std::to_string(fi));
-                auto *fieldVal = builder_.CreateLoad(ptrTy_, fieldPtr, "gc.field.val");
-
-                // Null check.
-                auto *isNull = builder_.CreateICmpEQ(
-                    fieldVal,
-                    llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
-                    "gc.null");
-                auto *visitBB = llvm::BasicBlock::Create(
-                    *ctx_, "gc.visit.field", visitFn);
-                auto *skipBB = llvm::BasicBlock::Create(
-                    *ctx_, "gc.skip.field", visitFn);
-                builder_.CreateCondBr(isNull, skipBB, visitBB);
-
-                builder_.SetInsertPoint(visitBB);
-                // fieldVal is a data pointer; get the header.
-                auto *hdr = emitArcGetHeaderFromData(fieldVal);
-                builder_.CreateCall(visitorCallTy, visitorFn, {hdr});
-                builder_.CreateBr(skipBB);
-
-                builder_.SetInsertPoint(skipBB);
+                emitGcVisitField(fieldPtr, fieldTy, fieldTypeName,
+                                 visitorFn, visitorCallTy, visitFnTy, visitFn);
             }
 
             offset += dl.getTypeAllocSize(fieldTy);
