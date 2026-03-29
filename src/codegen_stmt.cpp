@@ -618,7 +618,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
         if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
             gcVisitFn = getOrCreateVisitFunction(evIt->second);
         }
-        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr), gcVisitFn);
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
     }
 
     builder_.CreateStore(val, ptr);

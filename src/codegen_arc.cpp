@@ -1,4 +1,5 @@
 #include "ry/codegen.hpp"
+#include <cassert>
 
 llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
     auto *headerSize = llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE);
@@ -209,6 +210,28 @@ void CodeGen::nullifyResourceVar(const ExprNode &argExpr) {
                 alloca);
         }
     }
+}
+
+llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
+                                        const ExprNode &argExpr) {
+    // Null check — already freed (nullified) variable is a no-op
+    auto *isNull = builder_.CreateICmpEQ(
+        dataPtr,
+        llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+        "res_free_null");
+    auto *fn = builder_.GetInsertBlock()->getParent();
+    auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "res_free.release", fn);
+    auto *doneBB = llvm::BasicBlock::Create(*ctx_, "res_free.done", fn);
+    builder_.CreateCondBr(isNull, doneBB, releaseBB);
+
+    builder_.SetInsertPoint(releaseBB);
+    auto *hdr = emitArcGetHeaderFromData(dataPtr);
+    emitArcRelease(hdr, /*atomic=*/true, getOrCreateResourceDestructor(rk));
+    builder_.CreateBr(doneBB);
+
+    builder_.SetInsertPoint(doneBB);
+    nullifyResourceVar(argExpr);
+    return llvm::ConstantInt::get(i8Ty_, 0); // Unit
 }
 
 llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
@@ -837,8 +860,13 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
     if (!hasArc)
         return {};
 
-    // Cache key: capturedArcKinds + capturedTypes (struct layout affects GEP offsets)
-    ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes};
+    // Cache key: capturedArcKinds + capturedTypes + capturedResourceKinds + nested closure shapes
+    std::vector<std::pair<size_t, std::vector<CapturedArcKind>>> nestedShapes;
+    for (auto &[idx, ci] : info.capturedClosureInfos)
+        nestedShapes.emplace_back(idx, ci.capturedArcKinds);
+    std::sort(nestedShapes.begin(), nestedShapes.end());
+    ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes,
+                            info.capturedResourceKinds, std::move(nestedShapes)};
     auto it = closure_destructors_cache_.find(cacheKey);
     if (it != closure_destructors_cache_.end())
         return it->second;
@@ -897,12 +925,22 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         case CAK_Set:
             subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
             break;
+        case CAK_Resource: {
+            assert(i < info.capturedResourceKinds.size());
+            ResourceKind rk = info.capturedResourceKinds[i];
+            if (rk != RK_COUNT)
+                subDtor = getOrCreateResourceDestructor(rk);
+            break;
+        }
+        case CAK_Closure: {
+            auto cit = info.capturedClosureInfos.find(i);
+            if (cit != info.capturedClosureInfos.end() &&
+                !cit->second.capturedArcKinds.empty())
+                subDtor = getOrCreateClosureDestructor(cit->second);
+            break;
+        }
         case CAK_Generic:
-        case CAK_Closure:
-        case CAK_Resource:
         case CAK_None:
-            // Generic/closures/resources: no sub-destructor available here.
-            // CAK_Closure/CAK_Resource sub-destructors tracked in #429.
             subDtor = {};
             break;
         }

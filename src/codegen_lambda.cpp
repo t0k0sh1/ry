@@ -13,6 +13,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     std::vector<llvm::Value*> capturedValues;
     std::vector<llvm::Type*> capturedTypes;
     std::vector<CapturedArcKind> capturedArcKinds;
+    std::vector<ResourceKind> capturedResourceKinds;
+    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
 
     // Build a set of parameter names
     std::unordered_set<std::string> paramNames;
@@ -37,7 +39,21 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                             alloca->getAllocatedType(), alloca, v.name + ".cap");
                         capturedValues.push_back(val);
                         capturedTypes.push_back(val->getType());
-                        capturedArcKinds.push_back(detectCapturedArcKind(alloca));
+                        auto cak = detectCapturedArcKind(alloca);
+                        capturedArcKinds.push_back(cak);
+                        // Track per-capture resource kind and closure info
+                        if (cak == CAK_Resource) {
+                            auto rmIt = resource_managed_vars_.find(alloca);
+                            capturedResourceKinds.push_back(
+                                rmIt != resource_managed_vars_.end() ? rmIt->second : RK_COUNT);
+                        } else {
+                            capturedResourceKinds.push_back(RK_COUNT);
+                        }
+                        if (cak == CAK_Closure) {
+                            auto fnIt = fn_type_info_.find(alloca);
+                            if (fnIt != fn_type_info_.end())
+                                capturedClosureInfos[capturedNames.size() - 1] = fnIt->second;
+                        }
                     }
                 }
             } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
@@ -232,6 +248,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;
     info.capturedArcKinds = capturedArcKinds;
+    info.capturedResourceKinds = capturedResourceKinds;
+    info.capturedClosureInfos = capturedClosureInfos;
     fn_type_info_[func] = info;
 
     // If no captures, just return the function pointer

@@ -116,6 +116,8 @@ private:
     llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);
     ResourceKind detectResourceKind(llvm::Value *val);
     void nullifyResourceVar(const ExprNode &argExpr);
+    llvm::Value *emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
+                                   const ExprNode &argExpr);
 
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
@@ -234,10 +236,28 @@ private:
         std::vector<std::string> capturedVars;   // for closure support
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
         std::vector<CapturedArcKind> capturedArcKinds; // ARC kind per captured variable
+        std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
+        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for CAK_Closure only
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
-    using ClosureDtorKey = std::pair<std::vector<CapturedArcKind>, std::vector<llvm::Type*>>;
+    struct ClosureDtorKey {
+        std::vector<CapturedArcKind> arcKinds;
+        std::vector<llvm::Type*> types;
+        std::vector<ResourceKind> resourceKinds;
+        // Nested closure shapes: sorted (index, capturedArcKinds) pairs for CAK_Closure captures
+        std::vector<std::pair<size_t, std::vector<CapturedArcKind>>> nestedShapes;
+        bool operator<(const ClosureDtorKey &o) const {
+            if (arcKinds != o.arcKinds) return arcKinds < o.arcKinds;
+            if (types.size() != o.types.size()) return types.size() < o.types.size();
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (types[i] != o.types[i])
+                    return std::less<llvm::Type*>{}(types[i], o.types[i]);
+            }
+            if (resourceKinds != o.resourceKinds) return resourceKinds < o.resourceKinds;
+            return nestedShapes < o.nestedShapes;
+        }
+    };
     std::map<ClosureDtorKey, llvm::FunctionCallee> closure_destructors_cache_;
     CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
     int lambda_counter_ = 0;

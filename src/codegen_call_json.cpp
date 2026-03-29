@@ -201,10 +201,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
             codegenError("json_free() requires a JsonValue argument");
-        auto fn = getRuntimeFn("__ry_json_free", llvm::Type::getVoidTy(*ctx_), {ptrTy_});
-        builder_.CreateCall(fn, {val});
-        nullifyResourceVar(*e.args[0]);
-        return llvm::ConstantInt::get(i8Ty_, 0); // Unit
+        return emitResourceFree(val, RK_JsonValue, *e.args[0]);
     }
 
     return nullptr;
