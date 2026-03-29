@@ -62,6 +62,7 @@ private:
     std::unordered_set<llvm::AllocaInst*> weak_managed_vars_; // allocas holding weak ref ptrs (header ptrs)
     std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
     std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
+    std::unordered_set<llvm::AllocaInst*> closure_managed_vars_; // allocas holding ARC-managed closures
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -206,6 +207,17 @@ private:
                                            const std::vector<ExprPtr> &args);
     std::string reverseResolveType(llvm::Value *val);
 
+    // Captured variable ARC kind — determines which destructor to use on release
+    enum CapturedArcKind {
+        CAK_None,       // not ARC-managed
+        CAK_List,
+        CAK_Map,
+        CAK_Set,
+        CAK_Closure,
+        CAK_Resource,   // generic resource (destructor not tracked per-capture)
+        CAK_Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
+    };
+
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
         std::vector<llvm::Type*> paramTypes;
@@ -213,8 +225,13 @@ private:
         llvm::Type *returnType;
         std::vector<std::string> capturedVars;   // for closure support
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
+        std::vector<CapturedArcKind> capturedArcKinds; // ARC kind per captured variable
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
+    llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+    using ClosureDtorKey = std::pair<std::vector<CapturedArcKind>, std::vector<llvm::Type*>>;
+    std::map<ClosureDtorKey, llvm::FunctionCallee> closure_destructors_cache_;
+    CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
     int lambda_counter_ = 0;
     bool test_mode_ = false;
     bool coverage_mode_ = false;
@@ -301,6 +318,7 @@ private:
         std::unordered_set<llvm::AllocaInst*> savedWeakManaged_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
+        std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;

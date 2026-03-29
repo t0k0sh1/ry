@@ -1,0 +1,80 @@
+describe("closure ARC — basic lifecycle", fn():
+  it("closure with captured int", fn():
+    base = 10
+    add_base = fn(x: int) => x + base
+    expect(add_base(5)).to_eq(15)
+  )
+
+  it("closure copy (g = f)", fn():
+    base = 100
+    f = fn(x: int) => x + base
+    g = f
+    expect(f(1)).to_eq(101)
+    expect(g(2)).to_eq(102)
+  )
+
+  it("no-capture lambda", fn():
+    f = fn(x: int) => x * 2
+    expect(f(5)).to_eq(10)
+  )
+
+  it("multiple captures", fn():
+    a = 10
+    b = 20
+    f = fn(x: int) => x + a + b
+    expect(f(5)).to_eq(35)
+  )
+
+  it("capture string", fn():
+    prefix = "hello "
+    greet = fn(name: str) => prefix + name
+    expect(greet("world")).to_eq("hello world")
+  )
+)
+
+describe("closure ARC — escaping closures", fn():
+  it("closure escapes defining scope via higher-order", fn():
+    xs = [10, 20, 30]
+    f = fn(x: int) => x > 15
+    ys = filter(xs, f)
+    expect(ys).to_have_length(2)
+  )
+
+  it("closure captures dynamic string", fn():
+    name = "Alice"
+    greeting = "Hello, " + name
+    f = fn(suffix: str) => greeting + suffix
+    expect(f("!")).to_eq("Hello, Alice!")
+  )
+)
+
+describe("closure ARC — higher-order patterns", fn():
+  it("filter with closure", fn():
+    threshold = 3
+    xs = [1, 2, 3, 4, 5]
+    ys = filter(xs, fn(x: int) => x > threshold)
+    expect(ys).to_have_length(2)
+  )
+
+  it("map with closure", fn():
+    factor = 10
+    xs = [1, 2, 3]
+    ys = map(xs, fn(x: int) => x * factor)
+    expect(ys).to_eq([10, 20, 30])
+  )
+
+  it("closure as named variable to higher-order", fn():
+    base = 7
+    f = fn(x: int) => x * base
+    xs = [1, 2, 3]
+    ys = map(xs, f)
+    expect(ys).to_eq([7, 14, 21])
+  )
+
+  it("reduce with closure", fn():
+    init = 100
+    xs = [1, 2, 3]
+    result = reduce(xs, fn(acc: int, x: int) => acc + x + init)
+    expect(result).to_eq(206)
+  )
+)

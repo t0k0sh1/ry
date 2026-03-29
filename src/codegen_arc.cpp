@@ -148,6 +148,11 @@ llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
     auto it = resource_managed_vars_.find(alloca);
     if (it != resource_managed_vars_.end())
         return getOrCreateResourceDestructor(it->second);
+    if (closure_managed_vars_.count(alloca)) {
+        auto fnIt = fn_type_info_.find(alloca);
+        if (fnIt != fn_type_info_.end() && !fnIt->second.capturedArcKinds.empty())
+            return getOrCreateClosureDestructor(fnIt->second);
+    }
     return {};
 }
 
@@ -769,4 +774,116 @@ llvm::Value *CodeGen::emitCowCheck(llvm::Value *dataPtr,
     propagateCollectionMetadata(alloca, phi);
 
     return phi;
+}
+
+// ===== Closure ARC support =====
+
+CodeGen::CapturedArcKind CodeGen::detectCapturedArcKind(llvm::AllocaInst *alloca) const {
+    if (type_meta_[TM_ListElem].count(alloca))
+        return CAK_List;
+    if (type_meta_[TM_MapKey].count(alloca))
+        return CAK_Map;
+    if (type_meta_[TM_SetElem].count(alloca))
+        return CAK_Set;
+    if (closure_managed_vars_.count(alloca))
+        return CAK_Closure;
+    if (resource_managed_vars_.count(alloca))
+        return CAK_Resource;
+    if (isArcManaged(alloca))
+        return CAK_Generic; // ARC-managed but no sub-destructor (e.g., f-strings)
+    return CAK_None;
+}
+
+llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &info) {
+    // Check if any captured variable needs ARC release
+    bool hasArc = false;
+    for (auto k : info.capturedArcKinds)
+        if (k != CAK_None) { hasArc = true; break; }
+    if (!hasArc)
+        return {};
+
+    // Cache key: capturedArcKinds + capturedTypes (struct layout affects GEP offsets)
+    ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes};
+    auto it = closure_destructors_cache_.find(cacheKey);
+    if (it != closure_destructors_cache_.end())
+        return it->second;
+
+    auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    std::string name = "__ry_arc_dtor_closure_" + std::to_string(closure_destructors_cache_.size());
+    auto *dtorFn = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, name, mod_.get());
+    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+    builder_.SetInsertPoint(entryBB);
+
+    auto *dataPtr = dtorFn->getArg(0); // points to closure struct (after ARC header)
+
+    // Reconstruct closure struct type
+    std::vector<llvm::Type*> closureFields;
+    closureFields.push_back(ptrTy_); // fn_ptr
+    for (auto *ct : info.capturedTypes)
+        closureFields.push_back(ct);
+    auto *closureTy = llvm::StructType::get(*ctx_, closureFields);
+
+    for (size_t i = 0; i < info.capturedArcKinds.size(); ++i) {
+        if (info.capturedArcKinds[i] == CAK_None)
+            continue;
+
+        auto *capField = builder_.CreateStructGEP(
+            closureTy, dataPtr, i + 1, "dtor.cap." + std::to_string(i));
+        auto *capVal = builder_.CreateLoad(info.capturedTypes[i], capField,
+                                            "dtor.cap_val." + std::to_string(i));
+
+        // Null check
+        auto *isNull = builder_.CreateICmpEQ(capVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            "dtor.null_check." + std::to_string(i));
+
+        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, "dtor.release." + std::to_string(i), dtorFn);
+        auto *skipBB = llvm::BasicBlock::Create(*ctx_, "dtor.skip." + std::to_string(i), dtorFn);
+        builder_.CreateCondBr(isNull, skipBB, releaseBB);
+
+        builder_.SetInsertPoint(releaseBB);
+        auto *hdr = emitArcGetHeaderFromData(capVal);
+
+        // Resolve sub-destructor based on captured ARC kind
+        llvm::FunctionCallee subDtor;
+        switch (info.capturedArcKinds[i]) {
+        case CAK_List:
+            subDtor = getOrCreateCollectionDestructor(CollectionKind::List);
+            break;
+        case CAK_Map:
+            subDtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+            break;
+        case CAK_Set:
+            subDtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+            break;
+        case CAK_Generic:
+        case CAK_Closure:
+        case CAK_Resource:
+        case CAK_None:
+            // Generic/closures/resources: no sub-destructor available here.
+            // CAK_Closure/CAK_Resource sub-destructors tracked in #429.
+            subDtor = {};
+            break;
+        }
+
+        emitArcRelease(hdr, false, subDtor);
+        builder_.CreateBr(skipBB);
+
+        builder_.SetInsertPoint(skipBB);
+    }
+
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    llvm::FunctionCallee callee(dtorTy, dtorFn);
+    closure_destructors_cache_[cacheKey] = callee;
+    return callee;
 }

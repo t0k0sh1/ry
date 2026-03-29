@@ -444,10 +444,26 @@ void CodeGen::emitVarDecl(const std::string &name,
         auto detectedRK = detectResourceKind(val);
         bool isResource = (detectedRK != RK_COUNT);
         bool isRetainedArc = tryRetainArcSource(val);
-        if (isCollection || isArcOwned || isResource || isRetainedArc) {
+        // Detect closures with captures (ARC-managed closure structs)
+        bool isClosure = false;
+        {
+            auto fnIt = fn_type_info_.find(val);
+            // Also check LoadInst source (e.g., g = f where f is a closure variable)
+            if (fnIt == fn_type_info_.end()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    fnIt = fn_type_info_.find(load->getPointerOperand());
+            }
+            if (fnIt != fn_type_info_.end() && !fnIt->second.capturedVars.empty()) {
+                isClosure = true;
+                fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca
+            }
+        }
+        if (isCollection || isArcOwned || isResource || isRetainedArc || isClosure) {
             markArcManaged(ptr);
             if (isResource)
                 resource_managed_vars_[ptr] = detectedRK;
+            if (isClosure)
+                closure_managed_vars_.insert(ptr);
         }
         // Track allocas that are truly ARC-backed (have ARC header prepended)
         if (isArcOwned || isRetainedArc)
