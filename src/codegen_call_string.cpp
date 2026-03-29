@@ -154,25 +154,18 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("substring() requires str as first argument");
 
-    auto utf8LenFn = getRuntimeFn("__ry_utf8_len", i64Ty_, {ptrTy_});
-    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s}, "substr_len");
-
-    // Clamp start to [0, charLen]
+    // Clamp start and end to be non-negative; let the runtime clamp to string length.
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+
     llvm::Value *clampedStart = builder_.CreateSelect(
         builder_.CreateICmpSLT(start, zero), zero, start, "substr_cstart");
-    clampedStart = builder_.CreateSelect(
-        builder_.CreateICmpSGT(clampedStart, charLen), charLen, clampedStart, "substr_cstart2");
 
-    // Clamp end to [0, charLen]
     llvm::Value *clampedEnd = builder_.CreateSelect(
         builder_.CreateICmpSLT(end, zero), zero, end, "substr_cend");
-    clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSGT(clampedEnd, charLen), charLen, clampedEnd, "substr_cend2");
 
     // Ensure end >= start
     clampedEnd = builder_.CreateSelect(
-        builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend3");
+        builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
 
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
     return builder_.CreateCall(substrFn, {s, clampedStart, clampedEnd}, "substring");

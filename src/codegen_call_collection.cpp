@@ -591,6 +591,7 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 
         // insert() valid range is [0, len], so negative index -k maps to len+1-k.
         // This differs from remove_at() which wraps against len (valid range [0, len-1]).
+        llvm::Value *origIdx = idx;
         llvm::Value *wrapBase = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_wrap_base");
         idx = emitNegativeIndexWrap(idx, wrapBase, "ins");
 
@@ -602,7 +603,7 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "ins.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitBoundsError(idx, lf.len, "runtime error: index %lld out of bounds for insert() on list of length %lld\n", ".ins_oob_err");
+        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for insert() on list of length %lld\n", ".ins_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Check if realloc needed
@@ -663,6 +664,7 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
 
         auto lf = loadListHeader(listPtr, "rmat");
 
+        llvm::Value *origIdx = idx;
         idx = emitNegativeIndexWrap(idx, lf.len, "rmat");
 
         llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
@@ -673,7 +675,7 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "rmat.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitBoundsError(idx, lf.len, "runtime error: index %lld out of bounds for remove_at() on list of length %lld\n", ".rmat_oob_err");
+        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for remove_at() on list of length %lld\n", ".rmat_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Save element to return

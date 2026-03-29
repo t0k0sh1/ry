@@ -962,6 +962,7 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
         }
     }
 
+    llvm::Value *origIndex = index;
     index = emitNegativeIndexWrap(index, size, bbPrefix);
 
     llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
@@ -973,7 +974,7 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
     builder_.CreateCondBr(oob, oobBB, okBB);
     builder_.SetInsertPoint(oobBB);
-    emitBoundsError(index, size, errMsg, globalName);
+    emitBoundsError(origIndex, size, errMsg, globalName);
     builder_.SetInsertPoint(okBB);
 }
 

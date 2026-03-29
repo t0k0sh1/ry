@@ -67,4 +67,34 @@ describe("bounds checking", fn():
       expect(buf[-3] as int).to_eq(10)
     )
   )
+
+  describe("insert negative index", fn():
+    it("insert at -1 appends (wraps to len)", fn():
+      xs = [1, 2, 3]
+      insert(xs, -1, 99)
+      expect(xs).to_have_length(4)
+      expect(xs[3]).to_eq(99)
+    )
+    it("insert at -(len+1) inserts at front", fn():
+      xs = [1, 2, 3]
+      insert(xs, -4, 99)
+      expect(xs[0]).to_eq(99)
+      expect(xs[1]).to_eq(1)
+    )
+  )
+
+  describe("remove_at negative index", fn():
+    it("remove_at -1 removes last element", fn():
+      xs = [1, 2, 3]
+      v = remove_at(xs, -1)
+      expect(v).to_eq(3)
+      expect(xs).to_have_length(2)
+    )
+    it("remove_at -2 removes second-to-last", fn():
+      xs = [10, 20, 30]
+      v = remove_at(xs, -2)
+      expect(v).to_eq(20)
+      expect(xs).to_have_length(2)
+    )
+  )
 )

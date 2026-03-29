@@ -2346,3 +2346,36 @@ TEST_F(CodeGenTest, ArrayNegativeIndexOOB) {
         "print(buf[-4])";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
+
+TEST_F(CodeGenTest, InsertNegativeIndex) {
+    // insert at -1 wraps to len+1-1 = len (append position)
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "insert(xs, -1, 99)\n"
+        "print(length(xs))\n"
+        "print(xs[3])";
+    EXPECT_EQ(runSource(src), "4\n99\n");
+}
+
+TEST_F(CodeGenTest, InsertNegativeIndexOOB) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "insert(xs, -5, 99)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, RemoveAtNegativeIndex) {
+    // remove_at(xs, -1) removes the last element
+    std::string src =
+        "xs = [10, 20, 30]\n"
+        "v = remove_at(xs, -1)\n"
+        "print(v)";
+    EXPECT_EQ(runSource(src), "30\n");
+}
+
+TEST_F(CodeGenTest, RemoveAtNegativeIndexOOB) {
+    std::string src =
+        "xs = [1, 2, 3]\n"
+        "remove_at(xs, -4)";
+    EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
+}
