@@ -45,15 +45,8 @@ jobs:
         run: brew install openssl@3 ninja googletest
 
       # --- LLVM 21: Linux (APT) ---
-      - name: Cache LLVM 21 (apt)
-        if: matrix.llvm_install == 'apt'
-        id: cache-llvm-apt
-        uses: actions/cache@v4
-        with:
-          path: /usr/lib/llvm-21
-          key: llvm-21-${{ matrix.target }}
       - name: Install LLVM 21 (apt)
-        if: matrix.llvm_install == 'apt' && steps.cache-llvm-apt.outputs.cache-hit != 'true'
+        if: matrix.llvm_install == 'apt'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh

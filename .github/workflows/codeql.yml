@@ -85,15 +85,8 @@ jobs:
     # to build your code.
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-    - name: Cache LLVM 21
-      if: matrix.language == 'c-cpp'
-      id: cache-llvm
-      uses: actions/cache@v4
-      with:
-        path: /usr/lib/llvm-21
-        key: llvm-21-ubuntu-${{ runner.os }}
     - name: Install LLVM 21
-      if: matrix.language == 'c-cpp' && steps.cache-llvm.outputs.cache-hit != 'true'
+      if: matrix.language == 'c-cpp'
       run: |
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
