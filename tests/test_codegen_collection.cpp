@@ -300,6 +300,32 @@ TEST_F(CodeGenTest, StringEndsWithFn) {
     }
 }
 
+TEST_F(CodeGenTest, StringContainsIgnoreCase) {
+    EXPECT_EQ(runSource("print(contains(\"Hello World\", \"hello\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(contains(\"Hello World\", \"WORLD\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(contains(\"Hello World\", \"xyz\", true))"), "false\n");
+    EXPECT_EQ(runSource("print(contains(\"Hello\", \"hello\", false))"), "false\n");
+    // UFCS
+    EXPECT_EQ(runSource("print(\"Hello\".contains(\"hello\", true))"), "true\n");
+}
+
+TEST_F(CodeGenTest, StringStartsWithIgnoreCase) {
+    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"hello\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"HELLO\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(starts_with(\"Hello World\", \"world\", true))"), "false\n");
+    // UFCS
+    EXPECT_EQ(runSource("print(\"Hello\".starts_with(\"hel\", true))"), "true\n");
+}
+
+TEST_F(CodeGenTest, StringEndsWithIgnoreCase) {
+    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"world\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"WORLD\", true))"), "true\n");
+    EXPECT_EQ(runSource("print(ends_with(\"Hello World\", \"hello\", true))"), "false\n");
+    EXPECT_EQ(runSource("print(ends_with(\"hi\", \"HELLO\", true))"), "false\n");
+    // UFCS
+    EXPECT_EQ(runSource("print(\"Hello\".ends_with(\"LLO\", true))"), "true\n");
+}
+
 TEST_F(CodeGenTest, StringToInt) {
     // ToIntBasic
     EXPECT_EQ(runSource("print(to_int(\"42\"))"), "42\n");

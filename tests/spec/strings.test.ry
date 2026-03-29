@@ -11,6 +11,26 @@ describe("search and check", fn():
     expect("hello").to_end_with("llo")
     expect(ends_with("hello", "world")).to_be_false()
   )
+  it("contains ignore_case", fn():
+    expect(contains("Hello World", "hello", true)).to_be_true()
+    expect(contains("Hello World", "WORLD", true)).to_be_true()
+    expect(contains("Hello World", "xyz", true)).to_be_false()
+    expect(contains("Hello", "hello", false)).to_be_false()
+    expect("Hello".contains("hello", true)).to_be_true()
+  )
+  it("starts_with ignore_case", fn():
+    expect(starts_with("Hello World", "hello", true)).to_be_true()
+    expect(starts_with("Hello World", "HELLO", true)).to_be_true()
+    expect(starts_with("Hello World", "world", true)).to_be_false()
+    expect("Hello".starts_with("hel", true)).to_be_true()
+  )
+  it("ends_with ignore_case", fn():
+    expect(ends_with("Hello World", "world", true)).to_be_true()
+    expect(ends_with("Hello World", "WORLD", true)).to_be_true()
+    expect(ends_with("Hello World", "hello", true)).to_be_false()
+    expect(ends_with("hi", "HELLO", true)).to_be_false()
+    expect("Hello".ends_with("llo", true)).to_be_true()
+  )
   it("find", fn():
     expect(find("hello world", "world")).to_eq(Some(6))
     expect(find("hello", "xyz")).to_be_none()

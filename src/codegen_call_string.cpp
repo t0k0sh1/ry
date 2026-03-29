@@ -17,9 +17,12 @@ llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
 llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
-        {"contains",    &CodeGen::emitStrOp_contains},
-        {"starts_with", &CodeGen::emitStrOp_starts_with},
-        {"ends_with",   &CodeGen::emitStrOp_ends_with},
+        {"contains",     &CodeGen::emitStrOp_contains},
+        {"_contains",    &CodeGen::emitStrOp_contains},
+        {"starts_with",  &CodeGen::emitStrOp_starts_with},
+        {"_starts_with", &CodeGen::emitStrOp_starts_with},
+        {"ends_with",    &CodeGen::emitStrOp_ends_with},
+        {"_ends_with",   &CodeGen::emitStrOp_ends_with},
         {"find",        &CodeGen::emitStrOp_find},
         {"substring",   &CodeGen::emitStrOp_substring},
         {"char_at",     &CodeGen::emitStrOp_char_at},
@@ -42,42 +45,98 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 
 // ===== String operation handlers =====
 
-// contains(s, sub) → bool
+// contains(s, sub[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("contains() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *sub = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
         codegenError("contains() requires str arguments");
+
     auto strstrFn = getStdlibStrstr();
-    llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
+    auto strcasestrFn = getStdlibStrcasestr();
     llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-    return builder_.CreateICmpNE(result, null, "contains");
+
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ct.merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *resIC = builder_.CreateCall(strcasestrFn, {s, sub}, "strcasestr");
+    llvm::Value *containsIC = builder_.CreateICmpNE(resIC, null, "contains_ic");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *resCS = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
+    llvm::Value *containsCS = builder_.CreateICmpNE(resCS, null, "contains_cs");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "contains");
+    phi->addIncoming(containsIC, icTrueBB);
+    phi->addIncoming(containsCS, icFalseBB);
+    return phi;
 }
 
-// starts_with(s, prefix) → bool
+// starts_with(s, prefix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_starts_with(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("starts_with() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *prefix = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
         codegenError("starts_with() requires str arguments");
     auto strlenFn = getStdlibStrlen();
     auto strncmpFn = getStdlibStrncmp();
+    auto strncasecmpFn = getStdlibStrncasecmp();
     llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
-    llvm::Value *cmp = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
-    return builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
+
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sw.merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {s, prefix, prefixLen}, "strncasecmp");
+    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "sw_ic");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
+    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "sw_cs");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "starts_with");
+    phi->addIncoming(matchIC, icTrueBB);
+    phi->addIncoming(matchCS, icFalseBB);
+    return phi;
 }
 
-// ends_with(s, suffix) → bool
+// ends_with(s, suffix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("ends_with() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *suffix = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
         codegenError("ends_with() requires str arguments");
     auto strlenFn = getStdlibStrlen();
     auto strncmpFn = getStdlibStrncmp();
+    auto strncasecmpFn = getStdlibStrncasecmp();
     llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
     llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
 
@@ -92,14 +151,34 @@ llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
     builder_.SetInsertPoint(checkBB);
     llvm::Value *offset = builder_.CreateSub(sLen, suffixLen, "offset");
     llvm::Value *tailPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, offset, "tail_ptr");
-    llvm::Value *cmp = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
-    llvm::Value *match = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match");
+
+    // Branch on ignore_case
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_false", fn_);
+    llvm::BasicBlock *cmpMergeBB = llvm::BasicBlock::Create(*ctx_, "ew.cmp_merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {tailPtr, suffix, suffixLen}, "strncasecmp");
+    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "ew_ic");
+    builder_.CreateBr(cmpMergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
+    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "ew_cs");
+    builder_.CreateBr(cmpMergeBB);
+
+    builder_.SetInsertPoint(cmpMergeBB);
+    llvm::PHINode *matchPhi = builder_.CreatePHI(i1Ty_, 2, "ew_match");
+    matchPhi->addIncoming(matchIC, icTrueBB);
+    matchPhi->addIncoming(matchCS, icFalseBB);
     builder_.CreateBr(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
     llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ends_with");
     phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
-    phi->addIncoming(match, checkBB);
+    phi->addIncoming(matchPhi, cmpMergeBB);
     return phi;
 }
 
