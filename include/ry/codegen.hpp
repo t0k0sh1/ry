@@ -488,6 +488,8 @@ private:
     llvm::FunctionCallee getStdlibStrcmp();
     llvm::FunctionCallee getStdlibStrncmp();
     llvm::FunctionCallee getStdlibStrstr();
+    llvm::FunctionCallee getStdlibStrcasestr();
+    llvm::FunctionCallee getStdlibStrncasecmp();
     llvm::FunctionCallee getStdlibStrcpy();
     llvm::FunctionCallee getStdlibStrcat();
     llvm::FunctionCallee getStdlibSnprintf();
