@@ -470,15 +470,21 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
             llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
         if (isTcpListener(val)) {
             auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
+            builder_.CreateCall(fn, {val});
+            nullifyResourceVar(*e.args[0]);
+            return llvm::ConstantInt::get(i8Ty_, 0);
         }
         if (isTcpStream(val)) {
             auto fn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
+            builder_.CreateCall(fn, {val});
+            nullifyResourceVar(*e.args[0]);
+            return llvm::ConstantInt::get(i8Ty_, 0);
         }
         if (isTlsStream(val)) {
             auto fn = mod_->getOrInsertFunction("__ry_tls_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
+            builder_.CreateCall(fn, {val});
+            nullifyResourceVar(*e.args[0]);
+            return llvm::ConstantInt::get(i8Ty_, 0);
         }
         codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
     }

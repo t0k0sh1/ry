@@ -1,6 +1,7 @@
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_net_types.hpp"
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_arc.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -60,11 +61,12 @@ extern "C" void *__ry_bind(const char *host, int64_t port) {
 
     ::freeaddrinfo(result);
 
-    auto *handle = new (std::nothrow) TcpListenerHandle;
-    if (!handle) {
+    void *mem = arc_alloc(sizeof(TcpListenerHandle));
+    if (!mem) {
         ::close(fd);
         return nullptr;
     }
+    auto *handle = new (mem) TcpListenerHandle;
     handle->fd = fd;
     return handle;
 }
@@ -113,11 +115,12 @@ extern "C" void *__ry_accept(void *listener) {
     ::setsockopt(client_fd, SOL_SOCKET, SO_NOSIGPIPE, &nosig, sizeof(nosig));
 #endif
 
-    auto *stream = new (std::nothrow) TcpStreamHandle;
-    if (!stream) {
+    void *smem = arc_alloc(sizeof(TcpStreamHandle));
+    if (!smem) {
         ::close(client_fd);
         return nullptr;
     }
+    auto *stream = new (smem) TcpStreamHandle;
     stream->fd = client_fd;
     return stream;
 }
@@ -222,11 +225,12 @@ extern "C" void *__ry_connect(const char *host, int64_t port) {
     // Restore blocking mode
     ::fcntl(fd, F_SETFL, flags);
 
-    auto *stream = new (std::nothrow) TcpStreamHandle;
-    if (!stream) {
+    void *smem = arc_alloc(sizeof(TcpStreamHandle));
+    if (!smem) {
         ::close(fd);
         return nullptr;
     }
+    auto *stream = new (smem) TcpStreamHandle;
     stream->fd = fd;
     return stream;
 }
@@ -303,14 +307,14 @@ extern "C" void __ry_tcp_close(void *handle) {
     if (!handle) return;
     auto *stream = (TcpStreamHandle *)handle;
     ::close(stream->fd);
-    delete stream;
+    arc_free(handle);
 }
 
 extern "C" void __ry_tcp_listener_close(void *listener) {
     if (!listener) return;
     auto *handle = (TcpListenerHandle *)listener;
     ::close(handle->fd);
-    delete handle;
+    arc_free(listener);
 }
 
 extern "C" void __ry_tcp_listener_shutdown(void *listener) {
@@ -339,7 +343,7 @@ void __ry_set_socket_timeval(int fd, int option, int64_t ms) {
 int __ry_tcp_take_fd(void *stream) {
     auto *handle = (TcpStreamHandle *)stream;
     int fd = handle->fd;
-    delete handle;
+    arc_free(stream);
     return fd;
 }
 
@@ -370,6 +374,25 @@ extern "C" void __ry_tcp_set_send_timeout(void *stream, int64_t ms) {
     if (!stream) return;
     auto *handle = (TcpStreamHandle *)stream;
     __ry_set_socket_timeval(handle->fd, SO_SNDTIMEO, ms);
+}
+
+extern "C" void __ry_tcp_cleanup(void *handle) {
+    if (!handle) return;
+    auto *h = static_cast<TcpStreamHandle *>(handle);
+    if (h->fd >= 0) {
+        shutdown(h->fd, SHUT_RDWR);
+        ::close(h->fd);
+        h->fd = -1;
+    }
+}
+
+extern "C" void __ry_tcp_listener_cleanup(void *listener) {
+    if (!listener) return;
+    auto *h = static_cast<TcpListenerHandle *>(listener);
+    if (h->fd >= 0) {
+        ::close(h->fd);
+        h->fd = -1;
+    }
 }
 
 extern "C" int64_t __ry_listener_port(void *listener) {

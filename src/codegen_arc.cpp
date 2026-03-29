@@ -141,6 +141,107 @@ bool CodeGen::isArcManaged(llvm::AllocaInst *alloca) const {
     return arc_managed_vars_.count(alloca) > 0;
 }
 
+llvm::FunctionCallee CodeGen::resolveDestructor(llvm::AllocaInst *alloca) {
+    auto collDtor = resolveCollectionDestructor(alloca);
+    if (collDtor)
+        return collDtor;
+    auto it = resource_managed_vars_.find(alloca);
+    if (it != resource_managed_vars_.end())
+        return getOrCreateResourceDestructor(it->second);
+    return {};
+}
+
+CodeGen::ResourceKind CodeGen::detectResourceKind(llvm::Value *val) {
+    for (int i = 0; i < RK_COUNT; ++i)
+        if (resource_sets_[i].count(val))
+            return static_cast<ResourceKind>(i);
+    // Resolve through LoadInst (e.g., `b = a` where `a` is a resource variable)
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto *ptr = load->getPointerOperand();
+        for (int i = 0; i < RK_COUNT; ++i)
+            if (resource_sets_[i].count(ptr))
+                return static_cast<ResourceKind>(i);
+    }
+    return RK_COUNT;
+}
+
+
+void CodeGen::nullifyResourceVar(const ExprNode &argExpr) {
+    // After explicit free/close, null out the variable's alloca so that
+    // ARC scope cleanup (emitArcReleaseVar) skips it via its null check.
+    if (auto *varExpr = std::get_if<VariableExpr>(&argExpr.data)) {
+        auto *alloca = findVar(varExpr->name);
+        if (alloca && resource_managed_vars_.count(alloca)) {
+            builder_.CreateStore(
+                llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+                alloca);
+        }
+    }
+}
+
+llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
+    auto it = resource_destructors_cache_.find(rk);
+    if (it != resource_destructors_cache_.end())
+        return it->second;
+
+    static const struct {
+        ResourceKind kind;
+        const char *dtorName;
+        const char *cleanupFnName;
+    } table[] = {
+        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",          "__ry_tcp_listener_cleanup"},
+        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",            "__ry_tcp_cleanup"},
+        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",            "__ry_tls_cleanup"},
+        {RK_HttpRequest,         "__ry_arc_dtor_http_request",          "__ry_http_request_cleanup"},
+        {RK_HttpResponse,        "__ry_arc_dtor_http_response",         "__ry_http_response_cleanup"},
+        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response",  "__ry_http_client_response_cleanup"},
+        {RK_JsonValue,           "__ry_arc_dtor_json_value",            "__ry_json_cleanup"},
+        {RK_Thread,              "__ry_arc_dtor_thread",                "__ry_thread_cleanup"},
+        {RK_Lock,                "__ry_arc_dtor_lock",                  "__ry_lock_cleanup"},
+        {RK_RWLock,              "__ry_arc_dtor_rwlock",                "__ry_rwlock_cleanup"},
+        {RK_Semaphore,           "__ry_arc_dtor_semaphore",             "__ry_semaphore_cleanup"},
+        {RK_Barrier,             "__ry_arc_dtor_barrier",               "__ry_barrier_cleanup"},
+        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",            "__ry_atomic_int_cleanup"},
+        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",           "__ry_atomic_bool_cleanup"},
+    };
+
+    const char *dtorName = nullptr;
+    const char *cleanupFnName = nullptr;
+    for (auto &entry : table) {
+        if (entry.kind == rk) {
+            dtorName = entry.dtorName;
+            cleanupFnName = entry.cleanupFnName;
+            break;
+        }
+    }
+    if (!dtorName)
+        return {};
+
+    auto *dtorTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto *dtorFn = llvm::Function::Create(
+        dtorTy, llvm::Function::InternalLinkage, dtorName, mod_.get());
+    dtorFn->addFnAttr(llvm::Attribute::NoUnwind);
+
+    auto *entryBB = llvm::BasicBlock::Create(*ctx_, "entry", dtorFn);
+
+    auto *savedBB = builder_.GetInsertBlock();
+    auto savedPt = builder_.GetInsertPoint();
+    builder_.SetInsertPoint(entryBB);
+
+    auto *dataPtr = dtorFn->getArg(0);
+    auto cleanupTy = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
+    auto cleanupFn = mod_->getOrInsertFunction(cleanupFnName, cleanupTy);
+    builder_.CreateCall(cleanupFn, {dataPtr});
+    builder_.CreateRetVoid();
+
+    if (savedBB)
+        builder_.SetInsertPoint(savedBB, savedPt);
+
+    llvm::FunctionCallee callee(dtorTy, dtorFn);
+    resource_destructors_cache_[rk] = callee;
+    return callee;
+}
+
 llvm::FunctionCallee CodeGen::resolveCollectionDestructor(llvm::AllocaInst *alloca) {
     if (type_meta_[TM_ListElem].count(alloca))
         return getOrCreateCollectionDestructor(CollectionKind::List);
@@ -164,7 +265,7 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
 
     builder_.SetInsertPoint(releaseBB);
     auto *headerPtr = emitArcGetHeaderFromData(val);
-    emitArcRelease(headerPtr, isArcAtomic(val), resolveCollectionDestructor(alloca));
+    emitArcRelease(headerPtr, isArcAtomic(val), resolveDestructor(alloca));
     builder_.CreateBr(skipBB);
 
     builder_.SetInsertPoint(skipBB);

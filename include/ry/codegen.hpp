@@ -43,6 +43,14 @@ private:
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
 
+    // Resource type tracking
+    enum ResourceKind : int {
+        RK_TcpListener, RK_TcpStream, RK_TlsStream,
+        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
+        RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
+        RK_AtomicInt, RK_AtomicBool, RK_COUNT
+    };
+
     // ARC infrastructure
     llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
     static constexpr uint64_t ARC_HEADER_SIZE = 16;
@@ -52,6 +60,7 @@ private:
     std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
     std::unordered_set<llvm::AllocaInst*> weak_managed_vars_; // allocas holding weak ref ptrs (header ptrs)
     std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
+    std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -84,6 +93,11 @@ private:
     enum class CollectionKind { List, Map, Set };
     llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
     std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
+    llvm::FunctionCallee getOrCreateResourceDestructor(ResourceKind rk);
+    std::map<ResourceKind, llvm::FunctionCallee> resource_destructors_cache_;
+    llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);
+    ResourceKind detectResourceKind(llvm::Value *val);
+    void nullifyResourceVar(const ExprNode &argExpr);
 
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
@@ -276,6 +290,7 @@ private:
         std::unordered_set<llvm::Value*> savedArcOwned_;
         std::unordered_set<llvm::AllocaInst*> savedWeakManaged_;
         std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
+        std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;
@@ -680,12 +695,6 @@ private:
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
-    enum ResourceKind : int {
-        RK_TcpListener, RK_TcpStream, RK_TlsStream,
-        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
-        RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
-        RK_AtomicInt, RK_AtomicBool, RK_COUNT
-    };
     std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,

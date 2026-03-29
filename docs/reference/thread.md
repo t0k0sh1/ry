@@ -16,7 +16,7 @@ The `thread` package provides OS-level threading primitives for CPU-bound parall
 | `AtomicInt` | Opaque handle for an atomic 64-bit integer |
 | `AtomicBool` | Opaque handle for an atomic boolean |
 
-All types are opaque pointers. Use the corresponding `*_new()` functions to create instances.
+All types are opaque pointers managed by ARC (Automatic Reference Counting). Use the corresponding `*_new()` functions to create instances. Resources are automatically cleaned up when no longer referenced — explicit `*_free()` calls are optional but supported for immediate cleanup.
 
 ## Import
 

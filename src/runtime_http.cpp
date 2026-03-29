@@ -1,6 +1,7 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_net_types.hpp"
+#include "ry/runtime_arc.hpp"
 
 #include <openssl/err.h>
 
@@ -480,12 +481,13 @@ extern "C" void *__ry_http_read_request(void *stream) {
     std::string raw = recv_all(handle->fd, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
 
-    auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
-    memset(req, 0, sizeof(HttpRequestHandle));
+    void *req_mem = arc_alloc(sizeof(HttpRequestHandle));
+    if (!req_mem) return nullptr;
+    auto *req = new (req_mem) HttpRequestHandle{};
 
     size_t line_end;
     if (!parse_request_line(raw, req, line_end)) {
-        free(req);
+        arc_free(req);
         return nullptr;
     }
 
@@ -550,7 +552,9 @@ extern "C" void *__ry_http_cookies(void *r) {
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
-    auto *resp = (HttpResponseHandle *)checked_malloc(sizeof(HttpResponseHandle));
+    void *resp_mem = arc_alloc(sizeof(HttpResponseHandle));
+    if (!resp_mem) return nullptr;
+    auto *resp = new (resp_mem) HttpResponseHandle{};
     resp->status = status;
     const char *b = body ? body : "";
     resp->body_len = (int64_t)strlen(b);
@@ -708,7 +712,9 @@ extern "C" void __ry_http_send_response(void *stream, void *response, int64_t ke
     __ry_send_all(handle->fd, out.c_str(), out.size());
 }
 
-extern "C" void __ry_http_request_free(void *r) {
+// Free internal fields of an HttpRequestHandle but NOT the handle memory itself.
+// Used by ARC weak-reference cleanup paths.
+extern "C" void __ry_http_request_cleanup(void *r) {
     if (!r) return;
     auto *req = (HttpRequestHandle *)r;
     free(req->method);
@@ -729,13 +735,25 @@ extern "C" void __ry_http_request_free(void *r) {
     }
     free(req->form_files);
     free(req->body);
-    free(req);
 }
 
-extern "C" void __ry_http_response_free(void *r) {
+extern "C" void __ry_http_request_free(void *r) {
+    if (!r) return;
+    __ry_http_request_cleanup(r);
+    arc_free(r);
+}
+
+// Free internal fields of an HttpResponseHandle but NOT the handle memory itself.
+// Used by ARC weak-reference cleanup paths.
+extern "C" void __ry_http_response_cleanup(void *r) {
     if (!r) return;
     auto *resp = (HttpResponseHandle *)r;
     free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
     free(resp->body);
-    free(resp);
+}
+
+extern "C" void __ry_http_response_free(void *r) {
+    if (!r) return;
+    __ry_http_response_cleanup(r);
+    arc_free(r);
 }

@@ -10,7 +10,7 @@
 | `TcpStream` | Opaque handle for a TCP connection |
 | `TlsStream` | Opaque handle for a TLS-encrypted TCP connection |
 
-Both types are opaque pointers. They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tls_connect()` for `TlsStream`.
+All types are opaque pointers managed by ARC (Automatic Reference Counting). They cannot be constructed directly; use `bind()` or `connect()` to obtain `TcpListener`/`TcpStream`, and `tls_connect()` for `TlsStream`. Resources are automatically closed when no longer referenced — explicit `close()` calls are optional but supported for immediate cleanup.
 
 ## Functions (from `net`)
 
