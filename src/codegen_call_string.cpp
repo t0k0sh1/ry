@@ -179,14 +179,8 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("char_at() requires str as first argument");
 
-    auto utf8LenFn = getRuntimeFn("__ry_utf8_len", i64Ty_, {ptrTy_});
-    llvm::Value *charLen = builder_.CreateCall(utf8LenFn, {s}, "char_at_len");
-    emitBoundsCheck(idx, charLen,
-                    "runtime error: index %lld out of bounds for string of length %lld\n",
-                    ".str_idx_err", "str_idx");
-
-    auto charAtFn = getRuntimeFn("__ry_utf8_char_at", ptrTy_, {ptrTy_, i64Ty_});
-    return builder_.CreateCall(charAtFn, {s, idx}, "char_at");
+    auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_});
+    return builder_.CreateCall(fn, {s, idx}, "char_at");
 }
 
 // replace(s, old, new) → str

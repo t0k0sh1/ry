@@ -7,6 +7,7 @@ char *__ry_utf8_char_at(const char *s, int64_t i);
 char *__ry_utf8_substring(const char *s, int64_t start, int64_t end);
 char *__ry_utf8_reverse(const char *s);
 int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset);
+char *__ry_utf8_char_at_checked(const char *s, int64_t i);
 }
 
 // Helper: compare and free
@@ -119,3 +120,37 @@ TEST(RuntimeUtf8, CharIndexMixed) {
     // "café" = c(1) a(1) f(1) é(2) → byte offset 3 = char index 3
     EXPECT_EQ(__ry_utf8_char_index("caf\xC3\xA9", 3), 3);
 }
+
+// --- __ry_utf8_char_at_checked tests ---
+
+TEST(RuntimeUtf8, CharAtCheckedAscii) {
+    expectStr(__ry_utf8_char_at_checked("hello", 0), "h");
+    expectStr(__ry_utf8_char_at_checked("hello", 4), "o");
+}
+
+TEST(RuntimeUtf8, CharAtCheckedUtf8) {
+    // "あいう" index 1 = "い"
+    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", 1),
+              "\xE3\x81\x84");
+}
+
+TEST(RuntimeUtf8, CharAtChecked4Byte) {
+    // "😀😁" index 1 = "😁"
+    expectStr(__ry_utf8_char_at_checked("\xF0\x9F\x98\x80\xF0\x9F\x98\x81", 1),
+              "\xF0\x9F\x98\x81");
+}
+
+TEST(RuntimeUtf8, CharAtCheckedNegativeIndex) {
+    expectStr(__ry_utf8_char_at_checked("hello", -1), "o");
+    expectStr(__ry_utf8_char_at_checked("hello", -5), "h");
+}
+
+TEST(RuntimeUtf8, CharAtCheckedNegativeUtf8) {
+    // "あいう" index -1 = "う"
+    expectStr(__ry_utf8_char_at_checked("\xE3\x81\x82\xE3\x81\x84\xE3\x81\x86", -1),
+              "\xE3\x81\x86");
+}
+
+// OOB behavior for __ry_utf8_char_at_checked is covered by codegen-level
+// death tests: StringCharAtOutOfRange, StringCharAtNegativeOOB,
+// StringCharAtEmptyString, StringCharAtUTF8OutOfRange.
