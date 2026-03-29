@@ -34,14 +34,19 @@ void *arcGetDataPtr(void *header) {
     return static_cast<char *>(header) + 16;
 }
 
-// Simulate arc_retain (non-atomic)
+static constexpr int64_t ARC_IMMORTAL_VAL = INT64_MAX;
+
+// Simulate arc_retain (non-atomic, with immortal check)
 void arcRetain(void *header) {
-    static_cast<ArcHeader *>(header)->strong_count += 1;
+    auto *hdr = static_cast<ArcHeader *>(header);
+    if (hdr->strong_count == ARC_IMMORTAL_VAL) return;
+    hdr->strong_count += 1;
 }
 
-// Simulate arc_release (non-atomic); returns true if freed
+// Simulate arc_release (non-atomic, with immortal check); returns true if freed
 bool arcRelease(void *header) {
     auto *hdr = static_cast<ArcHeader *>(header);
+    if (hdr->strong_count == ARC_IMMORTAL_VAL) return false;
     hdr->strong_count -= 1;
     if (hdr->strong_count == 0) {
         std::free(header);
@@ -145,18 +150,13 @@ TEST(ArcInfraTest, DataIntegrityThroughHeader) {
 
 // ===== Immortal sentinel tests =====
 
-static constexpr int64_t ARC_IMMORTAL = INT64_MAX;
-
 TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL;
+    hdr->strong_count = ARC_IMMORTAL_VAL;
 
-    // Retain should be skipped for immortal objects
-    // Simulate the check: if strong_count == INT64_MAX, skip
-    if (hdr->strong_count != ARC_IMMORTAL)
-        hdr->strong_count += 1;
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
+    arcRetain(p);
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
 
     std::free(p);
 }
@@ -164,12 +164,10 @@ TEST(ArcInfraTest, ImmortalSentinelSkipsRetain) {
 TEST(ArcInfraTest, ImmortalSentinelSkipsRelease) {
     void *p = arcAlloc(16);
     auto *hdr = static_cast<ArcHeader *>(p);
-    hdr->strong_count = ARC_IMMORTAL;
+    hdr->strong_count = ARC_IMMORTAL_VAL;
 
-    // Release should be skipped for immortal objects
-    if (hdr->strong_count != ARC_IMMORTAL)
-        hdr->strong_count -= 1;
-    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL);
+    EXPECT_FALSE(arcRelease(p));
+    EXPECT_EQ(hdr->strong_count, ARC_IMMORTAL_VAL);
 
     std::free(p);
 }
@@ -183,17 +181,17 @@ TEST(ArcInfraTest, GetHeaderFromData) {
     std::free(p);
 }
 
-// ===== Integration: list literal uses ARC allocation =====
+// ===== Integration: collection literals under ARC (functional) =====
 
-TEST_F(CodeGenTest, ListLiteralCreatesArcHeader) {
+TEST_F(CodeGenTest, ListLiteralProducesCorrectLength) {
     EXPECT_EQ(runSource("x = [1, 2, 3]\nprint(length(x))"), "3\n");
 }
 
-TEST_F(CodeGenTest, MapLiteralCreatesArcHeader) {
+TEST_F(CodeGenTest, MapLiteralProducesCorrectLength) {
     EXPECT_EQ(runSource("m = {\"a\": 1, \"b\": 2}\nprint(length(m))"), "2\n");
 }
 
-TEST_F(CodeGenTest, SetLiteralCreatesArcHeader) {
+TEST_F(CodeGenTest, SetLiteralProducesCorrectLength) {
     EXPECT_EQ(runSource("s: Set<int> = {1, 2, 3}\nprint(length(s))"), "3\n");
 }
 

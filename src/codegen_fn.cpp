@@ -105,7 +105,9 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         // Emit ensure checks (postconditions) before return
         emitEnsureChecks(val);
 
-        // Release all ARC-managed variables in all scopes before return
+        // Retain return value before scope cleanup to prevent dangling pointer
+        // when returning a value loaded from an ARC-managed local/parameter
+        tryRetainArcSource(val);
         emitScopeCleanupToDepth(0);
 
         builder_.CreateRet(val);

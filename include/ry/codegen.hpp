@@ -49,6 +49,7 @@ private:
     static constexpr int64_t ARC_IMMORTAL = INT64_MAX;    // sentinel: never retain/release
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
     std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
+    std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
 
     // ARC emit methods
     llvm::Value *emitArcAlloc(llvm::Value *dataSize);
@@ -260,6 +261,7 @@ private:
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> savedScope_;
         std::vector<std::unordered_set<std::string>> savedConstScope_;
         std::unordered_set<llvm::AllocaInst*> savedArcManaged_;
+        std::unordered_set<llvm::Value*> savedArcOwned_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;

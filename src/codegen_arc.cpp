@@ -15,9 +15,11 @@ llvm::Value *CodeGen::emitArcAlloc(llvm::Value *dataSize) {
 }
 
 llvm::Value *CodeGen::emitArcGetDataPtr(llvm::Value *headerPtr) {
-    return builder_.CreateGEP(i8Ty_, headerPtr,
+    auto *dataPtr = builder_.CreateGEP(i8Ty_, headerPtr,
                               llvm::ConstantInt::get(i64Ty_, ARC_HEADER_SIZE),
                               "arc_data");
+    arc_owned_values_.insert(dataPtr);
+    return dataPtr;
 }
 
 llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
@@ -169,13 +171,21 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
 }
 
 bool CodeGen::tryRetainArcSource(llvm::Value *val) {
-    auto *load = llvm::dyn_cast<llvm::LoadInst>(val);
-    if (!load) return false;
-    auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
-    if (!srcAlloca || !isArcManaged(srcAlloca)) return false;
-    auto *hdr = emitArcGetHeaderFromData(val);
-    emitArcRetain(hdr, isArcAtomic(val));
-    return true;
+    // Case 1: LoadInst from an ARC-managed alloca
+    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
+        auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(load->getPointerOperand());
+        if (srcAlloca && isArcManaged(srcAlloca)) {
+            auto *hdr = emitArcGetHeaderFromData(val);
+            emitArcRetain(hdr, isArcAtomic(val));
+            return true;
+        }
+    }
+    // Case 2: Value produced by emitArcAlloc (e.g., f-string, interpolated string)
+    // These already have strong_count=1 from allocation, no retain needed,
+    // but signal to caller that this is ARC-owned
+    if (arc_owned_values_.count(val))
+        return true;
+    return false;
 }
 
 llvm::FunctionCallee CodeGen::getOrCreateCollectionDestructor(CollectionKind kind) {

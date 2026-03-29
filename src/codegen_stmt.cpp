@@ -413,7 +413,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
                             type_meta_[TM_MapKey].count(ptr) ||
                             type_meta_[TM_SetElem].count(ptr);
-        if (isCollection || tryRetainArcSource(val))
+        bool isArcOwned = arc_owned_values_.count(val) > 0;
+        if (isCollection || isArcOwned || tryRetainArcSource(val))
             markArcManaged(ptr);
     }
 
@@ -545,12 +546,12 @@ void CodeGen::emitStmt(AssignStmt &s) {
         emitConstraintCheck(val, tcIt->second, s.name);
     }
 
-    // ARC: release old value, retain new value if applicable
+    // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
     if (isArcManaged(ptr)) {
+        tryRetainArcSource(val);
         auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
         auto *oldHdr = emitArcGetHeaderFromData(oldVal);
         emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveCollectionDestructor(ptr));
-        tryRetainArcSource(val);
     }
 
     builder_.CreateStore(val, ptr);

@@ -98,6 +98,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedScope_ = std::move(cg_.scope_stack_);
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
     savedArcManaged_ = std::move(cg_.arc_managed_vars_);
+    savedArcOwned_ = std::move(cg_.arc_owned_values_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -107,6 +108,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
+    cg_.arc_owned_values_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -117,6 +119,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
     cg_.arc_managed_vars_ = std::move(savedArcManaged_);
+    cg_.arc_owned_values_ = std::move(savedArcOwned_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
