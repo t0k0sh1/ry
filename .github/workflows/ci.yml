@@ -13,14 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Cache LLVM 21
-        id: cache-llvm
-        uses: actions/cache@v4
-        with:
-          path: /usr/lib/llvm-21
-          key: llvm-21-ubuntu-${{ runner.os }}
       - name: Install LLVM 21
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
@@ -45,14 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Cache LLVM 21
-        id: cache-llvm
-        uses: actions/cache@v4
-        with:
-          path: /usr/lib/llvm-21
-          key: llvm-21-ubuntu-${{ runner.os }}
       - name: Install LLVM 21
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
