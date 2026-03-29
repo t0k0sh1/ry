@@ -241,12 +241,28 @@ private:
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+    // Nested closure shape for cache key differentiation
+    struct NestedClosureShape {
+        size_t index;
+        std::vector<CapturedArcKind> arcKinds;
+        std::vector<llvm::Type*> types;
+        std::vector<ResourceKind> resourceKinds;
+        bool operator<(const NestedClosureShape &o) const {
+            if (index != o.index) return index < o.index;
+            if (arcKinds != o.arcKinds) return arcKinds < o.arcKinds;
+            if (types.size() != o.types.size()) return types.size() < o.types.size();
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (types[i] != o.types[i])
+                    return std::less<llvm::Type*>{}(types[i], o.types[i]);
+            }
+            return resourceKinds < o.resourceKinds;
+        }
+    };
     struct ClosureDtorKey {
         std::vector<CapturedArcKind> arcKinds;
         std::vector<llvm::Type*> types;
         std::vector<ResourceKind> resourceKinds;
-        // Nested closure shapes: sorted (index, capturedArcKinds) pairs for CAK_Closure captures
-        std::vector<std::pair<size_t, std::vector<CapturedArcKind>>> nestedShapes;
+        std::vector<NestedClosureShape> nestedShapes;
         bool operator<(const ClosureDtorKey &o) const {
             if (arcKinds != o.arcKinds) return arcKinds < o.arcKinds;
             if (types.size() != o.types.size()) return types.size() < o.types.size();

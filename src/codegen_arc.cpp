@@ -226,7 +226,8 @@ llvm::Value *CodeGen::emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
 
     builder_.SetInsertPoint(releaseBB);
     auto *hdr = emitArcGetHeaderFromData(dataPtr);
-    emitArcRelease(hdr, /*atomic=*/true, getOrCreateResourceDestructor(rk));
+    bool atomic = isArcAtomic(dataPtr);
+    emitArcRelease(hdr, atomic, getOrCreateResourceDestructor(rk));
     builder_.CreateBr(doneBB);
 
     builder_.SetInsertPoint(doneBB);
@@ -861,9 +862,10 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
         return {};
 
     // Cache key: capturedArcKinds + capturedTypes + capturedResourceKinds + nested closure shapes
-    std::vector<std::pair<size_t, std::vector<CapturedArcKind>>> nestedShapes;
+    std::vector<NestedClosureShape> nestedShapes;
     for (auto &[idx, ci] : info.capturedClosureInfos)
-        nestedShapes.emplace_back(idx, ci.capturedArcKinds);
+        nestedShapes.push_back({idx, ci.capturedArcKinds, ci.capturedTypes,
+                                ci.capturedResourceKinds});
     std::sort(nestedShapes.begin(), nestedShapes.end());
     ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes,
                             info.capturedResourceKinds, std::move(nestedShapes)};
