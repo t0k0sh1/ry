@@ -1,14 +1,14 @@
-[English](06-structs.md) | [日本語](../ja/tutorial/06-structs.md) | [繁體中文](../zh/tutorial/06-structs.md)
+[English](06-records.md) | [日本語](../ja/tutorial/06-records.md) | [繁體中文](../zh/tutorial/06-records.md)
 
-# Structs and Enums
+# Records and Enums
 
 [<- Prev: Functions](05-functions.md) | [Next: Collections ->](07-collections.md)
 
 ---
 
-## Defining Structs with record
+## Defining Records
 
-Structs are defined with the `record` keyword. Each field is described in the `name: type` format.
+Records are defined with the `record` keyword. Each field is described in the `name: type` format.
 
 ```python
 record Point:
@@ -16,13 +16,13 @@ record Point:
     y: int
 ```
 
-Structs are value types allocated on the stack.
+Records are value types allocated on the stack.
 
 ---
 
-## Using Constructors
+## Creating Instances
 
-Create an instance by calling the struct name as a function. Arguments are specified in the order the fields are defined.
+Create an instance by calling the record name as a function. Arguments are specified in the order the fields are defined.
 
 ```python
 p = Point(10, 20)
@@ -40,7 +40,7 @@ print(p.x)   # 10
 print(p.y)   # 20
 ```
 
-> **Note**: Passing a struct directly to `print` causes an error. Pass individual fields instead.
+> **Note**: Passing a record directly to `print` causes an error. Pass individual fields instead.
 
 ---
 
@@ -58,9 +58,9 @@ print(p.x)   # 100
 
 ---
 
-## Structs as Function Parameters
+## Records as Function Parameters
 
-Structs can be passed as function arguments.
+Records can be passed as function arguments.
 
 ```python
 record Point:
@@ -77,9 +77,9 @@ print(distance_x(p1, p2))   # 6
 
 ---
 
-## Nested Structs
+## Nested Records
 
-A struct's field can be another struct.
+A record's field can be another record.
 
 ```python
 record Point:

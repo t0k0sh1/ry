@@ -2,7 +2,7 @@
 
 # コレクション
 
-[← 前: 構造体](06-structs.md) | [次: 高度な機能 →](08-advanced.md)
+[← 前: Record](06-records.md) | [次: 高度な機能 →](08-advanced.md)
 
 Ry には4種類のコレクション型があります: **タプル**、**リスト**、**マップ**、**セット**。
 
@@ -399,4 +399,4 @@ for k, v in {"a": 1, "b": 2}.iter():
 
 ---
 
-[← 前: 構造体](06-structs.md) | [次: 高度な機能 →](08-advanced.md)
+[← 前: Record](06-records.md) | [次: 高度な機能 →](08-advanced.md)

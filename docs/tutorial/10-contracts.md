@@ -4,7 +4,7 @@
 
 [<- Prev: Packages](09-modules.md) | [Next: Testing ->](11-testing.md)
 
-Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and struct invariants (`invariant`). Contract violations terminate the program. For the full specification, see [Design by Contract Reference](../reference/contracts.md).
+Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the program. For the full specification, see [Design by Contract Reference](../reference/contracts.md).
 
 ---
 
@@ -81,9 +81,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## Struct Invariants (`invariant`)
+## Record Invariants (`invariant`)
 
-Use `invariant` to specify conditions that must always hold for a struct. Invariants are checked after construction and after every field assignment.
+Use `invariant` to specify conditions that must always hold for a record. Invariants are checked after construction and after every field assignment.
 
 ```python
 record BankAccount:

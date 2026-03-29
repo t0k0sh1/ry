@@ -2,7 +2,7 @@
 
 # 函式
 
-[← 前一篇：控制流程](04-control-flow.md) | [下一篇：結構體 →](06-structs.md)
+[← 前一篇：控制流程](04-control-flow.md) | [下一篇：Record →](06-records.md)
 
 ---
 
@@ -87,4 +87,4 @@ greet()   # 42
 
 ---
 
-[← 前一篇：控制流程](04-control-flow.md) | [下一篇：結構體 →](06-structs.md)
+[← 前一篇：控制流程](04-control-flow.md) | [下一篇：Record →](06-records.md)

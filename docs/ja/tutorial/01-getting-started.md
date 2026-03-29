@@ -6,26 +6,23 @@
 
 ---
 
-## 必要環境
+## インストール
 
-Ry をビルドして実行するには以下が必要です。
-
-- **LLVM 21**
-- **CMake 3.20 以上**
-- **C++17 対応コンパイラ**（GCC 7+ / Clang 5+ 等）
-
----
-
-## ビルド手順
-
-リポジトリのルートで以下のコマンドを実行します。
+### クイックインストール（macOS Apple Silicon）
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
-cmake --build build
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-ビルドが成功すると `build/ry` という実行ファイルが生成されます。
+`ry` バイナリが `~/.local/bin` に、標準ライブラリが `~/.ry/lib/std/` にインストールされます。
+
+`~/.local/bin` が `PATH` に含まれていることを確認してください:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+ソースからビルドする場合や他のプラットフォームについては、[README のインストールセクション](../../../README.md#installation)を参照してください。
 
 ---
 
@@ -66,7 +63,7 @@ print("Hello, World!")
 次のコマンドで実行します。
 
 ```bash
-./build/ry hello.ry
+ry hello.ry
 ```
 
 出力:
@@ -78,9 +75,9 @@ Hello, World!
 パイプや Here-document を使って、標準入力からコードを実行することもできます。
 
 ```bash
-echo 'print("Hello, World!")' | ./build/ry
+echo 'print("Hello, World!")' | ry
 
-./build/ry <<'RY'
+ry <<'RY'
 print("Hello, World!")
 RY
 ```

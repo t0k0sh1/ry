@@ -6,26 +6,23 @@
 
 ---
 
-## 前提条件
+## 安装
 
-要构建并运行 Ry，需要以下环境：
-
-- **LLVM 21**
-- **CMake 3.20 以上**
-- **支持 C++17 的编译器**（GCC 7+ / Clang 5+ 等）
-
----
-
-## 构建步骤
-
-在仓库根目录下执行以下命令：
+### 快速安装（macOS Apple Silicon）
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
-cmake --build build
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-构建成功后，会生成 `build/ry` 可执行文件。
+`ry` 二进制文件将安装到 `~/.local/bin`，标准库将安装到 `~/.ry/lib/std/`。
+
+请确保 `~/.local/bin` 已添加到 `PATH`：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+如需从源代码构建或在其他平台安装，请参阅 [README 的安装部分](../../../README.md#installation)。
 
 ---
 
@@ -66,7 +63,7 @@ print("Hello, World!")
 使用以下命令运行：
 
 ```bash
-./build/ry hello.ry
+ry hello.ry
 ```
 
 输出：
@@ -78,9 +75,9 @@ Hello, World!
 也可以通过管道或 Here-document 从标准输入执行代码：
 
 ```bash
-echo 'print("Hello, World!")' | ./build/ry
+echo 'print("Hello, World!")' | ry
 
-./build/ry <<'RY'
+ry <<'RY'
 print("Hello, World!")
 RY
 ```

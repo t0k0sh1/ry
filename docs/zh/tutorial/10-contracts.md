@@ -4,7 +4,7 @@
 
 [<- 上一篇：包](09-modules.md) | [下一篇：测试 ->](11-testing.md)
 
-Ry 支持 Eiffel 风格的契约式设计，包含前置条件（`require`）、后置条件（`ensure`）以及结构体不变量（`invariant`）。当契约违反时，程序会终止。详细规格请参阅[契约式设计参考手册](../reference/contracts.md)。
+Ry 支持 Eiffel 风格的契约式设计，包含前置条件（`require`）、后置条件（`ensure`）以及 record 不变量（`invariant`）。当契约违反时，程序会终止。详细规格请参阅[契约式设计参考手册](../reference/contracts.md)。
 
 ---
 
@@ -81,9 +81,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## 结构体不变量（`invariant`）
+## Record 不变量（`invariant`）
 
-使用 `invariant` 指定结构体必须始终成立的条件。不变量会在构造后及每次字段赋值后检查。
+使用 `invariant` 指定 record 必须始终成立的条件。不变量会在建立后及每次字段赋值后检查。
 
 ```python
 record BankAccount:

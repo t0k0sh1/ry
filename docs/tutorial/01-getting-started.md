@@ -6,26 +6,23 @@ Next tutorial -> [02 - Variables and Types](02-variables-and-types.md)
 
 ---
 
-## Prerequisites
+## Installation
 
-To build and run Ry, you need the following:
-
-- **LLVM 21**
-- **CMake 3.20 or later**
-- **A C++17 compatible compiler** (GCC 7+ / Clang 5+, etc.)
-
----
-
-## Build Instructions
-
-Run the following commands from the repository root:
+### Quick Install (macOS Apple Silicon)
 
 ```bash
-cmake -B build -DLLVM_DIR=/usr/local/llvm/lib/cmake/llvm
-cmake --build build
+curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-On a successful build, an executable named `build/ry` will be generated.
+This installs the `ry` binary to `~/.local/bin` and the standard library to `~/.ry/lib/std/`.
+
+Make sure `~/.local/bin` is in your `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To build from source or install on other platforms, see the [Installation section in README](../../../README.md#installation).
 
 ---
 
@@ -66,7 +63,7 @@ print("Hello, World!")
 Run it with the following command:
 
 ```bash
-./build/ry hello.ry
+ry hello.ry
 ```
 
 Output:
@@ -78,9 +75,9 @@ Hello, World!
 You can also run code from stdin using a pipe or here-document:
 
 ```bash
-echo 'print("Hello, World!")' | ./build/ry
+echo 'print("Hello, World!")' | ry
 
-./build/ry <<'RY'
+ry <<'RY'
 print("Hello, World!")
 RY
 ```

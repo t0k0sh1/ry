@@ -2,7 +2,7 @@
 
 # Collections
 
-[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)
+[<- Prev: Records](06-records.md) | [Next: Advanced Features ->](08-advanced.md)
 
 Ry has four collection types: **Tuples**, **Lists**, **Maps**, and **Sets**.
 
@@ -399,4 +399,4 @@ for k, v in {"a": 1, "b": 2}.iter():
 
 ---
 
-[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)
+[<- Prev: Records](06-records.md) | [Next: Advanced Features ->](08-advanced.md)

@@ -17,7 +17,7 @@ If you are new to Ry, please read through these in order.
 | 03 | [Operators](tutorial/03-operators.md) | Arithmetic, comparison, logical, bitwise, compound assignment operators |
 | 04 | [Control Flow](tutorial/04-control-flow.md) | if/elif/else, while, for/range, break/continue |
 | 05 | [Functions](tutorial/05-functions.md) | fn definitions, recursion, overloading, lambdas, UFCS |
-| 06 | [Structs and Enums](tutorial/06-structs.md) | type definitions, field access, methods, enum |
+| 06 | [Records and Enums](tutorial/06-records.md) | type definitions, field access, methods, enum |
 | 07 | [Collections](tutorial/07-collections.md) | Tuples, lists, maps, sets |
 | 08 | [Advanced Features](tutorial/08-advanced.md) | Closures, operator overloading, Option type |
 | 09 | [Packages](tutorial/09-modules.md) | Packages, std library, directory packages |
