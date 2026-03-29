@@ -120,9 +120,12 @@ TEST(ArcInfraTest, SingleOwnerRelease) {
 // by compiling a trivial program and inspecting the CodeGen state.
 
 TEST_F(CodeGenTest, ArcHeaderTypeExists) {
-    // Compile a trivial program — this exercises the CodeGen constructor
-    // which creates arcHeaderTy_
-    EXPECT_NO_THROW(runSource("print(1)"));
+    auto tsm = compileSource("print(1)");
+    tsm.withModuleDo([](Module &mod) {
+        auto *arcHeaderTy = StructType::getTypeByName(mod.getContext(), "ArcHeader");
+        ASSERT_NE(arcHeaderTy, nullptr);
+        EXPECT_EQ(arcHeaderTy->getNumElements(), 2u);  // { i64, i64 }
+    });
 }
 
 // ===== Data integrity through ARC header =====
