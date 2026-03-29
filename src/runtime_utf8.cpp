@@ -3,36 +3,36 @@
 #include <cstdlib>
 #include <cstring>
 
-// UTF-8 lead byte → validated byte count (clamps to remaining bytes)
 static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
-static int utf8_char_len_safe(const char *s, size_t remaining) {
-    if (remaining == 0) return 0;
+// UTF-8 lead byte → byte count using null-terminator detection.
+// Safe because is_cont('\0') is false: (0x00 & 0xC0) == 0x00 != 0x80,
+// so truncated sequences at string end are naturally rejected.
+static int utf8_char_len_nul(const char *s) {
     unsigned char c = static_cast<unsigned char>(s[0]);
+    if (c == 0) return 0;
     if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && remaining >= 2 && is_cont(s[1])) return 2;
-    if ((c & 0xF0) == 0xE0 && remaining >= 3 && is_cont(s[1]) && is_cont(s[2])) return 3;
-    if ((c & 0xF8) == 0xF0 && remaining >= 4 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
+    if ((c & 0xE0) == 0xC0 && is_cont(s[1])) return 2;
+    if ((c & 0xF0) == 0xE0 && is_cont(s[1]) && is_cont(s[2])) return 3;
+    if ((c & 0xF8) == 0xF0 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
     return 1; // invalid/truncated byte treated as 1
 }
 
 extern "C" {
 
 int64_t __ry_utf8_len(const char *s) {
-    const char *end = s + strlen(s);
     int64_t count = 0;
     while (*s) {
-        s += utf8_char_len_safe(s, (size_t)(end - s));
+        s += utf8_char_len_nul(s);
         ++count;
     }
     return count;
 }
 
 char *__ry_utf8_char_at(const char *s, int64_t i) {
-    const char *end = s + strlen(s);
     const char *p = s;
     for (int64_t idx = 0; *p; ++idx) {
-        int len = utf8_char_len_safe(p, (size_t)(end - p));
+        int len = utf8_char_len_nul(p);
         if (idx == i) {
             char *buf = static_cast<char *>(malloc(len + 1));
             memcpy(buf, p, len);
@@ -47,14 +47,13 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
 }
 
 char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
-    const char *end = s + strlen(s);
     const char *p = s;
 
     if (i >= 0) {
         // Positive index: single forward scan, stop at target — O(i).
         int64_t idx = 0;
         while (*p) {
-            int len = utf8_char_len_safe(p, (size_t)(end - p));
+            int len = utf8_char_len_nul(p);
             if (idx == i) {
                 char *buf = static_cast<char *>(malloc(len + 1));
                 memcpy(buf, p, len);
@@ -74,7 +73,7 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
     // Negative index: count all codepoints to resolve wrap.
     int64_t count = 0;
     while (*p) {
-        p += utf8_char_len_safe(p, (size_t)(end - p));
+        p += utf8_char_len_nul(p);
         ++count;
     }
 
@@ -89,9 +88,9 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
     // Second pass: scan to the resolved position — O(resolved).
     p = s;
     for (int64_t idx = 0; idx < resolved; ++idx)
-        p += utf8_char_len_safe(p, (size_t)(end - p));
+        p += utf8_char_len_nul(p);
 
-    int len = utf8_char_len_safe(p, (size_t)(end - p));
+    int len = utf8_char_len_nul(p);
     char *buf = static_cast<char *>(malloc(len + 1));
     memcpy(buf, p, len);
     buf[len] = '\0';
@@ -99,7 +98,6 @@ char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
 }
 
 char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
-    const char *strEnd = s + strlen(s);
     const char *p = s;
     const char *startPtr = nullptr;
     const char *endPtr = nullptr;
@@ -108,7 +106,7 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
     while (*p) {
         if (idx == start) startPtr = p;
         if (idx == endIdx) { endPtr = p; break; }
-        p += utf8_char_len_safe(p, (size_t)(strEnd - p));
+        p += utf8_char_len_nul(p);
         ++idx;
     }
     if (idx == start) startPtr = p;
@@ -133,14 +131,13 @@ char *__ry_utf8_reverse(const char *s) {
     size_t count = 0;
     CPInfo *cps = static_cast<CPInfo *>(malloc(capacity * sizeof(CPInfo)));
 
-    const char *end = s + totalBytes;
     const char *p = s;
     while (*p) {
         if (count == capacity) {
             capacity *= 2;
             cps = static_cast<CPInfo *>(realloc(cps, capacity * sizeof(CPInfo)));
         }
-        int len = utf8_char_len_safe(p, (size_t)(end - p));
+        int len = utf8_char_len_nul(p);
         cps[count++] = {p, len};
         p += len;
     }
@@ -158,12 +155,11 @@ char *__ry_utf8_reverse(const char *s) {
 }
 
 int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
-    const char *end = s + strlen(s);
     const char *p = s;
     int64_t charIdx = 0;
     int64_t byteIdx = 0;
     while (*p && byteIdx < byte_offset) {
-        p += utf8_char_len_safe(p, (size_t)(end - p));
+        p += utf8_char_len_nul(p);
         byteIdx = p - s;
         ++charIdx;
     }
