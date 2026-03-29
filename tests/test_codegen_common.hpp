@@ -67,14 +67,17 @@ protected:
         }
     }
 
-    static std::string runSource(const std::string &src) {
+    static ThreadSafeModule compileSource(const std::string &src) {
         Lexer lex(src);
         Parser parser(lex);
         Program prog = parser.parseProgram();
 
         CodeGen cg;
-        auto tsm = cg.compile(prog);
-        return runModule(std::move(tsm));
+        return cg.compile(prog);
+    }
+
+    static std::string runSource(const std::string &src) {
+        return runModule(compileSource(src));
     }
 
     static std::string runTestSource(const std::string &src) {
