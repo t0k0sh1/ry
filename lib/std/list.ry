@@ -49,3 +49,12 @@ fn append!(values: List<int>, value: int) -> Unit
 
 @native
 fn is_empty(values: List<int>) -> bool
+
+@native
+fn remove(values: List<int>, value: int) -> Unit
+
+@native
+fn take(values: List<int>, n: int) -> List<int>
+
+@native
+fn tap(values: List<int>, f: fn(int) -> int) -> List<int>

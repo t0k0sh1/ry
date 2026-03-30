@@ -19,3 +19,6 @@ fn get(map: Map<str, int>, key: str, default: int) -> int
 
 @native
 fn merge(first_map: Map<str, int>, second_map: Map<str, int>) -> Map<str, int>
+
+@native
+fn remove(map: Map<str, int>, key: str) -> Unit
