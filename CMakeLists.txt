@@ -209,6 +209,7 @@ add_executable(ry_tests
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
     tests/test_stdin.cpp
+    tests/test_entry_point.cpp
     tests/test_help.cpp
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp
