@@ -293,11 +293,14 @@ llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string
 std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
     std::vector<std::string> typeArgs;
     std::string curr;
-    int depth = 0;
+    int angleBrackets = 0;
+    int parens = 0;
     for (char c : argsStr) {
-        if (c == '<') depth++;
-        else if (c == '>') depth--;
-        else if (c == ',' && depth == 0) {
+        if (c == '<') angleBrackets++;
+        else if (c == '>') angleBrackets--;
+        else if (c == '(') parens++;
+        else if (c == ')') parens--;
+        else if (c == ',' && angleBrackets == 0 && parens == 0) {
             typeArgs.push_back(curr);
             curr.clear();
             continue;

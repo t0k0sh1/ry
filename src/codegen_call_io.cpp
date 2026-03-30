@@ -10,7 +10,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         std::vector<llvm::Value *> args;
         for (size_t i = 0; i < nargs; ++i) {
             args.push_back(emitExpr(*e.args[i]));
-            if (args.back()->getType() != ptrTy_)
+            if (!isStringValue(args.back()))
                 codegenError(name + "() requires str arguments");
         }
         auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
