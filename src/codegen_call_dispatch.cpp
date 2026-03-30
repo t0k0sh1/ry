@@ -17,20 +17,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 if (ltPos != std::string::npos && enumName.back() == '>') {
                     std::string baseName = enumName.substr(0, ltPos);
                     std::string argsStr = enumName.substr(ltPos + 1, enumName.size() - ltPos - 2);
-                    std::vector<std::string> typeArgs;
-                    std::string curr;
-                    int depth = 0;
-                    for (char c : argsStr) {
-                        if (c == '<') depth++;
-                        else if (c == '>') depth--;
-                        else if (c == ',' && depth == 0) {
-                            typeArgs.push_back(curr);
-                            curr.clear();
-                            continue;
-                        }
-                        curr += c;
-                    }
-                    if (!curr.empty()) typeArgs.push_back(curr);
+                    auto typeArgs = splitTypeArgs(argsStr);
                     instantiateGenericEnum(enumName, baseName, typeArgs);
                 }
             }
@@ -153,19 +140,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (ltPos != std::string::npos && baseName.back() == '>') {
             std::string argsStr = baseName.substr(ltPos + 1, baseName.size() - ltPos - 2);
             baseName = baseName.substr(0, ltPos);
-            std::string curr;
-            int depth = 0;
-            for (char c : argsStr) {
-                if (c == '<') depth++;
-                else if (c == '>') depth--;
-                else if (c == ',' && depth == 0) {
-                    typeArgs.push_back(curr);
-                    curr.clear();
-                    continue;
-                }
-                curr += c;
-            }
-            if (!curr.empty()) typeArgs.push_back(curr);
+            typeArgs = splitTypeArgs(argsStr);
         }
 
         if (generic_fn_templates_.count(baseName)) {

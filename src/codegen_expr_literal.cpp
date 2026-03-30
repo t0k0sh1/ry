@@ -392,20 +392,7 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
         if (ltPos != std::string::npos && e.enum_name.back() == '>') {
             std::string baseName = e.enum_name.substr(0, ltPos);
             std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
-            std::vector<std::string> typeArgs;
-            std::string curr;
-            int depth = 0;
-            for (char c : argsStr) {
-                if (c == '<') depth++;
-                else if (c == '>') depth--;
-                else if (c == ',' && depth == 0) {
-                    typeArgs.push_back(curr);
-                    curr.clear();
-                    continue;
-                }
-                curr += c;
-            }
-            if (!curr.empty()) typeArgs.push_back(curr);
+            auto typeArgs = splitTypeArgs(argsStr);
             instantiateGenericEnum(e.enum_name, baseName, typeArgs);
         }
     }

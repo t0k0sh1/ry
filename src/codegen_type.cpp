@@ -290,21 +290,33 @@ llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string
     return errStruct;
 }
 
+std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
+    std::vector<std::string> typeArgs;
+    std::string curr;
+    int depth = 0;
+    for (char c : argsStr) {
+        if (c == '<') depth++;
+        else if (c == '>') depth--;
+        else if (c == ',' && depth == 0) {
+            typeArgs.push_back(curr);
+            curr.clear();
+            continue;
+        }
+        curr += c;
+    }
+    if (!curr.empty()) typeArgs.push_back(curr);
+    return typeArgs;
+}
+
 std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
     std::string inner = typeStr.substr(4, typeStr.size() - 5);
-    size_t depth = 0;
-    for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '<') ++depth;
-        else if (inner[i] == '>') --depth;
-        else if (inner[i] == ',' && depth == 0) {
-            std::string kStr = inner.substr(0, i);
-            std::string vStr = inner.substr(i + 1);
-            while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
-            while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-            return {resolveType(kStr), resolveType(vStr)};
-        }
-    }
-    return {nullptr, nullptr};
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return {nullptr, nullptr};
+    auto &kStr = parts[0];
+    auto &vStr = parts[1];
+    while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
+    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+    return {resolveType(kStr), resolveType(vStr)};
 }
 
 llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
