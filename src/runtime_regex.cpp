@@ -1,5 +1,6 @@
 #include "ry/runtime_regex.hpp"
 #include "ry/runtime_regex_internal.hpp"
+#include "ry/runtime_list.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -638,34 +639,6 @@ struct CompiledRegex {
         return sim.findAllSinglePass(text, len, hasLazy_);
     }
 };
-
-// ============================================================
-// ListHeader layout: {i64 len, i64 cap, ptr data}
-// ============================================================
-
-struct ListHeader {
-    int64_t len;
-    int64_t cap;
-    char **data;
-};
-
-static char *dupString(const char *s, size_t n) {
-    char *buf = (char *)malloc(n + 1);
-    memcpy(buf, s, n);
-    buf[n] = '\0';
-    return buf;
-}
-
-static ListHeader *makeStringList(const std::vector<std::string> &items) {
-    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
-    header->len = (int64_t)items.size();
-    header->cap = (int64_t)items.size();
-    header->data = (char **)malloc(sizeof(char *) * items.size());
-    for (size_t i = 0; i < items.size(); ++i) {
-        header->data[i] = dupString(items[i].c_str(), items[i].size());
-    }
-    return header;
-}
 
 } // anonymous namespace
 
