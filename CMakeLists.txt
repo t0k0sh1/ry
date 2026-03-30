@@ -167,8 +167,10 @@ add_executable(ry src/main.cpp)
 if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
 else()
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive)
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive atomic)
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
+    # -rdynamic: プロセスシンボルを JIT に公開
+    # atomic: __atomic_* シンボルを JIT 実行時に解決可能にする
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 
@@ -227,6 +229,7 @@ else()
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         GTest::gtest_main
         GTest::gmock
+        atomic
     )
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
