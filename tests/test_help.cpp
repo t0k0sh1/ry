@@ -159,7 +159,7 @@ TEST(HelpOption, UnknownSubcommandShowsError) {
     EXPECT_NE(r.out.find("Usage:"), std::string::npos);
 }
 
-// --- Stdin pipe still works (regression) ---
+// --- Stdin pipe with -c flag still works (regression) ---
 
 TEST(HelpOption, StdinPipeStillWorks) {
     int pipeIn[2], pipeOut[2];
@@ -177,7 +177,7 @@ TEST(HelpOption, StdinPipeStillWorks) {
         close(pipeIn[0]);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl(RY_BINARY_PATH, "ry", nullptr);
+        execl(RY_BINARY_PATH, "ry", "-c", nullptr);
         _exit(127);
     }
 

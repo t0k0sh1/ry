@@ -19,16 +19,28 @@ ry self-update [options]            # Update ry itself
 
 | Option | Description |
 |---|---|
+| `-c` | Read and execute code from stdin |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
 | `--env=<env>` | Set environment (`production`\|`development`\|`internal`). Overrides the `RY_ENV` environment variable. |
 
-### Stdin Execution
+### Entry Point Execution
 
-When no file argument is given and stdin is not a terminal, `ry` reads source code from stdin and executes it:
+When no file argument is given, `ry` looks for a `package.toml` in the current directory (or parent directories) and runs the file specified by the `entry` field:
 
 ```bash
-echo 'print("hello")' | ry
+ry                        # runs entry file (e.g. src/main.ry)
+ry -- arg1 arg2           # runs entry file with arguments
+```
+
+If no `package.toml` is found or no `entry` field is set, `ry` prints help and exits.
+
+### Stdin Execution
+
+Use the `-c` flag to read and execute code from stdin:
+
+```bash
+echo 'print("hello")' | ry -c
 ```
 
 ---
