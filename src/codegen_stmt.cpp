@@ -820,24 +820,56 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
+    llvm::Value *cond = emitExpr(*s->branch.condition);
+    cond = toBool(cond);
 
-    for (auto &branch : s->branches) {
-        llvm::Value *cond = emitExpr(*branch.condition);
+    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
+    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
+    builder_.CreateCondBr(cond, thenBB, elseBB);
+
+    builder_.SetInsertPoint(thenBB);
+    pushScope();
+    for (auto &stmt : s->branch.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    popScope();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(elseBB);
+
+    if (!s->else_body.empty()) {
+        pushScope();
+        for (auto &stmt : s->else_body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
+    }
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
+    emitCoverage(s->loc);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.end", fn_);
+
+    for (auto &arm : s->arms) {
+        llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
-        llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
-        builder_.CreateCondBr(cond, thenBB, elseBB);
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.next", fn_);
+        builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
         pushScope();
-        for (auto &stmt : branch.body)
+        for (auto &stmt : arm.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
             builder_.CreateBr(mergeBB);
 
-        builder_.SetInsertPoint(elseBB);
+        builder_.SetInsertPoint(nextBB);
     }
 
     if (!s->else_body.empty()) {

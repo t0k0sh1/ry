@@ -6,7 +6,7 @@
 
 ---
 
-## if / elif / else
+## if / else
 
 条件に応じて処理を分岐させるには `if` を使います。
 
@@ -15,13 +15,11 @@ x = 10
 
 if x > 0:
     print(x)
-elif x == 0:
-    print(0)
 else:
-    print(-1)
+    print(0)
 ```
 
-- `elif` と `else` は省略できます。
+- `else` は省略できます。
 - 条件式には `bool` 以外も指定できます。`int` の場合、`0` が偽、非 `0` が真として扱われます。
 - `if` はネストできます。
 
@@ -202,9 +200,25 @@ print(x)       # 99
 
 ---
 
-## match
+## when
 
-`match` は値に応じた分岐を行う構文です。enum や Option を安全に処理できます。
+`when:` は多分岐の条件分岐に、`when value:` は enum や Option などのパターン分岐に使います。
+
+### 条件分岐 `when:`
+
+```python
+x = -2
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+### パターン分岐 `when value:`
 
 ```python
 enum Color:
@@ -213,7 +227,7 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
+when c:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -223,13 +237,13 @@ match c:
 # green
 ```
 
-### Option のマッチ
+### Option のパターン分岐
 
-`match` を使うことで、`None` の場合も安全に処理できます。
+`when` を使うことで、`None` の場合も安全に処理できます。
 
 ```python
 x: Option<int> = Some(42)
-match x:
+when x:
     case Some(v):
         print(v)
     case None:
@@ -243,7 +257,7 @@ match x:
 
 ```python
 n = 5
-match n:
+when n:
     case 0:
         print("zero")
     case 1:
@@ -258,7 +272,7 @@ match n:
 `if` でガード条件を追加できます。
 
 ```python
-match n:
+when n:
     case x if x > 0:
         print("positive")
     case x if x < 0:
@@ -267,7 +281,16 @@ match n:
         print("zero")
 ```
 
-> **注意**: `match` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
+### `when:` 式
+
+```python
+label = when:
+    score >= 90 => "A"
+    score >= 80 => "B"
+    else => "C"
+```
+
+> **注意**: `when value:` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
 
 ---
 

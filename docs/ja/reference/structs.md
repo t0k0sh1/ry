@@ -264,12 +264,13 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-if c == Color::Red:
-    print("red")
-elif c == Color::Green:
-    print("green")
-else:
-    print("blue")
+when:
+    c == Color::Red:
+        print("red")
+    c == Color::Green:
+        print("green")
+    else:
+        print("blue")
 ```
 
 ### 関数引数

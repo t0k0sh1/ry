@@ -96,9 +96,13 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
                 scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches) {
-                    scanExpr(*br.condition);
-                    for (auto &st : br.body) scanStmt(st);
+                scanExpr(*s->branch.condition);
+                for (auto &st : s->branch.body) scanStmt(st);
+                for (auto &st : s->else_body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms) {
+                    scanExpr(*arm.condition);
+                    for (auto &st : arm.body) scanStmt(st);
                 }
                 for (auto &st : s->else_body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
@@ -109,7 +113,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     if (arm.guard) scanExpr(*arm.guard);
@@ -368,8 +372,8 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
             return i64Ty_; // fallback
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {
-            return inferExprType(*v->true_expr, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+            return inferExprType(*v->else_expr, paramTypeMap);
         } else {
             return i64Ty_; // fallback
         }
@@ -393,10 +397,13 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
                 if (s.value)
                     out.push_back(inferExprType(*s.value, paramTypeMap));
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches)
-                    collectReturnTypes(br.body, paramTypeMap, out);
+                collectReturnTypes(s->branch.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypes(arm.body, paramTypeMap, out);
+                collectReturnTypes(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
             }

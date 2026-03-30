@@ -21,28 +21,28 @@ describe("base64", fn():
 
   describe("decode", fn():
     it("basic string", fn():
-      match decode("SGVsbG8sIFdvcmxkIQ=="):
+      when decode("SGVsbG8sIFdvcmxkIQ=="):
         case Ok(s):
           expect(s).to_eq("Hello, World!")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("empty string", fn():
-      match decode(""):
+      when decode(""):
         case Ok(s):
           expect(s).to_eq("")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("no padding", fn():
-      match decode("QUJD"):
+      when decode("QUJD"):
         case Ok(s):
           expect(s).to_eq("ABC")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("invalid base64", fn():
-      match decode("!!!invalid!!!"):
+      when decode("!!!invalid!!!"):
         case Ok(s):
           fail("expected error but got Ok")
         case Err(e):
@@ -68,14 +68,14 @@ describe("base64", fn():
     it("roundtrip", fn():
       original = "Hello, World! subjects?_d>>"
       encoded = encode_url_safe(original)
-      match decode_url_safe(encoded):
+      when decode_url_safe(encoded):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("invalid input", fn():
-      match decode_url_safe("!!!"):
+      when decode_url_safe("!!!"):
         case Ok(s):
           fail("expected error but got Ok")
         case Err(e):
@@ -86,7 +86,7 @@ describe("base64", fn():
   describe("roundtrip", fn():
     it("standard base64", fn():
       original = "The quick brown fox jumps over the lazy dog"
-      match decode(encode(original)):
+      when decode(encode(original)):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):
@@ -94,7 +94,7 @@ describe("base64", fn():
     )
     it("longer string", fn():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-      match decode(encode(original)):
+      when decode(encode(original)):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):

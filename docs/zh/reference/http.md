@@ -106,7 +106,7 @@ t = start_server()
 sleep(100)  # 等待服务器启动
 port = port_holder[0]
 
-match http_get("http://127.0.0.1:" + to_str(port) + "/"):
+when http_get("http://127.0.0.1:" + to_str(port) + "/"):
     case Ok(resp):
         print(http_client_body(resp))  # "Hello!"
     case Err(e):
@@ -123,7 +123,7 @@ from http import http_listen, http_path, http_query, http_query_all, http_respon
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     path = http_path(req)
     if path == "/search":
-        match http_query(req, "q"):
+        when http_query(req, "q"):
             case Some(query):
                 return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
             case None:
@@ -138,7 +138,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_header, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_header(req, "Authorization"):
+    when http_header(req, "Authorization"):
         case Some(token):
             return http_response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         case None:
@@ -152,9 +152,9 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_form_field, http_form_file, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_form_field(req, "username"):
+    when http_form_field(req, "username"):
         case Some(name):
-            match http_form_file(req, "avatar"):
+            when http_form_file(req, "avatar"):
                 case Some(file_info):
                     filename = file_info["filename"]
                     return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
@@ -171,7 +171,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_cookie, http_cookies, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_cookie(req, "session_id"):
+    when http_cookie(req, "session_id"):
         case Some(sid):
             return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         case None:
@@ -279,7 +279,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_get, http_post, http_client_status, http_client_body, http_client_header
 
 # 简单的 GET 请求
-match http_get("http://example.com/api/data"):
+when http_get("http://example.com/api/data"):
     case Ok(resp):
         status = http_client_status(resp)
         body = http_client_body(resp)
@@ -289,7 +289,7 @@ match http_get("http://example.com/api/data"):
 
 # 带请求体和请求头的 POST 请求
 headers: Map<str, str> = {"Content-Type": "application/json"}
-match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+when http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     case Ok(resp):
         print(http_client_body(resp))
     case Err(e):
@@ -328,4 +328,4 @@ HTTP 客户端函数会自动跟随重定向响应（带有 `Location` 头的 3x
 - 如果 `bind()` 失败（例如端口已被占用），`http_listen()` 会引发运行时错误。
 - 格式错误的请求或 keep-alive 连接上的空闲超时会导致连接关闭。服务器随后继续接受新连接。
 - 处理函数必须始终返回 `HttpResponse` - 没有默认响应。
-- 客户端函数返回 `Result<HttpClientResponse, Error>` - 使用 `match` 处理成功和失败情况。
+- 客户端函数返回 `Result<HttpClientResponse, Error>` - 使用 `when` 处理成功和失败情况。

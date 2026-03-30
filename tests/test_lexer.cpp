@@ -82,12 +82,12 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::If);
         EXPECT_EQ(toks[0].value, "if");
     }
-    // elif
+    // when
     {
-        auto toks = tokenize("elif");
+        auto toks = tokenize("when");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Elif);
-        EXPECT_EQ(toks[0].value, "elif");
+        EXPECT_EQ(toks[0].kind, TokenKind::When);
+        EXPECT_EQ(toks[0].value, "when");
     }
     // else
     {

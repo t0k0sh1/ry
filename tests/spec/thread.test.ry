@@ -75,7 +75,7 @@ describe("Semaphore", fn():
   it("limits concurrent access", fn():
     sem_result = semaphore_new(2)
     expect(sem_result).to_be_ok()
-    match sem_result:
+    when sem_result:
       case Ok(sem):
         counter = atomic_int_new(0)
 
@@ -102,7 +102,7 @@ describe("Barrier", fn():
   it("synchronizes threads", fn():
     barrier_result = barrier_new(2)
     expect(barrier_result).to_be_ok()
-    match barrier_result:
+    when barrier_result:
       case Ok(barrier):
         counter = atomic_int_new(0)
 

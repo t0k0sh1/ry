@@ -236,8 +236,11 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
                         out.insert(str->value);
                 }
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches)
-                    collectMockedFunctions(br.body, out);
+                collectMockedFunctions(s->branch.body, out);
+                collectMockedFunctions(s->else_body, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms)
+                    collectMockedFunctions(arm.body, out);
                 collectMockedFunctions(s->else_body, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
                 collectMockedFunctions(s->body, out);
@@ -245,7 +248,7 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
                 collectMockedFunctions(s->body, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
             }

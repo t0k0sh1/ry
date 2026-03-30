@@ -2,15 +2,13 @@
 
 # 制御構文リファレンス
 
-## if / elif / else
+## if / else
 
 ### 構文
 
 ```python
 if 条件式:
     # then ブロック
-elif 条件式:
-    # elif ブロック（複数可）
 else:
     # else ブロック（省略可）
 ```
@@ -31,15 +29,13 @@ x = 10
 
 if x > 5:
     print("big")
-elif x == 5:
-    print("five")
 else:
-    print("small")
+    print("small or equal")
 ```
 
 ### スコープルール
 
-- `if` / `elif` / `else` の各ブロックはそれぞれ独立したブロックスコープを持つ。
+- `if` / `else` の各ブロックはそれぞれ独立したブロックスコープを持つ。
 - ブロック内で宣言した変数はブロック外からアクセスできない。
 
 ```python
@@ -273,7 +269,7 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 何もしない文（no-op）。空ブロックのプレースホルダーとして使用する。
-- 関数ボディ、`if`/`elif`/`else`、`while`、`for`、`match case` など任意のブロック内で使用可能。
+- 関数ボディ、`if`/`else`、`while`、`for`、`when` アームなど任意のブロック内で使用可能。
 
 ```python
 fn not_yet():
@@ -287,12 +283,43 @@ else:
 
 ---
 
-## match
+## when
 
-### 構文
+`when` には 2 つの文形式があります。
+
+- `when:` 多分岐の条件分岐
+- `when value:` 値に対するパターン分岐
+
+### 条件分岐 `when:`
 
 ```python
-match 式:
+when:
+    条件式:
+        # 本体
+    条件式:
+        # 本体
+    else:
+        # フォールバック
+```
+
+```python
+x = 0
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+`when:` は上から順に条件を評価し、最初に真になったアームだけを実行します。式形式は [演算子リファレンス](operators.md#when-条件式) を参照してください。
+
+### パターン分岐 `when value:`
+
+```python
+when 式:
     case パターン:
         # 本体
     case パターン if ガード条件:
@@ -325,14 +352,14 @@ match 式:
 複数のパターンを `|` で結合し、いずれかにマッチさせることができます。変数束縛（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）は OR パターン内では使用できません。
 
 ```python
-match x:
+when x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # enum の OR パターン
-match color:
+when color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
@@ -350,13 +377,13 @@ match color:
 ### 例
 
 ```python
-# enum マッチ
+# enum のパターン分岐
 enum Color:
     Red
     Green
     Blue
 
-match color:
+when color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -364,28 +391,28 @@ match color:
     case Color::Blue:
         print("blue")
 
-# Option マッチ
+# Option のパターン分岐
 x: Option<int> = Some(42)
-match x:
+when x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
-# Result マッチ
+# Result のパターン分岐
 fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
-# リテラルマッチ
-match x:
+# リテラルのパターン分岐
+when x:
     case 0:
         print("zero")
     case 1:
@@ -394,7 +421,7 @@ match x:
         print("other")
 
 # guard 節
-match x:
+when x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -403,7 +430,7 @@ match x:
         print("zero")
 ```
 
-### ADT enum マッチ
+### ADT enum のパターン分岐
 
 enum バリアントが関連データを持つ場合、バインディングパターンを使って値を取り出します。
 
@@ -414,7 +441,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
+when s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):
@@ -437,7 +464,7 @@ match s:
 
 ### ブロックスコープ
 
-- `if` / `elif` / `else` / `while` / `for` / `match` の各ブロックはブロックスコープを持つ。
+- `if` / `else` / `while` / `for` / `when` の各ブロックはブロックスコープを持つ。
 - ブロック内で宣言した変数はブロックの終了と同時にスコープから外れる。
 
 ```python

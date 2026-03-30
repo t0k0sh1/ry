@@ -177,7 +177,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                     parseError(paramName.line,
                         "parameter '" + paramName.value + "' with default value must have an explicit type annotation");
                 lex_.next(); // consume '='
-                default_value = parseTernary();
+                default_value = parseConditional();
                 seen_default = true;
             } else if (seen_default) {
                 parseError(paramName.line,
@@ -314,7 +314,7 @@ StmtNode Parser::parseReturnStatement() {
     if (next == TokenKind::Newline || next == TokenKind::Dedent || next == TokenKind::Eof) {
         s.value = nullptr;
     } else {
-        s.value = parseTernary();
+        s.value = parseConditional();
     }
     return s;
 }
@@ -332,7 +332,7 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
     lex_.next(); // consume Indent
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
-        out.push_back(parseTernary());
+        out.push_back(parseConditional());
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
         skipNewlines();
@@ -927,12 +927,55 @@ Pattern Parser::parsePattern() {
     parseError(t.line, "expected pattern");
 }
 
-StmtNode Parser::parseMatchStatement() {
-    Token matchTok = lex_.next(); // consume 'match'
-    ExprPtr subject = parseTernary();
+StmtNode Parser::parseWhenStatement() {
+    Token whenTok = lex_.next(); // consume 'when'
+
+    if (lex_.peek().kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+
+        if (lex_.peek().kind != TokenKind::Newline)
+            parseError("expected newline after ':'");
+        lex_.next();
+        skipNewlines();
+
+        if (lex_.peek().kind != TokenKind::Indent)
+            parseError("expected indented block");
+        lex_.next();
+
+        auto whenStmt = std::make_unique<WhenCondStmt>();
+        whenStmt->loc = locFromToken(whenTok);
+
+        while (lex_.peek().kind != TokenKind::Dedent &&
+               lex_.peek().kind != TokenKind::Eof) {
+            if (lex_.peek().kind == TokenKind::Else) {
+                lex_.next();
+                if (lex_.peek().kind != TokenKind::Colon)
+                    parseError("expected ':' after else");
+                lex_.next();
+                whenStmt->else_body = parseBlock();
+            } else {
+                WhenCondArm arm;
+                arm.condition = parseConditional();
+                if (lex_.peek().kind != TokenKind::Colon)
+                    parseError("expected ':' after when condition");
+                lex_.next();
+                arm.body = parseBlock();
+                whenStmt->arms.push_back(std::move(arm));
+            }
+            skipNewlines();
+        }
+
+        if (whenStmt->arms.empty())
+            parseError("when block must have at least one condition");
+        if (lex_.peek().kind == TokenKind::Dedent)
+            lex_.next();
+        return whenStmt;
+    }
+
+    ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after match subject");
+        parseError("single-condition when statements are not supported; use 'if' or 'when:'");
     lex_.next(); // consume ':'
 
     if (lex_.peek().kind != TokenKind::Newline)
@@ -944,43 +987,46 @@ StmtNode Parser::parseMatchStatement() {
         parseError("expected indented block");
     lex_.next(); // consume Indent
 
-    auto matchStmt = std::make_unique<MatchStmt>();
-    matchStmt->subject = std::move(subject);
-    matchStmt->loc = locFromToken(matchTok);
+    if (lex_.peek().kind != TokenKind::Case)
+        parseError("subject 'when value:' blocks must start with 'case'");
+
+    auto whenStmt = std::make_unique<WhenMatchStmt>();
+    whenStmt->subject = std::move(subject);
+    whenStmt->loc = locFromToken(whenTok);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind != TokenKind::Case)
-            parseError(lex_.peek().line, "expected 'case' in match block");
+            parseError(lex_.peek().line, "expected 'case' in when block");
         lex_.next(); // consume 'case'
 
         MatchArm arm;
         arm.pattern = parsePattern();
 
-        // Check for OR pattern: case A | B | C:
+        auto hasBinding = [](const Pattern &p) {
+            if (std::holds_alternative<VariablePattern>(p))
+                return true;
+            if (std::holds_alternative<SomePattern>(p))
+                return std::get<SomePattern>(p).binding != "_";
+            if (std::holds_alternative<OkPattern>(p))
+                return std::get<OkPattern>(p).binding != "_";
+            if (std::holds_alternative<ErrPattern>(p))
+                return std::get<ErrPattern>(p).binding != "_";
+            if (std::holds_alternative<EnumConstructorPattern>(p)) {
+                const auto &ec = std::get<EnumConstructorPattern>(p);
+                return std::any_of(ec.bindings.begin(), ec.bindings.end(),
+                                   [](const std::string &b) { return b != "_"; });
+            }
+            return false;
+        };
+
         if (lex_.peek().kind == TokenKind::Pipe) {
-            auto hasBinding = [](const Pattern &p) {
-                if (std::holds_alternative<VariablePattern>(p))
-                    return true;
-                if (std::holds_alternative<SomePattern>(p))
-                    return std::get<SomePattern>(p).binding != "_";
-                if (std::holds_alternative<OkPattern>(p))
-                    return std::get<OkPattern>(p).binding != "_";
-                if (std::holds_alternative<ErrPattern>(p))
-                    return std::get<ErrPattern>(p).binding != "_";
-                if (std::holds_alternative<EnumConstructorPattern>(p)) {
-                    const auto &ec = std::get<EnumConstructorPattern>(p);
-                    return std::any_of(ec.bindings.begin(), ec.bindings.end(),
-                                       [](const std::string &b) { return b != "_"; });
-                }
-                return false;
-            };
             auto orPat = std::make_unique<OrPattern>();
             if (hasBinding(arm.pattern))
                 parseError("OR pattern cannot contain variable bindings");
             orPat->alternatives.push_back(std::move(arm.pattern));
             while (lex_.peek().kind == TokenKind::Pipe) {
-                lex_.next(); // consume '|'
+                lex_.next();
                 Pattern alt = parsePattern();
                 if (hasBinding(alt))
                     parseError("OR pattern cannot contain variable bindings");
@@ -989,28 +1035,25 @@ StmtNode Parser::parseMatchStatement() {
             arm.pattern = std::move(orPat);
         }
 
-        // Optional guard: if <expr>
         if (lex_.peek().kind == TokenKind::If) {
-            lex_.next(); // consume 'if'
-            arm.guard = parseTernary();
+            lex_.next();
+            arm.guard = parseConditional();
         }
 
         if (lex_.peek().kind != TokenKind::Colon)
             parseError("expected ':' after case pattern");
-        lex_.next(); // consume ':'
+        lex_.next();
 
         arm.body = parseBlock();
-        matchStmt->arms.push_back(std::move(arm));
-
+        whenStmt->arms.push_back(std::move(arm));
         skipNewlines();
     }
 
-    if (matchStmt->arms.empty())
-        parseError("match block must have at least one case");
+    if (whenStmt->arms.empty())
+        parseError("when block must have at least one case");
 
     if (lex_.peek().kind == TokenKind::Dedent)
-        lex_.next(); // consume Dedent
+        lex_.next();
 
-    return matchStmt;
+    return whenStmt;
 }
-

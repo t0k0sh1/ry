@@ -54,9 +54,13 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
                 scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches) {
-                    scanExpr(*br.condition);
-                    for (auto &st : br.body) scanStmt(st);
+                scanExpr(*s->branch.condition);
+                for (auto &st : s->branch.body) scanStmt(st);
+                for (auto &st : s->else_body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms) {
+                    scanExpr(*arm.condition);
+                    for (auto &st : arm.body) scanStmt(st);
                 }
                 for (auto &st : s->else_body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
@@ -67,7 +71,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     if (arm.guard) scanExpr(*arm.guard);

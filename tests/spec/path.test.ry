@@ -102,14 +102,14 @@ describe("path", fn():
 
   describe("resolve", fn():
     it("resolves existing path", fn():
-      match resolve("/tmp"):
+      when resolve("/tmp"):
         case Ok(s):
           expect(is_absolute(s)).to_eq(true)
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("fails for non-existent path", fn():
-      match resolve("/nonexistent_path_xyz_12345"):
+      when resolve("/nonexistent_path_xyz_12345"):
         case Ok(s):
           fail("expected error but got Ok")
         case Err(e):

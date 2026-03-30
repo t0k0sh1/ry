@@ -1,9 +1,9 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
-// ===== MatchStmt =====
+// ===== WhenMatchStmt =====
 
-void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
+void CodeGen::emitStmt(std::unique_ptr<WhenMatchStmt> &s) {
     emitCoverage(s->loc);
     llvm::Value *subject = emitExpr(*s->subject);
     llvm::Type *subjectTy = subject->getType();
@@ -101,7 +101,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                 }
                 for (auto &[vname, _] : it->second.variants) {
                     if (!covered.count(vname))
-                        codegenError("non-exhaustive match: missing variant '" +
+                        codegenError("non-exhaustive when: missing variant '" +
                             enumName + "::" + vname + "'");
                 }
             }
@@ -123,7 +123,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if ((hasSome && !hasNone) || (!hasSome && hasNone))
-            codegenError("non-exhaustive match: Option requires both Some and None cases (or use '_')");
+            codegenError("non-exhaustive when: Option requires both Some and None cases (or use '_')");
 
         // Check Result exhaustiveness
         bool hasOk = false, hasErr = false;
@@ -141,7 +141,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if ((hasOk && !hasErr) || (!hasOk && hasErr))
-            codegenError("non-exhaustive match: Result requires both Ok and Err cases (or use '_')");
+            codegenError("non-exhaustive when: Result requires both Ok and Err cases (or use '_')");
 
         // Check bool exhaustiveness
         bool hasTrue = false, hasFalse = false;
@@ -163,11 +163,11 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
             }
         }
         if (subjectTy == i1Ty_ && !(hasTrue && hasFalse) && !hasWildcardOrVar)
-            codegenError("non-exhaustive match: bool requires both true and false cases (or use '_')");
+            codegenError("non-exhaustive when: bool requires both true and false cases (or use '_')");
 
         // For int/float/string literals without wildcard
         if (enumName.empty() && !hasSome && !hasNone && !hasOk && !hasErr && !hasTrue && !hasFalse)
-            codegenError("non-exhaustive match: literal patterns require a wildcard '_' case");
+            codegenError("non-exhaustive when: literal patterns require a wildcard '_' case");
     }
 
     // --- Code generation: chain of conditional branches ---
@@ -224,7 +224,7 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                     testResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match.streq");
                 } else {
-                    codegenError("match: incompatible types in literal pattern");
+                    codegenError("when: incompatible types in literal pattern");
                 }
             } else if constexpr (std::is_same_v<T, VariablePattern>) {
                 testResult = llvm::ConstantInt::get(i1Ty_, 1);
@@ -240,10 +240,10 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     }
                 }
                 if (enumIt == enum_types_.end())
-                    codegenError("match: unknown enum '" + pat.enum_name + "'");
+                    codegenError("when: unknown enum '" + pat.enum_name + "'");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
-                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                    codegenError("when: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
                 if (enumIt->second.isADT) {
                     llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
                     testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
@@ -262,32 +262,32 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                     }
                 }
                 if (enumIt == enum_types_.end())
-                    codegenError("match: unknown enum '" + pat.enum_name + "'");
+                    codegenError("when: unknown enum '" + pat.enum_name + "'");
                 if (!enumIt->second.isADT)
-                    codegenError("match: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
+                    codegenError("when: constructor pattern requires ADT enum, but '" + pat.enum_name + "' is not ADT");
                 auto varIt = enumIt->second.variants.find(pat.variant_name);
                 if (varIt == enumIt->second.variants.end())
-                    codegenError("match: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
+                    codegenError("when: unknown variant '" + pat.enum_name + "::" + pat.variant_name + "'");
                 llvm::Value *subjectTag = builder_.CreateExtractValue(subjectVal, 0, "adt.tag");
                 testResult = builder_.CreateICmpEQ(subjectTag, llvm::ConstantInt::get(i64Ty_, varIt->second), "match.adt_eq");
             } else if constexpr (std::is_same_v<T, SomePattern>) {
                 if (!isOptionType(subjectTy))
-                    codegenError("match: Some pattern requires Option type");
+                    codegenError("when: Some pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = hasValue;
             } else if constexpr (std::is_same_v<T, NonePattern>) {
                 if (!isOptionType(subjectTy))
-                    codegenError("match: None pattern requires Option type");
+                    codegenError("when: None pattern requires Option type");
                 llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                 testResult = builder_.CreateNot(hasValue, "is_none");
             } else if constexpr (std::is_same_v<T, OkPattern>) {
                 if (!isResultType(subjectTy))
-                    codegenError("match: Ok pattern requires Result type");
+                    codegenError("when: Ok pattern requires Result type");
                 llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
                 testResult = isOk;
             } else if constexpr (std::is_same_v<T, ErrPattern>) {
                 if (!isResultType(subjectTy))
-                    codegenError("match: Err pattern requires Result type");
+                    codegenError("when: Err pattern requires Result type");
                 llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
                 testResult = builder_.CreateNot(isOk, "is_err");
             } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
@@ -310,35 +310,35 @@ void CodeGen::emitStmt(std::unique_ptr<MatchStmt> &s) {
                                 llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
                                 altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
                             } else {
-                                codegenError("match: incompatible types in OR literal pattern");
+                                codegenError("when: incompatible types in OR literal pattern");
                             }
                         } else if constexpr (std::is_same_v<U, EnumPattern>) {
                             auto enumIt = enum_types_.find(altPat.enum_name);
                             if (enumIt == enum_types_.end())
-                                codegenError("match: unknown enum '" + altPat.enum_name + "'");
+                                codegenError("when: unknown enum '" + altPat.enum_name + "'");
                             auto varIt = enumIt->second.variants.find(altPat.variant_name);
                             if (varIt == enumIt->second.variants.end())
-                                codegenError("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
+                                codegenError("when: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
                             llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
                             altResult = builder_.CreateICmpEQ(subjectVal, tag, "or.enum_eq");
                         } else if constexpr (std::is_same_v<U, WildcardPattern>) {
                             altResult = llvm::ConstantInt::get(i1Ty_, 1);
                         } else if constexpr (std::is_same_v<U, NonePattern>) {
                             if (!isOptionType(subjectTy))
-                                codegenError("match: None pattern requires Option type");
+                                codegenError("when: None pattern requires Option type");
                             llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
                             altResult = builder_.CreateNot(hasValue, "is_none");
                         } else if constexpr (std::is_same_v<U, OkPattern>) {
                             if (!isResultType(subjectTy))
-                                codegenError("match: Ok pattern requires Result type");
+                                codegenError("when: Ok pattern requires Result type");
                             altResult = builder_.CreateExtractValue(subjectVal, 0, "or.is_ok");
                         } else if constexpr (std::is_same_v<U, ErrPattern>) {
                             if (!isResultType(subjectTy))
-                                codegenError("match: Err pattern requires Result type");
+                                codegenError("when: Err pattern requires Result type");
                             llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
                             altResult = builder_.CreateNot(isOk, "or.is_err");
                         } else {
-                            codegenError("match: unsupported pattern type in OR pattern");
+                            codegenError("when: unsupported pattern type in OR pattern");
                         }
                     }, alt);
                     testResult = builder_.CreateOr(testResult, altResult, "or.comb");

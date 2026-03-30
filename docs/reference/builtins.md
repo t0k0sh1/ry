@@ -293,7 +293,7 @@ If a `.env` file exists in the project root (the directory containing `package.t
 ```python
 # One-argument form: returns Option<str>
 path = env("PATH")
-match path:
+when path:
     case Some(v):
         print(v)
     case None:

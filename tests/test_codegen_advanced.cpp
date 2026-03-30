@@ -431,7 +431,7 @@ TEST_F(CodeGenTest, MatchEnumAllVariants) {
         "    Green\n"
         "    Blue\n"
         "c = Color::Green\n"
-        "match c:\n"
+        "when c:\n"
         "    case Color::Red:\n"
         "        print(\"red\")\n"
         "    case Color::Green:\n"
@@ -448,7 +448,7 @@ TEST_F(CodeGenTest, MatchEnumWithWildcard) {
         "    Green\n"
         "    Blue\n"
         "c = Color::Blue\n"
-        "match c:\n"
+        "when c:\n"
         "    case Color::Red:\n"
         "        print(\"red\")\n"
         "    case _:\n"
@@ -459,13 +459,13 @@ TEST_F(CodeGenTest, MatchEnumWithWildcard) {
 TEST_F(CodeGenTest, MatchOptionSomeNone) {
     std::string src =
         "x: Option<int> = Some(42)\n"
-        "match x:\n"
+        "when x:\n"
         "    case Some(v):\n"
         "        print(v)\n"
         "    case None:\n"
         "        print(\"nothing\")\n"
         "y: Option<int> = None\n"
-        "match y:\n"
+        "when y:\n"
         "    case Some(v):\n"
         "        print(v)\n"
         "    case None:\n"
@@ -476,7 +476,7 @@ TEST_F(CodeGenTest, MatchOptionSomeNone) {
 TEST_F(CodeGenTest, MatchIntLiteral) {
     std::string src =
         "x = 2\n"
-        "match x:\n"
+        "when x:\n"
         "    case 0:\n"
         "        print(\"zero\")\n"
         "    case 1:\n"
@@ -491,7 +491,7 @@ TEST_F(CodeGenTest, MatchIntLiteral) {
 TEST_F(CodeGenTest, MatchStringLiteral) {
     std::string src =
         "s = \"hello\"\n"
-        "match s:\n"
+        "when s:\n"
         "    case \"world\":\n"
         "        print(\"world\")\n"
         "    case \"hello\":\n"
@@ -504,7 +504,7 @@ TEST_F(CodeGenTest, MatchStringLiteral) {
 TEST_F(CodeGenTest, MatchBoolLiteral) {
     std::string src =
         "b = true\n"
-        "match b:\n"
+        "when b:\n"
         "    case true:\n"
         "        print(\"yes\")\n"
         "    case false:\n"
@@ -515,7 +515,7 @@ TEST_F(CodeGenTest, MatchBoolLiteral) {
 TEST_F(CodeGenTest, MatchVariableBinding) {
     std::string src =
         "x = 42\n"
-        "match x:\n"
+        "when x:\n"
         "    case n:\n"
         "        print(n)\n";
     EXPECT_EQ(runSource(src), "42\n");
@@ -524,7 +524,7 @@ TEST_F(CodeGenTest, MatchVariableBinding) {
 TEST_F(CodeGenTest, MatchGuard) {
     std::string src =
         "x = 5\n"
-        "match x:\n"
+        "when x:\n"
         "    case n if n > 0:\n"
         "        print(\"positive\")\n"
         "    case n if n < 0:\n"
@@ -537,7 +537,7 @@ TEST_F(CodeGenTest, MatchGuard) {
 TEST_F(CodeGenTest, MatchGuardZero) {
     std::string src =
         "x = 0\n"
-        "match x:\n"
+        "when x:\n"
         "    case n if n > 0:\n"
         "        print(\"positive\")\n"
         "    case n if n < 0:\n"
@@ -554,7 +554,7 @@ TEST_F(CodeGenTest, MatchNonExhaustiveEnum) {
         "    Green\n"
         "    Blue\n"
         "c = Color::Red\n"
-        "match c:\n"
+        "when c:\n"
         "    case Color::Red:\n"
         "        print(\"red\")\n"
         "    case Color::Green:\n"
@@ -565,7 +565,7 @@ TEST_F(CodeGenTest, MatchNonExhaustiveEnum) {
 TEST_F(CodeGenTest, MatchNonExhaustiveOption) {
     std::string src =
         "x: Option<int> = Some(1)\n"
-        "match x:\n"
+        "when x:\n"
         "    case Some(v):\n"
         "        print(v)\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -574,7 +574,7 @@ TEST_F(CodeGenTest, MatchNonExhaustiveOption) {
 TEST_F(CodeGenTest, MatchNonExhaustiveBool) {
     std::string src =
         "b = true\n"
-        "match b:\n"
+        "when b:\n"
         "    case true:\n"
         "        print(\"yes\")\n";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -583,7 +583,7 @@ TEST_F(CodeGenTest, MatchNonExhaustiveBool) {
 TEST_F(CodeGenTest, MatchNonExhaustiveLiteral) {
     std::string src =
         "x = 1\n"
-        "match x:\n"
+        "when x:\n"
         "    case 0:\n"
         "        print(\"zero\")\n"
         "    case 1:\n"
@@ -598,7 +598,7 @@ TEST_F(CodeGenTest, MatchNested) {
         "    Down\n"
         "d = Dir::Up\n"
         "if true:\n"
-        "    match d:\n"
+        "    when d:\n"
         "        case Dir::Up:\n"
         "            print(\"up\")\n"
         "        case Dir::Down:\n"
@@ -609,7 +609,7 @@ TEST_F(CodeGenTest, MatchNested) {
 TEST_F(CodeGenTest, MatchNegativeLiteral) {
     std::string src =
         "x = -1\n"
-        "match x:\n"
+        "when x:\n"
         "    case -1:\n"
         "        print(\"neg one\")\n"
         "    case 0:\n"
@@ -842,7 +842,7 @@ fn read_file(path: str) -> Result<str, Error>:
     return Ok("content")
 
 res = read_file("test.txt")
-match res:
+when res:
     case Ok(data):
         print(data)
     case Err(e):
@@ -859,7 +859,7 @@ fn read_file(path: str) -> Result<str, Error>:
     return Ok("content")
 
 res = read_file("")
-match res:
+when res:
     case Ok(data):
         print(data)
     case Err(e):
@@ -875,7 +875,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)
     case Err(e):
@@ -891,7 +891,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 0):
+when divide(10, 0):
     case Ok(v):
         print(v)
     case Err(e):
@@ -900,12 +900,12 @@ match divide(10, 0):
     EXPECT_EQ(runSource(src), "division by zero\n");
 }
 
-// ===== match OR pattern =====
+// ===== when OR pattern =====
 
 TEST_F(CodeGenTest, MatchOrPatternInt) {
     std::string src =
         "x = 2\n"
-        "match x:\n"
+        "when x:\n"
         "    case 1 | 2 | 3:\n"
         "        print(\"small\")\n"
         "    case _:\n"
@@ -916,7 +916,7 @@ TEST_F(CodeGenTest, MatchOrPatternInt) {
 TEST_F(CodeGenTest, MatchOrPatternIntNoMatch) {
     std::string src =
         "x = 5\n"
-        "match x:\n"
+        "when x:\n"
         "    case 1 | 2 | 3:\n"
         "        print(\"small\")\n"
         "    case _:\n"
@@ -931,7 +931,7 @@ TEST_F(CodeGenTest, MatchOrPatternEnum) {
         "    Green\n"
         "    Blue\n"
         "c = Color::Red\n"
-        "match c:\n"
+        "when c:\n"
         "    case Color::Red | Color::Blue:\n"
         "        print(\"rb\")\n"
         "    case Color::Green:\n"
@@ -946,7 +946,7 @@ TEST_F(CodeGenTest, MatchOrPatternExhaustive) {
         "    Green\n"
         "    Blue\n"
         "c = Color::Green\n"
-        "match c:\n"
+        "when c:\n"
         "    case Color::Red | Color::Blue:\n"
         "        print(\"rb\")\n"
         "    case Color::Green:\n"
@@ -957,7 +957,7 @@ TEST_F(CodeGenTest, MatchOrPatternExhaustive) {
 TEST_F(CodeGenTest, MatchOrPatternVariableError) {
     std::string src =
         "x = 1\n"
-        "match x:\n"
+        "when x:\n"
         "    case a | b:\n"
         "        print(a)\n"
         "    case _:\n"
@@ -985,7 +985,7 @@ TEST_F(CodeGenTest, EnumADTMatchBinding) {
         "    Rectangle(float, float)\n"
         "    Point\n"
         "s = Shape::Circle(3.14)\n"
-        "match s:\n"
+        "when s:\n"
         "    case Shape::Circle(r):\n"
         "        print(r)\n"
         "    case Shape::Rectangle(w, h):\n"
@@ -1002,7 +1002,7 @@ TEST_F(CodeGenTest, EnumADTMatchRect) {
         "    Rectangle(float, float)\n"
         "    Point\n"
         "s = Shape::Rectangle(3.0, 4.0)\n"
-        "match s:\n"
+        "when s:\n"
         "    case Shape::Circle(r):\n"
         "        print(r)\n"
         "    case Shape::Rectangle(w, h):\n"
@@ -1019,7 +1019,7 @@ TEST_F(CodeGenTest, EnumADTMixed) {
         "    Rectangle(float, float)\n"
         "    Point\n"
         "s = Shape::Point\n"
-        "match s:\n"
+        "when s:\n"
         "    case Shape::Circle(r):\n"
         "        print(r)\n"
         "    case Shape::Rectangle(w, h):\n"
@@ -1035,7 +1035,7 @@ TEST_F(CodeGenTest, EnumADTSingleField) {
         "    IntVal(int)\n"
         "    StrVal(str)\n"
         "w = Wrapper::IntVal(42)\n"
-        "match w:\n"
+        "when w:\n"
         "    case Wrapper::IntVal(v):\n"
         "        print(v)\n"
         "    case Wrapper::StrVal(s):\n"
@@ -1051,7 +1051,7 @@ TEST_F(CodeGenTest, GenericEnumBasic) {
         "    MySome(T)\n"
         "    MyNone\n"
         "x = MyOption<int>::MySome(42)\n"
-        "match x:\n"
+        "when x:\n"
         "    case MyOption::MySome(v):\n"
         "        print(v)\n"
         "    case MyOption::MyNone:\n"
@@ -1065,7 +1065,7 @@ TEST_F(CodeGenTest, GenericEnumNone) {
         "    MySome(T)\n"
         "    MyNone\n"
         "x = MyOption<int>::MyNone\n"
-        "match x:\n"
+        "when x:\n"
         "    case MyOption::MySome(v):\n"
         "        print(v)\n"
         "    case MyOption::MyNone:\n"
@@ -1079,7 +1079,7 @@ TEST_F(CodeGenTest, GenericEnumFloat) {
         "    MySome(T)\n"
         "    MyNone\n"
         "x = MyOption<float>::MySome(3.14)\n"
-        "match x:\n"
+        "when x:\n"
         "    case MyOption::MySome(v):\n"
         "        print(v)\n"
         "    case MyOption::MyNone:\n"
@@ -1119,7 +1119,7 @@ TEST_F(CodeGenTest, EnumExplicitValueMatch) {
         "    NotFound = 404\n"
         "    InternalError = 500\n"
         "s = HttpStatus::InternalError\n"
-        "match s:\n"
+        "when s:\n"
         "    case HttpStatus::Ok:\n"
         "        print(\"ok\")\n"
         "    case HttpStatus::NotFound:\n"
@@ -1252,7 +1252,7 @@ TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
         "    val = fetch(url)?\n"
         "    return Ok(val)\n"
         "result = process(\"/api\")\n"
-        "match result:\n"
+        "when result:\n"
         "    case Err(e):\n"
         "        print(e.message)\n"
         "    case Ok(v):\n"

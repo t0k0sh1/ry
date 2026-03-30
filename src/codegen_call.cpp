@@ -684,9 +684,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return result;
     }
 
-    // unwrap() has been removed — use match or ?? instead
+    // unwrap() has been removed — use when or ?? instead
     if (e.callee == "unwrap") {
-        codegenError("unwrap() has been removed. Use match or ?? instead");
+        codegenError("unwrap() has been removed. Use when or ?? instead");
     }
 
     // has_key(map, key) → bool

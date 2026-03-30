@@ -8,7 +8,7 @@ describe("make_dir / make_dir_all", fn():
     if is_dir(d):
       remove_all(d)
     make_dir_all("/tmp/ry_fs_test")
-    match make_dir(d):
+    when make_dir(d):
       case Ok(_):
         expect(is_dir(d)).to_be_true()
       case Err(e):
@@ -23,7 +23,7 @@ describe("make_dir / make_dir_all", fn():
 
   it("creates nested directories", fn():
     d = "/tmp/ry_fs_test/a/b/c"
-    match make_dir_all(d):
+    when make_dir_all(d):
       case Ok(_):
         expect(is_dir(d)).to_be_true()
       case Err(e):
@@ -34,7 +34,7 @@ describe("make_dir / make_dir_all", fn():
 describe("is_file / is_dir / is_symlink", fn():
   it("detects a regular file", fn():
     f = "/tmp/ry_fs_test/test_file.txt"
-    match write_text(f, "hello"):
+    when write_text(f, "hello"):
       case Ok(_):
         expect(is_file(f)).to_be_true()
         expect(is_dir(f)).to_be_false()
@@ -64,7 +64,7 @@ describe("list_dir", fn():
     write_text(join(d, "a.txt"), "a")
     write_text(join(d, "b.txt"), "b")
     make_dir(join(d, "subdir"))
-    match list_dir(d):
+    when list_dir(d):
       case Ok(entries):
         expect(entries).to_have_length(3)
       case Err(e):
@@ -86,7 +86,7 @@ describe("walk", fn():
     write_text(join(d, "root.txt"), "r")
     write_text(join(d, "sub1", "mid.txt"), "m")
     write_text(join(d, "sub1", "sub2", "deep.txt"), "d")
-    match walk(d):
+    when walk(d):
       case Ok(entries):
         expect(length(entries) >= 5).to_be_true()
       case Err(e):
@@ -108,7 +108,7 @@ describe("glob_files", fn():
     write_text(join(d, "file1.log"), "1")
     write_text(join(d, "file2.log"), "2")
     write_text(join(d, "file3.txt"), "3")
-    match glob_files(join(d, "*.log")):
+    when glob_files(join(d, "*.log")):
       case Ok(matches):
         expect(matches).to_have_length(2)
       case Err(e):
@@ -116,7 +116,7 @@ describe("glob_files", fn():
   )
 
   it("returns empty list when nothing matches", fn():
-    match glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
+    when glob_files("/tmp/ry_fs_test_nomatch_*.zzz"):
       case Ok(matches):
         expect(matches).to_have_length(0)
       case Err(e):
@@ -129,9 +129,9 @@ describe("copy", fn():
     src = "/tmp/ry_fs_test/copy_src.txt"
     dst = "/tmp/ry_fs_test/copy_dst.txt"
     write_text(src, "copy me")
-    match copy(src, dst):
+    when copy(src, dst):
       case Ok(_):
-        match read_text(dst):
+        when read_text(dst):
           case Ok(content):
             expect(content).to_eq("copy me")
           case Err(e):
@@ -151,10 +151,10 @@ describe("move", fn():
     src = "/tmp/ry_fs_test/move_src.txt"
     dst = "/tmp/ry_fs_test/move_dst.txt"
     write_text(src, "move me")
-    match move(src, dst):
+    when move(src, dst):
       case Ok(_):
         expect(file_exists(src)).to_be_false()
-        match read_text(dst):
+        when read_text(dst):
           case Ok(content):
             expect(content).to_eq("move me")
           case Err(e):
@@ -168,7 +168,7 @@ describe("remove / remove_all", fn():
   it("removes a file", fn():
     f = "/tmp/ry_fs_test/remove_me.txt"
     write_text(f, "bye")
-    match remove(f):
+    when remove(f):
       case Ok(_):
         expect(file_exists(f)).to_be_false()
       case Err(e):
@@ -188,7 +188,7 @@ describe("remove / remove_all", fn():
     d = "/tmp/ry_fs_test/tree_to_remove"
     make_dir_all(join(d, "a", "b"))
     write_text(join(d, "a", "b", "file.txt"), "x")
-    match remove_all(d):
+    when remove_all(d):
       case Ok(_):
         expect(is_dir(d)).to_be_false()
       case Err(e):
@@ -200,7 +200,7 @@ describe("file_size", fn():
   it("returns correct size", fn():
     f = "/tmp/ry_fs_test/size_test.txt"
     write_text(f, "12345")
-    match file_size(f):
+    when file_size(f):
       case Ok(sz):
         expect(sz).to_eq(5)
       case Err(e):
@@ -217,7 +217,7 @@ describe("chmod", fn():
   it("changes file permissions", fn():
     f = "/tmp/ry_fs_test/chmod_test.txt"
     write_text(f, "x")
-    match chmod(f, 420):
+    when chmod(f, 420):
       case Ok(_):
         expect(is_file(f)).to_be_true()
       case Err(e):
@@ -232,11 +232,11 @@ describe("symlink / read_link / is_symlink", fn():
     if is_symlink(link):
       remove(link)
     write_text(target, "target content")
-    match symlink(target, link):
+    when symlink(target, link):
       case Ok(_):
         expect(is_symlink(link)).to_be_true()
         expect(is_file(link)).to_be_true()
-        match read_link(link):
+        when read_link(link):
           case Ok(t):
             expect(t).to_eq(target)
           case Err(e):

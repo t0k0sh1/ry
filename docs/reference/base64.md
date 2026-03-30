@@ -27,7 +27,7 @@ from base64 import encode, decode
 encoded = encode("Hello, World!")
 print(encoded)  # SGVsbG8sIFdvcmxkIQ==
 
-match decode(encoded):
+when decode(encoded):
     case Ok(s):
         print(s)  # Hello, World!
     case Err(e):
@@ -44,7 +44,7 @@ from base64 import encode_url_safe, decode_url_safe
 encoded = encode_url_safe("data with special chars: ?&=")
 # No + / or = in the output
 
-match decode_url_safe(encoded):
+when decode_url_safe(encoded):
     case Ok(s):
         print(s)
     case Err(e):
@@ -68,7 +68,7 @@ encoded = encode(bytes_to_str(bytes)?)
 `decode` and `decode_url_safe` return `Result<str, Error>`. Decoding fails if the input contains invalid base64 characters.
 
 ```python
-match decode("!!!not-valid!!!"):
+when decode("!!!not-valid!!!"):
     case Ok(s):
         print(s)
     case Err(e):

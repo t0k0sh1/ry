@@ -220,17 +220,9 @@ void Formatter::formatTypeAlias(const TypeAliasStmt &s) {
 }
 
 void Formatter::formatIf(const IfStmt &s) {
-    for (size_t i = 0; i < s.branches.size(); ++i) {
-        if (i == 0) {
-            emit("if ");
-        } else {
-            emitIndent();
-            emit("elif ");
-        }
-        emit(formatExpr(*s.branches[i].condition) + ":");
-        emitNewline();
-        formatBlock(s.branches[i].body);
-    }
+    emit("if " + formatExpr(*s.branch.condition) + ":");
+    emitNewline();
+    formatBlock(s.branch.body);
     if (!s.else_body.empty()) {
         emitIndent();
         emit("else:");
@@ -238,6 +230,26 @@ void Formatter::formatIf(const IfStmt &s) {
         formatBlock(s.else_body);
     }
     last_emitted_line_ = s.loc.line;
+}
+
+void Formatter::formatWhenCond(const WhenCondStmt &s) {
+    emit("when:");
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+    indent();
+    for (const auto &arm : s.arms) {
+        emitIndent();
+        emit(formatExpr(*arm.condition) + ":");
+        emitNewline();
+        formatBlock(arm.body);
+    }
+    if (!s.else_body.empty()) {
+        emitIndent();
+        emit("else:");
+        emitNewline();
+        formatBlock(s.else_body);
+    }
+    dedent();
 }
 
 void Formatter::formatWhile(const WhileStmt &s) {
@@ -326,8 +338,8 @@ void Formatter::formatFn(const FnStmt &s) {
     formatBlock(s.body);
 }
 
-void Formatter::formatMatch(const MatchStmt &s) {
-    emit("match " + formatExpr(*s.subject) + ":");
+void Formatter::formatWhenMatch(const WhenMatchStmt &s) {
+    emit("when " + formatExpr(*s.subject) + ":");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();

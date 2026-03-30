@@ -39,7 +39,7 @@ error: cannot reassign @const variable: x
 | 在區塊內匯入模組 | 在函式或條件區塊內使用 `from` 陳述式 | 在函式內使用 `from math` |
 | 循環匯入 | 模組之間互相匯入 | `a.ry` 匯入 `b.ry`，`b.ry` 匯入 `a.ry` |
 | 相同欄位名重複 | 在結構體內定義了兩次相同的欄位名 | 在 `type T: x: int` 中定義了兩個 `x` |
-| match 窮舉性不足 | match 未覆蓋所有模式 | enum 的部分變體未覆蓋、Option 缺少 `None`、字面值缺少 `_` |
+| when 窮舉性不足 | when 未覆蓋所有模式 | enum 的部分變體未覆蓋、Option 缺少 `None`、字面值缺少 `_` |
 | `?` 用於非 Result 型別 | 對非 `Result` 型別的表達式使用 `?` | `x = 42` → `x?` |
 | `?` 用於非 Result 函式 | 在不回傳 `Result` 的函式中使用 `?` | `fn foo() -> int:` → `bar()?` |
 

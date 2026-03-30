@@ -24,59 +24,59 @@ describe("Result type", fn():
     res = Err(Error("fail"))
     expect(res).to_be_err()
   )
-  it("match Ok extracts value", fn():
-    match safe_divide(10, 2):
+  it("when Ok extracts value", fn():
+    when safe_divide(10, 2):
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
         fail("unexpected error")
   )
-  it("match Err extracts error", fn():
-    match safe_divide(10, 0):
+  it("when Err extracts error", fn():
+    when safe_divide(10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("? unwraps Ok value", fn():
-    match divide_and_add(10, 2):
+    when divide_and_add(10, 2):
       case Ok(v):
         expect(v).to_eq(6)
       case Err(e):
         fail("unexpected error")
   )
   it("? propagates Err", fn():
-    match divide_and_add(10, 0):
+    when divide_and_add(10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("chained ? propagation", fn():
-    match chained(100, 10, 2):
+    when chained(100, 10, 2):
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
         fail("unexpected error")
   )
   it("chained ? propagates from second call", fn():
-    match chained(100, 10, 0):
+    when chained(100, 10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
   it("? in expression position with arithmetic", fn():
-    match inline_expr(10, 2):
+    when inline_expr(10, 2):
       case Ok(v):
         expect(v).to_eq(6)
       case Err(e):
         fail("unexpected error")
   )
-  it("match Ok with wildcard for Unit result", fn():
+  it("when Ok with wildcard for Unit result", fn():
     fn unit_ok() -> Result<Unit, Error>:
       return Ok(0 as u8)
-    match unit_ok():
+    when unit_ok():
       case Ok(_):
         expect(true).to_eq(true)
       case Err(e):

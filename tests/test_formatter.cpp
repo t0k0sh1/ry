@@ -46,8 +46,9 @@ TEST(Formatter, ComplexExprFormatting) {
     EXPECT_EQ(fmt("x = [1, 2, 3]\n"), "x = [1, 2, 3]\n");
     // Map
     EXPECT_EQ(fmt("x = {\"a\": 1, \"b\": 2}\n"), "x = {\"a\": 1, \"b\": 2}\n");
-    // Ternary
-    EXPECT_EQ(fmt("x = a > 0 ? 1 : 0\n"), "x = a > 0 ? 1 : 0\n");
+    // when expression
+    EXPECT_EQ(fmt("x = when:\n    a > 0 => 1\n    else => 0\n"),
+              "x = when:\n  a > 0 => 1\n  else => 0\n");
     // Range
     EXPECT_EQ(fmt("x = 1..10\n"), "x = 1..10\n");
     // Enum access
@@ -169,22 +170,24 @@ TEST(Formatter, RecordEnumDef) {
 // ===== Control Flow Tests =====
 
 TEST(Formatter, ControlFlow) {
-    // If / elif / else
+    // If / when
     {
         auto src =
-            "if x > 10:\n"
-            "    res = 1\n"
-            "elif x == 5:\n"
-            "    res = 2\n"
-            "else:\n"
-            "    res = 3\n";
+            "when:\n"
+            "    x > 10:\n"
+            "        res = 1\n"
+            "    x == 5:\n"
+            "        res = 2\n"
+            "    else:\n"
+            "        res = 3\n";
         auto expected =
-            "if x > 10:\n"
-            "  res = 1\n"
-            "elif x == 5:\n"
-            "  res = 2\n"
-            "else:\n"
-            "  res = 3\n";
+            "when:\n"
+            "  x > 10:\n"
+            "    res = 1\n"
+            "  x == 5:\n"
+            "    res = 2\n"
+            "  else:\n"
+            "    res = 3\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // For loop
@@ -208,13 +211,13 @@ TEST(Formatter, ControlFlow) {
     // Match statement
     {
         auto src =
-            "match x:\n"
+            "when x:\n"
             "    case 1:\n"
             "        res = 10\n"
             "    case _:\n"
             "        res = 0\n";
         auto expected =
-            "match x:\n"
+            "when x:\n"
             "  case 1:\n"
             "    res = 10\n"
             "  case _:\n"

@@ -315,7 +315,7 @@ p = Shape::Point
 使用 `case EnumName::Variant(binding):` 形式取出关联数据。绑定使用用户选择的变量名，而非字段名。
 
 ```python
-match c:
+when c:
     case Shape::Circle(r):
         print(r)            # 3.14
     case Shape::Rectangle(w, h):
@@ -349,7 +349,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
+when a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -381,7 +381,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)            # 5
     case Err(e):
@@ -394,7 +394,7 @@ match divide(10, 2):
 fn save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit 占位符
 
-match save("/tmp/test.txt", "hello"):
+when save("/tmp/test.txt", "hello"):
     case Ok(_):
         print("saved")
     case Err(e):
@@ -408,7 +408,7 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` — 成功变体
 - `Err(error)` — 错误变体
 
-与 `match` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
+与 `when` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
 
 **测试匹配器：**
 - `expect(x).to_be_ok()` — 断言结果为 `Ok`

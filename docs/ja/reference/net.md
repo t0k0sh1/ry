@@ -53,15 +53,15 @@ from net import bind, listen, accept, connect
 from io import str_to_bytes, bytes_to_str
 
 # サーバー
-match bind("127.0.0.1", 8080):
+when bind("127.0.0.1", 8080):
     case Ok(server):
-        match listen(server, 128):
+        when listen(server, 128):
             case Ok(_):
-                match accept(server):
+                when accept(server):
                     case Ok(conn):
-                        match recv(conn, 4096):
+                        when recv(conn, 4096):
                             case Ok(data):
-                                match send(conn, data):
+                                when send(conn, data):
                                     case Ok(_):
                                         ...
                                     case Err(e):
@@ -81,16 +81,16 @@ match bind("127.0.0.1", 8080):
 ### クライアント
 
 ```python
-match connect("127.0.0.1", 8080):
+when connect("127.0.0.1", 8080):
     case Ok(conn):
-        match send(conn, str_to_bytes("hello")):
+        when send(conn, str_to_bytes("hello")):
             case Ok(_):
                 ...
             case Err(e):
                 print(e.message)
-        match recv(conn, 4096):
+        when recv(conn, 4096):
             case Ok(resp):
-                match bytes_to_str(resp):
+                when bytes_to_str(resp):
                     case Ok(s):
                         print(s)
                     case Err(e):
@@ -109,11 +109,11 @@ from net import bind, listen, accept, connect, listener_port
 from io import str_to_bytes, bytes_to_str
 
 async fn echo_server(server: TcpListener) -> str:
-    match accept(server):
+    when accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            when recv(conn, 4096):
                 case Ok(data):
-                    match send(conn, data):
+                    when send(conn, data):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -126,9 +126,9 @@ async fn echo_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
-        match listen(server, 1):
+        when listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
@@ -147,10 +147,10 @@ match bind("127.0.0.1", 0):
 ```python
 from net import connect, set_recv_timeout
 
-match connect("127.0.0.1", 8080):
+when connect("127.0.0.1", 8080):
     case Ok(conn):
         set_recv_timeout(conn, 5000)  # 5 秒のタイムアウト
-        match recv(conn, 4096):
+        when recv(conn, 4096):
             case Ok(data):
                 ...
             case Err(e):
@@ -164,7 +164,7 @@ match connect("127.0.0.1", 8080):
 
 ## エラー処理
 
-- `close()` を除くすべての TCP 関数は `Result<T, Error>` を返します。失敗を処理するには `Ok`/`Err` で `match` を使用してください。
+- `close()` を除くすべての TCP 関数は `Result<T, Error>` を返します。失敗を処理するには `Ok`/`Err` で `when` を使用してください。
 - `recv()` はピアによって接続が閉じられた場合は空の `List<u8>` を含む `Ok` を返し、実際のエラー（タイムアウト、ソケットエラー）の場合は `Err` を返します。
 - `close()` はソケットを閉じてハンドルを解放します。閉じた後のハンドルの使用は未定義動作です。
 

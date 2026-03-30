@@ -2,15 +2,13 @@
 
 # Control Flow Reference
 
-## if / elif / else
+## if / else
 
 ### Syntax
 
 ```python
 if condition:
     # then block
-elif condition:
-    # elif block (can have multiple)
 else:
     # else block (optional)
 ```
@@ -31,15 +29,13 @@ x = 10
 
 if x > 5:
     print("big")
-elif x == 5:
-    print("five")
 else:
-    print("small")
+    print("small or equal")
 ```
 
 ### Scope Rules
 
-- Each `if` / `elif` / `else` block has its own independent block scope.
+- Each `if` / `else` block has its own independent block scope.
 - Variables declared inside a block are not accessible outside the block.
 
 ```python
@@ -273,7 +269,7 @@ for i in range(5):
 ## `...` (Ellipsis)
 
 - A no-op statement that does nothing. Used as a placeholder for empty blocks.
-- Can be used in any block: function body, `if`/`elif`/`else`, `while`, `for`, `match case`, etc.
+- Can be used in any block: function body, `if`/`else`, `while`, `for`, `when` arm, etc.
 
 ```python
 fn not_yet():
@@ -287,12 +283,51 @@ else:
 
 ---
 
-## match
+## when
 
-### Syntax
+`when` has two statement forms:
+
+- `when:` for multi-branch conditional flow
+- `when value:` for pattern matching on a subject value
+
+### Conditional `when:`
+
+#### Syntax
 
 ```python
-match expression:
+when:
+    condition:
+        # body
+    condition:
+        # body
+    else:
+        # fallback body
+```
+
+#### Example
+
+```python
+x = 0
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+The conditional `when:` statement evaluates arms from top to bottom and executes only the first arm whose condition is truthy. The `else:` arm is optional for statements.
+
+For the expression form of `when:`, see [Operator Reference](operators.md#when-conditional-expression).
+
+### Pattern `when value:`
+
+#### Syntax
+
+```python
+when expression:
     case pattern:
         # body
     case pattern if guard_condition:
@@ -301,7 +336,7 @@ match expression:
         # wildcard (matches anything)
 ```
 
-### Pattern Types
+#### Pattern Types
 
 | Pattern | Example | Description |
 |----------|-----|------|
@@ -316,30 +351,30 @@ match expression:
 | `Err(x)` | `Err(e)` | When Result is Err, binds the error value |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
-### Guard Clause
+#### Guard Clause
 
 A guard condition can be specified in the form `case pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
 
-### OR Pattern
+#### OR Pattern
 
 Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
 
 ```python
-match x:
+when x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # Enum OR pattern
-match color:
+when color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
         print("green")
 ```
 
-### Exhaustiveness Checking
+#### Exhaustiveness Checking
 
 - enum types: Must cover all variants or include `_`. OR patterns count each alternative individually.
 - Option types: Must cover both `Some` and `None` or include `_`.
@@ -347,16 +382,16 @@ match color:
 - int / float / str literals: `_` is required.
 - Guarded arms do not count toward exhaustiveness.
 
-### Example
+#### Example
 
 ```python
-# enum match
+# enum pattern when
 enum Color:
     Red
     Green
     Blue
 
-match color:
+when color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -364,28 +399,28 @@ match color:
     case Color::Blue:
         print("blue")
 
-# Option match
+# Option pattern when
 x: Option<int> = Some(42)
-match x:
+when x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
-# Result match
+# Result pattern when
 fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
-# Literal match
-match x:
+# Literal pattern when
+when x:
     case 0:
         print("zero")
     case 1:
@@ -394,7 +429,7 @@ match x:
         print("other")
 
 # Guard clause
-match x:
+when x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -403,7 +438,7 @@ match x:
         print("zero")
 ```
 
-### ADT Enum Match
+#### ADT Enum Pattern Matching
 
 When an enum variant carries associated data, use a binding pattern to extract the value(s).
 
@@ -414,7 +449,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
+when s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):
@@ -437,7 +472,7 @@ Multi-field variants bind each field to a separate name in declaration order.
 
 ### Block Scope
 
-- Each block of `if` / `elif` / `else` / `while` / `for` / `match` has a block scope.
+- Each block of `if` / `else` / `while` / `for` / `when` has a block scope.
 - Variables declared inside a block go out of scope when the block ends.
 
 ```python

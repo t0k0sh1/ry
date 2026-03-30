@@ -1,4 +1,4 @@
-describe("if/elif/else", fn():
+describe("if / when", fn():
   it("if true", fn():
     res = 0
     if true:
@@ -13,15 +13,16 @@ describe("if/elif/else", fn():
       res = 2
     expect(res).to_eq(2)
   )
-  it("elif", fn():
+  it("when multi-branch", fn():
     res = 0
     x = 5
-    if x > 10:
-      res = 1
-    elif x == 5:
-      res = 2
-    else:
-      res = 3
+    when:
+      x > 10:
+        res = 1
+      x == 5:
+        res = 2
+      else:
+        res = 3
     expect(res).to_eq(2)
   )
 )
@@ -138,11 +139,11 @@ describe("for", fn():
   )
 )
 
-describe("match", fn():
+describe("when", fn():
   it("literal pattern", fn():
     res = 0
     x = 2
-    match x:
+    when x:
       case 1:
         res = 10
       case 2:
@@ -154,7 +155,7 @@ describe("match", fn():
   it("variable binding", fn():
     res = 0
     x = 42
-    match x:
+    when x:
       case n if n > 0:
         res = n
       case _:
@@ -164,7 +165,7 @@ describe("match", fn():
   it("guard", fn():
     res = ""
     x = -5
-    match x:
+    when x:
       case n if n > 0:
         res = "positive"
       case n if n < 0:
@@ -176,7 +177,7 @@ describe("match", fn():
   it("OR pattern", fn():
     res = ""
     x = 2
-    match x:
+    when x:
       case 1 | 2 | 3:
         res = "small"
       case _:
@@ -186,7 +187,7 @@ describe("match", fn():
   it("wildcard", fn():
     res = ""
     x = 999
-    match x:
+    when x:
       case 0:
         res = "zero"
       case _:
@@ -195,11 +196,11 @@ describe("match", fn():
   )
 )
 
-describe("match Option", fn():
+describe("when Option", fn():
   it("Some", fn():
     res = 0
     x: Option<int> = Some(42)
-    match x:
+    when x:
       case Some(v):
         res = v
       case None:
@@ -209,7 +210,7 @@ describe("match Option", fn():
   it("None", fn():
     res = 0
     x: Option<int> = None
-    match x:
+    when x:
       case Some(v):
         res = v
       case None:
@@ -224,11 +225,11 @@ enum Direction:
   East
   West
 
-describe("match enum", fn():
+describe("when enum", fn():
   it("simple enum", fn():
     res = ""
     d = Direction::North
-    match d:
+    when d:
       case Direction::North:
         res = "north"
       case Direction::South:
@@ -246,11 +247,11 @@ enum Shape:
   Rect(float, float)
   Point
 
-describe("match ADT enum", fn():
+describe("when ADT enum", fn():
   it("with associated data", fn():
     res = 0.0
     s = Shape::Circle(3.14)
-    match s:
+    when s:
       case Shape::Circle(r):
         res = r
       case Shape::Rect(w, h):
@@ -262,7 +263,7 @@ describe("match ADT enum", fn():
   it("multi-field variant", fn():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
-    match s:
+    when s:
       case Shape::Circle(r):
         res = r
       case Shape::Rect(w, h):

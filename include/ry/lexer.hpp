@@ -36,8 +36,8 @@ enum class TokenKind {
     Dedent,         // インデントレベル減少
     // --- 制御構文 ---
     If,             // if
-    Elif,           // elif
     Else,           // else
+    When,           // when
     While,          // while
     // --- 関数定義 ---
     Fn,             // fn
@@ -89,8 +89,6 @@ enum class TokenKind {
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::
-    // --- match ---
-    Match,          // match
     Case,           // case
     // --- test ---
     Expect,         // expect

@@ -72,13 +72,13 @@ print(is_absolute("src/main.ry")) # false
 ```python
 from path import resolve
 
-match resolve("/tmp"):
+when resolve("/tmp"):
   case Ok(p):
     print(p)  # /private/tmp (on macOS) or /tmp
   case Err(e):
     print(e.message)
 
-match resolve("/nonexistent"):
+when resolve("/nonexistent"):
   case Ok(p):
     print(p)
   case Err(e):

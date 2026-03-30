@@ -230,7 +230,7 @@ describe("any unwrap in function call", fn():
 )
 
 describe("overload resolution: concrete preferred over any", fn():
-  it("concrete match wins over any match", fn():
+  it("concrete when wins over any when", fn():
     fn dispatch(x: int) -> str:
       return "int"
     fn dispatch(x) -> str:

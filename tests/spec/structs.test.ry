@@ -110,10 +110,10 @@ describe("simple enum", fn():
     expect(Color::Red == Color::Red).to_be_true()
     expect(Color::Red != Color::Green).to_be_true()
   )
-  it("match", fn():
+  it("when", fn():
     res = ""
     c = Color::Blue
-    match c:
+    when c:
       case Color::Red:
         res = "red"
       case Color::Green:
@@ -133,7 +133,7 @@ describe("ADT enum", fn():
   it("associated data", fn():
     s = Shape::CircleS(3.14)
     res = 0.0
-    match s:
+    when s:
       case Shape::CircleS(r):
         res = r
       case Shape::RectS(w, h):
@@ -142,10 +142,10 @@ describe("ADT enum", fn():
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field pattern match", fn():
+  it("multi-field pattern when", fn():
     s = Shape::RectS(4.0, 5.0)
     res = 0.0
-    match s:
+    when s:
       case Shape::CircleS(r):
         res = r
       case Shape::RectS(w, h):
@@ -165,7 +165,7 @@ describe("ADT enum with named fields", fn():
   it("construction is positional", fn():
     s = NamedShape::Circle(3.14)
     res = 0.0
-    match s:
+    when s:
       case NamedShape::Circle(r):
         res = r
       case NamedShape::Rect(w, h):
@@ -177,7 +177,7 @@ describe("ADT enum with named fields", fn():
   it("multi-field named variant", fn():
     s = NamedShape::Rect(4.0, 5.0)
     res = 0.0
-    match s:
+    when s:
       case NamedShape::Circle(r):
         res = r
       case NamedShape::Rect(w, h):
@@ -207,10 +207,10 @@ describe("explicit enum values", fn():
     expect(HttpStatus::Ok == HttpStatus::Ok).to_be_true()
     expect(HttpStatus::Ok != HttpStatus::NotFound).to_be_true()
   )
-  it("match with explicit values", fn():
+  it("when with explicit values", fn():
     res = ""
     s = HttpStatus::NotFound
-    match s:
+    when s:
       case HttpStatus::Ok:
         res = "ok"
       case HttpStatus::NotFound:
@@ -238,7 +238,7 @@ describe("generic enum", fn():
   it("with type parameter", fn():
     a = MyOption<int>::MySome(42)
     res = 0
-    match a:
+    when a:
       case MyOption::MySome(v):
         res = v
       case MyOption::MyNone:
@@ -248,7 +248,7 @@ describe("generic enum", fn():
   it("none variant", fn():
     b = MyOption<int>::MyNone
     res = 0
-    match b:
+    when b:
       case MyOption::MySome(v):
         res = v
       case MyOption::MyNone:
