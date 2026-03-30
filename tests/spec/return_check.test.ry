@@ -8,21 +8,22 @@ describe("return check - all paths return", fn():
     expect(abs(-3)).to_eq(3)
     expect(abs(5)).to_eq(5)
   )
-  it("if/elif/else returns on all paths", fn():
+  it("when returns on all paths", fn():
     fn sign(x: int) -> int:
-      if x > 0:
-        return 1
-      elif x < 0:
-        return -1
-      else:
-        return 0
+      when:
+        x > 0:
+          return 1
+        x < 0:
+          return -1
+        else:
+          return 0
     expect(sign(10)).to_eq(1)
     expect(sign(-5)).to_eq(-1)
     expect(sign(0)).to_eq(0)
   )
-  it("match with wildcard returns on all paths", fn():
+  it("when with wildcard returns on all paths", fn():
     fn describe(x: int) -> str:
-      match x:
+      when x:
         case 1:
           return "one"
         case 2:
@@ -45,18 +46,18 @@ describe("return check - all paths return", fn():
     expect(classify(50)).to_eq("small")
     expect(classify(-1)).to_eq("non-positive")
   )
-  it("match with Ok/Err returns on all paths", fn():
+  it("when with Ok/Err returns on all paths", fn():
     fn check(r: Result<int, Error>) -> str:
-      match r:
+      when r:
         case Ok(v):
           return "ok"
         case Err(e):
           return "err"
     expect(check(Ok(1))).to_eq("ok")
   )
-  it("match with Some/None returns on all paths", fn():
+  it("when with Some/None returns on all paths", fn():
     fn check(o: Option<int>) -> str:
-      match o:
+      when o:
         case Some(v):
           return "some"
         case None:

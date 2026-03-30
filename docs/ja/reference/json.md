@@ -64,11 +64,11 @@ from json import parse, stringify, json_type, json_get, json_at, json_str, json_
 ```python
 from json import parse, json_get, json_str, json_int, json_free
 
-match parse("{\"name\": \"Alice\", \"age\": 30}"):
+when parse("{\"name\": \"Alice\", \"age\": 30}"):
   case Ok(data):
-    match json_get(data, "name"):
+    when json_get(data, "name"):
       case Ok(val):
-        match json_str(val):
+        when json_str(val):
           case Ok(name):
             print(name)   # "Alice"
           case Err(e):
@@ -85,12 +85,12 @@ match parse("{\"name\": \"Alice\", \"age\": 30}"):
 ```python
 from json import parse, json_at, json_int, json_len, json_free
 
-match parse("[10, 20, 30]"):
+when parse("[10, 20, 30]"):
   case Ok(data):
     print(to_str(json_len(data)))   # 3
-    match json_at(data, 0):
+    when json_at(data, 0):
       case Ok(elem):
-        match json_int(elem):
+        when json_int(elem):
           case Ok(n):
             print(to_str(n))   # 10
           case Err(e):
@@ -107,7 +107,7 @@ match parse("[10, 20, 30]"):
 ```python
 from json import parse, stringify, json_free
 
-match parse("{\"key\":\"value\",\"count\":42}"):
+when parse("{\"key\":\"value\",\"count\":42}"):
   case Ok(data):
     print(stringify(data, 2))
     # {

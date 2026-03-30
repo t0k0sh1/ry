@@ -6,7 +6,7 @@
 
 ---
 
-## if / elif / else
+## if / else
 
 使用 `if` 根據條件進行分支處理。
 
@@ -15,13 +15,11 @@ x = 10
 
 if x > 0:
     print(x)
-elif x == 0:
-    print(0)
 else:
-    print(-1)
+    print(0)
 ```
 
-- `elif` 和 `else` 可以省略。
+- `else` 可以省略。
 - 條件式不限於 `bool`，也可以指定其他型別。對於 `int`，`0` 視為假，非 `0` 視為真。
 - `if` 可以巢狀使用。
 
@@ -202,9 +200,25 @@ print(x)       # 99
 
 ---
 
-## match
+## when
 
-`match` 是根據值進行分支的語法，可安全地處理 enum 和 Option。
+`when:` 用於多分支條件判斷，`when value:` 用於 enum、Option 等值的模式匹配。
+
+### 條件分支 `when:`
+
+```python
+x = -2
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+### 模式匹配 `when value:`
 
 ```python
 enum Color:
@@ -213,7 +227,7 @@ enum Color:
     Blue
 
 c = Color::Green
-match c:
+when c:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -223,13 +237,13 @@ match c:
 # green
 ```
 
-### Option 的匹配
+### Option 的模式匹配
 
-使用 `match` 可以安全地處理 `None` 的情況。
+使用 `when` 可以安全地處理 `None` 的情況。
 
 ```python
 x: Option<int> = Some(42)
-match x:
+when x:
     case Some(v):
         print(v)
     case None:
@@ -243,7 +257,7 @@ match x:
 
 ```python
 n = 5
-match n:
+when n:
     case 0:
         print("zero")
     case 1:
@@ -258,7 +272,7 @@ match n:
 可以使用 `if` 新增守衛條件。
 
 ```python
-match n:
+when n:
     case x if x > 0:
         print("positive")
     case x if x < 0:
@@ -267,7 +281,16 @@ match n:
         print("zero")
 ```
 
-> **注意**：`match` 必須涵蓋所有模式。enum 必須包含所有變體，Option 必須包含 `Some` 和 `None`，字面值則需要 `_`。
+### `when:` 表達式
+
+```python
+label = when:
+    score >= 90 => "A"
+    score >= 80 => "B"
+    else => "C"
+```
+
+> **注意**：`when value:` 必須涵蓋所有模式。enum 必須包含所有變體，Option 必須包含 `Some` 和 `None`，字面值則需要 `_`。
 
 ---
 

@@ -18,7 +18,7 @@
 - **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（结构体不变量）、`old()`、`result`
 - **指令** — `@deprecated` 编译时元数据注解
 - **函数** — `fn` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
-- **控制流** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
+- **控制流** — `if`/`else`、`when`、`while`、`for...in`、`break`/`continue`
 - **文件 I/O** — 文件读写、字节操作、标准输入（`std.io`）
 - **包管理** — 基于目录的包、自动导入的 `std` 标准库、`from ... import ...`
 - **类型安全** — 类型推断、类型注解、不可变类型绑定、`@const` 指令

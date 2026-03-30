@@ -45,11 +45,15 @@ bool stmtReturnsOnAllPaths(const StmtNode &stmt) {
             return true;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
             if (s->else_body.empty()) return false;
-            for (auto &branch : s->branches) {
-                if (!allPathsReturn(branch.body)) return false;
+            if (!allPathsReturn(s->branch.body)) return false;
+            return allPathsReturn(s->else_body);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            if (s->else_body.empty()) return false;
+            for (auto &arm : s->arms) {
+                if (!allPathsReturn(arm.body)) return false;
             }
             return allPathsReturn(s->else_body);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
             if (!isExhaustiveMatch(s->arms)) return false;
             for (auto &arm : s->arms) {
                 if (!allPathsReturn(arm.body)) return false;

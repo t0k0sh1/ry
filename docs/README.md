@@ -15,7 +15,7 @@ If you are new to Ry, please read through these in order.
 | 01 | [Getting Started](tutorial/01-getting-started.md) | Setup, Hello World, comments |
 | 02 | [Variables and Types](tutorial/02-variables-and-types.md) | Variable declarations, constants, type annotations, basic types |
 | 03 | [Operators](tutorial/03-operators.md) | Arithmetic, comparison, logical, bitwise, compound assignment operators |
-| 04 | [Control Flow](tutorial/04-control-flow.md) | if/elif/else, while, for/range, break/continue |
+| 04 | [Control Flow](tutorial/04-control-flow.md) | if/else, when, while, for/range, break/continue |
 | 05 | [Functions](tutorial/05-functions.md) | fn definitions, recursion, overloading, lambdas, UFCS |
 | 06 | [Records and Enums](tutorial/06-records.md) | type definitions, field access, methods, enum |
 | 07 | [Collections](tutorial/07-collections.md) | Tuples, lists, maps, sets |
@@ -36,7 +36,7 @@ For detailed language specifications, see the reference pages below.
 |------|----------|
 | [Types and Type Rules](reference/types.md) | All types, type promotion rules, type conversion |
 | [Operators and Precedence](reference/operators.md) | All operators and precedence table |
-| [Control Flow](reference/control-flow.md) | Complete grammar for if, while, for |
+| [Control Flow](reference/control-flow.md) | Complete grammar for if/else, when, while, for |
 | [Functions, Lambdas, UFCS, Operator Overloading](reference/functions.md) | All forms of function definitions |
 | [Structs and Enums](reference/structs.md) | Complete grammar for type and enum definitions |
 | [Tuples, Lists, Maps, Sets](reference/collections.md) | Collection type operations |

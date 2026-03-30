@@ -174,10 +174,10 @@ print(y)   # None
 
 ### Extracting the Value
 
-Use `match` to safely extract the inner value and handle the `None` case.
+Use `when` to safely extract the inner value and handle the `None` case.
 
 ```python
-match x:
+when x:
     case Some(v):
         print(v)    # 42
     case None:
@@ -225,11 +225,11 @@ from net import bind, listen, accept, connect, listener_port
 from io import str_to_bytes, bytes_to_str
 
 async fn echo_server(server: TcpListener) -> str:
-    match accept(server):
+    when accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            when recv(conn, 4096):
                 case Ok(data):
-                    match send(conn, data):
+                    when send(conn, data):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -242,22 +242,22 @@ async fn echo_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
-        match listen(server, 1):
+        when listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
-                match connect("127.0.0.1", port):
+                when connect("127.0.0.1", port):
                     case Ok(conn):
-                        match send(conn, str_to_bytes("hello")):
+                        when send(conn, str_to_bytes("hello")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        match recv(conn, 4096):
+                        when recv(conn, 4096):
                             case Ok(resp):
-                                match bytes_to_str(resp):
+                                when bytes_to_str(resp):
                                     case Ok(s):
                                         print(s)   # hello
                                     case Err(e):
@@ -341,7 +341,7 @@ Use `case` with a binding pattern to extract the associated data. Bindings use y
 
 ```python
 fn describe(s: Shape) -> str:
-    match s:
+    when s:
         case Shape::Circle(r):
             return f"circle with radius {r}"
         case Shape::Rectangle(w, h):
@@ -371,7 +371,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b: MyOption<int> = MyOption<int>::MyNone
 
-match a:
+when a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -391,11 +391,11 @@ fn divide(a: int, b: int) -> Result<int, str>:
     return Ok(a // b)
 ```
 
-Use `match` to handle the result.
+Use `when` to handle the result.
 
 ```python
 r = divide(10, 0)
-match r:
+when r:
     case Ok(v):
         print(v)
     case Err(e):

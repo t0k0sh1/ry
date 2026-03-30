@@ -3,89 +3,77 @@
 #include <filesystem>
 #include <fstream>
 
-// ===== Ternary operator =====
+// ===== when expression =====
 
-TEST_F(CodeGenTest, TernaryBasics) {
-    // TernaryBasicTrue
-    EXPECT_EQ(runSource("x = true ? 1 : 2\nprint(x)"), "1\n");
-    // TernaryBasicFalse
-    EXPECT_EQ(runSource("x = false ? 1 : 2\nprint(x)"), "2\n");
-    // TernaryWithComparison
-    EXPECT_EQ(runSource("x = 3 > 2 ? 10 : 20\nprint(x)"), "10\n");
-    // TernaryString
-    EXPECT_EQ(runSource("s = true ? \"yes\" : \"no\"\nprint(s)"), "yes\n");
-    // TernaryNested
-    EXPECT_EQ(runSource("x = true ? (false ? 1 : 2) : 3\nprint(x)"), "2\n");
-    // TernaryInCall
-    EXPECT_EQ(runSource("print(true ? \"a\" : \"b\")"), "a\n");
+TEST_F(CodeGenTest, WhenExprBasics) {
+    EXPECT_EQ(runSource("x = when:\n    true => 1\n    else => 2\nprint(x)"), "1\n");
+    EXPECT_EQ(runSource("x = when:\n    false => 1\n    else => 2\nprint(x)"), "2\n");
+    EXPECT_EQ(runSource("x = when:\n    3 > 2 => 10\n    else => 20\nprint(x)"), "10\n");
+    EXPECT_EQ(runSource("s = when:\n    true => \"yes\"\n    else => \"no\"\nprint(s)"), "yes\n");
+    EXPECT_EQ(runSource("x = when:\n    true => when:\n        false => 1\n        else => 2\n    else => 3\nprint(x)"), "2\n");
+    EXPECT_EQ(runSource("x = when:\n    true => \"a\"\n    else => \"b\"\nprint(x)"), "a\n");
 }
 
-TEST_F(CodeGenTest, TernaryTypeMismatchErrors) {
-    // TernaryTypeMismatchStrList
-    EXPECT_THROW(runSource("x = true ? \"hello\" : [1, 2, 3]\nprint(x)"), std::runtime_error);
-    // TernaryTypeMismatchListMap
-    EXPECT_THROW(runSource("x = true ? [1, 2] : {\"a\": 1}\nprint(x)"), std::runtime_error);
+TEST_F(CodeGenTest, WhenExprTypeMismatchErrors) {
+    EXPECT_THROW(runSource("x = when:\n    true => \"hello\"\n    else => [1, 2, 3]\nprint(x)"), std::runtime_error);
+    EXPECT_THROW(runSource("x = when:\n    true => [1, 2]\n    else => {\"a\": 1}\nprint(x)"), std::runtime_error);
 }
 
-TEST_F(CodeGenTest, TernaryListSameType) {
+TEST_F(CodeGenTest, WhenExprListSameType) {
     std::string src =
-        "x = true ? [1, 2] : [3, 4]\n"
+        "x = when:\n"
+        "    true => [1, 2]\n"
+        "    else => [3, 4]\n"
         "print(x)";
     EXPECT_EQ(runSource(src), "[1, 2]\n");
 }
 
-// ===== if/elif/else codegen =====
+// ===== if / when codegen =====
 
-TEST_F(CodeGenTest, IfElifElseBasics) {
-    // IfTrueExecutes
+TEST_F(CodeGenTest, IfAndWhenBasics) {
     EXPECT_EQ(runSource("if true:\n    print(1)"), "1\n");
-    // IfFalseDoesNotExecute
     EXPECT_EQ(runSource("if false:\n    print(1)"), "");
-    // IfElseTrueBranch
     EXPECT_EQ(runSource("if true:\n    print(1)\nelse:\n    print(2)"), "1\n");
-    // IfElseFalseBranch
     EXPECT_EQ(runSource("if false:\n    print(1)\nelse:\n    print(2)"), "2\n");
-    // IfElifElseChain
     EXPECT_EQ(runSource(
         "x = 2\n"
-        "if x == 1:\n"
-        "    print(10)\n"
-        "elif x == 2:\n"
-        "    print(20)\n"
-        "else:\n"
-        "    print(30)"), "20\n");
-    // IfElifElseChainElse
+        "when:\n"
+        "    x == 1:\n"
+        "        print(10)\n"
+        "    x == 2:\n"
+        "        print(20)\n"
+        "    else:\n"
+        "        print(30)"), "20\n");
     EXPECT_EQ(runSource(
         "x = 99\n"
-        "if x == 1:\n"
-        "    print(10)\n"
-        "elif x == 2:\n"
-        "    print(20)\n"
-        "else:\n"
-        "    print(30)"), "30\n");
-    // IfFollowedByStatement
+        "when:\n"
+        "    x == 1:\n"
+        "        print(10)\n"
+        "    x == 2:\n"
+        "        print(20)\n"
+        "    else:\n"
+        "        print(30)"), "30\n");
     EXPECT_EQ(runSource(
         "if true:\n"
         "    print(1)\n"
         "print(2)"), "1\n2\n");
-    // IfFalseFollowedByStatement
     EXPECT_EQ(runSource(
         "if false:\n"
         "    print(1)\n"
         "print(2)"), "2\n");
-    // MultipleElif
     EXPECT_EQ(runSource(
         "x = 3\n"
-        "if x == 1:\n"
-        "    print(10)\n"
-        "elif x == 2:\n"
-        "    print(20)\n"
-        "elif x == 3:\n"
-        "    print(30)\n"
-        "elif x == 4:\n"
-        "    print(40)\n"
-        "else:\n"
-        "    print(50)"), "30\n");
+        "when:\n"
+        "    x == 1:\n"
+        "        print(10)\n"
+        "    x == 2:\n"
+        "        print(20)\n"
+        "    x == 3:\n"
+        "        print(30)\n"
+        "    x == 4:\n"
+        "        print(40)\n"
+        "    else:\n"
+        "        print(50)"), "30\n");
 }
 
 TEST_F(CodeGenTest, IfEdgeCases) {

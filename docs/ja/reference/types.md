@@ -315,7 +315,7 @@ p = Shape::Point
 `case EnumName::Variant(binding):` の形式で関連データを取り出せます。バインディングにはフィールド名ではなくユーザーが選択した変数名を使用します。
 
 ```python
-match c:
+when c:
     case Shape::Circle(r):
         print(r)            # 3.14
     case Shape::Rectangle(w, h):
@@ -349,7 +349,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
+when a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -381,7 +381,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)            # 5
     case Err(e):
@@ -394,7 +394,7 @@ match divide(10, 2):
 fn save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit プレースホルダー
 
-match save("/tmp/test.txt", "hello"):
+when save("/tmp/test.txt", "hello"):
     case Ok(_):
         print("saved")
     case Err(e):
@@ -408,7 +408,7 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` -- 成功バリアント
 - `Err(error)` -- エラーバリアント
 
-`match` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
+`when` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
 
 **テストマッチャー:**
 - `expect(x).to_be_ok()` -- 結果が `Ok` であることをアサート

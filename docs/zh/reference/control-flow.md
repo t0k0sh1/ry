@@ -2,15 +2,13 @@
 
 # 控制流参考
 
-## if / elif / else
+## if / else
 
 ### 语法
 
 ```python
 if condition:
     # then 代码块
-elif condition:
-    # elif 代码块（可多个）
 else:
     # else 代码块（可省略）
 ```
@@ -31,15 +29,13 @@ x = 10
 
 if x > 5:
     print("big")
-elif x == 5:
-    print("five")
 else:
-    print("small")
+    print("small or equal")
 ```
 
 ### 作用域规则
 
-- `if` / `elif` / `else` 的各个代码块分别拥有独立的块作用域。
+- `if` / `else` 的各个代码块分别拥有独立的块作用域。
 - 在代码块内声明的变量无法从代码块外访问。
 
 ```python
@@ -273,7 +269,7 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 不执行任何操作的语句（no-op）。用作空代码块的占位符。
-- 可在任何代码块中使用：函数体、`if`/`elif`/`else`、`while`、`for`、`match case` 等。
+- 可在任何代码块中使用：函数体、`if`/`else`、`while`、`for`、`when` 分支等。
 
 ```python
 fn not_yet():
@@ -287,12 +283,43 @@ else:
 
 ---
 
-## match
+## when
 
-### 语法
+`when` 有两种语句形式：
+
+- `when:` 用于多分支条件判断
+- `when value:` 用于对某个值做模式匹配
+
+### 条件分支 `when:`
 
 ```python
-match expression:
+when:
+    condition:
+        # 主体
+    condition:
+        # 主体
+    else:
+        # 兜底分支
+```
+
+```python
+x = 0
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+`when:` 会自上而下求值，只执行第一个条件为真的分支。表达式形式请参见[运算符参考](operators.md#when-条件表达式)。
+
+### 模式匹配 `when value:`
+
+```python
+when expression:
     case pattern:
         # 主体
     case pattern if guard_condition:
@@ -325,14 +352,14 @@ match expression:
 可以使用 `|` 组合多个模式，任一模式匹配时即匹配。OR 模式中不允许使用变量绑定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
 
 ```python
-match x:
+when x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # enum OR 模式
-match color:
+when color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
@@ -350,13 +377,13 @@ match color:
 ### 示例
 
 ```python
-# enum 匹配
+# enum 模式匹配
 enum Color:
     Red
     Green
     Blue
 
-match color:
+when color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -364,28 +391,28 @@ match color:
     case Color::Blue:
         print("blue")
 
-# Option 匹配
+# Option 模式匹配
 x: Option<int> = Some(42)
-match x:
+when x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
-# Result 匹配
+# Result 模式匹配
 fn divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
-# 字面值匹配
-match x:
+# 字面值模式匹配
+when x:
     case 0:
         print("zero")
     case 1:
@@ -394,7 +421,7 @@ match x:
         print("other")
 
 # guard 子句
-match x:
+when x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -403,7 +430,7 @@ match x:
         print("zero")
 ```
 
-### ADT enum 匹配
+### ADT enum 模式匹配
 
 当 enum 变体携带关联数据时，使用绑定模式来提取值。
 
@@ -414,7 +441,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-match s:
+when s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):
@@ -437,7 +464,7 @@ match s:
 
 ### 块作用域
 
-- `if` / `elif` / `else` / `while` / `for` / `match` 的各代码块拥有块作用域。
+- `if` / `else` / `while` / `for` / `when` 的各代码块拥有块作用域。
 - 在代码块内声明的变量会在代码块结束时离开作用域。
 
 ```python

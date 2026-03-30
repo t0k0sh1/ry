@@ -72,7 +72,7 @@ fn fetch_data(url: str) -> Result<int, Error>:
 describe("Err auto-slicing", fn():
   it("Err(subtype) auto-slices to Error in Result", fn():
     result = fetch_data("/api")
-    match result:
+    when result:
       case Err(e):
         expect(e.message).to_eq("not found")
         expect(e.code).to_eq(404)
@@ -140,7 +140,7 @@ fn process_data(url: str) -> Result<int, Error>:
 describe("? operator subtype coercion", fn():
   it("propagates subtype error through ?", fn():
     result = process_data("/api")
-    match result:
+    when result:
       case Err(e):
         expect(e.message).to_eq("fail")
         expect(e.code).to_eq(500)

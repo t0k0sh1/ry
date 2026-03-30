@@ -73,7 +73,7 @@ describe("Result type", fn():
     return Ok(a // b)
   it("returns Ok on success", fn():
     res = safe_divide(10, 2)
-    match res:
+    when res:
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
@@ -81,7 +81,7 @@ describe("Result type", fn():
   )
   it("returns Err on failure", fn():
     res = safe_divide(10, 0)
-    match res:
+    when res:
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):

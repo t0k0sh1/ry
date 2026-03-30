@@ -297,7 +297,7 @@ TEST(RegexRuntime, QuantifierFindAll) {
 }
 
 // ============================================================
-// Non-greedy (lazy) match tests
+// Non-greedy (lazy) when tests
 // ============================================================
 
 TEST(RegexRuntime, LazyStarReplace) {
@@ -313,7 +313,7 @@ TEST(RegexRuntime, LazyStarReplace) {
 }
 
 TEST(RegexRuntime, LazyPlusSearch) {
-    // a+? should match single 'a' (shortest)
+    // a+? should when single 'a' (shortest)
     EXPECT_EQ(__ry_regex_search("a+?", "aaa"), 0);
     // Verify it matched just 1 character by using replace
     const char *result = __ry_regex_replace("a+?", "aaa", "X");
@@ -367,14 +367,14 @@ TEST(RegexRuntime, LazyFindAll) {
 TEST(RegexRuntime, WordBoundarySearch) {
     // \bworld\b matches "world" in "hello world"
     EXPECT_EQ(__ry_regex_search("\\bworld\\b", "hello world"), 6);
-    // \bword\b does NOT match in "helloworld" (no boundary)
+    // \bword\b does NOT when in "helloworld" (no boundary)
     EXPECT_EQ(__ry_regex_search("\\bword\\b", "helloworld"), -1);
 }
 
 TEST(RegexRuntime, WordBoundaryNonBoundary) {
     // \Bword matches in "helloworld" (non-boundary before 'w')
     EXPECT_EQ(__ry_regex_search("\\Bworld", "helloworld"), 5);
-    // \Bworld should NOT match at start of "world test"
+    // \Bworld should NOT when at start of "world test"
     EXPECT_EQ(__ry_regex_search("\\Bworld", "world test"), -1);
 }
 

@@ -75,10 +75,10 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
 std::vector<ExprPtr> Parser::parseArgList() {
     std::vector<ExprPtr> args;
     if (lex_.peek().kind != TokenKind::RParen) {
-        args.push_back(parseTernary());
+        args.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
-            args.push_back(parseTernary());
+            args.push_back(parseConditional());
         }
     }
     if (lex_.peek().kind != TokenKind::RParen)
@@ -337,8 +337,8 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
 
-    if (first.kind == TokenKind::Match)
-        return parseMatchStatement();
+    if (first.kind == TokenKind::When)
+        return parseWhenStatement();
 
     if (first.kind == TokenKind::If)
         return parseIfStatement();
@@ -391,7 +391,7 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         if (lex_.peek().kind == TokenKind::Equals) {
             lex_.next(); // consume '='
-            s.value = parseTernary();
+            s.value = parseConditional();
         } else {
             // Value-less declaration (e.g., @native @const PI: float)
             if (!hasDirective(s.directives, "native"))
@@ -404,10 +404,10 @@ StmtNode Parser::parseStatement() {
         // index assignment: ident[expr, ...] = value
         lex_.next(); // consume '['
         std::vector<ExprPtr> indices;
-        indices.push_back(parseTernary());
+        indices.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
-            indices.push_back(parseTernary());
+            indices.push_back(parseConditional());
         }
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
@@ -415,7 +415,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after index expression");
         lex_.next(); // consume '='
-        ExprPtr val = parseTernary();
+        ExprPtr val = parseConditional();
         IndexAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -455,7 +455,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after field name");
         lex_.next(); // consume '='
-        ExprPtr val = parseTernary();
+        ExprPtr val = parseConditional();
         FieldAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -480,7 +480,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' in tuple destructuring");
         lex_.next(); // consume '='
-        ExprPtr value = parseTernary();
+        ExprPtr value = parseConditional();
         TupleDestructStmt s;
         s.names = std::move(names);
         s.value = std::move(value);
@@ -492,7 +492,7 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
-        s.value = parseTernary();
+        s.value = parseConditional();
         s.directives = std::move(directives);
         s.loc = locFromToken(first);
         return s;
@@ -508,7 +508,7 @@ StmtNode Parser::parseStatement() {
         // Compound assignment: preserve compound_op for codegen resolution
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
-        return makeCompoundAssign(first, op, parseTernary());
+        return makeCompoundAssign(first, op, parseConditional());
     } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
@@ -568,7 +568,7 @@ std::vector<StmtNode> Parser::parseBlock() {
 
 StmtNode Parser::parseWhileStatement() {
     Token whileTok = lex_.next(); // consume 'while'
-    ExprPtr cond = parseTernary();
+    ExprPtr cond = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after while condition");
@@ -609,7 +609,7 @@ StmtNode Parser::parseForStatement() {
         parseError("expected 'in' after variable name in for loop");
     lex_.next(); // consume 'in'
 
-    ExprPtr iterable = parseTernary();
+    ExprPtr iterable = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after for loop iterable");
@@ -628,30 +628,14 @@ StmtNode Parser::parseIfStatement() {
 
     Token ifTok = lex_.next(); // consume 'if'
     ifStmt->loc = locFromToken(ifTok);
-    ExprPtr cond = parseTernary();
+    ExprPtr cond = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after if condition");
     lex_.next(); // consume ':'
 
-    IfBranch branch;
-    branch.condition = std::move(cond);
-    branch.body = parseBlock();
-    ifStmt->branches.push_back(std::move(branch));
-
-    while (lex_.peek().kind == TokenKind::Elif) {
-        lex_.next(); // consume 'elif'
-        ExprPtr elifCond = parseTernary();
-
-        if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after elif condition");
-        lex_.next(); // consume ':'
-
-        IfBranch elifBranch;
-        elifBranch.condition = std::move(elifCond);
-        elifBranch.body = parseBlock();
-        ifStmt->branches.push_back(std::move(elifBranch));
-    }
+    ifStmt->branch.condition = std::move(cond);
+    ifStmt->branch.body = parseBlock();
 
     if (lex_.peek().kind == TokenKind::Else) {
         lex_.next(); // consume 'else'
@@ -676,7 +660,7 @@ StmtNode Parser::parseExpectStatement() {
         parseError("expected '(' after 'expect'");
     lex_.next(); // consume '('
 
-    ExprPtr actual = parseTernary();
+    ExprPtr actual = parseConditional();
 
     if (lex_.peek().kind != TokenKind::RParen)
         parseError("expected ')'");
@@ -713,7 +697,7 @@ StmtNode Parser::parseExpectStatement() {
     };
 
     if (matchers_with_arg.count(matcher)) {
-        es.expected = parseTernary();
+        es.expected = parseConditional();
     } else if (matchers_no_arg.count(matcher)) {
         // no argument
     } else {
@@ -726,4 +710,3 @@ StmtNode Parser::parseExpectStatement() {
 
     return es;
 }
-

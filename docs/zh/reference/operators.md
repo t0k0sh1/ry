@@ -24,7 +24,6 @@
 | 12 | `and` | 逻辑 AND | 左 |
 | 13 | `or` | 逻辑 OR | 左 |
 | 13.5 | `??` | 空值合并 | 左 |
-| 14 | `?:` | 三元条件 | 右 |
 
 ## 算术运算符
 
@@ -133,13 +132,13 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 ```
 
-这等同于以下 `match` 模式，但更加简洁：
+这等同于以下 `when` 模式，但更加简洁：
 
 ```python
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
+    when safe_divide(a, b):
         case Ok(x):
-            match safe_divide(x, c):
+            when safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):
@@ -150,20 +149,29 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ---
 
-## 三元条件运算符
+## `when:` 条件表达式
 
 ```python
-x = condition ? true_value : false_value
+x = when:
+    condition => true_value
+    else => false_value
 ```
 
-对 `condition` 进行求值。若为真，返回 `true_value`；否则返回 `false_value`。两个分支必须具有相同的类型。右结合，因此嵌套三元运算符从右向左结合。
+自上而下求值条件，返回第一个为真的分支表达式。所有结果表达式必须具有相同的类型。`else =>` 为必需，因此该表达式总会产生一个值。
 
 ```python
-x = 3 > 2 ? 10 : 20     # 10
-s = false ? "yes" : "no" # "no"
+x = when:
+    3 > 2 => 10
+    else => 20     # 10
 
-# 嵌套（右结合）
-y = true ? (false ? 1 : 2) : 3   # 2
+s = when:
+    false => "yes"
+    else => "no"  # "no"
+
+y = when:
+    flag1 => 1
+    flag2 => 2
+    else => 3
 ```
 
 ---

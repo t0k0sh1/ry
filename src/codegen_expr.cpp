@@ -756,60 +756,70 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
     return emitArithmeticOp(op, lhs, rhs, llNameHint);
 }
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
-    llvm::Value *cond = emitExpr(*e->condition);
-    cond = toBool(cond);
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.expr.merge", fn_);
+    std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
-    llvm::BasicBlock *trueBB = llvm::BasicBlock::Create(*ctx_, "ternary.true", fn_);
-    llvm::BasicBlock *falseBB = llvm::BasicBlock::Create(*ctx_, "ternary.false", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ternary.merge", fn_);
+    auto validateBranchTypes = [&](llvm::Value *lhs, llvm::Value *rhs) {
+        if (lhs->getType() != rhs->getType())
+            codegenError("when expression: all branches must have the same type");
 
-    builder_.CreateCondBr(cond, trueBB, falseBB);
-
-    builder_.SetInsertPoint(trueBB);
-    llvm::Value *trueVal = emitExpr(*e->true_expr);
-    llvm::BasicBlock *trueEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
-
-    builder_.SetInsertPoint(falseBB);
-    llvm::Value *falseVal = emitExpr(*e->false_expr);
-    llvm::BasicBlock *falseEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
-
-    if (trueVal->getType() != falseVal->getType())
-        codegenError("ternary expression: both branches must have the same type");
-
-    // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
-    if (trueVal->getType() == ptrTy_) {
-        enum class SemanticKind { Str, List, Map, Set, Other };
-        auto classify = [&](llvm::Value *v) -> SemanticKind {
-            if (type_meta_[TM_ListElem].count(v)) return SemanticKind::List;
-            if (type_meta_[TM_MapKey].count(v)) return SemanticKind::Map;
-            if (type_meta_[TM_SetElem].count(v)) return SemanticKind::Set;
-            if (type_meta_[TM_TaskResult].count(v)) return SemanticKind::Other;
-            return SemanticKind::Str;
-        };
-        SemanticKind trueKind = classify(trueVal);
-        SemanticKind falseKind = classify(falseVal);
-        if (trueKind != falseKind)
-            codegenError("ternary expression: both branches must have the same type");
-
-        // For List, check element types match
-        if (trueKind == SemanticKind::List) {
-            llvm::Type *trueElem = type_meta_[TM_ListElem][trueVal];
-            llvm::Type *falseElem = type_meta_[TM_ListElem][falseVal];
-            if (trueElem != falseElem)
-                codegenError("ternary expression: both branches must have the same type");
+        if (lhs->getType() == ptrTy_) {
+            enum class SemanticKind { Str, List, Map, Set, Other };
+            auto classify = [&](llvm::Value *v) -> SemanticKind {
+                if (type_meta_[TM_ListElem].count(v)) return SemanticKind::List;
+                if (type_meta_[TM_MapKey].count(v)) return SemanticKind::Map;
+                if (type_meta_[TM_SetElem].count(v)) return SemanticKind::Set;
+                if (type_meta_[TM_TaskResult].count(v)) return SemanticKind::Other;
+                return SemanticKind::Str;
+            };
+            SemanticKind lhsKind = classify(lhs);
+            SemanticKind rhsKind = classify(rhs);
+            if (lhsKind != rhsKind)
+                codegenError("when expression: all branches must have the same type");
+            if (lhsKind == SemanticKind::List) {
+                llvm::Type *lhsElem = type_meta_[TM_ListElem][lhs];
+                llvm::Type *rhsElem = type_meta_[TM_ListElem][rhs];
+                if (lhsElem != rhsElem)
+                    codegenError("when expression: all branches must have the same type");
+            }
         }
+    };
+
+    llvm::Value *firstVal = nullptr;
+
+    for (size_t i = 0; i < e->arms.size(); ++i) {
+        auto &arm = e->arms[i];
+        llvm::Value *cond = emitExpr(*arm.condition);
+        cond = toBool(cond);
+
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.expr.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.expr.next", fn_);
+        builder_.CreateCondBr(cond, thenBB, nextBB);
+
+        builder_.SetInsertPoint(thenBB);
+        llvm::Value *armVal = emitExpr(*arm.value);
+        if (!firstVal) firstVal = armVal;
+        else validateBranchTypes(firstVal, armVal);
+        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+        incoming.push_back({armVal, armEndBB});
+
+        builder_.SetInsertPoint(nextBB);
     }
 
+    llvm::Value *elseVal = emitExpr(*e->else_expr);
+    if (!firstVal) firstVal = elseVal;
+    else validateBranchTypes(firstVal, elseVal);
+    llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+    incoming.push_back({elseVal, elseEndBB});
+
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
-    phi->addIncoming(trueVal, trueEndBB);
-    phi->addIncoming(falseVal, falseEndBB);
-
-    propagateAllMetadata(trueVal, phi);
-
+    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "when.expr");
+    for (auto &[val, bb] : incoming)
+        phi->addIncoming(val, bb);
+    propagateAllMetadata(firstVal, phi);
     return phi;
 }
 

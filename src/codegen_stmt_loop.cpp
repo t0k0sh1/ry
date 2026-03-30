@@ -334,14 +334,17 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
             } else if constexpr (std::is_same_v<T, ContinueStmt>) {
                 codegenError(node.loc, "parallel for does not allow continue");
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (const auto &branch : node->branches)
-                    scanBlock(branch.body);
+                scanBlock(node->branch.body);
+                scanBlock(node->else_body);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (const auto &arm : node->arms)
+                    scanBlock(arm.body);
                 scanBlock(node->else_body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
                 scanBlock(node->body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
                 scanBlock(node->body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {

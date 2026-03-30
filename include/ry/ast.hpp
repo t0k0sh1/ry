@@ -134,7 +134,7 @@ struct EnumAccessExpr {
 
 struct CastExpr;
 struct InterpolatedStringExpr;
-struct TernaryExpr;
+struct WhenCondExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
@@ -156,7 +156,7 @@ struct ExprNode {
                  std::unique_ptr<LambdaExpr>,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
-                 std::unique_ptr<TernaryExpr>,
+                 std::unique_ptr<WhenCondExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
@@ -269,7 +269,8 @@ struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
-struct MatchStmt;
+struct WhenMatchStmt;
+struct WhenCondStmt;
 struct AwaitStmt;
 
 struct ExpectStmt {
@@ -285,10 +286,11 @@ using StmtNode = std::variant<AssignStmt, CallStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,
+                              std::unique_ptr<WhenCondStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<MatchStmt>>;
+                              std::unique_ptr<WhenMatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -297,8 +299,19 @@ struct IfBranch {
 };
 
 struct IfStmt {
-    std::vector<IfBranch> branches;    // if + elif*
+    IfBranch branch;
     std::vector<StmtNode> else_body;   // else（空なら else なし）
+    SourceLocation loc;
+};
+
+struct WhenCondArm {
+    ExprPtr condition;
+    std::vector<StmtNode> body;
+};
+
+struct WhenCondStmt {
+    std::vector<WhenCondArm> arms;
+    std::vector<StmtNode> else_body;
     SourceLocation loc;
 };
 
@@ -321,10 +334,14 @@ struct CastExpr {
     TypeNodePtr target_type;
 };
 
-struct TernaryExpr {
+struct WhenCondExprArm {
     ExprPtr condition;
-    ExprPtr true_expr;
-    ExprPtr false_expr;
+    ExprPtr value;
+};
+
+struct WhenCondExpr {
+    std::vector<WhenCondExprArm> arms;
+    ExprPtr else_expr;
 };
 
 struct InterpolatedStringExpr {
@@ -410,7 +427,7 @@ struct MatchArm {
     std::vector<StmtNode> body;
 };
 
-struct MatchStmt {
+struct WhenMatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
     SourceLocation loc;

@@ -106,7 +106,7 @@ t = start_server()
 sleep(100)  # Wait for server to start
 port = port_holder[0]
 
-match http_get("http://127.0.0.1:" + to_str(port) + "/"):
+when http_get("http://127.0.0.1:" + to_str(port) + "/"):
     case Ok(resp):
         print(http_client_body(resp))  # "Hello!"
     case Err(e):
@@ -123,7 +123,7 @@ from http import http_listen, http_path, http_query, http_query_all, http_respon
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
     path = http_path(req)
     if path == "/search":
-        match http_query(req, "q"):
+        when http_query(req, "q"):
             case Some(query):
                 return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
             case None:
@@ -138,7 +138,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_header, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_header(req, "Authorization"):
+    when http_header(req, "Authorization"):
         case Some(token):
             return http_response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         case None:
@@ -152,9 +152,9 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_form_field, http_form_file, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_form_field(req, "username"):
+    when http_form_field(req, "username"):
         case Some(name):
-            match http_form_file(req, "avatar"):
+            when http_form_file(req, "avatar"):
                 case Some(file_info):
                     filename = file_info["filename"]
                     return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
@@ -171,7 +171,7 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 from http import http_listen, http_cookie, http_cookies, http_response
 
 http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_cookie(req, "session_id"):
+    when http_cookie(req, "session_id"):
         case Some(sid):
             return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         case None:
@@ -279,7 +279,7 @@ Other status codes use `"Unknown"` as the reason phrase.
 from http import http_get, http_post, http_client_status, http_client_body, http_client_header
 
 # Simple GET request
-match http_get("http://example.com/api/data"):
+when http_get("http://example.com/api/data"):
     case Ok(resp):
         status = http_client_status(resp)
         body = http_client_body(resp)
@@ -289,7 +289,7 @@ match http_get("http://example.com/api/data"):
 
 # POST request with body and headers
 headers: Map<str, str> = {"Content-Type": "application/json"}
-match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+when http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     case Ok(resp):
         print(http_client_body(resp))
     case Err(e):
@@ -328,4 +328,4 @@ HTTP client functions automatically follow redirect responses (3xx with `Locatio
 - `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
 - Malformed requests or idle timeouts on a keep-alive connection cause the connection to be closed. The server then resumes accepting new connections.
 - The handler function must always return an `HttpResponse` — there is no default response.
-- Client functions return `Result<HttpClientResponse, Error>` — use `match` to handle success and failure.
+- Client functions return `Result<HttpClientResponse, Error>` — use `when` to handle success and failure.

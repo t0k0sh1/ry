@@ -24,7 +24,6 @@ Lower numbers indicate higher precedence (evaluated first).
 | 12 | `and` | Logical AND | Left |
 | 13 | `or` | Logical OR | Left |
 | 13.5 | `??` | Null coalescing | Left |
-| 14 | `?:` | Ternary conditional | Right |
 
 ## Arithmetic Operators
 
@@ -137,13 +136,13 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 ```
 
-This is equivalent to the following `match` pattern, but much more concise:
+This is equivalent to the following `when` pattern, but much more concise:
 
 ```python
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
+    when safe_divide(a, b):
         case Ok(x):
-            match safe_divide(x, c):
+            when safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):
@@ -154,20 +153,30 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ---
 
-## Ternary Conditional Operator
+## `when:` Conditional Expression
 
 ```python
-x = condition ? true_value : false_value
+x = when:
+    condition => true_value
+    else => false_value
 ```
 
-Evaluates `condition`. If truthy, returns `true_value`; otherwise returns `false_value`. Both branches must have the same type. Right-associative, so nested ternaries associate from right to left.
+Evaluates conditions from top to bottom and returns the expression from the first truthy arm. All result expressions must have the same type. The `else =>` arm is required, so the expression always produces a value.
 
 ```python
-x = 3 > 2 ? 10 : 20     # 10
-s = false ? "yes" : "no" # "no"
+x = when:
+    3 > 2 => 10
+    else => 20     # 10
 
-# Nested (right-associative)
-y = true ? (false ? 1 : 2) : 3   # 2
+s = when:
+    false => "yes"
+    else => "no"  # "no"
+
+# Nested ternaries flatten into multiple arms
+y = when:
+    true => 2
+    false => 1
+    else => 3     # 2
 ```
 
 ---

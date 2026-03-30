@@ -230,7 +230,7 @@ Accessing a weak variable automatically performs an **upgrade** — an atomic ch
 ```python
 s = "alive"
 w: weak str = weak s
-match w:
+when w:
   case Some(v):
     print(v)           # "alive"
   case None:
@@ -378,7 +378,7 @@ p = Shape::Point
 Use `case EnumName::Variant(binding):` to extract the associated data. Bindings use user-chosen variable names, not field names.
 
 ```python
-match c:
+when c:
     case Shape::Circle(r):
         print(r)            # 3.14
     case Shape::Rectangle(w, h):
@@ -412,7 +412,7 @@ Instantiate by providing a concrete type argument. The type argument is required
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-match a:
+when a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -444,7 +444,7 @@ fn divide(a: int, b: int) -> Result<int, Error>:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-match divide(10, 2):
+when divide(10, 2):
     case Ok(v):
         print(v)            # 5
     case Err(e):
@@ -457,7 +457,7 @@ When the return value is not meaningful, use `Result<Unit, Error>`:
 fn save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
-match save("/tmp/test.txt", "hello"):
+when save("/tmp/test.txt", "hello"):
     case Ok(_):
         print("saved")
     case Err(e):
@@ -471,7 +471,7 @@ match save("/tmp/test.txt", "hello"):
 - `Ok(value)` — success variant
 - `Err(error)` — error variant
 
-It is used with `match` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
+It is used with `when` for exhaustive error handling. Both `Ok` and `Err` cases must be covered (or use `_` wildcard).
 
 **Test matchers:**
 - `expect(x).to_be_ok()` — asserts the result is `Ok`

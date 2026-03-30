@@ -387,41 +387,55 @@ TEST(ParserTest, TypeAnnotationWithoutValue) {
     EXPECT_EQ(s.type_annotation->toString(),"int");
 }
 
-// ===== if/elif/else パーサーテスト =====
+// ===== if / when パーサーテスト =====
 
 TEST(ParserTest, IfSimple) {
     Program prog = parseStr("if true:\n    print(1)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<IfStmt>>(prog[0]));
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
-    ASSERT_EQ(ifStmt.branches.size(), 1u);
     EXPECT_TRUE(ifStmt.else_body.empty());
-    ASSERT_EQ(ifStmt.branches[0].body.size(), 1u);
-    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branches[0].body[0]));
+    ASSERT_EQ(ifStmt.branch.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branch.body[0]));
 }
 
 TEST(ParserTest, IfElse) {
     Program prog = parseStr("if true:\n    print(1)\nelse:\n    print(2)");
     ASSERT_EQ(prog.size(), 1u);
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
-    ASSERT_EQ(ifStmt.branches.size(), 1u);
     ASSERT_EQ(ifStmt.else_body.size(), 1u);
 }
 
-TEST(ParserTest, IfElifElse) {
-    Program prog = parseStr("if true:\n    print(1)\nelif false:\n    print(2)\nelse:\n    print(3)");
+TEST(ParserTest, IfElifRejected) {
+    EXPECT_THROW(parseStr("if true:\n    print(1)\nelif false:\n    print(2)\nelse:\n    print(3)"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WhenConditionStatement) {
+    Program prog = parseStr("when:\n    true:\n        print(1)\n    else:\n        print(2)");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
-    ASSERT_EQ(ifStmt.branches.size(), 2u);
-    ASSERT_EQ(ifStmt.else_body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<WhenCondStmt>>(prog[0]));
+    const auto &whenStmt = *std::get<std::unique_ptr<WhenCondStmt>>(prog[0]);
+    ASSERT_EQ(whenStmt.arms.size(), 1u);
+    ASSERT_EQ(whenStmt.else_body.size(), 1u);
+}
+
+TEST(ParserTest, WhenCondElseMustBeLast) {
+    EXPECT_THROW(parseStr("when:\n    else:\n        print(0)\n    true:\n        print(1)"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WhenCondExprElseMustBeLast) {
+    EXPECT_THROW(parseStr("x = when:\n    else => 0\n    true => 1"),
+                 std::runtime_error);
 }
 
 TEST(ParserTest, IfBlockMultipleStatements) {
     Program prog = parseStr("if true:\n    x = 1\n    print(x)");
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);
-    ASSERT_EQ(ifStmt.branches[0].body.size(), 2u);
-    EXPECT_TRUE(std::holds_alternative<AssignStmt>(ifStmt.branches[0].body[0]));
-    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branches[0].body[1]));
+    ASSERT_EQ(ifStmt.branch.body.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<AssignStmt>(ifStmt.branch.body[0]));
+    EXPECT_TRUE(std::holds_alternative<CallStmt>(ifStmt.branch.body[1]));
 }
 
 TEST(ParserTest, IfMissingColonThrows) {
@@ -1749,9 +1763,8 @@ TEST(ParserTest, EllipsisInIfBody) {
     Program prog = parseStr("if true:\n    ...\n");
     ASSERT_EQ(prog.size(), 1u);
     auto &is = std::get<std::unique_ptr<IfStmt>>(prog[0]);
-    ASSERT_EQ(is->branches.size(), 1u);
-    ASSERT_EQ(is->branches[0].body.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(is->branches[0].body[0]));
+    ASSERT_EQ(is->branch.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<EllipsisStmt>(is->branch.body[0]));
 }
 
 TEST(ParserTest, NativeFnWithColonError) {
@@ -1764,59 +1777,59 @@ TEST(ParserTest, NativeFnWithColonError) {
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case a | b:\n        print(a)\n");
+        parseStr("when x:\n    case a | b:\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsSomeBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Some(a) | Some(b):\n        print(a)\n");
+        parseStr("when x:\n    case Some(a) | Some(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
+        parseStr("when x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Err(a) | Err(b):\n        print(a)\n");
+        parseStr("when x:\n    case Err(a) | Err(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Ok(a):\n        print(a)\n");
+        parseStr("when x:\n    case 1 | Ok(a):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrAsAlternative) {
     EXPECT_THROW({
-        parseStr("match x:\n    case 1 | Err(e):\n        print(e)\n");
+        parseStr("when x:\n    case 1 | Err(e):\n        print(e)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     EXPECT_THROW({
-        parseStr("match x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
+        parseStr("when x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
+        parseStr("when x:\n"
                  "    case Ok(_) | Err(_):\n"
                  "        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
+        parseStr("when x:\n"
                  "    case Some(_) | None:\n"
                  "        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("match x:\n"
+        parseStr("when x:\n"
                  "    case Foo::Bar(_) | Foo::Baz(_):\n"
                  "        print(\"done\")\n");
     });

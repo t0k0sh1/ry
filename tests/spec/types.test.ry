@@ -83,7 +83,7 @@ describe("nested generic type", fn():
   it("Option<Option<int>> Some(Some)", fn():
     inner: Option<int> = Some(42)
     x: Option<Option<int>> = Some(inner)
-    match x:
+    when x:
       case Some(v):
         expect(v).to_be_some()
       case None:

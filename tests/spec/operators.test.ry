@@ -164,12 +164,18 @@ describe("bitwise", fn():
   )
 )
 
-describe("ternary", fn():
+describe("when expression", fn():
   it("true branch", fn():
-    expect(true ? 10 : 20).to_eq(10)
+    expect(when:
+      true => 10
+      else => 20
+    ).to_eq(10)
   )
   it("false branch", fn():
-    expect(false ? 10 : 20).to_eq(20)
+    expect(when:
+      false => 10
+      else => 20
+    ).to_eq(20)
   )
 )
 

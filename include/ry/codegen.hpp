@@ -419,10 +419,11 @@ private:
     void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
+    void emitStmt(std::unique_ptr<WhenCondStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
-    void emitStmt(std::unique_ptr<MatchStmt> &s);
+    void emitStmt(std::unique_ptr<WhenMatchStmt> &s);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
@@ -495,7 +496,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<WhenCondExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);

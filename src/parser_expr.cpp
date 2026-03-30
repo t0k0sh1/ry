@@ -13,24 +13,71 @@ static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
 
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
-ExprPtr Parser::parseTernary() {
+ExprPtr Parser::parseWhenExpr() {
+    Token whenTok = lex_.next(); // consume 'when'
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("single-condition when expressions are not supported; use 'when:'");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next();
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next();
+
+    auto whenExpr = std::make_unique<WhenCondExpr>();
+    bool seenElse = false;
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        if (lex_.peek().kind == TokenKind::Else) {
+            if (seenElse)
+                parseError("duplicate 'else' arm in when expression");
+            lex_.next();
+            if (lex_.peek().kind != TokenKind::FatArrow)
+                parseError("expected '=>' after else");
+            lex_.next();
+            whenExpr->else_expr = parseConditional();
+            seenElse = true;
+        } else {
+            if (seenElse)
+                parseError("condition arms must appear before 'else =>'");
+            WhenCondExprArm arm;
+            arm.condition = parseConditional();
+            if (lex_.peek().kind != TokenKind::FatArrow)
+                parseError("expected '=>' after when condition");
+            lex_.next();
+            arm.value = parseConditional();
+            whenExpr->arms.push_back(std::move(arm));
+        }
+
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next();
+    if (whenExpr->arms.empty())
+        parseError("when expression must have at least one condition");
+    if (!whenExpr->else_expr)
+        parseError("when expression requires an 'else => ...' arm");
+
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(whenExpr);
+    node->loc = locFromToken(whenTok);
+    return node;
+}
+
+ExprPtr Parser::parseConditional() {
     RecursionGuard guard(*this);
+    if (lex_.peek().kind == TokenKind::When)
+        return parseWhenExpr();
     ExprPtr expr = parseNullCoalesce();
     if (lex_.peek().kind == TokenKind::Question) {
-        Token qTok = lex_.next(); // consume '?'
-        ExprPtr trueExpr = parseTernary(); // right-associative
-        if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' in ternary expression");
-        lex_.next(); // consume ':'
-        ExprPtr falseExpr = parseTernary(); // right-associative
-        auto ternary = std::make_unique<TernaryExpr>();
-        ternary->condition = std::move(expr);
-        ternary->true_expr = std::move(trueExpr);
-        ternary->false_expr = std::move(falseExpr);
-        auto node = std::make_unique<ExprNode>();
-        node->data = std::move(ternary);
-        node->loc = locFromToken(qTok);
-        return node;
+        parseError("ternary expressions are no longer supported; use 'when:'");
     }
     return expr;
 }
@@ -251,11 +298,11 @@ ExprPtr Parser::parsePrimary() {
         lex_.next(); // consume FStringStart
         auto interp = std::make_unique<InterpolatedStringExpr>();
         interp->parts.push_back(t.value);
-        interp->exprs.push_back(parseTernary());
+        interp->exprs.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::FStringMid) {
             Token mid = lex_.next();
             interp->parts.push_back(mid.value);
-            interp->exprs.push_back(parseTernary());
+            interp->exprs.push_back(parseConditional());
         }
         if (lex_.peek().kind != TokenKind::FStringEnd)
             parseError("expected end of f-string");
@@ -496,21 +543,21 @@ ExprPtr Parser::parsePrimary() {
             return node;
         }
         // Parse first expression
-        ExprPtr first = parseTernary();
+        ExprPtr first = parseConditional();
         if (lex_.peek().kind == TokenKind::Colon) {
             // Map literal: first expression was the key
             lex_.next(); // consume ':'
             auto map = std::make_unique<MapExpr>();
-            ExprPtr val = parseTernary();
+            ExprPtr val = parseConditional();
             map->keys.push_back(std::move(first));
             map->values.push_back(std::move(val));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                ExprPtr k = parseTernary();
+                ExprPtr k = parseConditional();
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after map key");
                 lex_.next(); // consume ':'
-                ExprPtr v = parseTernary();
+                ExprPtr v = parseConditional();
                 map->keys.push_back(std::move(k));
                 map->values.push_back(std::move(v));
             }
@@ -527,7 +574,7 @@ ExprPtr Parser::parsePrimary() {
             set->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                set->elements.push_back(parseTernary());
+                set->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RBrace)
                 parseError("expected '}'");
@@ -543,12 +590,12 @@ ExprPtr Parser::parsePrimary() {
         auto list = std::make_unique<ListExpr>();
         skipStructuralTokens();
         if (lex_.peek().kind != TokenKind::RBracket) {
-            list->elements.push_back(parseTernary());
+            list->elements.push_back(parseConditional());
             skipStructuralTokens();
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
                 skipStructuralTokens();
-                list->elements.push_back(parseTernary());
+                list->elements.push_back(parseConditional());
                 skipStructuralTokens();
             }
         }
@@ -564,14 +611,14 @@ ExprPtr Parser::parsePrimary() {
     if (t.kind == TokenKind::LParen) {
         // Grouping or tuple (lambda now uses fn keyword)
         lex_.next();
-        ExprPtr first = parseTernary();
+        ExprPtr first = parseConditional();
         if (lex_.peek().kind == TokenKind::Comma) {
             // Tuple literal: (expr, expr, ...)
             auto tuple = std::make_unique<TupleExpr>();
             tuple->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                tuple->elements.push_back(parseTernary());
+                tuple->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RParen)
                 parseError("expected ')'");
@@ -643,7 +690,7 @@ ExprPtr Parser::parseLambdaExpr() {
     if (lex_.peek().kind == TokenKind::FatArrow) {
         // Single-expression lambda: fn(params) => expr
         lex_.next(); // consume '=>'
-        lambda->expr_body = parseTernary();
+        lambda->expr_body = parseConditional();
     } else if (lex_.peek().kind == TokenKind::Colon) {
         // Block lambda: fn(params):
         lex_.next(); // consume ':'
@@ -716,7 +763,7 @@ ExprPtr Parser::parsePostfix() {
                  next == TokenKind::Await ||
                  next == TokenKind::LBracket)) {
                 lex_.restoreState(std::move(saved));
-                break; // delegate to parseTernary()
+                break; // delegate to parseConditional()
             }
             expr = makeErrorPropagateExpr(std::move(expr), qTok);
             continue;
@@ -729,10 +776,10 @@ ExprPtr Parser::parsePostfix() {
         if (lex_.peek().kind == TokenKind::LBracket) {
             Token lbTok = lex_.next(); // consume '['
             std::vector<ExprPtr> indices;
-            indices.push_back(parseTernary());
+            indices.push_back(parseConditional());
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
-                indices.push_back(parseTernary());
+                indices.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RBracket)
                 parseError("expected ']'");
@@ -796,4 +843,3 @@ ExprPtr Parser::parseTrailingBlockAsLambda() {
     node->data = std::move(lambda);
     return node;
 }
-

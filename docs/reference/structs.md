@@ -1,6 +1,6 @@
 [English](structs.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
 
-# Struct Reference
+# Record Reference
 
 ## Overview
 
@@ -264,12 +264,13 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-if c == Color::Red:
-    print("red")
-elif c == Color::Green:
-    print("green")
-else:
-    print("blue")
+when:
+    c == Color::Red:
+        print("red")
+    c == Color::Green:
+        print("green")
+    else:
+        print("blue")
 ```
 
 ### Function Parameters

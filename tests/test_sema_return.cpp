@@ -79,15 +79,16 @@ TEST_F(CodeGenTest, AllPathsReturnIfElse) {
     ), "1\n");
 }
 
-TEST_F(CodeGenTest, AllPathsReturnIfElifElse) {
+TEST_F(CodeGenTest, AllPathsReturnWhenMultiBranch) {
     EXPECT_EQ(runSource(
         "fn grade(x: int) -> str:\n"
-        "    if x >= 90:\n"
-        "        return \"A\"\n"
-        "    elif x >= 80:\n"
-        "        return \"B\"\n"
-        "    else:\n"
-        "        return \"C\"\n"
+        "    when:\n"
+        "        x >= 90:\n"
+        "            return \"A\"\n"
+        "        x >= 80:\n"
+        "            return \"B\"\n"
+        "        else:\n"
+        "            return \"C\"\n"
         "print(grade(95))\n"
     ), "A\n");
 }
@@ -95,7 +96,7 @@ TEST_F(CodeGenTest, AllPathsReturnIfElifElse) {
 TEST_F(CodeGenTest, AllPathsReturnMatchWildcard) {
     EXPECT_EQ(runSource(
         "fn describe(x: int) -> str:\n"
-        "    match x:\n"
+        "    when x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
         "        case _:\n"
@@ -108,7 +109,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
     EXPECT_EQ(runSource(
         "fn check(x: int) -> str:\n"
         "    r: Result<int, Error> = Ok(x)\n"
-        "    match r:\n"
+        "    when r:\n"
         "        case Ok(v):\n"
         "            return \"ok\"\n"
         "        case Err(e):\n"
@@ -120,7 +121,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
 TEST_F(CodeGenTest, AllPathsReturnMatchSomeNone) {
     EXPECT_EQ(runSource(
         "fn check(x: Option<int>) -> str:\n"
-        "    match x:\n"
+        "    when x:\n"
         "        case Some(v):\n"
         "            return \"some\"\n"
         "        case None:\n"
@@ -156,7 +157,7 @@ TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
 TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
     EXPECT_EQ(runSource(
         "fn describe(x: int) -> str:\n"
-        "    match x:\n"
+        "    when x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
         "        case n:\n"

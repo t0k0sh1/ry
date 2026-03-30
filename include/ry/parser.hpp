@@ -59,9 +59,10 @@ private:
     StmtNode parseEnumStatement();
     StmtNode parseReturnStatement();
     StmtNode parseExpectStatement();
+    StmtNode parseWhenStatement();
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
-    StmtNode parseMatchStatement();
+    ExprPtr parseWhenExpr();
     Pattern parsePattern();
     TypeParam parseOneTypeParam();
     TypeNodePtr parseTypeName();
@@ -94,7 +95,7 @@ private:
     ExprPtr parseLogicalNot();
     ExprPtr parseLogicalAnd();
     ExprPtr parseLogicalOr();
-    ExprPtr parseTernary();
+    ExprPtr parseConditional();
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
     ExprPtr parseLambdaExpr();

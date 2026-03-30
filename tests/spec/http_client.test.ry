@@ -14,14 +14,14 @@ describe("HTTP Client", fn():
   # Commented out tests:
   # - http_get returns 200 response
   # - http_post sends body to server
-  # - http_get with variable assignment and match
+  # - http_get with variable assignment and when
   # - http_get follows 302 redirect
   # - 303 redirect changes POST to GET
   # - redirect with relative Location path
   # - redirect limit exceeded returns Err
   # - http_get decodes chunked transfer encoding
   it("http_get returns Err on connection refused", fn():
-    match http_get("http://127.0.0.1:1/nonexistent"):
+    when http_get("http://127.0.0.1:1/nonexistent"):
       case Ok(resp):
         fail("expected Err but got Ok")
       case Err(e):

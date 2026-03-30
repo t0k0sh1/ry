@@ -126,12 +126,13 @@ print(c)   # Red
 Variants can be compared using `==` and `!=`.
 
 ```python
-if c == Color::Red:
-    print("red!")
-elif c == Color::Green:
-    print("green!")
-else:
-    print("blue!")
+when:
+    c == Color::Red:
+        print("red!")
+    c == Color::Green:
+        print("green!")
+    else:
+        print("blue!")
 ```
 
 ### Function Parameters

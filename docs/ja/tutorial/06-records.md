@@ -126,12 +126,13 @@ print(c)   # Red
 `==` や `!=` でバリアントを比較できます。
 
 ```python
-if c == Color::Red:
-    print("red!")
-elif c == Color::Green:
-    print("green!")
-else:
-    print("blue!")
+when:
+    c == Color::Red:
+        print("red!")
+    c == Color::Green:
+        print("green!")
+    else:
+        print("blue!")
 ```
 
 ### 関数引数

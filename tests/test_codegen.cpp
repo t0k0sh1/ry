@@ -699,7 +699,7 @@ TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
 TEST_F(CodeGenTest, CheckedAddOk) {
     EXPECT_EQ(runSource(
         "r = checked_add(1i32, 2i32)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(v as int)\n"
         "  case Err(e):\n"
@@ -709,7 +709,7 @@ TEST_F(CodeGenTest, CheckedAddOk) {
 TEST_F(CodeGenTest, CheckedAddOverflow) {
     EXPECT_EQ(runSource(
         "r = checked_add(2147483647i32, 1i32)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(\"ok\")\n"
         "  case Err(e):\n"
@@ -719,7 +719,7 @@ TEST_F(CodeGenTest, CheckedAddOverflow) {
 TEST_F(CodeGenTest, CheckedSubOverflow) {
     EXPECT_EQ(runSource(
         "r = checked_sub(-2147483648i32, 1i32)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(\"ok\")\n"
         "  case Err(e):\n"
@@ -729,7 +729,7 @@ TEST_F(CodeGenTest, CheckedSubOverflow) {
 TEST_F(CodeGenTest, CheckedMulOverflow) {
     EXPECT_EQ(runSource(
         "r = checked_mul(100000i32, 100000i32)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(\"ok\")\n"
         "  case Err(e):\n"
@@ -739,7 +739,7 @@ TEST_F(CodeGenTest, CheckedMulOverflow) {
 TEST_F(CodeGenTest, CheckedUnsignedOverflow) {
     EXPECT_EQ(runSource(
         "r = checked_add(255u8, 1u8)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(\"ok\")\n"
         "  case Err(e):\n"
@@ -749,7 +749,7 @@ TEST_F(CodeGenTest, CheckedUnsignedOverflow) {
 TEST_F(CodeGenTest, CheckedI64Overflow) {
     EXPECT_EQ(runSource(
         "r = checked_add(9223372036854775807i64, 1i64)\n"
-        "match r:\n"
+        "when r:\n"
         "  case Ok(v):\n"
         "    print(\"ok\")\n"
         "  case Err(e):\n"

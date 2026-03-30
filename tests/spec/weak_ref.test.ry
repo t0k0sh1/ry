@@ -5,7 +5,7 @@ describe("Weak references", fn():
   it("weak ref upgrade returns Some when strong ref is alive", fn():
     xs = [1, 2, 3]
     w: weak List<int> = weak xs
-    match w:
+    when w:
       case Some(v):
         expect(v.length()).to_eq(3)
       case None:
@@ -16,7 +16,7 @@ describe("Weak references", fn():
     w: weak List<int> = weak make_list()
     # The temporary return value is still alive within this expression scope,
     # so the weak ref can still be upgraded to Some.
-    match w:
+    when w:
       case Some(v):
         expect(v.length()).to_eq(3)
       case None:
@@ -27,7 +27,7 @@ describe("Weak references", fn():
     data = [42, 99]
     ref: weak List<int> = weak data
     result = 0
-    match ref:
+    when ref:
       case Some(v):
         result = v.length()
       case None:
@@ -46,13 +46,13 @@ describe("Weak references", fn():
     a = [1, 2]
     b = [3, 4, 5]
     w: weak List<int> = weak a
-    match w:
+    when w:
       case Some(v):
         expect(v.length()).to_eq(2)
       case None:
         fail("expected Some")
     w = weak b
-    match w:
+    when w:
       case Some(v):
         expect(v.length()).to_eq(3)
       case None:

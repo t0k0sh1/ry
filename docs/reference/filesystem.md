@@ -41,7 +41,7 @@ from filesystem import chmod, symlink, read_link
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
 # Create a single directory
-match make_dir("/tmp/myapp"):
+when make_dir("/tmp/myapp"):
   case Ok(_):
     print("created")
   case Err(e):
@@ -51,7 +51,7 @@ match make_dir("/tmp/myapp"):
 make_dir_all("/tmp/myapp/data/logs")
 
 # List directory contents
-match list_dir("/tmp/myapp"):
+when list_dir("/tmp/myapp"):
   case Ok(entries):
     for entry in entries:
       print(entry)
@@ -74,7 +74,7 @@ write_text("/tmp/hello.txt", "Hello, World!")
 copy("/tmp/hello.txt", "/tmp/hello_copy.txt")
 
 # Get file size
-match file_size("/tmp/hello.txt"):
+when file_size("/tmp/hello.txt"):
   case Ok(sz):
     print("size: " + to_string(sz))
   case Err(e):
@@ -93,7 +93,7 @@ remove("/tmp/renamed.txt")
 from filesystem import walk, glob_files
 
 # Walk a directory tree (like find)
-match walk("/var/log"):
+when walk("/var/log"):
   case Ok(files):
     for f in files:
       print(f)
@@ -101,7 +101,7 @@ match walk("/var/log"):
     print("error: " + e.message)
 
 # Glob pattern matching
-match glob_files("/var/log/*.log"):
+when glob_files("/var/log/*.log"):
   case Ok(matches):
     for m in matches:
       print(m)
@@ -134,7 +134,7 @@ symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
 # Check and read symlink
 if is_symlink("/tmp/ry_link"):
-  match read_link("/tmp/ry_link"):
+  when read_link("/tmp/ry_link"):
     case Ok(target):
       print("points to: " + target)
     case Err(e):

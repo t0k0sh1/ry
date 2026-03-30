@@ -293,7 +293,7 @@ sleep(0)       # 立即返回
 ```python
 # 单参数形式：返回 Option<str>
 path = env("PATH")
-match path:
+when path:
     case Some(v):
         print(v)
     case None:

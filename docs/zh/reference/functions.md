@@ -564,9 +564,9 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 | `wrapping_mul(a, b)` | `T` | 显式回绕（与 `*` 相同） |
 
 ```python
-# Checked：返回 Result，使用 match 或 ? 处理
+# Checked：返回 Result，使用 when 或 ? 处理
 r = checked_add(2147483647i32, 1i32)
-match r:
+when r:
   case Ok(v):
     print(v)
   case Err(e):

@@ -12,7 +12,7 @@ fn accept_float(x: float) -> float:
 fn add_floats(x: float, y: float) -> float:
   return x + y
 
-# overload: exact match should win
+# overload: exact when should win
 fn typed(x: int) -> str:
   return "int"
 
@@ -61,7 +61,7 @@ describe("return value correctness", fn():
 )
 
 describe("overload resolution priority", fn():
-  it("exact match wins over widening", fn():
+  it("exact when wins over widening", fn():
     expect(typed(5)).to_eq("int")
     expect(typed(5.0)).to_eq("float")
   )

@@ -564,9 +564,9 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 | `wrapping_mul(a, b)` | `T` | 明示的なラッピング（`*` と同じ） |
 
 ```python
-# チェック付き: Result を返す。match や ? でハンドリング
+# チェック付き: Result を返す。when や ? でハンドリング
 r = checked_add(2147483647i32, 1i32)
-match r:
+when r:
   case Ok(v):
     print(v)
   case Err(e):

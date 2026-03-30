@@ -145,7 +145,7 @@ print(regex_match("\\d{3}", "1234"))
 }
 
 // ============================================================
-// Non-greedy match
+// Non-greedy when
 // ============================================================
 
 TEST_F(CodeGenTest, RegexLazyReplace) {

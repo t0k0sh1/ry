@@ -1,7 +1,7 @@
 describe("checked arithmetic", fn():
   it("checked_add ok", fn():
     r = checked_add(10i32, 20i32)
-    match r:
+    when r:
       case Ok(v):
         expect(v as int).to_eq(30)
       case Err(e):
@@ -9,7 +9,7 @@ describe("checked arithmetic", fn():
   )
   it("checked_add overflow", fn():
     r = checked_add(2147483647i32, 1i32)
-    match r:
+    when r:
       case Ok(v):
         expect(true).to_eq(false)
       case Err(e):
@@ -17,7 +17,7 @@ describe("checked arithmetic", fn():
   )
   it("checked_sub ok", fn():
     r = checked_sub(100i32, 50i32)
-    match r:
+    when r:
       case Ok(v):
         expect(v as int).to_eq(50)
       case Err(e):
@@ -25,7 +25,7 @@ describe("checked arithmetic", fn():
   )
   it("checked_mul ok", fn():
     r = checked_mul(6i32, 7i32)
-    match r:
+    when r:
       case Ok(v):
         expect(v as int).to_eq(42)
       case Err(e):

@@ -19,14 +19,14 @@ describe("range quantifiers", fn():
   )
 )
 
-describe("non-greedy match", fn():
+describe("non-greedy when", fn():
   it("lazy star replace", fn():
     expect(regex_replace("\".*?\"", "\"a\" and \"b\"", "X")).to_eq("X and X")
   )
   it("lazy plus replace", fn():
     expect(regex_replace("a+?", "aaa", "X")).to_eq("XXX")
   )
-  it("lazy full match", fn():
+  it("lazy full when", fn():
     expect(regex_match("a+?", "aaa")).to_eq(true)
   )
   it("lazy find_all", fn():

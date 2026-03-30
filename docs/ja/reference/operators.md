@@ -24,7 +24,6 @@
 | 12 | `and` | 論理 AND | 左 |
 | 13 | `or` | 論理 OR | 左 |
 | 13.5 | `??` | null 合体 | 左 |
-| 14 | `?:` | 三項条件 | 右 |
 
 ## 算術演算子
 
@@ -133,13 +132,13 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 ```
 
-これは以下の `match` パターンと等価ですが、はるかに簡潔です:
+これは以下の `when` パターンと等価ですが、はるかに簡潔です:
 
 ```python
 fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    match safe_divide(a, b):
+    when safe_divide(a, b):
         case Ok(x):
-            match safe_divide(x, c):
+            when safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):
@@ -150,20 +149,29 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
 
 ---
 
-## 三項条件演算子
+## `when:` 条件式
 
 ```python
-x = condition ? true_value : false_value
+x = when:
+    condition => true_value
+    else => false_value
 ```
 
-`condition` を評価し、真であれば `true_value` を、偽であれば `false_value` を返します。両方の分岐は同じ型でなければなりません。右結合なので、ネストされた三項演算子は右から左に結合されます。
+上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`else =>` は必須です。
 
 ```python
-x = 3 > 2 ? 10 : 20     # 10
-s = false ? "yes" : "no" # "no"
+x = when:
+    3 > 2 => 10
+    else => 20     # 10
 
-# ネスト（右結合）
-y = true ? (false ? 1 : 2) : 3   # 2
+s = when:
+    false => "yes"
+    else => "no"  # "no"
+
+y = when:
+    flag1 => 1
+    flag2 => 2
+    else => 3
 ```
 
 ---

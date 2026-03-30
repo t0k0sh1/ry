@@ -126,12 +126,13 @@ print(c)   # Red
 可以使用 `==` 和 `!=` 比較變體。
 
 ```python
-if c == Color::Red:
-    print("red!")
-elif c == Color::Green:
-    print("green!")
-else:
-    print("blue!")
+when:
+    c == Color::Red:
+        print("red!")
+    c == Color::Green:
+        print("green!")
+    else:
+        print("blue!")
 ```
 
 ### 函式參數

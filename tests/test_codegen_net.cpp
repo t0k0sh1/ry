@@ -38,7 +38,7 @@ fn sleep(ms: int) -> Unit
 
 TEST_F(CodeGenTest, NetBindReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
         print("ok")
         close(server)
@@ -53,7 +53,7 @@ match bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, NetConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match connect("127.0.0.1", 19999):
+when connect("127.0.0.1", 19999):
     case Ok(conn):
         print("connected")
         close(conn)
@@ -68,9 +68,9 @@ match connect("127.0.0.1", 19999):
 
 TEST_F(CodeGenTest, NetListenReturnsResult) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
-        match listen(server, 1):
+        when listen(server, 1):
             case Ok(_):
                 print("ok")
             case Err(e):
@@ -92,13 +92,13 @@ TEST_F(CodeGenTest, NetEchoRoundTrip) {
 fn listener_port(listener: TcpListener) -> int
 
 async fn run_server(server: TcpListener) -> str:
-    match accept(server):
+    when accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            when recv(conn, 4096):
                 case Ok(data):
-                    match bytes_to_str(data):
+                    when bytes_to_str(data):
                         case Ok(msg):
-                            match send(conn, str_to_bytes("echo:" + msg)):
+                            when send(conn, str_to_bytes("echo:" + msg)):
                                 case Ok(_):
                                     ...
                                 case Err(e):
@@ -114,16 +114,16 @@ async fn run_server(server: TcpListener) -> str:
     return "done"
 
 fn run_client(port: int) -> str:
-    match connect("127.0.0.1", port):
+    when connect("127.0.0.1", port):
         case Ok(conn):
-            match send(conn, str_to_bytes("hello")):
+            when send(conn, str_to_bytes("hello")):
                 case Ok(_):
                     ...
                 case Err(e):
                     ...
-            match recv(conn, 4096):
+            when recv(conn, 4096):
                 case Ok(resp):
-                    match bytes_to_str(resp):
+                    when bytes_to_str(resp):
                         case Ok(msg):
                             close(conn)
                             return msg
@@ -136,9 +136,9 @@ fn run_client(port: int) -> str:
         case Err(e):
             return "fail"
 
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
-        match listen(server, 1):
+        when listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = run_server(server)
@@ -291,7 +291,7 @@ TEST(TcpRecv, ErrorReturnsNull) {
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match connect("127.0.0.1", 19997):
+when connect("127.0.0.1", 19997):
     case Ok(conn):
         set_timeout(conn, 500)
         print("ok")
@@ -303,7 +303,7 @@ match connect("127.0.0.1", 19997):
 
 TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match connect("127.0.0.1", 19996):
+when connect("127.0.0.1", 19996):
     case Ok(conn):
         set_recv_timeout(conn, 500)
         print("ok")
@@ -315,7 +315,7 @@ match connect("127.0.0.1", 19996):
 
 TEST_F(CodeGenTest, NetSetSendTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match connect("127.0.0.1", 19995):
+when connect("127.0.0.1", 19995):
     case Ok(conn):
         set_send_timeout(conn, 500)
         print("ok")
@@ -331,7 +331,7 @@ TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
 fn listener_port(listener: TcpListener) -> int
 
 async fn server_task(server: TcpListener) -> str:
-    match accept(server):
+    when accept(server):
         case Ok(conn):
             # Don't send anything - let client timeout
             sleep(500)
@@ -341,16 +341,16 @@ async fn server_task(server: TcpListener) -> str:
     close(server)
     return "done"
 
-match bind("127.0.0.1", 0):
+when bind("127.0.0.1", 0):
     case Ok(server):
-        match listen(server, 1):
+        when listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = server_task(server)
-                match connect("127.0.0.1", port):
+                when connect("127.0.0.1", port):
                     case Ok(conn):
                         set_recv_timeout(conn, 100)
-                        match recv(conn, 4096):
+                        when recv(conn, 4096):
                             case Ok(data):
                                 print("got data")
                             case Err(e):
@@ -398,7 +398,7 @@ TEST(TcpTimeout, SetTimeoutSetsSocketOptions) {
 
 TEST_F(CodeGenTest, TlsConnectInvalidReturnsErr) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match tls_connect("127.0.0.1", 19993):
+when tls_connect("127.0.0.1", 19993):
     case Ok(conn):
         print("connected")
         close(conn)
@@ -413,14 +413,14 @@ match tls_connect("127.0.0.1", 19993):
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
-match tls_connect("127.0.0.1", 19992):
+when tls_connect("127.0.0.1", 19992):
     case Ok(conn):
-        match send(conn, str_to_bytes("hello")):
+        when send(conn, str_to_bytes("hello")):
             case Ok(n):
                 print("sent")
             case Err(e):
                 print("send err")
-        match recv(conn, 4096):
+        when recv(conn, 4096):
             case Ok(data):
                 print("recv ok")
             case Err(e):
