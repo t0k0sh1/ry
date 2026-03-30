@@ -125,10 +125,28 @@ describe("List", fn():
     expect(pairs[0].0).to_eq(0)
     expect(pairs[0].1).to_eq(10)
   )
+  it("enumerate empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    pairs = enumerate(ys)
+    expect(pairs).to_have_length(0)
+  )
   it("zip", fn():
     pairs = zip([1, 2], [10, 20])
     expect(pairs[0].0).to_eq(1)
     expect(pairs[0].1).to_eq(10)
+  )
+  it("zip unequal lengths truncates to shorter", fn():
+    pairs = zip([1, 2, 3], [10, 20])
+    expect(pairs).to_have_length(2)
+    expect(pairs[0].0).to_eq(1)
+    expect(pairs[1].1).to_eq(20)
+  )
+  it("zip empty with non-empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    pairs = zip(ys, [10, 20])
+    expect(pairs).to_have_length(0)
   )
   it("insert", fn():
     xs = [1, 2, 3]
@@ -335,6 +353,14 @@ describe("List", fn():
     expect(ys).to_have_length(1)
     expect(ys[0]).to_eq(42)
   )
+  it("flatten with single-element inner lists", fn():
+    xs = [[1], [2], [3]]
+    ys = flatten(xs)
+    expect(ys).to_have_length(3)
+    expect(ys[0]).to_eq(1)
+    expect(ys[1]).to_eq(2)
+    expect(ys[2]).to_eq(3)
+  )
   it("take empty", fn():
     xs = [1]
     ys = filter(xs, fn(x: int) => x > 10)
@@ -440,6 +466,32 @@ describe("Map", fn():
     m = {"a": 1}
     expect(get(m, "zzz")).to_be_none()
   )
+  it("empty map keys", fn():
+    m = {"a": 1}
+    remove(m, "a")
+    ks = keys(m)
+    expect(ks).to_have_length(0)
+  )
+  it("empty map values", fn():
+    m = {"a": 1}
+    remove(m, "a")
+    vs = values(m)
+    expect(vs).to_have_length(0)
+  )
+  it("empty map items", fn():
+    m = {"a": 1}
+    remove(m, "a")
+    ps = items(m)
+    expect(ps).to_have_length(0)
+  )
+  it("merge with empty map", fn():
+    m1 = {"a": 1}
+    m2 = {"a": 2}
+    remove(m2, "a")
+    m3 = merge(m1, m2)
+    expect(m3["a"]).to_eq(1)
+    expect(m3).to_have_length(1)
+  )
 )
 
 describe("Set", fn():
@@ -526,6 +578,39 @@ describe("Set", fn():
     expect(s).to_have_length(2)
     expect(s).to_contain("a")
     expect(s).to_contain("b")
+  )
+  it("union with empty set", fn():
+    a = {1, 2, 3}
+    b = {1}
+    remove(b, 1)
+    c = union(a, b)
+    expect(c).to_have_length(3)
+  )
+  it("intersection with empty set", fn():
+    a = {1, 2, 3}
+    b = {1}
+    remove(b, 1)
+    c = intersection(a, b)
+    expect(c).to_have_length(0)
+  )
+  it("difference with empty set", fn():
+    a = {1, 2, 3}
+    b = {1}
+    remove(b, 1)
+    c = difference(a, b)
+    expect(c).to_have_length(3)
+  )
+  it("is_subset empty is subset of any", fn():
+    a = {1}
+    remove(a, 1)
+    b = {1, 2, 3}
+    expect(is_subset(a, b)).to_be_true()
+  )
+  it("is_superset of empty set", fn():
+    a = {1, 2, 3}
+    b = {1}
+    remove(b, 1)
+    expect(is_superset(a, b)).to_be_true()
   )
 )
 

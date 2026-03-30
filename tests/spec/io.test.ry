@@ -88,4 +88,48 @@ describe("file I/O", fn():
   it("read_text returns Err for missing file", fn():
     expect(read_text("/tmp/ry_selftest_nonexistent_file.txt")).to_be_err()
   )
+  it("read_bytes returns Err for missing file", fn():
+    expect(read_bytes("/tmp/ry_selftest_nonexistent_bytes.bin")).to_be_err()
+  )
+  it("delete_file returns Err for missing file", fn():
+    expect(delete_file("/tmp/ry_selftest_nonexistent_delete.txt")).to_be_err()
+  )
+  it("write and read empty file", fn():
+    when write_text("/tmp/ry_selftest_io_empty.txt", ""):
+      case Ok(_):
+        when read_text("/tmp/ry_selftest_io_empty.txt"):
+          case Ok(s):
+            expect(s).to_eq("")
+          case Err(e):
+            fail("unexpected read error")
+      case Err(e):
+        fail("unexpected write error")
+    delete_file("/tmp/ry_selftest_io_empty.txt")
+  )
+  it("write and read empty bytes", fn():
+    data = str_to_bytes("")
+    when write_bytes("/tmp/ry_selftest_io_empty.bin", data):
+      case Ok(_):
+        when read_bytes("/tmp/ry_selftest_io_empty.bin"):
+          case Ok(rb):
+            expect(length(rb)).to_eq(0)
+          case Err(e):
+            fail("unexpected read error")
+      case Err(e):
+        fail("unexpected write error")
+    delete_file("/tmp/ry_selftest_io_empty.bin")
+  )
+  it("file_exists returns false for missing file", fn():
+    expect(file_exists("/tmp/ry_selftest_nonexistent_exists.txt")).to_eq(false)
+  )
+  it("overwrite existing file", fn():
+    write_text("/tmp/ry_selftest_io_overwrite.txt", "first")
+    write_text("/tmp/ry_selftest_io_overwrite.txt", "second")
+    when read_text("/tmp/ry_selftest_io_overwrite.txt"):
+      case Ok(s):
+        expect(s).to_eq("second")
+      case Err(e):
+        fail("unexpected error")
+    delete_file("/tmp/ry_selftest_io_overwrite.txt")
+  )
 )
