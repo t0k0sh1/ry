@@ -233,7 +233,7 @@ TEST(SelfUpdate, ParseChecksumForFileFallback) {
         "abc123def456  ry-v0.0.5-darwin-arm64.tar.gz\n"
         "789012fed345  ry-v0.0.5-linux-amd64.tar.gz\n";
 
-    // Exact when fails, but fallback by platform suffix should work
+    // Exact match fails, but fallback by platform suffix should work
     EXPECT_EQ(parse_checksum_for_file(content, "ry-darwin-arm64.tar.gz"), "abc123def456");
     EXPECT_EQ(parse_checksum_for_file(content, "ry-linux-amd64.tar.gz"), "789012fed345");
 }

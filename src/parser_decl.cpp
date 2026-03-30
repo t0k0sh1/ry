@@ -949,6 +949,8 @@ StmtNode Parser::parseWhenStatement() {
         while (lex_.peek().kind != TokenKind::Dedent &&
                lex_.peek().kind != TokenKind::Eof) {
             if (lex_.peek().kind == TokenKind::Else) {
+                if (seenElse)
+                    parseError("duplicate 'else' arm in when block");
                 lex_.next();
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after else");

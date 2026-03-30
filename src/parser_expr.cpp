@@ -33,6 +33,8 @@ ExprPtr Parser::parseWhenExpr() {
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::Else) {
+            if (seenElse)
+                parseError("duplicate 'else' arm in when expression");
             lex_.next();
             if (lex_.peek().kind != TokenKind::FatArrow)
                 parseError("expected '=>' after else");

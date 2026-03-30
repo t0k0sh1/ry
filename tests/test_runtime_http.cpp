@@ -62,7 +62,7 @@ private:
     std::string prev_value_;
 };
 
-// TcpStreamHandle layout must when runtime_http.cpp
+// TcpStreamHandle layout must match runtime_http.cpp
 struct TcpStreamHandle {
     int fd;
 };
@@ -448,7 +448,7 @@ TEST(RuntimeHttp, QueryParamsDuplicateFirstWins) {
     free(handle);
 }
 
-// MapHeader layout must when codegen
+// MapHeader layout must match codegen
 struct MapHeader {
     int64_t len;
     int64_t cap;
@@ -557,7 +557,7 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     free(handle);
 }
 
-// --- ParsedUrl struct for tests (must when runtime_http.cpp layout) ---
+// --- ParsedUrl struct for tests (must match runtime_http.cpp layout) ---
 struct ParsedUrl { char *host; int64_t port; char *path; bool is_https; };
 
 // --- Merged URL parsing tests ---
