@@ -31,7 +31,7 @@ void __ry_test_describe_end() {
 // ASan slows synchronization primitives ~3-10x; extend timeout to avoid
 // flaky SIGALRM in concurrency tests on CI.
 #if defined(__SANITIZE_ADDRESS__) || (defined(__has_feature) && __has_feature(address_sanitizer))
-static constexpr unsigned kTestTimeoutSec = 180;
+static constexpr unsigned kTestTimeoutSec = 300;
 #else
 static constexpr unsigned kTestTimeoutSec = 60;
 #endif

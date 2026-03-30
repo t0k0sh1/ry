@@ -4,7 +4,8 @@
     "builtins.ry", "convert.ry", "higher_order.ry",
     "list.ry", "map.ry", "set.ry", "str.ry", "regex.ry",
     "base64/base64.ry",
+    "filesystem/filesystem.ry", "gc/gc.ry",
     "http/http.ry", "io/io.ry", "json/json.ry", "math/math.ry", "net/net.ry",
-    "thread/thread.ry"
+    "path/path.ry", "thread/thread.ry"
   ]
 }

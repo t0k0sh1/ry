@@ -4,71 +4,41 @@
 // ===== Builtin Regex =====
 
 llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
+    auto emitRegexCall = [&](const std::string &name, size_t nargs,
+                             llvm::FunctionType *fnTy) -> llvm::Value * {
+        requireArgs(e, nargs);
+        std::vector<llvm::Value *> args;
+        for (size_t i = 0; i < nargs; ++i) {
+            args.push_back(emitExpr(*e.args[i]));
+            if (!isStringValue(args.back()))
+                codegenError(name + "() requires str arguments");
+        }
+        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
+        return builder_.CreateCall(fn, args, name);
+    };
+
     // regex_match(pattern, text) -> bool
     if (e.callee == "regex_match") {
-        requireArgs(e, 2);
-        llvm::Value *pattern = emitExpr(*e.args[0]);
-        llvm::Value *text = emitExpr(*e.args[1]);
-        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
-            codegenError("regex_match() requires str arguments");
-        auto fnTy = fnTy_ptr_ptr_to_i64_;
-        auto fn = mod_->getOrInsertFunction("__ry_regex_match", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_match");
-        return builder_.CreateTrunc(result, i1Ty_, "regex_match_bool");
+        llvm::Value *r = emitRegexCall("regex_match", 2, fnTy_ptr_ptr_to_i64_);
+        return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
-
     // regex_search(pattern, text) -> int
-    if (e.callee == "regex_search") {
-        requireArgs(e, 2);
-        llvm::Value *pattern = emitExpr(*e.args[0]);
-        llvm::Value *text = emitExpr(*e.args[1]);
-        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
-            codegenError("regex_search() requires str arguments");
-        auto fnTy = fnTy_ptr_ptr_to_i64_;
-        auto fn = mod_->getOrInsertFunction("__ry_regex_search", fnTy);
-        return builder_.CreateCall(fn, {pattern, text}, "regex_search");
-    }
-
+    if (e.callee == "regex_search")
+        return emitRegexCall("regex_search", 2, fnTy_ptr_ptr_to_i64_);
     // regex_replace(pattern, text, replacement) -> str
-    if (e.callee == "regex_replace") {
-        requireArgs(e, 3);
-        llvm::Value *pattern = emitExpr(*e.args[0]);
-        llvm::Value *text = emitExpr(*e.args[1]);
-        llvm::Value *replacement = emitExpr(*e.args[2]);
-        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_ ||
-            replacement->getType() != ptrTy_)
-            codegenError("regex_replace() requires str arguments");
-        auto fnTy = fnTy_ptr_ptr_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy);
-        return builder_.CreateCall(fn, {pattern, text, replacement}, "regex_replace");
-    }
-
+    if (e.callee == "regex_replace")
+        return emitRegexCall("regex_replace", 3, fnTy_ptr_ptr_ptr_to_ptr_);
     // regex_split(pattern, text) -> List<str>
     if (e.callee == "regex_split") {
-        requireArgs(e, 2);
-        llvm::Value *pattern = emitExpr(*e.args[0]);
-        llvm::Value *text = emitExpr(*e.args[1]);
-        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
-            codegenError("regex_split() requires str arguments");
-        auto fnTy = fnTy_ptr_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_split");
-        type_meta_[TM_ListElem][result] = ptrTy_;
-        return result;
+        llvm::Value *r = emitRegexCall("regex_split", 2, fnTy_ptr_ptr_to_ptr_);
+        type_meta_[TM_ListElem][r] = ptrTy_;
+        return r;
     }
-
     // regex_find_all(pattern, text) -> List<str>
     if (e.callee == "regex_find_all") {
-        requireArgs(e, 2);
-        llvm::Value *pattern = emitExpr(*e.args[0]);
-        llvm::Value *text = emitExpr(*e.args[1]);
-        if (pattern->getType() != ptrTy_ || text->getType() != ptrTy_)
-            codegenError("regex_find_all() requires str arguments");
-        auto fnTy = fnTy_ptr_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_regex_find_all", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {pattern, text}, "regex_find_all");
-        type_meta_[TM_ListElem][result] = ptrTy_;
-        return result;
+        llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
+        type_meta_[TM_ListElem][r] = ptrTy_;
+        return r;
     }
 
     return nullptr;
