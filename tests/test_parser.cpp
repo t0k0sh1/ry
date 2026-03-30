@@ -420,6 +420,16 @@ TEST(ParserTest, WhenConditionStatement) {
     ASSERT_EQ(whenStmt.else_body.size(), 1u);
 }
 
+TEST(ParserTest, WhenCondElseMustBeLast) {
+    EXPECT_THROW(parseStr("when:\n    else:\n        print(0)\n    true:\n        print(1)"),
+                 std::runtime_error);
+}
+
+TEST(ParserTest, WhenCondExprElseMustBeLast) {
+    EXPECT_THROW(parseStr("x = when:\n    else => 0\n    true => 1"),
+                 std::runtime_error);
+}
+
 TEST(ParserTest, IfBlockMultipleStatements) {
     Program prog = parseStr("if true:\n    x = 1\n    print(x)");
     const auto &ifStmt = *std::get<std::unique_ptr<IfStmt>>(prog[0]);

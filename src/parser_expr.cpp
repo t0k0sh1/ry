@@ -29,6 +29,7 @@ ExprPtr Parser::parseWhenExpr() {
     lex_.next();
 
     auto whenExpr = std::make_unique<WhenCondExpr>();
+    bool seenElse = false;
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::Else) {
@@ -37,7 +38,10 @@ ExprPtr Parser::parseWhenExpr() {
                 parseError("expected '=>' after else");
             lex_.next();
             whenExpr->else_expr = parseConditional();
+            seenElse = true;
         } else {
+            if (seenElse)
+                parseError("condition arms must appear before 'else =>'");
             WhenCondExprArm arm;
             arm.condition = parseConditional();
             if (lex_.peek().kind != TokenKind::FatArrow)

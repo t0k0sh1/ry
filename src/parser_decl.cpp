@@ -945,6 +945,7 @@ StmtNode Parser::parseWhenStatement() {
         auto whenStmt = std::make_unique<WhenCondStmt>();
         whenStmt->loc = locFromToken(whenTok);
 
+        bool seenElse = false;
         while (lex_.peek().kind != TokenKind::Dedent &&
                lex_.peek().kind != TokenKind::Eof) {
             if (lex_.peek().kind == TokenKind::Else) {
@@ -953,7 +954,10 @@ StmtNode Parser::parseWhenStatement() {
                     parseError("expected ':' after else");
                 lex_.next();
                 whenStmt->else_body = parseBlock();
+                seenElse = true;
             } else {
+                if (seenElse)
+                    parseError("condition arms must appear before 'else:'");
                 WhenCondArm arm;
                 arm.condition = parseConditional();
                 if (lex_.peek().kind != TokenKind::Colon)
