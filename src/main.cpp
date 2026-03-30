@@ -543,7 +543,13 @@ static std::string resolveEntryPoint(bool require) {
     }
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>{});
-    auto config = ProjectConfigParser::load(content);
+    ProjectConfig config;
+    try {
+        config = ProjectConfigParser::load(content);
+    } catch (const std::exception &e) {
+        if (require) errs() << "Error: failed to parse package.toml: " << e.what() << "\n";
+        return "";
+    }
     if (config.entry.empty()) {
         if (require) errs() << "Error: no 'entry' field in package.toml\n";
         return "";

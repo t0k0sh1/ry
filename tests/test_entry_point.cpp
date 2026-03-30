@@ -5,6 +5,7 @@
 #include <string>
 #include <array>
 #include <utility>
+#include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
 
