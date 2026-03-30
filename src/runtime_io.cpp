@@ -1,4 +1,5 @@
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_http_types.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -72,12 +73,15 @@ extern "C" const char *__ry_read_line() {
 extern "C" const char *__ry_read_all() {
     size_t cap = 4096;
     size_t len = 0;
-    char *buf = (char *)malloc(cap);
+    char *buf = (char *)checked_malloc(cap);
 
     for (;;) {
         if (len + 1 >= cap) {
+            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(); }
             cap *= 2;
-            buf = (char *)realloc(buf, cap);
+            char *newBuf = (char *)realloc(buf, cap);
+            if (!newBuf) { free(buf); oom_abort(); }
+            buf = newBuf;
         }
         size_t to_read = cap - len - 1;
         size_t n = fread(buf + len, 1, to_read, stdin);

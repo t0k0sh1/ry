@@ -66,9 +66,11 @@ static void binaryInsertionSort(void *data, int64_t lo, int64_t hi,
         // Shift elements right
         int64_t n = i - left;
         if (n > 0) {
+            if (elemSize <= 0 || n > (int64_t)(SIZE_MAX / (size_t)elemSize))
+                std::abort();
             memmove(elemAt(data, left + 1, elemSize),
                     elemAt(data, left, elemSize),
-                    n * elemSize);
+                    (size_t)n * (size_t)elemSize);
         }
         elemCopy(elemAt(data, left, elemSize), tmpBuf, elemSize);
     }
@@ -107,10 +109,19 @@ static int64_t detectRun(void *data, int64_t pos, int64_t len,
 static void merge(void *data, void *tmpBuf, int64_t lo1, int64_t len1,
                   int64_t lo2, int64_t len2, int64_t elemSize,
                   CmpFn cmp, void *ctx) {
+    // Overflow guard: ensure len * elemSize fits in size_t
+    if (elemSize <= 0) {
+        std::abort();
+    }
+    int64_t maxLen = std::max(len1, len2);
+    if (maxLen > (int64_t)(SIZE_MAX / (size_t)elemSize)) {
+        std::abort();
+    }
+
     // Copy smaller run to tmp buffer
     if (len1 <= len2) {
         // mergeLo: copy left run to tmp, merge left-to-right
-        memcpy(tmpBuf, elemAt(data, lo1, elemSize), len1 * elemSize);
+        memcpy(tmpBuf, elemAt(data, lo1, elemSize), (size_t)len1 * (size_t)elemSize);
         int64_t i = 0;     // index into tmp (left run)
         int64_t j = lo2;   // index into data (right run)
         int64_t dest = lo1;
@@ -134,12 +145,12 @@ static void merge(void *data, void *tmpBuf, int64_t lo1, int64_t len1,
         if (i < len1) {
             memcpy(elemAt(data, dest, elemSize),
                    elemAt(tmpBuf, i, elemSize),
-                   (len1 - i) * elemSize);
+                   (size_t)(len1 - i) * (size_t)elemSize);
         }
         // Remaining right elements are already in place
     } else {
         // mergeHi: copy right run to tmp, merge right-to-left
-        memcpy(tmpBuf, elemAt(data, lo2, elemSize), len2 * elemSize);
+        memcpy(tmpBuf, elemAt(data, lo2, elemSize), (size_t)len2 * (size_t)elemSize);
         int64_t i = len1 - 1;  // index into data (left run)
         int64_t j = len2 - 1;  // index into tmp (right run)
         int64_t dest = lo2 + len2 - 1;
@@ -162,7 +173,7 @@ static void merge(void *data, void *tmpBuf, int64_t lo1, int64_t len1,
         if (j >= 0) {
             memcpy(elemAt(data, lo1, elemSize),
                    tmpBuf,
-                   (j + 1) * elemSize);
+                   (size_t)(j + 1) * (size_t)elemSize);
         }
         // Remaining left elements are already in place
     }

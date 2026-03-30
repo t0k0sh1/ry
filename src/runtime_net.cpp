@@ -278,7 +278,9 @@ extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
     auto *handle = (TcpStreamHandle *)stream;
     __ry_apply_default_recv_timeout(handle->fd);
     auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+    if (!header) return nullptr;
     header->data = (int8_t *)malloc((size_t)max_bytes);
+    if (!header->data) { free(header); return nullptr; }
     ssize_t n = ::recv(handle->fd, header->data, (size_t)max_bytes, 0);
     if (n < 0) {
         // Error: free everything and return nullptr
