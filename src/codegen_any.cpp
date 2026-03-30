@@ -39,6 +39,10 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
     return false;
 }
 
+bool CodeGen::isStringValue(llvm::Value *val) {
+    return val->getType() == ptrTy_ && !isNonStrPointer(val);
+}
+
 llvm::Value *CodeGen::wrapInAny(llvm::Value *val) {
     if (isNonStrPointer(val))
         codegenError("type error: 'any' can only hold int/float/bool/str; "

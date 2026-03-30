@@ -253,8 +253,11 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
+    bool lhsIsStr = isStringValue(lhs);
+    bool rhsIsStr = isStringValue(rhs);
+
     // String comparison via strcmp
-    if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+    if (lhsIsStr && rhsIsStr) {
         auto strcmpFn = getStdlibStrcmp();
         llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
@@ -268,7 +271,7 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Reject str with non-str operands
-    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+    if (lhsIsStr || rhsIsStr)
         codegenError("type error: operator '" + op + "' not supported between str and non-str types");
 
     // Low-level type mix check
@@ -344,7 +347,7 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
     // Reject str operands
-    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+    if (isStringValue(lhs) || isStringValue(rhs))
         codegenError("type error: bitwise operator '" + op + "' not supported for str type");
     checkLowLevelTypeMix(lhs, rhs, op);
     // Low-level integer bitwise at native width
@@ -441,16 +444,21 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Auto-convert non-str to str for + operator (#393)
+    bool lhsIsStr = isStringValue(lhs);
+    bool rhsIsStr = isStringValue(rhs);
     auto isScalarTy = [&](llvm::Value *v) {
         return v->getType()->isIntegerTy() || v->getType()->isDoubleTy();
     };
-    if (op == "+" && lhs->getType() == ptrTy_ && isScalarTy(rhs))
+    if (op == "+" && lhsIsStr && isScalarTy(rhs)) {
         rhs = valueToString(rhs);
-    else if (op == "+" && rhs->getType() == ptrTy_ && isScalarTy(lhs))
+        rhsIsStr = true;
+    } else if (op == "+" && rhsIsStr && isScalarTy(lhs)) {
         lhs = valueToString(lhs);
+        lhsIsStr = true;
+    }
 
     // String concatenation
-    if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+    if (op == "+" && lhsIsStr && rhsIsStr) {
         auto strlenFn = getStdlibStrlen();
         auto mallocFn = getStdlibMalloc();
         auto strcpyFn = getStdlibStrcpy();
@@ -470,9 +478,9 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     if (op == "*") {
         llvm::Value *strVal = nullptr;
         llvm::Value *intVal = nullptr;
-        if (lhs->getType() == ptrTy_ && rhs->getType()->isIntegerTy()) {
+        if (lhsIsStr && rhs->getType()->isIntegerTy()) {
             strVal = lhs; intVal = rhs;
-        } else if (rhs->getType() == ptrTy_ && lhs->getType()->isIntegerTy()) {
+        } else if (rhsIsStr && lhs->getType()->isIntegerTy()) {
             strVal = rhs; intVal = lhs;
         }
         if (strVal) {
@@ -485,7 +493,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     }
 
     // Reject str with non-str operands (must come after string concat/repeat checks)
-    if (lhs->getType() == ptrTy_ || rhs->getType() == ptrTy_)
+    if (lhsIsStr || rhsIsStr)
         codegenError("type error: operator '" + op + "' not supported between str and non-str types");
 
     // // floor division (toward -∞)
@@ -765,22 +773,23 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
             codegenError("when expression: all branches must have the same type");
 
         if (lhs->getType() == ptrTy_) {
+            // Classify pointer values by semantic kind using isStringValue and type_meta_
             enum class SemanticKind { Str, List, Map, Set, Other };
             auto classify = [&](llvm::Value *v) -> SemanticKind {
-                if (type_meta_[TM_ListElem].count(v)) return SemanticKind::List;
-                if (type_meta_[TM_MapKey].count(v)) return SemanticKind::Map;
-                if (type_meta_[TM_SetElem].count(v)) return SemanticKind::Set;
-                if (type_meta_[TM_TaskResult].count(v)) return SemanticKind::Other;
-                return SemanticKind::Str;
+                if (isStringValue(v)) return SemanticKind::Str;
+                if (lookupCollectionType(type_meta_[TM_ListElem], v)) return SemanticKind::List;
+                if (lookupCollectionType(type_meta_[TM_MapKey], v)) return SemanticKind::Map;
+                if (lookupCollectionType(type_meta_[TM_SetElem], v)) return SemanticKind::Set;
+                return SemanticKind::Other;
             };
             SemanticKind lhsKind = classify(lhs);
             SemanticKind rhsKind = classify(rhs);
             if (lhsKind != rhsKind)
                 codegenError("when expression: all branches must have the same type");
             if (lhsKind == SemanticKind::List) {
-                llvm::Type *lhsElem = type_meta_[TM_ListElem][lhs];
-                llvm::Type *rhsElem = type_meta_[TM_ListElem][rhs];
-                if (lhsElem != rhsElem)
+                llvm::Type *lhsElem = lookupCollectionType(type_meta_[TM_ListElem], lhs);
+                llvm::Type *rhsElem = lookupCollectionType(type_meta_[TM_ListElem], rhs);
+                if (lhsElem && rhsElem && lhsElem != rhsElem)
                     codegenError("when expression: all branches must have the same type");
             }
         }

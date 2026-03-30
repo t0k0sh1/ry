@@ -911,25 +911,6 @@ void CodeGen::emitStmt(CallStmt &s) {
         emitStructConstructor(sit->second, s.callee, s.args);
         return;
     }
-    if (s.callee == "available_parallelism" || s.callee == "args" ||
-        s.callee == "range" || s.callee == "send" ||
-        s.callee == "recv" ||
-        s.callee == "close" ||
-        s.callee == "write_text" || s.callee == "append_text" ||
-        s.callee == "delete_file" || s.callee == "write_bytes" ||
-        s.callee == "listen" ||
-        s.callee == "http_listen" ||
-        s.callee == "sleep" ||
-        s.callee == "block_on" ||
-        s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
-        s.callee == "shutdown" ||
-        s.callee == "json_free") {
-        auto ce = std::make_unique<CallExpr>();
-        ce->callee = s.callee;
-        ce->args = std::move(s.args);
-        emitExprVariant(ce);
-        return;
-    }
     // Intercept collection operations and route through CallExpr emitter
     if (!s.args.empty()) {
         bool intercept = false;
@@ -979,16 +960,13 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (tryCallOperator(s.callee, s.args))
         return;
-    // Route @native function calls through the full CallExpr dispatch chain
-    // so that stdlib dispatchers (emitBuiltinThread, etc.) can handle them.
-    if (native_fn_arg_counts_.count(s.callee)) {
-        auto ce = std::make_unique<CallExpr>();
-        ce->callee = s.callee;
-        ce->args = std::move(s.args);
-        emitExprVariant(ce);
-        return;
-    }
-    emitUserFnCall(s.callee, s.args);
+    // Route all remaining calls through the unified CallExpr dispatch chain.
+    // This covers @native stdlib functions, language builtins (close, range,
+    // sleep, etc.), and user-defined functions without a hardcoded whitelist.
+    auto ce = std::make_unique<CallExpr>();
+    ce->callee = s.callee;
+    ce->args = std::move(s.args);
+    emitExprVariant(ce);
 }
 
 llvm::Value *CodeGen::toBool(llvm::Value *v) {

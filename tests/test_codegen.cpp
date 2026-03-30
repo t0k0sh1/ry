@@ -198,6 +198,17 @@ TEST_F(CodeGenTest, StringAutoConcat) {
     EXPECT_EQ(runSource("print(false + \" is false\")"), "false is false\n");
 }
 
+// ===== Non-string pointer types must not hit string paths (#397) =====
+
+TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
+    // Collections share LLVM ptrTy_ with str but must not activate str-specific operator paths
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs == \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs + \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs & 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m == \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m + \"abc\")"), std::runtime_error);
+}
+
 // ===== Type change throws =====
 
 TEST_F(CodeGenTest, TypeChangeThrows) {
