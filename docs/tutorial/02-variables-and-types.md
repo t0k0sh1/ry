@@ -196,7 +196,7 @@ print(f"{{escaped}}")   # {escaped}
 
 ## Type Casting (`as`)
 
-Convert between types explicitly with `as`. This is required when you need to change a value's type — Ry does not perform implicit conversions between `int`, `float`, `str`, and `bool`.
+Convert between types explicitly with `as`. Narrowing conversions (like `float` to `int`) and conversions between numeric and non-numeric types (`str`, `bool`) require `as`, while some safe numeric promotions (such as `int` to `float` in expressions and certain calls) happen implicitly.
 
 ```python
 x = 42 as float     # 42.0

@@ -4,7 +4,7 @@
 
 [<- Prev: Testing](11-testing.md)
 
-In this tutorial, you will build a **CLI task tracker** — a small application that manages a to-do list stored in a JSON file. This project ties together most of the language features you have learned:
+In this tutorial, you will build a **task tracker** — a small application that manages an in-memory to-do list. This project ties together most of the language features you have learned:
 
 - **Records and ADT enums** (data modeling)
 - **Collections and iterators** (filtering and transforming tasks)
@@ -138,7 +138,7 @@ fn print_tasks(tasks: List<Task>):
 Edit `src/main.ry`:
 
 ```python
-from model import create_task, add_task, complete_task, pending_tasks, print_tasks, Status
+from model import create_task, add_task, complete_task, pending_tasks, print_tasks, Status, Task
 
 tasks: List<Task> = []
 
@@ -187,7 +187,7 @@ Pending tasks:
 Create `tests/model.test.ry`:
 
 ```python
-from model import create_task, add_task, find_task, complete_task, pending_tasks, Status
+from model import create_task, add_task, find_task, complete_task, pending_tasks, Status, Task
 
 describe("Task model", fn():
     it("creates a task with default status", fn():
@@ -234,7 +234,7 @@ describe("Task model", fn():
             case Ok(_):
                 fail("expected error")
             case Err(e):
-                expect(true).to_be_true()
+                expect(e.message != "").to_be_true()
     )
 )
 ```

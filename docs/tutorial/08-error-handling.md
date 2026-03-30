@@ -211,7 +211,7 @@ a = BankAccount(100, 0)   # OK: 100 >= 0
 |----------|----------|---------|
 | **Option** | A value may legitimately be absent | Looking up a key, `iterator.next()` |
 | **Result** | An operation can fail with a meaningful error | File I/O, parsing, network calls |
-| **Contract** | Invalid input should never happen (programmer error) | Negative deposit, null pointer |
+| **Contract** | Invalid input should never happen (programmer error) | Negative deposit, out-of-bounds index |
 
 **Rules of thumb:**
 - Use **Result** for operations that can fail due to external factors (user input, file system, network).
