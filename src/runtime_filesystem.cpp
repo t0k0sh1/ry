@@ -1,7 +1,6 @@
-#include <cstdarg>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include "ry/runtime_list.hpp"
+#include "ry/runtime_error.hpp"
+
 #include <cerrno>
 #include <climits>
 #include <string>
@@ -18,43 +17,9 @@
 #include <copyfile.h>
 #endif
 
+DEFINE_LAST_ERROR(filesystem)
+
 namespace {
-
-static thread_local char last_error_buf[512] = {0};
-
-static void setLastError(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(last_error_buf, sizeof(last_error_buf), fmt, ap);
-    va_end(ap);
-}
-
-struct ListHeader {
-    int64_t len;
-    int64_t cap;
-    char **data;
-};
-
-static char *dupString(const char *s, size_t n) {
-    char *buf = (char *)malloc(n + 1);
-    if (!buf) return nullptr;
-    memcpy(buf, s, n);
-    buf[n] = '\0';
-    return buf;
-}
-
-static ListHeader *makeStringList(const std::vector<std::string> &items) {
-    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
-    if (!header) return nullptr;
-    header->len = (int64_t)items.size();
-    header->cap = (int64_t)items.size();
-    header->data = (char **)malloc(sizeof(char *) * (items.empty() ? 1 : items.size()));
-    if (!header->data) { free(header); return nullptr; }
-    for (size_t i = 0; i < items.size(); ++i) {
-        header->data[i] = dupString(items[i].c_str(), items[i].size());
-    }
-    return header;
-}
 
 // Iterative directory walk using lstat to avoid following symlinks into cycles.
 // Returns 0 on success, -1 if any opendir failed (errno preserved).
@@ -125,10 +90,6 @@ static int removeCallback(const char *fpath, const struct stat * /*sb*/,
 } // anonymous namespace
 
 extern "C" {
-
-const char *__ry_filesystem_get_last_error() {
-    return strdup(last_error_buf);
-}
 
 void *__ry_filesystem_list_dir(const char *path) {
     DIR *dp = opendir(path);

@@ -1,6 +1,7 @@
 #include "ry/runtime_json.hpp"
 #include "ry/runtime_io.hpp"
 #include "ry/runtime_arc.hpp"
+#include "ry/runtime_list.hpp"
 
 #include <cctype>
 #include <new>
@@ -496,14 +497,6 @@ static void stringify_value(const JsonValue *v, std::string &out,
     }
 }
 
-// ===== ListHeader (matches IOListHeader in runtime_io.hpp) =====
-
-struct ListHeader {
-    int64_t len;
-    int64_t cap;
-    void *data;
-};
-
 // ===== extern "C" implementations =====
 
 extern "C" {
@@ -680,7 +673,7 @@ void *__ry_json_keys(void *value) {
     if (!value || ((JsonValue*)value)->type != JsonType::Object) {
         header->len = 0;
         header->cap = 1;
-        header->data = malloc(sizeof(const char*));
+        header->data = (char **)malloc(sizeof(const char*));
         return header;
     }
     auto *v = (JsonValue*)value;
@@ -690,7 +683,7 @@ void *__ry_json_keys(void *value) {
     auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
     for (int64_t i = 0; i < len; i++)
         data[i] = strdup(v->object_val.keys[i]);
-    header->data = data;
+    header->data = (char **)data;
     return header;
 }
 

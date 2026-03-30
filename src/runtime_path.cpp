@@ -1,23 +1,11 @@
+#include "ry/runtime_error.hpp"
+
 #include <cerrno>
-#include <cstdarg>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-// Thread-local error buffer (independent from other runtime files)
-static thread_local char last_error_buf[512] = {0};
-
-static void setLastError(const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(last_error_buf, sizeof(last_error_buf), fmt, args);
-    va_end(args);
-}
-
-extern "C" const char *__ry_path_get_last_error() {
-    return strdup(last_error_buf);
-}
+DEFINE_LAST_ERROR(path)
 
 // ===== Shared helpers =====
 
