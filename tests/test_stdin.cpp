@@ -28,7 +28,7 @@ static std::pair<std::string, int> runRyStdin(const std::string &code) {
         close(pipeIn[0]);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl(RY_BINARY_PATH, "ry", nullptr);
+        execl(RY_BINARY_PATH, "ry", "-c", nullptr);
         _exit(127);
     }
 

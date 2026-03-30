@@ -31,6 +31,7 @@ extern "C" { extern char **environ; }
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -526,11 +527,47 @@ static bool isKnownSubcommand(const char *arg) {
     return false;
 }
 
+// Resolve the entry point file path from package.toml.
+// Returns the absolute path on success, or empty string if not found.
+// When require is true, error messages are written to stderr.
+static std::string resolveEntryPoint(bool require) {
+    auto root = findProjectRoot();
+    if (!root) {
+        if (require) errs() << "Error: package.toml not found. Run 'ry init' first.\n";
+        return "";
+    }
+    std::ifstream f(fs::path(*root) / "package.toml");
+    if (!f) {
+        if (require) errs() << "Error: cannot open package.toml\n";
+        return "";
+    }
+    std::string content((std::istreambuf_iterator<char>(f)),
+                         std::istreambuf_iterator<char>{});
+    ProjectConfig config;
+    try {
+        config = ProjectConfigParser::load(content);
+    } catch (const std::exception &e) {
+        if (require) errs() << "Error: failed to parse package.toml: " << e.what() << "\n";
+        return "";
+    }
+    if (config.entry.empty()) {
+        if (require) errs() << "Error: no 'entry' field in package.toml\n";
+        return "";
+    }
+    std::string path = (fs::path(*root) / config.entry).string();
+    if (!fs::exists(path)) {
+        if (require) errs() << "Error: entry file not found: " << config.entry << "\n";
+        return "";
+    }
+    return path;
+}
+
 static void printMainHelp() {
     llvm::outs() << "ry " << RY_VERSION << "\n\n";
     llvm::outs() << "Usage:\n";
-    llvm::outs() << "  ry <file.ry> [args...]              Run a Ry script\n";
-    llvm::outs() << "  echo '<code>' | ry                  Run code from stdin\n";
+    llvm::outs() << "  ry                                   Run entry point from package.toml\n";
+    llvm::outs() << "  ry <file.ry> [args...]               Run a Ry script\n";
+    llvm::outs() << "  echo '<code>' | ry -c                Run code from stdin\n";
     llvm::outs() << "  ry test [options] [<file> | <dir>]   Run tests\n";
     llvm::outs() << "  ry init                              Initialize a project\n";
     llvm::outs() << "  ry new <project-name>                Create a new project\n";
@@ -539,6 +576,7 @@ static void printMainHelp() {
     llvm::outs() << "  ry self-update [options]              Update ry itself\n";
     llvm::outs() << "\n";
     llvm::outs() << "Options:\n";
+    llvm::outs() << "  -c               Read and execute code from stdin\n";
     llvm::outs() << "  -h, --help       Show this help\n";
     llvm::outs() << "  -v, --version    Show version\n";
     llvm::outs() << "  --env=<env>      Set environment (production|development|internal)\n";
@@ -660,8 +698,30 @@ int main(int argc, char *argv[]) {
     bool coverage_mode = false;
     bool outline_mode = false;
     const char *filename = nullptr;
+    std::string entry_path_storage; // lifetime holder for entry point path
 
-    if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
+    if (argc >= 2 && std::strcmp(argv[1], "-c") == 0) {
+        // ry -c — read and execute code from stdin
+        std::string src{std::istreambuf_iterator<char>(std::cin),
+                        std::istreambuf_iterator<char>{}};
+        __ry_args_init(0, nullptr);
+        std::string cwd = fs::current_path().string();
+        try {
+            return runRySource(src, "<stdin>", cwd, false, argv[0]);
+        } catch (const DiagnosticError &e) {
+            errs() << e.what();
+            return 1;
+        } catch (const std::exception &e) {
+            errs() << "Error: " << e.what() << "\n";
+            return 1;
+        }
+    } else if (argc >= 2 && std::strcmp(argv[1], "--") == 0) {
+        // ry -- [args...] — run entry point with arguments
+        entry_path_storage = resolveEntryPoint(true);
+        if (entry_path_storage.empty()) return 1;
+        filename = entry_path_storage.c_str();
+        __ry_args_init(argc - 2, argc > 2 ? argv + 2 : nullptr);
+    } else if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
         // Unknown subcommand detection: if the argument is not an existing file,
         // show an error and help message
         std::string arg1 = argv[1];
@@ -757,23 +817,14 @@ int main(int argc, char *argv[]) {
             }
             return discoverAndRunTests(*root, argv[0], parallel, coverage, outline);
         }
-    } else if (argc == 1 && !isatty(STDIN_FILENO)) {
-        std::string src{std::istreambuf_iterator<char>(std::cin),
-                        std::istreambuf_iterator<char>{}};
-        __ry_args_init(0, nullptr);
-        std::string cwd = fs::current_path().string();
-        try {
-            return runRySource(src, "<stdin>", cwd, false, argv[0]);
-        } catch (const DiagnosticError &e) {
-            errs() << e.what();
-            return 1;
-        } catch (const std::exception &e) {
-            errs() << "Error: " << e.what() << "\n";
+    } else if (argc == 1) {
+        entry_path_storage = resolveEntryPoint(false);
+        if (entry_path_storage.empty()) {
+            printMainHelp();
             return 1;
         }
-    } else {
-        printMainHelp();
-        return 1;
+        filename = entry_path_storage.c_str();
+        __ry_args_init(0, nullptr);
     }
 
     try {

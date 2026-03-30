@@ -72,12 +72,12 @@ Output:
 Hello, World!
 ```
 
-You can also run code from stdin using a pipe or here-document:
+You can also run code from stdin using a pipe or here-document with the `-c` flag:
 
 ```bash
-echo 'print("Hello, World!")' | ry
+echo 'print("Hello, World!")' | ry -c
 
-ry <<'RY'
+ry -c <<'RY'
 print("Hello, World!")
 RY
 ```
