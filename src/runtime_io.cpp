@@ -77,6 +77,7 @@ extern "C" const char *__ry_read_all() {
 
     for (;;) {
         if (len + 1 >= cap) {
+            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(); }
             cap *= 2;
             char *newBuf = (char *)realloc(buf, cap);
             if (!newBuf) { free(buf); oom_abort(); }

@@ -398,11 +398,11 @@ void CodeGen::ensureNumericType(llvm::Value *v, const std::string &context) {
     if (ty->isStructTy())
         codegenError("type error: " + context + " requires numeric type, got struct");
     if (ty->isPointerTy())
-        codegenError("type error: " + context + " requires numeric type, got str");
+        codegenError("type error: " + context + " requires numeric type, got pointer");
 }
 
 llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
-    ensureNumericType(v, "arithmetic operation");
+    ensureNumericType(v, "numeric operation");
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
     if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
@@ -411,8 +411,8 @@ llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
 }
 
 std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, llvm::Value *rhs) {
-    ensureNumericType(lhs, "arithmetic operation");
-    ensureNumericType(rhs, "arithmetic operation");
+    ensureNumericType(lhs, "numeric operation");
+    ensureNumericType(rhs, "numeric operation");
     if (!lhs->getType()->isDoubleTy() && !isLowLevelTy(lhs)) {
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");

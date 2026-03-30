@@ -99,6 +99,22 @@ TEST_F(CodeGenTest, StructBitwiseNotRejected) {
 }
 
 // ============================================================
+// Pointer/str type rejected by unary operators
+// ============================================================
+
+TEST_F(CodeGenTest, StringNegationRejected) {
+    EXPECT_THROW(runSource(
+        "-\"abc\"\n"
+    ), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StringBitwiseNotRejected) {
+    EXPECT_THROW(runSource(
+        "~\"abc\"\n"
+    ), std::runtime_error);
+}
+
+// ============================================================
 // Struct type rejected by bitwise operators
 // ============================================================
 

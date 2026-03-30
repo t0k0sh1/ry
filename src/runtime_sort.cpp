@@ -65,7 +65,9 @@ static void binaryInsertionSort(void *data, int64_t lo, int64_t hi,
 
         // Shift elements right
         int64_t n = i - left;
-        if (n > 0 && elemSize > 0 && n <= (int64_t)(SIZE_MAX / (size_t)elemSize)) {
+        if (n > 0) {
+            if (elemSize <= 0 || n > (int64_t)(SIZE_MAX / (size_t)elemSize))
+                std::abort();
             memmove(elemAt(data, left + 1, elemSize),
                     elemAt(data, left, elemSize),
                     (size_t)n * (size_t)elemSize);
@@ -108,9 +110,13 @@ static void merge(void *data, void *tmpBuf, int64_t lo1, int64_t len1,
                   int64_t lo2, int64_t len2, int64_t elemSize,
                   CmpFn cmp, void *ctx) {
     // Overflow guard: ensure len * elemSize fits in size_t
-    if (elemSize <= 0) return;
+    if (elemSize <= 0) {
+        std::abort();
+    }
     int64_t maxLen = std::max(len1, len2);
-    if (maxLen > (int64_t)(SIZE_MAX / (size_t)elemSize)) return;
+    if (maxLen > (int64_t)(SIZE_MAX / (size_t)elemSize)) {
+        std::abort();
+    }
 
     // Copy smaller run to tmp buffer
     if (len1 <= len2) {
