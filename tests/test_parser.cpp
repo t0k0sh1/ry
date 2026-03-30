@@ -225,6 +225,18 @@ TEST(ParserTest, InvalidSyntaxThrows) {
     EXPECT_THROW(parseStr("42 = x"), std::runtime_error);
 }
 
+TEST(ParserTest, UnexpectedTokenMessage) {
+    try {
+        parseStr("- 1");
+        FAIL() << "expected exception";
+    } catch (const DiagnosticError &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("unexpected token '-'"), std::string::npos);
+        // 'expect' should not be listed as a keyword
+        EXPECT_EQ(msg.find("'expect'"), std::string::npos);
+    }
+}
+
 TEST(ParserTest, TypeAnnotationInt) {
     Program prog = parseStr("x: int = 42");
     ASSERT_EQ(prog.size(), 1u);
