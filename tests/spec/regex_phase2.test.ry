@@ -19,6 +19,33 @@ describe("range quantifiers", fn():
   )
 )
 
+describe("empty and edge patterns", fn():
+  it("empty pattern matches empty string", fn():
+    expect(regex_match("", "")).to_eq(true)
+  )
+  it("dot matches any character", fn():
+    expect(regex_match(".", "a")).to_eq(true)
+    expect(regex_match(".", " ")).to_eq(true)
+  )
+  it("dot does not match empty", fn():
+    expect(regex_match(".", "")).to_eq(false)
+  )
+  it("match entire string only", fn():
+    expect(regex_match("abc", "abc")).to_eq(true)
+    expect(regex_match("abc", "xabcx")).to_eq(false)
+  )
+  it("search in empty string", fn():
+    expect(regex_search("a", "")).to_eq(-1)
+  )
+  it("find_all no matches", fn():
+    matches = regex_find_all("xyz", "hello world")
+    expect(length(matches)).to_eq(0)
+  )
+  it("replace no matches", fn():
+    expect(regex_replace("xyz", "hello", "X")).to_eq("hello")
+  )
+)
+
 describe("non-greedy when", fn():
   it("lazy star replace", fn():
     expect(regex_replace("\".*?\"", "\"a\" and \"b\"", "X")).to_eq("X and X")
