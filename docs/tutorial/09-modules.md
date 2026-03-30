@@ -2,7 +2,7 @@
 
 # Packages
 
-[<- Prev: Advanced Features](08-advanced.md) | [Next: Design by Contract ->](10-contracts.md)
+[<- Prev: Error Handling](08-error-handling.md) | [Next: Concurrency ->](10-concurrency.md)
 
 Ry uses a package system to organize code across files and directories. For the full specification, see [Package Reference](../reference/packages.md).
 
@@ -139,4 +139,4 @@ Once set, packages in the specified directories can be imported from anywhere.
 
 ---
 
-[<- Prev: Advanced Features](08-advanced.md) | [Next: Design by Contract ->](10-contracts.md)
+[<- Prev: Error Handling](08-error-handling.md) | [Next: Concurrency ->](10-concurrency.md)

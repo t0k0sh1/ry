@@ -2,7 +2,7 @@
 
 # Testing
 
-[<- Prev: Design by Contract](10-contracts.md)
+[<- Prev: Concurrency](10-concurrency.md) | [Next: Building a Project ->](12-building-a-project.md)
 
 Ry has a built-in RSpec-style test syntax using `describe`, `it`, and `expect`. For the full specification, see [Testing Reference](../reference/testing.md).
 
@@ -148,6 +148,31 @@ The test runs `count` times with random values. On failure, the counterexample i
 
 ---
 
+## Testing with Contracts
+
+Contracts (from [Error Handling](08-error-handling.md)) work together with mocking: the original function's `require` and `ensure` contracts **still run** for mocked calls. This means contracts act as implicit test assertions.
+
+```python
+fn deposit(amount: int, balance: int) -> int:
+    require:
+        amount > 0
+    ensure v:
+        v > balance
+    return balance + amount
+
+describe("deposit", fn():
+    it("mocked version still checks contracts", fn():
+        mock(deposit, fn(amount: int, balance: int) => balance + amount)
+        expect(deposit(10, 100)).to_eq(110)
+        # deposit(-1, 100) would terminate with "require failed"
+    )
+)
+```
+
+> **Why this matters**: You can mock implementation details while keeping the contract safety net. If a mock violates a postcondition, the test catches it immediately.
+
+---
+
 ## Limitations
 
 - Nesting of `describe` is not supported
@@ -156,4 +181,14 @@ The test runs `count` times with random values. On failure, the counterexample i
 
 ---
 
-[<- Prev: Design by Contract](10-contracts.md)
+## Exercises
+
+1. **Basic testing**: Write a `describe` block with tests for a `max(a: int, b: int) -> int` function, covering equal values, positive numbers, and negative numbers.
+
+2. **Mocking**: Write a function `fetch_temperature() -> int` that returns a value. Mock it in a test to return a fixed value and use `verify` to check it was called exactly once.
+
+3. **Parameterized tests**: Use `@each` to test a `is_even(n: int) -> bool` function with inputs `[(2, true), (3, false), (0, true), (-4, true)]`.
+
+---
+
+[<- Prev: Concurrency](10-concurrency.md) | [Next: Building a Project ->](12-building-a-project.md)

@@ -1,8 +1,8 @@
 [English](07-collections.md) | [日本語](../ja/tutorial/07-collections.md) | [繁體中文](../zh/tutorial/07-collections.md)
 
-# Collections
+# Collections and Iterators
 
-[<- Prev: Records](06-records.md) | [Next: Advanced Features ->](08-advanced.md)
+[<- Prev: Records and Enums](06-records.md) | [Next: Error Handling ->](08-error-handling.md)
 
 Ry has four collection types: **Tuples**, **Lists**, **Maps**, and **Sets**.
 
@@ -351,7 +351,11 @@ empty: Set<int> = {}
 
 Iterators provide a **lazy** way to process collections. Instead of creating intermediate lists at each step, iterators process elements one at a time through a pipeline.
 
+> **Why lazy iterators?** When you chain `filter` and `map` on a list directly, each step creates a new intermediate list. With iterators, elements flow through the entire pipeline one at a time — no intermediate allocations. This matters when processing large collections or when you only need the first few results (using `take`).
+
 ### Creating and Consuming
+
+Call `.iter()` on a collection to get an iterator, and `.to_list()` to materialize the results back into a list:
 
 ```python
 xs = [1, 2, 3]
@@ -360,7 +364,7 @@ ys = xs.iter().to_list()   # [1, 2, 3]
 
 ### Chaining Operations
 
-You can chain `filter`, `map`, and `take` to build pipelines:
+You can chain `filter`, `map`, and `take` to build pipelines. This uses the UFCS chaining style you learned in [Functions](05-functions.md):
 
 ```python
 result = [1, 2, 3, 4, 5]
@@ -372,7 +376,24 @@ result = [1, 2, 3, 4, 5]
 print(result)   # [6, 8]
 ```
 
+Here is a more realistic example — processing a list of scores:
+
+```python
+scores = [85, 42, 93, 67, 78, 55, 91]
+
+# Get the top 3 passing scores (>= 60), doubled for bonus
+top_bonus = scores
+    .iter()
+    .filter(fn(s: int) => s >= 60)
+    .map(fn(s: int) => s * 2)
+    .take(3)
+    .to_list()
+print(top_bonus)   # [170, 186, 134]
+```
+
 ### Manual Iteration with next()
+
+`next()` returns an `Option` — `Some(value)` if there is a next element, or `None` when the iterator is exhausted. You will learn more about `Option` in [Error Handling](08-error-handling.md).
 
 ```python
 it = [10, 20].iter()
@@ -390,13 +411,31 @@ for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
     print(x)   # 2, 3
 ```
 
-Maps produce tuple elements:
+### Iterating over Maps and Sets
+
+Maps produce key-value tuples. Sets produce individual elements:
 
 ```python
 for k, v in {"a": 1, "b": 2}.iter():
-    print(k)
+    print(f"{k} = {v}")
+
+for x in {10, 20, 30}.iter():
+    print(x)
 ```
+
+### Common Mistakes
+
+- **Forgetting `.to_list()`**: An iterator pipeline by itself does nothing — it is lazy. You must consume it with `.to_list()`, a `for` loop, or `next()`.
+- **Calling `.to_list()` too early**: Placing `.to_list()` before `.filter()` defeats the purpose of lazy evaluation since it materializes all elements first.
 
 ---
 
-[<- Prev: Records](06-records.md) | [Next: Advanced Features ->](08-advanced.md)
+## Exercises
+
+1. **Iterator pipeline**: Given `xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`, use an iterator pipeline to compute the sum of even numbers. (Hint: use `.filter()` then `.to_list()` and `sum()`.)
+
+2. **Manual iteration**: Create an iterator over `[100, 200, 300]` and use `next()` in a `when` block to handle the `Some` and `None` cases.
+
+---
+
+[<- Prev: Records and Enums](06-records.md) | [Next: Error Handling ->](08-error-handling.md)
