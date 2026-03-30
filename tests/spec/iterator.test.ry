@@ -98,4 +98,16 @@ describe("Iterator", fn():
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
   )
+  it("filter empty iterator", fn():
+    xs = [1]
+    empty = filter(xs, fn(x: int) => x > 10)
+    ys = to_list(filter(iter(empty), fn(x: int) => true))
+    expect(ys).to_have_length(0)
+  )
+  it("map empty iterator", fn():
+    xs = [1]
+    empty = filter(xs, fn(x: int) => x > 10)
+    ys = to_list(map(iter(empty), fn(x: int) => x * 2))
+    expect(ys).to_have_length(0)
+  )
 )

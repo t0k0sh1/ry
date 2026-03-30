@@ -73,6 +73,18 @@ describe("Result type", fn():
       case Err(e):
         fail("unexpected error")
   )
+  it("Ok(0) is still Ok", fn():
+    res = Ok(0)
+    expect(res).to_be_ok()
+  )
+  it("Ok empty string is still Ok", fn():
+    res: Result<str, Error> = Ok("")
+    expect(res).to_be_ok()
+  )
+  it("Err with empty message", fn():
+    res = Err(Error(""))
+    expect(res).to_be_err()
+  )
   it("when Ok with wildcard for Unit result", fn():
     fn unit_ok() -> Result<Unit, Error>:
       return Ok(0 as u8)

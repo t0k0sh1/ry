@@ -77,6 +77,18 @@ describe("Option", fn():
     x: int? = 42
     expect(x).to_be_some()
   )
+  it("Some(0) is Some not None", fn():
+    x: int? = Some(0)
+    expect(x).to_be_some()
+  )
+  it("Some(false) is Some not None", fn():
+    x: bool? = Some(false)
+    expect(x).to_be_some()
+  )
+  it("Some empty string is Some", fn():
+    x: str? = Some("")
+    expect(x).to_be_some()
+  )
 )
 
 describe("nested generic type", fn():

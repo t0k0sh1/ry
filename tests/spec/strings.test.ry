@@ -36,6 +36,18 @@ describe("search and check", fn():
     expect(find("hello", "xyz")).to_be_none()
     expect(find("abcdef", "cd")).to_eq(Some(2))
   )
+  it("find in empty string", fn():
+    expect(find("", "x")).to_be_none()
+  )
+  it("find empty needle", fn():
+    expect(find("hello", "")).to_eq(Some(0))
+  )
+  it("contains empty needle", fn():
+    expect(contains("hello", "")).to_be_true()
+  )
+  it("contains empty haystack and needle", fn():
+    expect(contains("", "")).to_be_true()
+  )
 )
 
 describe("extraction and transformation", fn():
@@ -58,9 +70,15 @@ describe("case conversion", fn():
     expect(to_upper("hello")).to_eq("HELLO")
     expect(to_upper("Hello World")).to_eq("HELLO WORLD")
   )
+  it("to_upper empty", fn():
+    expect(to_upper("")).to_eq("")
+  )
   it("to_lower", fn():
     expect(to_lower("HELLO")).to_eq("hello")
     expect(to_lower("Hello World")).to_eq("hello world")
+  )
+  it("to_lower empty", fn():
+    expect(to_lower("")).to_eq("")
   )
 )
 
@@ -69,13 +87,22 @@ describe("whitespace", fn():
     expect(trim("  hello  ")).to_eq("hello")
     expect(trim("  hi  ")).to_eq("hi")
   )
+  it("trim empty", fn():
+    expect(trim("")).to_eq("")
+  )
   it("trim_start", fn():
     expect(trim_start("  hello  ")).to_eq("hello  ")
     expect(trim_start("  hi")).to_eq("hi")
   )
+  it("trim_start empty", fn():
+    expect(trim_start("")).to_eq("")
+  )
   it("trim_end", fn():
     expect(trim_end("  hello  ")).to_eq("  hello")
     expect(trim_end("hi  ")).to_eq("hi")
+  )
+  it("trim_end empty", fn():
+    expect(trim_end("")).to_eq("")
   )
 )
 
@@ -88,9 +115,15 @@ describe("generation", fn():
     expect(repeat("abc", -100)).to_eq("")
     expect(repeat("hello", 1)).to_eq("hello")
   )
+  it("repeat empty string", fn():
+    expect(repeat("", 5)).to_eq("")
+  )
   it("reverse", fn():
     expect(reverse("hello")).to_eq("olleh")
     expect(reverse("abc")).to_eq("cba")
+  )
+  it("reverse empty", fn():
+    expect(reverse("")).to_eq("")
   )
 )
 
@@ -107,6 +140,15 @@ describe("split and join", fn():
     expect(join(parts, ",")).to_eq("a,b,c")
     expect(join(parts, "-")).to_eq("a-b-c")
   )
+  it("join empty list", fn():
+    parts: List<str> = ["x"]
+    empty = filter(parts, fn(s: str) => false)
+    expect(join(empty, ",")).to_eq("")
+  )
+  it("join single element", fn():
+    parts = ["only"]
+    expect(join(parts, ",")).to_eq("only")
+  )
 )
 
 describe("UTF-8 support", fn():
@@ -117,6 +159,12 @@ describe("UTF-8 support", fn():
   it("byte_len counts bytes", fn():
     expect(byte_len("hello")).to_eq(5)
     expect(byte_len("あいう")).to_eq(9)
+  )
+  it("length empty", fn():
+    expect("").to_have_length(0)
+  )
+  it("byte_len empty", fn():
+    expect(byte_len("")).to_eq(0)
   )
   it("char_at UTF-8", fn():
     expect(char_at("あいう", 1)).to_eq("い")

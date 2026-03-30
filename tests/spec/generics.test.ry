@@ -30,4 +30,10 @@ describe("generic function", fn():
     expect(identity(10)).to_eq(10)
     expect(identity(20)).to_eq(20)
   )
+  it("explicit type arg float", fn():
+    expect(identity[float](3.14)).to_eq(3.14)
+  )
+  it("type inference bool", fn():
+    expect(identity(true)).to_be_true()
+  )
 )

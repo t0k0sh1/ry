@@ -51,4 +51,28 @@ describe("checked arithmetic", fn():
     v = wrapping_sub(0u8, 1u8)
     expect(v as int).to_eq(255)
   )
+  it("checked_sub overflow", fn():
+    r = checked_sub(-2147483648i32, 1i32)
+    when r:
+      case Ok(v):
+        expect(true).to_eq(false)
+      case Err(e):
+        expect(true).to_eq(true)
+  )
+  it("checked_mul overflow", fn():
+    r = checked_mul(100000i32, 100000i32)
+    when r:
+      case Ok(v):
+        expect(true).to_eq(false)
+      case Err(e):
+        expect(true).to_eq(true)
+  )
+  it("checked_add zero boundary", fn():
+    r = checked_add(0i32, 0i32)
+    when r:
+      case Ok(v):
+        expect(v as int).to_eq(0)
+      case Err(e):
+        expect(true).to_eq(false)
+  )
 )

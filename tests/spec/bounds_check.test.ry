@@ -1,4 +1,15 @@
 describe("bounds checking", fn():
+  describe("single element list", fn():
+    it("access index 0", fn():
+      xs = [42]
+      expect(xs[0]).to_eq(42)
+    )
+    it("negative index on single element", fn():
+      xs = [42]
+      expect(xs[-1]).to_eq(42)
+    )
+  )
+
   describe("list negative index", fn():
     it("wraps -1 to last element", fn():
       xs = [10, 20, 30]

@@ -360,6 +360,14 @@ TEST_F(CodeGenTest, FloorDivModWorks) {
     EXPECT_EQ(runSource("print(7 // 2)"), "3\n");
     EXPECT_EQ(runSource("print(-7 // 2)"), "-4\n");
     EXPECT_EQ(runSource("print(7 % 3)"), "1\n");
+    // Floor modulo: sign follows divisor (Python semantics)
+    EXPECT_EQ(runSource("print(-7 % 3)"), "2\n");
+    EXPECT_EQ(runSource("print(7 % -3)"), "-2\n");
+    EXPECT_EQ(runSource("print(-7 % -3)"), "-1\n");
+    EXPECT_EQ(runSource("print(0 % 5)"), "0\n");
+    // Identity: a == (a // b) * b + (a % b)
+    EXPECT_EQ(runSource("print((-7 // 3) * 3 + (-7 % 3))"), "-7\n");
+    EXPECT_EQ(runSource("print((7 // -3) * -3 + (7 % -3))"), "7\n");
 }
 
 // ===== any type rejection =====
