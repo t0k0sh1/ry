@@ -55,6 +55,13 @@ describe("extraction and transformation", fn():
     expect(substring("hello world", 0, 5)).to_eq("hello")
     expect(substring("abcdef", 1, 4)).to_eq("bcd")
   )
+  it("substring out of bounds clamps", fn():
+    expect(substring("abc", 0, 100)).to_eq("abc")
+    expect(substring("abc", 5, 10)).to_eq("")
+  )
+  it("substring negative clamps to zero", fn():
+    expect(substring("abc", -1, 2)).to_eq("ab")
+  )
   it("char_at", fn():
     expect(char_at("hello", 0)).to_eq("h")
     expect(char_at("abc", 2)).to_eq("c")
@@ -62,6 +69,9 @@ describe("extraction and transformation", fn():
   it("replace", fn():
     expect(replace("hello world", "world", "ry")).to_eq("hello ry")
     expect(replace("foo bar foo", "foo", "baz")).to_eq("baz bar baz")
+  )
+  it("replace not found", fn():
+    expect(replace("hello", "xyz", "abc")).to_eq("hello")
   )
 )
 
@@ -135,6 +145,16 @@ describe("split and join", fn():
     expect(parts[1]).to_eq("b")
     expect(parts[2]).to_eq("c")
   )
+  it("split empty string", fn():
+    parts = split("", ",")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("")
+  )
+  it("split no delimiter found", fn():
+    parts = split("hello", ",")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("hello")
+  )
   it("join", fn():
     parts = ["a", "b", "c"]
     expect(join(parts, ",")).to_eq("a,b,c")
@@ -183,9 +203,17 @@ describe("type conversion", fn():
     expect(to_int("-7")).to_eq(-7)
     expect(to_int("123")).to_eq(123)
   )
+  it("to_int non-numeric returns 0", fn():
+    expect(to_int("abc")).to_eq(0)
+    expect(to_int("")).to_eq(0)
+  )
   it("to_float", fn():
     expect(to_float("3.14")).to_eq(3.14)
     expect(to_float("2.5")).to_eq(2.5)
+  )
+  it("to_float non-numeric returns 0", fn():
+    expect(to_float("xyz")).to_eq(0.0)
+    expect(to_float("")).to_eq(0.0)
   )
   it("to_str", fn():
     expect(to_str(42)).to_eq("42")
