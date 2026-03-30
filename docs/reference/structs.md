@@ -203,17 +203,12 @@ handle(derr)  # OK — coerced to Error (grandparent)
 |------|------|
 | Duplicate field names | Compile error |
 | Field assignment on `@const` variables | Compile error |
-| Passing a struct directly to `print` | Compile error (not supported by print) |
 
 ```python
 # Error example: Duplicate field names
 record Bad:
     x: int
     x: int   # Error
-
-# Error example: Passing a struct to print
-p = Point(1, 2)
-print(p)   # Error
 ```
 
 ---
