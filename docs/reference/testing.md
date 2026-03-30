@@ -19,6 +19,7 @@ ry test -w -p        # Watch mode with parallel execution
 ry test -w tests/    # Watch a specific directory
 ry test --coverage   # Run all tests with line coverage summary
 ry test --cov        # Short alias for --coverage
+ry test --outline    # Print describe/it structure without running tests
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
@@ -260,6 +261,32 @@ Test Coverage Summary:
 
 - Only user code is reported; standard library files are excluded
 - `--coverage` with `--parallel` falls back to sequential execution
+
+---
+
+## Test Outline
+
+Use `--outline` to display the `describe`/`it` structure of test files without executing any test bodies:
+
+```bash
+ry test --outline tests/spec/mock.test.ry
+```
+
+Output:
+
+```
+describe mock
+  it replaces function
+  it auto-restores after it block
+  it with arguments
+describe verify
+  it counts calls
+  it zero calls
+```
+
+- Works with individual files, directories, and `-p` (all test files)
+- `@each` parameterized tests show the format template with an `(@each)` suffix
+- `@property` tests show the label with a `(@property)` suffix
 
 ---
 
