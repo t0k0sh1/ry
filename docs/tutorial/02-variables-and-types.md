@@ -169,6 +169,46 @@ print("say \"hi\"")     # String containing double quotes
 
 ---
 
+## F-String (String Interpolation)
+
+When you need to embed variables or expressions inside a string, use `f"..."` instead of concatenating with `+`. Expressions inside `{}` are evaluated and converted to strings automatically.
+
+```python
+name = "Alice"
+print(f"Hello {name}")   # Hello Alice
+
+x = 3
+y = 4
+print(f"{x} + {y} = {x + y}")   # 3 + 4 = 7
+```
+
+Use `{{` and `}}` to include literal braces:
+
+```python
+print(f"{{escaped}}")   # {escaped}
+```
+
+> **Why f-strings?** They are more readable and less error-prone than manual concatenation like `"Hello " + name`. Use f-strings whenever you mix text with dynamic values.
+
+> **Common mistake**: Writing `"Hello {name}"` without the `f` prefix gives you the literal text `{name}`, not the variable's value.
+
+---
+
+## Type Casting (`as`)
+
+Convert between types explicitly with `as`. Narrowing conversions (like `float` to `int`) and conversions between numeric and non-numeric types (`str`, `bool`) require `as`, while some safe numeric promotions (such as `int` to `float` in expressions and certain calls) happen implicitly.
+
+```python
+x = 42 as float     # 42.0
+y = 3.14 as int      # 3 (truncated toward zero)
+s = 42 as str         # "42"
+b = true as int       # 1
+```
+
+> **Common mistake**: Casting `float` to `int` truncates toward zero, so `3.9 as int` gives `3`, not `4`. Use `round()` from the `math` module if you need rounding.
+
+---
+
 ## Reassignment Rules
 
 Variables declared without `@const` can be reassigned. However, the following restrictions apply:
