@@ -53,6 +53,7 @@ print(atomic_int_load(counter))  # 1
 | `lock_new` | `() -> Lock` | Creates a new mutex. |
 | `lock_acquire` | `(lock: Lock) -> Result<Unit, Error>` | Acquires the lock. Blocks until available. |
 | `lock_release` | `(lock: Lock) -> Result<Unit, Error>` | Releases the lock. |
+| `lock_free` | `(lock: Lock) -> Unit` | Immediately frees the lock. Optional — ARC handles cleanup automatically. |
 
 ## RWLock (Read-Write Lock)
 
@@ -62,6 +63,7 @@ print(atomic_int_load(counter))  # 1
 | `rwlock_read_lock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires a shared read lock. Multiple readers allowed. |
 | `rwlock_write_lock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Acquires an exclusive write lock. Blocks until all readers and writers release. |
 | `rwlock_unlock` | `(rwlock: RWLock) -> Result<Unit, Error>` | Releases the lock (shared or exclusive). |
+| `rwlock_free` | `(rwlock: RWLock) -> Unit` | Immediately frees the read-write lock. Optional — ARC handles cleanup automatically. |
 
 ## Semaphore
 
@@ -70,6 +72,7 @@ print(atomic_int_load(counter))  # 1
 | `semaphore_new` | `(count: int) -> Result<Semaphore, Error>` | Creates a semaphore with the given initial count. Returns `Err` if count is negative. |
 | `semaphore_acquire` | `(sem: Semaphore) -> Result<Unit, Error>` | Decrements the semaphore. Blocks if count is zero. |
 | `semaphore_release` | `(sem: Semaphore) -> Result<Unit, Error>` | Increments the semaphore and wakes a waiting thread. |
+| `semaphore_free` | `(sem: Semaphore) -> Unit` | Immediately frees the semaphore. Optional — ARC handles cleanup automatically. |
 
 ## Barrier
 
@@ -77,6 +80,7 @@ print(atomic_int_load(counter))  # 1
 |----------|-----------|-------------|
 | `barrier_new` | `(count: int) -> Result<Barrier, Error>` | Creates a barrier that synchronizes `count` threads. Returns `Err` if count is not positive. |
 | `barrier_wait` | `(barrier: Barrier) -> Result<Unit, Error>` | Blocks until all `count` threads have called `barrier_wait`. |
+| `barrier_free` | `(barrier: Barrier) -> Unit` | Immediately frees the barrier. Optional — ARC handles cleanup automatically. |
 
 ## AtomicInt
 
@@ -88,6 +92,7 @@ print(atomic_int_load(counter))  # 1
 | `atomic_int_add` | `(a: AtomicInt, delta: int) -> int` | Atomically adds `delta` and returns the **previous** value. |
 | `atomic_int_sub` | `(a: AtomicInt, delta: int) -> int` | Atomically subtracts `delta` and returns the **previous** value. |
 | `atomic_int_cas` | `(a: AtomicInt, expected: int, desired: int) -> bool` | Compare-and-swap: if current value equals `expected`, sets to `desired` and returns `true`; otherwise returns `false`. |
+| `atomic_int_free` | `(a: AtomicInt) -> Unit` | Immediately frees the atomic integer. Optional — ARC handles cleanup automatically. |
 
 ## AtomicBool
 
@@ -96,6 +101,7 @@ print(atomic_int_load(counter))  # 1
 | `atomic_bool_new` | `(value: bool) -> AtomicBool` | Creates an atomic boolean with the given initial value. |
 | `atomic_bool_load` | `(a: AtomicBool) -> bool` | Atomically reads the value. |
 | `atomic_bool_store` | `(a: AtomicBool, value: bool) -> Unit` | Atomically writes the value. |
+| `atomic_bool_free` | `(a: AtomicBool) -> Unit` | Immediately frees the atomic boolean. Optional — ARC handles cleanup automatically. |
 
 ## Comparison with async/await
 

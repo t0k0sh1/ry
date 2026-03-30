@@ -280,7 +280,7 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 ### Supported Types in Interpolation
 
-Any expression that evaluates to `int`, `float`, `bool`, or `str` can be used inside `{}`.
+Any expression that evaluates to `int`, `float`, `bool`, `str`, or a record type can be used inside `{}`.
 
 ### Escape Sequences
 

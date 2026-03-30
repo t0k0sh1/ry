@@ -135,7 +135,7 @@ print(xs)   # [1, 2, 3]
 
 ### pop
 
-Removes and returns the last element. Causes a runtime error on an empty list.
+Removes and returns the last element. Returns `None` if the list is empty.
 
 ```python
 xs = [1, 2, 3]
@@ -298,7 +298,7 @@ print(max(xs))   # 5
 
 ### first
 
-Returns the first element. Causes a runtime error on an empty list.
+Returns the first element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
@@ -307,7 +307,7 @@ print(first(xs))   # 10
 
 ### last
 
-Returns the last element. Causes a runtime error on an empty list.
+Returns the last element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
