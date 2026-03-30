@@ -727,6 +727,74 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    auto bindContractValue = [&](const std::string &name, llvm::Value *val,
+                                 const std::string *typeName) {
+        llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, name);
+        builder_.CreateStore(val, alloca);
+        scope_stack_.back()[name] = alloca;
+        immutable_scope_stack_.back().insert(name);
+        if (!typeName) return;
+
+        std::string resolvedType = resolveTypeAlias(*typeName);
+        if (isLowLevelTypeName(resolvedType))
+            low_level_type_names_[alloca] = resolvedType;
+        if (resolvedType.size() > 3 && resolvedType.compare(0, 3, "fn(") == 0)
+            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedType);
+        auto constraint = parseTypeConstraint(resolvedType);
+        if (constraint)
+            type_constraints_[alloca] = *constraint;
+        else if (isUnionType(resolvedType))
+            union_value_types_[alloca] = normalizeUnionType(resolvedType);
+    };
+
+    auto bindMockContractParams = [&]() {
+        if (!matchedEntry) return;
+        for (size_t i = 0; i < matchedEntry->paramNames.size() && i < argVals.size(); ++i) {
+            const std::string *typeName = i < matchedEntry->paramTypeNames.size()
+                ? &matchedEntry->paramTypeNames[i]
+                : nullptr;
+            bindContractValue(matchedEntry->paramNames[i], argVals[i], typeName);
+        }
+    };
+
+    auto emitMockRequireChecks = [&]() {
+        if (!matchedEntry || !matchedEntry->preconditions || matchedEntry->preconditions->empty())
+            return;
+        pushScope();
+        bindMockContractParams();
+        for (const auto &precondition : *matchedEntry->preconditions)
+            emitContractCheck("require", callee, precondition);
+        popScope();
+    };
+
+    auto emitMockEnsureChecks = [&](llvm::Value *retVal) {
+        if (!matchedEntry || !matchedEntry->postconditions || matchedEntry->postconditions->empty() ||
+            !matchedEntry->ensureBindings)
+            return;
+
+        pushScope();
+        bindMockContractParams();
+        auto &bindings = *matchedEntry->ensureBindings;
+        if (bindings.size() == 1) {
+            bindContractValue(bindings[0], retVal, nullptr);
+        } else {
+            auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
+            if (!structTy || structTy->isLiteral() || structTy->getNumElements() != bindings.size())
+                codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
+            for (unsigned i = 0; i < bindings.size(); ++i) {
+                llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
+                bindContractValue(bindings[i], elem, nullptr);
+            }
+        }
+
+        bool savedInEnsureContext = in_ensure_context_;
+        in_ensure_context_ = true;
+        for (const auto &postcondition : *matchedEntry->postconditions)
+            emitContractCheck("ensure", callee, postcondition);
+        in_ensure_context_ = savedInEnsureContext;
+        popScope();
+    };
+
     // In test mode, inject mock dispatch only for functions targeted by mock()
     if (test_mode_ && mocked_functions_.count(callee)) {
         llvm::FunctionType *mockGetTy = llvm::FunctionType::get(ptrTy_, {ptrTy_}, false);
@@ -749,6 +817,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         // Mock path
         builder_.SetInsertPoint(mockBB);
+        emitMockRequireChecks();
         builder_.CreateCall(mockIncFn, {nameStr});
         llvm::FunctionType *fnTy = fn->getFunctionType();
         if (fn->getReturnType()->isVoidTy()) {
@@ -765,6 +834,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
 
         llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
+        emitMockEnsureChecks(mockResult);
         builder_.CreateBr(mergeBB);
         llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
 
@@ -779,6 +849,15 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
         phi->addIncoming(mockResult, mockEndBB);
         phi->addIncoming(origResult, origEndBB);
+        if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
+            matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
+            matchedEntry->returnTypeName.back() == '>') {
+            std::string inner = matchedEntry->returnTypeName.substr(
+                5, matchedEntry->returnTypeName.size() - 6);
+            type_meta_[TM_TaskResult][phi] = resolveType(inner);
+        }
+        if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
+            low_level_type_names_[phi] = matchedEntry->returnTypeName;
         return phi;
     }
 
@@ -1180,4 +1259,3 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
         }
     }
 }
-

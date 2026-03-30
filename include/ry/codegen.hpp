@@ -131,10 +131,14 @@ private:
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
+        std::vector<std::string> paramNames;
         std::vector<std::string> paramTypeNames;
         std::string returnTypeName;
         size_t minArity = 0;
         std::vector<ExprPtr> defaultValues;
+        const std::vector<ExprPtr> *preconditions = nullptr;
+        const std::vector<ExprPtr> *postconditions = nullptr;
+        const std::vector<std::string> *ensureBindings = nullptr;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;

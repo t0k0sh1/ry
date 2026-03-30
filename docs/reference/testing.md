@@ -173,6 +173,7 @@ describe("mocking", fn():
 - The first argument is the function name (identifier, not a string)
 - The second argument is a replacement lambda
 - The replacement must have the same parameter types and return type as the original function
+- `require` and `ensure` contracts on the original function are still enforced when the mock is called
 - Mocks are automatically restored at the end of each `it` block
 
 ### verify(fn_name)

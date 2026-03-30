@@ -251,11 +251,15 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     llvm::Function *func = llvm::Function::Create(
         ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
+    std::vector<std::string> paramNames;
+    for (auto &p : s->params)
+        paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
-    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName,
-                         newMinArity, std::move(defaults)});
+    overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
+                         newMinArity, std::move(defaults),
+                         &s->preconditions, &s->postconditions, &s->ensure_bindings});
 
     if (hasDirective(s->directives, "deprecated"))
         deprecated_functions_.insert(s->name);
@@ -848,6 +852,9 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     llvm::Function *func = llvm::Function::Create(
         ft, llvm::Function::InternalLinkage, irName, *mod_);
 
+    std::vector<std::string> paramNames;
+    for (auto &p : s.params)
+        paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
     for (auto &p : s.params) {
         // Substitute type params in param type names for FnTypeInfo
@@ -858,7 +865,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             resolvedName = tpit->second;
         paramTypeNames.push_back(resolvedName);
     }
-    functions_[fullName].push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
+    functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
+                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings});
     generic_fn_instantiated_.insert(fullName);
 
     // Emit function body

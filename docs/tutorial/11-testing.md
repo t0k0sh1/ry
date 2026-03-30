@@ -83,6 +83,7 @@ Calculator
 ### `mock(fn_name, replacement)`
 
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically restored when the `it` block ends.
+The original function's `require` and `ensure` contracts still run for mocked calls.
 
 ```python
 fn fetch_data() -> str:

@@ -141,3 +141,39 @@ TEST_F(CodeGenTest, MockTypeMismatchError) {
         ")\n"
     ), std::exception);
 }
+
+TEST_F(CodeGenTest, MockedFunctionStillChecksRequire) {
+    std::string src =
+        "fn deposit(amount: int, balance: int) -> int:\n"
+        "    require:\n"
+        "        amount > 0\n"
+        "        balance >= 0\n"
+        "    return balance + amount\n"
+        "\n"
+        "describe(\"mock contracts\", fn():\n"
+        "    it(\"checks require on mocked calls\", fn():\n"
+        "        mock(deposit, fn(amount: int, balance: int) => balance + amount)\n"
+        "        deposit(-100, -200)\n"
+        "    )\n"
+        ")\n";
+    EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
+}
+
+TEST_F(CodeGenTest, MockedFunctionStillChecksEnsure) {
+    std::string src =
+        "fn deposit(amount: int, balance: int) -> int:\n"
+        "    require:\n"
+        "        amount > 0\n"
+        "        balance >= 0\n"
+        "    ensure v:\n"
+        "        v > balance\n"
+        "    return balance + amount\n"
+        "\n"
+        "describe(\"mock contracts\", fn():\n"
+        "    it(\"checks ensure on mocked calls\", fn():\n"
+        "        mock(deposit, fn(amount: int, balance: int) => -999)\n"
+        "        deposit(10, 20)\n"
+        "    )\n"
+        ")\n";
+    EXPECT_EXIT(runTestSource(src), ::testing::ExitedWithCode(1), "");
+}
