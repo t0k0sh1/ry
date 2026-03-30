@@ -18,7 +18,8 @@
 class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
-                     bool coverage_mode = false, int coverage_file_id_offset = 0);
+                     bool coverage_mode = false, int coverage_file_id_offset = 0,
+                     bool outline_mode = false);
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
@@ -286,6 +287,8 @@ private:
     CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
     int lambda_counter_ = 0;
     bool test_mode_ = false;
+    bool outline_mode_ = false;
+    int outline_depth_ = 0;
     bool coverage_mode_ = false;
     int coverage_file_id_offset_ = 0;
     int test_fn_counter_ = 0;
@@ -420,6 +423,7 @@ private:
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
     void emitPropertyItCall(CallStmt &s);
+    void emitOutlinePrintf(const std::string &label, llvm::Value *nameVal = nullptr);
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);

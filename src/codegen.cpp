@@ -6,11 +6,12 @@
 #include <llvm/Support/raw_ostream.h>
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
-                 int coverage_file_id_offset)
+                 int coverage_file_id_offset, bool outline_mode)
     : ctx_(std::make_unique<llvm::LLVMContext>()),
       mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
       builder_(*ctx_),
       test_mode_(test_mode),
+      outline_mode_(outline_mode),
       coverage_mode_(coverage_mode),
       coverage_file_id_offset_(coverage_file_id_offset),
       sm_(sm) {
@@ -282,7 +283,7 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
     }
 
     if (!builder_.GetInsertBlock()->getTerminator()) {
-        if (test_mode_) {
+        if (test_mode_ && !outline_mode_) {
             // Call __ry_test_summary() and return its result as exit code
             llvm::FunctionType *summaryTy = llvm::FunctionType::get(i32Ty_, false);
             llvm::FunctionCallee summaryFn = mod_->getOrInsertFunction("__ry_test_summary", summaryTy);

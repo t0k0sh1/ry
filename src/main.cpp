@@ -84,7 +84,8 @@ static void emitCoverageReport() {
 // Compile and run Ry source code via JIT. Returns the JIT function's exit code.
 static int runRySource(const std::string &src, const std::string &source_name,
                        const std::string &referrer_dir, bool test_mode,
-                       const char *argv0, bool coverage_mode = false) {
+                       const char *argv0, bool coverage_mode = false,
+                       bool outline_mode = false) {
     std::string project_root;
     // Load .env from project root (once per root per process)
     {
@@ -138,7 +139,7 @@ static int runRySource(const std::string &src, const std::string &source_name,
     prog = loader.resolveImports(prog, referrer_dir);
 
     // CodeGen -> ThreadSafeModule
-    CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset);
+    CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset, outline_mode);
     ThreadSafeModule tsm = cg.compile(prog);
 
     // Build LLJIT
@@ -269,7 +270,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
 
 // Compile and run a .ry file via JIT. Returns the JIT function's exit code.
 static int runRyFile(const std::string &filepath, bool test_mode,
-                     const char *argv0, bool coverage_mode = false) {
+                     const char *argv0, bool coverage_mode = false,
+                     bool outline_mode = false) {
     auto bufOrErr = MemoryBuffer::getFile(filepath);
     if (!bufOrErr) {
         errs() << "Error reading file: " << filepath << "\n";
@@ -277,7 +279,7 @@ static int runRyFile(const std::string &filepath, bool test_mode,
     }
     std::string src = (*bufOrErr)->getBuffer().str();
     std::string referrer_dir = fs::path(filepath).parent_path().string();
-    return runRySource(src, filepath, referrer_dir, test_mode, argv0, coverage_mode);
+    return runRySource(src, filepath, referrer_dir, test_mode, argv0, coverage_mode, outline_mode);
 }
 
 // Collect *.test.ry files recursively under root_dir
@@ -309,14 +311,15 @@ static std::vector<std::string> findTestFiles(const std::string &root_dir) {
 
 // Run multiple test files sequentially and report results
 static int runTestFilesSequential(const std::vector<std::string> &test_files,
-                                  const char *argv0, bool coverage = false) {
+                                  const char *argv0, bool coverage = false,
+                                  bool outline = false) {
     if (coverage) resetCoverageState();
     int total_failed = 0;
     int total_files = 0;
     for (const auto &tf : test_files) {
         ++total_files;
         try {
-            int failed = runRyFile(tf, /*test_mode=*/true, argv0, coverage);
+            int failed = runRyFile(tf, /*test_mode=*/true, argv0, coverage, outline);
             total_failed += failed;
         } catch (const DiagnosticError &e) {
             errs() << e.what();
@@ -326,7 +329,7 @@ static int runTestFilesSequential(const std::vector<std::string> &test_files,
             ++total_failed;
         }
     }
-    if (total_files > 1) {
+    if (!outline && total_files > 1) {
         std::printf("\n%d test files executed, %d total failures\n",
                     total_files, total_failed);
     }
@@ -469,9 +472,10 @@ static int runTestFilesParallel(const std::vector<std::string> &test_files,
 
 // Run multiple test files and report results
 static int runTestFiles(const std::vector<std::string> &test_files,
-                        const char *argv0, bool parallel, bool coverage = false) {
-    if (!parallel || test_files.size() <= 1) {
-        return runTestFilesSequential(test_files, argv0, coverage);
+                        const char *argv0, bool parallel, bool coverage = false,
+                        bool outline = false) {
+    if (outline || !parallel || test_files.size() <= 1) {
+        return runTestFilesSequential(test_files, argv0, coverage, outline);
     }
     std::string exe_path = ry::self_update::detail::get_executable_path();
     if (exe_path.empty()) {
@@ -486,13 +490,14 @@ static int runTestFiles(const std::vector<std::string> &test_files,
 
 // Discover *.test.ry files in a directory and run them
 static int discoverAndRunTests(const std::string &dir, const char *argv0,
-                               bool parallel, bool coverage = false) {
+                               bool parallel, bool coverage = false,
+                               bool outline = false) {
     auto test_files = findTestFiles(dir);
     if (test_files.empty()) {
         errs() << "No *.test.ry files found in " << dir << "\n";
         return 1;
     }
-    return runTestFiles(test_files, argv0, parallel, coverage);
+    return runTestFiles(test_files, argv0, parallel, coverage, outline);
 }
 
 static void applyRyEnv(const char *value) {
@@ -548,6 +553,7 @@ static void printTestHelp() {
     llvm::outs() << "  -p, --parallel       Run tests in parallel\n";
     llvm::outs() << "  -w, --watch          Watch for changes and re-run\n";
     llvm::outs() << "  --coverage, --cov    Collect coverage information\n";
+    llvm::outs() << "  --outline            Print describe/it structure without running tests\n";
     llvm::outs() << "  -h, --help           Show this help\n";
 }
 
@@ -652,6 +658,7 @@ int main(int argc, char *argv[]) {
 
     bool test_mode = false;
     bool coverage_mode = false;
+    bool outline_mode = false;
     const char *filename = nullptr;
 
     if (argc >= 2 && std::strcmp(argv[1], "test") != 0) {
@@ -670,6 +677,7 @@ int main(int argc, char *argv[]) {
         bool parallel = false;
         bool watch = false;
         bool coverage = false;
+        bool outline = false;
         const char *target = nullptr;
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
@@ -681,6 +689,8 @@ int main(int argc, char *argv[]) {
             } else if (std::strcmp(argv[i], "--coverage") == 0 ||
                        std::strcmp(argv[i], "--cov") == 0) {
                 coverage = true;
+            } else if (std::strcmp(argv[i], "--outline") == 0) {
+                outline = true;
             } else if (!target) {
                 target = argv[i];
             }
@@ -696,12 +706,12 @@ int main(int argc, char *argv[]) {
             if (fs::is_directory(target_str, ec)) {
                 if (watch) {
                     const char *a0 = argv[0];
-                    ry::watchAndRunTests(target_str, [target_str, a0, parallel, coverage]() {
-                        discoverAndRunTests(target_str, a0, parallel, coverage);
+                    ry::watchAndRunTests(target_str, [target_str, a0, parallel, coverage, outline]() {
+                        discoverAndRunTests(target_str, a0, parallel, coverage, outline);
                     });
                     return 0;
                 }
-                return discoverAndRunTests(target_str, argv[0], parallel, coverage);
+                return discoverAndRunTests(target_str, argv[0], parallel, coverage, outline);
             }
             if (ec) {
                 errs() << "Error: cannot access " << target_str << ": "
@@ -713,9 +723,9 @@ int main(int argc, char *argv[]) {
                 auto target_dir = fs::path(target_str).parent_path().string();
                 std::string watch_root = findProjectRoot(target_dir).value_or(target_dir);
                 const char *a0 = argv[0];
-                ry::watchAndRunTests(watch_root, [target_str, a0]() {
+                ry::watchAndRunTests(watch_root, [target_str, a0, outline]() {
                     try {
-                        runRyFile(target_str, true, a0);
+                        runRyFile(target_str, true, a0, false, outline);
                     } catch (const DiagnosticError &e) {
                         errs() << e.what();
                     } catch (const std::exception &e) {
@@ -727,6 +737,7 @@ int main(int argc, char *argv[]) {
             // ry test <file.ry> — single file test (parallel flag ignored)
             test_mode = true;
             coverage_mode = coverage;
+            outline_mode = outline;
             filename = target;
             __ry_args_init(0, nullptr);
         } else {
@@ -739,12 +750,12 @@ int main(int argc, char *argv[]) {
             if (watch) {
                 std::string root_dir = *root;
                 const char *a0 = argv[0];
-                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel, coverage]() {
-                    discoverAndRunTests(root_dir, a0, parallel, coverage);
+                ry::watchAndRunTests(root_dir, [root_dir, a0, parallel, coverage, outline]() {
+                    discoverAndRunTests(root_dir, a0, parallel, coverage, outline);
                 });
                 return 0;
             }
-            return discoverAndRunTests(*root, argv[0], parallel, coverage);
+            return discoverAndRunTests(*root, argv[0], parallel, coverage, outline);
         }
     } else if (argc == 1 && !isatty(STDIN_FILENO)) {
         std::string src{std::istreambuf_iterator<char>(std::cin),
@@ -767,7 +778,7 @@ int main(int argc, char *argv[]) {
 
     try {
         if (coverage_mode) resetCoverageState();
-        int rc = runRyFile(filename, test_mode, argv[0], coverage_mode);
+        int rc = runRyFile(filename, test_mode, argv[0], coverage_mode, outline_mode);
         if (coverage_mode) emitCoverageReport();
         return rc;
     } catch (const DiagnosticError &e) {
