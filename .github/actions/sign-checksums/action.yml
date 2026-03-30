@@ -1,0 +1,22 @@
+name: Sign checksums
+description: Sign checksums.txt using OpenSSL with RY_SIGNING_PRIVATE_KEY
+
+inputs:
+  checksums_dir:
+    description: Directory containing checksums.txt
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Sign checksums
+      shell: bash
+      run: |
+        echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
+        openssl pkeyutl -sign \
+          -inkey /tmp/signing_key.pem \
+          -rawin \
+          -in ${{ inputs.checksums_dir }}/checksums.txt \
+          -out /tmp/checksums.txt.sig.raw
+        openssl base64 -A -in /tmp/checksums.txt.sig.raw -out ${{ inputs.checksums_dir }}/checksums.txt.sig
+        rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw

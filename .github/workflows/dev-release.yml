@@ -104,17 +104,11 @@ jobs:
           shasum -a 256 ry-*.tar.gz > checksums.txt
       - name: Sign checksums
         if: env.RY_SIGNING_PRIVATE_KEY != ''
+        uses: ./.github/actions/sign-checksums
+        with:
+          checksums_dir: dist
         env:
           RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
-        run: |
-          echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
-          openssl pkeyutl -sign \
-            -inkey /tmp/signing_key.pem \
-            -rawin \
-            -in dist/checksums.txt \
-            -out /tmp/checksums.txt.sig.raw
-          openssl base64 -A -in /tmp/checksums.txt.sig.raw -out dist/checksums.txt.sig
-          rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,17 +189,11 @@ jobs:
           shasum -a 256 ry-*.tar.gz > checksums.txt
       - name: Sign checksums
         if: env.RY_SIGNING_PRIVATE_KEY != ''
+        uses: ./.github/actions/sign-checksums
+        with:
+          checksums_dir: dist
         env:
           RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
-        run: |
-          echo "$RY_SIGNING_PRIVATE_KEY" > /tmp/signing_key.pem
-          openssl pkeyutl -sign \
-            -inkey /tmp/signing_key.pem \
-            -rawin \
-            -in dist/checksums.txt \
-            -out /tmp/checksums.txt.sig.raw
-          openssl base64 -A -in /tmp/checksums.txt.sig.raw -out dist/checksums.txt.sig
-          rm -f /tmp/signing_key.pem /tmp/checksums.txt.sig.raw
       - name: Cleanup old prereleases
         env:
           GH_TOKEN: ${{ github.token }}
