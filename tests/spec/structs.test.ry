@@ -66,6 +66,9 @@ fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
   return true
 
 describe("record equality", fn():
+  it("zero fields equal", fn():
+    expect(Point(0, 0) == Point(0, 0)).to_be_true()
+  )
   it("equal records", fn():
     expect(Point(1, 2) == Point(1, 2)).to_be_true()
   )
@@ -121,6 +124,11 @@ describe("simple enum", fn():
       case Color::Blue:
         res = "blue"
     expect(res).to_eq("blue")
+  )
+  it("to_str shows variant name", fn():
+    expect(to_str(Color::Red)).to_eq("Red")
+    expect(to_str(Color::Green)).to_eq("Green")
+    expect(to_str(Color::Blue)).to_eq("Blue")
   )
 )
 

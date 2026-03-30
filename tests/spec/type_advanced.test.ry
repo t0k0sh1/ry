@@ -21,6 +21,18 @@ describe("f-string", fn():
   )
 )
 
+describe("string auto concat edge cases", fn():
+  it("empty string + int", fn():
+    expect("" + 0).to_eq("0")
+  )
+  it("empty string + bool", fn():
+    expect("" + true).to_eq("true")
+  )
+  it("empty string + float", fn():
+    expect("" + 3.14).to_eq("3.14")
+  )
+)
+
 describe("type cast as", fn():
   it("int to float", fn():
     expect(42 as float).to_eq(42.0)
@@ -42,6 +54,24 @@ describe("type cast as", fn():
   it("int to u8 to int", fn():
     b = 255 as u8
     expect(b as int).to_eq(255)
+  )
+  it("negative float to int truncates toward zero", fn():
+    expect(-3.7 as int).to_eq(-3)
+  )
+  it("negative half to int", fn():
+    expect(-0.5 as int).to_eq(0)
+  )
+  it("zero float to int", fn():
+    expect(0.0 as int).to_eq(0)
+  )
+  it("one float to int", fn():
+    expect(1.0 as int).to_eq(1)
+  )
+  it("bool to int true", fn():
+    expect(true as int).to_eq(1)
+  )
+  it("bool to int false", fn():
+    expect(false as int).to_eq(0)
   )
 )
 

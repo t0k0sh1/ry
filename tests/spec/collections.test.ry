@@ -241,6 +241,106 @@ describe("List", fn():
     expect(res[2]).to_eq(40)
     expect(res[3]).to_eq(50)
   )
+  it("sort empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = sort(ys)
+    expect(zs).to_have_length(0)
+  )
+  it("sort single element", fn():
+    xs = [42]
+    ys = sort(xs)
+    expect(ys[0]).to_eq(42)
+  )
+  it("reverse empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = reverse(ys)
+    expect(zs).to_have_length(0)
+  )
+  it("reverse single element", fn():
+    xs = [42]
+    ys = reverse(xs)
+    expect(ys[0]).to_eq(42)
+  )
+  it("map empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = map(ys, fn(x: int) => x * 2)
+    expect(zs).to_have_length(0)
+  )
+  it("filter empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = filter(ys, fn(x: int) => true)
+    expect(zs).to_have_length(0)
+  )
+  it("sum empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    expect(sum(ys)).to_eq(0)
+  )
+  it("fold empty returns initial", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    expect(fold(ys, 42, fn(a: int, b: int) => a + b)).to_eq(42)
+  )
+  it("any empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    expect(any(ys, fn(x: int) => true)).to_be_false()
+  )
+  it("all empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    expect(all(ys, fn(x: int) => false)).to_be_true()
+  )
+  it("is_empty true", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    expect(is_empty(ys)).to_be_true()
+  )
+  it("slice empty range", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = slice(xs, 0, 0)
+    expect(ys).to_have_length(0)
+  )
+  it("slice same start and end", fn():
+    xs = [1, 2, 3, 4, 5]
+    ys = slice(xs, 2, 2)
+    expect(ys).to_have_length(0)
+  )
+  it("insert at front", fn():
+    xs = [2, 3]
+    insert(xs, 0, 1)
+    expect(xs[0]).to_eq(1)
+    expect(xs[1]).to_eq(2)
+    expect(xs).to_have_length(3)
+  )
+  it("distinct empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = distinct(ys)
+    expect(zs).to_have_length(0)
+  )
+  it("distinct single", fn():
+    xs = [1]
+    ys = distinct(xs)
+    expect(ys).to_have_length(1)
+    expect(ys[0]).to_eq(1)
+  )
+  it("flatten single inner", fn():
+    xs = [[42]]
+    ys = flatten(xs)
+    expect(ys).to_have_length(1)
+    expect(ys[0]).to_eq(42)
+  )
+  it("take empty", fn():
+    xs = [1]
+    ys = filter(xs, fn(x: int) => x > 10)
+    zs = take(ys, 5)
+    expect(zs).to_have_length(0)
+  )
   it("sort 32 elements (MIN_MERGE threshold)", fn():
     xs = [32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
     ys = sort(xs)
@@ -331,6 +431,15 @@ describe("Map", fn():
     expect(m).to_contain("a")
     expect(m).to_not_contain("z")
   )
+  it("remove non-existent key", fn():
+    m = {"a": 1, "b": 2}
+    remove(m, "zzz")
+    expect(m).to_have_length(2)
+  )
+  it("get non-existent optional", fn():
+    m = {"a": 1}
+    expect(get(m, "zzz")).to_be_none()
+  )
 )
 
 describe("Set", fn():
@@ -395,6 +504,11 @@ describe("Set", fn():
     expect(is_superset(a, b)).to_be_true()
     expect(is_superset(b, a)).to_be_false()
   )
+  it("remove non-existent element", fn():
+    s = {1, 2, 3}
+    remove(s, 999)
+    expect(s).to_have_length(3)
+  )
   it("literal dedup int", fn():
     s = {1, 2, 3, 2, 1}
     expect(s).to_have_length(3)
@@ -427,5 +541,11 @@ describe("Tuple", fn():
     res = swap(1, 2)
     expect(res.0).to_eq(2)
     expect(res.1).to_eq(1)
+  )
+  it("three element tuple", fn():
+    t = (1, "a", true)
+    expect(t.0).to_eq(1)
+    expect(t.1).to_eq("a")
+    expect(t.2).to_be_true()
   )
 )

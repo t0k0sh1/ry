@@ -76,12 +76,20 @@ describe("closure", fn():
     base = 99
     expect(add_base(5)).to_eq(15)
   )
+  it("captures bool", fn():
+    flag = true
+    check = fn() => flag
+    expect(check()).to_be_true()
+  )
 )
 
 describe("higher-order function", fn():
   it("function as argument", fn():
     res = apply(fn(x: int) => x * 3, 5)
     expect(res).to_eq(15)
+  )
+  it("named function as argument", fn():
+    expect(apply(double, 5)).to_eq(10)
   )
 )
 
@@ -159,6 +167,15 @@ fn sum_to(n: int, acc: int) -> int:
   if n <= 0:
     return acc
   return sum_to(n - 1, acc + n)
+
+fn get_value() -> int:
+  return 42
+
+describe("zero arg function", fn():
+  it("returns value", fn():
+    expect(get_value()).to_eq(42)
+  )
+)
 
 describe("tail call optimization", fn():
   it("self-recursive tail call does not overflow", fn():

@@ -36,8 +36,46 @@ describe("arithmetic", fn():
   it("modulo", fn():
     expect(7 % 3).to_eq(1)
   )
+  it("modulo negative dividend", fn():
+    expect(-7 % 3).to_eq(2)
+  )
+  it("modulo negative divisor", fn():
+    expect(7 % -3).to_eq(-2)
+  )
+  it("modulo both negative", fn():
+    expect(-7 % -3).to_eq(-1)
+  )
+  it("modulo zero dividend", fn():
+    expect(0 % 5).to_eq(0)
+  )
+  it("floor div and modulo identity", fn():
+    expect((-7 // 3) * 3 + (-7 % 3)).to_eq(-7)
+    expect((7 // -3) * -3 + (7 % -3)).to_eq(7)
+    expect((-7 // -3) * -3 + (-7 % -3)).to_eq(-7)
+  )
+  it("float modulo", fn():
+    expect(7.5 % 2.5).to_eq(0.0)
+  )
+  it("float modulo negative", fn():
+    expect(-7.0 % 2.0).to_eq(1.0)
+  )
+  it("float floor div", fn():
+    expect(7.5 // 2.0).to_eq(3.0)
+  )
   it("exponentiation", fn():
     expect(2 ** 10).to_eq(1024.0)
+  )
+  it("exponentiation zero", fn():
+    expect(1 ** 0).to_eq(1.0)
+  )
+  it("exponentiation negative", fn():
+    expect(2 ** -1).to_eq(0.5)
+  )
+  it("zero times zero", fn():
+    expect(0 * 0).to_eq(0)
+  )
+  it("zero plus zero", fn():
+    expect(0 + 0).to_eq(0)
   )
 )
 
@@ -102,6 +140,16 @@ describe("comparison", fn():
   it("string comparison", fn():
     expect("abc" < "abd").to_be_true()
   )
+  it("string equality", fn():
+    expect("abc" == "abc").to_be_true()
+    expect("" == "").to_be_true()
+  )
+  it("empty string less than non-empty", fn():
+    expect("" < "a").to_be_true()
+  )
+  it("float equality", fn():
+    expect(3.14 == 3.14).to_be_true()
+  )
 )
 
 describe("logical", fn():
@@ -117,8 +165,11 @@ describe("logical", fn():
   it("or false", fn():
     expect(false or false).to_be_false()
   )
-  it("not", fn():
+  it("not true", fn():
     expect(not true).to_be_false()
+  )
+  it("not false", fn():
+    expect(not false).to_be_true()
   )
 )
 
@@ -162,6 +213,14 @@ describe("bitwise", fn():
   it("logical right shift", fn():
     expect(-1 >>> 1).to_eq(9223372036854775807)
   )
+  it("shift by zero", fn():
+    expect(0 << 0).to_eq(0)
+    expect(0 >> 0).to_eq(0)
+    expect(42 << 0).to_eq(42)
+  )
+  it("NOT of minus one", fn():
+    expect(~(-1)).to_eq(0)
+  )
 )
 
 describe("when expression", fn():
@@ -177,6 +236,31 @@ describe("when expression", fn():
       else => 20
     ).to_eq(20)
   )
+  it("multi-branch", fn():
+    x = 2
+    r = when:
+      x == 1 => "one"
+      x == 2 => "two"
+      x == 3 => "three"
+      else => "other"
+    expect(r).to_eq("two")
+  )
+  it("all false falls to else", fn():
+    x = 99
+    r = when:
+      x == 1 => "one"
+      x == 2 => "two"
+      else => "none"
+    expect(r).to_eq("none")
+  )
+  it("first false second true", fn():
+    x = 5
+    r = when:
+      x > 10 => "big"
+      x > 3 => "medium"
+      else => "small"
+    expect(r).to_eq("medium")
+  )
 )
 
 describe("null coalescing", fn():
@@ -187,6 +271,10 @@ describe("null coalescing", fn():
   it("None value", fn():
     b: int? = none
     expect(b ?? 0).to_eq(0)
+  )
+  it("Some(0) is not None", fn():
+    c: int? = Some(0)
+    expect(c ?? 99).to_eq(0)
   )
 )
 
@@ -312,5 +400,10 @@ describe("range operator", fn():
     expect(xs).to_have_length(5)
     expect(xs[0]).to_eq(1)
     expect(xs[4]).to_eq(5)
+  )
+  it("same start and end", fn():
+    xs = 5..5
+    expect(xs).to_have_length(1)
+    expect(xs[0]).to_eq(5)
   )
 )

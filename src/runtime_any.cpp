@@ -221,12 +221,21 @@ extern "C" void __ry_any_mod(RyAny *result, const RyAny *a, const RyAny *b) {
             fprintf(stderr, "runtime error: modulo by zero\n");
             exit(1);
         }
-        makeInt(result, extractInt(a) % bv);
+        // Floor modulo: r = a % b; if (r != 0 && sign(r) != sign(b)) r += b
+        int64_t av = extractInt(a);
+        int64_t r = av % bv;
+        if (r != 0 && ((r ^ bv) < 0)) r += bv;
+        makeInt(result, r);
     } else if (a->tag == TAG_FLOAT && b->tag == TAG_FLOAT) {
-        makeFloat(result, std::fmod(extractFloat(a), extractFloat(b)));
+        double r = std::fmod(extractFloat(a), extractFloat(b));
+        if (r != 0.0 && ((r < 0) != (extractFloat(b) < 0))) r += extractFloat(b);
+        makeFloat(result, r);
     } else if ((a->tag == TAG_INT && b->tag == TAG_FLOAT) ||
                (a->tag == TAG_FLOAT && b->tag == TAG_INT)) {
-        makeFloat(result, std::fmod(toFloat(a), toFloat(b)));
+        double fa = toFloat(a), fb = toFloat(b);
+        double r = std::fmod(fa, fb);
+        if (r != 0.0 && ((r < 0) != (fb < 0))) r += fb;
+        makeFloat(result, r);
     } else {
         __ry_any_type_error("%", a->tag, b->tag);
     }

@@ -550,7 +550,17 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         bool rf = rhs->getType()->isDoubleTy();
         if (lf || rf) {
             std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
-            return builder_.CreateFRem(lhs, rhs, "frem");
+            // Floor modulo for float: r = frem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
+            llvm::Value *frem = builder_.CreateFRem(lhs, rhs, "frem");
+            llvm::Value *zero = llvm::ConstantFP::get(f64Ty_, 0.0);
+            llvm::Value *remNonZero = builder_.CreateFCmpONE(frem, zero, "frem_nz");
+            // XOR the sign bits: if frem and rhs have different signs, adjust
+            llvm::Value *fremNeg = builder_.CreateFCmpOLT(frem, zero, "frem_neg");
+            llvm::Value *rhsNeg  = builder_.CreateFCmpOLT(rhs, zero, "rhs_neg");
+            llvm::Value *signsDiffer = builder_.CreateXor(fremNeg, rhsNeg, "fsigns_differ");
+            llvm::Value *needsAdj = builder_.CreateAnd(remNonZero, signsDiffer, "fmod_adj");
+            llvm::Value *adjusted = builder_.CreateFAdd(frem, rhs, "fmod_adjusted");
+            return builder_.CreateSelect(needsAdj, adjusted, frem, "ffloormod");
         }
         // int: zero-division guard
         {
@@ -564,7 +574,16 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
                               ".mod_zero_err_" + std::to_string(arith_zero_err_counter_++));
             builder_.SetInsertPoint(okBB);
         }
-        return builder_.CreateSRem(lhs, rhs, "srem");
+        // Floor modulo: r = srem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
+        llvm::Value *rem = builder_.CreateSRem(lhs, rhs, "srem");
+        llvm::Value *remNonZero = builder_.CreateICmpNE(
+            rem, llvm::ConstantInt::get(i64Ty_, 0), "rem_nz");
+        llvm::Value *xorV = builder_.CreateXor(rem, rhs, "rem_xor_rhs");
+        llvm::Value *signsDiffer = builder_.CreateICmpSLT(
+            xorV, llvm::ConstantInt::get(i64Ty_, 0), "signs_differ");
+        llvm::Value *needsAdj = builder_.CreateAnd(remNonZero, signsDiffer, "mod_adj");
+        llvm::Value *adjusted = builder_.CreateAdd(rem, rhs, "mod_adjusted");
+        return builder_.CreateSelect(needsAdj, adjusted, rem, "floormod");
     }
 
     // +/-/*: 片方f64なら浮動小数点命令
