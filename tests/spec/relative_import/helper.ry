@@ -1,2 +1,2 @@
-fn greet() -> str:
+function greet() -> str:
     return "hello"

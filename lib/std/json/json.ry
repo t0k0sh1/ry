@@ -1,40 +1,40 @@
 # JSON parsing and serialization
 
 @native
-fn parse(text: str) -> Result<JsonValue, Error>
+function parse(text: str) -> Result<JsonValue, Error>
 
 @native
-fn stringify(value: JsonValue) -> str
+function stringify(value: JsonValue) -> str
 
 @native
-fn stringify(value: JsonValue, indent: int) -> str
+function stringify(value: JsonValue, indent: int) -> str
 
 @native
-fn kind(value: JsonValue) -> str
+function kind(value: JsonValue) -> str
 
 @native
-fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
+function get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 
 @native
-fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
+function at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
 @native
-fn to_str(value: JsonValue) -> Result<str, Error>
+function to_str(value: JsonValue) -> Result<str, Error>
 
 @native
-fn to_int(value: JsonValue) -> Result<int, Error>
+function to_int(value: JsonValue) -> Result<int, Error>
 
 @native
-fn to_float(value: JsonValue) -> Result<float, Error>
+function to_float(value: JsonValue) -> Result<float, Error>
 
 @native
-fn to_bool(value: JsonValue) -> Result<bool, Error>
+function to_bool(value: JsonValue) -> Result<bool, Error>
 
 @native
-fn length(value: JsonValue) -> int
+function length(value: JsonValue) -> int
 
 @native
-fn keys(value: JsonValue) -> List<str>
+function keys(value: JsonValue) -> List<str>
 
 @native
-fn json_free(value: JsonValue) -> Unit
+function json_free(value: JsonValue) -> Unit

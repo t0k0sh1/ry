@@ -1,6 +1,6 @@
-describe("return check - all paths return", fn():
-  it("if/else returns on all paths", fn():
-    fn abs(x: int) -> int:
+describe("return check - all paths return", function():
+  it("if/else returns on all paths", function():
+    function abs(x: int) -> int:
       if x < 0:
         return -x
       else:
@@ -8,8 +8,8 @@ describe("return check - all paths return", fn():
     expect(abs(-3)).to_eq(3)
     expect(abs(5)).to_eq(5)
   )
-  it("when returns on all paths", fn():
-    fn sign(x: int) -> int:
+  it("when returns on all paths", function():
+    function sign(x: int) -> int:
       when:
         x > 0:
           return 1
@@ -21,8 +21,8 @@ describe("return check - all paths return", fn():
     expect(sign(-5)).to_eq(-1)
     expect(sign(0)).to_eq(0)
   )
-  it("when with wildcard returns on all paths", fn():
-    fn describe(x: int) -> str:
+  it("when with wildcard returns on all paths", function():
+    function describe(x: int) -> str:
       when x:
         case 1:
           return "one"
@@ -33,8 +33,8 @@ describe("return check - all paths return", fn():
     expect(describe(1)).to_eq("one")
     expect(describe(99)).to_eq("other")
   )
-  it("nested if/else returns on all paths", fn():
-    fn classify(x: int) -> str:
+  it("nested if/else returns on all paths", function():
+    function classify(x: int) -> str:
       if x > 0:
         if x > 100:
           return "big"
@@ -46,8 +46,8 @@ describe("return check - all paths return", fn():
     expect(classify(50)).to_eq("small")
     expect(classify(-1)).to_eq("non-positive")
   )
-  it("when with Ok/Err returns on all paths", fn():
-    fn check(r: Result<int, Error>) -> str:
+  it("when with Ok/Err returns on all paths", function():
+    function check(r: Result<int, Error>) -> str:
       when r:
         case Ok(v):
           return "ok"
@@ -55,8 +55,8 @@ describe("return check - all paths return", fn():
           return "err"
     expect(check(Ok(1))).to_eq("ok")
   )
-  it("when with Some/None returns on all paths", fn():
-    fn check(o: Option<int>) -> str:
+  it("when with Some/None returns on all paths", function():
+    function check(o: Option<int>) -> str:
       when o:
         case Some(v):
           return "some"

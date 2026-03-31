@@ -1,29 +1,29 @@
-describe("closure capturing ARC values — destructor should release captures (#429)", fn():
-  it("closure captures string, alias is valid", fn():
+describe("closure capturing ARC values — destructor should release captures (#429)", function():
+  it("closure captures string, alias is valid", function():
     prefix = "hello"
-    f = fn(x: str) => prefix + " " + x
+    f = function(x: str) => prefix + " " + x
     g = f
     expect(g("world")).to_eq("hello world")
   )
 
-  it("closure captures multiple strings", fn():
+  it("closure captures multiple strings", function():
     a = "foo"
     b = "bar"
-    f = fn() => a + " " + b
+    f = function() => a + " " + b
     expect(f()).to_eq("foo bar")
   )
 
-  it("multiple closures capture same string", fn():
+  it("multiple closures capture same string", function():
     greeting = "hi"
-    f = fn(x: str) => greeting + " " + x
-    g = fn(x: str) => greeting + "! " + x
+    f = function(x: str) => greeting + " " + x
+    g = function(x: str) => greeting + "! " + x
     expect(f("a")).to_eq("hi a")
     expect(g("b")).to_eq("hi! b")
   )
 
-  it("closure copy retains captures", fn():
+  it("closure copy retains captures", function():
     prefix = "test"
-    f = fn(x: str) => prefix + x
+    f = function(x: str) => prefix + x
     g = f
     h = g
     expect(h("!")).to_eq("test!")

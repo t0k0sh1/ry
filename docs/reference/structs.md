@@ -76,10 +76,10 @@ q.x = 100    # Error: fields of @const variables cannot be modified
 ## Usage as Function Parameters and Return Values
 
 ```python
-fn distance(p: Point) -> float:
+function distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-fn make_point(x: int, y: int) -> Point:
+function make_point(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -162,7 +162,7 @@ print(err.status)   # 404 (own field)
 A child value can be passed where the parent type is expected. The child is automatically sliced to extract the parent-prefix fields (value-type slicing).
 
 ```python
-fn handle(e: Error) -> str:
+function handle(e: Error) -> str:
     return e.message
 
 err = HttpError("fail", 500, 500, "/api")
@@ -273,7 +273,7 @@ when:
 Use the enum name as the type name.
 
 ```python
-fn is_red(c: Color) -> bool:
+function is_red(c: Color) -> bool:
     return c == Color::Red
 
 print(is_red(Color::Red))    # true

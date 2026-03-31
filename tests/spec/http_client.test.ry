@@ -2,7 +2,7 @@ from net import bind, listen, accept, listener_port
 from io import to_bytes, bytes_to_str
 from http import http_get, http_post, http_request, status, body, header
 
-describe("HTTP Client", fn():
+describe("HTTP Client", function():
   # TODO: The following 7 tests are commented out because they use spawn/channel
   # to set up TCP mock servers, which causes timeouts and failures in the test runner.
   # These scenarios are covered by C++ tests in tests/test_runtime_http.cpp.
@@ -20,7 +20,7 @@ describe("HTTP Client", fn():
   # - redirect with relative Location path
   # - redirect limit exceeded returns Err
   # - http_get decodes chunked transfer encoding
-  it("http_get returns Err on connection refused", fn():
+  it("http_get returns Err on connection refused", function():
     when http_get("http://127.0.0.1:1/nonexistent"):
       case Ok(resp):
         fail("expected Err but got Ok")

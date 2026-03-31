@@ -78,7 +78,7 @@ when decode("!!!not-valid!!!"):
 With the `?` operator:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

@@ -53,7 +53,7 @@ record Task:
     invariant:
         length(title) > 0
 
-fn create_task(id: int, title: str, status: Status = Status::Todo) -> Task:
+function create_task(id: int, title: str, status: Status = Status::Todo) -> Task:
     require:
         length(title) > 0
     return Task(id, title, status)
@@ -72,19 +72,19 @@ This uses several features at once:
 Add functions to `src/model.ry` for working with task lists:
 
 ```python
-fn add_task(tasks: List<Task>, title: str) -> List<Task>:
+function add_task(tasks: List<Task>, title: str) -> List<Task>:
     id = length(tasks) + 1
     task = create_task(id, title)
     tasks.append(task)
     return tasks
 
-fn find_task(tasks: List<Task>, id: int) -> Option<Task>:
+function find_task(tasks: List<Task>, id: int) -> Option<Task>:
     for t in tasks:
         if t.id == id:
             return Some(t)
     return None
 
-fn complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
+function complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
     when find_task(tasks, id):
         case Some(t):
             t.status = Status::Done
@@ -92,10 +92,10 @@ fn complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
         case None:
             return Err(Error(f"task {id} not found"))
 
-fn pending_tasks(tasks: List<Task>) -> List<Task>:
+function pending_tasks(tasks: List<Task>) -> List<Task>:
     return tasks
         .iter()
-        .filter(fn(t: Task) => t.status == Status::Todo)
+        .filter(function(t: Task) => t.status == Status::Todo)
         .to_list()
 ```
 
@@ -112,7 +112,7 @@ Notice the patterns:
 Add a display function to `src/model.ry`:
 
 ```python
-fn format_task(t: Task) -> str:
+function format_task(t: Task) -> str:
     marker = "[ ]"
     when t.status:
         case Status::Todo:
@@ -123,7 +123,7 @@ fn format_task(t: Task) -> str:
             marker = "[x]"
     return f"{marker} {t.id}. {t.title}"
 
-fn print_tasks(tasks: List<Task>):
+function print_tasks(tasks: List<Task>):
     if is_empty(tasks):
         print("No tasks.")
         return
@@ -189,20 +189,20 @@ Create `tests/model.test.ry`:
 ```python
 from model import create_task, add_task, find_task, complete_task, pending_tasks, Status, Task
 
-describe("Task model", fn():
-    it("creates a task with default status", fn():
+describe("Task model", function():
+    it("creates a task with default status", function():
         t = create_task(1, "Test task")
         expect(t.status == Status::Todo).to_be_true()
     )
 
-    it("adds tasks to a list", fn():
+    it("adds tasks to a list", function():
         tasks: List<Task> = []
         tasks = add_task(tasks, "First")
         tasks = add_task(tasks, "Second")
         expect(length(tasks)).to_eq(2)
     )
 
-    it("finds a task by id", fn():
+    it("finds a task by id", function():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Target")
         when find_task(tasks, 1):
@@ -212,12 +212,12 @@ describe("Task model", fn():
                 fail("expected to find task")
     )
 
-    it("returns None for missing task", fn():
+    it("returns None for missing task", function():
         tasks: List<Task> = []
         expect(find_task(tasks, 99)).to_be_none()
     )
 
-    it("completes a task", fn():
+    it("completes a task", function():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Do it")
         when complete_task(tasks, 1):
@@ -228,7 +228,7 @@ describe("Task model", fn():
                 fail("unexpected error")
     )
 
-    it("returns error for invalid id", fn():
+    it("returns error for invalid id", function():
         tasks: List<Task> = []
         when complete_task(tasks, 999):
             case Ok(_):

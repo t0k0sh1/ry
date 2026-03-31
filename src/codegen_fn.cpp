@@ -348,7 +348,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0) {
+                if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0) {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
                 auto constraint = parseTypeConstraint(resolvedPtype);
@@ -732,7 +732,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         if (fit == fn_type_info_.end())
             fit = fn_type_info_.find(val);
         if (fit != fn_type_info_.end()) {
-            std::string result = "fn(";
+            std::string result = "function(";
             for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
                 if (i > 0) result += ",";
                 result += fit->second.paramTypeNames[i];
@@ -925,7 +925,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 low_level_type_names_[alloca] = ptype;
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0)
+                if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 if (isUnionType(ptype))
                     union_value_types_[alloca] = normalizeUnionType(ptype);

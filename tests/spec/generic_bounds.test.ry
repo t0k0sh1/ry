@@ -8,31 +8,31 @@ record Dog < Animal:
 record GuideDog < Dog:
   handler: str
 
-fn get_name<T: Animal>(a: T) -> str:
+function get_name<T: Animal>(a: T) -> str:
   return a.name
 
-fn count_legs<T: Animal>(a: T) -> int:
+function count_legs<T: Animal>(a: T) -> int:
   return a.legs
 
-describe("generic record bounds", fn():
-  it("accepts subtype", fn():
+describe("generic record bounds", function():
+  it("accepts subtype", function():
     d = Dog("Rex", 4, "Lab")
     expect(get_name(d)).to_eq("Rex")
     expect(count_legs(d)).to_eq(4)
   )
-  it("accepts exact type", fn():
+  it("accepts exact type", function():
     a = Animal("Cat", 4)
     expect(get_name(a)).to_eq("Cat")
   )
-  it("accepts deep subtype", fn():
+  it("accepts deep subtype", function():
     g = GuideDog("Rex", 4, "Lab", "John")
     expect(get_name(g)).to_eq("Rex")
   )
-  it("works with explicit type arg", fn():
+  it("works with explicit type arg", function():
     expect(get_name[Dog](Dog("Rex", 4, "Lab"))).to_eq("Rex")
   )
-  it("mixed bounded and unbounded params", fn():
-    fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+  it("mixed bounded and unbounded params", function():
+    function pair_name<T: Animal, U>(a: T, x: U) -> str:
       return a.name
     expect(pair_name(Dog("Rex", 4, "Lab"), 42)).to_eq("Rex")
   )

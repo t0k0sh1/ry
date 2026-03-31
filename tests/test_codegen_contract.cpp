@@ -4,7 +4,7 @@
 
 TEST_F(CodeGenTest, RequireSatisfied) {
     std::string src =
-        "fn deposit(amount: int) -> int:\n"
+        "function deposit(amount: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "    return amount\n"
@@ -14,7 +14,7 @@ TEST_F(CodeGenTest, RequireSatisfied) {
 
 TEST_F(CodeGenTest, RequireViolation) {
     std::string src =
-        "fn deposit(amount: int) -> int:\n"
+        "function deposit(amount: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "    return amount\n"
@@ -24,7 +24,7 @@ TEST_F(CodeGenTest, RequireViolation) {
 
 TEST_F(CodeGenTest, RequireMultipleConditions) {
     std::string src =
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    require:\n"
         "        a >= 0\n"
         "        b >= 0\n"
@@ -35,7 +35,7 @@ TEST_F(CodeGenTest, RequireMultipleConditions) {
 
 TEST_F(CodeGenTest, RequireMultipleConditionsSecondFails) {
     std::string src =
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    require:\n"
         "        a >= 0\n"
         "        b >= 0\n"
@@ -48,7 +48,7 @@ TEST_F(CodeGenTest, RequireMultipleConditionsSecondFails) {
 
 TEST_F(CodeGenTest, EnsureSatisfied) {
     std::string src =
-        "fn abs(x: int) -> int:\n"
+        "function abs(x: int) -> int:\n"
         "    ensure v:\n"
         "        v >= 0\n"
         "    if x < 0:\n"
@@ -60,7 +60,7 @@ TEST_F(CodeGenTest, EnsureSatisfied) {
 
 TEST_F(CodeGenTest, EnsureViolation) {
     std::string src =
-        "fn bad() -> int:\n"
+        "function bad() -> int:\n"
         "    ensure v:\n"
         "        v > 0\n"
         "    return -1\n"
@@ -70,7 +70,7 @@ TEST_F(CodeGenTest, EnsureViolation) {
 
 TEST_F(CodeGenTest, EnsureWithArgReference) {
     std::string src =
-        "fn inc(x: int) -> int:\n"
+        "function inc(x: int) -> int:\n"
         "    ensure v:\n"
         "        v == x + 1\n"
         "    return x + 1\n"
@@ -80,7 +80,7 @@ TEST_F(CodeGenTest, EnsureWithArgReference) {
 
 TEST_F(CodeGenTest, EnsureWithArgReferenceViolation) {
     std::string src =
-        "fn inc(x: int) -> int:\n"
+        "function inc(x: int) -> int:\n"
         "    ensure v:\n"
         "        v == x + 1\n"
         "    return x + 2\n"
@@ -90,7 +90,7 @@ TEST_F(CodeGenTest, EnsureWithArgReferenceViolation) {
 
 TEST_F(CodeGenTest, RequireAndEnsureCombined) {
     std::string src =
-        "fn deposit(amount: int, balance: int) -> int:\n"
+        "function deposit(amount: int, balance: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "        balance >= 0\n"
@@ -216,10 +216,10 @@ TEST_F(CodeGenTest, DeepInheritedInvariantViolated) {
 
 TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
     std::string src =
-        "fn outer(x: int) -> int:\n"
+        "function outer(x: int) -> int:\n"
         "    ensure v:\n"
         "        v >= 0\n"
-        "    fn inner(y: int) -> int:\n"
+        "    function inner(y: int) -> int:\n"
         "        ensure w:\n"
         "            w > 0\n"
         "        return y + 1\n"
@@ -230,10 +230,10 @@ TEST_F(CodeGenTest, NestedFnWithEnsurePreservesOuterContract) {
 
 TEST_F(CodeGenTest, NestedFnWithEnsureViolation) {
     std::string src =
-        "fn outer(x: int) -> int:\n"
+        "function outer(x: int) -> int:\n"
         "    ensure v:\n"
         "        v >= 0\n"
-        "    fn inner(y: int) -> int:\n"
+        "    function inner(y: int) -> int:\n"
         "        ensure w:\n"
         "            w > 0\n"
         "        return y + 1\n"
@@ -246,7 +246,7 @@ TEST_F(CodeGenTest, NestedFnWithEnsureViolation) {
 
 TEST_F(CodeGenTest, EnsureTupleDestructuring) {
     std::string src =
-        "fn divide(a: int, b: int) -> (int, int):\n"
+        "function divide(a: int, b: int) -> (int, int):\n"
         "    ensure q, r:\n"
         "        q >= 0\n"
         "        r >= 0\n"
@@ -261,7 +261,7 @@ TEST_F(CodeGenTest, EnsureTupleDestructuring) {
 
 TEST_F(CodeGenTest, EnsureOnUnitFunctionRejected) {
     std::string src =
-        "fn greet() -> Unit:\n"
+        "function greet() -> Unit:\n"
         "    ensure v:\n"
         "        v > 0\n"
         "    print(\"hello\")";

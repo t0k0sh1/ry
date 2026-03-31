@@ -30,7 +30,7 @@ Each error message includes:
 | Type-changing reassignment | Assigned a value of a different type to a variable | `x = 1` -> `x = 3.14` |
 | Type annotation mismatch | Declared type and assigned value type differ | `x: int = 3.14` |
 | Overload return type conflict | Defined overloads with the same parameter types but different return types only | Two functions with parameters `(int, int)` returning `int` and `float` |
-| Overload resolution failure | No overload matches the argument types | `fn add(a: int, b: int)` called with `add(1.0, 2.0)` |
+| Overload resolution failure | No overload matches the argument types | `function add(a: int, b: int)` called with `add(1.0, 2.0)` |
 | Float in bitwise operation | Passed `float` type to `&`, `\|`, `^`, `~`, `<<`, `>>` | `3.14 & 1` |
 | Empty list | Cannot infer type from empty list literal `[]` | `xs = []` |
 | Empty map | Cannot infer type from empty map literal `{}` | `m = {}` |
@@ -41,7 +41,7 @@ Each error message includes:
 | Duplicate field name | Defined the same field name twice in a struct | Defining `x` twice in `type T: x: int` |
 | Non-exhaustive when | `when` does not cover all patterns | Some enum variants uncovered, missing `None` for Option, missing `Ok`/`Err` for Result, no `_` for literals |
 | `?` on non-Result type | Applied `?` to an expression that is not a `Result` type | `x = 42` -> `x?` |
-| `?` in non-Result function | Used `?` in a function that does not return `Result` | `fn foo() -> int:` -> `bar()?` |
+| `?` in non-Result function | Used `?` in a function that does not return `Result` | `function foo() -> int:` -> `bar()?` |
 
 ### Compile Error Examples
 
@@ -62,7 +62,7 @@ xs = []   # Error: type cannot be inferred
 break   # Error: outside loop
 
 # Import inside block
-fn foo():
+function foo():
     from math   # Error: top level only
 
 # Duplicate field name

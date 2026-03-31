@@ -1,200 +1,200 @@
-describe("i32 type", fn():
-  it("declaration with annotation", fn():
+describe("i32 type", function():
+  it("declaration with annotation", function():
     x: i32 = 42
     expect(x as int).to_eq(42)
   )
-  it("negative value", fn():
+  it("negative value", function():
     x: i32 = -10
     expect(x as int).to_eq(-10)
   )
-  it("zero", fn():
+  it("zero", function():
     x: i32 = 0
     expect(x as int).to_eq(0)
   )
-  it("addition", fn():
+  it("addition", function():
     a: i32 = 10
     b: i32 = 20
     c = a + b
     expect(c as int).to_eq(30)
   )
-  it("subtraction", fn():
+  it("subtraction", function():
     a: i32 = 50
     b: i32 = 20
     c = a - b
     expect(c as int).to_eq(30)
   )
-  it("multiplication", fn():
+  it("multiplication", function():
     a: i32 = 3
     b: i32 = 4
     c = a * b
     expect(c as int).to_eq(12)
   )
-  it("integer division", fn():
+  it("integer division", function():
     a: i32 = 7
     b: i32 = 2
     c = a / b
     expect(c as int).to_eq(3)
   )
-  it("floor division", fn():
+  it("floor division", function():
     a: i32 = 7
     b: i32 = 2
     c = a // b
     expect(c as int).to_eq(3)
   )
-  it("modulo", fn():
+  it("modulo", function():
     a: i32 = 10
     b: i32 = 3
     c = a % b
     expect(c as int).to_eq(1)
   )
-  it("comparison equal", fn():
+  it("comparison equal", function():
     a: i32 = 10
     b: i32 = 10
     expect(a == b).to_be_true()
   )
-  it("comparison less than", fn():
+  it("comparison less than", function():
     a: i32 = 5
     b: i32 = 10
     expect(a < b).to_be_true()
   )
-  it("comparison greater than", fn():
+  it("comparison greater than", function():
     a: i32 = 10
     b: i32 = 5
     expect(a > b).to_be_true()
   )
 )
 
-describe("i16 type", fn():
-  it("declaration with annotation", fn():
+describe("i16 type", function():
+  it("declaration with annotation", function():
     x: i16 = 100
     expect(x as int).to_eq(100)
   )
-  it("negative value", fn():
+  it("negative value", function():
     x: i16 = -100
     expect(x as int).to_eq(-100)
   )
-  it("addition", fn():
+  it("addition", function():
     a: i16 = 10
     b: i16 = 20
     c = a + b
     expect(c as int).to_eq(30)
   )
-  it("comparison", fn():
+  it("comparison", function():
     a: i16 = 5
     b: i16 = 10
     expect(a < b).to_be_true()
   )
 )
 
-describe("f32 type", fn():
-  it("declaration with annotation", fn():
+describe("f32 type", function():
+  it("declaration with annotation", function():
     x: f32 = 3.14
     expect(x as float > 3.13).to_be_true()
     expect(x as float < 3.15).to_be_true()
   )
-  it("addition", fn():
+  it("addition", function():
     a: f32 = 1.5
     b: f32 = 2.5
     c = a + b
     expect(c as float).to_eq(4.0)
   )
-  it("subtraction", fn():
+  it("subtraction", function():
     a: f32 = 5.0
     b: f32 = 2.0
     c = a - b
     expect(c as float).to_eq(3.0)
   )
-  it("multiplication", fn():
+  it("multiplication", function():
     a: f32 = 3.0
     b: f32 = 4.0
     c = a * b
     expect(c as float).to_eq(12.0)
   )
-  it("division", fn():
+  it("division", function():
     a: f32 = 7.0
     b: f32 = 2.0
     c = a / b
     expect(c as float).to_eq(3.5)
   )
-  it("comparison", fn():
+  it("comparison", function():
     a: f32 = 1.0
     b: f32 = 2.0
     expect(a < b).to_be_true()
   )
 )
 
-describe("as cast with low-level types", fn():
-  it("i32 to int", fn():
+describe("as cast with low-level types", function():
+  it("i32 to int", function():
     x: i32 = 42
     expect(x as int).to_eq(42)
   )
-  it("int to i32", fn():
+  it("int to i32", function():
     x = 42
     y = x as i32
     expect(y as int).to_eq(42)
   )
-  it("i32 to i16", fn():
+  it("i32 to i16", function():
     x: i32 = 100
     y = x as i16
     expect(y as int).to_eq(100)
   )
-  it("i16 to i32", fn():
+  it("i16 to i32", function():
     x: i16 = 100
     y = x as i32
     expect(y as int).to_eq(100)
   )
-  it("i32 to float", fn():
+  it("i32 to float", function():
     x: i32 = 42
     expect(x as float).to_eq(42.0)
   )
-  it("float to f32", fn():
+  it("float to f32", function():
     x = 3.14
     y = x as f32
     expect(y as float > 3.13).to_be_true()
   )
-  it("f32 to float", fn():
+  it("f32 to float", function():
     x: f32 = 2.5
     expect(x as float).to_eq(2.5)
   )
-  it("i32 to f32", fn():
+  it("i32 to f32", function():
     x: i32 = 42
     y = x as f32
     expect(y as float).to_eq(42.0)
   )
-  it("f32 to i32", fn():
+  it("f32 to i32", function():
     x: f32 = 3.14
     y = x as i32
     expect(y as int).to_eq(3)
   )
 )
 
-describe("low-level type inference and propagation", fn():
-  it("i32 arithmetic result infers as i32", fn():
+describe("low-level type inference and propagation", function():
+  it("i32 arithmetic result infers as i32", function():
     a: i32 = 10
     b: i32 = 20
     c = a + b
     expect(c as int).to_eq(30)
   )
-  it("inferred i32 can be reassigned with i32 expression", fn():
+  it("inferred i32 can be reassigned with i32 expression", function():
     a: i32 = 10
     b: i32 = 20
     c = a + b
     c = a * b
     expect(c as int).to_eq(200)
   )
-  it("i16 arithmetic result infers as i16", fn():
+  it("i16 arithmetic result infers as i16", function():
     a: i16 = 3
     b: i16 = 7
     c = a + b
     expect(c as int).to_eq(10)
   )
-  it("f32 arithmetic result infers as f32", fn():
+  it("f32 arithmetic result infers as f32", function():
     a: f32 = 1.5
     b: f32 = 2.5
     c = a + b
     expect(c as float).to_eq(4.0)
   )
-  it("chained i32 operations preserve type", fn():
+  it("chained i32 operations preserve type", function():
     a: i32 = 2
     b: i32 = 3
     c = a + b
@@ -203,18 +203,18 @@ describe("low-level type inference and propagation", fn():
   )
 )
 
-describe("low-level type print", fn():
-  it("print i32", fn():
+describe("low-level type print", function():
+  it("print i32", function():
     x: i32 = 42
     s = x as str
     expect(s).to_eq("42")
   )
-  it("print i16", fn():
+  it("print i16", function():
     x: i16 = 100
     s = x as str
     expect(s).to_eq("100")
   )
-  it("print f32", fn():
+  it("print f32", function():
     x: f32 = 2.5
     s = x as str
     expect(s).to_eq("2.5")
@@ -223,246 +223,246 @@ describe("low-level type print", fn():
 
 # ===== Phase 2: i8, i64, u8, u16, u32, u64 =====
 
-describe("i8 type", fn():
-  it("declaration with annotation", fn():
+describe("i8 type", function():
+  it("declaration with annotation", function():
     x: i8 = 42
     expect(x as int).to_eq(42)
   )
-  it("negative value", fn():
+  it("negative value", function():
     x: i8 = -10
     expect(x as int).to_eq(-10)
   )
-  it("addition", fn():
+  it("addition", function():
     a: i8 = 10
     b: i8 = 20
     c = a + b
     expect(c as int).to_eq(30)
   )
-  it("signed division", fn():
+  it("signed division", function():
     a: i8 = -7
     b: i8 = 2
     c = a / b
     expect(c as int).to_eq(-3)
   )
-  it("signed comparison", fn():
+  it("signed comparison", function():
     a: i8 = -1
     b: i8 = 1
     expect(a < b).to_be_true()
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: i8 = -5
     s = x as str
     expect(s).to_eq("-5")
   )
 )
 
-describe("i64 type", fn():
-  it("declaration with annotation", fn():
+describe("i64 type", function():
+  it("declaration with annotation", function():
     x: i64 = 100000
     expect(x as int).to_eq(100000)
   )
-  it("negative value", fn():
+  it("negative value", function():
     x: i64 = -100000
     expect(x as int).to_eq(-100000)
   )
-  it("addition", fn():
+  it("addition", function():
     a: i64 = 1000
     b: i64 = 2000
     c = a + b
     expect(c as int).to_eq(3000)
   )
-  it("signed division", fn():
+  it("signed division", function():
     a: i64 = -7
     b: i64 = 2
     c = a / b
     expect(c as int).to_eq(-3)
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: i64 = -999
     s = x as str
     expect(s).to_eq("-999")
   )
 )
 
-describe("u8 type", fn():
-  it("declaration with annotation", fn():
+describe("u8 type", function():
+  it("declaration with annotation", function():
     x: u8 = 200
     expect(x as int).to_eq(200)
   )
-  it("addition", fn():
+  it("addition", function():
     a: u8 = 100
     b: u8 = 50
     c = a + b
     expect(c as int).to_eq(150)
   )
-  it("unsigned division", fn():
+  it("unsigned division", function():
     a: u8 = 200
     b: u8 = 3
     c = a / b
     expect(c as int).to_eq(66)
   )
-  it("unsigned comparison", fn():
+  it("unsigned comparison", function():
     a: u8 = 200
     b: u8 = 100
     expect(a > b).to_be_true()
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: u8 = 255
     s = x as str
     expect(s).to_eq("255")
   )
 )
 
-describe("u16 type", fn():
-  it("declaration with annotation", fn():
+describe("u16 type", function():
+  it("declaration with annotation", function():
     x: u16 = 60000
     expect(x as int).to_eq(60000)
   )
-  it("addition", fn():
+  it("addition", function():
     a: u16 = 10000
     b: u16 = 20000
     c = a + b
     expect(c as int).to_eq(30000)
   )
-  it("unsigned division", fn():
+  it("unsigned division", function():
     a: u16 = 50000
     b: u16 = 3
     c = a / b
     expect(c as int).to_eq(16666)
   )
-  it("unsigned comparison", fn():
+  it("unsigned comparison", function():
     a: u16 = 60000
     b: u16 = 30000
     expect(a > b).to_be_true()
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: u16 = 65535
     s = x as str
     expect(s).to_eq("65535")
   )
 )
 
-describe("u32 type", fn():
-  it("declaration with annotation", fn():
+describe("u32 type", function():
+  it("declaration with annotation", function():
     x: u32 = 3000000000
     expect(x as int).to_eq(3000000000)
   )
-  it("addition", fn():
+  it("addition", function():
     a: u32 = 1000000
     b: u32 = 2000000
     c = a + b
     expect(c as int).to_eq(3000000)
   )
-  it("unsigned division", fn():
+  it("unsigned division", function():
     a: u32 = 3000000000
     b: u32 = 7
     c = a / b
     expect(c as int).to_eq(428571428)
   )
-  it("unsigned comparison", fn():
+  it("unsigned comparison", function():
     a: u32 = 3000000000
     b: u32 = 1000000000
     expect(a > b).to_be_true()
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: u32 = 4000000000
     s = x as str
     expect(s).to_eq("4000000000")
   )
 )
 
-describe("u64 type", fn():
-  it("declaration with annotation", fn():
+describe("u64 type", function():
+  it("declaration with annotation", function():
     x: u64 = 1000000
     expect(x as int).to_eq(1000000)
   )
-  it("addition", fn():
+  it("addition", function():
     a: u64 = 100000
     b: u64 = 200000
     c = a + b
     expect(c as int).to_eq(300000)
   )
-  it("unsigned division", fn():
+  it("unsigned division", function():
     a: u64 = 1000000
     b: u64 = 3
     c = a / b
     expect(c as int).to_eq(333333)
   )
-  it("string conversion", fn():
+  it("string conversion", function():
     x: u64 = 999999
     s = x as str
     expect(s).to_eq("999999")
   )
 )
 
-describe("Phase 2 casts", fn():
-  it("int to i8", fn():
+describe("Phase 2 casts", function():
+  it("int to i8", function():
     x = 42
     y = x as i8
     expect(y as int).to_eq(42)
   )
-  it("int to i64", fn():
+  it("int to i64", function():
     x = 42
     y = x as i64
     expect(y as int).to_eq(42)
   )
-  it("int to u8", fn():
+  it("int to u8", function():
     x = 200
     y = x as u8
     expect(y as int).to_eq(200)
   )
-  it("int to u16", fn():
+  it("int to u16", function():
     x = 60000
     y = x as u16
     expect(y as int).to_eq(60000)
   )
-  it("int to u32", fn():
+  it("int to u32", function():
     x = 3000000000
     y = x as u32
     expect(y as int).to_eq(3000000000)
   )
-  it("int to u64", fn():
+  it("int to u64", function():
     x = 42
     y = x as u64
     expect(y as int).to_eq(42)
   )
-  it("u32 to float", fn():
+  it("u32 to float", function():
     x: u32 = 42
     expect(x as float).to_eq(42.0)
   )
-  it("u8 to u32", fn():
+  it("u8 to u32", function():
     x: u8 = 200
     y = x as u32
     expect(y as int).to_eq(200)
   )
-  it("u32 to u8 (truncation)", fn():
+  it("u32 to u8 (truncation)", function():
     x: u32 = 300
     y = x as u8
     expect(y as int).to_eq(44)
   )
-  it("i32 to u32", fn():
+  it("i32 to u32", function():
     x: i32 = 42
     y = x as u32
     expect(y as int).to_eq(42)
   )
 )
 
-describe("Phase 2 function with low-level params", fn():
-  fn add_u32(a: u32, b: u32) -> u32:
+describe("Phase 2 function with low-level params", function():
+  function add_u32(a: u32, b: u32) -> u32:
     return a + b
 
-  it("function with u32 params and return", fn():
+  it("function with u32 params and return", function():
     x: u32 = 100
     y: u32 = 200
     z = add_u32(x, y)
     expect(z as int).to_eq(300)
   )
 
-  fn negate_i8(x: i8) -> i8:
+  function negate_i8(x: i8) -> i8:
     zero: i8 = 0
     return zero - x
 
-  it("function with i8 params and return", fn():
+  it("function with i8 params and return", function():
     x: i8 = 5
     y = negate_i8(x)
     expect(y as int).to_eq(-5)

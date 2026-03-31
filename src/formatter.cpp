@@ -332,7 +332,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             result += "\"";
             return result;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<LambdaExpr>>) {
-            std::string result = "fn(" + formatParams(v->params) + ")";
+            std::string result = "function(" + formatParams(v->params) + ")";
             if (v->return_type) result += " -> " + v->return_type->toString();
             if (v->expr_body) {
                 result += " => " + formatExpr(*v->expr_body);

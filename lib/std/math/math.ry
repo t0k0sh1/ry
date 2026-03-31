@@ -16,64 +16,64 @@ Inf: float
 NaN: float
 
 @native
-fn abs(x: int) -> int
+function abs(x: int) -> int
 
 @native
-fn abs(x: float) -> float
+function abs(x: float) -> float
 
 @native
-fn floor(x: float) -> int
+function floor(x: float) -> int
 
 @native
-fn ceil(x: float) -> int
+function ceil(x: float) -> int
 
 @native
-fn round(x: float) -> int
+function round(x: float) -> int
 
 @native
-fn sqrt(x: float) -> float
+function sqrt(x: float) -> float
 
 @native
-fn pow(x: float, y: float) -> float
+function pow(x: float, y: float) -> float
 
 @native
-fn log(x: float) -> float
+function log(x: float) -> float
 
 @native
-fn log2(x: float) -> float
+function log2(x: float) -> float
 
 @native
-fn log10(x: float) -> float
+function log10(x: float) -> float
 
 @native
-fn exp(x: float) -> float
+function exp(x: float) -> float
 
 @native
-fn sin(x: float) -> float
+function sin(x: float) -> float
 
 @native
-fn cos(x: float) -> float
+function cos(x: float) -> float
 
 @native
-fn tan(x: float) -> float
+function tan(x: float) -> float
 
 @native
-fn asin(x: float) -> float
+function asin(x: float) -> float
 
 @native
-fn acos(x: float) -> float
+function acos(x: float) -> float
 
 @native
-fn atan(x: float) -> float
+function atan(x: float) -> float
 
 @native
-fn atan2(y: float, x: float) -> float
+function atan2(y: float, x: float) -> float
 
 @native
-fn hypot(x: float, y: float) -> float
+function hypot(x: float, y: float) -> float
 
 @native
-fn is_nan(x: float) -> bool
+function is_nan(x: float) -> bool
 
 @native
-fn is_inf(x: float) -> bool
+function is_inf(x: float) -> bool

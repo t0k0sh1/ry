@@ -301,6 +301,19 @@ protected:
     void TearDown() override {
         fs::remove_all(tmp_root);
     }
+
+    fs::path create_tar_with_python(const std::string &filename,
+                                     const std::string &entry_setup) {
+        auto archive = tmp_root / filename;
+        std::string script =
+            "import tarfile, io\n"
+            "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+            + entry_setup;
+        int status = run_command({"python3", "-c", script});
+        EXPECT_EQ(status, 0) << "python3 failed to create tar archive";
+        EXPECT_TRUE(fs::exists(archive)) << "Expected archive to be created at " << archive;
+        return archive;
+    }
 };
 
 TEST_F(TarValidationTest, SafeArchive) {
@@ -370,6 +383,37 @@ TEST_F(TarValidationTest, Hardlink) {
     EXPECT_FALSE(validate_tar_entries(archive.string()));
 }
 
+TEST_F(TarValidationTest, BlockDevice) {
+    auto archive = create_tar_with_python("blockdev.tar.gz",
+        "    info = tarfile.TarInfo(name='devzero')\n"
+        "    info.type = tarfile.BLKTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 5\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, CharDevice) {
+    auto archive = create_tar_with_python("chardev.tar.gz",
+        "    info = tarfile.TarInfo(name='devnull')\n"
+        "    info.type = tarfile.CHRTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 3\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, Fifo) {
+    auto archive = create_tar_with_python("fifo.tar.gz",
+        "    info = tarfile.TarInfo(name='mypipe')\n"
+        "    info.type = tarfile.FIFOTYPE\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
 // --- Signature verification tests ---
 
 // Dedicated test Ed25519 key pair — distinct from the production SIGNING_PUBLIC_KEY.
@@ -432,4 +476,36 @@ TEST(SelfUpdate, VerifySignatureEmptySignature) {
 TEST(SelfUpdate, VerifySignatureShortSignature) {
     EXPECT_FALSE(verify_signature(TEST_MESSAGE, "AAAA",
                                   TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+// --- Signature policy tests ---
+
+TEST(SelfUpdate, SignaturePolicyValidSignature) {
+    auto action = evaluate_signature_policy(true, true, false);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyValidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, true, true);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignature) {
+    auto action = evaluate_signature_policy(true, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, false, true);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureDefault) {
+    auto action = evaluate_signature_policy(false, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_MISSING);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureSkipAllowed) {
+    auto action = evaluate_signature_policy(false, false, true);
+    EXPECT_EQ(action, SignatureAction::SKIP_ALLOWED);
 }

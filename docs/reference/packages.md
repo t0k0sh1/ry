@@ -97,16 +97,16 @@ Definitions whose names start with `_` (underscore) are private to the package a
 
 ```python
 # mylib/internal.ry
-fn _helper() -> int:     # private — not importable
+function _helper() -> int:     # private — not importable
     return 42
-fn public_api() -> int:  # public — importable
+function public_api() -> int:  # public — importable
     return _helper()
 ```
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -225,7 +225,7 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 
 ```python
 # Error example: Import inside a block
-fn main():
+function main():
     from math   # Error: imports only allowed at top level
 
 # OK: Importing the same package multiple times does not cause an error
@@ -241,10 +241,10 @@ from math   # Skipped
 
 ```python
 # calc.ry
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn sub(a: int, b: int) -> int:
+function sub(a: int, b: int) -> int:
     return a - b
 ```
 

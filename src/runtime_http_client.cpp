@@ -309,15 +309,6 @@ static bool is_redirect_status(int status) {
            status == 307 || status == 308;
 }
 
-// Reject strings containing CR or LF to prevent HTTP request splitting
-static bool has_crlf(const char *s) {
-    if (!s) return false;
-    for (; *s; s++) {
-        if (*s == '\r' || *s == '\n') return true;
-    }
-    return false;
-}
-
 // RAII guard for freeaddrinfo
 struct AddrInfoGuard {
     struct addrinfo *info;

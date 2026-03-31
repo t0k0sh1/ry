@@ -1,7 +1,7 @@
 from thread import lock_new, lock_acquire, lock_release, lock_free, atomic_int_new, atomic_int_load, atomic_int_store, atomic_int_free, thread_spawn, thread_join
 
-describe("ARC resource cleanup", fn():
-  it("Lock is usable after creation", fn():
+describe("ARC resource cleanup", function():
+  it("Lock is usable after creation", function():
     lock = lock_new()
     result = lock_acquire(lock)
     expect(result).to_be_ok()
@@ -9,7 +9,7 @@ describe("ARC resource cleanup", fn():
     expect(result2).to_be_ok()
   )
 
-  it("Lock explicit free then scope exit is safe", fn():
+  it("Lock explicit free then scope exit is safe", function():
     lock = lock_new()
     result = lock_acquire(lock)
     expect(result).to_be_ok()
@@ -19,23 +19,23 @@ describe("ARC resource cleanup", fn():
     expect(true).to_be_true()
   )
 
-  it("AtomicInt is usable after creation", fn():
+  it("AtomicInt is usable after creation", function():
     counter = atomic_int_new(0)
     atomic_int_store(counter, 42)
     val = atomic_int_load(counter)
     expect(val).to_eq(42)
   )
 
-  it("AtomicInt explicit free then scope exit is safe", fn():
+  it("AtomicInt explicit free then scope exit is safe", function():
     counter = atomic_int_new(10)
     val = atomic_int_load(counter)
     atomic_int_free(counter)
     expect(val).to_eq(10)
   )
 
-  it("Thread join and scope exit", fn():
+  it("Thread join and scope exit", function():
     result = atomic_int_new(0)
-    t = thread_spawn(fn():
+    t = thread_spawn(function():
       atomic_int_store(result, 99)
     )
     join_result = thread_join(t)

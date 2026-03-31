@@ -39,8 +39,8 @@ A package can be either a single `.ry` file or a directory containing multiple `
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python

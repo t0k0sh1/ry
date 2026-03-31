@@ -210,6 +210,17 @@ ry self-update v0.0.1       # Update to a specified version
 3. If the current version is the same, exits with `"Already up to date."`
 4. Downloads the binary and replaces the current executable
 
+### Security
+
+Release archives are verified in two steps:
+
+1. **Authenticity**: The `checksums.txt.sig` file is verified against the embedded Ed25519 public key.
+   - If the signature file is **missing**, the update is aborted unless `RY_SKIP_SIGNATURE=1` is set.
+   - If the signature file is **present but invalid**, the update is aborted regardless of `RY_SKIP_SIGNATURE`.
+2. **Integrity**: The archive's SHA-256 hash is compared against `checksums.txt`.
+
+To bypass the failure caused by a missing signature file (not recommended), set `RY_SKIP_SIGNATURE=1`. This does **not** bypass verification when a signature file is present but invalid.
+
 ### Notes
 
 - Requires `curl` and `tar` commands

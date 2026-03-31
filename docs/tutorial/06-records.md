@@ -67,7 +67,7 @@ record Point:
     x: int
     y: int
 
-fn distance_x(a: Point, b: Point) -> int:
+function distance_x(a: Point, b: Point) -> int:
     return a.x - b.x
 
 p1 = Point(10, 3)
@@ -140,7 +140,7 @@ when:
 Enum names can be used as function parameter types.
 
 ```python
-fn describe(c: Color) -> str:
+function describe(c: Color) -> str:
     if c == Color::Red:
         return "warm"
     return "cool"
@@ -176,7 +176,7 @@ p = Shape::Point
 Use `when` with `case` to extract the associated data. Bindings use your chosen variable names, not the field names. This connects directly with the pattern matching you learned in [Control Flow](04-control-flow.md).
 
 ```python
-fn describe(s: Shape) -> str:
+function describe(s: Shape) -> str:
     when s:
         case Shape::Circle(r):
             return f"circle with radius {r}"
@@ -222,7 +222,7 @@ when a:
 
 ## Operator Overloading
 
-You can define operators for custom types using the `fn operator` syntax. This lets your records work naturally with `+`, `==`, and other operators.
+You can define operators for custom types using the `function operator` syntax. This lets your records work naturally with `+`, `==`, and other operators.
 
 ### Binary Operators
 
@@ -233,10 +233,10 @@ record Vec2:
     x: int
     y: int
 
-fn operator+(a: Vec2, b: Vec2) -> Vec2:
+function operator+(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 v1 = Vec2(1, 2)
@@ -251,7 +251,7 @@ print(v1 == v2)   # false
 Takes one parameter.
 
 ```python
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
