@@ -10,16 +10,16 @@ Ry provides three models for concurrent and parallel execution: **async/await** 
 
 ## async/await
 
-`Task<T>` is the runtime handle for concurrent work. Use `async fn` to declare functions that return tasks, `await` inside another `async fn` to wait for a task, and `block_on(task)` from synchronous context.
+`Task<T>` is the runtime handle for concurrent work. Use `async function` to declare functions that return tasks, `await` inside another `async function` to wait for a task, and `block_on(task)` from synchronous context.
 
 ### Defining Async Functions
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 ```
 
-Calling an `async fn` returns a `Task<T>` immediately — the work starts in the background:
+Calling an `async function` returns a `Task<T>` immediately — the work starts in the background:
 
 ```python
 t: Task<int> = add(20, 22)
@@ -37,7 +37,7 @@ print(block_on(add(1, 2)))     # 3
 From **async** code, use `await`:
 
 ```python
-async fn double_add(a: int, b: int) -> int:
+async function double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 
@@ -49,10 +49,10 @@ print(block_on(double_add(3, 4)))   # 14
 You can chain async operations naturally:
 
 ```python
-async fn fetch_score() -> int:
+async function fetch_score() -> int:
     return 42
 
-async fn process() -> str:
+async function process() -> str:
     score = await fetch_score()
     return f"Score: {score * 2}"
 
@@ -102,7 +102,7 @@ from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, a
 ```python
 counter = atomic_int_new(0)
 
-t = thread_spawn(fn():
+t = thread_spawn(function():
     atomic_int_add(counter, 1)
 )
 
@@ -121,10 +121,10 @@ from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, a
 
 counter = atomic_int_new(0)
 
-t1 = thread_spawn(fn():
+t1 = thread_spawn(function():
     atomic_int_add(counter, 1)
 )
-t2 = thread_spawn(fn():
+t2 = thread_spawn(function():
     atomic_int_add(counter, 1)
 )
 
@@ -144,7 +144,7 @@ from thread import atomic_int_new, atomic_int_load, atomic_int_add
 lock = lock_new()
 counter = atomic_int_new(0)
 
-t = thread_spawn(fn():
+t = thread_spawn(function():
     lock_acquire(lock)
     # Critical section: only one thread at a time
     atomic_int_add(counter, 1)
@@ -182,7 +182,7 @@ Ry provides TCP socket support through the `net` module. Network operations retu
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
-async fn echo_server(server: TcpListener) -> str:
+async function echo_server(server: TcpListener) -> str:
     when accept(server):
         case Ok(conn):
             when receive(conn, 4096):
@@ -218,7 +218,7 @@ See [Network Reference](../reference/net.md) for the full TCP API.
 
 ## Common Mistakes
 
-1. **Using `await` outside `async fn`**: Use `block_on()` from synchronous context instead.
+1. **Using `await` outside `async function`**: Use `block_on()` from synchronous context instead.
 2. **Writing to outer variables in `@parallel`**: This is rejected at compile time to prevent data races.
 3. **Forgetting `thread_join`**: If the main program exits before a thread finishes, the thread's work may be lost.
 4. **Sharing primitive variables between threads**: Primitives are copied into closures. Use `AtomicInt` or `Lock` for shared state.
@@ -227,7 +227,7 @@ See [Network Reference](../reference/net.md) for the full TCP API.
 
 ## Exercises
 
-1. **async/await**: Write two `async fn` functions — one that returns a first name and one that returns a last name. Write a third `async fn` that `await`s both and returns the full name. Use `block_on()` to print the result.
+1. **async/await**: Write two `async function` functions — one that returns a first name and one that returns a last name. Write a third `async function` that `await`s both and returns the full name. Use `block_on()` to print the result.
 
 2. **Threads with atomics**: Spawn 5 threads that each add 10 to a shared `AtomicInt`. After joining all threads, verify the counter is 50.
 

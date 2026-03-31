@@ -1,67 +1,67 @@
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
   return a + b
 
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
   if n <= 1:
     return 1
   return n * factorial(n - 1)
 
-fn area(side: int) -> int:
+function area(side: int) -> int:
   return side * side
 
-fn area(w: int, h: int) -> int:
+function area(w: int, h: int) -> int:
   return w * h
 
-fn apply(f: fn(int) -> int, x: int) -> int:
+function apply(f: function(int) -> int, x: int) -> int:
   return f(x)
 
-fn double(x: int) -> int:
+function double(x: int) -> int:
   return x * 2
 
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
   return x + 1
 
 record Vec2:
   x: float
   y: float
 
-fn operator+(a: Vec2, b: Vec2) -> Vec2:
+function operator+(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
   return a.x == b.x and a.y == b.y
 
-fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+function operator+=(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
-describe("basic function", fn():
-  it("call", fn():
+describe("basic function", function():
+  it("call", function():
     expect(add(1, 2)).to_eq(3)
   )
 )
 
-describe("recursion", fn():
-  it("factorial", fn():
+describe("recursion", function():
+  it("factorial", function():
     expect(factorial(5)).to_eq(120)
   )
 )
 
-describe("overloading", fn():
-  it("1 arg", fn():
+describe("overloading", function():
+  it("1 arg", function():
     expect(area(5)).to_eq(25)
   )
-  it("2 args", fn():
+  it("2 args", function():
     expect(area(3, 4)).to_eq(12)
   )
 )
 
-describe("lambda", fn():
-  it("single expression", fn():
-    double = fn(x: int) => x * 2
+describe("lambda", function():
+  it("single expression", function():
+    double = function(x: int) => x * 2
     expect(double(5)).to_eq(10)
   )
-  it("multi-line", fn():
-    abs_val = fn(x: int):
+  it("multi-line", function():
+    abs_val = function(x: int):
       if x < 0:
         return -x
       return x
@@ -69,93 +69,93 @@ describe("lambda", fn():
   )
 )
 
-describe("closure", fn():
-  it("captures by value", fn():
+describe("closure", function():
+  it("captures by value", function():
     base = 10
-    add_base = fn(x: int) => x + base
+    add_base = function(x: int) => x + base
     base = 99
     expect(add_base(5)).to_eq(15)
   )
-  it("captures bool", fn():
+  it("captures bool", function():
     flag = true
-    check = fn() => flag
+    check = function() => flag
     expect(check()).to_be_true()
   )
 )
 
-describe("higher-order function", fn():
-  it("function as argument", fn():
-    res = apply(fn(x: int) => x * 3, 5)
+describe("higher-order function", function():
+  it("function as argument", function():
+    res = apply(function(x: int) => x * 3, 5)
     expect(res).to_eq(15)
   )
-  it("named function as argument", fn():
+  it("named function as argument", function():
     expect(apply(double, 5)).to_eq(10)
   )
 )
 
-describe("UFCS", fn():
-  it("method-style call", fn():
+describe("UFCS", function():
+  it("method-style call", function():
     expect(double(5)).to_eq(10)
   )
-  it("chaining", fn():
+  it("chaining", function():
     expect(add_one(double(5))).to_eq(11)
   )
 )
 
-fn infer_int():
+function infer_int():
   return 42
 
-fn infer_float():
+function infer_float():
   return 3.14
 
-fn infer_str():
+function infer_str():
   return "hello"
 
-fn infer_bool():
+function infer_bool():
   return true
 
-fn infer_unit():
+function infer_unit():
   print("")
 
-fn infer_union(flag: bool):
+function infer_union(flag: bool):
   if flag:
     return 42
   return 3.14
 
-describe("return type inference", fn():
-  it("infers int", fn():
+describe("return type inference", function():
+  it("infers int", function():
     expect(infer_int()).to_eq(42)
   )
-  it("infers float", fn():
+  it("infers float", function():
     expect(infer_float()).to_eq(3.14)
   )
-  it("infers str", fn():
+  it("infers str", function():
     expect(infer_str()).to_eq("hello")
   )
-  it("infers bool", fn():
+  it("infers bool", function():
     expect(infer_bool()).to_be_true()
   )
-  it("infers union type from mixed returns", fn():
+  it("infers union type from mixed returns", function():
     x = infer_union(true)
     y = infer_union(false)
     expect(true).to_be_true()
   )
 )
 
-describe("operator overloading", fn():
-  it("binary +", fn():
+describe("operator overloading", function():
+  it("binary +", function():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(3.0, 4.0)
     v3 = v1 + v2
     expect(v3.x).to_eq(4.0)
     expect(v3.y).to_eq(6.0)
   )
-  it("== comparison", fn():
+  it("== comparison", function():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(1.0, 2.0)
     expect(v1 == v2).to_be_true()
   )
-  it("compound += calls operator+=", fn():
+  it("compound += calls operator+=", function():
     v = Vec2(1.0, 2.0)
     v += Vec2(3.0, 4.0)
     expect(v.x).to_eq(4.0)
@@ -163,22 +163,22 @@ describe("operator overloading", fn():
   )
 )
 
-fn sum_to(n: int, acc: int) -> int:
+function sum_to(n: int, acc: int) -> int:
   if n <= 0:
     return acc
   return sum_to(n - 1, acc + n)
 
-fn get_value() -> int:
+function get_value() -> int:
   return 42
 
-describe("zero arg function", fn():
-  it("returns value", fn():
+describe("zero arg function", function():
+  it("returns value", function():
     expect(get_value()).to_eq(42)
   )
 )
 
-describe("tail call optimization", fn():
-  it("self-recursive tail call does not overflow", fn():
+describe("tail call optimization", function():
+  it("self-recursive tail call does not overflow", function():
     expect(sum_to(1000000, 0)).to_eq(500000500000)
   )
 )

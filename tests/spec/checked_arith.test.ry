@@ -1,5 +1,5 @@
-describe("checked arithmetic", fn():
-  it("checked_add ok", fn():
+describe("checked arithmetic", function():
+  it("checked_add ok", function():
     r = checked_add(10i32, 20i32)
     when r:
       case Ok(v):
@@ -7,7 +7,7 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(false)
   )
-  it("checked_add overflow", fn():
+  it("checked_add overflow", function():
     r = checked_add(2147483647i32, 1i32)
     when r:
       case Ok(v):
@@ -15,7 +15,7 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("checked_sub ok", fn():
+  it("checked_sub ok", function():
     r = checked_sub(100i32, 50i32)
     when r:
       case Ok(v):
@@ -23,7 +23,7 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(false)
   )
-  it("checked_mul ok", fn():
+  it("checked_mul ok", function():
     r = checked_mul(6i32, 7i32)
     when r:
       case Ok(v):
@@ -31,27 +31,27 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(false)
   )
-  it("saturating_add clamps to max", fn():
+  it("saturating_add clamps to max", function():
     v = saturating_add(2147483647i32, 100i32)
     expect(v as int).to_eq(2147483647)
   )
-  it("saturating_sub clamps to min", fn():
+  it("saturating_sub clamps to min", function():
     v = saturating_sub(-2147483648i32, 1i32)
     expect(v as int).to_eq(-2147483648)
   )
-  it("saturating_mul clamps to max", fn():
+  it("saturating_mul clamps to max", function():
     v = saturating_mul(100000i32, 100000i32)
     expect(v as int).to_eq(2147483647)
   )
-  it("wrapping_add wraps", fn():
+  it("wrapping_add wraps", function():
     v = wrapping_add(2147483647i32, 1i32)
     expect(v as int).to_eq(-2147483648)
   )
-  it("wrapping_sub unsigned wraps", fn():
+  it("wrapping_sub unsigned wraps", function():
     v = wrapping_sub(0u8, 1u8)
     expect(v as int).to_eq(255)
   )
-  it("checked_sub overflow", fn():
+  it("checked_sub overflow", function():
     r = checked_sub(-2147483648i32, 1i32)
     when r:
       case Ok(v):
@@ -59,7 +59,7 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("checked_mul overflow", fn():
+  it("checked_mul overflow", function():
     r = checked_mul(100000i32, 100000i32)
     when r:
       case Ok(v):
@@ -67,7 +67,7 @@ describe("checked arithmetic", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("checked_add zero boundary", fn():
+  it("checked_add zero boundary", function():
     r = checked_add(0i32, 0i32)
     when r:
       case Ok(v):

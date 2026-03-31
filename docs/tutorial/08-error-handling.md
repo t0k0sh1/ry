@@ -45,7 +45,7 @@ You have already seen `Option` in action: `iterator.next()` returns `Option<T>`,
 `Result<T, E>` is used for operations that may fail. Return `Ok(value)` for success and `Err(error)` for failure.
 
 ```python
-fn divide(a: int, b: int) -> Result<int, str>:
+function divide(a: int, b: int) -> Result<int, str>:
     if b == 0:
         return Err("division by zero")
     return Ok(a // b)
@@ -67,12 +67,12 @@ when r:
 When calling a function that returns `Result` from another function that also returns `Result`, you can use `?` to propagate errors automatically. If the value is `Ok`, it is unwrapped; if `Err`, the function returns immediately with that error.
 
 ```python
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-fn divide_and_add(a: int, b: int) -> Result<int, Error>:
+function divide_and_add(a: int, b: int) -> Result<int, Error>:
     v = safe_divide(a, b)?   # Returns Err early if b == 0
     return Ok(v + 1)
 ```
@@ -80,7 +80,7 @@ fn divide_and_add(a: int, b: int) -> Result<int, Error>:
 This is equivalent to writing:
 
 ```python
-fn divide_and_add(a: int, b: int) -> Result<int, Error>:
+function divide_and_add(a: int, b: int) -> Result<int, Error>:
     when safe_divide(a, b):
         case Ok(v):
             return Ok(v + 1)
@@ -91,7 +91,7 @@ fn divide_and_add(a: int, b: int) -> Result<int, Error>:
 The `?` operator removes the boilerplate, letting you chain multiple fallible operations cleanly:
 
 ```python
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?
     y = safe_divide(x, c)?
     return Ok(y + 1)
@@ -114,7 +114,7 @@ For the full specification, see [Design by Contract Reference](../reference/cont
 Use `require` to specify conditions that must be true when a function is called:
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -133,7 +133,7 @@ Contract violation: require failed in deposit()
 Use `ensure` to specify conditions that must be true when a function returns. The return value is bound to a user-chosen variable name:
 
 ```python
-fn abs(x: int) -> int:
+function abs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:
@@ -144,7 +144,7 @@ fn abs(x: int) -> int:
 Since function arguments are immutable in Ry, you can reference them directly in `ensure` blocks:
 
 ```python
-fn increment(x: int) -> int:
+function increment(x: int) -> int:
     ensure v:
         v == x + 1
     return x + 1
@@ -153,7 +153,7 @@ fn increment(x: int) -> int:
 For tuple returns, use multiple variable names:
 
 ```python
-fn divide(a: int, b: int) -> (int, int):
+function divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
         r >= 0
@@ -165,7 +165,7 @@ fn divide(a: int, b: int) -> (int, int):
 Both can be used together. `require` must come before `ensure`:
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0

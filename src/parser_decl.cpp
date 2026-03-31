@@ -51,7 +51,7 @@ static bool isPascalCase(const std::string &name) {
 
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
-    Token fnTok = lex_.next(); // consume 'fn'
+    Token fnTok = lex_.next(); // consume 'function'
 
     auto fnStmt = std::make_unique<FnStmt>();
     fnStmt->loc = locFromToken(fnTok);
@@ -125,7 +125,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     } else {
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
-            parseError(nameTok.line, "expected function name after 'fn'");
+            parseError(nameTok.line, "expected function name after 'function'");
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
@@ -133,7 +133,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
-        // Parse optional type parameters: fn name<T, U>(...) or fn name<T: Bound>(...)
+        // Parse optional type parameters: function name<T, U>(...) or function name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
             for (;;) {
@@ -246,7 +246,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
-    // @native fn: body-less declaration
+    // @native function: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
             parseError("@native function must not have a body");
@@ -656,9 +656,9 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeTuple(std::move(elements));
     }
 
-    // fn(int, int) -> int  function type
+    // function(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
-        lex_.next(); // consume 'fn'
+        lex_.next(); // consume 'function'
         return parseFnType();
     }
 
@@ -726,9 +726,9 @@ TypeNodePtr Parser::parseTypeNameSingle() {
     std::string name = t.value;
     lex_.next(); // consume type name
 
-    // fn(int, int) -> int  function type (when fn comes as an ident)
+    // Legacy fn(int, int) -> int function type hint
     if (name == "fn" && lex_.peek().kind == TokenKind::LParen) {
-        return parseFnType();
+        parseError("legacy 'fn(...)' function type is no longer supported; use 'function(...)' instead");
     }
 
     TypeNodePtr result;
@@ -775,7 +775,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
 
 TypeNodePtr Parser::parseFnType() {
     if (lex_.peek().kind != TokenKind::LParen)
-        parseError("expected '(' after 'fn' in function type");
+        parseError("expected '(' after 'function' in function type");
     lex_.next(); // consume '('
     std::vector<TypeNodePtr> paramTypes;
     if (lex_.peek().kind != TokenKind::RParen) {

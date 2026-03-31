@@ -1,39 +1,39 @@
-fn identity<T>(x: T) -> T:
+function identity<T>(x: T) -> T:
     return x
 
-fn pick_first<T, U>(a: T, b: U) -> T:
+function pick_first<T, U>(a: T, b: U) -> T:
     return a
 
-describe("generic function", fn():
-  it("explicit type arg int", fn():
+describe("generic function", function():
+  it("explicit type arg int", function():
     expect(identity[int](42)).to_eq(42)
   )
-  it("explicit type arg str", fn():
+  it("explicit type arg str", function():
     expect(identity[str]("hello")).to_eq("hello")
   )
-  it("explicit type arg bool", fn():
+  it("explicit type arg bool", function():
     expect(identity[bool](true)).to_be_true()
   )
-  it("type inference int", fn():
+  it("type inference int", function():
     expect(identity(99)).to_eq(99)
   )
-  it("type inference str", fn():
+  it("type inference str", function():
     expect(identity("world")).to_eq("world")
   )
-  it("multiple type params", fn():
+  it("multiple type params", function():
     expect(pick_first(1, "x")).to_eq(1)
   )
-  it("multiple type params reversed", fn():
+  it("multiple type params reversed", function():
     expect(pick_first("hello", 42)).to_eq("hello")
   )
-  it("same instantiation reused", fn():
+  it("same instantiation reused", function():
     expect(identity(10)).to_eq(10)
     expect(identity(20)).to_eq(20)
   )
-  it("explicit type arg float", fn():
+  it("explicit type arg float", function():
     expect(identity[float](3.14)).to_eq(3.14)
   )
-  it("type inference bool", fn():
+  it("type inference bool", function():
     expect(identity(true)).to_be_true()
   )
 )

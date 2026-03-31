@@ -1,52 +1,52 @@
-describe("ConstantInt sharing fix (#311)", fn():
-  it("same value with u64 suffix and plain int", fn():
+describe("ConstantInt sharing fix (#311)", function():
+  it("same value with u64 suffix and plain int", function():
     x = 100u64
     y = 100
     expect(y).to_eq(100)
     expect(y + 1).to_eq(101)
   )
 
-  it("same value with u32 and i32 suffix", fn():
+  it("same value with u32 and i32 suffix", function():
     a = 100u32
     b = 100i32
     expect(a as int).to_eq(100)
     expect(b as int).to_eq(100)
   )
 
-  it("plain int not tainted by prior u64 literal", fn():
+  it("plain int not tainted by prior u64 literal", function():
     x = 50u64
     y = 50
     z = y * 2
     expect(z).to_eq(100)
   )
 
-  it("annotated u32 variable still works", fn():
+  it("annotated u32 variable still works", function():
     x: u32 = 100
     expect(x as int).to_eq(100)
   )
 
-  it("u32 unsigned division via suffix", fn():
+  it("u32 unsigned division via suffix", function():
     x: u32 = 10
     y: u32 = 3
     expect((x / y) as int).to_eq(3)
   )
 
-  it("suffix literal direct arithmetic", fn():
+  it("suffix literal direct arithmetic", function():
     x = 100i32 + 200i32
     expect(x as int).to_eq(300)
   )
 
-  it("suffix literal direct comparison", fn():
+  it("suffix literal direct comparison", function():
     expect(100u32 < 200u32).to_eq(true)
   )
 
-  it("mixed: variable and suffix literal", fn():
+  it("mixed: variable and suffix literal", function():
     x: u32 = 10
     y = x + 5u32
     expect(y as int).to_eq(15)
   )
 
-  it("f32 constant sharing", fn():
+  it("f32 constant sharing", function():
     a = 1.5f32
     b = 1.5
     expect(b).to_eq(1.5)

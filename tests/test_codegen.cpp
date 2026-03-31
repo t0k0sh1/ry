@@ -111,7 +111,7 @@ TEST_F(CodeGenTest, OperatorEqInferredNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator==(a: Pt, b: Pt):\n"
+        "function operator==(a: Pt, b: Pt):\n"
         "    return 42\n"), std::runtime_error);
 }
 
@@ -119,7 +119,7 @@ TEST_F(CodeGenTest, OperatorAndExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator and(a: Pt, b: Pt) -> int:\n"
+        "function operator and(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -127,7 +127,7 @@ TEST_F(CodeGenTest, OperatorOrExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator or(a: Pt, b: Pt) -> int:\n"
+        "function operator or(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -356,7 +356,7 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     try {
         runSource(
             "@native\n"
-            "fn unhandled_native(x: str) -> str\n"
+            "function unhandled_native(x: str) -> str\n"
             "\n"
             "print(unhandled_native(\"hello\"))\n"
         );
@@ -403,14 +403,14 @@ TEST_F(CodeGenTest, AnyTypeRejection) {
     EXPECT_THROW(runSource("x: any = {\"a\": 1}"), std::runtime_error);
     EXPECT_THROW(runSource("x: any = {1, 2, 3}"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f(x):\n"
+        "function f(x):\n"
         "    return x\n"
         "f([1, 2, 3])"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f() -> any:\n"
+        "function f() -> any:\n"
         "    return [1, 2, 3]"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f() -> int:\n"
+        "function f() -> int:\n"
         "    return 42\n"
         "x: any = f"), std::runtime_error);
 }
@@ -564,7 +564,7 @@ TEST_F(CodeGenTest, UnsignedVariableNegation_u64) {
 
 TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
     EXPECT_THROW(runSource(
-        "fn get_u32() -> u32:\n"
+        "function get_u32() -> u32:\n"
         "    return 42u32\n"
         "y = -get_u32()"), std::runtime_error);
 }
@@ -574,7 +574,7 @@ TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
     // Omitted return type with return int → inferred as int
     EXPECT_EQ(runSource(
-        "fn get_val():\n"
+        "function get_val():\n"
         "    return 42\n"
         "x = get_val()\n"
         "print(x + 1)"), "43\n");
@@ -583,28 +583,28 @@ TEST_F(CodeGenTest, ReturnTypeInference_Int) {
 TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
     // Omitted return type with no return → inferred as Unit
     EXPECT_EQ(runSource(
-        "fn side_effect():\n"
+        "function side_effect():\n"
         "    print(\"hi\")\n"
         "side_effect()"), "hi\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Float) {
     EXPECT_EQ(runSource(
-        "fn get_pi():\n"
+        "function get_pi():\n"
         "    return 3.14\n"
         "print(get_pi())"), "3.14\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Str) {
     EXPECT_EQ(runSource(
-        "fn get_name():\n"
+        "function get_name():\n"
         "    return \"hello\"\n"
         "print(get_name())"), "hello\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
     EXPECT_EQ(runSource(
-        "fn is_ok():\n"
+        "function is_ok():\n"
         "    return true\n"
         "print(is_ok())"), "true\n");
 }
@@ -612,7 +612,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
 TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
     // Multiple return types → union type
     EXPECT_EQ(runSource(
-        "fn mixed(flag: bool):\n"
+        "function mixed(flag: bool):\n"
         "    if flag:\n"
         "        return 42\n"
         "    return 3.14\n"
@@ -622,7 +622,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
 
 TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
     EXPECT_EQ(runSource(
-        "fn mixed(flag: bool):\n"
+        "function mixed(flag: bool):\n"
         "    if flag:\n"
         "        return \"hello\"\n"
         "    return 42\n"
@@ -633,7 +633,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
 TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
     // Explicit -> any still works as before
     EXPECT_EQ(runSource(
-        "fn get_val() -> any:\n"
+        "function get_val() -> any:\n"
         "    return 42\n"
         "x: any = get_val()\n"
         "print(x)"), "42\n");

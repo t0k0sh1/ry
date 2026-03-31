@@ -1,60 +1,60 @@
 # List operations
 @native
-fn append(values: List<int>, value: int) -> Unit
+function append(values: List<int>, value: int) -> Unit
 
 @native
-fn pop(values: List<int>) -> Option<int>
+function pop(values: List<int>) -> Option<int>
 
 @native
-fn insert(values: List<int>, index: int, value: int) -> Unit
+function insert(values: List<int>, index: int, value: int) -> Unit
 
 @native
-fn remove_at(values: List<int>, index: int) -> Unit
+function remove_at(values: List<int>, index: int) -> Unit
 
 @native
-fn slice(values: List<int>, start: int, end: int) -> List<int>
+function slice(values: List<int>, start: int, end: int) -> List<int>
 
 @native
-fn distinct(values: List<int>) -> List<int>
+function distinct(values: List<int>) -> List<int>
 
 @native
-fn flatten(values: List<int>) -> List<int>
+function flatten(values: List<int>) -> List<int>
 
 @native
-fn sort(values: List<int>) -> List<int>
+function sort(values: List<int>) -> List<int>
 
 @native
-fn sort(values: List<int>, comparator: fn(int, int) -> bool) -> List<int>
+function sort(values: List<int>, comparator: function(int, int) -> bool) -> List<int>
 
 @native
-fn first(values: List<int>) -> Option<int>
+function first(values: List<int>) -> Option<int>
 
 @native
-fn last(values: List<int>) -> Option<int>
+function last(values: List<int>) -> Option<int>
 
 @native
-fn sort!(values: List<int>) -> Unit
+function sort!(values: List<int>) -> Unit
 
 @native
-fn sort!(values: List<int>, comparator: fn(int, int) -> bool) -> Unit
+function sort!(values: List<int>, comparator: function(int, int) -> bool) -> Unit
 
 @native
-fn reverse!(values: List<int>) -> Unit
+function reverse!(values: List<int>) -> Unit
 
 @native
-fn appended(values: List<int>, value: int) -> List<int>
+function appended(values: List<int>, value: int) -> List<int>
 
 @native
-fn append!(values: List<int>, value: int) -> Unit
+function append!(values: List<int>, value: int) -> Unit
 
 @native
-fn is_empty(values: List<int>) -> bool
+function is_empty(values: List<int>) -> bool
 
 @native
-fn remove(values: List<int>, value: int) -> Unit
+function remove(values: List<int>, value: int) -> Unit
 
 @native
-fn take(values: List<int>, count: int) -> List<int>
+function take(values: List<int>, count: int) -> List<int>
 
 @native
-fn tap(values: List<int>, transform: fn(int) -> int) -> List<int>
+function tap(values: List<int>, transform: function(int) -> int) -> List<int>

@@ -1,48 +1,48 @@
 # Core built-in functions
 @native
-fn print(value: str) -> Unit
+function print(value: str) -> Unit
 
 @native
-fn length(value: str) -> int
+function length(value: str) -> int
 
 @native
-fn length(value: List<int>) -> int
+function length(value: List<int>) -> int
 
 @native
-fn length(value: Map<str, int>) -> int
+function length(value: Map<str, int>) -> int
 
 @native
-fn length(value: Set<int>) -> int
+function length(value: Set<int>) -> int
 
 @native
-fn range(count: int) -> List<int>
+function range(count: int) -> List<int>
 
 @native
-fn range(start: int, end: int) -> List<int>
+function range(start: int, end: int) -> List<int>
 
 @native
-fn range(start: int, end: int, step: int) -> List<int>
+function range(start: int, end: int, step: int) -> List<int>
 
 @native
-fn enumerate(values: List<int>) -> List<int>
+function enumerate(values: List<int>) -> List<int>
 
 @native
-fn zip(values: List<int>, other_values: List<int>) -> List<int>
+function zip(values: List<int>, other_values: List<int>) -> List<int>
 
 @native
-fn exit(code: int) -> Unit
+function exit(code: int) -> Unit
 
 @native
-fn arguments() -> List<str>
+function arguments() -> List<str>
 
 @native
-fn available_parallelism() -> int
+function available_parallelism() -> int
 
 @native
-fn sleep(duration_ms: int) -> Unit
+function sleep(duration_ms: int) -> Unit
 
 @native
-fn env(key: str) -> Option<str>
+function env(key: str) -> Option<str>
 
 @native
-fn env(key: str, default: str) -> str
+function env(key: str, default: str) -> str

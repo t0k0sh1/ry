@@ -1,8 +1,8 @@
 from net import bind, listen, accept, connect, listener_port, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
 from io import to_bytes, bytes_to_str
 
-describe("TCP socket API", fn():
-  it("bind returns Ok on valid address", fn():
+describe("TCP socket API", function():
+  it("bind returns Ok on valid address", function():
     when bind("127.0.0.1", 0):
       case Ok(server):
         close(server)
@@ -10,7 +10,7 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("listen returns Ok on valid listener", fn():
+  it("listen returns Ok on valid listener", function():
     when bind("127.0.0.1", 0):
       case Ok(server):
         when listen(server, 1):
@@ -22,7 +22,7 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("tls_connect to closed port returns Err", fn():
+  it("tls_connect to closed port returns Err", function():
     when tls_connect("127.0.0.1", 19991):
       case Ok(conn):
         close(conn)
@@ -30,7 +30,7 @@ describe("TCP socket API", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("connect to closed port returns Err", fn():
+  it("connect to closed port returns Err", function():
     when connect("127.0.0.1", 19998):
       case Ok(conn):
         close(conn)
@@ -38,8 +38,8 @@ describe("TCP socket API", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("set_receive_timeout causes receive to return Err on timeout", fn():
-    async fn timeout_server(server: TcpListener) -> str:
+  it("set_receive_timeout causes receive to return Err on timeout", function():
+    async function timeout_server(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
           sleep(500)
@@ -71,8 +71,8 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("echo round-trip with async fn", fn():
-    async fn run_server(server: TcpListener) -> str:
+  it("echo round-trip with async function", function():
+    async function run_server(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
           when receive(conn, 4096):
@@ -93,7 +93,7 @@ describe("TCP socket API", fn():
           ...
       close(server)
       return "done"
-    fn run_client(port: int) -> str:
+    function run_client(port: int) -> str:
       when connect("127.0.0.1", port):
         case Ok(conn):
           when send(conn, to_bytes("hello")):

@@ -28,22 +28,22 @@ When run without arguments, `ry test` searches for `package.toml` to find the pr
 Use `describe` to group related tests and `it` to define individual test cases.
 
 ```python
-describe("Calculator", fn():
-    it("adds integers", fn():
+describe("Calculator", function():
+    it("adds integers", function():
         expect(1 + 2).to_eq(3)
 
     )
-    it("subtracts integers", fn():
+    it("subtracts integers", function():
         expect(5 - 3).to_eq(2)
 
     )
-    it("checks booleans", fn():
+    it("checks booleans", function():
         expect(3 > 1).to_be_true()
     )
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `function():` as the second parameter
 - `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
 
 ---
@@ -86,16 +86,16 @@ Replaces a function with a mock implementation for the current `it` block. The m
 The original function's `require` and `ensure` contracts still run for mocked calls.
 
 ```python
-fn fetch_data() -> str:
+function fetch_data() -> str:
     return "real data"
 
-describe("mocking", fn():
-    it("replaces function", fn():
-        mock(fetch_data, fn() => "fake")
+describe("mocking", function():
+    it("replaces function", function():
+        mock(fetch_data, function() => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", fn():
+    it("auto-restores", function():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -106,9 +106,9 @@ describe("mocking", fn():
 Returns the number of times a mocked function was called.
 
 ```python
-describe("verify", fn():
-    it("counts calls", fn():
-        mock(fetch_data, fn() => "fake")
+describe("verify", function():
+    it("counts calls", function():
+        mock(fetch_data, function() => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -124,7 +124,7 @@ Use `@each` to run the same test with multiple inputs:
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", function(a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -139,7 +139,7 @@ Use `@property` to test with randomly generated inputs:
 
 ```python
 @property(count=100)
-it("addition is commutative", fn(a: int, b: int):
+it("addition is commutative", function(a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -153,16 +153,16 @@ The test runs `count` times with random values. On failure, the counterexample i
 Contracts (from [Error Handling](08-error-handling.md)) work together with mocking: the original function's `require` and `ensure` contracts **still run** for mocked calls. This means contracts act as implicit test assertions.
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
     ensure v:
         v > balance
     return balance + amount
 
-describe("deposit", fn():
-    it("mocked version still checks contracts", fn():
-        mock(deposit, fn(amount: int, balance: int) => balance + amount)
+describe("deposit", function():
+    it("mocked version still checks contracts", function():
+        mock(deposit, function(amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) would terminate with "require failed"
     )

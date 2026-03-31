@@ -393,7 +393,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
         } else if (annot) {
-            if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
+            if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
                 fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
         }

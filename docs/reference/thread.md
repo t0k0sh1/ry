@@ -28,7 +28,7 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `thread_spawn` | `(body: fn() -> Unit) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. |
+| `thread_spawn` | `(body: function() -> Unit) -> Thread` | Creates and starts a new OS thread executing `body`. Captured variables are copied by value. |
 | `thread_join` | `(thread: Thread) -> Result<Unit, Error>` | Waits for the thread to finish. Returns `Err` if the thread raised an error. The thread handle is consumed after join. |
 
 ### Example
@@ -37,7 +37,7 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
 
 counter = atomic_int_new(0)
-t = thread_spawn(fn():
+t = thread_spawn(function():
   atomic_int_add(counter, 1)
 )
 thread_join(t)
