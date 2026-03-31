@@ -301,6 +301,17 @@ protected:
     void TearDown() override {
         fs::remove_all(tmp_root);
     }
+
+    fs::path create_tar_with_python(const std::string &filename,
+                                     const std::string &entry_setup) {
+        auto archive = tmp_root / filename;
+        std::string script =
+            "import tarfile, io\n"
+            "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+            + entry_setup;
+        run_command({"python3", "-c", script});
+        return archive;
+    }
 };
 
 TEST_F(TarValidationTest, SafeArchive) {
@@ -367,6 +378,37 @@ TEST_F(TarValidationTest, Hardlink) {
         "    t.addfile(info)\n";
     run_command({"python3", "-c", script});
 
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, BlockDevice) {
+    auto archive = create_tar_with_python("blockdev.tar.gz",
+        "    info = tarfile.TarInfo(name='devzero')\n"
+        "    info.type = tarfile.BLKTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 5\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, CharDevice) {
+    auto archive = create_tar_with_python("chardev.tar.gz",
+        "    info = tarfile.TarInfo(name='devnull')\n"
+        "    info.type = tarfile.CHRTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 3\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, Fifo) {
+    auto archive = create_tar_with_python("fifo.tar.gz",
+        "    info = tarfile.TarInfo(name='mypipe')\n"
+        "    info.type = tarfile.FIFOTYPE\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
     EXPECT_FALSE(validate_tar_entries(archive.string()));
 }
 
