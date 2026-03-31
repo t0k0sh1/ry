@@ -109,7 +109,7 @@ TEST_F(EntryPointTest, RunsEntryFromPackageToml) {
 TEST_F(EntryPointTest, RunsEntryWithArgs) {
     writePackageToml();
     writeFile("src/main.ry",
-              "a = args()\n"
+              "a = arguments()\n"
               "print(a[0])\n"
               "print(a[1])");
     auto [out, rc] = runRyInDir(tmp_dir_.string(), {"--", "hello", "world"});

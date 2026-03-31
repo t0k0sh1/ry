@@ -1,5 +1,5 @@
 from filesystem import list_dir, walk, glob_files, copy, move, remove, remove_all, make_dir, make_dir_all, file_size, is_file, is_dir, is_symlink, chmod, symlink, read_link
-from io import write_text, read_text, file_exists
+from io import write_text, read_text, exists
 from path import join
 
 describe("make_dir / make_dir_all", fn():
@@ -153,7 +153,7 @@ describe("move", fn():
     write_text(src, "move me")
     when move(src, dst):
       case Ok(_):
-        expect(file_exists(src)).to_be_false()
+        expect(exists(src)).to_be_false()
         when read_text(dst):
           case Ok(content):
             expect(content).to_eq("move me")
@@ -170,7 +170,7 @@ describe("remove / remove_all", fn():
     write_text(f, "bye")
     when remove(f):
       case Ok(_):
-        expect(file_exists(f)).to_be_false()
+        expect(exists(f)).to_be_false()
       case Err(e):
         fail("remove failed: " + e.message)
   )

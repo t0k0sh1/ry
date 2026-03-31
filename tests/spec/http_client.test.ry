@@ -1,6 +1,6 @@
 from net import bind, listen, accept, listener_port
-from io import str_to_bytes, bytes_to_str
-from http import http_get, http_post, http_request, http_client_status, http_client_body, http_client_header
+from io import to_bytes, bytes_to_str
+from http import http_get, http_post, http_request, status, body, header
 
 describe("HTTP Client", fn():
   # TODO: The following 7 tests are commented out because they use spawn/channel

@@ -18,7 +18,7 @@ extern "C" {
 
 void   *__ry_tls_connect(const char *host, int64_t port);
 int64_t __ry_tls_send(void *tls_stream, void *byte_list);
-void   *__ry_tls_recv(void *tls_stream, int64_t max_bytes);
+void   *__ry_tls_receive(void *tls_stream, int64_t max_bytes);
 void    __ry_tls_close(void *tls_stream);
 void    __ry_tls_set_timeout(void *tls_stream, int64_t ms);
 void    __ry_tls_set_recv_timeout(void *tls_stream, int64_t ms);

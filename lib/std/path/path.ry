@@ -1,25 +1,25 @@
 # File path operations
 
 @native
-fn join(a: str, b: str) -> str
+fn join(first: str, second: str) -> str
 
 @native
-fn join(a: str, b: str, c: str) -> str
+fn join(first: str, second: str, third: str) -> str
 
 @native
-fn join(a: str, b: str, c: str, d: str) -> str
+fn join(first: str, second: str, third: str, fourth: str) -> str
 
 @native
-fn basename(p: str) -> str
+fn basename(path: str) -> str
 
 @native
-fn dirname(p: str) -> str
+fn dirname(path: str) -> str
 
 @native
-fn extension(p: str) -> str
+fn extension(path: str) -> str
 
 @native
-fn resolve(p: str) -> Result<str, Error>
+fn resolve(path: str) -> Result<str, Error>
 
 @native
-fn is_absolute(p: str) -> bool
+fn is_absolute(path: str) -> bool

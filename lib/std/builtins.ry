@@ -33,7 +33,7 @@ fn zip(values: List<int>, other_values: List<int>) -> List<int>
 fn exit(code: int) -> Unit
 
 @native
-fn args() -> List<str>
+fn arguments() -> List<str>
 
 @native
 fn available_parallelism() -> int

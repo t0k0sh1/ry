@@ -10,31 +10,31 @@ fn stringify(value: JsonValue) -> str
 fn stringify(value: JsonValue, indent: int) -> str
 
 @native
-fn json_type(value: JsonValue) -> str
+fn kind(value: JsonValue) -> str
 
 @native
-fn json_get(value: JsonValue, key: str) -> Result<JsonValue, Error>
+fn get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 
 @native
-fn json_at(value: JsonValue, index: int) -> Result<JsonValue, Error>
+fn at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
 @native
-fn json_str(value: JsonValue) -> Result<str, Error>
+fn to_str(value: JsonValue) -> Result<str, Error>
 
 @native
-fn json_int(value: JsonValue) -> Result<int, Error>
+fn to_int(value: JsonValue) -> Result<int, Error>
 
 @native
-fn json_float(value: JsonValue) -> Result<float, Error>
+fn to_float(value: JsonValue) -> Result<float, Error>
 
 @native
-fn json_bool(value: JsonValue) -> Result<bool, Error>
+fn to_bool(value: JsonValue) -> Result<bool, Error>
 
 @native
-fn json_len(value: JsonValue) -> int
+fn length(value: JsonValue) -> int
 
 @native
-fn json_keys(value: JsonValue) -> List<str>
+fn keys(value: JsonValue) -> List<str>
 
 @native
 fn json_free(value: JsonValue) -> Unit

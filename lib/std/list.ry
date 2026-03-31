@@ -54,7 +54,7 @@ fn is_empty(values: List<int>) -> bool
 fn remove(values: List<int>, value: int) -> Unit
 
 @native
-fn take(values: List<int>, n: int) -> List<int>
+fn take(values: List<int>, count: int) -> List<int>
 
 @native
-fn tap(values: List<int>, f: fn(int) -> int) -> List<int>
+fn tap(values: List<int>, transform: fn(int) -> int) -> List<int>

@@ -4,10 +4,11 @@
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // to_int(s) → int
+    // to_int(s) → int — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_int") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
+        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
         auto atolTy = fnTy_ptr_to_i64_;
@@ -15,10 +16,11 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         return builder_.CreateCall(atolFn, {s}, "to_int");
     }
 
-    // to_float(s) → float
+    // to_float(s) → float — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_float") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
+        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_float() requires str argument");
         auto atofTy = llvm::FunctionType::get(f64Ty_, {ptrTy_}, false);
@@ -26,10 +28,12 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         return builder_.CreateCall(atofFn, {s}, "to_float");
     }
 
-    // to_str(v) → str (int/float/bool/str → str)
+    // to_str(v) → str — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_str") {
         requireArgs(e, 1);
-        return valueToString(emitExpr(*e.args[0]));
+        llvm::Value *v = emitExpr(*e.args[0]);
+        if (isJsonValue(v)) return nullptr;
+        return valueToString(v);
     }
 
     return nullptr;
@@ -38,10 +42,11 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
 // ===== Builtin Query =====
 
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
-    // ===== keys(map) =====
+    // ===== keys(map) — fall through for JsonValue =====
     if (e.callee == "keys") {
         requireArgs(e, 1);
         llvm::Value *mapVal = emitExpr(*e.args[0]);
+        if (isJsonValue(mapVal)) return nullptr;
         llvm::Type *keyTy = getMapKeyType(mapVal);
         if (!keyTy) codegenError("keys() requires a map");
 
@@ -299,10 +304,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return llvm::UndefValue::get(i64Ty_);
     }
 
-    // args() → List<str>
-    if (e.callee == "args") {
+    // arguments() → List<str>
+    if (e.callee == "arguments") {
         if (!e.args.empty())
-            codegenError("args() takes no arguments");
+            codegenError("arguments() takes no arguments");
 
         // Call __ry_args_count()
         llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
@@ -441,24 +446,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
     }
 
-    if (e.callee == "recv") {
+    if (e.callee == "receive") {
         requireArgs(e, 2);
-        // TCP/TLS recv(stream, max_bytes) -> Result<List<u8>, Error>
+        // TCP/TLS receive(stream, max_bytes) -> Result<List<u8>, Error>
         llvm::Value *streamVal = emitExpr(*e.args[0]);
         if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
-            codegenError("recv() requires TcpStream or TlsStream as first argument");
+            codegenError("receive() requires TcpStream or TlsStream as first argument");
         llvm::Value *maxBytes = emitExpr(*e.args[1]);
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-        std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
+        std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_receive" : "__ry_tcp_receive";
         auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
-        llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+        llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_receive");
         // Wrap in Result<List<u8>, Error>: nullptr = Err, non-null = Ok
         llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "receive_null");
         llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
         llvm::Value *okVal = buildOkValue(ptr, resTy);
-        llvm::Value *errVal = buildErrValue(buildStaticError("recv failed", ".recv_err_msg"), resTy);
-        llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
+        llvm::Value *errVal = buildErrValue(buildStaticError("receive failed", ".receive_err_msg"), resTy);
+        llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "receive_result");
         type_meta_[TM_ListElem][result] = i8Ty_;
         return result;
     }
@@ -582,10 +587,11 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return headerPtr;
     }
 
-    // length(xs) → list/map/array length
+    // length(xs) → list/map/array length — fall through for JsonValue
     if (e.callee == "length") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
+        if (isJsonValue(ptr)) return nullptr;
         // Fixed-length array: return compile-time constant
         if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(ptr)) {
             if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType()))

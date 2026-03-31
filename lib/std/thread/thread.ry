@@ -62,32 +62,32 @@ fn barrier_free(barrier: Barrier) -> Unit
 fn atomic_int_new(value: int) -> AtomicInt
 
 @native
-fn atomic_int_load(a: AtomicInt) -> int
+fn atomic_int_load(atomic: AtomicInt) -> int
 
 @native
-fn atomic_int_store(a: AtomicInt, value: int) -> Unit
+fn atomic_int_store(atomic: AtomicInt, value: int) -> Unit
 
 @native
-fn atomic_int_add(a: AtomicInt, delta: int) -> int
+fn atomic_int_add(atomic: AtomicInt, delta: int) -> int
 
 @native
-fn atomic_int_sub(a: AtomicInt, delta: int) -> int
+fn atomic_int_sub(atomic: AtomicInt, delta: int) -> int
 
 @native
-fn atomic_int_cas(a: AtomicInt, expected: int, desired: int) -> bool
+fn atomic_int_cas(atomic: AtomicInt, expected: int, desired: int) -> bool
 
 @native
-fn atomic_int_free(a: AtomicInt) -> Unit
+fn atomic_int_free(atomic: AtomicInt) -> Unit
 
 # AtomicBool
 @native
 fn atomic_bool_new(value: bool) -> AtomicBool
 
 @native
-fn atomic_bool_load(a: AtomicBool) -> bool
+fn atomic_bool_load(atomic: AtomicBool) -> bool
 
 @native
-fn atomic_bool_store(a: AtomicBool, value: bool) -> Unit
+fn atomic_bool_store(atomic: AtomicBool, value: bool) -> Unit
 
 @native
-fn atomic_bool_free(a: AtomicBool) -> Unit
+fn atomic_bool_free(atomic: AtomicBool) -> Unit

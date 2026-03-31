@@ -102,10 +102,10 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         return wrapStatusAsResult(status);
     }
 
-    // file_exists(path) -> bool (i64 truncated to i1) — no Result wrapping
-    if (e.callee == "file_exists") {
-        llvm::Value *result = emitIOCall(e.callee, 1, i64Ty_);
-        return builder_.CreateTrunc(result, i1Ty_, "file_exists_bool");
+    // exists(path) -> bool (i64 truncated to i1) — no Result wrapping
+    if (e.callee == "exists") {
+        llvm::Value *result = emitIOCall("file_exists", 1, i64Ty_);
+        return builder_.CreateTrunc(result, i1Ty_, "exists_bool");
     }
 
     // read_bytes(path) -> Result<List<u8>, Error>
@@ -116,9 +116,9 @@ llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
         return result;
     }
 
-    // str_to_bytes(str) -> List<u8> — always succeeds, no Result wrapping
-    if (e.callee == "str_to_bytes") {
-        llvm::Value *result = emitIOCall(e.callee, 1, ptrTy_);
+    // to_bytes(str) -> List<u8> — always succeeds, no Result wrapping
+    if (e.callee == "to_bytes") {
+        llvm::Value *result = emitIOCall("str_to_bytes", 1, ptrTy_);
         type_meta_[TM_ListElem][result] = i8Ty_;
         return result;
     }
@@ -155,9 +155,8 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         return emitPtrToResult(result, "bind", "bind failed", RK_TcpListener);
     }
 
-    // listen(listener, backlog) -> Result<Unit, Error>
-    if (e.callee == "listen") {
-        requireArgs(e, 2);
+    // listen(listener, backlog) -> Result<Unit, Error> — TCP only (2 args)
+    if (e.callee == "listen" && e.args.size() == 2) {
         llvm::Value *listener = emitExpr(*e.args[0]);
         if (!isTcpListener(listener))
             codegenError("listen() requires TcpListener as first argument");
@@ -229,8 +228,8 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         return emitPtrToResult(result, "tls_connect", "TLS connection failed", RK_TlsStream);
     }
 
-    // set_timeout / set_recv_timeout / set_send_timeout — works for both TcpStream and TlsStream
-    if (e.callee == "set_timeout" || e.callee == "set_recv_timeout" || e.callee == "set_send_timeout") {
+    // set_timeout / set_receive_timeout / set_send_timeout — works for both TcpStream and TlsStream
+    if (e.callee == "set_timeout" || e.callee == "set_receive_timeout" || e.callee == "set_send_timeout") {
         requireArgs(e, 2);
         llvm::Value *stream = emitExpr(*e.args[0]);
         llvm::Value *ms = emitExpr(*e.args[1]);
@@ -239,7 +238,10 @@ llvm::Value *CodeGen::emitBuiltinNet(const CallExpr &e) {
         std::string prefix = isTlsStream(stream) ? "__ry_tls_" : "__ry_tcp_";
         if (!isTcpStream(stream) && !isTlsStream(stream))
             codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
-        auto fn = mod_->getOrInsertFunction(prefix + e.callee, fnTy);
+        // Map user-facing name to runtime function name
+        std::string rtName = e.callee;
+        if (rtName == "set_receive_timeout") rtName = "set_recv_timeout";
+        auto fn = mod_->getOrInsertFunction(prefix + rtName, fnTy);
         return builder_.CreateCall(fn, {stream, ms});
     }
 
@@ -252,60 +254,98 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
 
-    // http_response(status, headers, body) -> HttpResponse
-    if (e.callee == "http_response") {
+    // response(status, headers, body) -> HttpResponse
+    if (e.callee == "response") {
         requireArgs(e, 3);
         llvm::Value *status = emitExpr(*e.args[0]);
         llvm::Value *headers = emitExpr(*e.args[1]);
         llvm::Value *body = emitExpr(*e.args[2]);
         if (status->getType() != i64Ty_)
-            codegenError("http_response() status must be int");
+            codegenError("response() status must be int");
         if (headers->getType() != ptrTy_)
-            codegenError("http_response() headers must be Map<str, str>");
+            codegenError("response() headers must be Map<str, str>");
         if (body->getType() != ptrTy_)
-            codegenError("http_response() body must be str");
+            codegenError("response() body must be str");
         auto fn = getRuntimeFn("__ry_http_response_create", ptrTy_, {i64Ty_, ptrTy_, ptrTy_});
         llvm::Value *result = builder_.CreateCall(fn, {status, headers, body}, "http_resp");
         resource_sets_[RK_HttpResponse].insert(result);
         return result;
     }
 
-    // http_method/http_path/http_body: single-arg HttpRequest accessors returning str
-    if (e.callee == "http_method" || e.callee == "http_path" || e.callee == "http_body") {
+    // method/path: single-arg HttpRequest accessors returning str
+    if (e.callee == "method" || e.callee == "path") {
         requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
         auto fnTy = fnTy_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
+        auto fn = mod_->getOrInsertFunction("__ry_http_" + e.callee, fnTy);
         return builder_.CreateCall(fn, {req}, e.callee);
     }
 
-    // http_header(req, key) -> Option<str> / http_query(req, key) -> Option<str> / http_cookie(req, name) -> Option<str>
-    if (e.callee == "http_header" || e.callee == "http_query" || e.callee == "http_cookie") {
+    // body(req_or_resp) -> str — overloaded for HttpRequest and HttpClientResponse
+    if (e.callee == "body") {
+        requireArgs(e, 1);
+        llvm::Value *arg = emitExpr(*e.args[0]);
+        if (isHttpRequest(arg)) {
+            auto fnTy = fnTy_ptr_to_ptr_;
+            auto fn = mod_->getOrInsertFunction("__ry_http_body", fnTy);
+            return builder_.CreateCall(fn, {arg}, "body");
+        }
+        if (isHttpClientResponse(arg)) {
+            auto fnTy = fnTy_ptr_to_ptr_;
+            auto fn = mod_->getOrInsertFunction("__ry_http_client_body", fnTy);
+            return builder_.CreateCall(fn, {arg}, "body");
+        }
+        codegenError("body() requires HttpRequest or HttpClientResponse argument");
+    }
+
+    // header(req_or_resp, key) -> Option<str> — overloaded for HttpRequest and HttpClientResponse
+    if (e.callee == "header") {
+        requireArgs(e, 2);
+        llvm::Value *arg = emitExpr(*e.args[0]);
+        llvm::Value *key = emitExpr(*e.args[1]);
+        if (key->getType() != ptrTy_)
+            codegenError("header() key must be str");
+        if (isHttpRequest(arg)) {
+            auto fnTy = fnTy_ptr_ptr_to_ptr_;
+            auto fn = mod_->getOrInsertFunction("__ry_http_header", fnTy);
+            llvm::Value *result = builder_.CreateCall(fn, {arg, key}, "http_hdr");
+            return wrapPtrAsOption(result, "http_hdr");
+        }
+        if (isHttpClientResponse(arg)) {
+            auto fnTy = fnTy_ptr_ptr_to_ptr_;
+            auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
+            llvm::Value *result = builder_.CreateCall(fn, {arg, key}, "http_client_hdr");
+            return wrapPtrAsOption(result, "http_client_hdr");
+        }
+        codegenError("header() requires HttpRequest or HttpClientResponse argument");
+    }
+
+    // query(req, key) -> Option<str> / cookie(req, name) -> Option<str>
+    if (e.callee == "query" || e.callee == "cookie") {
         requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
             codegenError(e.callee + "() requires HttpRequest argument");
         if (key->getType() != ptrTy_) {
-            std::string param = (e.callee == "http_cookie") ? "name" : "key";
+            std::string param = (e.callee == "cookie") ? "name" : "key";
             codegenError(e.callee + "() " + param + " must be str");
         }
         auto fnTy = fnTy_ptr_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_" + e.callee, fnTy);
-        std::string hint = (e.callee == "http_header") ? "http_hdr"
-                         : (e.callee == "http_query") ? "http_qry" : "http_ck";
+        auto fn = mod_->getOrInsertFunction("__ry_http_" + e.callee, fnTy);
+        std::string hint = (e.callee == "query") ? "http_qry" : "http_ck";
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, hint);
         return wrapPtrAsOption(result, hint);
     }
 
-    // http_query_all(req) -> Map<str, str>
-    if (e.callee == "http_query_all") {
+    // query_all(req) -> Map<str, str>
+    if (e.callee == "query_all") {
         requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
-            codegenError("http_query_all() requires HttpRequest argument");
+            codegenError("query_all() requires HttpRequest argument");
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_query_all", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_qry_all");
@@ -314,12 +354,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_cookies(req) -> Map<str, str>
-    if (e.callee == "http_cookies") {
+    // cookies(req) -> Map<str, str>
+    if (e.callee == "cookies") {
         requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
-            codegenError("http_cookies() requires HttpRequest argument");
+            codegenError("cookies() requires HttpRequest argument");
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_cookies", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_cookies");
@@ -328,30 +368,30 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_form_field(req, name) -> Option<str>
-    if (e.callee == "http_form_field") {
+    // form_field(req, name) -> Option<str>
+    if (e.callee == "form_field") {
         requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
-            codegenError("http_form_field() requires HttpRequest argument");
+            codegenError("form_field() requires HttpRequest argument");
         if (key->getType() != ptrTy_)
-            codegenError("http_form_field() name must be str");
+            codegenError("form_field() name must be str");
         auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_field", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ff");
         return wrapPtrAsOption(result, "http_ff");
     }
 
-    // http_form_file(req, name) -> Option<Map<str, str>>
-    if (e.callee == "http_form_file") {
+    // form_file(req, name) -> Option<Map<str, str>>
+    if (e.callee == "form_file") {
         requireArgs(e, 2);
         llvm::Value *req = emitExpr(*e.args[0]);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (!isHttpRequest(req))
-            codegenError("http_form_file() requires HttpRequest argument");
+            codegenError("form_file() requires HttpRequest argument");
         if (key->getType() != ptrTy_)
-            codegenError("http_form_file() name must be str");
+            codegenError("form_file() name must be str");
         auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_file", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req, key}, "http_ffile");
@@ -361,12 +401,12 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return optResult;
     }
 
-    // http_form_fields(req) -> Map<str, str>
-    if (e.callee == "http_form_fields") {
+    // form_fields(req) -> Map<str, str>
+    if (e.callee == "form_fields") {
         requireArgs(e, 1);
         llvm::Value *req = emitExpr(*e.args[0]);
         if (!isHttpRequest(req))
-            codegenError("http_form_fields() requires HttpRequest argument");
+            codegenError("form_fields() requires HttpRequest argument");
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_http_form_fields", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {req}, "http_ffields");
@@ -375,17 +415,17 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return result;
     }
 
-    // http_listen(host, port, handler[, max_requests[, port_callback]]) -> Unit
-    if (e.callee == "http_listen") {
-        if (e.args.size() < 3 || e.args.size() > 5)
-            codegenError("http_listen() takes 3 to 5 arguments");
+    // listen(host, port, handler[, max_requests[, port_callback]]) -> Unit (HTTP server)
+    if (e.callee == "listen" && e.args.size() >= 3) {
+        if (e.args.size() > 5)
+            codegenError("listen() takes 3 to 5 arguments");
         llvm::Value *host = emitExpr(*e.args[0]);
         llvm::Value *port = emitExpr(*e.args[1]);
         llvm::Value *handler = emitExpr(*e.args[2]);
         if (host->getType() != ptrTy_)
-            codegenError("http_listen() host must be str");
+            codegenError("listen() host must be str");
         if (port->getType() != i64Ty_)
-            codegenError("http_listen() port must be int");
+            codegenError("listen() port must be int");
 
         // Get handler FnTypeInfo
         FnTypeInfo handlerInfo;
@@ -407,13 +447,13 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
             }
         }
         if (!foundInfo)
-            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+            codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
 
         // Validate handler signature: one ptr param, ptr return
         if (handlerInfo.paramTypes.size() != 1 ||
             handlerInfo.returnType != ptrTy_ ||
             handlerInfo.paramTypes[0] != ptrTy_) {
-            codegenError("http_listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+            codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
         }
 
         // Optional 4th argument: max_requests (must be > 0)
@@ -421,10 +461,10 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         if (e.args.size() >= 4) {
             maxReqs = emitExpr(*e.args[3]);
             if (maxReqs->getType() != i64Ty_)
-                codegenError("http_listen() max_requests must be int");
+                codegenError("listen() max_requests must be int");
             if (auto *maxConst = llvm::dyn_cast<llvm::ConstantInt>(maxReqs)) {
                 if (maxConst->getSExtValue() <= 0)
-                    codegenError("http_listen() max_requests must be a positive integer");
+                    codegenError("listen() max_requests must be a positive integer");
             }
         }
 
@@ -433,7 +473,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         if (e.args.size() == 5) {
             portCallback = emitExpr(*e.args[4]);
             if (portCallback->getType() != ptrTy_)
-                codegenError("http_listen() port_callback must be fn(int) -> Unit");
+                codegenError("listen() port_callback must be fn(int) -> Unit");
         }
 
         // 1. bind(host, port)
@@ -450,7 +490,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
 
         builder_.SetInsertPoint(bindFailBB);
         static int httpErrCounter = 0;
-        emitRuntimeError("runtime error: http_listen() bind failed\n",
+        emitRuntimeError("runtime error: listen() bind failed\n",
                           ".http_err_" + std::to_string(httpErrCounter++));
 
         // 2. listen(listener, 128)
@@ -465,7 +505,7 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         builder_.CreateCondBr(listenFailed, listenFailBB, listenOkBB);
         builder_.SetInsertPoint(listenFailBB);
         static int httpListenErrCounter = 0;
-        emitRuntimeError("runtime error: http_listen() listen failed\n",
+        emitRuntimeError("runtime error: listen() listen failed\n",
                           ".http_listen_err_" + std::to_string(httpListenErrCounter++));
         builder_.SetInsertPoint(listenOkBB);
 
@@ -627,41 +667,15 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         return emitPtrToResult(result, "http_request", "HTTP request failed", RK_HttpClientResponse);
     }
 
-    // http_client_status(resp) -> int
-    if (e.callee == "http_client_status") {
+    // status(resp) -> int — HttpClientResponse accessor
+    if (e.callee == "status") {
         requireArgs(e, 1);
         llvm::Value *resp = emitExpr(*e.args[0]);
         if (!isHttpClientResponse(resp))
-            codegenError("http_client_status() requires HttpClientResponse argument");
+            codegenError("status() requires HttpClientResponse argument");
         auto fnTy = fnTy_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_http_client_status", fnTy);
         return builder_.CreateCall(fn, {resp}, "http_client_status");
-    }
-
-    // http_client_body(resp) -> str
-    if (e.callee == "http_client_body") {
-        requireArgs(e, 1);
-        llvm::Value *resp = emitExpr(*e.args[0]);
-        if (!isHttpClientResponse(resp))
-            codegenError("http_client_body() requires HttpClientResponse argument");
-        auto fnTy = fnTy_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_http_client_body", fnTy);
-        return builder_.CreateCall(fn, {resp}, "http_client_body");
-    }
-
-    // http_client_header(resp, key) -> Option<str>
-    if (e.callee == "http_client_header") {
-        requireArgs(e, 2);
-        llvm::Value *resp = emitExpr(*e.args[0]);
-        llvm::Value *key = emitExpr(*e.args[1]);
-        if (!isHttpClientResponse(resp))
-            codegenError("http_client_header() requires HttpClientResponse argument");
-        if (key->getType() != ptrTy_)
-            codegenError("http_client_header() key must be str");
-        auto fnTy = fnTy_ptr_ptr_to_ptr_;
-        auto fn = mod_->getOrInsertFunction("__ry_http_client_header", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {resp, key}, "http_client_hdr");
-        return wrapPtrAsOption(result, "http_client_hdr");
     }
 
     // http_client_response_free(resp) -> Unit
