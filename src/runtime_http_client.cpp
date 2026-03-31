@@ -318,14 +318,24 @@ static bool has_crlf(const char *s) {
     return false;
 }
 
-// Establish a TCP or TLS connection based on the parsed URL.
-static bool establish_connection(const ParsedUrl *parsed, HttpTransport &transport) {
+// RAII guard for freeaddrinfo
+struct AddrInfoGuard {
+    struct addrinfo *info;
+    ~AddrInfoGuard() { if (info) ::freeaddrinfo(info); }
+    AddrInfoGuard(const AddrInfoGuard&) = delete;
+    AddrInfoGuard& operator=(const AddrInfoGuard&) = delete;
+};
+
+// Establish a TCP or TLS connection using pre-resolved addresses.
+static bool establish_connection(const ParsedUrl *parsed,
+                                  const struct addrinfo *resolved,
+                                  HttpTransport &transport) {
     if (parsed->is_https) {
-        void *tls = __ry_tls_connect(parsed->host, parsed->port);
+        void *tls = __ry_tls_connect_resolved(parsed->host, resolved);
         if (!tls) return false;
         __ry_tls_take_ownership(tls, &transport.fd, &transport.ssl);
     } else {
-        void *stream = __ry_connect(parsed->host, parsed->port);
+        void *stream = __ry_connect_resolved(resolved);
         if (!stream) return false;
         transport.fd = __ry_tcp_take_fd(stream);
     }
@@ -403,13 +413,21 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
             break;
         }
 
-        if (ssrf_check && __ry_is_private_host(parsed->host, parsed->port)) {
+        // Resolve DNS once and use the result for both SSRF check and connection
+        struct addrinfo *resolved = nullptr;
+        if (__ry_resolve(parsed->host, parsed->port, &resolved) != 0) {
+            __ry_http_parsed_url_free(parsed);
+            break;
+        }
+        AddrInfoGuard guard{resolved};
+
+        if (ssrf_check && __ry_is_private_addrinfo(resolved)) {
             __ry_http_parsed_url_free(parsed);
             break;
         }
 
         HttpTransport transport{-1, nullptr};
-        if (!establish_connection(parsed, transport)) {
+        if (!establish_connection(parsed, resolved, transport)) {
             __ry_http_parsed_url_free(parsed);
             break;
         }
