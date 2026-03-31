@@ -168,6 +168,12 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
 void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &name,
                                     const SourceLocation &loc) {
     if (!ry::traceEnabled()) return;
+    // Skip stdlib symbols to reduce noise — users care about their own definitions
+    if (sm_ && loc.file_id >= 0 && loc.file_id < sm_->getFileCount()) {
+        const auto &fname = sm_->getFilename(loc.file_id);
+        if (fname.find("/lib/std/") != std::string::npos)
+            return;
+    }
     ry::emitTraceEvent("symbol.define", "compile", &loc,
                        {ry::TraceField("kind", kind),
                         ry::TraceField("symbol", name),

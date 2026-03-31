@@ -117,9 +117,10 @@ ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
 std::string ModuleLoader::resolve(const std::string &package_path,
                                    const std::string &referrer_dir) {
     SourceLocation loc{1, 1, 0};
-    emitTraceEvent("import.resolve.start", "compile", &loc,
-                   {TraceField("module_path", package_path),
-                    TraceField("referrer_dir", referrer_dir)});
+    if (ry::traceEnabled())
+        emitTraceEvent("import.resolve.start", "compile", &loc,
+                       {TraceField("module_path", package_path),
+                        TraceField("referrer_dir", referrer_dir)});
     // Reject path traversal and absolute paths
     if (package_path.find("..") != std::string::npos)
         throw std::runtime_error("invalid package path (path traversal): " + package_path);
@@ -171,7 +172,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
             if (ec)
                 throw std::runtime_error("relative import directory not found: " +
                                          referrer_dir);
-            emitTraceEvent("import.resolve.hit", "compile", &loc,
+            if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                            {TraceField("module_path", package_path),
                             TraceField("resolved_path", resolved)});
             return resolved;
@@ -179,12 +180,12 @@ std::string ModuleLoader::resolve(const std::string &package_path,
         std::string rel = package_path.substr(2);
         std::string result = try_resolve(referrer_dir, rel);
         if (!result.empty()) {
-            emitTraceEvent("import.resolve.hit", "compile", &loc,
+            if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                            {TraceField("module_path", package_path),
                             TraceField("resolved_path", result)});
             return result;
         }
-        emitTraceEvent("import.resolve.error", "compile", &loc,
+        if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
                        {TraceField("module_path", package_path),
                         TraceField("detail", "package not found")});
         throw std::runtime_error("package not found: " + package_path);
@@ -193,7 +194,7 @@ std::string ModuleLoader::resolve(const std::string &package_path,
     // Absolute import: search referrer_dir first, then search_paths
     std::string result = try_resolve(referrer_dir, package_path);
     if (!result.empty()) {
-        emitTraceEvent("import.resolve.hit", "compile", &loc,
+        if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                        {TraceField("module_path", package_path),
                         TraceField("resolved_path", result)});
         return result;
@@ -202,14 +203,14 @@ std::string ModuleLoader::resolve(const std::string &package_path,
     for (const auto &dir : search_paths_) {
         result = try_resolve(dir, package_path);
         if (!result.empty()) {
-            emitTraceEvent("import.resolve.hit", "compile", &loc,
+            if (ry::traceEnabled()) emitTraceEvent("import.resolve.hit", "compile", &loc,
                            {TraceField("module_path", package_path),
                             TraceField("resolved_path", result)});
             return result;
         }
     }
 
-    emitTraceEvent("import.resolve.error", "compile", &loc,
+    if (ry::traceEnabled()) emitTraceEvent("import.resolve.error", "compile", &loc,
                    {TraceField("module_path", package_path),
                     TraceField("detail", "package not found")});
     throw std::runtime_error("package not found: " + package_path);
@@ -225,7 +226,7 @@ Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
     std::string src = ss.str();
 
     SourceLocation loc{1, 1, 0};
-    emitTraceEvent("import.load.file", "compile", &loc,
+    if (ry::traceEnabled()) emitTraceEvent("import.load.file", "compile", &loc,
                    {TraceField("resolved_path", abs_path),
                     TraceField("size_bytes", static_cast<int64_t>(src.size()))});
 
@@ -237,11 +238,11 @@ Program loadAndParse(const std::string &abs_path, SourceManager *sm) {
 
     Lexer lex(src);
     Parser parser(lex, sm, fileId);
-    emitTraceEvent("parse.start", "compile", &loc,
+    if (ry::traceEnabled()) emitTraceEvent("parse.start", "compile", &loc,
                    {TraceField("file", abs_path)});
     try {
         Program prog = parser.parseProgram();
-        emitTraceEvent("parse.done", "compile", &loc,
+        if (ry::traceEnabled()) emitTraceEvent("parse.done", "compile", &loc,
                        {TraceField("file", abs_path)});
         return prog;
     } catch (const DiagnosticError &e) {
@@ -254,7 +255,7 @@ Program ModuleLoader::loadPackageDir(const std::string &abs_dir_path) {
     Program collected;
     std::vector<std::string> ry_files;
     SourceLocation loc{1, 1, 0};
-    emitTraceEvent("import.load.dir", "compile", &loc,
+    if (ry::traceEnabled()) emitTraceEvent("import.load.dir", "compile", &loc,
                    {TraceField("resolved_path", abs_dir_path)});
 
     for (const auto &entry : fs::directory_iterator(abs_dir_path)) {

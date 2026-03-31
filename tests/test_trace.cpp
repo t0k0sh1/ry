@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
 

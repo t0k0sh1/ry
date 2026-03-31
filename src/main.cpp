@@ -52,9 +52,19 @@ using namespace llvm::orc;
 
 namespace fs = std::filesystem;
 
+extern const char *__ry_test_current_it_name();
+
 static void test_timeout_handler(int) {
-    const char msg[] = "\nTest timed out (60s)\n";
+    const char msg[] = "\nTest timed out (60s): ";
     (void)write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    const char *name = __ry_test_current_it_name();
+    if (name && name[0]) {
+        size_t len = 0;
+        while (name[len]) ++len;
+        (void)write(STDERR_FILENO, name, len);
+    }
+    const char nl[] = "\n";
+    (void)write(STDERR_FILENO, nl, 1);
     _exit(124);
 }
 
@@ -122,11 +132,13 @@ static int runRySource(const std::string &src, const std::string &source_name,
         Lexer lexer(src);
         Parser parser(lexer, &sm, fileId);
         try {
-            ry::emitTraceEvent("parse.start", "compile", &sourceLoc,
-                               {ry::TraceField("file", source_name)});
+            if (ry::traceEnabled())
+                ry::emitTraceEvent("parse.start", "compile", &sourceLoc,
+                                   {ry::TraceField("file", source_name)});
             prog = parser.parseProgram();
-            ry::emitTraceEvent("parse.done", "compile", &sourceLoc,
-                               {ry::TraceField("file", source_name)});
+            if (ry::traceEnabled())
+                ry::emitTraceEvent("parse.done", "compile", &sourceLoc,
+                                   {ry::TraceField("file", source_name)});
         } catch (const DiagnosticError &e) {
             ry::emitTraceDiagnostic("parse.error", "compile", &e.diagnostic().loc, e.diagnostic().message);
             throw;
@@ -172,14 +184,16 @@ static int runRySource(const std::string &src, const std::string &source_name,
     }
 
     // CodeGen -> ThreadSafeModule
-    ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
-                       {ry::TraceField("file", source_name)});
+    if (ry::traceEnabled())
+        ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
+                           {ry::TraceField("file", source_name)});
     CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset, outline_mode);
     ThreadSafeModule tsm = [&]() {
         try {
             auto module = cg.compile(prog);
-            ry::emitTraceEvent("codegen.done", "compile", &sourceLoc,
-                               {ry::TraceField("file", source_name)});
+            if (ry::traceEnabled())
+                ry::emitTraceEvent("codegen.done", "compile", &sourceLoc,
+                                   {ry::TraceField("file", source_name)});
             return module;
         } catch (const DiagnosticError &e) {
             ry::emitTraceDiagnostic("codegen.error", "compile", &e.diagnostic().loc, e.diagnostic().message);
@@ -188,8 +202,9 @@ static int runRySource(const std::string &src, const std::string &source_name,
     }();
 
     // Build LLJIT
-    ry::emitTraceEvent("jit.start", "jit", &sourceLoc,
-                       {ry::TraceField("file", source_name)});
+    if (ry::traceEnabled())
+        ry::emitTraceEvent("jit.start", "jit", &sourceLoc,
+                           {ry::TraceField("file", source_name)});
     auto jitOrErr = LLJITBuilder().create();
     if (!jitOrErr) {
         errs() << "Failed to create JIT: ";
@@ -284,8 +299,9 @@ static int runRySource(const std::string &src, const std::string &source_name,
                            {ry::TraceField("detail", "Failed to add IR module")});
         return 1;
     }
-    ry::emitTraceEvent("jit.ready", "jit", &sourceLoc,
-                       {ry::TraceField("file", source_name)});
+    if (ry::traceEnabled())
+        ry::emitTraceEvent("jit.ready", "jit", &sourceLoc,
+                           {ry::TraceField("file", source_name)});
 
     // Lookup and run __ry_main__
     auto symOrErr = jit->lookup("__ry_main__");
@@ -301,12 +317,14 @@ static int runRySource(const std::string &src, const std::string &source_name,
     if (test_mode) {
         std::signal(SIGALRM, test_timeout_handler);
     }
-    ry::emitTraceEvent("exec.start", "runtime", &sourceLoc,
-                       {ry::TraceField("file", source_name)});
+    if (ry::traceEnabled())
+        ry::emitTraceEvent("exec.start", "runtime", &sourceLoc,
+                           {ry::TraceField("file", source_name)});
     int result = fn();
-    ry::emitTraceEvent("exec.end", "runtime", &sourceLoc,
-                       {ry::TraceField("file", source_name),
-                        ry::TraceField("exit_code", result)});
+    if (ry::traceEnabled())
+        ry::emitTraceEvent("exec.end", "runtime", &sourceLoc,
+                           {ry::TraceField("file", source_name),
+                            ry::TraceField("exit_code", result)});
 
     // Record filenames for coverage reporting (accumulates across calls).
     // Exclude stdlib files (those under lib_dir) from the report.
@@ -733,19 +751,21 @@ int main(int argc, char *argv[]) {
     parseRyEnv(argc, argv);
     parseGlobalFlags(argc, argv);
     ry::configureTrace(g_trace_enabled, g_trace_out);
-    SourceLocation sessionLoc{1, 1, 0};
+    bool sessionStarted = false;
     if (ry::traceEnabled()) {
-        ry::emitTraceEvent("session.start", "session", &sessionLoc,
+        ry::emitTraceEvent("session.start", "session", nullptr,
                            {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
+        sessionStarted = true;
     }
     struct SessionTraceGuard {
+        bool &started;
+        explicit SessionTraceGuard(bool &s) : started(s) {}
         ~SessionTraceGuard() {
-            if (ry::traceEnabled()) {
-                SourceLocation loc{1, 1, 0};
-                ry::emitTraceEvent("session.end", "session", &loc);
+            if (started && ry::traceEnabled()) {
+                ry::emitTraceEvent("session.end", "session");
             }
         }
-    } sessionTraceGuard;
+    } sessionTraceGuard(sessionStarted);
 
     // Help flag handling: -h/--help takes priority over other options
     if (argc >= 2) {
@@ -862,8 +882,14 @@ int main(int argc, char *argv[]) {
                 target = argv[i];
             }
         }
-        if (g_trace_enabled)
+        if (g_trace_enabled) {
             ry::configureTrace(true, trace_out);
+            if (ry::traceEnabled() && !sessionStarted) {
+                ry::emitTraceEvent("session.start", "session", nullptr,
+                                   {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
+                sessionStarted = true;
+            }
+        }
         if (coverage && parallel) {
             errs() << "Warning: --coverage is not supported with --parallel, falling back to sequential\n";
             parallel = false;

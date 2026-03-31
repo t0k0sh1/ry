@@ -56,7 +56,8 @@ void CodeGen::emitStmt(ReturnStmt &s) {
             if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
                 if (ci->getCalledFunction() == fn_) {
                     ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
-                    emitTraceFunctionExit(current_function_name_, s.loc);
+                    // Note: Do not emit function-exit tracing here; LLVM requires
+                    // a musttail call to be immediately followed by the ret.
                     builder_.CreateRet(val);
                     llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
                     builder_.SetInsertPoint(dead);

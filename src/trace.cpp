@@ -5,6 +5,8 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <thread>
 
 namespace ry {
 
@@ -33,6 +35,8 @@ public:
             return;
         }
 
+        std::cerr << "Warning: --trace-out: cannot open '" << destination
+                  << "', tracing disabled\n";
         enabled_ = false;
         out_ = nullptr;
     }
@@ -49,14 +53,18 @@ public:
         if (!enabled_ || !out_) return;
 
         uint64_t seq = ++seq_;
-        auto ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
+        std::ostringstream tid_ss;
+        tid_ss << std::this_thread::get_id();
+        std::string tid_str = tid_ss.str();
 
         *out_ << "{";
         writeKeyValue("event", event, true);
         writeKeyValue("phase", phase, false);
-        writeKeyValue("ts", static_cast<int64_t>(ts), false);
+        writeKeyValue("ts_us", static_cast<int64_t>(ts), false);
         writeKeyValue("seq", static_cast<int64_t>(seq), false);
+        writeKeyValue("tid", tid_str, false);
 
         if (loc && loc->isValid()) {
             writeKeyValue("line", static_cast<int64_t>(loc->line), false);
