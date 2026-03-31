@@ -286,6 +286,13 @@ ExprPtr Parser::parsePrimary() {
         node->loc = locFromToken(t);
         return node;
     }
+    if (t.kind == TokenKind::RegexLiteral) {
+        lex_.next();
+        auto node = std::make_unique<ExprNode>();
+        node->data = RegexExpr{t.value};
+        node->loc = locFromToken(t);
+        return node;
+    }
     // f-string: FStringEnd (no interpolation) or FStringStart...FStringEnd
     if (t.kind == TokenKind::FStringEnd) {
         lex_.next();
@@ -761,7 +768,8 @@ ExprPtr Parser::parsePostfix() {
                  next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
                  next == TokenKind::FStringStart ||
                  next == TokenKind::Await ||
-                 next == TokenKind::LBracket)) {
+                 next == TokenKind::LBracket ||
+                 next == TokenKind::RegexLiteral)) {
                 lex_.restoreState(std::move(saved));
                 break; // delegate to parseConditional()
             }

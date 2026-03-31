@@ -290,6 +290,29 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::SlashEq, "/=", line_, startCol};
         }
+        // Regex literal: `/` starts a regex when NOT preceded by a value-producing token
+        if (prev_kind_ != TokenKind::Number && prev_kind_ != TokenKind::Float &&
+            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::Ident &&
+            prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
+            prev_kind_ != TokenKind::RBrace && prev_kind_ != TokenKind::True &&
+            prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
+            prev_kind_ != TokenKind::PlusPlus && prev_kind_ != TokenKind::MinusMinus &&
+            prev_kind_ != TokenKind::RegexLiteral) {
+            size_t regexStart = pos_;
+            while (pos_ < src_.size() && src_[pos_] != '/' && src_[pos_] != '\n') {
+                if (src_[pos_] == '\\') {
+                    ++pos_; ++col_;
+                    if (pos_ >= src_.size() || src_[pos_] == '\n')
+                        return {TokenKind::Error, "unterminated regex literal", line_, startCol};
+                }
+                ++pos_; ++col_;
+            }
+            if (pos_ >= src_.size() || src_[pos_] != '/')
+                return {TokenKind::Error, "unterminated regex literal", line_, startCol};
+            std::string pattern(src_, regexStart, pos_ - regexStart);
+            ++pos_; ++col_; // consume closing /
+            return {TokenKind::RegexLiteral, std::move(pattern), line_, startCol};
+        }
         return {TokenKind::Slash, "/", line_, startCol};
     }
     if (c == '=') {

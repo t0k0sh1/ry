@@ -114,6 +114,7 @@ struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
 struct StringExpr   { std::string value; };
+struct RegexExpr    { std::string pattern; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;
 struct UnaryExpr;
@@ -142,7 +143,7 @@ struct AwaitExpr;
 struct WeakExpr;
 
 struct ExprNode {
-    std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
+    std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, RegexExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
                  std::unique_ptr<UnaryExpr>,
                  std::unique_ptr<CallExpr>,

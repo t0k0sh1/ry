@@ -72,6 +72,15 @@ llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
     return cachedGlobalString(e.value, ".str");
 }
 
+llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
+    // Separate cache prevents collision with string literals of the same
+    // content — otherwise marking the pointer as RK_Regex would poison a
+    // later string literal, causing isStringValue() to return false.
+    auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
+    resource_sets_[RK_Regex].insert(gs);
+    return gs;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     llvm::AllocaInst *alloca = findVar(e.name);
     if (alloca) {

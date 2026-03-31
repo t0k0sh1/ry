@@ -163,3 +163,113 @@ print(tags[0])
 print(tags[1])
 )"), "2\n<x>\n<yy>\n");
 }
+
+// ============================================================
+// Regex literal syntax /.../
+// ============================================================
+
+TEST_F(CodeGenTest, RegexLiteralMatch) {
+    EXPECT_EQ(runSource(R"(
+print(match("hello", /[a-z]+/))
+print(match("123", /[a-z]+/))
+)"), "true\nfalse\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralSearch) {
+    EXPECT_EQ(runSource(R"(
+print(search("abc123", /[0-9]+/))
+)"), "3\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralReplace) {
+    EXPECT_EQ(runSource(R"(
+print(replace("abc123def", /[0-9]+/, "X"))
+)"), "abcXdef\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralSplit) {
+    EXPECT_EQ(runSource(R"(
+parts = split("a1b2c", /[0-9]/)
+print(parts[0])
+print(parts[1])
+print(parts[2])
+)"), "a\nb\nc\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralFindAll) {
+    EXPECT_EQ(runSource(R"(
+nums = find_all("a1b2c3", /[0-9]/)
+print(length(nums))
+print(nums[0])
+print(nums[1])
+print(nums[2])
+)"), "3\n1\n2\n3\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralUFCS) {
+    EXPECT_EQ(runSource(R"(
+print("hello".match(/[a-z]+/))
+print("abc123".search(/[0-9]+/))
+nums = "a1b2c3".find_all(/[0-9]/)
+print(length(nums))
+)"), "true\n3\n3\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralUFCSSplit) {
+    EXPECT_EQ(runSource(R"(
+parts = "hello world".split(/\s+/)
+print(parts[0])
+print(parts[1])
+)"), "hello\nworld\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralUFCSReplace) {
+    EXPECT_EQ(runSource(R"(
+print("abc123".replace(/[0-9]+/, "X"))
+)"), "abcX\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralVariable) {
+    EXPECT_EQ(runSource(R"(
+pat = /[a-z]+/
+print(match("hello", pat))
+print("world".match(pat))
+)"), "true\ntrue\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralDivisionCoexist) {
+    EXPECT_EQ(runSource(R"(
+x = 10 / 2
+print(x)
+y = 100 // 3
+print(y)
+)"), "5\n33\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralEscapedSlash) {
+    EXPECT_EQ(runSource(R"(
+print(match("a/b", /a\/b/))
+)"), "true\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralWithPrefixedFunctions) {
+    EXPECT_EQ(runSource(R"(
+print(regex_match("[a-z]+", "hello"))
+print(regex_search("[0-9]+", "abc123"))
+)"), "true\n3\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralStringSplitStillWorks) {
+    EXPECT_EQ(runSource(R"(
+parts = split("a,b,c", ",")
+print(parts[0])
+print(parts[1])
+print(parts[2])
+)"), "a\nb\nc\n");
+}
+
+TEST_F(CodeGenTest, RegexLiteralStringReplaceStillWorks) {
+    EXPECT_EQ(runSource(R"(
+print(replace("hello world", "world", "ry"))
+)"), "hello ry\n");
+}

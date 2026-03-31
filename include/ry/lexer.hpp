@@ -110,6 +110,8 @@ enum class TokenKind {
     Question,       // ?
     Async,          // async
     Await,          // await
+    // --- regex literal ---
+    RegexLiteral,   // /pattern/
 };
 
 struct Token {

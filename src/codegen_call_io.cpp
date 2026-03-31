@@ -41,6 +41,33 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         return r;
     }
 
+    // --- Unprefixed regex functions (text-first for UFCS) ---
+    // Emit __ry_regex_<rtName>(pattern, text) from UFCS (text, pattern) args.
+    // Returns nullptr if the second arg is not a Regex value.
+    auto emitUfcsRegex = [&](const std::string &rtName,
+                              llvm::FunctionType *fnTy) -> llvm::Value * {
+        llvm::Value *text    = emitExpr(*e.args[0]);
+        llvm::Value *pattern = emitExpr(*e.args[1]);
+        if (!isRegex(pattern) || !isStringValue(text)) return nullptr;
+        auto fn = mod_->getOrInsertFunction("__ry_" + rtName, fnTy);
+        return builder_.CreateCall(fn, {pattern, text}, rtName);
+    };
+
+    if (e.callee == "match" && e.args.size() == 2) {
+        if (auto *r = emitUfcsRegex("regex_match", fnTy_ptr_ptr_to_i64_))
+            return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
+    }
+    if (e.callee == "search" && e.args.size() == 2) {
+        if (auto *r = emitUfcsRegex("regex_search", fnTy_ptr_ptr_to_i64_))
+            return r;
+    }
+    if (e.callee == "find_all" && e.args.size() == 2) {
+        if (auto *r = emitUfcsRegex("regex_find_all", fnTy_ptr_ptr_to_ptr_)) {
+            type_meta_[TM_ListElem][r] = ptrTy_;
+            return r;
+        }
+    }
+
     return nullptr;
 }
 
