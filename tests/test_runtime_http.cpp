@@ -8,9 +8,9 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_http_types.hpp"
 
 extern "C" {
-int64_t __ry_http_parse_content_length(const char *value);
 const char *__ry_http_reason_phrase(int64_t status);
 void *__ry_http_read_request(void *stream);
 const char *__ry_http_method(void *req);
@@ -448,16 +448,6 @@ TEST(RuntimeHttp, QueryParamsDuplicateFirstWins) {
     free(handle);
 }
 
-// MapHeader layout must match codegen
-struct MapHeader {
-    int64_t len;
-    int64_t cap;
-    char **keys;
-    char **vals;
-    int64_t bucket_count;
-    void *buckets;
-};
-
 TEST(RuntimeHttp, QueryAllBasic) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
@@ -556,9 +546,6 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     ::close(fds[0]);
     free(handle);
 }
-
-// --- ParsedUrl struct for tests (must match runtime_http.cpp layout) ---
-struct ParsedUrl { char *host; int64_t port; char *path; bool is_https; };
 
 // --- Merged URL parsing tests ---
 
@@ -1961,4 +1948,115 @@ TEST(RuntimeHttp, FormFileDefaultContentType) {
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);
+}
+
+// --- Response header CRLF injection tests ---
+
+// Helper to build a MapHeader for response CRLF tests
+static MapHeader *build_response_headers(
+    std::initializer_list<std::pair<const char *, const char *>> entries) {
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    auto count = (int64_t)entries.size();
+    map->len = count;
+    map->cap = count;
+    map->keys = count > 0 ? (char **)malloc(sizeof(char *) * (size_t)count) : nullptr;
+    map->vals = count > 0 ? (char **)malloc(sizeof(char *) * (size_t)count) : nullptr;
+    map->bucket_count = 4;
+    map->buckets = calloc(4, sizeof(int64_t));
+    int64_t i = 0;
+    for (auto &[k, v] : entries) {
+        map->keys[i] = strdup(k);
+        map->vals[i] = strdup(v);
+        i++;
+    }
+    return map;
+}
+
+static void free_response_headers(MapHeader *map) {
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderCRLFInKeyIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-Safe", "ok"},
+        {"X-Evil\r\nInjected: bad", "value"},
+        {"X-Also-Safe", "fine"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 2);
+    EXPECT_STREQ(resp->header_keys[0], "X-Safe");
+    EXPECT_STREQ(resp->header_values[0], "ok");
+    EXPECT_STREQ(resp->header_keys[1], "X-Also-Safe");
+    EXPECT_STREQ(resp->header_values[1], "fine");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderCRLFInValueIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-Safe", "ok"},
+        {"X-Inject", "val\r\nEvil-Header: injected"},
+        {"X-Also-Safe", "fine"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 2);
+    EXPECT_STREQ(resp->header_keys[0], "X-Safe");
+    EXPECT_STREQ(resp->header_keys[1], "X-Also-Safe");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderLFOnlyIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-LF-Key\n", "val"},
+        {"X-Normal", "good\ninjection"},
+        {"X-Clean", "safe"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 1);
+    EXPECT_STREQ(resp->header_keys[0], "X-Clean");
+    EXPECT_STREQ(resp->header_values[0], "safe");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderSafeHeadersUnaffected) {
+    auto *map = build_response_headers({
+        {"Content-Type", "text/html"},
+        {"X-Custom", "value123"},
+        {"Cache-Control", "no-cache"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 3);
+    EXPECT_STREQ(resp->header_keys[0], "Content-Type");
+    EXPECT_STREQ(resp->header_values[0], "text/html");
+    EXPECT_STREQ(resp->header_keys[1], "X-Custom");
+    EXPECT_STREQ(resp->header_values[1], "value123");
+    EXPECT_STREQ(resp->header_keys[2], "Cache-Control");
+    EXPECT_STREQ(resp->header_values[2], "no-cache");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
 }
