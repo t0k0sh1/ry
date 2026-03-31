@@ -1,0 +1,117 @@
+from regex import match, search, replace, split, find_all
+
+describe("regex literal match", function():
+  it("full match", function():
+    expect(match("hello", /[a-z]+/)).to_eq(true)
+    expect(match("123", /[a-z]+/)).to_eq(false)
+    expect(match("123", /[0-9]+/)).to_eq(true)
+  )
+  it("UFCS", function():
+    expect("hello".match(/[a-z]+/)).to_eq(true)
+    expect("123".match(/[a-z]+/)).to_eq(false)
+  )
+)
+
+describe("regex literal search", function():
+  it("returns position", function():
+    expect(search("abc123", /[0-9]+/)).to_eq(3)
+    expect(search("hello", /[0-9]+/)).to_eq(-1)
+  )
+  it("UFCS", function():
+    expect("abc123".search(/[0-9]+/)).to_eq(3)
+  )
+)
+
+describe("regex literal replace", function():
+  it("replaces all matches", function():
+    expect(replace("a1b2c3", /[0-9]+/, "X")).to_eq("aXbXcX")
+  )
+  it("UFCS replaces all matches", function():
+    expect("a1b2c3".replace(/[0-9]+/, "X")).to_eq("aXbXcX")
+  )
+  it("no match returns original", function():
+    expect(replace("hello", /[0-9]+/, "X")).to_eq("hello")
+  )
+)
+
+describe("regex literal split", function():
+  it("splits by pattern", function():
+    parts = split("a1b2c", /[0-9]/)
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+    expect(parts[2]).to_eq("c")
+  )
+  it("UFCS", function():
+    parts = "hello world".split(/\s+/)
+    expect(parts[0]).to_eq("hello")
+    expect(parts[1]).to_eq("world")
+  )
+)
+
+describe("regex literal find_all", function():
+  it("finds all matches", function():
+    nums = find_all("a1b2c3", /[0-9]/)
+    expect(length(nums)).to_eq(3)
+    expect(nums[0]).to_eq("1")
+    expect(nums[1]).to_eq("2")
+    expect(nums[2]).to_eq("3")
+  )
+  it("UFCS", function():
+    nums = "a1b2c3".find_all(/[0-9]/)
+    expect(length(nums)).to_eq(3)
+  )
+)
+
+describe("regex literal variable", function():
+  it("works via variable", function():
+    pat = /[a-z]+/
+    expect(match("hello", pat)).to_eq(true)
+    expect("world".match(pat)).to_eq(true)
+  )
+)
+
+describe("regex literal division coexistence", function():
+  it("division still works", function():
+    expect(10 / 2).to_eq(5)
+    expect(100 // 3).to_eq(33)
+  )
+)
+
+describe("regex literal escaped slash", function():
+  it("handles escaped /", function():
+    expect(match("a/b", /a\/b/)).to_eq(true)
+  )
+)
+
+describe("string split/replace still work", function():
+  it("string split", function():
+    parts = split("a,b,c", ",")
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+    expect(parts[2]).to_eq("c")
+  )
+  it("string replace", function():
+    expect(replace("hello world", "world", "ry")).to_eq("hello ry")
+  )
+)
+
+describe("backward compatibility", function():
+  it("regex_match still works", function():
+    expect(regex_match("[a-z]+", "hello")).to_eq(true)
+  )
+  it("regex_search still works", function():
+    expect(regex_search("[0-9]+", "abc123")).to_eq(3)
+  )
+  it("regex_replace still works", function():
+    expect(regex_replace("[0-9]+", "abc123", "X")).to_eq("abcX")
+  )
+  it("regex_split still works", function():
+    parts = regex_split("[0-9]", "a1b2c")
+    expect(parts[0]).to_eq("a")
+    expect(parts[1]).to_eq("b")
+  )
+  it("regex_find_all still works", function():
+    nums = regex_find_all("[0-9]", "a1b2c3")
+    expect(length(nums)).to_eq(3)
+  )
+)

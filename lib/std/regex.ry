@@ -13,3 +13,19 @@ function regex_split(pattern: str, text: str) -> List<str>
 
 @native
 function regex_find_all(pattern: str, text: str) -> List<str>
+
+# Regex literal overloads (text-first for UFCS)
+@native
+function match(text: str, pattern: Regex) -> bool
+
+@native
+function search(text: str, pattern: Regex) -> int
+
+@native
+function replace(text: str, pattern: Regex, replacement: str) -> str
+
+@native
+function split(text: str, pattern: Regex) -> List<str>
+
+@native
+function find_all(text: str, pattern: Regex) -> List<str>

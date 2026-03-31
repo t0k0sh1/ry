@@ -264,12 +264,18 @@ TEST(LexerTest, MultiCharOperators) {
     }
     // SlashVsSlashSlash
     {
-        auto toks1 = tokenize("/");
-        EXPECT_EQ(toks1[0].kind, TokenKind::Slash);
+        // After a value-producing token, / is division
+        auto toks1 = tokenize("a /");
+        EXPECT_EQ(toks1[1].kind, TokenKind::Slash);
 
         auto toks2 = tokenize("//");
         EXPECT_EQ(toks2[0].kind, TokenKind::SlashSlash);
         EXPECT_EQ(toks2[0].value, "//");
+
+        // At statement start, /pattern/ is a regex literal
+        auto toks3 = tokenize("/abc/");
+        EXPECT_EQ(toks3[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks3[0].value, "abc");
     }
     // EqVsEqEq
     {

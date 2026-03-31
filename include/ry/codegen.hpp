@@ -50,7 +50,7 @@ private:
         RK_TcpListener, RK_TcpStream, RK_TlsStream,
         RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
         RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
-        RK_AtomicInt, RK_AtomicBool, RK_COUNT
+        RK_AtomicInt, RK_AtomicBool, RK_Regex, RK_COUNT
     };
 
     // ARC infrastructure
@@ -122,6 +122,9 @@ private:
                                    const ExprNode &argExpr);
 
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
+    std::unordered_map<std::string, llvm::Constant*> regex_global_cache_;
+    llvm::Constant *buildArcGlobal(const std::string &str, const llvm::Twine &name,
+                                    std::unordered_map<std::string, llvm::Constant*> &cache);
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     static constexpr int64_t TAG_INT   = 0;
     static constexpr int64_t TAG_FLOAT = 1;
@@ -494,6 +497,7 @@ private:
     llvm::Value *emitExprVariant(const FloatExpr &e);
     llvm::Value *emitExprVariant(const BoolExpr &e);
     llvm::Value *emitExprVariant(const StringExpr &e);
+    llvm::Value *emitExprVariant(const RegexExpr &e);
     llvm::Value *emitExprVariant(const VariableExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
@@ -786,6 +790,7 @@ private:
     bool isBarrier(llvm::Value *val);
     bool isAtomicInt(llvm::Value *val);
     bool isAtomicBool(llvm::Value *val);
+    bool isRegex(llvm::Value *val);
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
     void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);

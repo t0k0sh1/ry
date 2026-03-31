@@ -60,9 +60,11 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
     return mod_->getOrInsertFunction(name, fnTy);
 }
 
-llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
-    auto it = global_string_cache_.find(str);
-    if (it != global_string_cache_.end()) return it->second;
+llvm::Constant *CodeGen::buildArcGlobal(
+        const std::string &str, const llvm::Twine &name,
+        std::unordered_map<std::string, llvm::Constant*> &cache) {
+    auto it = cache.find(str);
+    if (it != cache.end()) return it->second;
 
     // Create global with ARC header prefix: { i64 INT64_MAX, i64 0, [N+1 x i8] "...\0" }
     // The returned pointer points to the string data (after ARC header),
@@ -88,8 +90,12 @@ llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::
     auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
         wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx2, zero});
 
-    global_string_cache_[str] = gs;
+    cache[str] = gs;
     return gs;
+}
+
+llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
+    return buildArcGlobal(str, name, global_string_cache_);
 }
 
 // ===== B5: FnScope RAII =====

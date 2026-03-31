@@ -186,6 +186,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     // JSON opaque handle type
     if (typeName == "JsonValue") return ptrTy_;
 
+    // Regex opaque type
+    if (typeName == "Regex") return ptrTy_;
+
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.compare(0, 7, "Option<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(7, typeName.size() - 8);

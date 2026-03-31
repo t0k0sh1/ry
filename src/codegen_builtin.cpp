@@ -74,6 +74,7 @@ bool CodeGen::isSemaphore(llvm::Value *val) { return lookupValueSet(resource_set
 bool CodeGen::isBarrier(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Barrier], val); }
 bool CodeGen::isAtomicInt(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicInt], val); }
 bool CodeGen::isAtomicBool(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicBool], val); }
+bool CodeGen::isRegex(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Regex], val); }
 
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)

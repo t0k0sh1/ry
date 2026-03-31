@@ -285,6 +285,11 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *oldStr = emitExpr(*e.args[1]);
     llvm::Value *newStr = emitExpr(*e.args[2]);
+    // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
+    if (isRegex(oldStr) && isStringValue(s)) {
+        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy_ptr_ptr_ptr_to_ptr_);
+        return builder_.CreateCall(fn, {oldStr, s, newStr}, "regex_replace");
+    }
     if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
         codegenError("replace() requires str arguments");
     auto strlenFn = getStdlibStrlen();
@@ -763,6 +768,13 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     requireArgs(e, 2);
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *delim = emitExpr(*e.args[1]);
+    // Regex overload: split(text, /pattern/) → delegate to regex runtime
+    if (isRegex(delim) && isStringValue(s)) {
+        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy_ptr_ptr_to_ptr_);
+        llvm::Value *r = builder_.CreateCall(fn, {delim, s}, "regex_split");
+        type_meta_[TM_ListElem][r] = ptrTy_;
+        return r;
+    }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
         codegenError("split() requires str arguments");
     auto strlenFn = getStdlibStrlen();
