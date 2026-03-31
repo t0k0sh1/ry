@@ -468,18 +468,24 @@ bool validate_tar_entries(const std::string &archive_path) {
     while (std::getline(stream, line)) {
         if (line.empty()) continue;
 
-        // Reject symlinks and hardlinks to prevent link-based file overwrites
-        if (line[0] == 'l' || line[0] == 'h') {
-            std::string type = (line[0] == 'l') ? "symlink" : "hardlink";
-            std::cerr << "Error: Archive contains " << type << " entry: " << line << "\n";
+        // Only allow regular files and directories — reject all other entry types
+        // (symlinks, hardlinks, device nodes, FIFOs, sockets, etc.)
+        if (line[0] != '-' && line[0] != 'd') {
+            std::cerr << "Error: Archive contains unsupported entry type: " << line << "\n";
             return false;
         }
 
         // Extract the entry path (last whitespace-delimited field)
         auto last_space = line.rfind(' ');
-        if (last_space == std::string::npos) continue;
+        if (last_space == std::string::npos) {
+            std::cerr << "Error: Unparseable archive entry: " << line << "\n";
+            return false;
+        }
         std::string entry = line.substr(last_space + 1);
-        if (entry.empty()) continue;
+        if (entry.empty()) {
+            std::cerr << "Error: Unparseable archive entry: " << line << "\n";
+            return false;
+        }
 
         // Reject absolute paths
         if (entry[0] == '/') {
