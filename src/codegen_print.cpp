@@ -4,7 +4,10 @@
 // ===== emitPrint (variadic) =====
 
 void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
-    auto printfFn = getStdlibPrintf();
+    builder_.CreateCall(getRuntimeFn("__ry_print_begin",
+        llvm::Type::getVoidTy(*ctx_), {}));
+
+    auto printfFn = getBufferedPrintf();
     llvm::Constant *space = args.size() > 1
         ? cachedGlobalString(" ", ".fmt_space") : nullptr;
 
@@ -17,6 +20,9 @@ void CodeGen::emitPrint(const std::vector<ExprPtr> &args) {
 
     llvm::Constant *nl = cachedGlobalString("\n", ".fmt_nl");
     builder_.CreateCall(printfFn, {nl});
+
+    builder_.CreateCall(getRuntimeFn("__ry_print_end",
+        llvm::Type::getVoidTy(*ctx_), {}));
 }
 
 // ===== emitPrintSingle (one value, no trailing newline) =====
