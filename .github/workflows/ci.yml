@@ -107,14 +107,6 @@ jobs:
                    tests/spec/http_listen.test.ry \
                    tests/spec/net.test.ry; do
             echo "::group::$f"
-            trace_file="$(mktemp)"
-            if ! ./build-asan/ry test --trace-out "$trace_file" "$f"; then
-              echo "Test failed for $f; dumping trace output:"
-              cat "$trace_file"
-              rm -f "$trace_file"
-              echo "::endgroup::"
-              exit 1
-            fi
-            rm -f "$trace_file"
+            ./build-asan/ry test --trace "$f"
             echo "::endgroup::"
           done

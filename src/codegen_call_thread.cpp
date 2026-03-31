@@ -266,7 +266,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
                 }
             } else {
                 llvm::Type *envFieldTypes[] = {ptrTy_};
-                llvm::StructType *envTy = llvm::StructType::get(*ctx_, envFieldTypes);
+                llvm::StructType *envTy = llvm::StructType::get(*ctx_, llvm::ArrayRef(envFieldTypes));
                 envPtr = builder_.CreateCall(
                     mallocFn,
                     {llvm::ConstantInt::get(i64Ty_, dl.getTypeAllocSize(envTy))},
