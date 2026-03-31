@@ -477,9 +477,15 @@ bool validate_tar_entries(const std::string &archive_path) {
 
         // Extract the entry path (last whitespace-delimited field)
         auto last_space = line.rfind(' ');
-        if (last_space == std::string::npos) continue;
+        if (last_space == std::string::npos) {
+            std::cerr << "Error: Unparseable archive entry: " << line << "\n";
+            return false;
+        }
         std::string entry = line.substr(last_space + 1);
-        if (entry.empty()) continue;
+        if (entry.empty()) {
+            std::cerr << "Error: Unparseable archive entry: " << line << "\n";
+            return false;
+        }
 
         // Reject absolute paths
         if (entry[0] == '/') {

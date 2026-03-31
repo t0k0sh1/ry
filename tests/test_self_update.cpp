@@ -309,7 +309,9 @@ protected:
             "import tarfile, io\n"
             "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
             + entry_setup;
-        run_command({"python3", "-c", script});
+        int status = run_command({"python3", "-c", script});
+        EXPECT_EQ(status, 0) << "python3 failed to create tar archive";
+        EXPECT_TRUE(fs::exists(archive)) << "Expected archive to be created at " << archive;
         return archive;
     }
 };
