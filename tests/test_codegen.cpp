@@ -14,6 +14,21 @@ TEST_F(CodeGenTest, PrintLiterals) {
     EXPECT_EQ(runSource("print(\"\")"), "\n");
 }
 
+// ===== Print variadic =====
+
+TEST_F(CodeGenTest, PrintVariadic) {
+    // Multiple arguments (space-separated)
+    EXPECT_EQ(runSource("print(1, 2, 3)"), "1 2 3\n");
+    EXPECT_EQ(runSource("print(\"hello\", \"world\")"), "hello world\n");
+    EXPECT_EQ(runSource("print(1, \"hello\", true)"), "1 hello true\n");
+    // Single argument (backward compatible)
+    EXPECT_EQ(runSource("print(42)"), "42\n");
+    // No arguments (just newline)
+    EXPECT_EQ(runSource("print()"), "\n");
+    // Complex type + primitive
+    EXPECT_EQ(runSource("print([1, 2], \"x\")"), "[1, 2] x\n");
+}
+
 // ===== Arithmetic (int) =====
 
 TEST_F(CodeGenTest, ArithmeticInt) {
