@@ -564,9 +564,9 @@ Built-in functions for explicit overflow control on low-level integer types (`i8
 | `wrapping_mul(a, b)` | `T` | Explicit wrapping (same as `*`) |
 
 ```python
-# Checked: returns Result, use when or ? to handle
+# Checked: returns Result, use match or ? to handle
 r = checked_add(2147483647i32, 1i32)
-when r:
+match r:
   case Ok(v):
     print(v)
   case Err(e):

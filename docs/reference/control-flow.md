@@ -269,7 +269,7 @@ for i in range(5):
 ## `...` (Ellipsis)
 
 - A no-op statement that does nothing. Used as a placeholder for empty blocks.
-- Can be used in any block: function body, `if`/`else`, `while`, `for`, `when` arm, etc.
+- Can be used in any block: function body, `if`/`else`, `while`, `for`, `match` arm, etc.
 
 ```python
 function not_yet():
@@ -288,7 +288,7 @@ else:
 `when` has two statement forms:
 
 - `when:` for multi-branch conditional flow
-- `when value:` for pattern matching on a subject value
+- `match value:` for pattern matching on a subject value
 
 ### Conditional `when:`
 
@@ -322,12 +322,12 @@ The conditional `when:` statement evaluates arms from top to bottom and executes
 
 For the expression form of `when:`, see [Operator Reference](operators.md#when-conditional-expression).
 
-### Pattern `when value:`
+### Pattern `match value:`
 
 #### Syntax
 
 ```python
-when expression:
+match expression:
     case pattern:
         # body
     case pattern if guard_condition:
@@ -360,14 +360,14 @@ A guard condition can be specified in the form `case pattern if condition:`. The
 Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
 
 ```python
-when x:
+match x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # Enum OR pattern
-when color:
+match color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
@@ -385,13 +385,13 @@ when color:
 #### Example
 
 ```python
-# enum pattern when
+# enum pattern match
 enum Color:
     Red
     Green
     Blue
 
-when color:
+match color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -399,28 +399,28 @@ when color:
     case Color::Blue:
         print("blue")
 
-# Option pattern when
+# Option pattern match
 x: Option<int> = Some(42)
-when x:
+match x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
-# Result pattern when
+# Result pattern match
 function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-when divide(10, 2):
+match divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
-# Literal pattern when
-when x:
+# Literal pattern match
+match x:
     case 0:
         print("zero")
     case 1:
@@ -429,7 +429,7 @@ when x:
         print("other")
 
 # Guard clause
-when x:
+match x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -449,7 +449,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-when s:
+match s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):

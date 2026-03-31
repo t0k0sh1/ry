@@ -3,6 +3,7 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 TypeParam Parser::parseOneTypeParam() {
     Token tp = lex_.peek();
@@ -21,7 +22,6 @@ TypeParam Parser::parseOneTypeParam() {
     }
     return param;
 }
-#include <unordered_set>
 
 static bool isSnakeCase(const std::string &name) {
     if (name.empty()) return false;
@@ -973,10 +973,16 @@ StmtNode Parser::parseWhenStatement() {
         return whenStmt;
     }
 
+    parseError("expected ':' after 'when'; use 'match value:' for pattern matching");
+}
+
+StmtNode Parser::parseMatchStatement() {
+    Token matchTok = lex_.next(); // consume 'match'
+
     ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
-        parseError("single-condition when statements are not supported; use 'if' or 'when:'");
+        parseError("expected ':' after match subject");
     lex_.next(); // consume ':'
 
     if (lex_.peek().kind != TokenKind::Newline)
@@ -989,16 +995,16 @@ StmtNode Parser::parseWhenStatement() {
     lex_.next(); // consume Indent
 
     if (lex_.peek().kind != TokenKind::Case)
-        parseError("subject 'when value:' blocks must start with 'case'");
+        parseError("'match' blocks must start with 'case'");
 
-    auto whenStmt = std::make_unique<WhenMatchStmt>();
-    whenStmt->subject = std::move(subject);
-    whenStmt->loc = locFromToken(whenTok);
+    auto matchStmt = std::make_unique<MatchStmt>();
+    matchStmt->subject = std::move(subject);
+    matchStmt->loc = locFromToken(matchTok);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind != TokenKind::Case)
-            parseError(lex_.peek().line, "expected 'case' in when block");
+            parseError(lex_.peek().line, "expected 'case' in match block");
         lex_.next(); // consume 'case'
 
         MatchArm arm;
@@ -1046,15 +1052,15 @@ StmtNode Parser::parseWhenStatement() {
         lex_.next();
 
         arm.body = parseBlock();
-        whenStmt->arms.push_back(std::move(arm));
+        matchStmt->arms.push_back(std::move(arm));
         skipNewlines();
     }
 
-    if (whenStmt->arms.empty())
-        parseError("when block must have at least one case");
+    if (matchStmt->arms.empty())
+        parseError("match block must have at least one case");
 
     if (lex_.peek().kind == TokenKind::Dedent)
         lex_.next();
 
-    return whenStmt;
+    return matchStmt;
 }

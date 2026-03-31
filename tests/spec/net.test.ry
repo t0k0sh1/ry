@@ -3,7 +3,7 @@ from io import to_bytes, bytes_to_str
 
 describe("TCP socket API", function():
   it("bind returns Ok on valid address", function():
-    when bind("127.0.0.1", 0):
+    match bind("127.0.0.1", 0):
       case Ok(server):
         close(server)
         expect(true).to_eq(true)
@@ -11,9 +11,9 @@ describe("TCP socket API", function():
         fail("unexpected error")
   )
   it("listen returns Ok on valid listener", function():
-    when bind("127.0.0.1", 0):
+    match bind("127.0.0.1", 0):
       case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
           case Ok(_):
             expect(true).to_eq(true)
           case Err(e):
@@ -23,7 +23,7 @@ describe("TCP socket API", function():
         fail("unexpected error")
   )
   it("tls_connect to closed port returns Err", function():
-    when tls_connect("127.0.0.1", 19991):
+    match tls_connect("127.0.0.1", 19991):
       case Ok(conn):
         close(conn)
         fail("expected Err but got Ok")
@@ -31,7 +31,7 @@ describe("TCP socket API", function():
         expect(true).to_eq(true)
   )
   it("connect to closed port returns Err", function():
-    when connect("127.0.0.1", 19998):
+    match connect("127.0.0.1", 19998):
       case Ok(conn):
         close(conn)
         fail("expected Err but got Ok")
@@ -40,7 +40,7 @@ describe("TCP socket API", function():
   )
   it("set_receive_timeout causes receive to return Err on timeout", function():
     async function timeout_server(server: TcpListener) -> str:
-      when accept(server):
+      match accept(server):
         case Ok(conn):
           sleep(500)
           close(conn)
@@ -48,16 +48,16 @@ describe("TCP socket API", function():
           ...
       close(server)
       return "done"
-    when bind("127.0.0.1", 0):
+    match bind("127.0.0.1", 0):
       case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
           case Ok(_):
             port = listener_port(server)
             t = timeout_server(server)
-            when connect("127.0.0.1", port):
+            match connect("127.0.0.1", port):
               case Ok(conn):
                 set_receive_timeout(conn, 100)
-                when receive(conn, 4096):
+                match receive(conn, 4096):
                   case Ok(data):
                     fail("expected Err but got Ok")
                   case Err(e):
@@ -73,13 +73,13 @@ describe("TCP socket API", function():
   )
   it("echo round-trip with async function", function():
     async function run_server(server: TcpListener) -> str:
-      when accept(server):
+      match accept(server):
         case Ok(conn):
-          when receive(conn, 4096):
+          match receive(conn, 4096):
             case Ok(data):
-              when bytes_to_str(data):
+              match bytes_to_str(data):
                 case Ok(msg):
-                  when send(conn, to_bytes("echo:" + msg)):
+                  match send(conn, to_bytes("echo:" + msg)):
                     case Ok(_):
                       ...
                     case Err(e):
@@ -94,16 +94,16 @@ describe("TCP socket API", function():
       close(server)
       return "done"
     function run_client(port: int) -> str:
-      when connect("127.0.0.1", port):
+      match connect("127.0.0.1", port):
         case Ok(conn):
-          when send(conn, to_bytes("hello")):
+          match send(conn, to_bytes("hello")):
             case Ok(_):
               ...
             case Err(e):
               ...
-          when receive(conn, 4096):
+          match receive(conn, 4096):
             case Ok(resp):
-              when bytes_to_str(resp):
+              match bytes_to_str(resp):
                 case Ok(msg):
                   close(conn)
                   return msg
@@ -115,9 +115,9 @@ describe("TCP socket API", function():
           return "fail"
         case Err(e):
           return "fail"
-    when bind("127.0.0.1", 0):
+    match bind("127.0.0.1", 0):
       case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
           case Ok(_):
             port = listener_port(server)
             t = run_server(server)

@@ -53,7 +53,7 @@ bool stmtReturnsOnAllPaths(const StmtNode &stmt) {
                 if (!allPathsReturn(arm.body)) return false;
             }
             return allPathsReturn(s->else_body);
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
             if (!isExhaustiveMatch(s->arms)) return false;
             for (auto &arm : s->arms) {
                 if (!allPathsReturn(arm.body)) return false;

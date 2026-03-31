@@ -1,14 +1,14 @@
-from regex import match, search, replace, split, find_all
+from regex import is_match, search, replace, split, find_all
 
 describe("regex literal match", function():
   it("full match", function():
-    expect(match("hello", /[a-z]+/)).to_eq(true)
-    expect(match("123", /[a-z]+/)).to_eq(false)
-    expect(match("123", /[0-9]+/)).to_eq(true)
+    expect(is_match("hello", /[a-z]+/)).to_eq(true)
+    expect(is_match("123", /[a-z]+/)).to_eq(false)
+    expect(is_match("123", /[0-9]+/)).to_eq(true)
   )
   it("UFCS", function():
-    expect("hello".match(/[a-z]+/)).to_eq(true)
-    expect("123".match(/[a-z]+/)).to_eq(false)
+    expect("hello".is_match(/[a-z]+/)).to_eq(true)
+    expect("123".is_match(/[a-z]+/)).to_eq(false)
   )
 )
 
@@ -65,8 +65,8 @@ describe("regex literal find_all", function():
 describe("regex literal variable", function():
   it("works via variable", function():
     pat = /[a-z]+/
-    expect(match("hello", pat)).to_eq(true)
-    expect("world".match(pat)).to_eq(true)
+    expect(is_match("hello", pat)).to_eq(true)
+    expect("world".is_match(pat)).to_eq(true)
   )
 )
 
@@ -79,7 +79,7 @@ describe("regex literal division coexistence", function():
 
 describe("regex literal escaped slash", function():
   it("handles escaped /", function():
-    expect(match("a/b", /a\/b/)).to_eq(true)
+    expect(is_match("a/b", /a\/b/)).to_eq(true)
   )
 )
 

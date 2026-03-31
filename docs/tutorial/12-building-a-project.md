@@ -85,7 +85,7 @@ function find_task(tasks: List<Task>, id: int) -> Option<Task>:
     return None
 
 function complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
-    when find_task(tasks, id):
+    match find_task(tasks, id):
         case Some(t):
             t.status = Status::Done
             return Ok(tasks)
@@ -114,7 +114,7 @@ Add a display function to `src/model.ry`:
 ```python
 function format_task(t: Task) -> str:
     marker = "[ ]"
-    when t.status:
+    match t.status:
         case Status::Todo:
             marker = "[ ]"
         case Status::InProgress:
@@ -151,7 +151,7 @@ print("All tasks:")
 print_tasks(tasks)
 
 # Complete a task
-when complete_task(tasks, 1):
+match complete_task(tasks, 1):
     case Ok(updated):
         tasks = updated
     case Err(e):
@@ -205,7 +205,7 @@ describe("Task model", function():
     it("finds a task by id", function():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Target")
-        when find_task(tasks, 1):
+        match find_task(tasks, 1):
             case Some(t):
                 expect(t.title).to_eq("Target")
             case None:
@@ -220,7 +220,7 @@ describe("Task model", function():
     it("completes a task", function():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Do it")
-        when complete_task(tasks, 1):
+        match complete_task(tasks, 1):
             case Ok(updated):
                 remaining = pending_tasks(updated)
                 expect(is_empty(remaining)).to_be_true()
@@ -230,7 +230,7 @@ describe("Task model", function():
 
     it("returns error for invalid id", function():
         tasks: List<Task> = []
-        when complete_task(tasks, 999):
+        match complete_task(tasks, 999):
             case Ok(_):
                 fail("expected error")
             case Err(e):

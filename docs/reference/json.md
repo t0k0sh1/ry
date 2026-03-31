@@ -64,11 +64,11 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 ```python
 from json import parse, get, to_str, to_int, json_free
 
-when parse("{\"name\": \"Alice\", \"age\": 30}"):
+match parse("{\"name\": \"Alice\", \"age\": 30}"):
   case Ok(data):
-    when get(data, "name"):
+    match get(data, "name"):
       case Ok(val):
-        when to_str(val):
+        match to_str(val):
           case Ok(name):
             print(name)   # "Alice"
           case Err(e):
@@ -85,12 +85,12 @@ when parse("{\"name\": \"Alice\", \"age\": 30}"):
 ```python
 from json import parse, at, to_int, length, json_free
 
-when parse("[10, 20, 30]"):
+match parse("[10, 20, 30]"):
   case Ok(data):
     print(to_str(length(data)))   # 3
-    when at(data, 0):
+    match at(data, 0):
       case Ok(elem):
-        when to_int(elem):
+        match to_int(elem):
           case Ok(n):
             print(to_str(n))   # 10
           case Err(e):
@@ -107,7 +107,7 @@ when parse("[10, 20, 30]"):
 ```python
 from json import parse, stringify, json_free
 
-when parse("{\"key\":\"value\",\"count\":42}"):
+match parse("{\"key\":\"value\",\"count\":42}"):
   case Ok(data):
     print(stringify(data, 2))
     # {

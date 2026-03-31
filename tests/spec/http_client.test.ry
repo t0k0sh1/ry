@@ -21,7 +21,7 @@ describe("HTTP Client", function():
   # - redirect limit exceeded returns Err
   # - http_get decodes chunked transfer encoding
   it("http_get returns Err on connection refused", function():
-    when http_get("http://127.0.0.1:1/nonexistent"):
+    match http_get("http://127.0.0.1:1/nonexistent"):
       case Ok(resp):
         fail("expected Err but got Ok")
       case Err(e):

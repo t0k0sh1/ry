@@ -7,10 +7,10 @@
 Regex literals use the `/pattern/` syntax and produce a `Regex` type value:
 
 ```ry
-from regex import match, split, replace
+from regex import is_match, split, replace
 
 # Regex literals enable type-based overloading
-"hello".match(/[a-z]+/)        # true
+"hello".is_match(/[a-z]+/)        # true
 "a1b2c".split(/[0-9]/)         # ["a", "b", "c"]
 "abc123".replace(/[0-9]+/, "X") # "abcX"
 ```
@@ -19,13 +19,13 @@ Regex literals can be stored in variables:
 
 ```ry
 pat = /[a-z]+/
-"hello".match(pat)  # true
+"hello".is_match(pat)  # true
 ```
 
 The `/` inside a regex literal can be escaped with `\/`:
 
 ```ry
-"a/b".match(/a\/b/)  # true
+"a/b".is_match(/a\/b/)  # true
 ```
 
 ### Division vs Regex
@@ -37,7 +37,7 @@ The lexer uses context to distinguish regex literals from division:
 
 ```ry
 x = 10 / 2         # division: 5
-y = match("a", /a/) # regex literal
+y = is_match("a", /a/) # regex literal
 ```
 
 ## Function List
@@ -48,17 +48,17 @@ These functions take a `Regex` type pattern and use text-first argument order fo
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `match` | `(str, Regex) -> bool` | Returns whether the entire text matches the pattern |
+| `is_match` | `(str, Regex) -> bool` | Returns whether the entire text matches the pattern |
 | `search` | `(str, Regex) -> int` | Returns the start position of the first match (-1 if not found) |
 | `replace` | `(str, Regex, str) -> str` | Replaces all matches with a replacement string |
 | `split` | `(str, Regex) -> List<str>` | Splits text by pattern matches |
 | `find_all` | `(str, Regex) -> List<str>` | Returns all non-overlapping matches |
 
 ```ry
-from regex import match, search, replace, split, find_all
+from regex import is_match, search, replace, split, find_all
 
 # Direct call
-print(match("hello", /[a-z]+/))          # true
+print(is_match("hello", /[a-z]+/))       # true
 
 # UFCS (text.function(pattern))
 print("abc123".search(/[0-9]+/))          # 3

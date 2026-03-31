@@ -22,10 +22,10 @@ print(y)   # None
 
 ### Extracting the Value
 
-Use `when` to safely extract the inner value and handle the `None` case. This uses the pattern matching you learned in [Control Flow](04-control-flow.md):
+Use `match` to safely extract the inner value and handle the `None` case. This uses the pattern matching you learned in [Control Flow](04-control-flow.md):
 
 ```python
-when x:
+match x:
     case Some(v):
         print(v)    # 42
     case None:
@@ -51,11 +51,11 @@ function divide(a: int, b: int) -> Result<int, str>:
     return Ok(a // b)
 ```
 
-### Handling Results with when
+### Handling Results with match
 
 ```python
 r = divide(10, 0)
-when r:
+match r:
     case Ok(v):
         print(v)
     case Err(e):
@@ -81,7 +81,7 @@ This is equivalent to writing:
 
 ```python
 function divide_and_add(a: int, b: int) -> Result<int, Error>:
-    when safe_divide(a, b):
+    match safe_divide(a, b):
         case Ok(v):
             return Ok(v + 1)
         case Err(e):

@@ -96,7 +96,7 @@ TEST_F(CodeGenTest, AllPathsReturnWhenMultiBranch) {
 TEST_F(CodeGenTest, AllPathsReturnMatchWildcard) {
     EXPECT_EQ(runSource(
         "function describe(x: int) -> str:\n"
-        "    when x:\n"
+        "    match x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
         "        case _:\n"
@@ -109,7 +109,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
     EXPECT_EQ(runSource(
         "function check(x: int) -> str:\n"
         "    r: Result<int, Error> = Ok(x)\n"
-        "    when r:\n"
+        "    match r:\n"
         "        case Ok(v):\n"
         "            return \"ok\"\n"
         "        case Err(e):\n"
@@ -121,7 +121,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
 TEST_F(CodeGenTest, AllPathsReturnMatchSomeNone) {
     EXPECT_EQ(runSource(
         "function check(x: Option<int>) -> str:\n"
-        "    when x:\n"
+        "    match x:\n"
         "        case Some(v):\n"
         "            return \"some\"\n"
         "        case None:\n"
@@ -157,7 +157,7 @@ TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
 TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
     EXPECT_EQ(runSource(
         "function describe(x: int) -> str:\n"
-        "    when x:\n"
+        "    match x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
         "        case n:\n"

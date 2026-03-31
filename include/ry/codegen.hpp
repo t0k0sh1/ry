@@ -438,7 +438,7 @@ private:
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
-    void emitStmt(std::unique_ptr<WhenMatchStmt> &s);
+    void emitStmt(std::unique_ptr<MatchStmt> &s);
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);

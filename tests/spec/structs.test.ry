@@ -116,7 +116,7 @@ describe("simple enum", function():
   it("when", function():
     res = ""
     c = Color::Blue
-    when c:
+    match c:
       case Color::Red:
         res = "red"
       case Color::Green:
@@ -141,7 +141,7 @@ describe("ADT enum", function():
   it("associated data", function():
     s = Shape::CircleS(3.14)
     res = 0.0
-    when s:
+    match s:
       case Shape::CircleS(r):
         res = r
       case Shape::RectS(w, h):
@@ -153,7 +153,7 @@ describe("ADT enum", function():
   it("multi-field pattern when", function():
     s = Shape::RectS(4.0, 5.0)
     res = 0.0
-    when s:
+    match s:
       case Shape::CircleS(r):
         res = r
       case Shape::RectS(w, h):
@@ -173,7 +173,7 @@ describe("ADT enum with named fields", function():
   it("construction is positional", function():
     s = NamedShape::Circle(3.14)
     res = 0.0
-    when s:
+    match s:
       case NamedShape::Circle(r):
         res = r
       case NamedShape::Rect(w, h):
@@ -185,7 +185,7 @@ describe("ADT enum with named fields", function():
   it("multi-field named variant", function():
     s = NamedShape::Rect(4.0, 5.0)
     res = 0.0
-    when s:
+    match s:
       case NamedShape::Circle(r):
         res = r
       case NamedShape::Rect(w, h):
@@ -218,7 +218,7 @@ describe("explicit enum values", function():
   it("when with explicit values", function():
     res = ""
     s = HttpStatus::NotFound
-    when s:
+    match s:
       case HttpStatus::Ok:
         res = "ok"
       case HttpStatus::NotFound:
@@ -246,7 +246,7 @@ describe("generic enum", function():
   it("with type parameter", function():
     a = MyOption<int>::MySome(42)
     res = 0
-    when a:
+    match a:
       case MyOption::MySome(v):
         res = v
       case MyOption::MyNone:
@@ -256,7 +256,7 @@ describe("generic enum", function():
   it("none variant", function():
     b = MyOption<int>::MyNone
     res = 0
-    when b:
+    match b:
       case MyOption::MySome(v):
         res = v
       case MyOption::MyNone:

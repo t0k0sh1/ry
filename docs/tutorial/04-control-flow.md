@@ -36,7 +36,7 @@ if a > 0:
 
 ## when
 
-Use `when:` for multi-branch conditionals, or `when value:` for pattern matching.
+Use `when:` for multi-branch conditionals, or `match value:` for pattern matching.
 
 ### Conditional `when:`
 
@@ -54,7 +54,7 @@ when:
 
 This is the preferred form when you would otherwise chain multiple branches.
 
-### Pattern `when value:`
+### Pattern `match value:`
 
 ```python
 enum Color:
@@ -63,7 +63,7 @@ enum Color:
     Blue
 
 c = Color::Green
-when c:
+match c:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -257,7 +257,7 @@ print(x)       # 99
 
 ## Pattern Matching
 
-`when value:` safely branches on enums, `Option`, `Result`, and literals.
+`match value:` safely branches on enums, `Option`, `Result`, and literals.
 
 ```python
 enum Color:
@@ -266,7 +266,7 @@ enum Color:
     Blue
 
 c = Color::Green
-when c:
+match c:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -278,11 +278,11 @@ when c:
 
 ### Option Matching
 
-Use `when value:` to safely handle both the `Some` and `None` cases.
+Use `match value:` to safely handle both the `Some` and `None` cases.
 
 ```python
 x: Option<int> = Some(42)
-when x:
+match x:
     case Some(v):
         print(v)
     case None:
@@ -296,7 +296,7 @@ when x:
 
 ```python
 n = 5
-when n:
+match n:
     case 0:
         print("zero")
     case 1:
@@ -311,7 +311,7 @@ when n:
 You can add guard conditions with `if`.
 
 ```python
-when n:
+match n:
     case x if x > 0:
         print("positive")
     case x if x < 0:
@@ -320,7 +320,7 @@ when n:
         print("zero")
 ```
 
-> **Note**: `when value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
+> **Note**: `match value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
 
 ---
 

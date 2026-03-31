@@ -484,7 +484,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             if (!v->directives.empty()) return v->directives.front().loc.line;
             return v->loc.line;
         }
-        else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) return v->loc.line;
+        else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) return v->loc.line;
         else if constexpr (std::is_same_v<T, AssignStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
             return v.loc.line;
@@ -541,7 +541,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) formatWhile(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) formatFor(*v);
         else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) formatFn(*v);
-        else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) formatWhenMatch(*v);
+        else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) formatMatch(*v);
     }, stmt);
 }
 

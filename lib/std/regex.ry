@@ -16,7 +16,7 @@ function regex_find_all(pattern: str, text: str) -> List<str>
 
 # Regex literal overloads (text-first for UFCS)
 @native
-function match(text: str, pattern: Regex) -> bool
+function is_match(text: str, pattern: Regex) -> bool
 
 @native
 function search(text: str, pattern: Regex) -> int

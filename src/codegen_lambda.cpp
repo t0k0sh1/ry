@@ -113,7 +113,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     if (arm.guard) scanExpr(*arm.guard);
@@ -403,7 +403,7 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectReturnTypes(arm.body, paramTypeMap, out);
             }

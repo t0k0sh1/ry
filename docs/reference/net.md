@@ -53,15 +53,15 @@ from net import bind, listen, accept, connect
 from io import to_bytes, bytes_to_str
 
 # Server
-when bind("127.0.0.1", 8080):
+match bind("127.0.0.1", 8080):
     case Ok(server):
-        when listen(server, 128):
+        match listen(server, 128):
             case Ok(_):
-                when accept(server):
+                match accept(server):
                     case Ok(conn):
-                        when receive(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(data):
-                                when send(conn, data):
+                                match send(conn, data):
                                     case Ok(_):
                                         ...
                                     case Err(e):
@@ -81,16 +81,16 @@ when bind("127.0.0.1", 8080):
 ### Client
 
 ```python
-when connect("127.0.0.1", 8080):
+match connect("127.0.0.1", 8080):
     case Ok(conn):
-        when send(conn, to_bytes("hello")):
+        match send(conn, to_bytes("hello")):
             case Ok(_):
                 ...
             case Err(e):
                 print(e.message)
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(s):
                         print(s)
                     case Err(e):
@@ -109,11 +109,11 @@ from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
 async function echo_server(server: TcpListener) -> str:
-    when accept(server):
+    match accept(server):
         case Ok(conn):
-            when receive(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
-                    when send(conn, data):
+                    match send(conn, data):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -126,9 +126,9 @@ async function echo_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
@@ -147,10 +147,10 @@ By default, `receive()` uses a 30-second timeout if no custom timeout is set. Us
 ```python
 from net import connect, set_receive_timeout
 
-when connect("127.0.0.1", 8080):
+match connect("127.0.0.1", 8080):
     case Ok(conn):
         set_receive_timeout(conn, 5000)  # 5-second timeout
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(data):
                 ...
             case Err(e):
@@ -164,7 +164,7 @@ Pass `0` to disable the timeout (wait indefinitely).
 
 ## Error Handling
 
-- All TCP functions except `close()` return `Result<T, Error>` — use `when` with `Ok`/`Err` to handle failure.
+- All TCP functions except `close()` return `Result<T, Error>` — use `match` with `Ok`/`Err` to handle failure.
 - `receive()` returns `Ok` with an empty `List<u8>` when the connection is closed by the peer, and `Err` on actual errors (timeout, socket error).
 - `close()` closes the socket and frees the handle. Using a handle after close is undefined behavior.
 

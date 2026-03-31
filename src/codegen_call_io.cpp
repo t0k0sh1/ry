@@ -53,7 +53,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         return builder_.CreateCall(fn, {pattern, text}, rtName);
     };
 
-    if (e.callee == "match" && e.args.size() == 2) {
+    if (e.callee == "is_match" && e.args.size() == 2) {
         if (auto *r = emitUfcsRegex("regex_match", fnTy_ptr_ptr_to_i64_))
             return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }

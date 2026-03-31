@@ -43,9 +43,9 @@ from io import read_text, write_text, exists
 ```python
 from io import read_text, write_text, append_text, exists, delete_file
 
-when write_text("hello.txt", "Hello, World!"):
+match write_text("hello.txt", "Hello, World!"):
     case Ok(_):
-        when read_text("hello.txt"):
+        match read_text("hello.txt"):
             case Ok(content):
                 print(content)   # Hello, World!
             case Err(e):
@@ -55,7 +55,7 @@ when write_text("hello.txt", "Hello, World!"):
 
 print(exists("hello.txt"))   # true
 
-when delete_file("hello.txt"):
+match delete_file("hello.txt"):
     case Ok(_):
         print(exists("hello.txt"))   # false
     case Err(e):
@@ -70,11 +70,11 @@ from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 bs = to_bytes("ABC")
 print(length(bs))    # 3
 
-when write_bytes("data.bin", bs):
+match write_bytes("data.bin", bs):
     case Ok(_):
-        when read_bytes("data.bin"):
+        match read_bytes("data.bin"):
             case Ok(rb):
-                when bytes_to_str(rb):
+                match bytes_to_str(rb):
                     case Ok(s):
                         print(s)          # ABC
                     case Err(e):
@@ -96,10 +96,10 @@ print(f"Hello, {name}!")
 
 ## Error Handling
 
-File operations return `Result<T, Error>` instead of terminating on failure. Use `when` with `Ok`/`Err` patterns to handle errors:
+File operations return `Result<T, Error>` instead of terminating on failure. Use `match` with `Ok`/`Err` patterns to handle errors:
 
 ```python
-when read_text("missing.txt"):
+match read_text("missing.txt"):
     case Ok(content):
         print(content)
     case Err(e):
