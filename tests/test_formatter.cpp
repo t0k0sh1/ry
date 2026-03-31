@@ -211,13 +211,13 @@ TEST(Formatter, ControlFlow) {
     // Match statement
     {
         auto src =
-            "when x:\n"
+            "match x:\n"
             "    case 1:\n"
             "        res = 10\n"
             "    case _:\n"
             "        res = 0\n";
         auto expected =
-            "when x:\n"
+            "match x:\n"
             "  case 1:\n"
             "    res = 10\n"
             "  case _:\n"

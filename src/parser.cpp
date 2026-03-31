@@ -340,6 +340,9 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::When)
         return parseWhenStatement();
 
+    if (first.kind == TokenKind::Match)
+        return parseMatchStatement();
+
     if (first.kind == TokenKind::If)
         return parseIfStatement();
 

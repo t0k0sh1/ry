@@ -23,7 +23,7 @@ describe("return check - all paths return", function():
   )
   it("when with wildcard returns on all paths", function():
     function describe(x: int) -> str:
-      when x:
+      match x:
         case 1:
           return "one"
         case 2:
@@ -48,7 +48,7 @@ describe("return check - all paths return", function():
   )
   it("when with Ok/Err returns on all paths", function():
     function check(r: Result<int, Error>) -> str:
-      when r:
+      match r:
         case Ok(v):
           return "ok"
         case Err(e):
@@ -57,7 +57,7 @@ describe("return check - all paths return", function():
   )
   it("when with Some/None returns on all paths", function():
     function check(o: Option<int>) -> str:
-      when o:
+      match o:
         case Some(v):
           return "some"
         case None:

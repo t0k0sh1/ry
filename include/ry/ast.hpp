@@ -270,7 +270,7 @@ struct IfStmt;
 struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
-struct WhenMatchStmt;
+struct MatchStmt;
 struct WhenCondStmt;
 struct AwaitStmt;
 
@@ -291,7 +291,7 @@ using StmtNode = std::variant<AssignStmt, CallStmt,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
-                              std::unique_ptr<WhenMatchStmt>>;
+                              std::unique_ptr<MatchStmt>>;
 using Program  = std::vector<StmtNode>;
 
 struct IfBranch {
@@ -428,7 +428,7 @@ struct MatchArm {
     std::vector<StmtNode> body;
 };
 
-struct WhenMatchStmt {
+struct MatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
     SourceLocation loc;

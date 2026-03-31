@@ -28,12 +28,12 @@ function sleep(ms: int) -> Unit
 TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 async function manual_server(server: TcpListener) -> str:
-    when accept(server):
+    match accept(server):
         case Ok(conn):
-            when receive(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-                    when send(conn, to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -46,22 +46,22 @@ async function manual_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = manual_server(server)
-                when connect("127.0.0.1", port):
+                match connect("127.0.0.1", port):
                     case Ok(conn):
-                        when send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        when receive(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
-                                when bytes_to_str(resp):
+                                match bytes_to_str(resp):
                                     case Ok(msg):
                                         print(contains(msg, "200 OK"))
                                         print(contains(msg, "Hello!"))
@@ -89,12 +89,12 @@ when bind("127.0.0.1", 0):
 TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 async function run_server(server: TcpListener) -> str:
-    when accept(server):
+    match accept(server):
         case Ok(conn):
-            when receive(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 14\r\n\r\nPOST:/api/data"
-                    when send(conn, to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -107,22 +107,22 @@ async function run_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = run_server(server)
-                when connect("127.0.0.1", port):
+                match connect("127.0.0.1", port):
                     case Ok(conn):
-                        when send(conn, to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        when receive(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
-                                when bytes_to_str(resp):
+                                match bytes_to_str(resp):
                                     case Ok(response_msg):
                                         print(contains(response_msg, "POST:/api/data"))
                                     case Err(e):
@@ -147,12 +147,12 @@ when bind("127.0.0.1", 0):
 TEST_F(CodeGenTest, HttpResponse404) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 async function manual_server(server: TcpListener) -> str:
-    when accept(server):
+    match accept(server):
         case Ok(conn):
-            when receive(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-                    when send(conn, to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -165,22 +165,22 @@ async function manual_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = manual_server(server)
-                when connect("127.0.0.1", port):
+                match connect("127.0.0.1", port):
                     case Ok(conn):
-                        when send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        when receive(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
-                                when bytes_to_str(resp):
+                                match bytes_to_str(resp):
                                     case Ok(response_msg):
                                         print(contains(response_msg, "404 Not Found"))
                                     case Err(e):
@@ -205,12 +205,12 @@ when bind("127.0.0.1", 0):
 TEST_F(CodeGenTest, ManualHttpServerHeader) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
 async function manual_server(server: TcpListener) -> str:
-    when accept(server):
+    match accept(server):
         case Ok(conn):
-            when receive(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\r\nheader:test-value"
-                    when send(conn, to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -223,22 +223,22 @@ async function manual_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = manual_server(server)
-                when connect("127.0.0.1", port):
+                match connect("127.0.0.1", port):
                     case Ok(conn):
-                        when send(conn, to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
+                        match send(conn, to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        when receive(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
-                                when bytes_to_str(resp):
+                                match bytes_to_str(resp):
                                     case Ok(msg):
                                         print(contains(msg, "header:test-value"))
                                     case Err(e):
@@ -286,16 +286,16 @@ async function server() -> str:
 
 t = server()
 sleep(200)
-when connect("127.0.0.1", 18932):
+match connect("127.0.0.1", 18932):
     case Ok(conn):
-        when send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "200 OK"))
                         print(contains(msg, "ok"))
@@ -327,16 +327,16 @@ t = server()
 sleep(200)
 
 # First request
-when connect("127.0.0.1", 18933):
+match connect("127.0.0.1", 18933):
     case Ok(conn):
-        when send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/first"))
                     case Err(e):
@@ -348,16 +348,16 @@ when connect("127.0.0.1", 18933):
         print("false")
 
 # Second request
-when connect("127.0.0.1", 18933):
+match connect("127.0.0.1", 18933):
     case Ok(conn):
-        when send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/second"))
                     case Err(e):
@@ -386,17 +386,17 @@ t = server()
 sleep(200)
 
 # Send two requests on the same connection (keep-alive)
-when connect("127.0.0.1", 18934):
+match connect("127.0.0.1", 18934):
     case Ok(conn):
         # First request
-        when send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
+        match send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/first"))
                         print(contains(msg, "Connection: keep-alive"))
@@ -408,14 +408,14 @@ when connect("127.0.0.1", 18934):
                 print("false")
 
         # Second request on same connection
-        when send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        match send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/second"))
                         print(contains(msg, "Connection: close"))
@@ -449,16 +449,16 @@ t = server()
 sleep(200)
 
 # Send request with Connection: close
-when connect("127.0.0.1", 18935):
+match connect("127.0.0.1", 18935):
     case Ok(conn):
-        when send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        match send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "200 OK"))
                         print(contains(msg, "Connection: close"))
@@ -474,16 +474,16 @@ when connect("127.0.0.1", 18935):
         print("false")
 
 # Second request on new connection to reach max_requests
-when connect("127.0.0.1", 18935):
+match connect("127.0.0.1", 18935):
     case Ok(conn):
-        when send(conn, to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "200 OK"))
                     case Err(e):
@@ -512,17 +512,17 @@ t = server()
 sleep(200)
 
 # Send 3 requests on the same keep-alive connection
-when connect("127.0.0.1", 18936):
+match connect("127.0.0.1", 18936):
     case Ok(conn):
         # Request 1
-        when send(conn, to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/a"))
                     case Err(e):
@@ -531,14 +531,14 @@ when connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 2
-        when send(conn, to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/b"))
                     case Err(e):
@@ -547,14 +547,14 @@ when connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 3 (triggers shutdown)
-        when send(conn, to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        when receive(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(msg):
                         print(contains(msg, "/c"))
                     case Err(e):

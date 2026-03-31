@@ -193,7 +193,7 @@ describe("when", function():
   it("literal pattern", function():
     res = 0
     x = 2
-    when x:
+    match x:
       case 1:
         res = 10
       case 2:
@@ -205,7 +205,7 @@ describe("when", function():
   it("variable binding", function():
     res = 0
     x = 42
-    when x:
+    match x:
       case n if n > 0:
         res = n
       case _:
@@ -215,7 +215,7 @@ describe("when", function():
   it("guard", function():
     res = ""
     x = -5
-    when x:
+    match x:
       case n if n > 0:
         res = "positive"
       case n if n < 0:
@@ -227,7 +227,7 @@ describe("when", function():
   it("OR pattern", function():
     res = ""
     x = 2
-    when x:
+    match x:
       case 1 | 2 | 3:
         res = "small"
       case _:
@@ -237,7 +237,7 @@ describe("when", function():
   it("wildcard", function():
     res = ""
     x = 999
-    when x:
+    match x:
       case 0:
         res = "zero"
       case _:
@@ -247,7 +247,7 @@ describe("when", function():
   it("string literal pattern", function():
     res = ""
     s = "hello"
-    when s:
+    match s:
       case "hello":
         res = "matched"
       case _:
@@ -257,7 +257,7 @@ describe("when", function():
   it("negative literal pattern", function():
     res = ""
     x = -1
-    when x:
+    match x:
       case -1:
         res = "minus one"
       case 0:
@@ -269,7 +269,7 @@ describe("when", function():
   it("guard fallback to wildcard", function():
     res = ""
     x = 5
-    when x:
+    match x:
       case n if n > 100:
         res = "big"
       case n if n > 50:
@@ -281,7 +281,7 @@ describe("when", function():
   it("OR pattern with many alternatives", function():
     res = ""
     x = 4
-    when x:
+    match x:
       case 1 | 2 | 3 | 4:
         res = "small"
       case _:
@@ -294,7 +294,7 @@ describe("when Option", function():
   it("Some", function():
     res = 0
     x: Option<int> = Some(42)
-    when x:
+    match x:
       case Some(v):
         res = v
       case None:
@@ -304,7 +304,7 @@ describe("when Option", function():
   it("None", function():
     res = 0
     x: Option<int> = None
-    when x:
+    match x:
       case Some(v):
         res = v
       case None:
@@ -323,7 +323,7 @@ describe("when enum", function():
   it("simple enum", function():
     res = ""
     d = Direction::North
-    when d:
+    match d:
       case Direction::North:
         res = "north"
       case Direction::South:
@@ -337,7 +337,7 @@ describe("when enum", function():
   it("last enum variant matches", function():
     res = ""
     d = Direction::West
-    when d:
+    match d:
       case Direction::North:
         res = "north"
       case Direction::South:
@@ -359,7 +359,7 @@ describe("when ADT enum", function():
   it("with associated data", function():
     res = 0.0
     s = Shape::Circle(3.14)
-    when s:
+    match s:
       case Shape::Circle(r):
         res = r
       case Shape::Rect(w, h):
@@ -371,7 +371,7 @@ describe("when ADT enum", function():
   it("multi-field variant", function():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
-    when s:
+    match s:
       case Shape::Circle(r):
         res = r
       case Shape::Rect(w, h):
@@ -387,11 +387,11 @@ describe("nested when", function():
     res = ""
     x = 2
     y = 10
-    when x:
+    match x:
       case 1:
         res = "one"
       case 2:
-        when y:
+        match y:
           case 10:
             res = "two-ten"
           case _:
@@ -406,7 +406,7 @@ describe("when ADT no-data variant", function():
   it("matches Point variant", function():
     res = 0.0
     s = Shape::Point
-    when s:
+    match s:
       case Shape::Circle(r):
         res = r
       case Shape::Rect(w, h):

@@ -170,8 +170,8 @@ print(tags[1])
 
 TEST_F(CodeGenTest, RegexLiteralMatch) {
     EXPECT_EQ(runSource(R"(
-print(match("hello", /[a-z]+/))
-print(match("123", /[a-z]+/))
+print(is_match("hello", /[a-z]+/))
+print(is_match("123", /[a-z]+/))
 )"), "true\nfalse\n");
 }
 
@@ -209,7 +209,7 @@ print(nums[2])
 
 TEST_F(CodeGenTest, RegexLiteralUFCS) {
     EXPECT_EQ(runSource(R"(
-print("hello".match(/[a-z]+/))
+print("hello".is_match(/[a-z]+/))
 print("abc123".search(/[0-9]+/))
 nums = "a1b2c3".find_all(/[0-9]/)
 print(length(nums))
@@ -233,8 +233,8 @@ print("abc123".replace(/[0-9]+/, "X"))
 TEST_F(CodeGenTest, RegexLiteralVariable) {
     EXPECT_EQ(runSource(R"(
 pat = /[a-z]+/
-print(match("hello", pat))
-print("world".match(pat))
+print(is_match("hello", pat))
+print("world".is_match(pat))
 )"), "true\ntrue\n");
 }
 
@@ -249,7 +249,7 @@ print(y)
 
 TEST_F(CodeGenTest, RegexLiteralEscapedSlash) {
     EXPECT_EQ(runSource(R"(
-print(match("a/b", /a\/b/))
+print(is_match("a/b", /a\/b/))
 )"), "true\n");
 }
 

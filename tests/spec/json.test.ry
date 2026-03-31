@@ -3,7 +3,7 @@ from str import contains
 
 describe("json parse", function():
   it("parses an object", function():
-    when parse("{\"name\": \"Alice\", \"age\": 30}"):
+    match parse("{\"name\": \"Alice\", \"age\": 30}"):
       case Ok(data):
         expect(kind(data)).to_eq("object")
         json_free(data)
@@ -12,7 +12,7 @@ describe("json parse", function():
   )
 
   it("parses an array", function():
-    when parse("[1, 2, 3]"):
+    match parse("[1, 2, 3]"):
       case Ok(data):
         expect(kind(data)).to_eq("array")
         expect(length(data)).to_eq(3)
@@ -32,11 +32,11 @@ describe("json parse", function():
 
 describe("json access", function():
   it("gets string field", function():
-    when parse("{\"name\": \"Alice\"}"):
+    match parse("{\"name\": \"Alice\"}"):
       case Ok(data):
-        when get(data, "name"):
+        match get(data, "name"):
           case Ok(val):
-            when to_str(val):
+            match to_str(val):
               case Ok(name):
                 expect(name).to_eq("Alice")
               case Err(e):
@@ -49,11 +49,11 @@ describe("json access", function():
   )
 
   it("gets int field", function():
-    when parse("{\"age\": 30}"):
+    match parse("{\"age\": 30}"):
       case Ok(data):
-        when get(data, "age"):
+        match get(data, "age"):
           case Ok(val):
-            when to_int(val):
+            match to_int(val):
               case Ok(age):
                 expect(age).to_eq(30)
               case Err(e):
@@ -66,11 +66,11 @@ describe("json access", function():
   )
 
   it("gets float field", function():
-    when parse("{\"pi\": 3.14}"):
+    match parse("{\"pi\": 3.14}"):
       case Ok(data):
-        when get(data, "pi"):
+        match get(data, "pi"):
           case Ok(val):
-            when to_float(val):
+            match to_float(val):
               case Ok(pi):
                 expect(pi > 3.13).to_be_true()
                 expect(pi < 3.15).to_be_true()
@@ -84,11 +84,11 @@ describe("json access", function():
   )
 
   it("gets bool field", function():
-    when parse("{\"active\": true}"):
+    match parse("{\"active\": true}"):
       case Ok(data):
-        when get(data, "active"):
+        match get(data, "active"):
           case Ok(val):
-            when to_bool(val):
+            match to_bool(val):
               case Ok(b):
                 expect(b).to_be_true()
               case Err(e):
@@ -101,9 +101,9 @@ describe("json access", function():
   )
 
   it("gets null type", function():
-    when parse("{\"value\": null}"):
+    match parse("{\"value\": null}"):
       case Ok(data):
-        when get(data, "value"):
+        match get(data, "value"):
           case Ok(val):
             expect(kind(val)).to_eq("null")
           case Err(e):
@@ -114,20 +114,20 @@ describe("json access", function():
   )
 
   it("accesses array by index", function():
-    when parse("[10, 20, 30]"):
+    match parse("[10, 20, 30]"):
       case Ok(data):
-        when at(data, 0):
+        match at(data, 0):
           case Ok(first):
-            when to_int(first):
+            match to_int(first):
               case Ok(n):
                 expect(n).to_eq(10)
               case Err(e):
                 fail("json_int failed")
           case Err(e):
             fail("json_at failed")
-        when at(data, 2):
+        match at(data, 2):
           case Ok(last):
-            when to_int(last):
+            match to_int(last):
               case Ok(n):
                 expect(n).to_eq(30)
               case Err(e):
@@ -140,7 +140,7 @@ describe("json access", function():
   )
 
   it("returns Err for missing key", function():
-    when parse("{\"a\": 1}"):
+    match parse("{\"a\": 1}"):
       case Ok(data):
         expect(get(data, "missing")).to_be_err()
         json_free(data)
@@ -149,7 +149,7 @@ describe("json access", function():
   )
 
   it("returns Err for out-of-bounds index", function():
-    when parse("[1, 2]"):
+    match parse("[1, 2]"):
       case Ok(data):
         expect(at(data, 5)).to_be_err()
         json_free(data)
@@ -158,9 +158,9 @@ describe("json access", function():
   )
 
   it("returns Err for type mismatch", function():
-    when parse("{\"name\": \"Alice\"}"):
+    match parse("{\"name\": \"Alice\"}"):
       case Ok(data):
-        when get(data, "name"):
+        match get(data, "name"):
           case Ok(val):
             expect(to_int(val)).to_be_err()
           case Err(e):
@@ -173,22 +173,22 @@ describe("json access", function():
 
 describe("json nested", function():
   it("accesses nested objects", function():
-    when parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
+    match parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
       case Ok(data):
-        when get(data, "user"):
+        match get(data, "user"):
           case Ok(user):
-            when get(user, "name"):
+            match get(user, "name"):
               case Ok(name_val):
-                when to_str(name_val):
+                match to_str(name_val):
                   case Ok(name):
                     expect(name).to_eq("Bob")
                   case Err(e):
                     fail("json_str failed")
               case Err(e):
                 fail("json_get name failed")
-            when get(user, "age"):
+            match get(user, "age"):
               case Ok(age_val):
-                when to_int(age_val):
+                match to_int(age_val):
                   case Ok(age):
                     expect(age).to_eq(25)
                   case Err(e):
@@ -203,13 +203,13 @@ describe("json nested", function():
   )
 
   it("accesses array of objects", function():
-    when parse("[{\"id\": 1}, {\"id\": 2}]"):
+    match parse("[{\"id\": 1}, {\"id\": 2}]"):
       case Ok(data):
-        when at(data, 1):
+        match at(data, 1):
           case Ok(second):
-            when get(second, "id"):
+            match get(second, "id"):
               case Ok(id_val):
-                when to_int(id_val):
+                match to_int(id_val):
                   case Ok(id):
                     expect(id).to_eq(2)
                   case Err(e):
@@ -226,7 +226,7 @@ describe("json nested", function():
 
 describe("json keys and len", function():
   it("gets object keys", function():
-    when parse("{\"a\": 1, \"b\": 2}"):
+    match parse("{\"a\": 1, \"b\": 2}"):
       case Ok(data):
         ks = keys(data)
         expect(length(ks)).to_eq(2)
@@ -236,7 +236,7 @@ describe("json keys and len", function():
   )
 
   it("gets object len", function():
-    when parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
+    match parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       case Ok(data):
         expect(length(data)).to_eq(3)
         json_free(data)
@@ -247,14 +247,14 @@ describe("json keys and len", function():
 
 describe("json stringify", function():
   it("round-trips an object", function():
-    when parse("{\"name\":\"Alice\",\"age\":30}"):
+    match parse("{\"name\":\"Alice\",\"age\":30}"):
       case Ok(data):
         text = stringify(data)
-        when parse(text):
+        match parse(text):
           case Ok(data2):
-            when get(data2, "name"):
+            match get(data2, "name"):
               case Ok(name_val):
-                when to_str(name_val):
+                match to_str(name_val):
                   case Ok(name):
                     expect(name).to_eq("Alice")
                   case Err(e):
@@ -270,7 +270,7 @@ describe("json stringify", function():
   )
 
   it("pretty prints with indent", function():
-    when parse("{\"a\":1}"):
+    match parse("{\"a\":1}"):
       case Ok(data):
         text = stringify(data, 2)
         expect(contains(text, "\n")).to_be_true()
@@ -282,7 +282,7 @@ describe("json stringify", function():
 
 describe("json type checks", function():
   it("identifies string type", function():
-    when parse("\"hello\""):
+    match parse("\"hello\""):
       case Ok(data):
         expect(kind(data)).to_eq("string")
         json_free(data)
@@ -291,7 +291,7 @@ describe("json type checks", function():
   )
 
   it("identifies number type", function():
-    when parse("42"):
+    match parse("42"):
       case Ok(data):
         expect(kind(data)).to_eq("number")
         json_free(data)
@@ -300,7 +300,7 @@ describe("json type checks", function():
   )
 
   it("identifies boolean type", function():
-    when parse("true"):
+    match parse("true"):
       case Ok(data):
         expect(kind(data)).to_eq("boolean")
         json_free(data)
@@ -309,7 +309,7 @@ describe("json type checks", function():
   )
 
   it("identifies null type", function():
-    when parse("null"):
+    match parse("null"):
       case Ok(data):
         expect(kind(data)).to_eq("null")
         json_free(data)

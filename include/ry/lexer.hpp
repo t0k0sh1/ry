@@ -38,6 +38,7 @@ enum class TokenKind {
     If,             // if
     Else,           // else
     When,           // when
+    Match,          // match
     While,          // while
     // --- 関数定義 ---
     Fn,             // fn

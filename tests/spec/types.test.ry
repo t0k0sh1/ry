@@ -95,7 +95,7 @@ describe("nested generic type", function():
   it("Option<Option<int>> Some(Some)", function():
     inner: Option<int> = Some(42)
     x: Option<Option<int>> = Some(inner)
-    when x:
+    match x:
       case Some(v):
         expect(v).to_be_some()
       case None:

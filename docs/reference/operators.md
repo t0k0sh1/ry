@@ -136,13 +136,13 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 ```
 
-This is equivalent to the following `when` pattern, but much more concise:
+This is equivalent to the following `match` pattern, but much more concise:
 
 ```python
 function compute(a: int, b: int, c: int) -> Result<int, Error>:
-    when safe_divide(a, b):
+    match safe_divide(a, b):
         case Ok(x):
-            when safe_divide(x, c):
+            match safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):

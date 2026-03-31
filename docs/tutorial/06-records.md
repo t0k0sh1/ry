@@ -173,11 +173,11 @@ p = Shape::Point
 
 ### Matching ADT Variants
 
-Use `when` with `case` to extract the associated data. Bindings use your chosen variable names, not the field names. This connects directly with the pattern matching you learned in [Control Flow](04-control-flow.md).
+Use `match` with `case` to extract the associated data. Bindings use your chosen variable names, not the field names. This connects directly with the pattern matching you learned in [Control Flow](04-control-flow.md).
 
 ```python
 function describe(s: Shape) -> str:
-    when s:
+    match s:
         case Shape::Circle(r):
             return f"circle with radius {r}"
         case Shape::Rectangle(w, h):
@@ -209,7 +209,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b: MyOption<int> = MyOption<int>::MyNone
 
-when a:
+match a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -270,7 +270,7 @@ function operator-(v: Vec2) -> Vec2:
 
 ## Exercises
 
-1. **ADT**: Define an `Animal` enum with variants `Dog(name: str)`, `Cat(name: str, indoor: bool)`, and `Fish`. Write a `describe(a: Animal) -> str` function that uses `when` to return a description for each variant.
+1. **ADT**: Define an `Animal` enum with variants `Dog(name: str)`, `Cat(name: str, indoor: bool)`, and `Fish`. Write a `describe(a: Animal) -> str` function that uses `match` to return a description for each variant.
 
 2. **Operator overloading**: Define a `Money` record with `amount: int` and `currency: str`. Overload `+` so that adding two `Money` values with the same currency returns a new `Money` with the summed amount.
 

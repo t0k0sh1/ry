@@ -60,6 +60,7 @@ private:
     StmtNode parseReturnStatement();
     StmtNode parseExpectStatement();
     StmtNode parseWhenStatement();
+    StmtNode parseMatchStatement();
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     ExprPtr parseWhenExpr();

@@ -21,28 +21,28 @@ describe("base64", function():
 
   describe("decode", function():
     it("basic string", function():
-      when decode("SGVsbG8sIFdvcmxkIQ=="):
+      match decode("SGVsbG8sIFdvcmxkIQ=="):
         case Ok(s):
           expect(s).to_eq("Hello, World!")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("empty string", function():
-      when decode(""):
+      match decode(""):
         case Ok(s):
           expect(s).to_eq("")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("no padding", function():
-      when decode("QUJD"):
+      match decode("QUJD"):
         case Ok(s):
           expect(s).to_eq("ABC")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("invalid base64", function():
-      when decode("!!!invalid!!!"):
+      match decode("!!!invalid!!!"):
         case Ok(s):
           fail("expected error but got Ok")
         case Err(e):
@@ -68,14 +68,14 @@ describe("base64", function():
     it("roundtrip", function():
       original = "Hello, World! subjects?_d>>"
       encoded = encode_url_safe(original)
-      when decode_url_safe(encoded):
+      match decode_url_safe(encoded):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):
           fail("unexpected error: " + e.message)
     )
     it("invalid input", function():
-      when decode_url_safe("!!!"):
+      match decode_url_safe("!!!"):
         case Ok(s):
           fail("expected error but got Ok")
         case Err(e):
@@ -86,7 +86,7 @@ describe("base64", function():
   describe("roundtrip", function():
     it("standard base64", function():
       original = "The quick brown fox jumps over the lazy dog"
-      when decode(encode(original)):
+      match decode(encode(original)):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):
@@ -94,7 +94,7 @@ describe("base64", function():
     )
     it("longer string", function():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-      when decode(encode(original)):
+      match decode(encode(original)):
         case Ok(s):
           expect(s).to_eq(original)
         case Err(e):

@@ -344,7 +344,7 @@ void CodeGen::validateParallelFor(const ForStmt &s) {
                 scanBlock(node->body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
                 scanBlock(node->body);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (const auto &arm : node->arms)
                     scanBlock(arm.body);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {

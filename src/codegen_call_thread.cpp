@@ -71,7 +71,7 @@ static std::unordered_set<std::string> collectReferencedVars(const LambdaExpr &l
                 for (auto &st : s->body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 for (auto &st : s->body) scanStmt(st);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 scanExpr(*s->subject);
                 for (auto &arm : s->arms) {
                     if (arm.guard) scanExpr(*arm.guard);

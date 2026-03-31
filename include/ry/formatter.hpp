@@ -59,7 +59,7 @@ private:
     void formatWhile(const WhileStmt &s);
     void formatFor(const ForStmt &s);
     void formatFn(const FnStmt &s);
-    void formatWhenMatch(const WhenMatchStmt &s);
+    void formatMatch(const MatchStmt &s);
     void formatIndexAssign(const IndexAssignStmt &s);
     void formatFieldAssign(const FieldAssignStmt &s);
     void formatBreak(const BreakStmt &s);

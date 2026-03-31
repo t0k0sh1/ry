@@ -338,8 +338,8 @@ void Formatter::formatFn(const FnStmt &s) {
     formatBlock(s.body);
 }
 
-void Formatter::formatWhenMatch(const WhenMatchStmt &s) {
-    emit("when " + formatExpr(*s.subject) + ":");
+void Formatter::formatMatch(const MatchStmt &s) {
+    emit("match " + formatExpr(*s.subject) + ":");
     emitNewline();
     last_emitted_line_ = s.loc.line;
     indent();

@@ -343,7 +343,7 @@ static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
                 collectMockedFunctions(s->body, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
                 collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenMatchStmt>>) {
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
                     collectMockedFunctions(arm.body, out);
             }

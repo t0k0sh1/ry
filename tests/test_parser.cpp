@@ -1806,59 +1806,59 @@ TEST(ParserTest, NativeFnWithColonError) {
 
 TEST(ParserTest, OrPatternRejectsVariableBinding) {
     EXPECT_THROW({
-        parseStr("when x:\n    case a | b:\n        print(a)\n");
+        parseStr("match x:\n    case a | b:\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsSomeBinding) {
     EXPECT_THROW({
-        parseStr("when x:\n    case Some(a) | Some(b):\n        print(a)\n");
+        parseStr("match x:\n    case Some(a) | Some(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkBinding) {
     EXPECT_THROW({
-        parseStr("when x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
+        parseStr("match x:\n    case Ok(a) | Ok(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrBinding) {
     EXPECT_THROW({
-        parseStr("when x:\n    case Err(a) | Err(b):\n        print(a)\n");
+        parseStr("match x:\n    case Err(a) | Err(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsOkAsAlternative) {
     EXPECT_THROW({
-        parseStr("when x:\n    case 1 | Ok(a):\n        print(a)\n");
+        parseStr("match x:\n    case 1 | Ok(a):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsErrAsAlternative) {
     EXPECT_THROW({
-        parseStr("when x:\n    case 1 | Err(e):\n        print(e)\n");
+        parseStr("match x:\n    case 1 | Err(e):\n        print(e)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternRejectsEnumConstructorBinding) {
     EXPECT_THROW({
-        parseStr("when x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
+        parseStr("match x:\n    case Foo::Bar(a) | Foo::Baz(b):\n        print(a)\n");
     }, std::runtime_error);
 }
 
 TEST(ParserTest, OrPatternAllowsWildcardBindings) {
     EXPECT_NO_THROW({
-        parseStr("when x:\n"
+        parseStr("match x:\n"
                  "    case Ok(_) | Err(_):\n"
                  "        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("when x:\n"
+        parseStr("match x:\n"
                  "    case Some(_) | None:\n"
                  "        print(\"done\")\n");
     });
     EXPECT_NO_THROW({
-        parseStr("when x:\n"
+        parseStr("match x:\n"
                  "    case Foo::Bar(_) | Foo::Baz(_):\n"
                  "        print(\"done\")\n");
     });
