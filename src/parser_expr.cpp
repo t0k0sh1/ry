@@ -355,8 +355,6 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Ident) {
         lex_.next();
-        if (t.value == "fn" && lex_.peek().kind == TokenKind::LParen)
-            parseError(t.line, "legacy 'fn(...)' lambda is no longer supported; use '(...) -> ...: ...' instead");
         if (lex_.peek().kind == TokenKind::LBracket) {
             auto savedState = lex_.saveState();
             try {

@@ -260,9 +260,6 @@ StmtNode Parser::parseStatement() {
 
     Token first = lex_.peek();
 
-    if (first.kind == TokenKind::Ident && first.value == "fn")
-        parseError(first.line, "legacy 'fn' keyword is no longer supported; use 'function' instead");
-
     if (first.kind == TokenKind::From)
         parseError(first.line, "'from' import is only allowed at top level");
 
@@ -289,8 +286,6 @@ StmtNode Parser::parseStatement() {
 
     if (first.kind == TokenKind::Async) {
         lex_.next(); // consume 'async'
-        if (lex_.peek().kind == TokenKind::Ident && lex_.peek().value == "fn")
-            parseError(first.line, "legacy 'async fn' is no longer supported; use 'async function' instead");
         if (lex_.peek().kind != TokenKind::Fn)
             parseError(first.line, "expected 'function' after 'async'");
         auto stmt = parseFnStatement(directives, true);

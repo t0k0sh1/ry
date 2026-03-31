@@ -726,11 +726,6 @@ TypeNodePtr Parser::parseTypeNameSingle() {
     std::string name = t.value;
     lex_.next(); // consume type name
 
-    // Legacy fn(int, int) -> int function type hint
-    if (name == "fn" && lex_.peek().kind == TokenKind::LParen) {
-        parseError("legacy 'fn(...)' function type is no longer supported; use 'function(...)' instead");
-    }
-
     TypeNodePtr result;
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'

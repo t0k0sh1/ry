@@ -498,14 +498,11 @@ TEST(ParserTest, FunctionKeywordSimple) {
     EXPECT_EQ(function.return_type->toString(), "int");
 }
 
-TEST(ParserTest, LegacyFnKeywordRejectedWithHint) {
-    try {
-        (void)parseStr("fn add(a: int, b: int) -> int:\n    return a + b");
-        FAIL() << "expected exception";
-    } catch (const DiagnosticError &e) {
-        std::string msg = e.what();
-        EXPECT_NE(msg.find("function"), std::string::npos);
-    }
+TEST(ParserTest, FnIdentifierIsAllowed) {
+    Program prog = parseStr("fn = 1\nx = fn + 2");
+    ASSERT_EQ(prog.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
 }
 
 TEST(ParserTest, ReturnStatement) {
