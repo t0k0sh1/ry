@@ -561,14 +561,17 @@ extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, co
     resp->body = checked_memdup(b, (size_t)resp->body_len);
 
     auto *map = (MapHeader *)headers_map;
-    resp->header_count = map->len;
     if (map->len > 0) {
         resp->header_keys = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
         resp->header_values = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
+        int64_t actual = 0;
         for (int64_t i = 0; i < map->len; i++) {
-            resp->header_keys[i] = checked_strdup(map->keys[i]);
-            resp->header_values[i] = checked_strdup(map->vals[i]);
+            if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
+            resp->header_keys[actual] = checked_strdup(map->keys[i]);
+            resp->header_values[actual] = checked_strdup(map->vals[i]);
+            actual++;
         }
+        resp->header_count = actual;
     } else {
         resp->header_keys = nullptr;
         resp->header_values = nullptr;
