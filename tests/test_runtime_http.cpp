@@ -1393,6 +1393,69 @@ TEST(HttpSSRF, PrivateHostLinkLocal) {
 TEST(HttpSSRF, PublicHostAllowed) {
     EXPECT_FALSE(__ry_is_private_host("8.8.8.8", 80));
 }
+
+// --- IPv4-mapped IPv6 SSRF tests ---
+
+TEST(HttpSSRF, PrivateHostIPv4MappedLoopback) {
+    EXPECT_TRUE(__ry_is_private_host("::ffff:127.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostIPv4Mapped192168) {
+    EXPECT_TRUE(__ry_is_private_host("::ffff:192.168.1.1", 80));
+}
+
+TEST(HttpSSRF, PublicHostIPv4MappedPublic) {
+    EXPECT_FALSE(__ry_is_private_host("::ffff:8.8.8.8", 80));
+}
+
+// --- DNS resolve and private addrinfo tests ---
+
+TEST(HttpSSRF, ResolveLocalhost) {
+    struct addrinfo *result = nullptr;
+    ASSERT_EQ(__ry_resolve("localhost", 80, &result), 0);
+    ASSERT_NE(result, nullptr);
+    EXPECT_TRUE(__ry_is_private_addrinfo(result));
+    ::freeaddrinfo(result);
+}
+
+TEST(HttpSSRF, ResolveInvalidHost) {
+    struct addrinfo *result = nullptr;
+    EXPECT_EQ(__ry_resolve("this-host-does-not-exist.invalid", 80, &result), -1);
+    EXPECT_EQ(result, nullptr);
+}
+
+TEST(HttpSSRF, PrivateAddrInfoSynthetic) {
+    // Build a synthetic addrinfo with loopback address
+    struct sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sin.sin_port = htons(80);
+
+    struct addrinfo ai{};
+    ai.ai_family = AF_INET;
+    ai.ai_socktype = SOCK_STREAM;
+    ai.ai_addr = (struct sockaddr *)&sin;
+    ai.ai_addrlen = sizeof(sin);
+
+    EXPECT_TRUE(__ry_is_private_addrinfo(&ai));
+}
+
+TEST(HttpSSRF, PublicAddrInfoSynthetic) {
+    // Build a synthetic addrinfo with public address 8.8.8.8
+    struct sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(0x08080808);
+    sin.sin_port = htons(80);
+
+    struct addrinfo ai{};
+    ai.ai_family = AF_INET;
+    ai.ai_socktype = SOCK_STREAM;
+    ai.ai_addr = (struct sockaddr *)&sin;
+    ai.ai_addrlen = sizeof(sin);
+
+    EXPECT_FALSE(__ry_is_private_addrinfo(&ai));
+}
+
 // --- Multipart form-data tests ---
 
 TEST(RuntimeHttp, FormFieldBasic) {

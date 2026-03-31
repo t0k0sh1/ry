@@ -1150,6 +1150,11 @@ llvm::FunctionCallee CodeGen::getStdlibPrintf() {
     return mod_->getOrInsertFunction("printf", ty);
 }
 
+llvm::FunctionCallee CodeGen::getBufferedPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("__ry_print_printf", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibExit() {
     auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
     return mod_->getOrInsertFunction("exit", ty);

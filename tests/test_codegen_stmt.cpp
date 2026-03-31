@@ -1,7 +1,9 @@
 #include "test_codegen_common.hpp"
 #include "ry/module_loader.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 
 // ===== when expression =====
 
@@ -990,6 +992,22 @@ TEST_F(CodeGenTest, AvailableParallelismBuiltin) {
 //         "for i in range(5):\n"
 //         "    print(one(i))"), "1\n1\n1\n1\n1\n");
 // }
+TEST_F(CodeGenTest, ParallelForPrintComposite) {
+    std::string result = runSource(
+        "@parallel\n"
+        "for i in range(3):\n"
+        "    print([i, i])");
+    // Output lines are unordered across threads, but each line must be well-formed
+    std::istringstream ss(result);
+    std::string line;
+    std::vector<std::string> lines;
+    while (std::getline(ss, line)) lines.push_back(line);
+    EXPECT_EQ(lines.size(), 3u);
+    std::sort(lines.begin(), lines.end());
+    EXPECT_EQ(lines[0], "[0, 0]");
+    EXPECT_EQ(lines[1], "[1, 1]");
+    EXPECT_EQ(lines[2], "[2, 2]");
+}
 
 TEST_F(CodeGenTest, ParallelForErrors) {
     // ParallelForRejectsOuterMutation

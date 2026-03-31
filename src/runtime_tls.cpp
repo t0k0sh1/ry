@@ -68,13 +68,7 @@ ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len) {
 // tls_connect
 // ============================================================
 
-extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
-    // Establish plain TCP connection first
-    void *tcp = __ry_connect(host, port);
-    if (!tcp) return nullptr;
-
-    int fd = __ry_tcp_take_fd(tcp);
-
+static void *tls_handshake(const char *host, int fd) {
     SSL_CTX *ctx = get_global_tls_ctx();
     if (!ctx) {
         ::close(fd);
@@ -98,7 +92,6 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     if (ret != 1) {
         SSL_free(ssl);
         ::close(fd);
-
         return nullptr;
     }
 
@@ -108,7 +101,6 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
-
         return nullptr;
     }
 
@@ -123,6 +115,20 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     handle->fd = fd;
     handle->ssl = ssl;
     return handle;
+}
+
+extern "C" void *__ry_tls_connect_resolved(const char *host, const struct addrinfo *info) {
+    void *tcp = __ry_connect_resolved(info);
+    if (!tcp) return nullptr;
+    int fd = __ry_tcp_take_fd(tcp);
+    return tls_handshake(host, fd);
+}
+
+extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
+    void *tcp = __ry_connect(host, port);
+    if (!tcp) return nullptr;
+    int fd = __ry_tcp_take_fd(tcp);
+    return tls_handshake(host, fd);
 }
 
 // ============================================================
