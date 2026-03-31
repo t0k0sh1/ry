@@ -143,8 +143,9 @@ static bool is_private_addr(const struct sockaddr *sa) {
     if (sa->sa_family == AF_INET6) {
         auto *sin6 = (const struct sockaddr_in6 *)sa;
         if (IN6_IS_ADDR_V4MAPPED(&sin6->sin6_addr)) {
-            uint32_t ip = ntohl(*(const uint32_t *)&sin6->sin6_addr.s6_addr[12]);
-            return is_private_ipv4_raw(ip);
+            uint32_t ip_raw;
+            std::memcpy(&ip_raw, &sin6->sin6_addr.s6_addr[12], sizeof(ip_raw));
+            return is_private_ipv4_raw(ntohl(ip_raw));
         }
         if (IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr)) return true;
         if (IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) return true;
@@ -213,7 +214,7 @@ extern "C" void *__ry_connect_resolved(const struct addrinfo *info) {
 
         if (conn_ret < 0) {
             struct pollfd pfd = {fd, POLLOUT, 0};
-            int poll_ret = ::poll(&pfd, 1, 5000);
+            int poll_ret = ::poll(&pfd, 1, 1000);
             if (poll_ret <= 0) {
                 ::close(fd);
                 continue;
