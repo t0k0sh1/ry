@@ -137,7 +137,7 @@ extern "C" int64_t __ry_tls_send(void *tls_stream, void *byte_list) {
 }
 
 // ============================================================
-// tls_recv
+// tls_receive
 // ============================================================
 
 extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
