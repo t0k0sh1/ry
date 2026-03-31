@@ -433,3 +433,35 @@ TEST(SelfUpdate, VerifySignatureShortSignature) {
     EXPECT_FALSE(verify_signature(TEST_MESSAGE, "AAAA",
                                   TEST_PUBKEY, sizeof(TEST_PUBKEY)));
 }
+
+// --- Signature policy tests ---
+
+TEST(SelfUpdate, SignaturePolicyValidSignature) {
+    auto action = evaluate_signature_policy(true, true, false);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyValidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, true, true);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignature) {
+    auto action = evaluate_signature_policy(true, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, false, true);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureDefault) {
+    auto action = evaluate_signature_policy(false, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_MISSING);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureSkipAllowed) {
+    auto action = evaluate_signature_policy(false, false, true);
+    EXPECT_EQ(action, SignatureAction::SKIP_ALLOWED);
+}
