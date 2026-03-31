@@ -57,7 +57,7 @@ from http import listen, method, path, header, body, query, query_all, cookie, c
 ```python
 from http import listen, method, path, header, body, response
 
-listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     m = method(req)
     p = path(req)
     if p == "/hello":
@@ -75,7 +75,7 @@ listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
 from http import listen, path, response
 
 async function start_server(port: int) -> str:
-    listen("127.0.0.1", port, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", port, (req: HttpRequest) -> HttpResponse:
         p = path(req)
         if p == "/api/health":
             return response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
@@ -97,7 +97,7 @@ function on_port(p: int) -> Unit:
     port_holder[0] = p
 
 async function start_server() -> str:
-    listen("127.0.0.1", 0, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> HttpResponse:
         return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # Stop after 1 request; call on_port with bound port
     return "done"
@@ -120,7 +120,7 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 ```python
 from http import listen, path, query, query_all, response
 
-listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     p = path(req)
     if p == "/search":
         match query(req, "q"):
@@ -137,7 +137,7 @@ listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
 ```python
 from http import listen, header, response
 
-listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     match header(req, "Authorization"):
         case Some(token):
             return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
@@ -151,7 +151,7 @@ listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
 ```python
 from http import listen, form_field, form_file, response
 
-listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     match form_field(req, "username"):
         case Some(name):
             match form_file(req, "avatar"):
@@ -170,7 +170,7 @@ listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
 ```python
 from http import listen, cookie, cookies, response
 
-listen("127.0.0.1", 8080, function(req: HttpRequest) -> HttpResponse:
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
     match cookie(req, "session_id"):
         case Some(sid):
             return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)

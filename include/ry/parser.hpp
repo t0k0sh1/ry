@@ -99,7 +99,6 @@ private:
     ExprPtr parseConditional();
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
-    ExprPtr parseLambdaExpr();
     ExprPtr parseParenLambdaExpr();
     ExprPtr parseAwaitExpr();
 };

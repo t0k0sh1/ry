@@ -363,21 +363,21 @@ TEST(Formatter, BlankLineBetweenDefs) {
 TEST(Formatter, LambdaAndTrailingBlock) {
     // Single-line lambda
     {
-        auto src = "double = function(x: int) => x * 2\n";
+        auto src = "double = (x: int): x * 2\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("double = function(x: int) => x * 2"), std::string::npos);
+        EXPECT_NE(out.find("double = (x: int): x * 2"), std::string::npos);
     }
     // Trailing block call
     {
         auto src =
-            "describe(\"test\", function():\n"
-            "    it(\"case\", function():\n"
+            "describe(\"test\", ():\n"
+            "    it(\"case\", ():\n"
             "        expect(1 + 1).to_eq(2)\n"
             "    )\n"
             ")\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("describe(\"test\", function():"), std::string::npos);
-        EXPECT_NE(out.find("  it(\"case\", function():"), std::string::npos);
+        EXPECT_NE(out.find("describe(\"test\", ():"), std::string::npos);
+        EXPECT_NE(out.find("  it(\"case\", ():"), std::string::npos);
     }
     // Expect statement
     {
@@ -385,8 +385,8 @@ TEST(Formatter, LambdaAndTrailingBlock) {
             "function id(x: int) -> int:\n"
             "    return x\n"
             "\n"
-            "describe(\"t\", function():\n"
-            "    it(\"c\", function():\n"
+            "describe(\"t\", ():\n"
+            "    it(\"c\", ():\n"
             "        expect(id(5)).to_eq(5)\n"
             "    )\n"
             ")\n";

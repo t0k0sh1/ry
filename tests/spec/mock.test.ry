@@ -4,29 +4,29 @@ function fetch_data() -> str:
 function compute(x: int) -> int:
   return x * 2
 
-describe("mock", function():
-  it("replaces function", function():
-    mock("fetch_data", function() => "fake")
+describe("mock", ():
+  it("replaces function", ():
+    mock("fetch_data", (): "fake")
     expect(fetch_data()).to_eq("fake")
   )
-  it("auto-restores after it block", function():
+  it("auto-restores after it block", ():
     expect(fetch_data()).to_eq("real data")
   )
-  it("with arguments", function():
-    mock("compute", function(x: int) => x + 100)
+  it("with arguments", ():
+    mock("compute", (x: int): x + 100)
     expect(compute(5)).to_eq(105)
   )
 )
 
-describe("verify", function():
-  it("counts calls", function():
-    mock("fetch_data", function() => "fake")
+describe("verify", ():
+  it("counts calls", ():
+    mock("fetch_data", (): "fake")
     fetch_data()
     fetch_data()
     expect(verify("fetch_data")).to_eq(2)
   )
-  it("zero calls", function():
-    mock("fetch_data", function() => "fake")
+  it("zero calls", ():
+    mock("fetch_data", (): "fake")
     expect(verify("fetch_data")).to_eq(0)
   )
 )

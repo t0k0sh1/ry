@@ -1,8 +1,8 @@
 from net import bind, listen, accept, connect, listener_port, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
 from io import to_bytes, bytes_to_str
 
-describe("TCP socket API", function():
-  it("bind returns Ok on valid address", function():
+describe("TCP socket API", ():
+  it("bind returns Ok on valid address", ():
     match bind("127.0.0.1", 0):
       case Ok(server):
         close(server)
@@ -10,7 +10,7 @@ describe("TCP socket API", function():
       case Err(e):
         fail("unexpected error")
   )
-  it("listen returns Ok on valid listener", function():
+  it("listen returns Ok on valid listener", ():
     match bind("127.0.0.1", 0):
       case Ok(server):
         match listen(server, 1):
@@ -22,7 +22,7 @@ describe("TCP socket API", function():
       case Err(e):
         fail("unexpected error")
   )
-  it("tls_connect to closed port returns Err", function():
+  it("tls_connect to closed port returns Err", ():
     match tls_connect("127.0.0.1", 19991):
       case Ok(conn):
         close(conn)
@@ -30,7 +30,7 @@ describe("TCP socket API", function():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("connect to closed port returns Err", function():
+  it("connect to closed port returns Err", ():
     match connect("127.0.0.1", 19998):
       case Ok(conn):
         close(conn)
@@ -38,7 +38,7 @@ describe("TCP socket API", function():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("set_receive_timeout causes receive to return Err on timeout", function():
+  it("set_receive_timeout causes receive to return Err on timeout", ():
     async function timeout_server(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
@@ -71,7 +71,7 @@ describe("TCP socket API", function():
       case Err(e):
         fail("unexpected error")
   )
-  it("echo round-trip with async function", function():
+  it("echo round-trip with async function", ():
     async function run_server(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):

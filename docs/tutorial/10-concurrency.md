@@ -102,7 +102,7 @@ from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, a
 ```python
 counter = atomic_int_new(0)
 
-t = thread_spawn(function():
+t = thread_spawn(():
     atomic_int_add(counter, 1)
 )
 
@@ -121,10 +121,10 @@ from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, a
 
 counter = atomic_int_new(0)
 
-t1 = thread_spawn(function():
+t1 = thread_spawn(():
     atomic_int_add(counter, 1)
 )
-t2 = thread_spawn(function():
+t2 = thread_spawn(():
     atomic_int_add(counter, 1)
 )
 
@@ -144,7 +144,7 @@ from thread import atomic_int_new, atomic_int_load, atomic_int_add
 lock = lock_new()
 counter = atomic_int_new(0)
 
-t = thread_spawn(function():
+t = thread_spawn(():
     lock_acquire(lock)
     # Critical section: only one thread at a time
     atomic_int_add(counter, 1)

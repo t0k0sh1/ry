@@ -1,5 +1,5 @@
-describe("return check - all paths return", function():
-  it("if/else returns on all paths", function():
+describe("return check - all paths return", ():
+  it("if/else returns on all paths", ():
     function abs(x: int) -> int:
       if x < 0:
         return -x
@@ -8,7 +8,7 @@ describe("return check - all paths return", function():
     expect(abs(-3)).to_eq(3)
     expect(abs(5)).to_eq(5)
   )
-  it("when returns on all paths", function():
+  it("when returns on all paths", ():
     function sign(x: int) -> int:
       when:
         x > 0:
@@ -21,7 +21,7 @@ describe("return check - all paths return", function():
     expect(sign(-5)).to_eq(-1)
     expect(sign(0)).to_eq(0)
   )
-  it("when with wildcard returns on all paths", function():
+  it("when with wildcard returns on all paths", ():
     function describe(x: int) -> str:
       match x:
         case 1:
@@ -33,7 +33,7 @@ describe("return check - all paths return", function():
     expect(describe(1)).to_eq("one")
     expect(describe(99)).to_eq("other")
   )
-  it("nested if/else returns on all paths", function():
+  it("nested if/else returns on all paths", ():
     function classify(x: int) -> str:
       if x > 0:
         if x > 100:
@@ -46,7 +46,7 @@ describe("return check - all paths return", function():
     expect(classify(50)).to_eq("small")
     expect(classify(-1)).to_eq("non-positive")
   )
-  it("when with Ok/Err returns on all paths", function():
+  it("when with Ok/Err returns on all paths", ():
     function check(r: Result<int, Error>) -> str:
       match r:
         case Ok(v):
@@ -55,7 +55,7 @@ describe("return check - all paths return", function():
           return "err"
     expect(check(Ok(1))).to_eq("ok")
   )
-  it("when with Some/None returns on all paths", function():
+  it("when with Some/None returns on all paths", ():
     function check(o: Option<int>) -> str:
       match o:
         case Some(v):

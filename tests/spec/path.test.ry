@@ -1,114 +1,114 @@
 from path import join, basename, dirname, extension, resolve, is_absolute
 
-describe("path", function():
-  describe("join", function():
-    it("joins two parts", function():
+describe("path", ():
+  describe("join", ():
+    it("joins two parts", ():
       expect(join("/tmp", "file.txt")).to_eq("/tmp/file.txt")
     )
-    it("joins three parts", function():
+    it("joins three parts", ():
       expect(join("/tmp", "data", "file.txt")).to_eq("/tmp/data/file.txt")
     )
-    it("joins four parts", function():
+    it("joins four parts", ():
       expect(join("/tmp", "a", "b", "file.txt")).to_eq("/tmp/a/b/file.txt")
     )
-    it("absolute second arg replaces first", function():
+    it("absolute second arg replaces first", ():
       expect(join("/tmp", "/usr")).to_eq("/usr")
     )
-    it("handles trailing slash", function():
+    it("handles trailing slash", ():
       expect(join("/tmp/", "file.txt")).to_eq("/tmp/file.txt")
     )
-    it("join from root", function():
+    it("join from root", ():
       expect(join("/", "tmp")).to_eq("/tmp")
     )
-    it("empty first arg", function():
+    it("empty first arg", ():
       expect(join("", "file.txt")).to_eq("file.txt")
     )
-    it("empty second arg", function():
+    it("empty second arg", ():
       expect(join("/tmp", "")).to_eq("/tmp")
     )
   )
 
-  describe("basename", function():
-    it("extracts filename", function():
+  describe("basename", ():
+    it("extracts filename", ():
       expect(basename("/tmp/data/file.txt")).to_eq("file.txt")
     )
-    it("root path", function():
+    it("root path", ():
       expect(basename("/")).to_eq("")
     )
-    it("no directory", function():
+    it("no directory", ():
       expect(basename("file.txt")).to_eq("file.txt")
     )
-    it("trailing slash", function():
+    it("trailing slash", ():
       expect(basename("/tmp/data/")).to_eq("data")
     )
-    it("empty string", function():
+    it("empty string", ():
       expect(basename("")).to_eq("")
     )
   )
 
-  describe("dirname", function():
-    it("extracts directory", function():
+  describe("dirname", ():
+    it("extracts directory", ():
       expect(dirname("/tmp/data/file.txt")).to_eq("/tmp/data")
     )
-    it("root file", function():
+    it("root file", ():
       expect(dirname("/file.txt")).to_eq("/")
     )
-    it("no directory", function():
+    it("no directory", ():
       expect(dirname("file.txt")).to_eq(".")
     )
-    it("root path", function():
+    it("root path", ():
       expect(dirname("/")).to_eq("/")
     )
-    it("empty string", function():
+    it("empty string", ():
       expect(dirname("")).to_eq(".")
     )
   )
 
-  describe("extension", function():
-    it("extracts extension", function():
+  describe("extension", ():
+    it("extracts extension", ():
       expect(extension("/tmp/file.txt")).to_eq(".txt")
     )
-    it("no extension", function():
+    it("no extension", ():
       expect(extension("/tmp/file")).to_eq("")
     )
-    it("hidden file no ext", function():
+    it("hidden file no ext", ():
       expect(extension(".gitignore")).to_eq("")
     )
-    it("hidden file with ext", function():
+    it("hidden file with ext", ():
       expect(extension(".config.json")).to_eq(".json")
     )
-    it("multiple dots", function():
+    it("multiple dots", ():
       expect(extension("archive.tar.gz")).to_eq(".gz")
     )
-    it("empty string", function():
+    it("empty string", ():
       expect(extension("")).to_eq("")
     )
-    it("dot in directory", function():
+    it("dot in directory", ():
       expect(extension("/usr/local.d/file")).to_eq("")
     )
   )
 
-  describe("is_absolute", function():
-    it("absolute path", function():
+  describe("is_absolute", ():
+    it("absolute path", ():
       expect(is_absolute("/tmp")).to_eq(true)
     )
-    it("relative path", function():
+    it("relative path", ():
       expect(is_absolute("tmp/file")).to_eq(false)
     )
-    it("empty string", function():
+    it("empty string", ():
       expect(is_absolute("")).to_eq(false)
     )
   )
 
-  describe("resolve", function():
-    it("resolves existing path", function():
+  describe("resolve", ():
+    it("resolves existing path", ():
       match resolve("/tmp"):
         case Ok(s):
           expect(is_absolute(s)).to_eq(true)
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("fails for non-existent path", function():
+    it("fails for non-existent path", ():
       match resolve("/nonexistent_path_xyz_12345"):
         case Ok(s):
           fail("expected error but got Ok")

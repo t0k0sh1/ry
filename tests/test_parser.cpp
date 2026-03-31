@@ -554,8 +554,8 @@ TEST(ParserTest, FnExplicitUnitReturn) {
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
-    // function(x: int) => x + 1 → return type is empty (inferred at codegen time)
-    Program prog = parseStr("f = function(x: int) => x + 1");
+    // (x: int): x + 1 → return type is empty (inferred at codegen time)
+    Program prog = parseStr("f = (x: int): x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -563,8 +563,8 @@ TEST(ParserTest, LambdaReturnTypeOmitted) {
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {
-    // function(x: int) -> int => x + 1 → return type is "int"
-    Program prog = parseStr("f = function(x: int) -> int => x + 1");
+    // (x: int) -> int: x + 1 → return type is "int"
+    Program prog = parseStr("f = (x: int) -> int: x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -1480,7 +1480,7 @@ TEST(ParserTest, AwaitOutsideAsyncFnRejected) {
     // await inside lambda within async function should also fail (lambda is not async)
     EXPECT_THROW(parseStr(
         "async function foo() -> int:\n"
-        "    f = function(x: int) => await bar()\n"
+        "    f = (x: int): await bar()\n"
         "    return 1"), std::runtime_error);
 }
 
@@ -1682,17 +1682,17 @@ TEST(ParserTest, BangSuffixParamRejected) {
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_not_eq(2)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_not_eq(2)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_be_some()\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_be_some()\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_contain(1)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", ():\n    it(\"t\", ():\n        expect(1).to_contain(1)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
@@ -1721,7 +1721,7 @@ TEST(ParserTest, TrailingBlockWithArgs) {
 }
 
 TEST(ParserTest, LambdaArgNested) {
-    Program prog = parseStr("describe(\"calc\", function():\n    it(\"adds\", function():\n        expect(1 + 2).to_eq(3)\n    )\n)");
+    Program prog = parseStr("describe(\"calc\", ():\n    it(\"adds\", ():\n        expect(1 + 2).to_eq(3)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
     const auto &s = std::get<CallStmt>(prog[0]);
@@ -1909,5 +1909,22 @@ TEST(ParserTest, DefaultArgNoTypeError) {
 
 TEST(ParserTest, DefaultArgLambdaError) {
     // default args in lambda are not supported
-    EXPECT_THROW(parseStr("f = function(x: int = 10) => x"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (x: int = 10): x"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectAnonymousFunctionLambda) {
+    // function(...) lambda form is no longer supported
+    EXPECT_THROW(parseStr("f = function(x: int) => x + 1"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectAnonymousFunctionLambdaWithReturnType) {
+    EXPECT_THROW(parseStr("f = function(x: int) -> int => x + 1"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectAnonymousFunctionLambdaBlock) {
+    EXPECT_THROW(parseStr("f = function(x: int):\n    return x + 1"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectAnonymousFunctionLambdaNoParams) {
+    EXPECT_THROW(parseStr("f = function() => 42"), std::runtime_error);
 }

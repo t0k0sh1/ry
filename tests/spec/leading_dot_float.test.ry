@@ -1,13 +1,13 @@
-describe("leading-dot float literals", function():
-  it(".5 equals 0.5", function():
+describe("leading-dot float literals", ():
+  it(".5 equals 0.5", ():
     x = .5
     expect(x).to_eq(0.5)
   )
-  it(".01 equals 0.01", function():
+  it(".01 equals 0.01", ():
     x = .01
     expect(x).to_eq(0.01)
   )
-  it("arithmetic with leading-dot floats", function():
+  it("arithmetic with leading-dot floats", ():
     x = .5 + .25
     expect(x).to_eq(0.75)
   )

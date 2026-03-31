@@ -39,15 +39,15 @@ When `ry test` is run without arguments, it:
 ### describe / it
 
 ```
-describe("description", function():
-    it("test case name", function():
+describe("description", ():
+    it("test case name", ():
         # test body
         expect(actual_value).to_eq(expected_value)
     )
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `function():` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `():` as the second parameter
 - `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
@@ -61,7 +61,7 @@ Any function call (except `describe`/`it`/`mock`) can use trailing block syntax.
 foo("arg"):
     bar()
 
-foo("arg", function():
+foo("arg", ():
     bar()
 )
 ```
@@ -94,7 +94,7 @@ foo("arg", function():
 Immediately marks the current test as failed.
 
 ```
-it("should not reach here", function():
+it("should not reach here", ():
     fail("unexpected error")
 )
 ```
@@ -126,22 +126,22 @@ Calculator
 ## Example
 
 ```
-describe("Arithmetic", function():
-    it("adds integers", function():
+describe("Arithmetic", ():
+    it("adds integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", function():
+    it("compares strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", function():
+    it("checks booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
-describe("Booleans", function():
-    it("false check", function():
+describe("Booleans", ():
+    it("false check", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -159,13 +159,13 @@ Replaces a function with a mock implementation for the current `it` block. The m
 function fetch_data() -> str:
     return "real data"
 
-describe("mocking", function():
-    it("replaces function", function():
-        mock(fetch_data, function() => "fake")
+describe("mocking", ():
+    it("replaces function", ():
+        mock(fetch_data, (): "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", function():
+    it("auto-restores", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -182,9 +182,9 @@ describe("mocking", function():
 Returns the number of times a mocked function was called (as `int`).
 
 ```
-describe("verify", function():
-    it("counts calls", function():
-        mock(fetch_data, function() => "fake")
+describe("verify", ():
+    it("counts calls", ():
+        mock(fetch_data, (): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -210,7 +210,7 @@ describe("verify", function():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", function(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -228,7 +228,7 @@ it("adds {0} + {1} = {2}", function(a: int, b: int, expected: int):
 
 ```
 @property(count=100)
-it("addition is commutative", function(a: int, b: int):
+it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```

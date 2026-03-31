@@ -279,7 +279,7 @@ function response(status: int, headers: Map<str, str>, body: str) -> HttpRespons
 TEST_F(CodeGenTest, HttpListenMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18932, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18932, (req: HttpRequest) -> HttpResponse:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 1)
     return "done"
@@ -317,7 +317,7 @@ print(result)
 TEST_F(CodeGenTest, HttpListenMaxRequestsMultiple) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18933, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18933, (req: HttpRequest) -> HttpResponse:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
@@ -376,7 +376,7 @@ print(result)
 TEST_F(CodeGenTest, HttpKeepAlive) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18934, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18934, (req: HttpRequest) -> HttpResponse:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
@@ -440,7 +440,7 @@ print(result)
 TEST_F(CodeGenTest, HttpConnectionClose) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18935, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18935, (req: HttpRequest) -> HttpResponse:
         return response(200, {"Content-Type": "text/plain"}, "ok")
     , 2)
     return "done"
@@ -502,7 +502,7 @@ print(result)
 TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
 async function server() -> str:
-    listen("127.0.0.1", 18936, function(req: HttpRequest) -> HttpResponse:
+    listen("127.0.0.1", 18936, (req: HttpRequest) -> HttpResponse:
         path = path(req)
         return response(200, {"Content-Type": "text/plain"}, path)
     , 3)

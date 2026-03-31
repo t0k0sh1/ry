@@ -343,11 +343,9 @@ ExprPtr Parser::parsePrimary() {
         return node;
     }
     if (t.kind == TokenKind::Fn) {
-        // Lambda expression: function(params) [-> retType]: body
-        lex_.next(); // consume 'function'
-        auto lambdaNode = parseLambdaExpr();
-        lambdaNode->loc = locFromToken(t);
-        return lambdaNode;
+        parseError(t.line,
+            "anonymous function expressions are not supported; "
+            "use lambda syntax instead: (x: int): x + 1");
     }
     // weak expr — create weak reference from strong reference
     if (t.kind == TokenKind::Ident && t.value == "weak") {
@@ -651,93 +649,6 @@ ExprPtr Parser::parsePrimary() {
         return first;
     }
     parseError(t.line, "unexpected token '" + t.value + "'");
-}
-
-ExprPtr Parser::parseLambdaExpr() {
-    // function(params) [-> retType]: body
-    // 'function' is consumed by caller, now at '('
-    if (lex_.peek().kind != TokenKind::LParen)
-        parseError("expected '(' after 'function' in lambda");
-    lex_.next(); // consume '('
-
-    auto lambda = std::make_unique<LambdaExpr>();
-
-    // Parse parameters
-    if (lex_.peek().kind != TokenKind::RParen) {
-        for (;;) {
-            Token paramName = lex_.peek();
-            if (paramName.kind != TokenKind::Ident)
-                parseError(paramName.line, "expected parameter name in lambda");
-            lex_.next(); // consume param name
-
-            TypeNodePtr paramType = TypeNode::makeBasic("any");  // default when type is omitted
-            if (lex_.peek().kind == TokenKind::Colon) {
-                lex_.next(); // consume ':'
-                paramType = parseTypeName();
-            }
-            if (lex_.peek().kind == TokenKind::Equals)
-                parseError(paramName.line,
-                    "default arguments are not supported in lambda expressions");
-
-            lambda->params.push_back({paramName.value, std::move(paramType), nullptr});
-
-            if (lex_.peek().kind != TokenKind::Comma)
-                break;
-            lex_.next(); // consume ','
-        }
-    }
-
-    if (lex_.peek().kind != TokenKind::RParen)
-        parseError("expected ')' in lambda");
-    lex_.next(); // consume ')'
-
-    // Optional return type: -> type
-    if (lex_.peek().kind == TokenKind::Arrow) {
-        lex_.next(); // consume '->'
-        lambda->return_type = parseTypeName();
-    } else {
-        lambda->return_type = nullptr;  // inferred at codegen time
-    }
-
-    // Lambda is not an async context — save and reset
-    bool prev_in_async = in_async_fn_;
-    in_async_fn_ = false;
-
-    if (lex_.peek().kind == TokenKind::FatArrow) {
-        // Single-expression lambda: fn(params) => expr
-        lex_.next(); // consume '=>'
-        lambda->expr_body = parseConditional();
-    } else if (lex_.peek().kind == TokenKind::Colon) {
-        // Block lambda: fn(params):
-        lex_.next(); // consume ':'
-        if (lex_.peek().kind != TokenKind::Newline)
-            parseError("expected newline after ':' in block lambda");
-        lex_.next(); // consume newline
-        skipNewlines();
-        if (lex_.peek().kind != TokenKind::Indent)
-            parseError("expected indented block after ':' in block lambda");
-        lex_.next(); // consume Indent
-
-        while (lex_.peek().kind != TokenKind::Dedent &&
-               lex_.peek().kind != TokenKind::Eof) {
-            lambda->body.push_back(parseStatement());
-            if (lex_.peek().kind == TokenKind::Newline)
-                lex_.next();
-            skipNewlines();
-        }
-        if (lambda->body.empty())
-            parseError("empty lambda body is not allowed");
-        if (lex_.peek().kind == TokenKind::Dedent)
-            lex_.next(); // consume Dedent
-    } else {
-        parseError("expected '=>' or ':' after lambda parameters");
-    }
-
-    in_async_fn_ = prev_in_async;
-
-    auto node = std::make_unique<ExprNode>();
-    node->data = std::move(lambda);
-    return node;
 }
 
 ExprPtr Parser::parseParenLambdaExpr() {
