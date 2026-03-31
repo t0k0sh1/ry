@@ -23,11 +23,11 @@ describe("regex literal search", function():
 )
 
 describe("regex literal replace", function():
-  it("replaces first match", function():
-    expect(replace("abc123def", /[0-9]+/, "X")).to_eq("abcXdef")
+  it("replaces all matches", function():
+    expect(replace("a1b2c3", /[0-9]+/, "X")).to_eq("aXbXcX")
   )
-  it("UFCS", function():
-    expect("abc123".replace(/[0-9]+/, "X")).to_eq("abcX")
+  it("UFCS replaces all matches", function():
+    expect("a1b2c3".replace(/[0-9]+/, "X")).to_eq("aXbXcX")
   )
   it("no match returns original", function():
     expect(replace("hello", /[0-9]+/, "X")).to_eq("hello")

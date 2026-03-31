@@ -32,8 +32,8 @@ The `/` inside a regex literal can be escaped with `\/`:
 
 The lexer uses context to distinguish regex literals from division:
 
-- After values (identifiers, numbers, `)`, `]`): `/` is division
-- After operators, keywords, `(`, `[`, `,`, `=`: `/` starts a regex literal
+- After value-producing tokens (identifiers, numbers, string literals, `)` or `]`), `/` is parsed as division
+- After operators, keywords, or delimiters that expect an expression (`(`, `[`, `,`, `=`), `/` starts a regex literal
 
 ```ry
 x = 10 / 2         # division: 5

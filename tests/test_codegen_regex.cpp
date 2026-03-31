@@ -184,7 +184,8 @@ print(search("abc123", /[0-9]+/))
 TEST_F(CodeGenTest, RegexLiteralReplace) {
     EXPECT_EQ(runSource(R"(
 print(replace("abc123def", /[0-9]+/, "X"))
-)"), "abcXdef\n");
+print(replace("a1b2c3", /[0-9]/, "X"))
+)"), "abcXdef\naXbXcX\n");
 }
 
 TEST_F(CodeGenTest, RegexLiteralSplit) {
