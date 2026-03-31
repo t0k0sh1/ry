@@ -612,6 +612,7 @@ private:
     llvm::FunctionCallee getStdlibStrcat();
     llvm::FunctionCallee getStdlibSnprintf();
     llvm::FunctionCallee getStdlibPrintf();
+    llvm::FunctionCallee getBufferedPrintf();
     llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);

@@ -101,6 +101,7 @@ add_library(ry_lib STATIC
     src/args_runtime.cpp
     src/paths.cpp
     src/runtime_parallel.cpp
+    src/runtime_print.cpp
     src/runtime_io.cpp
     src/runtime_net.cpp
     src/runtime_http.cpp
