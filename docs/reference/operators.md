@@ -125,12 +125,12 @@ The `!!` operator is an alias for `?` with identical semantics. Both can be used
 The enclosing function must have a `Result` return type.
 
 ```python
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # returns Err early if b == 0
     y = safe_divide(x, c)!!
     return Ok(y + 1)
@@ -139,7 +139,7 @@ fn compute(a: int, b: int, c: int) -> Result<int, Error>:
 This is equivalent to the following `when` pattern, but much more concise:
 
 ```python
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
     when safe_divide(a, b):
         case Ok(x):
             when safe_divide(x, c):
@@ -297,11 +297,11 @@ You can define operator behavior for user-defined types.
 
 ```python
 # Binary operator (2 parameters)
-fn operator+(a: MyType, b: MyType) -> MyType:
+function operator+(a: MyType, b: MyType) -> MyType:
     ...
 
 # Unary operator (1 parameter)
-fn operator-(a: MyType) -> MyType:
+function operator-(a: MyType) -> MyType:
     ...
 ```
 
@@ -333,11 +333,11 @@ Comparison and logical operators must return `bool`:
 
 ```python
 # OK
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-fn operator==(a: Vec2, b: Vec2) -> int:
+function operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -349,11 +349,11 @@ Distinguished by the number of parameters.
 
 ```python
 # Binary -
-fn operator-(a: Vec2, b: Vec2) -> Vec2:
+function operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
 
 # Unary -
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
@@ -367,7 +367,7 @@ record Matrix:
     rows: int
     cols: int
 
-fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+function operator+=(a: Matrix, b: Matrix) -> Matrix:
     for i in range(len(a.data)):
         a.data[i] = a.data[i] + b.data[i]
     return a
@@ -386,7 +386,7 @@ record Vec2:
     x: float
     y: float
 
-fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+function operator+=(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 v = Vec2(1.0, 2.0)
@@ -408,7 +408,7 @@ record Grid:
     d: int
 
 # Read: requires 2+ parameters (object + indices)
-fn operator[](g: Grid, row: int, col: int) -> int:
+function operator[](g: Grid, row: int, col: int) -> int:
     if row == 0 and col == 0:
         return g.a
     if row == 0 and col == 1:
@@ -418,7 +418,7 @@ fn operator[](g: Grid, row: int, col: int) -> int:
     return g.d
 
 # Write: requires 3+ parameters (object + indices + value)
-fn operator[]=(g: Grid, row: int, col: int, value: int):
+function operator[]=(g: Grid, row: int, col: int, value: int):
     ...
 
 g = Grid(1, 2, 3, 4)
@@ -437,7 +437,7 @@ record Range:
     lo: int
     hi: int
 
-fn operator in(value: int, r: Range) -> bool:
+function operator in(value: int, r: Range) -> bool:
     return value >= r.lo and value < r.hi
 
 r = Range(1, 10)
@@ -455,7 +455,7 @@ The `()` operator enables records to behave as callable objects. Requires at lea
 record Adder:
     base: int
 
-fn operator()(a: Adder, x: int) -> int:
+function operator()(a: Adder, x: int) -> int:
     return a.base + x
 
 add5 = Adder(5)
@@ -475,7 +475,7 @@ record Celsius:
 record Fahrenheit:
     value: int
 
-fn operator as(c: Celsius) -> Fahrenheit:
+function operator as(c: Celsius) -> Fahrenheit:
     return Fahrenheit(c.value * 9 // 5 + 32)
 
 c = Celsius(100)

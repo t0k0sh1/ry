@@ -28,7 +28,7 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.value->data)) {
         const auto &lambda = **lambda_ptr;
         if (!lambda.expr_body && !lambda.body.empty()) {
-            emit("fn(" + formatParams(lambda.params) + ")");
+            emit("function(" + formatParams(lambda.params) + ")");
             if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
@@ -68,7 +68,7 @@ void Formatter::formatCall(const CallStmt &s) {
 
         if (has_trailing_lambda && i == lambda_idx) {
             const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.args[i]->data);
-            emit("fn(" + formatParams(lambda.params) + ")");
+            emit("function(" + formatParams(lambda.params) + ")");
             if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
@@ -84,7 +84,7 @@ void Formatter::formatCall(const CallStmt &s) {
             auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[i]->data);
             if (lp && !(*lp)->expr_body && !(*lp)->body.empty()) {
                 const auto &lambda = **lp;
-                emit("fn(" + formatParams(lambda.params) + ")");
+                emit("function(" + formatParams(lambda.params) + ")");
                 if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
                 emit(":");
                 emitNewline();
@@ -279,7 +279,7 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.directives.empty()) emitIndent();
 
     if (s.is_async) emit("async ");
-    emit("fn " + s.name);
+    emit("function " + s.name);
     emitTypeParams(s.type_params);
     emit("(" + formatParams(s.params) + ")");
     if (s.return_type) {

@@ -1,8 +1,8 @@
 from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
 from str import contains
 
-describe("json parse", fn():
-  it("parses an object", fn():
+describe("json parse", function():
+  it("parses an object", function():
     when parse("{\"name\": \"Alice\", \"age\": 30}"):
       case Ok(data):
         expect(kind(data)).to_eq("object")
@@ -11,7 +11,7 @@ describe("json parse", fn():
         fail("parse failed: " + e.message)
   )
 
-  it("parses an array", fn():
+  it("parses an array", function():
     when parse("[1, 2, 3]"):
       case Ok(data):
         expect(kind(data)).to_eq("array")
@@ -21,17 +21,17 @@ describe("json parse", fn():
         fail("parse failed: " + e.message)
   )
 
-  it("returns Err for invalid JSON", fn():
+  it("returns Err for invalid JSON", function():
     expect(parse("{invalid}")).to_be_err()
   )
 
-  it("returns Err for trailing content", fn():
+  it("returns Err for trailing content", function():
     expect(parse("123 456")).to_be_err()
   )
 )
 
-describe("json access", fn():
-  it("gets string field", fn():
+describe("json access", function():
+  it("gets string field", function():
     when parse("{\"name\": \"Alice\"}"):
       case Ok(data):
         when get(data, "name"):
@@ -48,7 +48,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("gets int field", fn():
+  it("gets int field", function():
     when parse("{\"age\": 30}"):
       case Ok(data):
         when get(data, "age"):
@@ -65,7 +65,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("gets float field", fn():
+  it("gets float field", function():
     when parse("{\"pi\": 3.14}"):
       case Ok(data):
         when get(data, "pi"):
@@ -83,7 +83,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("gets bool field", fn():
+  it("gets bool field", function():
     when parse("{\"active\": true}"):
       case Ok(data):
         when get(data, "active"):
@@ -100,7 +100,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("gets null type", fn():
+  it("gets null type", function():
     when parse("{\"value\": null}"):
       case Ok(data):
         when get(data, "value"):
@@ -113,7 +113,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("accesses array by index", fn():
+  it("accesses array by index", function():
     when parse("[10, 20, 30]"):
       case Ok(data):
         when at(data, 0):
@@ -139,7 +139,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("returns Err for missing key", fn():
+  it("returns Err for missing key", function():
     when parse("{\"a\": 1}"):
       case Ok(data):
         expect(get(data, "missing")).to_be_err()
@@ -148,7 +148,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("returns Err for out-of-bounds index", fn():
+  it("returns Err for out-of-bounds index", function():
     when parse("[1, 2]"):
       case Ok(data):
         expect(at(data, 5)).to_be_err()
@@ -157,7 +157,7 @@ describe("json access", fn():
         fail("parse failed")
   )
 
-  it("returns Err for type mismatch", fn():
+  it("returns Err for type mismatch", function():
     when parse("{\"name\": \"Alice\"}"):
       case Ok(data):
         when get(data, "name"):
@@ -171,8 +171,8 @@ describe("json access", fn():
   )
 )
 
-describe("json nested", fn():
-  it("accesses nested objects", fn():
+describe("json nested", function():
+  it("accesses nested objects", function():
     when parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
       case Ok(data):
         when get(data, "user"):
@@ -202,7 +202,7 @@ describe("json nested", fn():
         fail("parse failed")
   )
 
-  it("accesses array of objects", fn():
+  it("accesses array of objects", function():
     when parse("[{\"id\": 1}, {\"id\": 2}]"):
       case Ok(data):
         when at(data, 1):
@@ -224,8 +224,8 @@ describe("json nested", fn():
   )
 )
 
-describe("json keys and len", fn():
-  it("gets object keys", fn():
+describe("json keys and len", function():
+  it("gets object keys", function():
     when parse("{\"a\": 1, \"b\": 2}"):
       case Ok(data):
         ks = keys(data)
@@ -235,7 +235,7 @@ describe("json keys and len", fn():
         fail("parse failed")
   )
 
-  it("gets object len", fn():
+  it("gets object len", function():
     when parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       case Ok(data):
         expect(length(data)).to_eq(3)
@@ -245,8 +245,8 @@ describe("json keys and len", fn():
   )
 )
 
-describe("json stringify", fn():
-  it("round-trips an object", fn():
+describe("json stringify", function():
+  it("round-trips an object", function():
     when parse("{\"name\":\"Alice\",\"age\":30}"):
       case Ok(data):
         text = stringify(data)
@@ -269,7 +269,7 @@ describe("json stringify", fn():
         fail("parse failed")
   )
 
-  it("pretty prints with indent", fn():
+  it("pretty prints with indent", function():
     when parse("{\"a\":1}"):
       case Ok(data):
         text = stringify(data, 2)
@@ -280,8 +280,8 @@ describe("json stringify", fn():
   )
 )
 
-describe("json type checks", fn():
-  it("identifies string type", fn():
+describe("json type checks", function():
+  it("identifies string type", function():
     when parse("\"hello\""):
       case Ok(data):
         expect(kind(data)).to_eq("string")
@@ -290,7 +290,7 @@ describe("json type checks", fn():
         fail("parse failed")
   )
 
-  it("identifies number type", fn():
+  it("identifies number type", function():
     when parse("42"):
       case Ok(data):
         expect(kind(data)).to_eq("number")
@@ -299,7 +299,7 @@ describe("json type checks", fn():
         fail("parse failed")
   )
 
-  it("identifies boolean type", fn():
+  it("identifies boolean type", function():
     when parse("true"):
       case Ok(data):
         expect(kind(data)).to_eq("boolean")
@@ -308,7 +308,7 @@ describe("json type checks", fn():
         fail("parse failed")
   )
 
-  it("identifies null type", fn():
+  it("identifies null type", function():
     when parse("null"):
       case Ok(data):
         expect(kind(data)).to_eq("null")

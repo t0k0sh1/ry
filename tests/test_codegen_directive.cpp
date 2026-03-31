@@ -2,11 +2,11 @@
 
 class DirectiveTest : public CodeGenTest {};
 
-// 1. @deprecated fn called -> warning, execution normal
+// 1. @deprecated function called -> warning, execution normal
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "fn old_func() -> int:\n"
+        "function old_func() -> int:\n"
         "    return 42\n"
         "print(old_func())\n"
     );
@@ -62,7 +62,7 @@ TEST_F(DirectiveTest, DeprecatedFieldWarning) {
 TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "fn unused_func() -> int:\n"
+        "function unused_func() -> int:\n"
         "    return 1\n"
         "@deprecated\n"
         "unused_val = 42\n"
@@ -75,7 +75,7 @@ TEST_F(DirectiveTest, DeprecatedNoWarningOnDefinition) {
 // 6. Non-deprecated entities produce no warnings
 TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
     auto [output, warnings] = runSourceWithWarnings(
-        "fn good_func() -> int:\n"
+        "function good_func() -> int:\n"
         "    return 10\n"
         "good_val = 20\n"
         "print(good_func())\n"
@@ -89,7 +89,7 @@ TEST_F(DirectiveTest, NonDeprecatedNoWarning) {
 TEST_F(DirectiveTest, DeprecatedFunctionStillWorks) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
     );
@@ -102,7 +102,7 @@ TEST_F(DirectiveTest, MultipleDirectives) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated\n"
         "@deprecated\n"
-        "fn multi() -> int:\n"
+        "function multi() -> int:\n"
         "    return 1\n"
         "print(multi())\n"
     );
@@ -114,7 +114,7 @@ TEST_F(DirectiveTest, MultipleDirectives) {
 TEST_F(DirectiveTest, DirectiveWithParams) {
     auto [output, warnings] = runSourceWithWarnings(
         "@deprecated(reason=\"use new_func instead\")\n"
-        "fn old_api() -> int:\n"
+        "function old_api() -> int:\n"
         "    return 0\n"
         "print(old_api())\n"
     );
@@ -137,64 +137,64 @@ TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     }, std::runtime_error);
 }
 
-// ===== @native fn tests =====
+// ===== @native function tests =====
 
-// 12. @native fn declaration - builtin function still works
+// 12. @native function declaration - builtin function still works
 TEST_F(DirectiveTest, NativeFnDeclaration) {
     std::string output = runSource(
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello world\", \"world\"))\n"
     );
     EXPECT_EQ(output, "true\n");
 }
 
-// 13. @native fn operator declaration - builtin operator still works
+// 13. @native function operator declaration - builtin operator still works
 TEST_F(DirectiveTest, NativeFnOperatorDeclaration) {
     std::string output = runSource(
         "@native\n"
-        "fn operator+(a: str, b: str) -> str\n"
+        "function operator+(a: str, b: str) -> str\n"
         "print(\"hello\" + \" world\")\n"
     );
     EXPECT_EQ(output, "hello world\n");
 }
 
-// 14. @native fn with body causes error
+// 14. @native function with body causes error
 TEST_F(DirectiveTest, NativeFnWithBodyError) {
     EXPECT_THROW({
         runSource("@native\nfn bad() -> int:\n    return 1\n");
     }, std::runtime_error);
 }
 
-// 15. @native fn with UFCS-style builtin
+// 15. @native function with UFCS-style builtin
 TEST_F(DirectiveTest, NativeFnUfcsBuiltin) {
     std::string output = runSource(
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
+        "function to_upper(s: str) -> str\n"
         "print(to_upper(\"hello\"))\n"
     );
     EXPECT_EQ(output, "HELLO\n");
 }
 
-// 16. Multiple @native fn declarations coexist
+// 16. Multiple @native function declarations coexist
 TEST_F(DirectiveTest, MultipleNativeFnDeclarations) {
     std::string output = runSource(
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
+        "function to_upper(s: str) -> str\n"
         "print(contains(\"hello\", \"ell\"))\n"
         "print(to_upper(\"world\"))\n"
     );
     EXPECT_EQ(output, "true\nWORLD\n");
 }
 
-// ===== @native fn type signature validation =====
+// ===== @native function type signature validation =====
 
 TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
     std::string output = runSource(
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     );
     EXPECT_EQ(output, "true\n");
@@ -203,7 +203,7 @@ TEST_F(DirectiveTest, NativeFnTypeCheckPass) {
 TEST_F(DirectiveTest, NativeFnTypeCheckFailArgCount) {
     EXPECT_THROW(runSource(
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\"))\n"
     ), std::runtime_error);
 }
@@ -211,11 +211,11 @@ TEST_F(DirectiveTest, NativeFnTypeCheckFailArgCount) {
 TEST_F(DirectiveTest, NativeFnOverloadResolution) {
     std::string output = runSource(
         "@native\n"
-        "fn range(n: int) -> List<int>\n"
+        "function range(n: int) -> List<int>\n"
         "@native\n"
-        "fn range(start: int, end_val: int) -> List<int>\n"
+        "function range(start: int, end_val: int) -> List<int>\n"
         "@native\n"
-        "fn range(start: int, end_val: int, step: int) -> List<int>\n"
+        "function range(start: int, end_val: int, step: int) -> List<int>\n"
         "print(length(range(5)))\n"
         "print(length(range(1, 4)))\n"
         "print(length(range(0, 10, 2)))\n"
@@ -234,11 +234,11 @@ TEST_F(DirectiveTest, NativeFnWithoutSignatureStillWorks) {
 TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
     std::string output = runSource(
         "@native\n"
-        "fn to_upper(s: str) -> str\n"
+        "function to_upper(s: str) -> str\n"
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "@native\n"
-        "fn starts_with(s: str, prefix: str) -> bool\n"
+        "function starts_with(s: str, prefix: str) -> bool\n"
         "print(to_upper(\"hello\"))\n"
         "print(contains(\"hello world\", \"world\"))\n"
         "print(starts_with(\"hello\", \"hel\"))\n"
@@ -251,7 +251,7 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
 TEST_F(DirectiveTest, InlineDefault) {
     std::string output = runSource(
         "@inline\n"
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(add(3, 4))\n"
     );
@@ -261,7 +261,7 @@ TEST_F(DirectiveTest, InlineDefault) {
 TEST_F(DirectiveTest, InlineModeAlways) {
     std::string output = runSource(
         "@inline(mode=\"always\")\n"
-        "fn mul(a: int, b: int) -> int:\n"
+        "function mul(a: int, b: int) -> int:\n"
         "    return a * b\n"
         "print(mul(5, 6))\n"
     );
@@ -271,7 +271,7 @@ TEST_F(DirectiveTest, InlineModeAlways) {
 TEST_F(DirectiveTest, InlineModeHint) {
     std::string output = runSource(
         "@inline(mode=\"hint\")\n"
-        "fn sub(a: int, b: int) -> int:\n"
+        "function sub(a: int, b: int) -> int:\n"
         "    return a - b\n"
         "print(sub(10, 3))\n"
     );
@@ -281,7 +281,7 @@ TEST_F(DirectiveTest, InlineModeHint) {
 TEST_F(DirectiveTest, InlineModeNever) {
     std::string output = runSource(
         "@inline(mode=\"never\")\n"
-        "fn negate(a: int) -> int:\n"
+        "function negate(a: int) -> int:\n"
         "    return -a\n"
         "print(negate(-5))\n"
     );
@@ -291,7 +291,7 @@ TEST_F(DirectiveTest, InlineModeNever) {
 TEST_F(DirectiveTest, InlineInvalidMode) {
     EXPECT_THROW(runSource(
         "@inline(mode=\"aggressive\")\n"
-        "fn bad() -> int:\n"
+        "function bad() -> int:\n"
         "    return 1\n"
         "print(bad())\n"
     ), std::runtime_error);
@@ -301,7 +301,7 @@ TEST_F(DirectiveTest, InlineWithNativeError) {
     EXPECT_THROW(runSource(
         "@inline\n"
         "@native\n"
-        "fn contains(s: str, sub: str) -> bool\n"
+        "function contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     ), std::runtime_error);
 }
@@ -310,7 +310,7 @@ TEST_F(DirectiveTest, InlineWithDeprecated) {
     auto [output, warnings] = runSourceWithWarnings(
         "@inline\n"
         "@deprecated\n"
-        "fn old_add(a: int, b: int) -> int:\n"
+        "function old_add(a: int, b: int) -> int:\n"
         "    return a + b\n"
         "print(old_add(1, 2))\n"
     );
@@ -322,7 +322,7 @@ TEST_F(DirectiveTest, InlineWithDeprecated) {
 TEST_F(DirectiveTest, InlineRecursive) {
     std::string output = runSource(
         "@inline\n"
-        "fn fact(n: int) -> int:\n"
+        "function fact(n: int) -> int:\n"
         "    if n <= 1:\n"
         "        return 1\n"
         "    return n * fact(n - 1)\n"

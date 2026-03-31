@@ -3,64 +3,64 @@
 
 # Directory listing (non-recursive)
 @native
-fn list_dir(path: str) -> Result<List<str>, Error>
+function list_dir(path: str) -> Result<List<str>, Error>
 
 # Recursive file/directory traversal
 @native
-fn walk(path: str) -> Result<List<str>, Error>
+function walk(path: str) -> Result<List<str>, Error>
 
 # Glob pattern matching
 @native
-fn glob_files(pattern: str) -> Result<List<str>, Error>
+function glob_files(pattern: str) -> Result<List<str>, Error>
 
 # Copy a single file
 @native
-fn copy(src: str, dst: str) -> Result<Unit, Error>
+function copy(src: str, dst: str) -> Result<Unit, Error>
 
 # Move / rename a file or directory
 @native
-fn move(src: str, dst: str) -> Result<Unit, Error>
+function move(src: str, dst: str) -> Result<Unit, Error>
 
 # Remove a file or empty directory
 @native
-fn remove(path: str) -> Result<Unit, Error>
+function remove(path: str) -> Result<Unit, Error>
 
 # Remove a file, directory, or directory tree recursively
 @native
-fn remove_all(path: str) -> Result<Unit, Error>
+function remove_all(path: str) -> Result<Unit, Error>
 
 # Create a single directory
 @native
-fn make_dir(path: str) -> Result<Unit, Error>
+function make_dir(path: str) -> Result<Unit, Error>
 
 # Create a directory and all missing parents
 @native
-fn make_dir_all(path: str) -> Result<Unit, Error>
+function make_dir_all(path: str) -> Result<Unit, Error>
 
 # Get file size in bytes
 @native
-fn file_size(path: str) -> Result<int, Error>
+function file_size(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
 @native
-fn is_file(path: str) -> bool
+function is_file(path: str) -> bool
 
 # Check whether path is a directory
 @native
-fn is_dir(path: str) -> bool
+function is_dir(path: str) -> bool
 
 # Check whether path is a symbolic link
 @native
-fn is_symlink(path: str) -> bool
+function is_symlink(path: str) -> bool
 
 # Change file permissions (POSIX mode, e.g. 0o755)
 @native
-fn chmod(path: str, mode: int) -> Result<Unit, Error>
+function chmod(path: str, mode: int) -> Result<Unit, Error>
 
 # Create a symbolic link
 @native
-fn symlink(target: str, link_path: str) -> Result<Unit, Error>
+function symlink(target: str, link_path: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
 @native
-fn read_link(path: str) -> Result<str, Error>
+function read_link(path: str) -> Result<str, Error>

@@ -348,7 +348,7 @@ Converts a value to a string.
 | `str` | Returned as-is |
 | record | `TypeName(field1: val1, field2: val2)` |
 
-Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```python
 print(to_str(42))         # 42

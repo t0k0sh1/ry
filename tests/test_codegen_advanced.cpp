@@ -155,55 +155,55 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
-        "double = fn(x: int) => x * 2\n"
+        "double = function(x: int) => x * 2\n"
         "print(double(5))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, LambdaNoParams) {
     std::string src =
-        "answer = fn() => 42\n"
+        "answer = function() => 42\n"
         "print(answer())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, LambdaMultipleParams) {
     std::string src =
-        "add = fn(a: int, b: int) => a + b\n"
+        "add = function(a: int, b: int) => a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
 
 TEST_F(CodeGenTest, LambdaFloat) {
     std::string src =
-        "half = fn(x: float) => x / 2.0\n"
+        "half = function(x: float) => x / 2.0\n"
         "print(half(7.0))";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
 
 TEST_F(CodeGenTest, LambdaAsArgument) {
     std::string src =
-        "fn apply(f: fn(int) -> int, x: int) -> int:\n"
+        "function apply(f: function(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "doubled = apply(fn(n: int) => n * 2, 10)\n"
+        "doubled = apply(function(n: int) => n * 2, 10)\n"
         "print(doubled)";
     EXPECT_EQ(runSource(src), "20\n");
 }
 
 TEST_F(CodeGenTest, LambdaStoredAndPassed) {
     std::string src =
-        "fn apply(f: fn(int) -> int, x: int) -> int:\n"
+        "function apply(f: function(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "triple = fn(n: int) => n * 3\n"
+        "triple = function(n: int) => n * 3\n"
         "print(apply(triple, 5))";
     EXPECT_EQ(runSource(src), "15\n");
 }
 
 TEST_F(CodeGenTest, FunctionReference) {
     std::string src =
-        "fn square(x: int) -> int:\n"
+        "function square(x: int) -> int:\n"
         "    return x * x\n"
-        "fn apply(f: fn(int) -> int, x: int) -> int:\n"
+        "function apply(f: function(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
         "print(apply(square, 6))";
     EXPECT_EQ(runSource(src), "36\n");
@@ -211,7 +211,7 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "is_positive = fn(x: int) => x > 0\n"
+        "is_positive = function(x: int) => x > 0\n"
         "print(is_positive(5))\n"
         "print(is_positive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -219,7 +219,7 @@ TEST_F(CodeGenTest, LambdaBoolReturn) {
 
 TEST_F(CodeGenTest, LambdaMultiLine) {
     std::string src =
-        "abs = fn(x: int):\n"
+        "abs = function(x: int):\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
@@ -231,7 +231,7 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "offset = 10\n"
-        "add_offset = fn(x: int) => x + offset\n"
+        "add_offset = function(x: int) => x + offset\n"
         "print(add_offset(5))\n"
         "print(add_offset(20))";
     EXPECT_EQ(runSource(src), "15\n30\n");
@@ -239,14 +239,14 @@ TEST_F(CodeGenTest, LambdaClosure) {
 
 TEST_F(CodeGenTest, LambdaArgCountError) {
     std::string src =
-        "f = fn(x: int) => x\n"
+        "f = function(x: int) => x\n"
         "f(1, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, LambdaArgTypeError) {
     std::string src =
-        "f = fn(x: int) => x\n"
+        "f = function(x: int) => x\n"
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -324,7 +324,7 @@ TEST_F(CodeGenTest, SetEmptyWithAnnotation) {
 
 TEST_F(CodeGenTest, SetInFunction) {
     std::string src =
-        "fn has_element(s: Set<int>, x: int) -> bool:\n"
+        "function has_element(s: Set<int>, x: int) -> bool:\n"
         "    return x in s\n"
         "s = {10, 20, 30}\n"
         "print(has_element(s, 20))\n"
@@ -398,7 +398,7 @@ TEST_F(CodeGenTest, EnumAsParam) {
         "    Red\n"
         "    Green\n"
         "    Blue\n"
-        "fn is_red(c: Color) -> bool:\n"
+        "function is_red(c: Color) -> bool:\n"
         "    return c == Color::Red\n"
         "print(is_red(Color::Red))\n"
         "print(is_red(Color::Blue))";
@@ -646,7 +646,7 @@ TEST_F(CodeGenTest, UnionReassign) {
 
 TEST_F(CodeGenTest, UnionFnParam) {
     std::string src =
-        "fn show(x: int | str) -> int:\n"
+        "function show(x: int | str) -> int:\n"
         "    print(x)\n"
         "    return 0\n"
         "show(42)\n"
@@ -656,7 +656,7 @@ TEST_F(CodeGenTest, UnionFnParam) {
 
 TEST_F(CodeGenTest, UnionFnReturn) {
     std::string src =
-        "fn get_val(flag: bool) -> int | str:\n"
+        "function get_val(flag: bool) -> int | str:\n"
         "    if flag:\n"
         "        return 42\n"
         "    return \"hello\"\n"
@@ -836,7 +836,7 @@ print(e)
 
 TEST_F(CodeGenTest, ResultOkMatch) {
     std::string src = R"(
-fn read_file(path: str) -> Result<str, Error>:
+function read_file(path: str) -> Result<str, Error>:
     if path == "":
         return Err(Error("empty path"))
     return Ok("content")
@@ -853,7 +853,7 @@ when res:
 
 TEST_F(CodeGenTest, ResultErrMatch) {
     std::string src = R"(
-fn read_file(path: str) -> Result<str, Error>:
+function read_file(path: str) -> Result<str, Error>:
     if path == "":
         return Err(Error("empty path"))
     return Ok("content")
@@ -870,7 +870,7 @@ when res:
 
 TEST_F(CodeGenTest, ResultDivideOk) {
     std::string src = R"(
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -886,7 +886,7 @@ when divide(10, 2):
 
 TEST_F(CodeGenTest, ResultDivideErr) {
     std::string src = R"(
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -1162,8 +1162,8 @@ TEST_F(CodeGenTest, RawStringConcat) {
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src =
-        "describe(\"matchers\", fn():\n"
-        "    it(\"not equal\", fn():\n"
+        "describe(\"matchers\", function():\n"
+        "    it(\"not equal\", function():\n"
         "        expect(1).to_not_eq(2)\n"
         "    )\n"
         ")";
@@ -1174,8 +1174,8 @@ TEST_F(CodeGenTest, ExpectToNotEq) {
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src =
-        "describe(\"matchers\", fn():\n"
-        "    it(\"some\", fn():\n"
+        "describe(\"matchers\", function():\n"
+        "    it(\"some\", function():\n"
         "        x = Some(5)\n"
         "        expect(x).to_be_some()\n"
         "    )\n"
@@ -1187,8 +1187,8 @@ TEST_F(CodeGenTest, ExpectToBeSome) {
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src =
-        "describe(\"matchers\", fn():\n"
-        "    it(\"contains\", fn():\n"
+        "describe(\"matchers\", function():\n"
+        "    it(\"contains\", function():\n"
         "        xs = [1, 2, 3]\n"
         "        expect(xs).to_contain(2)\n"
         "    )\n"
@@ -1198,8 +1198,8 @@ TEST_F(CodeGenTest, ExpectToContainList) {
 
 TEST_F(CodeGenTest, ExpectToContainString) {
     std::string src =
-        "describe(\"matchers\", fn():\n"
-        "    it(\"contains str\", fn():\n"
+        "describe(\"matchers\", function():\n"
+        "    it(\"contains str\", function():\n"
         "        s = \"hello world\"\n"
         "        expect(s).to_contain(\"world\")\n"
         "    )\n"
@@ -1211,11 +1211,11 @@ TEST_F(CodeGenTest, ExpectToContainString) {
 
 TEST_F(CodeGenTest, LambdaArgDescribeIt) {
     std::string src =
-        "describe(\"Calculator\", fn():\n"
-        "    it(\"adds\", fn():\n"
+        "describe(\"Calculator\", function():\n"
+        "    it(\"adds\", function():\n"
         "        expect(1 + 2).to_eq(3)\n"
         "    )\n"
-        "    it(\"subtracts\", fn():\n"
+        "    it(\"subtracts\", function():\n"
         "        expect(5 - 3).to_eq(2)\n"
         "    )\n"
         ")";
@@ -1246,9 +1246,9 @@ TEST_F(CodeGenTest, ErrorPropagateSubtypeCoercion) {
     std::string src =
         "record ApiError < Error:\n"
         "    endpoint: str\n"
-        "fn fetch(url: str) -> Result<int, ApiError>:\n"
+        "function fetch(url: str) -> Result<int, ApiError>:\n"
         "    return Err(ApiError(\"fail\", 500, url))\n"
-        "fn process(url: str) -> Result<int, Error>:\n"
+        "function process(url: str) -> Result<int, Error>:\n"
         "    val = fetch(url)?\n"
         "    return Ok(val)\n"
         "result = process(\"/api\")\n"
@@ -1269,7 +1269,7 @@ TEST_F(CodeGenTest, GenericRecordBound) {
         "    legs: int\n"
         "record Dog < Animal:\n"
         "    breed: str\n"
-        "fn describe<T: Animal>(a: T) -> str:\n"
+        "function describe<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
         "print(describe(Dog(\"Rex\", 4, \"Lab\")))";
     EXPECT_EQ(runSource(src), "Rex\n");
@@ -1280,7 +1280,7 @@ TEST_F(CodeGenTest, GenericRecordBoundExactType) {
         "record Animal:\n"
         "    name: str\n"
         "    legs: int\n"
-        "fn describe<T: Animal>(a: T) -> str:\n"
+        "function describe<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
         "print(describe(Animal(\"Cat\", 4)))";
     EXPECT_EQ(runSource(src), "Cat\n");
@@ -1291,7 +1291,7 @@ TEST_F(CodeGenTest, GenericRecordBoundViolation) {
         "record Animal:\n"
         "    name: str\n"
         "    legs: int\n"
-        "fn describe<T: Animal>(a: T) -> str:\n"
+        "function describe<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
         "describe(42)";
     EXPECT_THROW(runSource(src), std::runtime_error);
@@ -1305,7 +1305,7 @@ TEST_F(CodeGenTest, GenericRecordBoundDeepInheritance) {
         "    breed: str\n"
         "record GuideDog < Dog:\n"
         "    handler: str\n"
-        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "function get_name<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
         "print(get_name(GuideDog(\"Rex\", \"Lab\", \"John\")))";
     EXPECT_EQ(runSource(src), "Rex\n");
@@ -1317,7 +1317,7 @@ TEST_F(CodeGenTest, GenericRecordBoundExplicitTypeArg) {
         "    name: str\n"
         "record Dog < Animal:\n"
         "    breed: str\n"
-        "fn get_name<T: Animal>(a: T) -> str:\n"
+        "function get_name<T: Animal>(a: T) -> str:\n"
         "    return a.name\n"
         "print(get_name[Dog](Dog(\"Rex\", \"Lab\")))";
     EXPECT_EQ(runSource(src), "Rex\n");
@@ -1329,7 +1329,7 @@ TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
         "    name: str\n"
         "record Dog < Animal:\n"
         "    breed: str\n"
-        "fn pair_name<T: Animal, U>(a: T, x: U) -> str:\n"
+        "function pair_name<T: Animal, U>(a: T, x: U) -> str:\n"
         "    return a.name\n"
         "print(pair_name(Dog(\"Rex\", \"Lab\"), 42))";
     EXPECT_EQ(runSource(src), "Rex\n");
@@ -1340,7 +1340,7 @@ TEST_F(CodeGenTest, GenericRecordBoundMixedParams) {
 TEST_F(CodeGenTest, TailCallOptimization) {
     // Deep self-recursive tail call should not stack overflow
     EXPECT_EQ(runSource(
-        "fn sum_to(n: int, acc: int) -> int:\n"
+        "function sum_to(n: int, acc: int) -> int:\n"
         "  if n <= 0:\n"
         "    return acc\n"
         "  return sum_to(n - 1, acc + n)\n"
@@ -1350,7 +1350,7 @@ TEST_F(CodeGenTest, TailCallOptimization) {
 TEST_F(CodeGenTest, TailCallFactorial) {
     // Tail-recursive factorial with accumulator
     EXPECT_EQ(runSource(
-        "fn factorial(n: int, acc: int) -> int:\n"
+        "function factorial(n: int, acc: int) -> int:\n"
         "  if n <= 1:\n"
         "    return acc\n"
         "  return factorial(n - 1, n * acc)\n"
@@ -1360,7 +1360,7 @@ TEST_F(CodeGenTest, TailCallFactorial) {
 TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
     // n * factorial(n-1) is NOT a tail call — should still work for small N
     EXPECT_EQ(runSource(
-        "fn factorial(n: int) -> int:\n"
+        "function factorial(n: int) -> int:\n"
         "  if n <= 1:\n"
         "    return 1\n"
         "  return n * factorial(n - 1)\n"

@@ -194,7 +194,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 // Track fn type info for fn-typed parameters
                 const std::string ptype = e->params[idx].type->toString();
                 std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
+                if (resolvedPtype.size() > 9 && resolvedPtype.substr(0, 9) == "function(") {
                     fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
                 }
                 registerResourceByTypeName(ptype, alloca);

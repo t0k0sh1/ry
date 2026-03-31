@@ -5,7 +5,7 @@
 ## Function Definition Syntax
 
 ```python
-fn function_name(param_name: type, ...) -> return_type:
+function function_name(param_name: type, ...) -> return_type:
     # body
     return value
 ```
@@ -19,10 +19,10 @@ fn function_name(param_name: type, ...) -> return_type:
 > **Naming convention**: Function names and parameter names must use snake_case (e.g., `add`, `get_value`, `map_list`). The compiler enforces this convention.
 
 ```python
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn greet(name: str) -> Unit:
+function greet(name: str) -> Unit:
     print("Hello, " + name)   # Return type is Unit (explicit)
 ```
 
@@ -39,13 +39,13 @@ fn greet(name: str) -> Unit:
 > **Note**: Function parameters are **immutable**. You cannot reassign a parameter inside the function body. This ensures that parameter values at entry are always available for postcondition checks (see [Design by Contract](contracts.md)).
 
 ```python
-fn no_return(x: int) -> Unit:  # Return type Unit (explicit)
+function no_return(x: int) -> Unit:  # Return type Unit (explicit)
     print(x)
 
-fn get_value() -> int:     # Return type int
+function get_value() -> int:     # Return type int
     return 42
 
-fn identity(x) -> any:    # Parameter type any (omitted)
+function identity(x) -> any:    # Parameter type any (omitted)
     return x
 ```
 
@@ -55,7 +55,7 @@ When a parameter type annotation is omitted, the parameter is treated as `any` �
 
 ```python
 # All parameters default to any
-fn add(a, b):
+function add(a, b):
     return a + b
 
 add(1, 2)              # 3 (int + int)
@@ -66,7 +66,7 @@ add(1, 2.0)            # 3.0 (int + float)
 You can also use `any` explicitly in type annotations:
 
 ```python
-fn identity(x: any) -> any:
+function identity(x: any) -> any:
     return x
 ```
 
@@ -75,17 +75,17 @@ fn identity(x: any) -> any:
 When the return type is omitted, it is inferred from the `return` statements in the body:
 
 ```python
-fn double(x: int):     # return type inferred as int
+function double(x: int):     # return type inferred as int
     return x * 2
 
-fn greet(name: str):   # return type inferred as Unit (no return)
+function greet(name: str):   # return type inferred as Unit (no return)
     print("Hello, " + name)
 ```
 
 To explicitly allow any return type, use `-> any`:
 
 ```python
-fn flexible(x: any) -> any:
+function flexible(x: any) -> any:
     return x    # can return int, float, str, etc.
 ```
 
@@ -96,7 +96,7 @@ fn flexible(x: any) -> any:
 Functions can call themselves.
 
 ```python
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -107,7 +107,7 @@ fn factorial(n: int) -> int:
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
 
 ```python
-fn sum_to(n: int, acc: int) -> int:
+function sum_to(n: int, acc: int) -> int:
     if n <= 0:
         return acc
     return sum_to(n - 1, acc + n)    # tail call → optimized
@@ -136,10 +136,10 @@ Multiple functions with the same name can be defined if they differ in the numbe
 - Overloading by return type alone is not allowed.
 
 ```python
-fn area(side: int) -> int:
+function area(side: int) -> int:
     return side * side
 
-fn area(w: int, h: int) -> int:
+function area(w: int, h: int) -> int:
     return w * h
 
 a = area(5)       # 25
@@ -160,10 +160,10 @@ The overload with the most exact matches wins. If two or more overloads have equ
 Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`–`u64`, `f32`) do **not** participate in implicit widening — they require explicit `as` casts.
 
 ```python
-fn process(x: int) -> str:
+function process(x: int) -> str:
     return "int"
 
-fn process(x) -> str:          # x: any
+function process(x) -> str:          # x: any
     return "any"
 
 process(42)       # "int" — exact match (int) beats any
@@ -171,7 +171,7 @@ process("hello")  # "any" — no exact match for str, falls back to any
 ```
 
 ```python
-fn double(x: float) -> float:
+function double(x: float) -> float:
     return x * 2.0
 
 double(5)         # OK — int is implicitly widened to float, returns 10.0
@@ -186,7 +186,7 @@ Parameters can have default values, allowing callers to omit trailing arguments.
 ### Syntax
 
 ```python
-fn connect(host: str, port: int = 8080, timeout: int = 30):
+function connect(host: str, port: int = 8080, timeout: int = 30):
     # ...
 
 connect("localhost")                    # port=8080, timeout=30
@@ -203,9 +203,9 @@ connect("localhost", 3000, 10000)       # port=3000, timeout=10000
 
 ```python
 # Error: ambiguous overload
-fn calc(x: int, y: int = 0) -> int:
+function calc(x: int, y: int = 0) -> int:
     return x + y
-fn calc(x: int) -> int:      # conflicts with calc(int) from above
+function calc(x: int) -> int:      # conflicts with calc(int) from above
     return x * 2
 ```
 
@@ -220,7 +220,7 @@ fn calc(x: int) -> int:      # conflicts with calc(int) from above
 Functions without a return value return `Unit`. The return type can be omitted (inferred as `Unit`) or explicitly specified with `-> Unit`.
 
 ```python
-fn log(msg: str) -> Unit:
+function log(msg: str) -> Unit:
     print(msg)
 ```
 
@@ -228,10 +228,10 @@ fn log(msg: str) -> Unit:
 
 ## Tasks And Async Functions
 
-`Task<T>` is the built-in handle type for concurrent work. `async fn` returns `Task<T>`, `await` extracts `T` inside another `async fn`, and `block_on(task)` blocks from synchronous context until the task completes.
+`Task<T>` is the built-in handle type for concurrent work. `async function` returns `Task<T>`, `await` extracts `T` inside another `async function`, and `block_on(task)` blocks from synchronous context until the task completes.
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 
 # From synchronous context, use block_on()
@@ -239,21 +239,21 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 block_on(add(1, 2))                 # waits and discards the result
 
-# Inside async fn, use await
-async fn double_add(a: int, b: int) -> int:
+# Inside async function, use await
+async function double_add(a: int, b: int) -> int:
     return (await add(a, b)) * 2
 ```
 
 ### Rules
 
-- `async fn name(...) -> T:` is declared with the awaited result type `T`.
-- Calling an `async fn` immediately returns `Task<T>`.
+- `async function name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async function` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
+- `await` can only be used inside an `async function`. Use `block_on(task)` from synchronous context.
 - `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `async function ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
-- `async` lambdas and `async @native fn` are not supported in v1.
+- `async` lambdas and `async @native function` are not supported in v1.
 
 ---
 
@@ -265,31 +265,31 @@ Anonymous functions can be defined inline.
 
 ```python
 # Single expression (return type inferred from expression)
-fn(param_name: type, ...) => expression
+ (param_name: type, ...): expression
 
 # Parameter type can be omitted (defaults to any)
-fn(param_name, ...) => expression
+ (param_name, ...): expression
 
 # Multi-line block
-fn(param_name: type, ...):
+function(param_name: type, ...):
     # multiple statements
     return value
 
 # With explicit return type (optional)
-fn(param_name: type, ...) -> return_type => expression
+ (param_name: type, ...) -> return_type: expression
 ```
 
 ### Example
 
 ```python
-double = fn(x: int) => x * 2
+double = (x: int): x * 2
 result = double(5)   # 10
 
-add = fn(a: int, b: int) => a + b
+add = (a: int, b: int): a + b
 sum = add(3, 4)      # 7
 
 # Multi-line lambda
-abs = fn(x: int):
+abs = (x: int):
     if x < 0:
         return -x
     return x
@@ -303,7 +303,7 @@ Lambda functions **capture by value** the variables from the outer scope at the 
 
 ```python
 base = 10
-add_base = fn(x: int) => x + base   # Captures base by value
+add_base = (x: int): x + base   # Captures base by value
 
 base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
@@ -326,16 +326,16 @@ A type for treating functions as values.
 ### Syntax
 
 ```python
-fn(param_type1, param_type2, ...) -> return_type
+function(param_type1, param_type2, ...) -> return_type
 ```
 
 ### Example
 
 ```python
-f: fn(int) -> int = fn(x: int) => x * 2
-g: fn(int, int) -> int = fn(a: int, b: int) => a + b
+f: function(int) -> int = (x: int): x * 2
+g: function(int, int) -> int = (a: int, b: int): a + b
 
-fn apply(func: fn(int) -> int, x: int) -> int:
+function apply(func: function(int) -> int, x: int) -> int:
     return func(x)
 
 result = apply(f, 5)   # 10
@@ -348,13 +348,13 @@ result = apply(f, 5)   # 10
 Functions can accept functions as arguments or return them as values.
 
 ```python
-fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
+function map_list(xs: List<int>, f: function(int) -> int) -> List<int>:
     result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], fn(x: int) => x * 2)
+doubled = map_list([1, 2, 3], (x: int): x * 2)
 # [2, 4, 6]
 ```
 
@@ -367,14 +367,14 @@ Functions can have type parameters, enabling type-safe reuse without code duplic
 ### Syntax
 
 ```python
-fn name<T, U>(param1: T, param2: U) -> T:
+function name<T, U>(param1: T, param2: U) -> T:
     # body using T, U as types
 ```
 
 ### Example
 
 ```python
-fn identity<T>(x: T) -> T:
+function identity<T>(x: T) -> T:
     return x
 
 # Explicit type argument
@@ -389,7 +389,7 @@ result = identity("hello")     # T = str, result = "hello"
 ### Multiple Type Parameters
 
 ```python
-fn pick_first<T, U>(a: T, b: U) -> T:
+function pick_first<T, U>(a: T, b: U) -> T:
     return a
 
 result = pick_first(1, "x")       # T = int, U = str, result = 1
@@ -408,7 +408,7 @@ record Animal:
 record Dog < Animal:
     breed: str
 
-fn get_name<T: Animal>(a: T) -> str:
+function get_name<T: Animal>(a: T) -> str:
     return a.name
 
 get_name(Dog("Rex", 4, "Lab"))  # OK — Dog is a subtype of Animal
@@ -418,7 +418,7 @@ get_name(Animal("Cat", 4))      # OK — exact type match
 Bounded and unbounded type parameters can be mixed:
 
 ```python
-fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+function pair_name<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
 
@@ -445,10 +445,10 @@ a.f(b)
 ### Chaining
 
 ```python
-fn double(x: int) -> int:
+function double(x: int) -> int:
     return x * 2
 
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
@@ -473,11 +473,11 @@ You can define operator behavior for user-defined types.
 
 ```python
 # Binary operator (2 parameters)
-fn operator<op>(a: type, b: type) -> return_type:
+function operator<op>(a: type, b: type) -> return_type:
     ...
 
 # Unary operator (1 parameter)
-fn operator<op>(a: type) -> return_type:
+function operator<op>(a: type) -> return_type:
     ...
 ```
 
@@ -508,11 +508,11 @@ Comparison, logical, and membership operators must return `bool`:
 
 ```python
 # OK
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-fn operator==(a: Vec2, b: Vec2) -> int:
+function operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -528,15 +528,15 @@ record Vec2:
     y: float
 
 # Binary +
-fn operator+(a: Vec2, b: Vec2) -> Vec2:
+function operator+(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 # Unary -
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 
 # Comparison
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 v1 = Vec2(1.0, 2.0)

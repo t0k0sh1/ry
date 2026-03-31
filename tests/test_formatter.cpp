@@ -77,7 +77,7 @@ TEST(Formatter, StatementFormatting) {
     EXPECT_EQ(fmt("from .\n"), "from .\n");
     // Return
     {
-        auto src = "fn f() -> int:\n    return 42\n";
+        auto src = "function f() -> int:\n    return 42\n";
         auto out = fmt(src);
         EXPECT_NE(out.find("  return 42"), std::string::npos);
     }
@@ -108,19 +108,19 @@ TEST(Formatter, StatementFormatting) {
 TEST(Formatter, IndentationLevels) {
     // Function indent (2-space)
     {
-        auto src = "fn add(a: int, b: int) -> int:\n    return a + b\n";
-        auto expected = "fn add(a: int, b: int) -> int:\n  return a + b\n";
+        auto src = "function add(a: int, b: int) -> int:\n    return a + b\n";
+        auto expected = "function add(a: int, b: int) -> int:\n  return a + b\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // Nested indent
     {
         auto src =
-            "fn f(x: int) -> int:\n"
+            "function f(x: int) -> int:\n"
             "    if x > 0:\n"
             "        return x\n"
             "    return 0\n";
         auto expected =
-            "fn f(x: int) -> int:\n"
+            "function f(x: int) -> int:\n"
             "  if x > 0:\n"
             "    return x\n"
             "  return 0\n";
@@ -129,13 +129,13 @@ TEST(Formatter, IndentationLevels) {
     // Deeply nested
     {
         auto src =
-            "fn f() -> int:\n"
+            "function f() -> int:\n"
             "    if true:\n"
             "        while true:\n"
             "            return 1\n"
             "    return 0\n";
         auto expected =
-            "fn f() -> int:\n"
+            "function f() -> int:\n"
             "  if true:\n"
             "    while true:\n"
             "      return 1\n"
@@ -231,18 +231,18 @@ TEST(Formatter, ControlFlow) {
 TEST(Formatter, FunctionVariants) {
     // Async function
     {
-        auto src = "async fn fetch() -> int:\n    return 42\n";
-        auto expected = "async fn fetch() -> int:\n  return 42\n";
+        auto src = "async function fetch() -> int:\n    return 42\n";
+        auto expected = "async function fetch() -> int:\n  return 42\n";
         EXPECT_EQ(fmt(src), expected);
     }
     // Operator overload
     {
         auto src =
             "record Vec2:\n    x: float\n    y: float\n\n"
-            "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+            "function operator+(a: Vec2, b: Vec2) -> Vec2:\n"
             "    return Vec2(a.x + b.x, a.y + b.y)\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("fn operator+(a: Vec2, b: Vec2) -> Vec2:"), std::string::npos);
+        EXPECT_NE(out.find("function operator+(a: Vec2, b: Vec2) -> Vec2:"), std::string::npos);
         EXPECT_NE(out.find("  return Vec2(a.x + b.x, a.y + b.y)"), std::string::npos);
     }
 }
@@ -266,12 +266,12 @@ TEST(Formatter, CommentFormatting) {
     // Comment between functions
     {
         auto src =
-            "fn a() -> int:\n"
+            "function a() -> int:\n"
             "    return 1\n"
             "\n"
             "# separator\n"
             "\n"
-            "fn b() -> int:\n"
+            "function b() -> int:\n"
             "    return 2\n";
         auto out = fmt(src);
         EXPECT_NE(out.find("# separator"), std::string::npos);
@@ -292,28 +292,28 @@ TEST(Formatter, CommentFormatting) {
 TEST(Formatter, NativeDirectiveFormatting) {
     // Basic native directive
     {
-        auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
+        auto src = "@native\nfunction append(values: List<int>, value: int) -> Unit\n";
         auto out = fmt(src);
         EXPECT_NE(out.find("@native"), std::string::npos);
-        EXPECT_NE(out.find("fn append("), std::string::npos);
+        EXPECT_NE(out.find("function append("), std::string::npos);
     }
     // Native bang function
     {
-        auto src = "@native\nfn sort!(values: List<int>) -> Unit\n";
+        auto src = "@native\nfunction sort!(values: List<int>) -> Unit\n";
         auto out = fmt(src);
         EXPECT_NE(out.find("@native"), std::string::npos);
-        EXPECT_NE(out.find("fn sort!(values: List<int>) -> Unit"), std::string::npos);
+        EXPECT_NE(out.find("function sort!(values: List<int>) -> Unit"), std::string::npos);
     }
     // Native function has no colon
     {
-        auto src = "@native\nfn append(values: List<int>, value: int) -> Unit\n";
+        auto src = "@native\nfunction append(values: List<int>, value: int) -> Unit\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("fn append(values: List<int>, value: int) -> Unit\n"), std::string::npos);
+        EXPECT_NE(out.find("function append(values: List<int>, value: int) -> Unit\n"), std::string::npos);
         EXPECT_EQ(out.find("-> Unit:"), std::string::npos);
     }
     // Native function has no body
     {
-        auto src = "@native\nfn pop(values: List<int>) -> Option<int>\n";
+        auto src = "@native\nfunction pop(values: List<int>) -> Option<int>\n";
         auto out = fmt(src);
         EXPECT_EQ(out.find("-> Option<int>:"), std::string::npos);
         EXPECT_NE(out.find("-> Option<int>\n"), std::string::npos);
@@ -329,11 +329,11 @@ TEST(Formatter, NativeDirectiveFormatting) {
     {
         auto src =
             "@native\n"
-            "fn read_all() -> str\n"
+            "function read_all() -> str\n"
             "\n"
             "# File I/O\n"
             "@native\n"
-            "fn read_text(path: str) -> str\n";
+            "function read_text(path: str) -> str\n";
         std::string out = fmt(src);
         EXPECT_EQ(out.find("\n\n\n"), std::string::npos)
             << "Found triple newline (double blank line) in:\n" << out;
@@ -350,12 +350,12 @@ TEST(Formatter, NativeDirectiveFormatting) {
 
 TEST(Formatter, BlankLineBetweenDefs) {
     auto src =
-        "fn a() -> int:\n"
+        "function a() -> int:\n"
         "    return 1\n"
-        "fn b() -> int:\n"
+        "function b() -> int:\n"
         "    return 2\n";
     auto out = fmt(src);
-    EXPECT_NE(out.find("  return 1\n\nfn b"), std::string::npos);
+    EXPECT_NE(out.find("  return 1\n\nfunction b"), std::string::npos);
 }
 
 // ===== Lambda / Trailing Block Tests =====
@@ -363,30 +363,30 @@ TEST(Formatter, BlankLineBetweenDefs) {
 TEST(Formatter, LambdaAndTrailingBlock) {
     // Single-line lambda
     {
-        auto src = "double = fn(x: int) => x * 2\n";
+        auto src = "double = function(x: int) => x * 2\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("double = fn(x: int) => x * 2"), std::string::npos);
+        EXPECT_NE(out.find("double = function(x: int) => x * 2"), std::string::npos);
     }
     // Trailing block call
     {
         auto src =
-            "describe(\"test\", fn():\n"
-            "    it(\"case\", fn():\n"
+            "describe(\"test\", function():\n"
+            "    it(\"case\", function():\n"
             "        expect(1 + 1).to_eq(2)\n"
             "    )\n"
             ")\n";
         auto out = fmt(src);
-        EXPECT_NE(out.find("describe(\"test\", fn():"), std::string::npos);
-        EXPECT_NE(out.find("  it(\"case\", fn():"), std::string::npos);
+        EXPECT_NE(out.find("describe(\"test\", function():"), std::string::npos);
+        EXPECT_NE(out.find("  it(\"case\", function():"), std::string::npos);
     }
     // Expect statement
     {
         auto src =
-            "fn id(x: int) -> int:\n"
+            "function id(x: int) -> int:\n"
             "    return x\n"
             "\n"
-            "describe(\"t\", fn():\n"
-            "    it(\"c\", fn():\n"
+            "describe(\"t\", function():\n"
+            "    it(\"c\", function():\n"
             "        expect(id(5)).to_eq(5)\n"
             "    )\n"
             ")\n";
@@ -401,10 +401,10 @@ TEST(Formatter, RoundTripAndIdempotency) {
     // Basic idempotency
     {
         auto src =
-            "fn add(a: int, b: int) -> int:\n"
+            "function add(a: int, b: int) -> int:\n"
             "  return a + b\n"
             "\n"
-            "fn sub(a: int, b: int) -> int:\n"
+            "function sub(a: int, b: int) -> int:\n"
             "  return a - b\n";
         auto first = fmt(src);
         auto second = fmt(first);
@@ -436,7 +436,7 @@ TEST(Formatter, RoundTripAndIdempotency) {
 }
 
 TEST(FormatterTest, DefaultArgRoundTrip) {
-    auto src = "fn greet(name: str, greeting: str = \"Hello\") -> str:\n  return greeting\n";
+    auto src = "function greet(name: str, greeting: str = \"Hello\") -> str:\n  return greeting\n";
     auto first = Formatter::formatSource(src);
     EXPECT_EQ(first, src);
     auto second = Formatter::formatSource(first);

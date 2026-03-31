@@ -1,9 +1,9 @@
 from net import bind, listen, accept, connect, listener_port
 from io import to_bytes, bytes_to_str
 
-describe("HTTP Server API", fn():
-  it("responds with 200 OK for matching path", fn():
-    async fn server_200(server: TcpListener) -> str:
+describe("HTTP Server API", function():
+  it("responds with 200 OK for matching path", function():
+    async function server_200(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
           when receive(conn, 4096):
@@ -53,8 +53,8 @@ describe("HTTP Server API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("responds with 404 Not Found", fn():
-    async fn server_404(server: TcpListener) -> str:
+  it("responds with 404 Not Found", function():
+    async function server_404(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
           when receive(conn, 4096):

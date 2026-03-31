@@ -39,7 +39,7 @@ print(t.1)   # 3.14
 Tuples are useful when you want to return multiple values.
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -107,7 +107,7 @@ for x in xs:
 ### Function Parameters
 
 ```python
-fn first(xs: List<int>) -> int:
+function first(xs: List<int>) -> int:
     return xs[0]
 ```
 
@@ -119,11 +119,11 @@ Lists support `filter`, `map`, and `sort` operations. These return new lists wit
 xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-evens = xs.filter(fn(x: int) => x > 3)
+evens = xs.filter(function(x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-doubled = xs.map(fn(x: int) => x * 2)
+doubled = xs.map(function(x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
@@ -131,7 +131,7 @@ sorted = [3, 1, 2].sort()
 print(sorted)   # [1, 2, 3]
 
 # Chaining
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = xs.filter(function(x: int) => x > 1).map(function(x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +143,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: start from first element
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, function(a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: provide an explicit initial value
-total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
+total2 = fold(xs, 0, function(a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +158,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, function(x: int) => x > 4))   # true
+print(any(xs, function(x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, function(x: int) => x > 0))   # true
+print(all(xs, function(x: int) => x > 3))   # false
 ```
 
 ### sum, min, max
@@ -273,7 +273,7 @@ print(values(m))   # [1, 2, 3]
 ### Function Parameters
 
 ```python
-fn get_val(m: Map<str, int>, k: str) -> int:
+function get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
@@ -369,8 +369,8 @@ You can chain `filter`, `map`, and `take` to build pipelines. This uses the UFCS
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter(function(x: int) => x > 2)
+    .map(function(x: int) => x * 2)
     .take(2)
     .to_list()
 print(result)   # [6, 8]
@@ -384,8 +384,8 @@ scores = [85, 42, 93, 67, 78, 55, 91]
 # Get the top 3 passing scores (>= 60), doubled for bonus
 top_bonus = scores
     .iter()
-    .filter(fn(s: int) => s >= 60)
-    .map(fn(s: int) => s * 2)
+    .filter(function(s: int) => s >= 60)
+    .map(function(s: int) => s * 2)
     .take(3)
     .to_list()
 print(top_bonus)   # [170, 186, 134]
@@ -407,7 +407,7 @@ print(it.next())   # None
 Iterators work directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in [1, 2, 3].iter().filter(function(x: int) => x > 1):
     print(x)   # 2, 3
 ```
 

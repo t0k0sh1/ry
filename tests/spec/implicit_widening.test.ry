@@ -1,83 +1,83 @@
 # --- helper functions ---
 
-fn double_float(x: float) -> float:
+function double_float(x: float) -> float:
   return x * 2.0
 
-fn accept_int(x: int) -> int:
+function accept_int(x: int) -> int:
   return x
 
-fn accept_float(x: float) -> float:
+function accept_float(x: float) -> float:
   return x
 
-fn add_floats(x: float, y: float) -> float:
+function add_floats(x: float, y: float) -> float:
   return x + y
 
 # overload: exact when should win
-fn typed(x: int) -> str:
+function typed(x: int) -> str:
   return "int"
 
-fn typed(x: float) -> str:
+function typed(x: float) -> str:
   return "float"
 
 # overload: widening should win over any
-fn prefer_widening(x: float) -> str:
+function prefer_widening(x: float) -> str:
   return "float"
 
-fn prefer_widening(x) -> str:
+function prefer_widening(x) -> str:
   return "any"
 
 # --- tests ---
 
-describe("basic implicit widening", fn():
-  it("int to float", fn():
+describe("basic implicit widening", function():
+  it("int to float", function():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 to int", fn():
+  it("u8 to int", function():
     b: u8 = 200
     result = accept_int(b)
     expect(result).to_eq(200)
   )
 
-  it("u8 to float", fn():
+  it("u8 to float", function():
     b: u8 = 42
     result = accept_float(b)
     expect(result).to_eq(42.0)
   )
 )
 
-describe("return value correctness", fn():
-  it("int widened to float returns float", fn():
+describe("return value correctness", function():
+  it("int widened to float returns float", function():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 widened to int preserves unsigned value", fn():
+  it("u8 widened to int preserves unsigned value", function():
     b: u8 = 255
     result = accept_int(b)
     expect(result).to_eq(255)
   )
 )
 
-describe("overload resolution priority", fn():
-  it("exact when wins over widening", fn():
+describe("overload resolution priority", function():
+  it("exact when wins over widening", function():
     expect(typed(5)).to_eq("int")
     expect(typed(5.0)).to_eq("float")
   )
 
-  it("widening wins over any", fn():
+  it("widening wins over any", function():
     expect(prefer_widening(5)).to_eq("float")
   )
 )
 
-describe("multi-arg widening", fn():
-  it("both args widened", fn():
+describe("multi-arg widening", function():
+  it("both args widened", function():
     result = add_floats(1, 2)
     expect(result).to_eq(3.0)
   )
 
-  it("mixed: one exact, one widened", fn():
+  it("mixed: one exact, one widened", function():
     result = add_floats(1, 2.0)
     expect(result).to_eq(3.0)
   )

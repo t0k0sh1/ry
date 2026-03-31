@@ -6,7 +6,7 @@
 
 TEST_F(CodeGenTest, MissingReturnInt) {
     EXPECT_THROW(runSource(
-        "fn foo() -> int:\n"
+        "function foo() -> int:\n"
         "    x = 1\n"
         "foo()\n"
     ), std::runtime_error);
@@ -14,7 +14,7 @@ TEST_F(CodeGenTest, MissingReturnInt) {
 
 TEST_F(CodeGenTest, MissingReturnNoElse) {
     EXPECT_THROW(runSource(
-        "fn foo(x: int) -> int:\n"
+        "function foo(x: int) -> int:\n"
         "    if x > 0:\n"
         "        return 1\n"
         "foo(1)\n"
@@ -23,7 +23,7 @@ TEST_F(CodeGenTest, MissingReturnNoElse) {
 
 TEST_F(CodeGenTest, MissingReturnInElseBranch) {
     EXPECT_THROW(runSource(
-        "fn foo(x: int) -> int:\n"
+        "function foo(x: int) -> int:\n"
         "    if x > 0:\n"
         "        return 1\n"
         "    else:\n"
@@ -34,7 +34,7 @@ TEST_F(CodeGenTest, MissingReturnInElseBranch) {
 
 TEST_F(CodeGenTest, MissingReturnStr) {
     EXPECT_THROW(runSource(
-        "fn greet() -> str:\n"
+        "function greet() -> str:\n"
         "    x = \"hello\"\n"
         "greet()\n"
     ), std::runtime_error);
@@ -42,7 +42,7 @@ TEST_F(CodeGenTest, MissingReturnStr) {
 
 TEST_F(CodeGenTest, MissingReturnFloat) {
     EXPECT_THROW(runSource(
-        "fn pi() -> float:\n"
+        "function pi() -> float:\n"
         "    x = 3.14\n"
         "pi()\n"
     ), std::runtime_error);
@@ -50,7 +50,7 @@ TEST_F(CodeGenTest, MissingReturnFloat) {
 
 TEST_F(CodeGenTest, MissingReturnBool) {
     EXPECT_THROW(runSource(
-        "fn check() -> bool:\n"
+        "function check() -> bool:\n"
         "    x = true\n"
         "check()\n"
     ), std::runtime_error);
@@ -58,7 +58,7 @@ TEST_F(CodeGenTest, MissingReturnBool) {
 
 TEST_F(CodeGenTest, MissingReturnLambdaExplicitType) {
     EXPECT_THROW(runSource(
-        "f = fn() -> int:\n"
+        "f = function() -> int:\n"
         "    x = 1\n"
         "f()\n"
     ), std::runtime_error);
@@ -70,7 +70,7 @@ TEST_F(CodeGenTest, MissingReturnLambdaExplicitType) {
 
 TEST_F(CodeGenTest, AllPathsReturnIfElse) {
     EXPECT_EQ(runSource(
-        "fn foo(x: int) -> int:\n"
+        "function foo(x: int) -> int:\n"
         "    if x > 0:\n"
         "        return 1\n"
         "    else:\n"
@@ -81,7 +81,7 @@ TEST_F(CodeGenTest, AllPathsReturnIfElse) {
 
 TEST_F(CodeGenTest, AllPathsReturnWhenMultiBranch) {
     EXPECT_EQ(runSource(
-        "fn grade(x: int) -> str:\n"
+        "function grade(x: int) -> str:\n"
         "    when:\n"
         "        x >= 90:\n"
         "            return \"A\"\n"
@@ -95,7 +95,7 @@ TEST_F(CodeGenTest, AllPathsReturnWhenMultiBranch) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchWildcard) {
     EXPECT_EQ(runSource(
-        "fn describe(x: int) -> str:\n"
+        "function describe(x: int) -> str:\n"
         "    when x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
@@ -107,7 +107,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchWildcard) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
     EXPECT_EQ(runSource(
-        "fn check(x: int) -> str:\n"
+        "function check(x: int) -> str:\n"
         "    r: Result<int, Error> = Ok(x)\n"
         "    when r:\n"
         "        case Ok(v):\n"
@@ -120,7 +120,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchOkErr) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchSomeNone) {
     EXPECT_EQ(runSource(
-        "fn check(x: Option<int>) -> str:\n"
+        "function check(x: Option<int>) -> str:\n"
         "    when x:\n"
         "        case Some(v):\n"
         "            return \"some\"\n"
@@ -132,7 +132,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchSomeNone) {
 
 TEST_F(CodeGenTest, UnitFunctionNoReturnOk) {
     EXPECT_EQ(runSource(
-        "fn greet() -> Unit:\n"
+        "function greet() -> Unit:\n"
         "    print(\"hello\")\n"
         "greet()\n"
     ), "hello\n");
@@ -140,7 +140,7 @@ TEST_F(CodeGenTest, UnitFunctionNoReturnOk) {
 
 TEST_F(CodeGenTest, AnyFunctionNoReturnOk) {
     EXPECT_NO_THROW(runSource(
-        "fn foo() -> any:\n"
+        "function foo() -> any:\n"
         "    x = 1\n"
         "foo()\n"
     ));
@@ -148,7 +148,7 @@ TEST_F(CodeGenTest, AnyFunctionNoReturnOk) {
 
 TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
     EXPECT_NO_THROW(runSource(
-        "fn foo():\n"
+        "function foo():\n"
         "    x = 1\n"
         "foo()\n"
     ));
@@ -156,7 +156,7 @@ TEST_F(CodeGenTest, OmittedReturnTypeNoReturnOk) {
 
 TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
     EXPECT_EQ(runSource(
-        "fn describe(x: int) -> str:\n"
+        "function describe(x: int) -> str:\n"
         "    when x:\n"
         "        case 1:\n"
         "            return \"one\"\n"
@@ -168,7 +168,7 @@ TEST_F(CodeGenTest, AllPathsReturnMatchVariable) {
 
 TEST_F(CodeGenTest, NestedIfElseAllReturn) {
     EXPECT_EQ(runSource(
-        "fn classify(x: int) -> str:\n"
+        "function classify(x: int) -> str:\n"
         "    if x > 0:\n"
         "        if x > 100:\n"
         "            return \"big\"\n"

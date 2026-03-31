@@ -8,10 +8,10 @@
 
 ## Basic Function Definition
 
-Functions are defined with the `fn` keyword. Parameter type declarations are required and use the `name: type` format. The return type is specified after `->`.
+Functions are defined with the `function` keyword. Parameter type declarations are required and use the `name: type` format. The return type is specified after `->`.
 
 ```python
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 ```
 
@@ -26,7 +26,7 @@ fn add(a: int, b: int) -> int:
 Call a defined function by its name with arguments.
 
 ```python
-fn multiply(x: int, y: int) -> int:
+function multiply(x: int, y: int) -> int:
     return x * y
 
 result = multiply(3, 4)
@@ -40,7 +40,7 @@ print(result)   # 12
 Functions can call themselves (recursion).
 
 ```python
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -56,10 +56,10 @@ print(factorial(0))   # 1
 You can define multiple functions with the same name but different parameter counts or types.
 
 ```python
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn add(a: float, b: float) -> float:
+function add(a: float, b: float) -> float:
     return a + b
 
 print(add(1, 2))       # 3
@@ -77,7 +77,7 @@ The appropriate function is automatically selected based on the argument types a
 If a function does not need to return a value, you can omit `->`. In this case, the function returns the Unit type.
 
 ```python
-fn greet():
+function greet():
     print(42)
 
 greet()   # 42
@@ -92,7 +92,7 @@ This is the simplest form of a function with no parameters and no return value.
 Parameters can have default values. When a caller omits those arguments, the default is used.
 
 ```python
-fn greet(name: str, greeting: str = "Hello") -> str:
+function greet(name: str, greeting: str = "Hello") -> str:
     return f"{greeting}, {name}"
 
 print(greet("Alice"))             # Hello, Alice
@@ -102,7 +102,7 @@ print(greet("Bob", "Good morning"))  # Good morning, Bob
 You can have multiple default parameters:
 
 ```python
-fn connect(host: str, port: int = 8080, timeout: int = 30) -> str:
+function connect(host: str, port: int = 8080, timeout: int = 30) -> str:
     return f"{host}:{port} (timeout={timeout})"
 
 print(connect("localhost"))              # localhost:8080 (timeout=30)
@@ -118,22 +118,22 @@ print(connect("localhost", 3000, 10))    # localhost:3000 (timeout=10)
 
 ## Lambda Functions
 
-Lambda functions let you write functions as expressions. They use the form `fn(parameters) => expression`. The return type is automatically inferred.
+Lambda functions let you write functions as expressions. They use the form `(parameters): expression`. The return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-double = fn(x: int) => x * 2
+double = (x: int): x * 2
 print(double(5))  # 10
 
-add = fn(a: int, b: int) => a + b
+add = (a: int, b: int): a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-answer = fn() => 42
+answer = (): 42
 print(answer())  # 42
 ```
 
@@ -142,7 +142,7 @@ print(answer())  # 42
 You can write multiple statements by adding a newline after `:` and indenting.
 
 ```python
-abs = fn(x: int):
+abs = (x: int):
     if x < 0:
         return -x
     return x
@@ -161,7 +161,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 offset = 10
-add_offset = fn(x: int) => x + offset
+add_offset = (x: int): x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -169,7 +169,7 @@ Closures capture variables **by value** — changing the original variable after
 
 ```python
 base = 10
-f = fn(x: int) => x + base
+f = (x: int): x + base
 base = 999
 print(f(1))  # 11 (still uses the captured value 10)
 ```
@@ -180,15 +180,15 @@ print(f(1))  # 11 (still uses the captured value 10)
 
 ## Higher-Order Functions
 
-You can define functions that take other functions as arguments. Function types are written as `fn(parameter_types) -> return_type`.
+You can define functions that take other functions as arguments. Function types are written as `function(parameter_types) -> return_type`.
 
 ```python
-fn apply(f: fn(int) -> int, x: int) -> int:
+function apply(f: function(int) -> int, x: int) -> int:
     return f(x)
 
-double = fn(x: int) => x * 2
+double = (x: int): x * 2
 print(apply(double, 3))                # 6
-print(apply(fn(n: int) => n + 1, 10))  # 11
+print(apply((n: int): n + 1, 10))  # 11
 ```
 
 ### Functions as Values
@@ -196,7 +196,7 @@ print(apply(fn(n: int) => n + 1, 10))  # 11
 Named functions can also be bound to variables or passed as arguments — they behave just like lambdas.
 
 ```python
-fn square(x: int) -> int:
+function square(x: int) -> int:
     return x * x
 
 # Pass a named function as an argument
@@ -216,7 +216,7 @@ print(sq(5))  # 25
 With UFCS, you can write `f(a, b)` as `a.f(b)`. The first argument is moved before the dot, enabling a method-chaining style.
 
 ```python
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
 x = 1
@@ -228,7 +228,7 @@ print(x.add(2))   # add(x, 2) -> 3
 UFCS really shines when you chain multiple calls — it reads left-to-right instead of inside-out:
 
 ```python
-fn double(n: int) -> int:
+function double(n: int) -> int:
     return n * 2
 
 # Chained (reads naturally: "take x, add 2, then double")
@@ -246,7 +246,7 @@ print(double(add(x, 2)))   # 6
 
 1. **Default arguments**: Write a function `format_price(amount: int, currency: str = "USD", decimals: int = 2) -> str` that formats a price. Verify that `format_price(42)` and `format_price(42, "EUR")` both work.
 
-2. **Higher-order function**: Write a function `apply_twice(f: fn(int) -> int, x: int) -> int` that applies `f` to `x` twice (i.e., `f(f(x))`). Test it with `fn(x: int) => x + 1` and verify that `apply_twice(fn(x: int) => x + 1, 5)` returns `7`.
+2. **Higher-order function**: Write a function `apply_twice(f: function(int) -> int, x: int) -> int` that applies `f` to `x` twice (i.e., `f(f(x))`). Test it with `(x: int): x + 1` and verify that `apply_twice((x: int): x + 1, 5)` returns `7`.
 
 3. **UFCS chaining**: Define `inc(n: int) -> int` (adds 1) and `triple(n: int) -> int` (multiplies by 3). Use UFCS to write `5.inc().triple()` and verify the result is `18`.
 

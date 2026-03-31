@@ -1,27 +1,27 @@
-describe("numeric underscore separators", fn():
-  it("decimal integer with underscores", fn():
+describe("numeric underscore separators", function():
+  it("decimal integer with underscores", function():
     expect(100_000).to_eq(100000)
     expect(1_000_000).to_eq(1000000)
   )
-  it("hex with underscores", fn():
+  it("hex with underscores", function():
     expect(0xFF_FF).to_eq(0xFFFF)
   )
-  it("binary with underscores", fn():
+  it("binary with underscores", function():
     expect(0b1010_0101).to_eq(0b10100101)
   )
-  it("float with underscores", fn():
+  it("float with underscores", function():
     expect(3.14_159).to_eq(3.14159)
   )
-  it("leading dot float with underscores", fn():
+  it("leading dot float with underscores", function():
     expect(.5_0).to_eq(0.50)
   )
-  it("with suffix", fn():
+  it("with suffix", function():
     x: i32 = 100_000i32
     expect(x as int).to_eq(100000)
     y = 1.5_0f64
     expect(y as float).to_eq(1.50)
   )
-  it("arithmetic with underscored literals", fn():
+  it("arithmetic with underscored literals", function():
     expect(1_000 + 2_000).to_eq(3000)
     expect(1_000_000 / 1_000).to_eq(1000)
   )

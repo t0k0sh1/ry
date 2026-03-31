@@ -127,7 +127,7 @@ TEST_F(TraceModeTest, HelpMentionsTraceFlags) {
 TEST_F(TraceModeTest, TraceGoesToStderrAndProgramOutputStaysOnStdout) {
     auto script = writeFile(
         "trace_sample.ry",
-        "fn pick(x: int) -> int:\n"
+        "function pick(x: int) -> int:\n"
         "    if x > 0:\n"
         "        return x\n"
         "    return 0\n"
@@ -172,8 +172,8 @@ TEST_F(TraceModeTest, TraceWithParallelTestsFallsBackToSequential) {
     std::ofstream mainFile(tmp_dir_ / "main.ry");
     mainFile << "print(\"main\")\n";
     std::ofstream testFile(tmp_dir_ / "tests/sample.test.ry");
-    testFile << "describe(\"x\", fn():\n"
-                "  it(\"y\", fn():\n"
+    testFile << "describe(\"x\", function():\n"
+                "  it(\"y\", function():\n"
                 "    expect(1).to_eq(1)\n"
                 "  )\n"
                 ")\n";

@@ -1,60 +1,60 @@
 # String operations
 @native
-fn _contains(string: str, substring: str, ignore_case: bool) -> bool
+function _contains(string: str, substring: str, ignore_case: bool) -> bool
 
-fn contains(string: str, substring: str, ignore_case: bool = false) -> bool:
+function contains(string: str, substring: str, ignore_case: bool = false) -> bool:
     return _contains(string, substring, ignore_case)
 
 @native
-fn _starts_with(string: str, prefix: str, ignore_case: bool) -> bool
+function _starts_with(string: str, prefix: str, ignore_case: bool) -> bool
 
-fn starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool:
+function starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool:
     return _starts_with(string, prefix, ignore_case)
 
 @native
-fn _ends_with(string: str, suffix: str, ignore_case: bool) -> bool
+function _ends_with(string: str, suffix: str, ignore_case: bool) -> bool
 
-fn ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool:
+function ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool:
     return _ends_with(string, suffix, ignore_case)
 
 @native
-fn find(string: str, substring: str) -> Option<int>
+function find(string: str, substring: str) -> Option<int>
 
 @native
-fn byte_len(string: str) -> int
+function byte_len(string: str) -> int
 
 @native
-fn substring(string: str, start: int, end: int) -> str
+function substring(string: str, start: int, end: int) -> str
 
 @native
-fn char_at(string: str, index: int) -> str
+function char_at(string: str, index: int) -> str
 
 @native
-fn replace(string: str, target: str, replacement: str) -> str
+function replace(string: str, target: str, replacement: str) -> str
 
 @native
-fn to_upper(string: str) -> str
+function to_upper(string: str) -> str
 
 @native
-fn to_lower(string: str) -> str
+function to_lower(string: str) -> str
 
 @native
-fn trim(string: str) -> str
+function trim(string: str) -> str
 
 @native
-fn trim_start(string: str) -> str
+function trim_start(string: str) -> str
 
 @native
-fn trim_end(string: str) -> str
+function trim_end(string: str) -> str
 
 @native
-fn repeat(string: str, count: int) -> str
+function repeat(string: str, count: int) -> str
 
 @native
-fn reverse(string: str) -> str
+function reverse(string: str) -> str
 
 @native
-fn split(string: str, delimiter: str) -> List<str>
+function split(string: str, delimiter: str) -> List<str>
 
 @native
-fn join(values: List<str>, delimiter: str) -> str
+function join(values: List<str>, delimiter: str) -> str

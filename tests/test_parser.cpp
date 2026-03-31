@@ -470,30 +470,47 @@ TEST(ParserTest, WhileMissingColonThrows) {
     EXPECT_THROW(parseStr("while true\n    print(1)"), std::runtime_error);
 }
 
-// ===== fn / return / CallExpr パーサーテスト =====
+// ===== function / return / CallExpr パーサーテスト =====
 
 TEST(ParserTest, FnSimple) {
-    Program prog = parseStr("fn add(a: int, b: int) -> int:\n    return a + b");
+    Program prog = parseStr("function add(a: int, b: int) -> int:\n    return a + b");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.name, "add");
-    ASSERT_EQ(fn.params.size(), 2u);
-    EXPECT_EQ(fn.params[0].name, "a");
-    EXPECT_EQ(fn.params[0].type->toString(), "int");
-    EXPECT_EQ(fn.params[1].name, "b");
-    EXPECT_EQ(fn.params[1].type->toString(), "int");
-    EXPECT_EQ(fn.return_type->toString(), "int");
-    ASSERT_EQ(fn.body.size(), 1u);
-    EXPECT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "add");
+    ASSERT_EQ(function.params.size(), 2u);
+    EXPECT_EQ(function.params[0].name, "a");
+    EXPECT_EQ(function.params[0].type->toString(), "int");
+    EXPECT_EQ(function.params[1].name, "b");
+    EXPECT_EQ(function.params[1].type->toString(), "int");
+    EXPECT_EQ(function.return_type->toString(), "int");
+    ASSERT_EQ(function.body.size(), 1u);
+    EXPECT_TRUE(std::holds_alternative<ReturnStmt>(function.body[0]));
+}
+
+TEST(ParserTest, FunctionKeywordSimple) {
+    Program prog = parseStr("function add(a: int, b: int) -> int:\n    return a + b");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "add");
+    ASSERT_EQ(function.params.size(), 2u);
+    EXPECT_EQ(function.return_type->toString(), "int");
+}
+
+TEST(ParserTest, FnIdentifierIsAllowed) {
+    Program prog = parseStr("fn = 1\nx = fn + 2");
+    ASSERT_EQ(prog.size(), 2u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[1]));
 }
 
 TEST(ParserTest, ReturnStatement) {
-    Program prog = parseStr("fn f() -> int:\n    return 42");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_EQ(fn.body.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
-    const auto &ret = std::get<ReturnStmt>(fn.body[0]);
+    Program prog = parseStr("function f() -> int:\n    return 42");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(function.body[0]));
+    const auto &ret = std::get<ReturnStmt>(function.body[0]);
     ASSERT_TRUE(std::holds_alternative<NumberExpr>(ret.value->data));
     EXPECT_EQ(std::get<NumberExpr>(ret.value->data).value, 42);
 }
@@ -509,36 +526,36 @@ TEST(ParserTest, CallExprInLet) {
 }
 
 TEST(ParserTest, FnMissingColonThrows) {
-    EXPECT_THROW(parseStr("fn f() -> int\n    return 1"), std::runtime_error);
+    EXPECT_THROW(parseStr("function f() -> int\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, FnMissingArrowWithTypeThrows) {
-    // fn f() int: → missing '->' before type, "int" is not ':'
-    EXPECT_THROW(parseStr("fn f() int:\n    return 1"), std::runtime_error);
+    // function f() int: → missing '->' before type, "int" is not ':'
+    EXPECT_THROW(parseStr("function f() int:\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, FnReturnTypeOmitted) {
-    // fn f(): → return type defaults to "" (inferred at codegen)
-    Program prog = parseStr("fn f():\n    return");
+    // function f(): → return type defaults to "" (inferred at codegen)
+    Program prog = parseStr("function f():\n    return");
     ASSERT_EQ(prog.size(), 1u);
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.name, "f");
-    EXPECT_EQ(fn.return_type, nullptr);
-    ASSERT_EQ(fn.body.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(fn.body[0]));
-    const auto &ret = std::get<ReturnStmt>(fn.body[0]);
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "f");
+    EXPECT_EQ(function.return_type, nullptr);
+    ASSERT_EQ(function.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<ReturnStmt>(function.body[0]));
+    const auto &ret = std::get<ReturnStmt>(function.body[0]);
     EXPECT_EQ(ret.value, nullptr);
 }
 
 TEST(ParserTest, FnExplicitUnitReturn) {
-    Program prog = parseStr("fn f() -> Unit:\n    return");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type->toString(), "Unit");
+    Program prog = parseStr("function f() -> Unit:\n    return");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.return_type->toString(), "Unit");
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
-    // fn(x: int) => x + 1 → return type is empty (inferred at codegen time)
-    Program prog = parseStr("f = fn(x: int) => x + 1");
+    // function(x: int) => x + 1 → return type is empty (inferred at codegen time)
+    Program prog = parseStr("f = function(x: int) => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -546,12 +563,24 @@ TEST(ParserTest, LambdaReturnTypeOmitted) {
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {
-    // fn(x: int) -> int => x + 1 → return type is "int"
-    Program prog = parseStr("f = fn(x: int) -> int => x + 1");
+    // function(x: int) -> int => x + 1 → return type is "int"
+    Program prog = parseStr("f = function(x: int) -> int => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
     EXPECT_EQ(lambda->return_type->toString(), "int");
+}
+
+TEST(ParserTest, LambdaOptionAWithParenPrefix) {
+    Program prog = parseStr("f = (x: int) -> int: x + 1");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &assign = std::get<AssignStmt>(prog[0]);
+    const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
+    ASSERT_EQ(lambda->params.size(), 1u);
+    EXPECT_EQ(lambda->params[0].name, "x");
+    ASSERT_TRUE(lambda->return_type != nullptr);
+    EXPECT_EQ(lambda->return_type->toString(), "int");
+    ASSERT_TRUE(lambda->expr_body != nullptr);
 }
 
 TEST(ParserTest, TypeAnnotationOptionInt) {
@@ -563,16 +592,16 @@ TEST(ParserTest, TypeAnnotationOptionInt) {
 }
 
 TEST(ParserTest, FnParamOptionType) {
-    Program prog = parseStr("fn f(x: Option<int>) -> int:\n    return 0");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_EQ(fn.params.size(), 1u);
-    EXPECT_EQ(fn.params[0].type->toString(), "Option<int>");
+    Program prog = parseStr("function f(x: Option<int>) -> int:\n    return 0");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 1u);
+    EXPECT_EQ(function.params[0].type->toString(), "Option<int>");
 }
 
 TEST(ParserTest, FnReturnOptionType) {
-    Program prog = parseStr("fn f() -> Option<int>:\n    return Some(1)");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type->toString(), "Option<int>");
+    Program prog = parseStr("function f() -> Option<int>:\n    return Some(1)");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.return_type->toString(), "Option<int>");
 }
 
 // ===== import パーサーテスト =====
@@ -746,9 +775,9 @@ TEST(ParserTest, TupleIndexAccess) {
 }
 
 TEST(ParserTest, FnReturnTupleType) {
-    Program prog = parseStr("fn swap(a: int, b: int) -> (int, int):\n    return (b, a)");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type->toString(), "(int, int)");
+    Program prog = parseStr("function swap(a: int, b: int) -> (int, int):\n    return (b, a)");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.return_type->toString(), "(int, int)");
 }
 
 TEST(ParserTest, ParenGroupingStillWorks) {
@@ -868,48 +897,48 @@ TEST(ParserTest, MapTypeAnnotation) {
 
 TEST(ParserTest, OperatorFnBinaryPlus) {
     std::string src =
-        "fn operator+(a: Vec2, b: Vec2) -> Vec2:\n"
+        "function operator+(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return a\n";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
-    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->name, "operator+");
-    EXPECT_TRUE(fn->is_operator);
-    ASSERT_EQ(fn->params.size(), 2u);
-    EXPECT_EQ(fn->params[0].name, "a");
-    EXPECT_EQ(fn->params[0].type->toString(), "Vec2");
-    EXPECT_EQ(fn->params[1].name, "b");
-    EXPECT_EQ(fn->params[1].type->toString(), "Vec2");
-    EXPECT_EQ(fn->return_type->toString(), "Vec2");
+    const auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->name, "operator+");
+    EXPECT_TRUE(function->is_operator);
+    ASSERT_EQ(function->params.size(), 2u);
+    EXPECT_EQ(function->params[0].name, "a");
+    EXPECT_EQ(function->params[0].type->toString(), "Vec2");
+    EXPECT_EQ(function->params[1].name, "b");
+    EXPECT_EQ(function->params[1].type->toString(), "Vec2");
+    EXPECT_EQ(function->return_type->toString(), "Vec2");
 }
 
 TEST(ParserTest, OperatorFnUnaryMinus) {
     std::string src =
-        "fn operator-(a: Vec2) -> Vec2:\n"
+        "function operator-(a: Vec2) -> Vec2:\n"
         "    return a\n";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
-    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->name, "operator-");
-    EXPECT_TRUE(fn->is_operator);
-    ASSERT_EQ(fn->params.size(), 1u);
+    const auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->name, "operator-");
+    EXPECT_TRUE(function->is_operator);
+    ASSERT_EQ(function->params.size(), 1u);
 }
 
 TEST(ParserTest, OperatorFnEqEq) {
     std::string src =
-        "fn operator==(a: Vec2, b: Vec2) -> bool:\n"
+        "function operator==(a: Vec2, b: Vec2) -> bool:\n"
         "    return true\n";
     Program prog = parseStr(src);
-    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->name, "operator==");
-    EXPECT_TRUE(fn->is_operator);
+    const auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->name, "operator==");
+    EXPECT_TRUE(function->is_operator);
 }
 
 TEST(ParserTest, OperatorFnTildeUnaryOnly) {
     // ~ with 2 params should fail
     std::string src =
-        "fn operator~(a: int, b: int) -> int:\n"
+        "function operator~(a: int, b: int) -> int:\n"
         "    return a\n";
     EXPECT_THROW(parseStr(src), std::runtime_error);
 }
@@ -917,7 +946,7 @@ TEST(ParserTest, OperatorFnTildeUnaryOnly) {
 TEST(ParserTest, OperatorFnInvalidParamCount) {
     // Binary operator with 0 params should fail
     std::string src =
-        "fn operator+() -> int:\n"
+        "function operator+() -> int:\n"
         "    return 0\n";
     EXPECT_THROW(parseStr(src), std::runtime_error);
 }
@@ -926,68 +955,68 @@ TEST(ParserTest, OperatorFnInvalidParamCount) {
 
 TEST(ParserTest, OperatorEqMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator==(a: int, b: int) -> int:\n"
+        "function operator==(a: int, b: int) -> int:\n"
         "    return 42\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorNeqMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator!=(a: int, b: int) -> str:\n"
+        "function operator!=(a: int, b: int) -> str:\n"
         "    return \"no\"\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorLessMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator<(a: int, b: int) -> int:\n"
+        "function operator<(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorLessEqMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator<=(a: int, b: int) -> int:\n"
+        "function operator<=(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorGreaterMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator>(a: int, b: int) -> int:\n"
+        "function operator>(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorGreaterEqMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator>=(a: int, b: int) -> int:\n"
+        "function operator>=(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorNotMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator not(a: int) -> int:\n"
+        "function operator not(a: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorAndMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator and(a: int, b: int) -> int:\n"
+        "function operator and(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorOrMustReturnBool) {
     EXPECT_THROW(parseStr(
-        "fn operator or(a: int, b: int) -> int:\n"
+        "function operator or(a: int, b: int) -> int:\n"
         "    return 0\n"), std::runtime_error);
 }
 
 TEST(ParserTest, OperatorEqReturnBoolOk) {
     Program prog = parseStr(
-        "fn operator==(a: int, b: int) -> bool:\n"
+        "function operator==(a: int, b: int) -> bool:\n"
         "    return true\n");
     EXPECT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, OperatorPlusReturnsNonBoolOk) {
     Program prog = parseStr(
-        "fn operator+(a: int, b: int) -> int:\n"
+        "function operator+(a: int, b: int) -> int:\n"
         "    return a + b\n");
     EXPECT_EQ(prog.size(), 1u);
 }
@@ -1043,23 +1072,23 @@ TEST(ParserTest, DecrementPreservesCompoundOp) {
 
 TEST(ParserTest, OperatorFnCompoundPlusEq) {
     std::string src =
-        "fn operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
+        "function operator+=(a: Vec2, b: Vec2) -> Vec2:\n"
         "    return a\n";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<FnStmt>>(prog[0]));
-    const auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->name, "operator+=");
-    EXPECT_TRUE(fn->is_operator);
-    ASSERT_EQ(fn->params.size(), 2u);
-    EXPECT_EQ(fn->params[0].name, "a");
-    EXPECT_EQ(fn->params[0].type->toString(), "Vec2");
-    EXPECT_EQ(fn->return_type->toString(), "Vec2");
+    const auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->name, "operator+=");
+    EXPECT_TRUE(function->is_operator);
+    ASSERT_EQ(function->params.size(), 2u);
+    EXPECT_EQ(function->params[0].name, "a");
+    EXPECT_EQ(function->params[0].type->toString(), "Vec2");
+    EXPECT_EQ(function->return_type->toString(), "Vec2");
 }
 
 TEST(ParserTest, OperatorFnCompoundAssignRequiresTwoParams) {
     EXPECT_THROW(
-        parseStr("fn operator+=(a: Vec2) -> Vec2:\n    return a\n"),
+        parseStr("function operator+=(a: Vec2) -> Vec2:\n    return a\n"),
         std::runtime_error);
 }
 
@@ -1163,16 +1192,16 @@ TEST(ParserTest, LetUnionTypeAnnotation) {
 }
 
 TEST(ParserTest, FnUnionParam) {
-    Program prog = parseStr("fn f(x: int | str) -> int:\n    return 0");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_EQ(fn.params.size(), 1u);
-    EXPECT_EQ(fn.params[0].type->toString(), "int | str");
+    Program prog = parseStr("function f(x: int | str) -> int:\n    return 0");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 1u);
+    EXPECT_EQ(function.params[0].type->toString(), "int | str");
 }
 
 TEST(ParserTest, FnUnionReturn) {
-    Program prog = parseStr("fn f() -> int | str:\n    return 0");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.return_type->toString(), "int | str");
+    Program prog = parseStr("function f() -> int | str:\n    return 0");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.return_type->toString(), "int | str");
 }
 
 // ===== >>> パーサーテスト =====
@@ -1222,38 +1251,38 @@ TEST(ParserTest, UnionThreeTypes) {
 
 TEST(ParserTest, FnWithRequire) {
     std::string src =
-        "fn deposit(amount: int) -> int:\n"
+        "function deposit(amount: int) -> int:\n"
         "    require:\n"
         "        amount > 0\n"
         "    return amount";
     Program prog = parseStr(src);
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->name, "deposit");
-    EXPECT_EQ(fn->preconditions.size(), 1u);
-    EXPECT_EQ(fn->postconditions.size(), 0u);
-    EXPECT_EQ(fn->body.size(), 1u);
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->name, "deposit");
+    EXPECT_EQ(function->preconditions.size(), 1u);
+    EXPECT_EQ(function->postconditions.size(), 0u);
+    EXPECT_EQ(function->body.size(), 1u);
 }
 
 TEST(ParserTest, FnWithEnsure) {
     std::string src =
-        "fn abs(x: int) -> int:\n"
+        "function abs(x: int) -> int:\n"
         "    ensure v:\n"
         "        v >= 0\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x";
     Program prog = parseStr(src);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->preconditions.size(), 0u);
-    EXPECT_EQ(fn->postconditions.size(), 1u);
-    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
-    EXPECT_EQ(fn->ensure_bindings[0], "v");
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->preconditions.size(), 0u);
+    EXPECT_EQ(function->postconditions.size(), 1u);
+    ASSERT_EQ(function->ensure_bindings.size(), 1u);
+    EXPECT_EQ(function->ensure_bindings[0], "v");
 }
 
 TEST(ParserTest, FnWithRequireAndEnsure) {
     std::string src =
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    require:\n"
         "        a >= 0\n"
         "        b >= 0\n"
@@ -1261,22 +1290,22 @@ TEST(ParserTest, FnWithRequireAndEnsure) {
         "        v >= 0\n"
         "    return a + b";
     Program prog = parseStr(src);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->preconditions.size(), 2u);
-    EXPECT_EQ(fn->postconditions.size(), 1u);
-    EXPECT_EQ(fn->body.size(), 1u);
-    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
-    EXPECT_EQ(fn->ensure_bindings[0], "v");
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->preconditions.size(), 2u);
+    EXPECT_EQ(function->postconditions.size(), 1u);
+    EXPECT_EQ(function->body.size(), 1u);
+    ASSERT_EQ(function->ensure_bindings.size(), 1u);
+    EXPECT_EQ(function->ensure_bindings[0], "v");
 }
 
 TEST(ParserTest, FnWithoutContract) {
     std::string src =
-        "fn add(a: int, b: int) -> int:\n"
+        "function add(a: int, b: int) -> int:\n"
         "    return a + b";
     Program prog = parseStr(src);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->preconditions.size(), 0u);
-    EXPECT_EQ(fn->postconditions.size(), 0u);
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->preconditions.size(), 0u);
+    EXPECT_EQ(function->postconditions.size(), 0u);
 }
 
 TEST(ParserTest, TypeWithInvariant) {
@@ -1306,17 +1335,17 @@ TEST(ParserTest, TypeWithoutInvariant) {
 
 TEST(ParserTest, EnsureVariableBinding) {
     std::string src =
-        "fn inc(x: int) -> int:\n"
+        "function inc(x: int) -> int:\n"
         "    ensure v:\n"
         "        v == x + 1\n"
         "    return x + 1";
     Program prog = parseStr(src);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->postconditions.size(), 1u);
-    ASSERT_EQ(fn->ensure_bindings.size(), 1u);
-    EXPECT_EQ(fn->ensure_bindings[0], "v");
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->postconditions.size(), 1u);
+    ASSERT_EQ(function->ensure_bindings.size(), 1u);
+    EXPECT_EQ(function->ensure_bindings[0], "v");
     // The postcondition expression should be v == x + 1
-    auto &postExpr = fn->postconditions[0];
+    auto &postExpr = function->postconditions[0];
     auto *bin = std::get_if<std::unique_ptr<BinaryExpr>>(&postExpr->data);
     ASSERT_TRUE(bin != nullptr);
     // lhs is VariableExpr("v")
@@ -1327,16 +1356,16 @@ TEST(ParserTest, EnsureVariableBinding) {
 
 TEST(ParserTest, EnsureTupleBinding) {
     std::string src =
-        "fn divide(a: int, b: int) -> (int, int):\n"
+        "function divide(a: int, b: int) -> (int, int):\n"
         "    ensure q, r:\n"
         "        q >= 0\n"
         "    return (a // b, a % b)";
     Program prog = parseStr(src);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn->postconditions.size(), 1u);
-    ASSERT_EQ(fn->ensure_bindings.size(), 2u);
-    EXPECT_EQ(fn->ensure_bindings[0], "q");
-    EXPECT_EQ(fn->ensure_bindings[1], "r");
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function->postconditions.size(), 1u);
+    ASSERT_EQ(function->ensure_bindings.size(), 2u);
+    EXPECT_EQ(function->ensure_bindings[0], "q");
+    EXPECT_EQ(function->ensure_bindings[1], "r");
 }
 
 // ===== record キーワード =====
@@ -1402,25 +1431,25 @@ TEST(ParserTest, ParallelForDirectiveParsing) {
 }
 
 TEST(ParserTest, AsyncFnParsing) {
-    Program prog = parseStr("async fn add(a: int, b: int) -> int:\n    return a + b");
+    Program prog = parseStr("async function add(a: int, b: int) -> int:\n    return a + b");
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_TRUE(fn->is_async);
-    EXPECT_EQ(fn->name, "add");
-    EXPECT_EQ(fn->return_type->toString(), "int");
+    auto &function = std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_TRUE(function->is_async);
+    EXPECT_EQ(function->name, "add");
+    EXPECT_EQ(function->return_type->toString(), "int");
 }
 
 TEST(ParserTest, AwaitExprParsing) {
-    // await inside async fn should parse successfully
+    // await inside async function should parse successfully
     Program prog = parseStr(
-        "async fn do_fetch() -> int:\n"
+        "async function do_fetch() -> int:\n"
         "    x = await fetch()\n"
         "    return x");
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_TRUE(fn.is_async);
-    ASSERT_GE(fn.body.size(), 1u);
-    auto &let = std::get<AssignStmt>(fn.body[0]);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_TRUE(function.is_async);
+    ASSERT_GE(function.body.size(), 1u);
+    auto &let = std::get<AssignStmt>(function.body[0]);
     auto *await = std::get_if<std::unique_ptr<AwaitExpr>>(&let.value->data);
     ASSERT_NE(await, nullptr);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&(*await)->operand->data);
@@ -1429,29 +1458,29 @@ TEST(ParserTest, AwaitExprParsing) {
 }
 
 TEST(ParserTest, AwaitStatementParsing) {
-    // await as statement inside async fn
+    // await as statement inside async function
     Program prog = parseStr(
-        "async fn do_fetch() -> Unit:\n"
+        "async function do_fetch() -> Unit:\n"
         "    await fetch()");
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_TRUE(fn.is_async);
-    ASSERT_EQ(fn.body.size(), 1u);
-    ASSERT_TRUE(std::holds_alternative<AwaitStmt>(fn.body[0]));
-    auto &await = std::get<AwaitStmt>(fn.body[0]);
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_TRUE(function.is_async);
+    ASSERT_EQ(function.body.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AwaitStmt>(function.body[0]));
+    auto &await = std::get<AwaitStmt>(function.body[0]);
     auto *call = std::get_if<std::unique_ptr<CallExpr>>(&await.operand->data);
     ASSERT_NE(call, nullptr);
     EXPECT_EQ((*call)->callee, "fetch");
 }
 
 TEST(ParserTest, AwaitOutsideAsyncFnRejected) {
-    // await outside async fn should fail
+    // await outside async function should fail
     EXPECT_THROW(parseStr("x = await fetch()"), std::runtime_error);
     EXPECT_THROW(parseStr("await fetch()"), std::runtime_error);
-    // await inside lambda within async fn should also fail (lambda is not async)
+    // await inside lambda within async function should also fail (lambda is not async)
     EXPECT_THROW(parseStr(
-        "async fn foo() -> int:\n"
-        "    f = fn(x: int) => await bar()\n"
+        "async function foo() -> int:\n"
+        "    f = function(x: int) => await bar()\n"
         "    return 1"), std::runtime_error);
 }
 
@@ -1503,21 +1532,21 @@ TEST(ParserTest, VariableAssignmentAcceptsCamelCase) {
 }
 
 TEST(ParserTest, SnakeCaseFunctionRequired) {
-    EXPECT_THROW(parseStr("fn myFunc() -> int:\n    return 1"), std::runtime_error);
+    EXPECT_THROW(parseStr("function myFunc() -> int:\n    return 1"), std::runtime_error);
 }
 
 TEST(ParserTest, BangSuffixFunctionAccepted) {
-    Program prog = parseStr("@native\nfn sort!(values: List<int>) -> Unit");
+    Program prog = parseStr("@native\nfunction sort!(values: List<int>) -> Unit");
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.name, "sort!");
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "sort!");
 }
 
 TEST(ParserTest, BangSuffixNonNativeFunctionAccepted) {
-    Program prog = parseStr("fn clear!(xs: List<int>) -> Unit:\n    ...");
+    Program prog = parseStr("function clear!(xs: List<int>) -> Unit:\n    ...");
     ASSERT_EQ(prog.size(), 1u);
-    auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    EXPECT_EQ(fn.name, "clear!");
+    auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    EXPECT_EQ(function.name, "clear!");
 }
 
 TEST(ParserTest, PascalCaseRecordRequired) {
@@ -1632,10 +1661,10 @@ TEST(ParserTest, PascalCaseTypeAliasRequired) {
 }
 
 TEST(ParserTest, TypeAliasFnType) {
-    Program prog = parseStr("type Callback = fn(int, int) -> int");
+    Program prog = parseStr("type Callback = function(int, int) -> int");
     auto &ta = std::get<TypeAliasStmt>(prog[0]);
     EXPECT_EQ(ta.name, "Callback");
-    EXPECT_EQ(ta.target_type->toString(), "fn(int, int) -> int");
+    EXPECT_EQ(ta.target_type->toString(), "function(int, int) -> int");
 }
 
 TEST(ParserTest, SnakeCaseForLoopVariable) {
@@ -1643,27 +1672,27 @@ TEST(ParserTest, SnakeCaseForLoopVariable) {
 }
 
 TEST(ParserTest, SnakeCaseParamRequired) {
-    EXPECT_THROW(parseStr("fn add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
+    EXPECT_THROW(parseStr("function add(myNum: int) -> int:\n    return myNum"), std::runtime_error);
 }
 
 TEST(ParserTest, BangSuffixParamRejected) {
-    EXPECT_THROW(parseStr("fn add(x!: int) -> int:\n    return x!"), std::runtime_error);
+    EXPECT_THROW(parseStr("function add(x!: int) -> int:\n    return x!"), std::runtime_error);
 }
 
 // ===== expect マッチャー =====
 
 TEST(ParserTest, ExpectToNotEq) {
-    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_not_eq(2)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_not_eq(2)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToBeSome) {
-    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_be_some()\n    )\n)");
+    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_be_some()\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
 TEST(ParserTest, ExpectToContain) {
-    Program prog = parseStr("describe(\"test\", fn():\n    it(\"t\", fn():\n        expect(1).to_contain(1)\n    )\n)");
+    Program prog = parseStr("describe(\"test\", function():\n    it(\"t\", function():\n        expect(1).to_contain(1)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
 }
 
@@ -1692,7 +1721,7 @@ TEST(ParserTest, TrailingBlockWithArgs) {
 }
 
 TEST(ParserTest, LambdaArgNested) {
-    Program prog = parseStr("describe(\"calc\", fn():\n    it(\"adds\", fn():\n        expect(1 + 2).to_eq(3)\n    )\n)");
+    Program prog = parseStr("describe(\"calc\", function():\n    it(\"adds\", function():\n        expect(1 + 2).to_eq(3)\n    )\n)");
     ASSERT_EQ(prog.size(), 1u);
     ASSERT_TRUE(std::holds_alternative<CallStmt>(prog[0]));
     const auto &s = std::get<CallStmt>(prog[0]);
@@ -1720,10 +1749,10 @@ TEST(ParserTest, TrailingBlockUFCS) {
     ASSERT_TRUE(std::holds_alternative<std::unique_ptr<LambdaExpr>>(s.args[1]->data));
 }
 
-// ===== @native fn tests =====
+// ===== @native function tests =====
 
 TEST(ParserTest, NativeFnDeclaration) {
-    Program prog = parseStr("@native\nfn contains(s: str, sub: str) -> bool\n");
+    Program prog = parseStr("@native\nfunction contains(s: str, sub: str) -> bool\n");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fs->name, "contains");
@@ -1735,7 +1764,7 @@ TEST(ParserTest, NativeFnDeclaration) {
 }
 
 TEST(ParserTest, NativeFnOperatorDeclaration) {
-    Program prog = parseStr("@native\nfn operator+(a: int, b: int) -> int\n");
+    Program prog = parseStr("@native\nfunction operator+(a: int, b: int) -> int\n");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     EXPECT_EQ(fs->name, "operator+");
@@ -1752,7 +1781,7 @@ TEST(ParserTest, EllipsisTopLevel) {
 }
 
 TEST(ParserTest, EllipsisInFnBody) {
-    Program prog = parseStr("fn stub():\n    ...\n");
+    Program prog = parseStr("function stub():\n    ...\n");
     ASSERT_EQ(prog.size(), 1u);
     auto &fs = std::get<std::unique_ptr<FnStmt>>(prog[0]);
     ASSERT_EQ(fs->body.size(), 1u);
@@ -1769,7 +1798,7 @@ TEST(ParserTest, EllipsisInIfBody) {
 
 TEST(ParserTest, NativeFnWithColonError) {
     EXPECT_THROW({
-        parseStr("@native\nfn bad() -> int:\n    return 1\n");
+        parseStr("@native\nfunction bad() -> int:\n    return 1\n");
     }, std::runtime_error);
 }
 
@@ -1850,35 +1879,35 @@ TEST(ParserTest, ModerateNestingSucceeds) {
 // ===== Default arguments =====
 
 TEST(ParserTest, DefaultArgBasic) {
-    Program prog = parseStr("fn f(x: int, y: int = 10) -> int:\n    return x + y");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_EQ(fn.params.size(), 2u);
-    EXPECT_EQ(fn.params[0].name, "x");
-    EXPECT_FALSE(fn.params[0].default_value);
-    EXPECT_EQ(fn.params[1].name, "y");
-    EXPECT_TRUE(fn.params[1].default_value);
+    Program prog = parseStr("function f(x: int, y: int = 10) -> int:\n    return x + y");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 2u);
+    EXPECT_EQ(function.params[0].name, "x");
+    EXPECT_FALSE(function.params[0].default_value);
+    EXPECT_EQ(function.params[1].name, "y");
+    EXPECT_TRUE(function.params[1].default_value);
 }
 
 TEST(ParserTest, DefaultArgMultiple) {
-    Program prog = parseStr("fn f(a: int, b: int = 1, c: int = 2) -> int:\n    return a");
-    const auto &fn = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
-    ASSERT_EQ(fn.params.size(), 3u);
-    EXPECT_FALSE(fn.params[0].default_value);
-    EXPECT_TRUE(fn.params[1].default_value);
-    EXPECT_TRUE(fn.params[2].default_value);
+    Program prog = parseStr("function f(a: int, b: int = 1, c: int = 2) -> int:\n    return a");
+    const auto &function = *std::get<std::unique_ptr<FnStmt>>(prog[0]);
+    ASSERT_EQ(function.params.size(), 3u);
+    EXPECT_FALSE(function.params[0].default_value);
+    EXPECT_TRUE(function.params[1].default_value);
+    EXPECT_TRUE(function.params[2].default_value);
 }
 
 TEST(ParserTest, DefaultArgNonTrailingError) {
     // default arg followed by non-default arg is a parse error
-    EXPECT_THROW(parseStr("fn f(a: int = 0, b: int) -> int:\n    return a"), std::runtime_error);
+    EXPECT_THROW(parseStr("function f(a: int = 0, b: int) -> int:\n    return a"), std::runtime_error);
 }
 
 TEST(ParserTest, DefaultArgNoTypeError) {
     // default arg without explicit type annotation is a parse error
-    EXPECT_THROW(parseStr("fn f(x = 10) -> int:\n    return x"), std::runtime_error);
+    EXPECT_THROW(parseStr("function f(x = 10) -> int:\n    return x"), std::runtime_error);
 }
 
 TEST(ParserTest, DefaultArgLambdaError) {
     // default args in lambda are not supported
-    EXPECT_THROW(parseStr("f = fn(x: int = 10) => x"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = function(x: int = 10) => x"), std::runtime_error);
 }

@@ -1,15 +1,15 @@
 # Type conversion functions
 @native
-fn to_int(value: str) -> int
+function to_int(value: str) -> int
 
 @native
-fn to_float(value: str) -> float
+function to_float(value: str) -> float
 
 @native
-fn to_str(value: int) -> str
+function to_str(value: int) -> str
 
 @native
-fn to_str(value: float) -> str
+function to_str(value: float) -> str
 
 @native
-fn to_str(value: bool) -> str
+function to_str(value: bool) -> str

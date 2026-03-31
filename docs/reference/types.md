@@ -17,7 +17,7 @@
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
-| `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int) => x * 2` | Function type |
+| `function(T1, T2) -> R` | ptr (function pointer) | `function(x: int) => x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
@@ -53,7 +53,7 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int) => x * 2
+fn_val: function(int) -> int = function(x: int) => x * 2
 u: int | str = 42
 a: any = 42
 ```
@@ -73,7 +73,7 @@ a: any = 42
 | `List<T>` | Generic dynamic array type |
 | `Map<K, V>` | Generic hash map type |
 | `Set<T>` | Generic set type |
-| `fn(T1, ...) -> R` | Function type |
+| `function(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
 | `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit`. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
@@ -106,9 +106,9 @@ names: StringList = ["Alice", "Bob"]
 Type aliases also work with function types, literal types, and range types:
 
 ```python
-type Callback = fn(int, int) -> int
+type Callback = function(int, int) -> int
 
-add: Callback = fn(a: int, b: int) => a + b
+add: Callback = function(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -175,7 +175,7 @@ x = 12                      # OK
 ### In Function Parameters
 
 ```python
-fn set_month(m: 1..12) -> int:
+function set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
@@ -194,7 +194,7 @@ The `T?` syntax is a shorthand for `Option<T>`.
 x: int? = 42       # equivalent to Option<int>
 y: int? = none      # equivalent to None
 
-fn find(xs: List<int>, val: int) -> int?:
+function find(xs: List<int>, val: int) -> int?:
     for x in xs:
         if x == val:
             return Some(x)
@@ -439,7 +439,7 @@ print(e2)          # Error: not found (code: 404)
 Functions that can fail return `Result<V, E>`:
 
 ```python
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -454,7 +454,7 @@ when divide(10, 2):
 When the return value is not meaningful, use `Result<Unit, Error>`:
 
 ```python
-fn save(path: str, data: str) -> Result<Unit, Error>:
+function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
 when save("/tmp/test.txt", "hello"):
@@ -495,11 +495,11 @@ print(x)        # hello
 ### Usage in Function Parameters and Return Types
 
 ```python
-fn show(x: int | str) -> int:
+function show(x: int | str) -> int:
     print(x)
     return 0
 
-fn get_val(flag: bool) -> int | str:
+function get_val(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -553,7 +553,7 @@ x: any = 42          # int is wrapped into any
 x = "hello"          # reassignment with a different type is allowed
 
 # Unwrapping: any → concrete
-fn get_value() -> any:
+function get_value() -> any:
     return 42
 n: int = get_value()  # any(int) is unwrapped to int
 
@@ -636,7 +636,7 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
 
 ```python
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 v: any = 42

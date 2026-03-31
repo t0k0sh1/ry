@@ -1,84 +1,84 @@
 # --- helper functions ---
 
-fn greet(name: str, greeting: str = "Hello") -> str:
+function greet(name: str, greeting: str = "Hello") -> str:
   return greeting + ", " + name
 
-fn connect(host: str, port: int = 8080, timeout: int = 30) -> str:
+function connect(host: str, port: int = 8080, timeout: int = 30) -> str:
   return host + ":" + to_str(port) + ":" + to_str(timeout)
 
-fn with_float(x: float, scale: float = 1.0) -> float:
+function with_float(x: float, scale: float = 1.0) -> float:
   return x * scale
 
-fn with_bool(msg: str, loud: bool = false) -> str:
+function with_bool(msg: str, loud: bool = false) -> str:
   if loud:
     return msg + "!"
   return msg
 
-fn with_none(name: str, title: str? = None) -> str:
+function with_none(name: str, title: str? = None) -> str:
   return name + ":" + (title ?? "none")
 
 # overload: different arity, no conflict
-fn area(s: int) -> int:
+function area(s: int) -> int:
   return s * s
 
-fn area(w: int, h: int) -> int:
+function area(w: int, h: int) -> int:
   return w * h
 
 # widening + default args
-fn calc(x: float, precision: int = 6) -> float:
+function calc(x: float, precision: int = 6) -> float:
   return x
 
 # --- tests ---
 
-describe("basic default arguments", fn():
-  it("uses default when arg omitted", fn():
+describe("basic default arguments", function():
+  it("uses default when arg omitted", function():
     expect(greet("Alice")).to_eq("Hello, Alice")
   )
 
-  it("overrides default when arg provided", fn():
+  it("overrides default when arg provided", function():
     expect(greet("Alice", "Hi")).to_eq("Hi, Alice")
   )
 )
 
-describe("multiple default arguments", fn():
-  it("all defaults used", fn():
+describe("multiple default arguments", function():
+  it("all defaults used", function():
     expect(connect("localhost")).to_eq("localhost:8080:30")
   )
 
-  it("first default overridden", fn():
+  it("first default overridden", function():
     expect(connect("localhost", 3000)).to_eq("localhost:3000:30")
   )
 
-  it("all args provided", fn():
+  it("all args provided", function():
     expect(connect("localhost", 3000, 10000)).to_eq("localhost:3000:10000")
   )
 )
 
-describe("default value types", fn():
-  it("float default", fn():
+describe("default value types", function():
+  it("float default", function():
     expect(with_float(5.0)).to_eq(5.0)
     expect(with_float(5.0, 2.0)).to_eq(10.0)
   )
 
-  it("bool default", fn():
+  it("bool default", function():
     expect(with_bool("hello")).to_eq("hello")
     expect(with_bool("hello", true)).to_eq("hello!")
   )
 
-  it("None default for optional", fn():
+  it("None default for optional", function():
     expect(with_none("Alice")).to_eq("Alice:none")
   )
 )
 
-describe("coexistence with overloading", fn():
-  it("different arity overloads still work", fn():
+describe("coexistence with overloading", function():
+  it("different arity overloads still work", function():
     expect(area(5)).to_eq(25)
     expect(area(3, 4)).to_eq(12)
   )
 )
 
-describe("widening with default args", fn():
-  it("int widened to float with default", fn():
+describe("widening with default args", function():
+  it("int widened to float with default", function():
     expect(calc(3)).to_eq(3.0)
   )
 )

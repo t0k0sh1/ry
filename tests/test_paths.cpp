@@ -61,7 +61,7 @@ TEST(Paths, FindLibDirWithStd) {
     fs::create_directories(tmp + "/bin");
     fs::create_directories(tmp + "/lib/std");
 
-    std::ofstream(tmp + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(tmp + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
     auto result = ry::find_lib_dir(tmp + "/bin/ry");
     EXPECT_EQ(result, fs::canonical(tmp + "/lib"));
@@ -82,7 +82,7 @@ TEST(Paths, FindLibDirSkipGlobal) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
     // Set up exe-relative lib/ directory
     char exe_dir[] = "/tmp/ry-exe-XXXXXX";
@@ -90,7 +90,7 @@ TEST(Paths, FindLibDirSkipGlobal) {
     std::string exe(exe_dir);
     fs::create_directories(exe + "/bin");
     fs::create_directories(exe + "/lib/std");
-    std::ofstream(exe + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(exe + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
     ScopedEnv guard("RY_HOME", home_dir);
 
@@ -111,14 +111,14 @@ TEST(Paths, FindLibDirPrefersProjectOverrideForRepoBuild) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
     fs::create_directories(project + "/build");
     fs::create_directories(project + "/lib/std");
-    std::ofstream(project + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(project + "/lib/std/builtins.ry") << "function noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"
@@ -144,13 +144,13 @@ TEST(Paths, FindLibDirIgnoresProjectOverrideForInstalledBinary) {
     ASSERT_NE(mkdtemp(home_dir), nullptr);
     std::string home(home_dir);
     fs::create_directories(home + "/lib/std");
-    std::ofstream(home + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(home + "/lib/std/builtins.ry") << "function noop():\n    return\n";
 
     char project_dir[] = "/tmp/ry-project-installed-XXXXXX";
     ASSERT_NE(mkdtemp(project_dir), nullptr);
     std::string project(project_dir);
     fs::create_directories(project + "/lib/std");
-    std::ofstream(project + "/lib/std/builtins.ry") << "fn noop():\n    return\n";
+    std::ofstream(project + "/lib/std/builtins.ry") << "function noop():\n    return\n";
     std::ofstream(project + "/package.toml") << R"(
 [project]
 name = "ry"

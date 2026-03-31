@@ -144,7 +144,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     }
 
     // fn(...) -> T function type → opaque pointer
-    if (typeName.size() > 3 && typeName.compare(0, 3, "fn(") == 0) {
+    if (typeName.size() > 9 && typeName.compare(0, 9, "function(") == 0) {
         return ptrTy_;
     }
 
@@ -327,7 +327,7 @@ llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
-    // Parse "fn(int, float) -> int"
+    // Parse "function(int, float) -> int"
     FnTypeInfo info;
     // Find the opening paren
     size_t openParen = typeStr.find('(');

@@ -42,9 +42,9 @@
 | `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
 | `take(list, count)` | Returns a new list with the first count elements |
-| `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
+| `tap(list, function)` | Calls function on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
-| `map(list, fn)` | Returns a new list with each element transformed |
+| `map(list, function)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
 | `sort!(list)` / `sort!(list, comp)` | Sorts a list in place (mutating) |
 | `insert(list, i, val)` | Inserts an element at index i |
@@ -68,7 +68,7 @@
 | `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
 | `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
 | `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
-| `map(iter, fn)` | Returns a lazy iterator that transforms each element |
+| `map(iter, function)` | Returns a lazy iterator that transforms each element |
 | `take(iter, count)` | Returns a lazy iterator that yields at most count elements |
 
 ### [String Operations](builtins-string.md)
@@ -409,13 +409,13 @@ print(xs.take(0))    # []
 
 ## tap
 
-**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+**Signature:** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap(function(x: int) => print(x)).map(function(x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -423,13 +423,13 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ## filter
 
-**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+**Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
 Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter(function(x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 ```
@@ -438,13 +438,13 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 
 ## map
 
-**Signature:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+**Signature:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
 
 Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map(function(x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -452,7 +452,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
 
 Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
@@ -461,7 +461,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort(function(a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -469,7 +469,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
 
 Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
 
@@ -601,6 +601,6 @@ Collects all remaining elements from the iterator into a new list. UFCS notation
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+ys = xs.iter().filter(function(x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```
