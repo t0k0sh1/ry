@@ -8,7 +8,7 @@
 
 | Function | Description |
 |------|------|
-| `print(expr)` | Prints a value to standard output |
+| `print()` / `print(expr1, expr2, ...)` | Prints values to standard output (space-separated) |
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
@@ -97,9 +97,9 @@
 
 ## print
 
-**Signature:** `print(expr)`
+**Signature:** `print()` / `print(expr1, expr2, ...)`
 
-Prints a value to standard output. A newline is appended at the end.
+Prints one or more values to standard output, separated by spaces. A newline is appended at the end. When called with no arguments, prints only a newline.
 
 | Type | Output Format |
 |----|---------|
@@ -124,6 +124,12 @@ print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
+
+# Multiple arguments (space-separated)
+print(1, 2, 3)             # 1 2 3
+print("hello", "world")   # hello world
+print(1, "hello", true)   # 1 hello true
+print()                    # (empty line)
 ```
 
 **Error condition:** Passing a struct or tuple directly causes a compile error.
