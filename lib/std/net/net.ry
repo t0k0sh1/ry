@@ -26,7 +26,7 @@ fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 fn set_timeout(stream: TcpStream, ms: int) -> Unit
 
 @native
-fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
+fn set_receive_timeout(stream: TcpStream, ms: int) -> Unit
 
 @native
 fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
@@ -36,7 +36,7 @@ fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
 fn set_timeout(stream: TlsStream, ms: int) -> Unit
 
 @native
-fn set_recv_timeout(stream: TlsStream, ms: int) -> Unit
+fn set_receive_timeout(stream: TlsStream, ms: int) -> Unit
 
 @native
 fn set_send_timeout(stream: TlsStream, ms: int) -> Unit

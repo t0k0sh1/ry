@@ -10,76 +10,76 @@
 | `HttpResponse` | Opaque handle for an outgoing HTTP response |
 | `HttpClientResponse` | Opaque handle for an HTTP client response |
 
-`HttpRequest` is provided by the server framework. `HttpResponse` is created via `http_response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
+`HttpRequest` is provided by the server framework. `HttpResponse` is created via `response()`. `HttpClientResponse` is returned by client functions (`http_get`, `http_post`, `http_request`).
 
 ## Functions (from `http`)
 
 These functions require explicit import:
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_form_field, http_form_file, http_form_fields, http_response
+from http import listen, method, path, header, body, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
 ### Server
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async fn` + `block_on()` lifecycle management. |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | Starts an HTTP server on the given address. Blocks in an accept loop, calling `handler` for each request. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | Starts an HTTP server that stops after processing `max_requests` requests. Enables `async fn` + `block_on()` lifecycle management. |
+| `listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit` | Same as above, but calls `port_callback` with the actual bound port after `bind` + `listen` succeeds. Use with port `0` for OS-assigned ephemeral ports. |
 
 ### Request Accessors
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
-| `http_path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
-| `http_header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
-| `http_body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
-| `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
-| `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
-| `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
-| `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
-| `http_form_field` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a multipart form text field. Returns `None` if not found. |
-| `http_form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `None` if not found. |
-| `http_form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
+| `method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
+| `path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
+| `header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
+| `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
+| `query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
+| `query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
+| `cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
+| `cookies` | `(req: HttpRequest) -> Map<str, str>` | Returns all cookies as a map. |
+| `form_field` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a multipart form text field. Returns `None` if not found. |
+| `form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | Returns file upload info as an `Option`. `Some(map)` contains keys `"filename"`, `"content_type"`, `"data"`. Returns `None` if not found. |
+| `form_fields` | `(req: HttpRequest) -> Map<str, str>` | Returns all multipart form text fields as a map. |
 
 ### Response Builder
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | Creates an HTTP response with the given status code, headers, and body. |
+| `response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | Creates an HTTP response with the given status code, headers, and body. |
 
 ## Usage Example
 
 ### Basic HTTP Server
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import listen, method, path, header, body, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    method = http_method(req)
-    path = http_path(req)
-    if path == "/hello":
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello, World!")
-    if path == "/echo":
-        body = http_body(req)
-        return http_response(200, {"Content-Type": "text/plain"}, body)
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    m = method(req)
+    p = path(req)
+    if p == "/hello":
+        return response(200, {"Content-Type": "text/plain"}, "Hello, World!")
+    if p == "/echo":
+        b = body(req)
+        return response(200, {"Content-Type": "text/plain"}, b)
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
 ### Non-blocking Server with `async fn`
 
 ```python
-from http import http_listen, http_path, http_response
+from http import listen, path, response
 
 async fn start_server(port: int) -> str:
-    http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        if path == "/api/health":
-            return http_response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
-        return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+    listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
+        p = path(req)
+        if p == "/api/health":
+            return response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
+        return response(404, {"Content-Type": "text/plain"}, "Not Found")
     )
     return "done"
 
@@ -90,15 +90,15 @@ t = start_server(8080)
 ### Server with Request Limit (`max_requests`)
 
 ```python
-from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
 fn on_port(p: int) -> Unit:
     port_holder[0] = p
 
 async fn start_server() -> str:
-    http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
+    listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
+        return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # Stop after 1 request; call on_port with bound port
     return "done"
 
@@ -108,7 +108,7 @@ port = port_holder[0]
 
 when http_get("http://127.0.0.1:" + to_str(port) + "/"):
     case Ok(resp):
-        print(http_client_body(resp))  # "Hello!"
+        print(body(resp))  # "Hello!"
     case Err(e):
         print("error")
 
@@ -118,70 +118,70 @@ result = block_on(t)  # Server exits after 1 request; block_on completes
 ### Reading Query Parameters
 
 ```python
-from http import http_listen, http_path, http_query, http_query_all, http_response
+from http import listen, path, query, query_all, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    path = http_path(req)
-    if path == "/search":
-        when http_query(req, "q"):
-            case Some(query):
-                return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
+listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    p = path(req)
+    if p == "/search":
+        when query(req, "q"):
+            case Some(q):
+                return response(200, {"Content-Type": "text/plain"}, "Search: " + q)
             case None:
-                return http_response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+                return response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
 ### Reading Headers
 
 ```python
-from http import http_listen, http_header, http_response
+from http import listen, header, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_header(req, "Authorization"):
+listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    when header(req, "Authorization"):
         case Some(token):
-            return http_response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
+            return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "Unauthorized")
+            return response(401, {"Content-Type": "text/plain"}, "Unauthorized")
 )
 ```
 
 ### Handling Form Submissions
 
 ```python
-from http import http_listen, http_form_field, http_form_file, http_response
+from http import listen, form_field, form_file, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_form_field(req, "username"):
+listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    when form_field(req, "username"):
         case Some(name):
-            when http_form_file(req, "avatar"):
+            when form_file(req, "avatar"):
                 case Some(file_info):
                     filename = file_info["filename"]
-                    return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+                    return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
                 case None:
-                    return http_response(400, {"Content-Type": "text/plain"}, "No file uploaded")
+                    return response(400, {"Content-Type": "text/plain"}, "No file uploaded")
         case None:
-            return http_response(400, {"Content-Type": "text/plain"}, "Missing username")
+            return response(400, {"Content-Type": "text/plain"}, "Missing username")
 )
 ```
 
 ### Reading Cookies
 
 ```python
-from http import http_listen, http_cookie, http_cookies, http_response
+from http import listen, cookie, cookies, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_cookie(req, "session_id"):
+listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
+    when cookie(req, "session_id"):
         case Some(sid):
-            return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
+            return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "No session")
+            return response(401, {"Content-Type": "text/plain"}, "No session")
 )
 ```
 
 ## Behavior
 
-- `http_listen()` binds to the address, starts listening, and enters an accept loop.
+- `listen()` binds to the address, starts listening, and enters an accept loop.
 - When called with 3 arguments, the accept loop runs indefinitely.
 - When called with 4 arguments (`max_requests`), the server stops after processing the specified number of requests. `max_requests` must be a positive integer. This enables `async fn` + `block_on()` lifecycle management. Malformed requests (silently skipped) do not count toward the limit.
 - When called with 5 arguments (`max_requests`, `port_callback`), `port_callback` is called synchronously with the actual bound port after `bind` + `listen` succeeds. This allows safe use of port `0` (OS-assigned ephemeral port) to avoid port conflicts in parallel tests.
@@ -190,20 +190,20 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 - The server supports HTTP/1.1 with `Content-Length`-based body reading and `Transfer-Encoding: chunked` decoding.
 - When `Transfer-Encoding: chunked` is present in a request, the body is automatically decoded and concatenated — Ry code receives the full body transparently.
 - If both `Transfer-Encoding: chunked` and `Content-Length` are present, the request is rejected as malformed (per RFC 9112).
-- To send a chunked response, include `"Transfer-Encoding": "chunked"` in the headers map passed to `http_response()`. The body will be encoded in chunked format automatically.
-- Header lookup via `http_header()` is case-insensitive.
-- `http_path()` returns the path without the query string. Query parameters are accessed separately via `http_query()` or `http_query_all()`.
+- To send a chunked response, include `"Transfer-Encoding": "chunked"` in the headers map passed to `response()`. The body will be encoded in chunked format automatically.
+- Header lookup via `header()` is case-insensitive.
+- `path()` returns the path without the query string. Query parameters are accessed separately via `query()` or `query_all()`.
 - Query parameter values are automatically URL-decoded (`%20` → space, `+` → space).
 - For duplicate query parameter keys, the first value is returned.
-- `http_cookie()` and `http_cookies()` parse the `Cookie` header by splitting on `;`, then splitting each pair on the first `=`. Leading and trailing whitespace is trimmed from names and values.
+- `cookie()` and `cookies()` parse the `Cookie` header by splitting on `;`, then splitting each pair on the first `=`. Leading and trailing whitespace is trimmed from names and values.
 - For duplicate cookie names, the first value is returned.
 - Cookie values may contain `=` characters (only the first `=` separates the name from the value).
-- `http_form_field()`, `http_form_file()`, and `http_form_fields()` parse `multipart/form-data` request bodies. Parsing is lazy — the body is parsed on the first call and cached.
+- `form_field()`, `form_file()`, and `form_fields()` parse `multipart/form-data` request bodies. Parsing is lazy — the body is parsed on the first call and cached.
 - The `boundary` parameter is extracted from the `Content-Type` header and supports both quoted and unquoted values.
 - Parts with a `filename` in `Content-Disposition` are treated as file uploads; parts without are treated as text fields.
 - For duplicate field/file names, the first value is returned.
-- `http_form_file()` returns `Some(map)` with keys `"filename"`, `"content_type"`, and `"data"`, or `None` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
-- For non-multipart requests, form functions return `None` (for `http_form_field`, `http_form_file`) or an empty map (for `http_form_fields`).
+- `form_file()` returns `Some(map)` with keys `"filename"`, `"content_type"`, and `"data"`, or `None` if the field is not found. If no `Content-Type` is specified for the part, it defaults to `"application/octet-stream"`.
+- For non-multipart requests, form functions return `None` (for `form_field`, `form_file`) or an empty map (for `form_fields`).
 
 ## Supported Status Codes
 
@@ -268,22 +268,22 @@ Other status codes use `"Unknown"` as the reason phrase.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `http_client_status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
-| `http_client_body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
-| `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
+| `status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
+| `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
+| `header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
 | `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
 
 ### Client Usage Example
 
 ```python
-from http import http_get, http_post, http_client_status, http_client_body, http_client_header
+from http import http_get, http_post, status, body, header
 
 # Simple GET request
 when http_get("http://example.com/api/data"):
     case Ok(resp):
-        status = http_client_status(resp)
-        body = http_client_body(resp)
-        print(to_str(status) + ": " + body)
+        s = status(resp)
+        b = body(resp)
+        print(to_str(s) + ": " + b)
     case Err(e):
         print("Request failed")
 
@@ -291,7 +291,7 @@ when http_get("http://example.com/api/data"):
 headers: Map<str, str> = {"Content-Type": "application/json"}
 when http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     case Ok(resp):
-        print(http_client_body(resp))
+        print(body(resp))
     case Err(e):
         print("Request failed")
 ```
@@ -325,7 +325,7 @@ HTTP client functions automatically follow redirect responses (3xx with `Locatio
 
 ## Error Handling
 
-- `http_listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
+- `listen()` raises a runtime error if `bind()` fails (e.g., port already in use).
 - Malformed requests or idle timeouts on a keep-alive connection cause the connection to be closed. The server then resumes accepting new connections.
 - The handler function must always return an `HttpResponse` — there is no default response.
 - Client functions return `Result<HttpClientResponse, Error>` — use `when` to handle success and failure.

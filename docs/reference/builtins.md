@@ -12,13 +12,13 @@
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
-| `args()` | Returns command-line arguments as `List<str>` |
+| `arguments()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
 | `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
-| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
+| `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
 | `close(handle)` | Closes a `TcpStream` or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
 
@@ -41,7 +41,7 @@
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
 | `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
-| `take(list, n)` | Returns a new list with the first n elements |
+| `take(list, count)` | Returns a new list with the first count elements |
 | `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
 | `map(list, fn)` | Returns a new list with each element transformed |
@@ -69,7 +69,7 @@
 | `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
 | `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
 | `map(iter, fn)` | Returns a lazy iterator that transforms each element |
-| `take(iter, n)` | Returns a lazy iterator that yields at most n elements |
+| `take(iter, count)` | Returns a lazy iterator that yields at most count elements |
 
 ### [String Operations](builtins-string.md)
 
@@ -248,20 +248,20 @@ exit(1)        # error termination
 
 ---
 
-## args
+## arguments
 
-**Signature:** `args() -> List<str>`
+**Signature:** `arguments() -> List<str>`
 
 Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
 
 ```python
 # Run: ry script.ry hello world
-a = args()
+a = arguments()
 print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
-for x in args():
+for x in arguments():
     print(x)
 ```
 
@@ -387,9 +387,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ## take
 
-**Signature:** `take(list: List<T>, n: int) -> List<T>`
+**Signature:** `take(list: List<T>, count: int) -> List<T>`
 
-Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
+Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]

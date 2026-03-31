@@ -180,12 +180,12 @@ Ry provides TCP socket support through the `net` module. Network operations retu
 
 ```python
 from net import bind, listen, accept, connect, listener_port
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
 async fn echo_server(server: TcpListener) -> str:
     when accept(server):
         case Ok(conn):
-            when recv(conn, 4096):
+            when receive(conn, 4096):
                 case Ok(data):
                     when send(conn, data):
                         case Ok(_):

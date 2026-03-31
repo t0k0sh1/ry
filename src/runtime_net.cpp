@@ -271,7 +271,7 @@ static IOListHeader *makeEmptyIOList() {
     return header;
 }
 
-extern "C" void *__ry_tcp_recv(void *stream, int64_t max_bytes) {
+extern "C" void *__ry_tcp_receive(void *stream, int64_t max_bytes) {
     if (max_bytes <= 0) {
         return makeEmptyIOList();
     }

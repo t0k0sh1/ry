@@ -1,11 +1,11 @@
-from json import parse, stringify, json_type, json_get, json_at, json_str, json_int, json_float, json_bool, json_len, json_keys, json_free
+from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
 from str import contains
 
 describe("json parse", fn():
   it("parses an object", fn():
     when parse("{\"name\": \"Alice\", \"age\": 30}"):
       case Ok(data):
-        expect(json_type(data)).to_eq("object")
+        expect(kind(data)).to_eq("object")
         json_free(data)
       case Err(e):
         fail("parse failed: " + e.message)
@@ -14,8 +14,8 @@ describe("json parse", fn():
   it("parses an array", fn():
     when parse("[1, 2, 3]"):
       case Ok(data):
-        expect(json_type(data)).to_eq("array")
-        expect(json_len(data)).to_eq(3)
+        expect(kind(data)).to_eq("array")
+        expect(length(data)).to_eq(3)
         json_free(data)
       case Err(e):
         fail("parse failed: " + e.message)
@@ -34,9 +34,9 @@ describe("json access", fn():
   it("gets string field", fn():
     when parse("{\"name\": \"Alice\"}"):
       case Ok(data):
-        when json_get(data, "name"):
+        when get(data, "name"):
           case Ok(val):
-            when json_str(val):
+            when to_str(val):
               case Ok(name):
                 expect(name).to_eq("Alice")
               case Err(e):
@@ -51,9 +51,9 @@ describe("json access", fn():
   it("gets int field", fn():
     when parse("{\"age\": 30}"):
       case Ok(data):
-        when json_get(data, "age"):
+        when get(data, "age"):
           case Ok(val):
-            when json_int(val):
+            when to_int(val):
               case Ok(age):
                 expect(age).to_eq(30)
               case Err(e):
@@ -68,9 +68,9 @@ describe("json access", fn():
   it("gets float field", fn():
     when parse("{\"pi\": 3.14}"):
       case Ok(data):
-        when json_get(data, "pi"):
+        when get(data, "pi"):
           case Ok(val):
-            when json_float(val):
+            when to_float(val):
               case Ok(pi):
                 expect(pi > 3.13).to_be_true()
                 expect(pi < 3.15).to_be_true()
@@ -86,9 +86,9 @@ describe("json access", fn():
   it("gets bool field", fn():
     when parse("{\"active\": true}"):
       case Ok(data):
-        when json_get(data, "active"):
+        when get(data, "active"):
           case Ok(val):
-            when json_bool(val):
+            when to_bool(val):
               case Ok(b):
                 expect(b).to_be_true()
               case Err(e):
@@ -103,9 +103,9 @@ describe("json access", fn():
   it("gets null type", fn():
     when parse("{\"value\": null}"):
       case Ok(data):
-        when json_get(data, "value"):
+        when get(data, "value"):
           case Ok(val):
-            expect(json_type(val)).to_eq("null")
+            expect(kind(val)).to_eq("null")
           case Err(e):
             fail("json_get failed")
         json_free(data)
@@ -116,18 +116,18 @@ describe("json access", fn():
   it("accesses array by index", fn():
     when parse("[10, 20, 30]"):
       case Ok(data):
-        when json_at(data, 0):
+        when at(data, 0):
           case Ok(first):
-            when json_int(first):
+            when to_int(first):
               case Ok(n):
                 expect(n).to_eq(10)
               case Err(e):
                 fail("json_int failed")
           case Err(e):
             fail("json_at failed")
-        when json_at(data, 2):
+        when at(data, 2):
           case Ok(last):
-            when json_int(last):
+            when to_int(last):
               case Ok(n):
                 expect(n).to_eq(30)
               case Err(e):
@@ -142,7 +142,7 @@ describe("json access", fn():
   it("returns Err for missing key", fn():
     when parse("{\"a\": 1}"):
       case Ok(data):
-        expect(json_get(data, "missing")).to_be_err()
+        expect(get(data, "missing")).to_be_err()
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -151,7 +151,7 @@ describe("json access", fn():
   it("returns Err for out-of-bounds index", fn():
     when parse("[1, 2]"):
       case Ok(data):
-        expect(json_at(data, 5)).to_be_err()
+        expect(at(data, 5)).to_be_err()
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -160,9 +160,9 @@ describe("json access", fn():
   it("returns Err for type mismatch", fn():
     when parse("{\"name\": \"Alice\"}"):
       case Ok(data):
-        when json_get(data, "name"):
+        when get(data, "name"):
           case Ok(val):
-            expect(json_int(val)).to_be_err()
+            expect(to_int(val)).to_be_err()
           case Err(e):
             fail("json_get failed")
         json_free(data)
@@ -175,20 +175,20 @@ describe("json nested", fn():
   it("accesses nested objects", fn():
     when parse("{\"user\": {\"name\": \"Bob\", \"age\": 25}}"):
       case Ok(data):
-        when json_get(data, "user"):
+        when get(data, "user"):
           case Ok(user):
-            when json_get(user, "name"):
+            when get(user, "name"):
               case Ok(name_val):
-                when json_str(name_val):
+                when to_str(name_val):
                   case Ok(name):
                     expect(name).to_eq("Bob")
                   case Err(e):
                     fail("json_str failed")
               case Err(e):
                 fail("json_get name failed")
-            when json_get(user, "age"):
+            when get(user, "age"):
               case Ok(age_val):
-                when json_int(age_val):
+                when to_int(age_val):
                   case Ok(age):
                     expect(age).to_eq(25)
                   case Err(e):
@@ -205,11 +205,11 @@ describe("json nested", fn():
   it("accesses array of objects", fn():
     when parse("[{\"id\": 1}, {\"id\": 2}]"):
       case Ok(data):
-        when json_at(data, 1):
+        when at(data, 1):
           case Ok(second):
-            when json_get(second, "id"):
+            when get(second, "id"):
               case Ok(id_val):
-                when json_int(id_val):
+                when to_int(id_val):
                   case Ok(id):
                     expect(id).to_eq(2)
                   case Err(e):
@@ -228,7 +228,7 @@ describe("json keys and len", fn():
   it("gets object keys", fn():
     when parse("{\"a\": 1, \"b\": 2}"):
       case Ok(data):
-        ks = json_keys(data)
+        ks = keys(data)
         expect(length(ks)).to_eq(2)
         json_free(data)
       case Err(e):
@@ -238,7 +238,7 @@ describe("json keys and len", fn():
   it("gets object len", fn():
     when parse("{\"x\": 1, \"y\": 2, \"z\": 3}"):
       case Ok(data):
-        expect(json_len(data)).to_eq(3)
+        expect(length(data)).to_eq(3)
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -252,9 +252,9 @@ describe("json stringify", fn():
         text = stringify(data)
         when parse(text):
           case Ok(data2):
-            when json_get(data2, "name"):
+            when get(data2, "name"):
               case Ok(name_val):
-                when json_str(name_val):
+                when to_str(name_val):
                   case Ok(name):
                     expect(name).to_eq("Alice")
                   case Err(e):
@@ -284,7 +284,7 @@ describe("json type checks", fn():
   it("identifies string type", fn():
     when parse("\"hello\""):
       case Ok(data):
-        expect(json_type(data)).to_eq("string")
+        expect(kind(data)).to_eq("string")
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -293,7 +293,7 @@ describe("json type checks", fn():
   it("identifies number type", fn():
     when parse("42"):
       case Ok(data):
-        expect(json_type(data)).to_eq("number")
+        expect(kind(data)).to_eq("number")
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -302,7 +302,7 @@ describe("json type checks", fn():
   it("identifies boolean type", fn():
     when parse("true"):
       case Ok(data):
-        expect(json_type(data)).to_eq("boolean")
+        expect(kind(data)).to_eq("boolean")
         json_free(data)
       case Err(e):
         fail("parse failed")
@@ -311,7 +311,7 @@ describe("json type checks", fn():
   it("identifies null type", fn():
     when parse("null"):
       case Ok(data):
-        expect(json_type(data)).to_eq("null")
+        expect(kind(data)).to_eq("null")
         json_free(data)
       case Err(e):
         fail("parse failed")

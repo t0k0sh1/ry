@@ -45,10 +45,10 @@ For detailed language specifications, see the reference pages below.
 | [String Functions](reference/builtins-string.md) | contains, find, replace, split, join, etc. |
 | [Regular Expressions](reference/regex.md) | regex_match, regex_search, regex_replace, regex_split, regex_find_all |
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |
-| [I/O Functions](reference/io.md) | read_text, write_text, file_exists, read_bytes, str_to_bytes, etc. |
-| [JSON](reference/json.md) | parse, stringify, json_get, json_at, json_str, json_int, etc. |
+| [I/O Functions](reference/io.md) | read_text, write_text, exists, read_bytes, to_bytes, etc. |
+| [JSON](reference/json.md) | parse, stringify, get, at, to_str, to_int, etc. |
 | [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/recv/close for TCP sockets |
-| [HTTP Server](reference/http.md) | http_listen, http_method, http_path, http_header, http_body, http_response |
+| [HTTP Server](reference/http.md) | listen, method, path, header, body, response |
 | [Base64](reference/base64.md) | encode, decode, encode_url_safe, decode_url_safe |
 | [Path](reference/path.md) | join, basename, dirname, extension, resolve, is_absolute |
 | [Filesystem](reference/filesystem.md) | list_dir, walk, glob_files, copy, move, remove, make_dir, chmod, symlink |

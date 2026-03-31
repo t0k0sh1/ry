@@ -166,7 +166,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ### take
 
-Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified.
+Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified.
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -769,7 +769,7 @@ Iterator methods return new iterators, forming a pipeline that is only evaluated
 |--------|-------------|
 | `.filter(fn)` | Yields only elements where the predicate returns `true` |
 | `.map(fn)` | Transforms each element using the given function |
-| `.take(n)` | Yields at most `n` elements |
+| `.take(count)` | Yields at most `count` elements |
 
 ```python
 result = [1, 2, 3, 4, 5]

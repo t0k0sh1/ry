@@ -140,7 +140,7 @@ extern "C" int64_t __ry_tls_send(void *tls_stream, void *byte_list) {
 // tls_recv
 // ============================================================
 
-extern "C" void *__ry_tls_recv(void *tls_stream, int64_t max_bytes) {
+extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
     __ry_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {

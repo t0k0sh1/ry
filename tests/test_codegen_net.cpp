@@ -19,13 +19,13 @@ fn connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
 fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 @native
-fn str_to_bytes(s: str) -> List<u8>
+fn to_bytes(s: str) -> List<u8>
 @native
 fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
 fn set_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
+fn set_receive_timeout(stream: TcpStream, ms: int) -> Unit
 @native
 fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
 @native
@@ -94,11 +94,11 @@ fn listener_port(listener: TcpListener) -> int
 async fn run_server(server: TcpListener) -> str:
     when accept(server):
         case Ok(conn):
-            when recv(conn, 4096):
+            when receive(conn, 4096):
                 case Ok(data):
                     when bytes_to_str(data):
                         case Ok(msg):
-                            when send(conn, str_to_bytes("echo:" + msg)):
+                            when send(conn, to_bytes("echo:" + msg)):
                                 case Ok(_):
                                     ...
                                 case Err(e):
@@ -116,12 +116,12 @@ async fn run_server(server: TcpListener) -> str:
 fn run_client(port: int) -> str:
     when connect("127.0.0.1", port):
         case Ok(conn):
-            when send(conn, str_to_bytes("hello")):
+            when send(conn, to_bytes("hello")):
                 case Ok(_):
                     ...
                 case Err(e):
                     ...
-            when recv(conn, 4096):
+            when receive(conn, 4096):
                 case Ok(resp):
                     when bytes_to_str(resp):
                         case Ok(msg):
@@ -252,18 +252,18 @@ TEST(SendAll, ZeroLengthSucceeds) {
 }
 
 // ============================================================
-// __ry_tcp_recv: peer close returns empty IOListHeader
+// __ry_tcp_receive: peer close returns empty IOListHeader
 // ============================================================
 
 TEST(TcpRecv, PeerCloseReturnsEmptyList) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
-    // Close the peer end so recv() returns 0
+    // Close the peer end so receive() returns 0
     ::close(fds[1]);
 
     // TcpStreamHandle has fd as its first field
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 4096);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->len, 0);
     EXPECT_EQ(result->cap, 0);
@@ -276,17 +276,17 @@ TEST(TcpRecv, PeerCloseReturnsEmptyList) {
 TEST(TcpRecv, ErrorReturnsNull) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
-    // Close both ends so recv() gets an error (not just EOF)
+    // Close both ends so receive() gets an error (not just EOF)
     ::close(fds[1]);
     ::close(fds[0]);
 
-    // recv on closed fd returns nullptr (error)
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    // receive on closed fd returns nullptr (error)
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 4096);
     EXPECT_EQ(result, nullptr);
 }
 
 // ============================================================
-// set_timeout / set_recv_timeout / set_send_timeout
+// set_timeout / set_receive_timeout / set_send_timeout
 // ============================================================
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
@@ -305,7 +305,7 @@ TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 when connect("127.0.0.1", 19996):
     case Ok(conn):
-        set_recv_timeout(conn, 500)
+        set_receive_timeout(conn, 500)
         print("ok")
         close(conn)
     case Err(e):
@@ -349,8 +349,8 @@ when bind("127.0.0.1", 0):
                 t = server_task(server)
                 when connect("127.0.0.1", port):
                     case Ok(conn):
-                        set_recv_timeout(conn, 100)
-                        when recv(conn, 4096):
+                        set_receive_timeout(conn, 100)
+                        when receive(conn, 4096):
                             case Ok(data):
                                 print("got data")
                             case Err(e):
@@ -408,19 +408,19 @@ when tls_connect("127.0.0.1", 19993):
 }
 
 // ============================================================
-// TLS send/recv/close overloads compile for TlsStream
+// TLS send/receive/close overloads compile for TlsStream
 // ============================================================
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 when tls_connect("127.0.0.1", 19992):
     case Ok(conn):
-        when send(conn, str_to_bytes("hello")):
+        when send(conn, to_bytes("hello")):
             case Ok(n):
                 print("sent")
             case Err(e):
                 print("send err")
-        when recv(conn, 4096):
+        when receive(conn, 4096):
             case Ok(data):
                 print("recv ok")
             case Err(e):
@@ -451,7 +451,7 @@ TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 0);
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 0);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->len, 0);
     EXPECT_EQ(result->cap, 0);

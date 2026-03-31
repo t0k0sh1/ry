@@ -1,48 +1,48 @@
 # HTTP server operations
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit
 
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
 
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit
+fn listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit
 
 @native
-fn http_method(req: HttpRequest) -> str
+fn method(req: HttpRequest) -> str
 
 @native
-fn http_path(req: HttpRequest) -> str
+fn path(req: HttpRequest) -> str
 
 @native
-fn http_header(req: HttpRequest, key: str) -> Option<str>
+fn header(req: HttpRequest, key: str) -> Option<str>
 
 @native
-fn http_body(req: HttpRequest) -> str
+fn body(req: HttpRequest) -> str
 
 @native
-fn http_query(req: HttpRequest, key: str) -> Option<str>
+fn query(req: HttpRequest, key: str) -> Option<str>
 
 @native
-fn http_query_all(req: HttpRequest) -> Map<str, str>
+fn query_all(req: HttpRequest) -> Map<str, str>
 
 @native
-fn http_cookie(req: HttpRequest, name: str) -> Option<str>
+fn cookie(req: HttpRequest, name: str) -> Option<str>
 
 @native
-fn http_cookies(req: HttpRequest) -> Map<str, str>
+fn cookies(req: HttpRequest) -> Map<str, str>
 
 @native
-fn http_form_field(req: HttpRequest, name: str) -> Option<str>
+fn form_field(req: HttpRequest, name: str) -> Option<str>
 
 @native
-fn http_form_file(req: HttpRequest, name: str) -> Option<Map<str, str>>
+fn form_file(req: HttpRequest, name: str) -> Option<Map<str, str>>
 
 @native
-fn http_form_fields(req: HttpRequest) -> Map<str, str>
+fn form_fields(req: HttpRequest) -> Map<str, str>
 
 @native
-fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
+fn response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
 
 # HTTP client operations
 @native
@@ -55,13 +55,13 @@ fn http_post(url: str, body: str, headers: Map<str, str>) -> Result<HttpClientRe
 fn http_request(method: str, url: str, headers: Map<str, str>, body: str) -> Result<HttpClientResponse, Error>
 
 @native
-fn http_client_status(response: HttpClientResponse) -> int
+fn status(response: HttpClientResponse) -> int
 
 @native
-fn http_client_body(response: HttpClientResponse) -> str
+fn body(response: HttpClientResponse) -> str
 
 @native
-fn http_client_header(response: HttpClientResponse, key: str) -> Option<str>
+fn header(response: HttpClientResponse, key: str) -> Option<str>
 
 @native
 fn http_client_response_free(response: HttpClientResponse) -> Unit

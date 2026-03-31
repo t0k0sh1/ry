@@ -55,38 +55,38 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         codegenError("stringify() takes 1 or 2 arguments");
     }
 
-    // json_type(value) -> str
-    if (e.callee == "json_type") {
+    // kind(value) -> str
+    if (e.callee == "kind") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
-            codegenError("json_type() requires a JsonValue argument");
+            codegenError("kind() requires a JsonValue argument");
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_type", fnTy);
-        return builder_.CreateCall(fn, {val}, "json_type");
+        return builder_.CreateCall(fn, {val}, "json_kind");
     }
 
-    // json_get(value, key) -> Result<JsonValue, Error>
-    if (e.callee == "json_get") {
+    // get(value, key) -> Result<JsonValue, Error>
+    if (e.callee == "get") {
         requireArgs(e, 2);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
-            codegenError("json_get() requires a JsonValue as first argument");
+            codegenError("get() requires a JsonValue as first argument");
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != ptrTy_)
-            codegenError("json_get() requires a str key");
+            codegenError("get() requires a str key");
         auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_get", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val, key}, "json_get");
         return wrapJsonPtrResult(ptr, true);
     }
 
-    // json_at(value, index) -> Result<JsonValue, Error>
-    if (e.callee == "json_at") {
+    // at(value, index) -> Result<JsonValue, Error>
+    if (e.callee == "at") {
         requireArgs(e, 2);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
-            codegenError("json_at() requires a JsonValue as first argument");
+            codegenError("at() requires a JsonValue as first argument");
         llvm::Value *idx = emitExpr(*e.args[1]);
         auto fnTy = fnTy_ptr_i64_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_at", fnTy);
@@ -94,25 +94,22 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         return wrapJsonPtrResult(ptr, true);
     }
 
-    // json_str(value) -> Result<str, Error>
-    if (e.callee == "json_str") {
+    // to_str(value) -> Result<str, Error> — for JsonValue
+    if (e.callee == "to_str") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("json_str() requires a JsonValue argument");
+        if (!isJsonValue(val)) return nullptr;
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_str", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_str");
         return wrapJsonPtrResult(ptr);
     }
 
-    // json_int(value) -> Result<int, Error>
-    if (e.callee == "json_int") {
+    // to_int(value) -> Result<int, Error> — for JsonValue
+    if (e.callee == "to_int") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("json_int() requires a JsonValue argument");
-        // Allocate stack slot for out parameter
+        if (!isJsonValue(val)) return nullptr;
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "json_int_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_json_int", fnTy);
@@ -128,12 +125,11 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
-    // json_float(value) -> Result<float, Error>
-    if (e.callee == "json_float") {
+    // to_float(value) -> Result<float, Error> — for JsonValue
+    if (e.callee == "to_float") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("json_float() requires a JsonValue argument");
+        if (!isJsonValue(val)) return nullptr;
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(f64Ty_, nullptr, "json_float_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_json_float", fnTy);
@@ -149,12 +145,12 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
-    // json_bool(value) -> Result<bool, Error>
-    if (e.callee == "json_bool") {
+    // to_bool(value) -> Result<bool, Error>
+    if (e.callee == "to_bool") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val))
-            codegenError("json_bool() requires a JsonValue argument");
+            codegenError("to_bool() requires a JsonValue argument");
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "json_bool_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_json_bool", fnTy);
@@ -171,23 +167,21 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
             [&]() { return buildErrValue(buildErrorFromRuntime(), resTy); });
     }
 
-    // json_len(value) -> int
-    if (e.callee == "json_len") {
+    // length(value) -> int — for JsonValue
+    if (e.callee == "length") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("json_len() requires a JsonValue argument");
+        if (!isJsonValue(val)) return nullptr;
         auto fnTy = fnTy_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_json_len", fnTy);
         return builder_.CreateCall(fn, {val}, "json_len");
     }
 
-    // json_keys(value) -> List<str>
-    if (e.callee == "json_keys") {
+    // keys(value) -> List<str> — for JsonValue
+    if (e.callee == "keys") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
-            codegenError("json_keys() requires a JsonValue argument");
+        if (!isJsonValue(val)) return nullptr;
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_keys", fnTy);
         llvm::Value *result = builder_.CreateCall(fn, {val}, "json_keys");

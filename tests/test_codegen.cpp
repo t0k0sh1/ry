@@ -323,15 +323,15 @@ TEST_F(CodeGenTest, ExitArgumentErrors) {
     EXPECT_THROW(runSource("exit(1, 2)"), std::runtime_error);
 }
 
-// ===== args() tests =====
+// ===== arguments() tests =====
 
-TEST_F(CodeGenTest, ArgsTests) {
-    EXPECT_EQ(runSourceWithArgs("a = args()\nprint(length(a))", {}), "0\n");
+TEST_F(CodeGenTest, ArgumentsTests) {
+    EXPECT_EQ(runSourceWithArgs("a = arguments()\nprint(length(a))", {}), "0\n");
     EXPECT_EQ(runSourceWithArgs(
-        "a = args()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
+        "a = arguments()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
         {"hello", "world"}), "2\nhello\nworld\n");
     EXPECT_EQ(runSourceWithArgs(
-        "for x in args():\n    print(x)",
+        "for x in arguments():\n    print(x)",
         {"foo", "bar"}), "foo\nbar\n");
 }
 

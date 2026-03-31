@@ -1,5 +1,5 @@
-from net import bind, listen, accept, connect, listener_port, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
-from io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
+from io import to_bytes, bytes_to_str
 
 describe("TCP socket API", fn():
   it("bind returns Ok on valid address", fn():
@@ -38,7 +38,7 @@ describe("TCP socket API", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("set_recv_timeout causes recv to return Err on timeout", fn():
+  it("set_receive_timeout causes receive to return Err on timeout", fn():
     async fn timeout_server(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
@@ -56,8 +56,8 @@ describe("TCP socket API", fn():
             t = timeout_server(server)
             when connect("127.0.0.1", port):
               case Ok(conn):
-                set_recv_timeout(conn, 100)
-                when recv(conn, 4096):
+                set_receive_timeout(conn, 100)
+                when receive(conn, 4096):
                   case Ok(data):
                     fail("expected Err but got Ok")
                   case Err(e):
@@ -75,11 +75,11 @@ describe("TCP socket API", fn():
     async fn run_server(server: TcpListener) -> str:
       when accept(server):
         case Ok(conn):
-          when recv(conn, 4096):
+          when receive(conn, 4096):
             case Ok(data):
               when bytes_to_str(data):
                 case Ok(msg):
-                  when send(conn, str_to_bytes("echo:" + msg)):
+                  when send(conn, to_bytes("echo:" + msg)):
                     case Ok(_):
                       ...
                     case Err(e):
@@ -96,12 +96,12 @@ describe("TCP socket API", fn():
     fn run_client(port: int) -> str:
       when connect("127.0.0.1", port):
         case Ok(conn):
-          when send(conn, str_to_bytes("hello")):
+          when send(conn, to_bytes("hello")):
             case Ok(_):
               ...
             case Err(e):
               ...
-          when recv(conn, 4096):
+          when receive(conn, 4096):
             case Ok(resp):
               when bytes_to_str(resp):
                 case Ok(msg):

@@ -87,21 +87,21 @@ print(atomic_int_load(counter))  # 1
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `atomic_int_new` | `(value: int) -> AtomicInt` | Creates an atomic integer with the given initial value. |
-| `atomic_int_load` | `(a: AtomicInt) -> int` | Atomically reads the value. |
-| `atomic_int_store` | `(a: AtomicInt, value: int) -> Unit` | Atomically writes the value. |
-| `atomic_int_add` | `(a: AtomicInt, delta: int) -> int` | Atomically adds `delta` and returns the **previous** value. |
-| `atomic_int_sub` | `(a: AtomicInt, delta: int) -> int` | Atomically subtracts `delta` and returns the **previous** value. |
-| `atomic_int_cas` | `(a: AtomicInt, expected: int, desired: int) -> bool` | Compare-and-swap: if current value equals `expected`, sets to `desired` and returns `true`; otherwise returns `false`. |
-| `atomic_int_free` | `(a: AtomicInt) -> Unit` | Immediately frees the atomic integer. Optional — ARC handles cleanup automatically. |
+| `atomic_int_load` | `(atomic: AtomicInt) -> int` | Atomically reads the value. |
+| `atomic_int_store` | `(atomic: AtomicInt, value: int) -> Unit` | Atomically writes the value. |
+| `atomic_int_add` | `(atomic: AtomicInt, delta: int) -> int` | Atomically adds `delta` and returns the **previous** value. |
+| `atomic_int_sub` | `(atomic: AtomicInt, delta: int) -> int` | Atomically subtracts `delta` and returns the **previous** value. |
+| `atomic_int_cas` | `(atomic: AtomicInt, expected: int, desired: int) -> bool` | Compare-and-swap: if current value equals `expected`, sets to `desired` and returns `true`; otherwise returns `false`. |
+| `atomic_int_free` | `(atomic: AtomicInt) -> Unit` | Immediately frees the atomic integer. Optional — ARC handles cleanup automatically. |
 
 ## AtomicBool
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `atomic_bool_new` | `(value: bool) -> AtomicBool` | Creates an atomic boolean with the given initial value. |
-| `atomic_bool_load` | `(a: AtomicBool) -> bool` | Atomically reads the value. |
-| `atomic_bool_store` | `(a: AtomicBool, value: bool) -> Unit` | Atomically writes the value. |
-| `atomic_bool_free` | `(a: AtomicBool) -> Unit` | Immediately frees the atomic boolean. Optional — ARC handles cleanup automatically. |
+| `atomic_bool_load` | `(atomic: AtomicBool) -> bool` | Atomically reads the value. |
+| `atomic_bool_store` | `(atomic: AtomicBool, value: bool) -> Unit` | Atomically writes the value. |
+| `atomic_bool_free` | `(atomic: AtomicBool) -> Unit` | Immediately frees the atomic boolean. Optional — ARC handles cleanup automatically. |
 
 ## Comparison with async/await
 
