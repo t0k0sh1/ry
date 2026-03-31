@@ -8,7 +8,7 @@ void __ry_print_begin();
 
 /// Drop-in replacement for printf that respects the buffered-print state.
 /// When buffering is active, output is appended to the thread-local buffer.
-/// Otherwise, falls through to vprintf for zero-overhead non-parallel paths.
+/// When buffering is not active, output is written to stdout immediately.
 int __ry_print_printf(const char *fmt, ...);
 
 /// End buffered print — flushes the accumulated buffer to stdout atomically

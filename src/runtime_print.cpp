@@ -23,6 +23,10 @@ extern "C" void __ry_print_begin() {
         if (!tl_buf) {
             tl_cap = kInitialCap;
             tl_buf = static_cast<char *>(std::malloc(tl_cap));
+            if (!tl_buf) {
+                tl_cap = 0;
+                --tl_depth;
+            }
         }
     }
 }
@@ -49,13 +53,14 @@ extern "C" int __ry_print_printf(const char *fmt, ...) {
     }
 
     if (static_cast<size_t>(n) >= remaining) {
-        tl_cap = tl_len + static_cast<size_t>(n) + 1;
-        char *newBuf = static_cast<char *>(std::realloc(tl_buf, tl_cap));
+        size_t newCap = tl_len + static_cast<size_t>(n) + 1;
+        char *newBuf = static_cast<char *>(std::realloc(tl_buf, newCap));
         if (!newBuf) {
             va_end(args2);
             return -1;
         }
         tl_buf = newBuf;
+        tl_cap = newCap;
         std::vsnprintf(tl_buf + tl_len, tl_cap - tl_len, fmt, args2);
     }
     va_end(args2);
@@ -68,10 +73,8 @@ extern "C" void __ry_print_end() {
     if (tl_depth > 0)
         --tl_depth;
     if (tl_depth == 0 && tl_len > 0) {
-        {
-            std::lock_guard<std::mutex> lock(stdout_mu);
-            std::fwrite(tl_buf, 1, tl_len, stdout);
-        }
+        std::lock_guard<std::mutex> lock(stdout_mu);
+        std::fwrite(tl_buf, 1, tl_len, stdout);
         std::fflush(stdout);
         tl_len = 0;
     }
