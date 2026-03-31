@@ -47,7 +47,7 @@ llvm::Value *CodeGen::emitCheckedArithmetic(const std::string &callee,
     else if (op == "sub") id = isUnsigned ? llvm::Intrinsic::usub_with_overflow : llvm::Intrinsic::ssub_with_overflow;
     else id = isUnsigned ? llvm::Intrinsic::umul_with_overflow : llvm::Intrinsic::smul_with_overflow;
 
-    llvm::Function *intrinsic = llvm::Intrinsic::getDeclaration(mod_.get(), id, {lhs->getType()});
+    llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), id, {lhs->getType()});
     llvm::Value *result = builder_.CreateCall(intrinsic, {lhs, rhs}, "checked");
     llvm::Value *value = builder_.CreateExtractValue(result, 0, "checked_val");
     llvm::Value *overflow = builder_.CreateExtractValue(result, 1, "overflow");
@@ -77,13 +77,13 @@ llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
         if (op == "add") id = isUnsigned ? llvm::Intrinsic::uadd_sat : llvm::Intrinsic::sadd_sat;
         else id = isUnsigned ? llvm::Intrinsic::usub_sat : llvm::Intrinsic::ssub_sat;
 
-        llvm::Function *intrinsic = llvm::Intrinsic::getDeclaration(mod_.get(), id, {lhs->getType()});
+        llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), id, {lhs->getType()});
         result = builder_.CreateCall(intrinsic, {lhs, rhs}, "sat");
     } else {
         // No LLVM intrinsic for saturating mul — use overflow detection + clamp
         llvm::Intrinsic::ID ovId = isUnsigned ? llvm::Intrinsic::umul_with_overflow
                                                : llvm::Intrinsic::smul_with_overflow;
-        llvm::Function *intrinsic = llvm::Intrinsic::getDeclaration(mod_.get(), ovId, {lhs->getType()});
+        llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(mod_.get(), ovId, {lhs->getType()});
         llvm::Value *mulResult = builder_.CreateCall(intrinsic, {lhs, rhs}, "satmul");
         llvm::Value *value = builder_.CreateExtractValue(mulResult, 0, "satmul_val");
         llvm::Value *overflow = builder_.CreateExtractValue(mulResult, 1, "satmul_ov");

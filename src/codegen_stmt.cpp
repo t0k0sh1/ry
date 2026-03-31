@@ -513,6 +513,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
+        emitTraceSymbolDefine("variable", s.name, s.loc);
         emitVarDecl(s.name, s.type_annotation, *s.value, is_const);
         if (hasDirective(s.directives, "deprecated"))
             deprecated_variables_.insert(s.name);
@@ -705,6 +706,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {
+    emitTraceSymbolDefine("enum", s.name, s.loc);
     // Generic enum: save as template, don't instantiate yet
     if (!s.type_params.empty()) {
         GenericEnumTemplate tmpl;
@@ -822,6 +824,7 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
     llvm::Value *cond = emitExpr(*s->branch.condition);
     cond = toBool(cond);
+    emitTraceIfBranch(cond, s->loc);
 
     llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
     llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
@@ -852,6 +855,7 @@ void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
 void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.end", fn_);
+    int armIndex = 0;
 
     for (auto &arm : s->arms) {
         llvm::Value *cond = emitExpr(*arm.condition);
@@ -862,6 +866,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
         builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
+        emitTraceWhenBranch(armIndex++, s->loc);
         pushScope();
         for (auto &stmt : arm.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
@@ -874,6 +879,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
 
     if (!s->else_body.empty()) {
         pushScope();
+        emitTraceWhenBranch(-1, s->loc);
         for (auto &stmt : s->else_body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();

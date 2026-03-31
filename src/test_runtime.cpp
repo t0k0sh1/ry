@@ -13,6 +13,10 @@ static std::string g_current_describe;
 static std::string g_current_it;
 static bool g_current_it_failed = false;
 
+// async-signal-safe buffer for the timeout handler in main.cpp
+static char g_current_it_buf[256];
+const char *__ry_test_current_it_name() { return g_current_it_buf; }
+
 // Mock registry
 struct MockEntry { void *fn_ptr; int64_t call_count; };
 static std::unordered_map<std::string, MockEntry> g_mock_registry;
@@ -39,6 +43,8 @@ static constexpr unsigned kTestTimeoutSec = 60;
 void __ry_test_it_begin(const char *name) {
     g_current_it = name;
     g_current_it_failed = false;
+    // Copy to async-signal-safe buffer for timeout handler
+    std::snprintf(g_current_it_buf, sizeof(g_current_it_buf), "%s", name);
     alarm(kTestTimeoutSec);
 }
 

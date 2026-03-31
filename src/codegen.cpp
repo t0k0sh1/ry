@@ -111,6 +111,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedEnsureBindings_ = cg_.ensure_bindings_;
     savedInEnsureContext_ = cg_.in_ensure_context_;
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
+    savedFnName_ = std::move(cg_.current_function_name_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
@@ -122,6 +123,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
+    cg_.current_function_name_.clear();
 }
 
 CodeGen::FnScope::~FnScope() {
@@ -140,6 +142,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.ensure_bindings_ = savedEnsureBindings_;
     cg_.in_ensure_context_ = savedInEnsureContext_;
     cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
+    cg_.current_function_name_ = std::move(savedFnName_);
 }
 
 // ===== Coverage instrumentation =====
@@ -160,6 +163,92 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
     builder_.CreateCall(hitFn,
         {llvm::ConstantInt::get(i32Ty_, gid),
          llvm::ConstantInt::get(i32Ty_, loc.line)});
+}
+
+void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &name,
+                                    const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    // Skip stdlib symbols to reduce noise — users care about their own definitions
+    if (sm_ && loc.file_id >= 0 && loc.file_id < sm_->getFileCount()) {
+        const auto &fname = sm_->getFilename(loc.file_id);
+        if (fname.find("/lib/std/") != std::string::npos)
+            return;
+    }
+    ry::emitTraceEvent("symbol.define", "compile", &loc,
+                       {ry::TraceField("kind", kind),
+                        ry::TraceField("symbol", name),
+                        ry::TraceField("file", sm_ ? sm_->getFilename(loc.file_id) : "")});
+}
+
+llvm::Value *CodeGen::emitTraceSourceString(const std::string &text) {
+    return cachedGlobalString(text, ".trace_str");
+}
+
+llvm::Value *CodeGen::emitTraceFileString(const SourceLocation &loc) {
+    if (!sm_ || loc.file_id < 0 || loc.file_id >= sm_->getFileCount())
+        return emitTraceSourceString("");
+    return emitTraceSourceString(sm_->getFilename(loc.file_id));
+}
+
+void CodeGen::emitTraceFunctionEnter(const std::string &fnName, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_function_enter",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(fnName),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_function_exit",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(fnName),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceReturn(const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_return",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(current_function_name_),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_branch_if",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
+    llvm::Value *taken = builder_.CreateZExt(cond, i32Ty_, "trace_if_taken");
+    builder_.CreateCall(callee, {emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 taken});
+}
+
+void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_branch_when",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 llvm::ConstantInt::get(i32Ty_, armIndex)});
 }
 
 // ===== Error helpers =====

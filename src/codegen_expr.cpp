@@ -506,7 +506,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             // float: floor(fdiv)
             std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
             llvm::Value *div = builder_.CreateFDiv(lhs, rhs, "fdiv");
-            llvm::Function *floorFn = llvm::Intrinsic::getDeclaration(
+            llvm::Function *floorFn = llvm::Intrinsic::getOrInsertDeclaration(
                 mod_.get(), llvm::Intrinsic::floor, {f64Ty_});
             return builder_.CreateCall(floorFn, {div}, "floordiv");
         }

@@ -3,6 +3,7 @@
 #include "ry/ast.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
+#include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -298,9 +299,19 @@ private:
     int test_fn_counter_ = 0;
     const SourceManager *sm_ = nullptr;
     SourceLocation current_loc_;
+    std::string current_function_name_;
     std::unordered_set<int64_t> registered_coverage_lines_;
 
     void emitCoverage(const SourceLocation &loc);
+    void emitTraceSymbolDefine(const std::string &kind, const std::string &name,
+                               const SourceLocation &loc);
+    llvm::Value *emitTraceSourceString(const std::string &text);
+    llvm::Value *emitTraceFileString(const SourceLocation &loc);
+    void emitTraceFunctionEnter(const std::string &fnName, const SourceLocation &loc);
+    void emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc);
+    void emitTraceReturn(const SourceLocation &loc);
+    void emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc);
+    void emitTraceWhenBranch(int armIndex, const SourceLocation &loc);
 
     // Contract (Design by Contract) support
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
@@ -384,6 +395,7 @@ private:
         std::vector<std::string> *savedEnsureBindings_;
         bool savedInEnsureContext_;
         std::string savedFnReturnType_;
+        std::string savedFnName_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
