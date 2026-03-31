@@ -2,6 +2,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <poll.h>
 #include <string>
 #include <vector>
 #include <unistd.h>
@@ -19,10 +20,21 @@ static TraceRunResult runRy(const std::vector<std::string> &args,
                             const std::string &cwd = "") {
     int pipeOut[2];
     int pipeErr[2];
-    if (pipe(pipeOut) != 0 || pipe(pipeErr) != 0) return {"", "", -1};
+    if (pipe(pipeOut) != 0) return {"", "", -1};
+    if (pipe(pipeErr) != 0) {
+        close(pipeOut[0]);
+        close(pipeOut[1]);
+        return {"", "", -1};
+    }
 
     pid_t pid = fork();
-    if (pid < 0) return {"", "", -1};
+    if (pid < 0) {
+        close(pipeOut[0]);
+        close(pipeOut[1]);
+        close(pipeErr[0]);
+        close(pipeErr[1]);
+        return {"", "", -1};
+    }
 
     if (pid == 0) {
         close(pipeOut[0]);
@@ -49,18 +61,32 @@ static TraceRunResult runRy(const std::vector<std::string> &args,
     close(pipeOut[1]);
     close(pipeErr[1]);
 
-    auto readAll = [](int fd) {
-        std::string result;
-        std::array<char, 4096> buf;
-        ssize_t n = 0;
-        while ((n = read(fd, buf.data(), buf.size())) > 0)
-            result.append(buf.data(), n);
-        close(fd);
-        return result;
+    // Drain both pipes concurrently via poll to avoid deadlock when
+    // stderr (trace output) fills the pipe buffer while we block on stdout.
+    std::string out, err;
+    struct pollfd fds[2] = {
+        {pipeOut[0], POLLIN, 0},
+        {pipeErr[0], POLLIN, 0},
     };
-
-    std::string out = readAll(pipeOut[0]);
-    std::string err = readAll(pipeErr[0]);
+    int open_fds = 2;
+    std::array<char, 4096> buf;
+    while (open_fds > 0) {
+        int ret = poll(fds, 2, -1);
+        if (ret <= 0) break;
+        for (int i = 0; i < 2; ++i) {
+            if (fds[i].fd < 0) continue;
+            if (fds[i].revents & (POLLIN | POLLHUP)) {
+                ssize_t n = read(fds[i].fd, buf.data(), buf.size());
+                if (n > 0) {
+                    (i == 0 ? out : err).append(buf.data(), n);
+                } else {
+                    close(fds[i].fd);
+                    fds[i].fd = -1;
+                    --open_fds;
+                }
+            }
+        }
+    }
 
     int status = 0;
     waitpid(pid, &status, 0);
