@@ -143,6 +143,16 @@ RY
 
 Run `ry <command> --help` for detailed options.
 
+For internal execution analysis, Ry also supports a structured trace mode:
+
+```bash
+ry --trace app/main.ry
+ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
+ry test --trace tests/spec
+```
+
+`--trace` emits JSON Lines to stderr by default. Use `--trace-out` to redirect the trace stream to a file while keeping program stdout unchanged.
+
 ## Development
 
 ```bash

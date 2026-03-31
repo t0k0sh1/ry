@@ -279,6 +279,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 // ===== TypeAliasStmt =====
 
 void CodeGen::emitStmt(TypeAliasStmt &s) {
+    emitTraceSymbolDefine("type_alias", s.name, s.loc);
     // Type aliases are resolved at compile time via resolveType()
     // Store the alias mapping for later lookup
     type_aliases_[s.name] = s.target_type->toString();

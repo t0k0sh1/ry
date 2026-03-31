@@ -13,6 +13,7 @@
 #include "ry/paths.hpp"
 #include "ry/file_watcher.hpp"
 #include "ry/coverage_runtime.hpp"
+#include "ry/trace.hpp"
 #include "ry/dotenv.hpp"
 #include <algorithm>
 #include <cerrno>
@@ -59,6 +60,8 @@ static void test_timeout_handler(int) {
 
 // RY_ENV: skip $RY_HOME/lib when running in "internal" mode
 static bool g_skip_global_lib = false;
+static bool g_trace_enabled = false;
+static std::string g_trace_out = "-";
 
 // Coverage: accumulated filenames across multiple runRyFile calls.
 // Maps global file_id to filename for user files (excluding stdlib).
@@ -87,6 +90,13 @@ static int runRySource(const std::string &src, const std::string &source_name,
                        const std::string &referrer_dir, bool test_mode,
                        const char *argv0, bool coverage_mode = false,
                        bool outline_mode = false) {
+    SourceLocation sourceLoc{1, 1, 0};
+    if (ry::traceEnabled()) {
+        ry::emitTraceEvent("source.loaded", "compile", &sourceLoc,
+                           {ry::TraceField("file", source_name),
+                            ry::TraceField("size_bytes", static_cast<int64_t>(src.size()))});
+    }
+
     std::string project_root;
     // Load .env from project root (once per root per process)
     {
@@ -104,11 +114,24 @@ static int runRySource(const std::string &src, const std::string &source_name,
     // Source manager for rich error messages
     SourceManager sm;
     int fileId = sm.addSource(source_name, src);
+    sourceLoc.file_id = fileId;
 
     // Lex -> Parse
-    Lexer  lexer(src);
-    Parser parser(lexer, &sm, fileId);
-    Program prog = parser.parseProgram();
+    Program prog;
+    {
+        Lexer lexer(src);
+        Parser parser(lexer, &sm, fileId);
+        try {
+            ry::emitTraceEvent("parse.start", "compile", &sourceLoc,
+                               {ry::TraceField("file", source_name)});
+            prog = parser.parseProgram();
+            ry::emitTraceEvent("parse.done", "compile", &sourceLoc,
+                               {ry::TraceField("file", source_name)});
+        } catch (const DiagnosticError &e) {
+            ry::emitTraceDiagnostic("parse.error", "compile", &e.diagnostic().loc, e.diagnostic().message);
+            throw;
+        }
+    }
 
     // Set up search paths with lib/ for stdlib
     std::vector<std::string> search_paths;
@@ -137,17 +160,42 @@ static int runRySource(const std::string &src, const std::string &source_name,
     }
 
     // Resolve remaining imports
-    prog = loader.resolveImports(prog, referrer_dir);
+    try {
+        prog = loader.resolveImports(prog, referrer_dir);
+    } catch (const DiagnosticError &) {
+        throw;
+    } catch (const std::exception &e) {
+        ry::emitTraceEvent("import.resolve.error", "compile", &sourceLoc,
+                           {ry::TraceField("file", source_name),
+                            ry::TraceField("detail", e.what())});
+        throw;
+    }
 
     // CodeGen -> ThreadSafeModule
+    ry::emitTraceEvent("codegen.start", "compile", &sourceLoc,
+                       {ry::TraceField("file", source_name)});
     CodeGen cg(test_mode, &sm, coverage_mode, g_coverage_file_id_offset, outline_mode);
-    ThreadSafeModule tsm = cg.compile(prog);
+    ThreadSafeModule tsm = [&]() {
+        try {
+            auto module = cg.compile(prog);
+            ry::emitTraceEvent("codegen.done", "compile", &sourceLoc,
+                               {ry::TraceField("file", source_name)});
+            return module;
+        } catch (const DiagnosticError &e) {
+            ry::emitTraceDiagnostic("codegen.error", "compile", &e.diagnostic().loc, e.diagnostic().message);
+            throw;
+        }
+    }();
 
     // Build LLJIT
+    ry::emitTraceEvent("jit.start", "jit", &sourceLoc,
+                       {ry::TraceField("file", source_name)});
     auto jitOrErr = LLJITBuilder().create();
     if (!jitOrErr) {
         errs() << "Failed to create JIT: ";
         logAllUnhandledErrors(jitOrErr.takeError(), errs());
+        ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                           {ry::TraceField("detail", "Failed to create JIT")});
         return 1;
     }
     auto &jit = *jitOrErr;
@@ -160,6 +208,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
     if (!dlsg) {
         errs() << "Failed to create DynamicLibrarySearchGenerator: ";
         logAllUnhandledErrors(dlsg.takeError(), errs());
+        ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                           {ry::TraceField("detail", "Failed to create DynamicLibrarySearchGenerator")});
         return 1;
     }
     mainJD.addGenerator(std::move(*dlsg));
@@ -205,6 +255,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
         if (auto err = mainJD.define(absoluteSymbols(std::move(testSymbols)))) {
             errs() << "Failed to define test symbols: ";
             logAllUnhandledErrors(std::move(err), errs());
+            ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                               {ry::TraceField("detail", "Failed to define test symbols")});
             return 1;
         }
     }
@@ -218,6 +270,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
         if (auto err = mainJD.define(absoluteSymbols(std::move(covSymbols)))) {
             errs() << "Failed to define coverage symbols: ";
             logAllUnhandledErrors(std::move(err), errs());
+            ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                               {ry::TraceField("detail", "Failed to define coverage symbols")});
             return 1;
         }
     }
@@ -226,14 +280,20 @@ static int runRySource(const std::string &src, const std::string &source_name,
     if (auto err = jit->addIRModule(std::move(tsm))) {
         errs() << "Failed to add IR module: ";
         logAllUnhandledErrors(std::move(err), errs());
+        ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                           {ry::TraceField("detail", "Failed to add IR module")});
         return 1;
     }
+    ry::emitTraceEvent("jit.ready", "jit", &sourceLoc,
+                       {ry::TraceField("file", source_name)});
 
     // Lookup and run __ry_main__
     auto symOrErr = jit->lookup("__ry_main__");
     if (!symOrErr) {
         errs() << "Failed to lookup __ry_main__: ";
         logAllUnhandledErrors(symOrErr.takeError(), errs());
+        ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                           {ry::TraceField("detail", "Failed to lookup __ry_main__")});
         return 1;
     }
     auto *fn = symOrErr->toPtr<int(*)()>();
@@ -241,7 +301,12 @@ static int runRySource(const std::string &src, const std::string &source_name,
     if (test_mode) {
         std::signal(SIGALRM, test_timeout_handler);
     }
+    ry::emitTraceEvent("exec.start", "runtime", &sourceLoc,
+                       {ry::TraceField("file", source_name)});
     int result = fn();
+    ry::emitTraceEvent("exec.end", "runtime", &sourceLoc,
+                       {ry::TraceField("file", source_name),
+                        ry::TraceField("exit_code", result)});
 
     // Record filenames for coverage reporting (accumulates across calls).
     // Exclude stdlib files (those under lib_dir) from the report.
@@ -580,6 +645,8 @@ static void printMainHelp() {
     llvm::outs() << "  -h, --help       Show this help\n";
     llvm::outs() << "  -v, --version    Show version\n";
     llvm::outs() << "  --env=<env>      Set environment (production|development|internal)\n";
+    llvm::outs() << "  --trace          Emit structured internal trace as JSON Lines\n";
+    llvm::outs() << "  --trace-out=PATH Write trace output to PATH (or '-' for stderr)\n";
     llvm::outs() << "\n";
     llvm::outs() << "Run 'ry <command> --help' for more information on a command.\n";
 }
@@ -592,6 +659,8 @@ static void printTestHelp() {
     llvm::outs() << "  -w, --watch          Watch for changes and re-run\n";
     llvm::outs() << "  --coverage, --cov    Collect coverage information\n";
     llvm::outs() << "  --outline            Print describe/it structure without running tests\n";
+    llvm::outs() << "  --trace              Emit structured internal trace as JSON Lines\n";
+    llvm::outs() << "  --trace-out=PATH     Write trace output to PATH (or '-' for stderr)\n";
     llvm::outs() << "  -h, --help           Show this help\n";
 }
 
@@ -643,8 +712,40 @@ static void parseRyEnv(int &argc, char **&argv) {
     }
 }
 
+static void parseGlobalFlags(int &argc, char **&argv) {
+    while (argc >= 2) {
+        if (std::strcmp(argv[1], "--trace") == 0) {
+            g_trace_enabled = true;
+        } else if (std::strncmp(argv[1], "--trace-out=", 12) == 0) {
+            g_trace_enabled = true;
+            g_trace_out = argv[1] + 12;
+        } else {
+            break;
+        }
+
+        argv[1] = argv[0];
+        ++argv;
+        --argc;
+    }
+}
+
 int main(int argc, char *argv[]) {
     parseRyEnv(argc, argv);
+    parseGlobalFlags(argc, argv);
+    ry::configureTrace(g_trace_enabled, g_trace_out);
+    SourceLocation sessionLoc{1, 1, 0};
+    if (ry::traceEnabled()) {
+        ry::emitTraceEvent("session.start", "session", &sessionLoc,
+                           {ry::TraceField("argv0", argc > 0 && argv[0] ? argv[0] : "ry")});
+    }
+    struct SessionTraceGuard {
+        ~SessionTraceGuard() {
+            if (ry::traceEnabled()) {
+                SourceLocation loc{1, 1, 0};
+                ry::emitTraceEvent("session.end", "session", &loc);
+            }
+        }
+    } sessionTraceGuard;
 
     // Help flag handling: -h/--help takes priority over other options
     if (argc >= 2) {
@@ -738,6 +839,7 @@ int main(int argc, char *argv[]) {
         bool watch = false;
         bool coverage = false;
         bool outline = false;
+        std::string trace_out = g_trace_out;
         const char *target = nullptr;
         for (int i = 2; i < argc; ++i) {
             if (std::strcmp(argv[i], "-p") == 0 ||
@@ -751,12 +853,23 @@ int main(int argc, char *argv[]) {
                 coverage = true;
             } else if (std::strcmp(argv[i], "--outline") == 0) {
                 outline = true;
+            } else if (std::strcmp(argv[i], "--trace") == 0) {
+                g_trace_enabled = true;
+            } else if (std::strncmp(argv[i], "--trace-out=", 12) == 0) {
+                g_trace_enabled = true;
+                trace_out = argv[i] + 12;
             } else if (!target) {
                 target = argv[i];
             }
         }
+        if (g_trace_enabled)
+            ry::configureTrace(true, trace_out);
         if (coverage && parallel) {
             errs() << "Warning: --coverage is not supported with --parallel, falling back to sequential\n";
+            parallel = false;
+        }
+        if (g_trace_enabled && parallel) {
+            errs() << "Warning: --trace is not supported with --parallel, falling back to sequential\n";
             parallel = false;
         }
 

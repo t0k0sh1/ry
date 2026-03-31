@@ -400,6 +400,7 @@ void CodeGen::emitStmt(std::unique_ptr<WhenMatchStmt> &s) {
 
         // Arm body
         builder_.SetInsertPoint(armBodyBB);
+        emitTraceWhenBranch(static_cast<int>(i), s->loc);
         pushScope();
 
         // Create pattern bindings in body scope

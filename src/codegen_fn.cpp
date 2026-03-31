@@ -33,16 +33,19 @@ void CodeGen::emitStmt(AwaitStmt &s) {
 void CodeGen::emitStmt(ReturnStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
+    emitTraceReturn(s.loc);
     if (!s.value) {
         if (isAnyType(fn_->getReturnType())) {
             llvm::Value *unitAny = buildUnitAny();
             emitEnsureChecks(unitAny);
             emitScopeCleanupToDepth(0);
+            emitTraceFunctionExit(current_function_name_, s.loc);
             builder_.CreateRet(unitAny);
         } else if (!fn_->getReturnType()->isVoidTy()) {
             codegenError("return without value in non-Unit function");
         } else {
             emitScopeCleanupToDepth(0);
+            emitTraceFunctionExit(current_function_name_, s.loc);
             builder_.CreateRetVoid();
         }
     } else {
@@ -53,6 +56,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
             if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
                 if (ci->getCalledFunction() == fn_) {
                     ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
+                    emitTraceFunctionExit(current_function_name_, s.loc);
                     builder_.CreateRet(val);
                     llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
                     builder_.SetInsertPoint(dead);
@@ -110,6 +114,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         tryRetainArcSource(val);
         emitScopeCleanupToDepth(0);
 
+        emitTraceFunctionExit(current_function_name_, s.loc);
         builder_.CreateRet(val);
     }
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
@@ -121,6 +126,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
     emitCoverage(s->loc);
+    emitTraceSymbolDefine("function", s->name, s->loc);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
@@ -289,10 +295,12 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         FnScope guard(*this);
         fn_ = targetFunc;
         current_fn_return_type_ = returnTypeName;
+        current_function_name_ = s->name;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
         builder_.SetInsertPoint(entry);
+        emitTraceFunctionEnter(s->name, s->loc);
 
         unsigned idx = 0;
         for (auto &arg : targetFunc->args()) {
@@ -392,12 +400,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (defaultRet)
                 emitEnsureChecks(defaultRet);
 
-            if (retTy->isVoidTy())
+            if (retTy->isVoidTy()) {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRetVoid();
-            else if (defaultRet)
+            } else if (defaultRet) {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRet(defaultRet);
-            else
+            } else {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRet(llvm::UndefValue::get(retTy));
+            }
         }
 
         std::string err;

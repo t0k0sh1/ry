@@ -125,6 +125,24 @@ X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
 - OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/lib/std` を参照する
 - `RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない
 
+## 内部挙動の解析に trace を使う
+
+- Ry の内部挙動、コンパイルの流れ、import 解決、JIT 実行、関数呼び出し、分岐選択を把握したい場合は `./build/ry --trace` を優先して使う
+- trace は人間向けログではなく JSON Lines の機械可読ストリームとして扱う
+- プログラムの標準出力そのものも確認したい場合は `--trace-out=<path>` を使って trace を別ファイルへ逃がす
+- テストの解析では `./build/ry test --trace ...` を使う
+- trace は冗長になりやすいため、挙動が不明確な場面や根拠が必要な場面で選択的に使う
+- trace を使って解析した場合は、Plan や調査結果の要約に「trace で確認した事実」を明示する
+
+例:
+
+```bash
+./build/ry --trace app/main.ry
+./build/ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
+./build/ry test --trace tests/spec
+echo 'print(1)' | ./build/ry --trace -c
+```
+
 ## Git ブランチ運用ルール
 
 - コミット前に現在のブランチを確認し、`main` または `vx.x.x` 形式のブランチにいる場合はコミットを行わないこと

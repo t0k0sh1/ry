@@ -58,6 +58,7 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
+    src/trace.cpp
     src/source_manager.cpp
     src/diagnostic.cpp
     src/lexer.cpp
@@ -213,6 +214,7 @@ add_executable(ry_tests
     tests/test_stdin.cpp
     tests/test_entry_point.cpp
     tests/test_help.cpp
+    tests/test_trace.cpp
     tests/test_codegen_arc.cpp
     tests/test_runtime_gc.cpp
     tests/test_codegen_type_safety.cpp
