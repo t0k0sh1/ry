@@ -391,6 +391,16 @@ bool verify_signature(const std::string &data, const std::string &sig_b64,
     return result;
 }
 
+SignatureAction evaluate_signature_policy(
+    bool sig_downloaded, bool sig_valid, bool skip_requested) {
+    if (sig_downloaded) {
+        return sig_valid ? SignatureAction::VERIFIED
+                         : SignatureAction::FAIL_INVALID;
+    }
+    return skip_requested ? SignatureAction::SKIP_ALLOWED
+                          : SignatureAction::FAIL_MISSING;
+}
+
 std::string parse_checksum_for_file(const std::string &checksums_content, const std::string &filename) {
     std::istringstream stream(checksums_content);
     std::string line;
@@ -535,10 +545,12 @@ std::string download_and_extract(const std::string &download_url, const std::str
         // Signature verification (before checksum verification)
         std::string sig_url = build_signature_url(tag);
         std::string sig_path = tmp_dir_str + "/checksums.txt.sig";
-        const char *sig_env = std::getenv("RY_REQUIRE_SIGNATURE");
-        bool sig_required = (sig_env != nullptr && std::string(sig_env) == "1");
+        const char *skip_env = std::getenv("RY_SKIP_SIGNATURE");
+        bool skip_requested = (skip_env && strcmp(skip_env, "1") == 0);
 
-        if (download_file(sig_url, sig_path)) {
+        bool sig_downloaded = download_file(sig_url, sig_path);
+        bool sig_valid = false;
+        if (sig_downloaded) {
             std::ifstream sig_ifs(sig_path);
             std::string sig_content((std::istreambuf_iterator<char>(sig_ifs)),
                                      std::istreambuf_iterator<char>());
@@ -550,24 +562,34 @@ std::string download_and_extract(const std::string &download_url, const std::str
             }
 
             std::cerr << "Verifying signature..." << std::flush;
-            if (!verify_signature(checksums_content, sig_content,
-                                  SIGNING_PUBLIC_KEY, sizeof(SIGNING_PUBLIC_KEY))) {
-                std::cerr << " failed.\n";
-                std::cerr << "Error: Signature verification failed. "
-                          << "The checksums file may have been tampered with.\n";
-                run_command({RM_PATH, "-rf", tmp_dir_str});
-                return "";
-            }
+            sig_valid = verify_signature(checksums_content, sig_content,
+                                         SIGNING_PUBLIC_KEY, sizeof(SIGNING_PUBLIC_KEY));
+        }
+
+        auto action = evaluate_signature_policy(sig_downloaded, sig_valid, skip_requested);
+        switch (action) {
+        case SignatureAction::VERIFIED:
             std::cerr << " ok.\n";
-        } else {
-            if (sig_required) {
-                std::cerr << "Error: Signature file not available and "
-                          << "RY_REQUIRE_SIGNATURE is set.\n";
-                run_command({RM_PATH, "-rf", tmp_dir_str});
-                return "";
-            }
-            std::cerr << "Warning: Signature file not available. "
-                      << "Skipping signature verification.\n";
+            break;
+        case SignatureAction::SKIP_ALLOWED:
+            std::cerr << "Warning: Signature file not available and "
+                      << "RY_SKIP_SIGNATURE is set. "
+                      << "Proceeding WITHOUT signature verification. "
+                      << "This is UNSAFE and disables supply-chain protection.\n";
+            break;
+        case SignatureAction::FAIL_MISSING:
+            std::cerr << "Error: Signature file not available. "
+                      << "Cannot verify release authenticity.\n"
+                      << "If you must proceed without signature verification, "
+                      << "set RY_SKIP_SIGNATURE=1 (not recommended).\n";
+            run_command({RM_PATH, "-rf", tmp_dir_str});
+            return "";
+        case SignatureAction::FAIL_INVALID:
+            std::cerr << " failed.\n";
+            std::cerr << "Error: Signature verification failed. "
+                      << "The checksums file may have been tampered with.\n";
+            run_command({RM_PATH, "-rf", tmp_dir_str});
+            return "";
         }
 
         // Extract filename from download URL
@@ -724,6 +746,8 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "  (no args)    Update to latest stable release\n";
             std::cerr << "  --nightly    Update to latest nightly/prerelease\n";
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
+            std::cerr << "\nEnvironment:\n";
+            std::cerr << "  RY_SKIP_SIGNATURE=1  Skip signature verification (unsafe)\n";
             return 0;
         } else {
             if (!is_valid_tag(arg)) {

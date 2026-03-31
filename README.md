@@ -129,7 +129,7 @@ ry fmt [options] [path]    # Format source files
 ry self-update             # Update ry itself
 ```
 
-The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Set `RY_REQUIRE_SIGNATURE=1` to enforce signature verification (by default, missing signatures produce a warning).
+The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
 
 Stdin also supports here-documents:
 
