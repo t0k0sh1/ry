@@ -1342,6 +1342,8 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
             builder_.CreateCall(printfFn, {fmt, str});
         } else if (isTupleStructType(st)) {
             emitPrintSingle(val, printfFn);
+        } else {
+            emitPrintSingle(val, printfFn);
         }
     } else {
         std::string llName = getLowLevelTypeName(val);

@@ -124,9 +124,10 @@ extern "C" int __ry_sprint_printf(const char *fmt, ...) {
 }
 
 extern "C" char *__ry_sprint_end() {
-    --tl_sprint_depth;
+    if (tl_sprint_depth > 0)
+        --tl_sprint_depth;
     size_t start = 0;
-    if (tl_sprint_depth >= 0 && tl_sprint_depth < kMaxSprintDepth)
+    if (tl_sprint_depth < kMaxSprintDepth)
         start = tl_sprint_offsets[tl_sprint_depth];
     size_t len = tl_sprint_len - start;
     char *result = static_cast<char *>(std::malloc(len + 1));
