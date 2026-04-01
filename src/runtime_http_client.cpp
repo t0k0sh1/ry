@@ -36,13 +36,15 @@ static ParsedUrl *parse_url(const char *url) {
         const char *port_start = p;
         while (*p >= '0' && *p <= '9') p++;
         if (p == port_start) return nullptr; // no digits
-        char port_buf[8];
-        size_t port_len = (size_t)(p - port_start);
-        if (port_len == 0 || port_len >= sizeof(port_buf)) return nullptr;
-        memcpy(port_buf, port_start, port_len);
-        port_buf[port_len] = '\0';
-        long long pv = strtoll(port_buf, nullptr, 10);
-        if (pv < 1 || pv > 65535) return nullptr;
+        // Parse port in-place without copying, enforcing numeric range 1..65535
+        long long pv = 0;
+        for (const char *q = port_start; q < p; q++) {
+            int digit = *q - '0';
+            if (pv > 65535 / 10 || (pv == 65535 / 10 && digit > 65535 % 10))
+                return nullptr;
+            pv = pv * 10 + digit;
+        }
+        if (pv < 1) return nullptr;
         port = (int64_t)pv;
     }
 

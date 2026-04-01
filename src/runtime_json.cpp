@@ -148,6 +148,7 @@ struct Parser {
                 auto *v = new (mem) JsonValue;
                 v->type = JsonType::String;
                 v->string_val = strdup(buf.c_str());
+                if (!v->string_val) { arc_free(v); error = "out of memory"; return nullptr; }
                 return v;
             }
             if (c == '\\') {
@@ -346,6 +347,13 @@ struct Parser {
                 return nullptr;
             }
             if (len == cap) {
+                if (cap > SIZE_MAX / 2 / sizeof(JsonValue*)) {
+                    json_free_recursive(item);
+                    for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+                    free(items);
+                    error = "array too large";
+                    return nullptr;
+                }
                 cap *= 2;
                 JsonValue **tmp = (JsonValue**)realloc(items, sizeof(JsonValue*) * cap);
                 if (!tmp) {
@@ -432,6 +440,10 @@ struct Parser {
             if (!val) { free(key); break; }
 
             if (len == cap) {
+                if (cap > SIZE_MAX / 2 / sizeof(JsonValue*)) {
+                    free(key); json_free_recursive(val);
+                    error = "object too large"; cleanup(); return nullptr;
+                }
                 cap *= 2;
                 char **tmp_keys = (char**)realloc(keys, sizeof(char*) * cap);
                 if (!tmp_keys) {
