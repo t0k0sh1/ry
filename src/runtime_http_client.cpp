@@ -27,8 +27,8 @@ static ParsedUrl *parse_url(const char *url) {
     const char *p = authority;
     while (*p && *p != ':' && *p != '/' && *p != '?' && *p != '#') p++;
 
-    std::string host(authority, p);
-    if (host.empty()) return nullptr;
+    size_t host_len = (size_t)(p - authority);
+    if (host_len == 0) return nullptr;
 
     int64_t port = is_https ? 443 : 80;
     if (*p == ':') {
@@ -36,34 +36,43 @@ static ParsedUrl *parse_url(const char *url) {
         const char *port_start = p;
         while (*p >= '0' && *p <= '9') p++;
         if (p == port_start) return nullptr; // no digits
-        std::string port_str(port_start, p);
-        long long pv = strtoll(port_str.c_str(), nullptr, 10);
-        if (pv < 1 || pv > 65535) return nullptr;
+        // Parse port in-place without copying, enforcing numeric range 1..65535
+        long long pv = 0;
+        for (const char *q = port_start; q < p; q++) {
+            int digit = *q - '0';
+            if (pv > 65535 / 10 || (pv == 65535 / 10 && digit > 65535 % 10))
+                return nullptr;
+            pv = pv * 10 + digit;
+        }
+        if (pv < 1) return nullptr;
         port = (int64_t)pv;
     }
 
-    std::string path;
+    // Build path directly into malloc'd buffer
+    char *path_result;
     if (*p == '/') {
-        path = p;
+        // Find fragment to strip
+        const char *frag = strchr(p, '#');
+        size_t path_len = frag ? (size_t)(frag - p) : strlen(p);
+        path_result = checked_strndup(p, path_len);
     } else if (*p == '?') {
-        path = "/";
-        path += p;
+        const char *frag = strchr(p, '#');
+        size_t suffix_len = frag ? (size_t)(frag - p) : strlen(p);
+        path_result = (char *)checked_malloc(1 + suffix_len + 1);
+        path_result[0] = '/';
+        memcpy(path_result + 1, p, suffix_len);
+        path_result[1 + suffix_len] = '\0';
     } else if (*p == '#' || *p == '\0') {
-        path = "/";
+        path_result = checked_strdup("/");
     } else {
         return nullptr;
     }
 
-    // Strip fragment — fragments must not be sent on the wire
-    size_t frag = path.find('#');
-    if (frag != std::string::npos)
-        path.resize(frag);
-
     auto *result = (ParsedUrl *)checked_malloc(sizeof(ParsedUrl));
-    result->host = checked_strdup(host.c_str());
+    result->host = checked_strndup(authority, host_len);
     result->port = port;
     result->is_https = is_https;
-    result->path = checked_strdup(path.c_str());
+    result->path = path_result;
     return result;
 }
 
@@ -85,22 +94,15 @@ static int64_t parse_status_line(const std::string &raw, size_t &headers_start) 
     size_t line_end = raw.find("\r\n");
     if (line_end == std::string::npos) return -1;
 
-    std::string status_line = raw.substr(0, line_end);
-    if (status_line.size() < 12 || status_line.substr(0, 5) != "HTTP/") return -1;
+    const char *line = raw.c_str();
+    if (line_end < 12 || memcmp(line, "HTTP/", 5) != 0) return -1;
 
-    size_t sp1 = status_line.find(' ');
-    if (sp1 == std::string::npos) return -1;
-    size_t sp2 = status_line.find(' ', sp1 + 1);
-
-    std::string status_str;
-    if (sp2 != std::string::npos)
-        status_str = status_line.substr(sp1 + 1, sp2 - sp1 - 1);
-    else
-        status_str = status_line.substr(sp1 + 1);
+    const char *sp1 = (const char *)memchr(line, ' ', line_end);
+    if (!sp1) return -1;
 
     char *endptr = nullptr;
-    long long status_code = strtoll(status_str.c_str(), &endptr, 10);
-    if (!endptr || endptr == status_str.c_str() || status_code < 100 || status_code > 599)
+    long long status_code = strtoll(sp1 + 1, &endptr, 10);
+    if (!endptr || endptr == sp1 + 1 || status_code < 100 || status_code > 599)
         return -1;
 
     headers_start = line_end + 2;
@@ -108,9 +110,11 @@ static int64_t parse_status_line(const std::string &raw, size_t &headers_start) 
 }
 
 // Read response body based on Transfer-Encoding or Content-Length.
+// On success, sets body_ptr to a malloc'd buffer and body_len_out to its size.
+// Caller takes ownership of body_ptr.
 static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_start,
                                  const std::vector<HeaderPair> &headers,
-                                 std::string &body_out) {
+                                 char *&body_ptr, size_t &body_len_out) {
     bool has_te = has_transfer_encoding(headers);
     bool is_chunked = has_te && has_chunked_encoding(headers);
 
@@ -119,12 +123,14 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
 
     if (is_chunked) {
         bool ok;
-        body_out = read_chunked_body(t, raw, body_start, ok);
-        return ok;
+        std::string body_data = read_chunked_body(t, raw, body_start, ok);
+        if (!ok) return false;
+        body_len_out = body_data.size();
+        body_ptr = (char *)checked_memdup(body_data.data(), body_data.size());
+        return true;
     }
 
-    if (body_start < raw.size())
-        body_out = raw.substr(body_start);
+    size_t initial_len = (body_start < raw.size()) ? raw.size() - body_start : 0;
 
     const char *cl_value = nullptr;
     for (auto &h : headers) {
@@ -138,32 +144,41 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
     if (content_length == -2 || content_length == -3) return false;
 
     if (content_length >= 0) {
-        if ((int64_t)body_out.size() < content_length) {
-            size_t remaining = (size_t)content_length - body_out.size();
-            char *extra = (char *)checked_malloc(remaining);
-            size_t got = 0;
-            while (got < remaining) {
-                ssize_t n = t.do_recv(extra + got, remaining - got);
-                if (n <= 0) break;
-                got += (size_t)n;
-            }
-            body_out.append(extra, got);
-            free(extra);
+        // Known Content-Length: allocate final buffer directly
+        size_t cl = (size_t)content_length;
+        char *body = (char *)checked_malloc(cl + 1);
+        size_t have = (initial_len < cl) ? initial_len : cl;
+        if (have > 0)
+            memcpy(body, raw.c_str() + body_start, have);
+
+        size_t got = have;
+        while (got < cl) {
+            ssize_t n = t.do_recv(body + got, cl - got);
+            if (n <= 0) break;
+            got += (size_t)n;
         }
-        if ((int64_t)body_out.size() < content_length) return false;
-        if ((int64_t)body_out.size() > content_length)
-            body_out.resize((size_t)content_length);
+        if ((int64_t)got < content_length) { free(body); return false; }
+
+        body[cl] = '\0';
+        body_ptr = body;
+        body_len_out = cl;
     } else {
+        // Unknown Content-Length: read until connection close
+        std::string body_data;
+        if (initial_len > 0)
+            body_data.append(raw.c_str() + body_start, initial_len);
         char buf[kRecvBufSize];
         while (true) {
             ssize_t n = t.do_recv(buf, sizeof(buf));
             if (n <= 0) break;
-            body_out.append(buf, (size_t)n);
-            if ((int64_t)body_out.size() > MAX_BODY_SIZE) {
-                body_out.resize((size_t)MAX_BODY_SIZE);
+            body_data.append(buf, (size_t)n);
+            if ((int64_t)body_data.size() > MAX_BODY_SIZE) {
+                body_data.resize((size_t)MAX_BODY_SIZE);
                 break;
             }
         }
+        body_len_out = body_data.size();
+        body_ptr = (char *)checked_memdup(body_data.data(), body_data.size());
     }
 
     return true;
@@ -185,21 +200,23 @@ static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
     auto parsed_headers = parse_raw_headers(raw, headers_start, hdr_end);
 
     size_t body_start = hdr_end + 4;
-    std::string body_data;
-    if (!read_response_body(t, raw, body_start, parsed_headers, body_data)) {
+    char *body_ptr = nullptr;
+    size_t body_len = 0;
+    if (!read_response_body(t, raw, body_start, parsed_headers, body_ptr, body_len)) {
         for (auto &h : parsed_headers) { free(h.key); free(h.val); }
         return nullptr;
     }
 
     void *resp_mem = arc_alloc(sizeof(HttpClientResponseHandle));
     if (!resp_mem) {
+        free(body_ptr);
         for (auto &h : parsed_headers) { free(h.key); free(h.val); }
         return nullptr;
     }
     auto *resp = new (resp_mem) HttpClientResponseHandle{};
     resp->status = status_code;
-    resp->body_len = (int64_t)body_data.size();
-    resp->body = checked_memdup(body_data.data(), body_data.size());
+    resp->body_len = (int64_t)body_len;
+    resp->body = body_ptr;
     assign_headers(parsed_headers, &resp->header_keys, &resp->header_values, &resp->header_count);
 
     return resp;
