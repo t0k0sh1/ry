@@ -49,6 +49,24 @@ describe("operator[]", ():
   )
 )
 
+describe("operator[] returning collection", ():
+  it("subscript returning List<int> preserves type info and supports chaining", ():
+    record Matrix:
+      rows: List<List<int>>
+    function operator[](m: Matrix, i: int) -> List<int>:
+      return m.rows[i]
+    m = Matrix([[10, 20, 30], [40, 50, 60]])
+    row = m[0]
+    expect(row[0]).to_eq(10)
+    expect(row[1]).to_eq(20)
+    expect(row[2]).to_eq(30)
+    expect(m[0][0]).to_eq(10)
+    expect(m[0][2]).to_eq(30)
+    expect(m[1][0]).to_eq(40)
+    expect(m[1][2]).to_eq(60)
+  )
+)
+
 describe("operator in", ():
   it("custom in", ():
     record Range:

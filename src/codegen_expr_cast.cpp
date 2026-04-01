@@ -14,7 +14,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
             if (entry.paramTypes.size() == 1 &&
                 entry.paramTypes[0] == srcTy &&
                 entry.func->getReturnType() == targetTy) {
-                return builder_.CreateCall(entry.func, {val}, "cast_op");
+                llvm::Value *result = builder_.CreateCall(entry.func, {val}, "cast_op");
+                propagateReturnTypeMeta(&entry, result);
+                return result;
             }
         }
     }
