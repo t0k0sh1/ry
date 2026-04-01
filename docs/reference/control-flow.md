@@ -461,6 +461,56 @@ match s:
 
 Multi-field variants bind each field to a separate name in declaration order.
 
+### Match Expressions
+
+`match` can be used as an expression by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+
+#### Syntax
+
+```python
+result = match expression:
+    case pattern => value_expression
+    case pattern if guard => value_expression
+    case _ => default_value
+```
+
+All patterns supported in match statements are also supported in match expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
+
+Match expressions must be exhaustive (same rules as match statements).
+
+#### Examples
+
+```python
+# Option
+value = match opt:
+    case Some(v) => v
+    case None    => 0
+
+# Enum
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+# Guard
+grade = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+
+# OR pattern
+kind = match x:
+    case 1 | 2 | 3 => "small"
+    case _          => "large"
+
+# ADT enum
+area = match shape:
+    case Shape::Circle(r)  => 3.14 * r * r
+    case Shape::Rect(w, h) => w * h
+    case Shape::Point      => 0.0
+```
+
 ### Scope Rules
 
 - Each `case` arm has its own block scope.

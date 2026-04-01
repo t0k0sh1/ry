@@ -445,6 +445,14 @@ private:
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
     void emitStmt(std::unique_ptr<MatchStmt> &s);
+    llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
+                                  llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
+                              llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
+                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
+    std::string resolveEnumType(llvm::Value *val) const;
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
@@ -519,6 +527,7 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<WhenCondExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<MatchExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);

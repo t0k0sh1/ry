@@ -71,7 +71,10 @@ private:
     void tryParseTrailingBlock(CallStmt &s);
     ExprPtr parseTrailingBlockAsLambda();
     ExprPtr parseWhenExpr();
+    ExprPtr parseMatchExpr();
     Pattern parsePattern();
+    void parseOrPattern(Pattern &pat);
+    static bool patternHasBinding(const Pattern &p);
     TypeParam parseOneTypeParam();
     TypeNodePtr parseTypeName();
     TypeNodePtr parseTypeNameSingle();

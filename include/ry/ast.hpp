@@ -136,6 +136,7 @@ struct EnumAccessExpr {
 struct CastExpr;
 struct InterpolatedStringExpr;
 struct WhenCondExpr;
+struct MatchExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
@@ -158,6 +159,7 @@ struct ExprNode {
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
                  std::unique_ptr<WhenCondExpr>,
+                 std::unique_ptr<MatchExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
@@ -432,4 +434,15 @@ struct MatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
     SourceLocation loc;
+};
+
+struct MatchExprArm {
+    Pattern pattern;
+    ExprPtr guard;
+    ExprPtr value;
+};
+
+struct MatchExpr {
+    ExprPtr subject;
+    std::vector<MatchExprArm> arms;
 };

@@ -1987,3 +1987,41 @@ TEST(ParserTest, CastChained) {
     const auto &inner = *std::get<std::unique_ptr<CastExpr>>(outer.value->data);
     EXPECT_EQ(inner.target_type->toString(), "float");
 }
+
+// ===== match 式パーサーテスト =====
+
+TEST(ParserTest, MatchExprBasic) {
+    Program prog = parseStr("x = match y:\n    case 1 => 10\n    case _ => 0");
+    ASSERT_EQ(prog.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<AssignStmt>(prog[0]));
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<MatchExpr>>(s.value->data));
+    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    ASSERT_EQ(me.arms.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<LiteralPattern>(me.arms[0].pattern));
+    EXPECT_TRUE(std::holds_alternative<WildcardPattern>(me.arms[1].pattern));
+}
+
+TEST(ParserTest, MatchExprWithGuard) {
+    Program prog = parseStr("x = match y:\n    case n if n > 0 => n\n    case _ => 0");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    ASSERT_EQ(me.arms.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<VariablePattern>(me.arms[0].pattern));
+    EXPECT_TRUE(me.arms[0].guard != nullptr);
+    EXPECT_TRUE(me.arms[1].guard == nullptr);
+}
+
+TEST(ParserTest, MatchExprOrPattern) {
+    Program prog = parseStr("x = match y:\n    case 1 | 2 | 3 => 10\n    case _ => 0");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    const auto &me = *std::get<std::unique_ptr<MatchExpr>>(s.value->data);
+    ASSERT_EQ(me.arms.size(), 2u);
+    EXPECT_TRUE(std::holds_alternative<std::unique_ptr<OrPattern>>(me.arms[0].pattern));
+}
+
+TEST(ParserTest, MatchExprEmptyThrows) {
+    EXPECT_THROW(parseStr("x = match y:\n"), std::runtime_error);
+}

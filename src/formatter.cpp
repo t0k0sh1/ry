@@ -195,6 +195,9 @@ bool Formatter::needsParens(const ExprNode &child, const std::string &parent_op,
     if (auto *whenExpr = std::get_if<std::unique_ptr<WhenCondExpr>>(&child.data)) {
         return true; // always parenthesize when expression inside binary
     }
+    if (auto *matchExpr = std::get_if<std::unique_ptr<MatchExpr>>(&child.data)) {
+        return true; // always parenthesize match expression inside binary
+    }
     if (std::get_if<std::unique_ptr<AwaitExpr>>(&child.data)) {
         return true; // parenthesize await inside binary
     }
@@ -302,6 +305,19 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 out += indent + formatExpr(*arm.condition) + " => " + formatExpr(*arm.value) + "\n";
             }
             out += indent + "else => " + formatExpr(*v->else_expr);
+            return out;
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+            std::string indent((indent_level_ + 1) * indent_width_, ' ');
+            std::string out = "match " + formatExpr(*v->subject) + ":\n";
+            for (size_t i = 0; i < v->arms.size(); ++i) {
+                const auto &arm = v->arms[i];
+                out += indent + "case " + formatPattern(arm.pattern);
+                if (arm.guard)
+                    out += " if " + formatExpr(*arm.guard);
+                out += " => " + formatExpr(*arm.value);
+                if (i + 1 < v->arms.size())
+                    out += "\n";
+            }
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
             return formatExpr(*v->start) + ".." + formatExpr(*v->end);

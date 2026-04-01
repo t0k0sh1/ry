@@ -772,6 +772,39 @@ TypeNodePtr Parser::parseFnType() {
     return TypeNode::makeFn(std::move(paramTypes), std::move(retType));
 }
 
+bool Parser::patternHasBinding(const Pattern &p) {
+    if (std::holds_alternative<VariablePattern>(p))
+        return true;
+    if (std::holds_alternative<SomePattern>(p))
+        return std::get<SomePattern>(p).binding != "_";
+    if (std::holds_alternative<OkPattern>(p))
+        return std::get<OkPattern>(p).binding != "_";
+    if (std::holds_alternative<ErrPattern>(p))
+        return std::get<ErrPattern>(p).binding != "_";
+    if (std::holds_alternative<EnumConstructorPattern>(p)) {
+        const auto &ec = std::get<EnumConstructorPattern>(p);
+        return std::any_of(ec.bindings.begin(), ec.bindings.end(),
+                           [](const std::string &b) { return b != "_"; });
+    }
+    return false;
+}
+
+void Parser::parseOrPattern(Pattern &pat) {
+    if (lex_.peek().kind != TokenKind::Pipe) return;
+    auto orPat = std::make_unique<OrPattern>();
+    if (patternHasBinding(pat))
+        parseError("OR pattern cannot contain variable bindings");
+    orPat->alternatives.push_back(std::move(pat));
+    while (lex_.peek().kind == TokenKind::Pipe) {
+        lex_.next();
+        Pattern alt = parsePattern();
+        if (patternHasBinding(alt))
+            parseError("OR pattern cannot contain variable bindings");
+        orPat->alternatives.push_back(std::move(alt));
+    }
+    pat = std::move(orPat);
+}
+
 Pattern Parser::parsePattern() {
     Token t = lex_.peek();
 
@@ -993,38 +1026,7 @@ StmtNode Parser::parseMatchStatement() {
 
         MatchArm arm;
         arm.pattern = parsePattern();
-
-        auto hasBinding = [](const Pattern &p) {
-            if (std::holds_alternative<VariablePattern>(p))
-                return true;
-            if (std::holds_alternative<SomePattern>(p))
-                return std::get<SomePattern>(p).binding != "_";
-            if (std::holds_alternative<OkPattern>(p))
-                return std::get<OkPattern>(p).binding != "_";
-            if (std::holds_alternative<ErrPattern>(p))
-                return std::get<ErrPattern>(p).binding != "_";
-            if (std::holds_alternative<EnumConstructorPattern>(p)) {
-                const auto &ec = std::get<EnumConstructorPattern>(p);
-                return std::any_of(ec.bindings.begin(), ec.bindings.end(),
-                                   [](const std::string &b) { return b != "_"; });
-            }
-            return false;
-        };
-
-        if (lex_.peek().kind == TokenKind::Pipe) {
-            auto orPat = std::make_unique<OrPattern>();
-            if (hasBinding(arm.pattern))
-                parseError("OR pattern cannot contain variable bindings");
-            orPat->alternatives.push_back(std::move(arm.pattern));
-            while (lex_.peek().kind == TokenKind::Pipe) {
-                lex_.next();
-                Pattern alt = parsePattern();
-                if (hasBinding(alt))
-                    parseError("OR pattern cannot contain variable bindings");
-                orPat->alternatives.push_back(std::move(alt));
-            }
-            arm.pattern = std::move(orPat);
-        }
+        parseOrPattern(arm.pattern);
 
         if (lex_.peek().kind == TokenKind::If) {
             lex_.next();

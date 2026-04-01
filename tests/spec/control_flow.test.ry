@@ -428,3 +428,117 @@ describe("scope and shadowing", ():
     expect(x).to_eq(99)
   )
 )
+
+describe("match expression", ():
+  it("literal pattern", ():
+    x = 2
+    res = match x:
+      case 1 => "one"
+      case 2 => "two"
+      case _ => "other"
+    expect(res).to_eq("two")
+  )
+  it("wildcard fallback", ():
+    x = 999
+    res = match x:
+      case 0 => "zero"
+      case _ => "other"
+    expect(res).to_eq("other")
+  )
+  it("variable binding with guard", ():
+    score = 85
+    grade = match score:
+      case n if n >= 90 => "A"
+      case n if n >= 80 => "B"
+      case n if n >= 70 => "C"
+      case _ => "F"
+    expect(grade).to_eq("B")
+  )
+  it("OR pattern", ():
+    x = 3
+    kind = match x:
+      case 1 | 2 | 3 => "small"
+      case 4 | 5 | 6 => "medium"
+      case _ => "large"
+    expect(kind).to_eq("small")
+  )
+  it("string literal", ():
+    s = "hello"
+    res = match s:
+      case "hello" => "greeting"
+      case "bye" => "farewell"
+      case _ => "unknown"
+    expect(res).to_eq("greeting")
+  )
+  it("negative literal", ():
+    x = -1
+    res = match x:
+      case -1 => "minus one"
+      case 0 => "zero"
+      case _ => "other"
+    expect(res).to_eq("minus one")
+  )
+  it("guard fallback to wildcard", ():
+    x = 5
+    res = match x:
+      case n if n > 100 => "big"
+      case n if n > 50 => "medium"
+      case _ => "small"
+    expect(res).to_eq("small")
+  )
+)
+
+describe("match expression Option", ():
+  it("Some", ():
+    x: Option<int> = Some(42)
+    res = match x:
+      case Some(v) => v
+      case None => -1
+    expect(res).to_eq(42)
+  )
+  it("None", ():
+    x: Option<int> = None
+    res = match x:
+      case Some(v) => v
+      case None => -1
+    expect(res).to_eq(-1)
+  )
+)
+
+describe("match expression enum", ():
+  it("simple enum", ():
+    d = Direction::North
+    res = match d:
+      case Direction::North => "N"
+      case Direction::South => "S"
+      case Direction::East => "E"
+      case Direction::West => "W"
+    expect(res).to_eq("N")
+  )
+  it("ADT enum", ():
+    s = Shape::Rect(4.0, 5.0)
+    area = match s:
+      case Shape::Circle(r) => r * r
+      case Shape::Rect(w, h) => w * h
+      case Shape::Point => 0.0
+    expect(area).to_eq(20.0)
+  )
+  it("ADT no-data variant", ():
+    s = Shape::Point
+    area = match s:
+      case Shape::Circle(r) => r * r
+      case Shape::Rect(w, h) => w * h
+      case Shape::Point => -1.0
+    expect(area).to_eq(-1.0)
+  )
+)
+
+describe("match expression in function argument", ():
+  it("inline match expr", ():
+    x = 1
+    expect(match x:
+      case 1 => 100
+      case _ => 0
+    ).to_eq(100)
+  )
+)
