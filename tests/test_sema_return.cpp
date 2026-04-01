@@ -179,3 +179,71 @@ TEST_F(CodeGenTest, NestedIfElseAllReturn) {
         "print(classify(50))\n"
     ), "small\n");
 }
+
+// ============================================================
+// Exhaustive enum match — should compile and run (#513)
+// ============================================================
+
+TEST_F(CodeGenTest, AllPathsReturnMatchEnumExhaustive) {
+    EXPECT_EQ(runSource(
+        "enum Shape:\n"
+        "    Circle(float)\n"
+        "    Rect(float, float)\n"
+        "\n"
+        "function area(s: Shape) -> float:\n"
+        "    match s:\n"
+        "        case Shape::Circle(r):\n"
+        "            return 3.14 * r * r\n"
+        "        case Shape::Rect(w, h):\n"
+        "            return w * h\n"
+        "print(area(Shape::Circle(5.0)))\n"
+    ), "78.5\n");
+}
+
+TEST_F(CodeGenTest, AllPathsReturnMatchSimpleEnumExhaustive) {
+    EXPECT_EQ(runSource(
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "\n"
+        "function name(c: Color) -> str:\n"
+        "    match c:\n"
+        "        case Color::Red:\n"
+        "            return \"red\"\n"
+        "        case Color::Green:\n"
+        "            return \"green\"\n"
+        "        case Color::Blue:\n"
+        "            return \"blue\"\n"
+        "print(name(Color::Red))\n"
+    ), "red\n");
+}
+
+TEST_F(CodeGenTest, MissingReturnMatchEnumNotExhaustive) {
+    EXPECT_THROW(runSource(
+        "enum Color:\n"
+        "    Red\n"
+        "    Green\n"
+        "    Blue\n"
+        "\n"
+        "function name(c: Color) -> str:\n"
+        "    match c:\n"
+        "        case Color::Red:\n"
+        "            return \"red\"\n"
+        "        case Color::Green:\n"
+        "            return \"green\"\n"
+        "name(Color::Red)\n"
+    ), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, AllPathsReturnMatchBoolExhaustive) {
+    EXPECT_EQ(runSource(
+        "function describe(b: bool) -> str:\n"
+        "    match b:\n"
+        "        case true:\n"
+        "            return \"yes\"\n"
+        "        case false:\n"
+        "            return \"no\"\n"
+        "print(describe(true))\n"
+    ), "yes\n");
+}
