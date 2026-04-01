@@ -108,30 +108,10 @@ ExprPtr Parser::parseComparison() {
     ExprPtr lhs = parseRange();
     for (;;) {
         TokenKind k = lex_.peek().kind;
-        // Handle "not in" as a two-token operator
-        if (k == TokenKind::Not) {
-            auto saved = lex_.saveState();
-            Token notTok = lex_.next(); // consume 'not'
-            if (lex_.peek().kind == TokenKind::In) {
-                lex_.next(); // consume 'in'
-                ExprPtr rhs = parseBitwiseOr();
-                auto bin = std::make_unique<BinaryExpr>();
-                bin->op = "not in";
-                bin->lhs = std::move(lhs);
-                bin->rhs = std::move(rhs);
-                auto node = std::make_unique<ExprNode>();
-                node->data = std::move(bin);
-                node->loc = locFromToken(notTok);
-                lhs = std::move(node);
-                continue;
-            }
-            lex_.restoreState(saved);
-            break;
-        }
         if (k == TokenKind::EqEq || k == TokenKind::BangEq ||
             k == TokenKind::Less || k == TokenKind::LessEq ||
             k == TokenKind::Greater || k == TokenKind::GreaterEq ||
-            k == TokenKind::In) {
+            k == TokenKind::In || k == TokenKind::NotIn) {
             Token opTok = lex_.next();
             ExprPtr rhs = parseBitwiseOr();
             auto bin = std::make_unique<BinaryExpr>();

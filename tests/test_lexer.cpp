@@ -61,6 +61,36 @@ TEST(LexerTest, KeywordRecognition) {
         ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Not);
     }
+    // not in (fused token)
+    {
+        auto toks = tokenize("x not in s");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::NotIn);
+        EXPECT_EQ(toks[1].value, "not in");
+        EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    }
+    // not in with multiple spaces
+    {
+        auto toks = tokenize("x not  in s");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[1].kind, TokenKind::NotIn);
+    }
+    // not followed by non-in identifier
+    {
+        auto toks = tokenize("not inside");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Not);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "inside");
+    }
+    // standalone not (unary)
+    {
+        auto toks = tokenize("not x");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Not);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    }
     // true
     {
         auto toks = tokenize("true");

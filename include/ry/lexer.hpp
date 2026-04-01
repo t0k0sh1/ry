@@ -19,6 +19,7 @@ enum class TokenKind {
     And,         // and
     Or,          // or
     Not,         // not
+    NotIn,       // not in
     True,        // true
     False,       // false
     // --- ビット演算子 ---
