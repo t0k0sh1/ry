@@ -277,8 +277,12 @@ void CodeGen::emitVarDecl(const std::string &name,
     // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
     if (isOptionType(newTy) || isResultType(newTy)) {
         propagateCollectionMetadata(val, ptr);
-        // Extract inner collection type from Option<Map<K,V>> or Result<Map<K,V>, E>
-        if (annot && type_meta_[TM_MapKey].find(ptr) == type_meta_[TM_MapKey].end()) {
+        // Extract inner collection type from Option/Result wrapping a collection
+        if (annot &&
+            !type_meta_[TM_MapKey].count(ptr) &&
+            !type_meta_[TM_ListElem].count(ptr) &&
+            !type_meta_[TM_SetElem].count(ptr) &&
+            !type_meta_[TM_TaskResult].count(ptr)) {
             std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
