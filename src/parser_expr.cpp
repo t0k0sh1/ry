@@ -157,13 +157,10 @@ ExprPtr Parser::parseCast() {
     ExprPtr expr = parsePower();
     while (lex_.peek().kind == TokenKind::As) {
         Token asTok = lex_.next(); // consume 'as'
-        Token typeTok = lex_.peek();
-        if (typeTok.kind != TokenKind::Ident)
-            parseError(typeTok.line, "expected type name after 'as'");
-        std::string targetType = lex_.next().value;
+        auto targetType = parseTypeName();
         auto cast = std::make_unique<CastExpr>();
         cast->value = std::move(expr);
-        cast->target_type = TypeNode::makeBasic(targetType);
+        cast->target_type = std::move(targetType);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(cast);
         node->loc = locFromToken(asTok);
