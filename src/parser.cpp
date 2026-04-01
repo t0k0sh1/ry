@@ -1,13 +1,12 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 
 // ===== Mock/verify helper: coerce first arg identifier to string =====
 
-static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
+void Parser::coerceFirstArgToString(std::vector<ExprPtr> &args) {
     if (!args.empty()) {
         if (auto *ve = std::get_if<VariableExpr>(&args[0]->data)) {
             args[0]->data = StringExpr{ve->name};
@@ -17,11 +16,48 @@ static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
 
 // ===== Naming convention helpers =====
 
-static bool isSnakeCase(const std::string &name) {
+bool Parser::isSnakeCase(const std::string &name) {
     if (name.empty()) return false;
     if (name == "_") return true;
-    static const std::regex pattern("[a-z_][a-z0-9_]*");
-    return std::regex_match(name, pattern);
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
+}
+
+bool Parser::isMutationFnName(const std::string &name) {
+    if (name.empty()) return false;
+    if (name.back() == '!')
+        return name.size() > 1 && isSnakeCase(name.substr(0, name.size() - 1));
+    return isSnakeCase(name);
+}
+
+bool Parser::isScreamingSnakeCase(const std::string &name) {
+    if (name.empty()) return false;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'A' && first <= 'Z')) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
+}
+
+bool Parser::isPascalCase(const std::string &name) {
+    if (name.empty()) return false;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'A' && first <= 'Z')) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')))
+            return false;
+    }
+    return true;
 }
 
 // ===== A1: parseError helpers =====

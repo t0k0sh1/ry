@@ -41,6 +41,13 @@ private:
     [[noreturn]] void parseError(int line, const std::string &msg);
     [[noreturn]] void parseError(const std::string &msg);
 
+    // Naming convention helpers
+    static bool isSnakeCase(const std::string &name);
+    static bool isMutationFnName(const std::string &name);
+    static bool isScreamingSnakeCase(const std::string &name);
+    static bool isPascalCase(const std::string &name);
+    static void coerceFirstArgToString(std::vector<ExprPtr> &args);
+
     SourceLocation locFromToken(const Token &t) const { return {t.line, t.col, file_id_}; }
 
     std::vector<Directive> parseDirectives();
@@ -100,6 +107,7 @@ private:
     ExprPtr parseNullCoalesce();
     ExprPtr parseRange();
     ExprPtr parseParenLambdaExpr();
+    bool couldBeLambda();
     ExprPtr parseAwaitExpr();
 };
 

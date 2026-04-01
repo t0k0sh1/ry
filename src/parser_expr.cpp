@@ -3,14 +3,6 @@
 #include <stdexcept>
 #include <string>
 
-static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
-    if (!args.empty()) {
-        if (auto *ve = std::get_if<VariableExpr>(&args[0]->data)) {
-            args[0]->data = StringExpr{ve->name};
-        }
-    }
-}
-
 ExprPtr Parser::parseLogicalOr()  { return parseBinaryLeft(&Parser::parseLogicalAnd, {TokenKind::Or}); }
 
 ExprPtr Parser::parseWhenExpr() {
@@ -360,6 +352,7 @@ ExprPtr Parser::parsePrimary() {
             try {
                 lex_.next(); // consume '['
                 std::string typeArg;
+                typeArg.reserve(32);
                 int depth = 1;
                 while (depth > 0 && lex_.peek().kind != TokenKind::Eof) {
                     Token tk = lex_.peek();
@@ -400,6 +393,7 @@ ExprPtr Parser::parsePrimary() {
             try {
                 lex_.next(); // consume '<'
                 std::string typeArgs = "<";
+                typeArgs.reserve(32);
                 int depth = 1;
                 while (depth > 0 && lex_.peek().kind != TokenKind::Eof) {
                     Token tk = lex_.peek();
@@ -610,13 +604,16 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::LParen) {
         // Try Option A lambda first: (params) [-> type]: expr|block
-        auto saved = lex_.saveState();
-        try {
-            auto lambda = parseParenLambdaExpr();
-            lambda->loc = locFromToken(t);
-            return lambda;
-        } catch (...) {
-            lex_.restoreState(std::move(saved));
+        // Use lookahead predicate to avoid expensive try-catch for non-lambda cases
+        if (couldBeLambda()) {
+            auto saved = lex_.saveState();
+            try {
+                auto lambda = parseParenLambdaExpr();
+                lambda->loc = locFromToken(t);
+                return lambda;
+            } catch (...) {
+                lex_.restoreState(std::move(saved));
+            }
         }
         // Grouping or tuple
         lex_.next();
@@ -644,6 +641,28 @@ ExprPtr Parser::parsePrimary() {
         return first;
     }
     parseError(t.line, "unexpected token '" + t.value + "'");
+}
+
+bool Parser::couldBeLambda() {
+    // Lookahead predicate to avoid expensive try-catch for non-lambda cases.
+    // Returns true if the current '(' *might* begin a lambda; false if it
+    // definitely does NOT.  Must be conservative: false negatives break
+    // valid programs, false positives only cost one try-catch.
+    auto saved = lex_.saveState();
+    lex_.next(); // consume '('
+    TokenKind first = lex_.peek().kind;
+    bool result;
+    if (first == TokenKind::RParen) {
+        // () — could be lambda if followed by ':' or '->'
+        lex_.next(); // consume ')'
+        TokenKind after = lex_.peek().kind;
+        result = (after == TokenKind::Colon || after == TokenKind::Arrow);
+    } else {
+        // (ident...) could be lambda; (non-ident...) cannot
+        result = (first == TokenKind::Ident);
+    }
+    lex_.restoreState(std::move(saved));
+    return result;
 }
 
 ExprPtr Parser::parseParenLambdaExpr() {
@@ -727,6 +746,35 @@ ExprPtr Parser::makeErrorPropagateExpr(ExprPtr operand, const Token &tok) {
     return node;
 }
 
+// Token kind classification for postfix `?` disambiguation.
+// Returns true if the token kind continues a postfix chain (operators, field
+// access), meaning the preceding `?` was postfix error propagation.
+static constexpr bool isPostfixContinuationKind(TokenKind k) {
+    switch (k) {
+        case TokenKind::Plus: case TokenKind::Minus: case TokenKind::Tilde:
+        case TokenKind::Dot: case TokenKind::BangBang: case TokenKind::Question:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Returns true if the token kind can start an expression (used to detect
+// that `?` was NOT postfix but rather looks like a removed ternary).
+static constexpr bool isExprStartKind(TokenKind k) {
+    switch (k) {
+        case TokenKind::Ident: case TokenKind::Number: case TokenKind::Float:
+        case TokenKind::String: case TokenKind::True: case TokenKind::False:
+        case TokenKind::LParen: case TokenKind::LBrace: case TokenKind::Not:
+        case TokenKind::NoneKw: case TokenKind::ErrorKw:
+        case TokenKind::FStringStart: case TokenKind::Await:
+        case TokenKind::LBracket: case TokenKind::RegexLiteral:
+            return true;
+        default:
+            return false;
+    }
+}
+
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
@@ -736,27 +784,10 @@ ExprPtr Parser::parsePostfix() {
             Token qTok = lex_.next(); // consume '?'
             TokenKind next = lex_.peek().kind;
             // Disambiguate postfix ? (error propagation) from ternary ? :
-            // by checking whether the next token can start an expression
-            // but is NOT an operator/postfix continuation (those mean the
-            // ? was postfix, e.g. `result? + 1` or `result?[0]`).
-            // Tokens that unambiguously continue a postfix expression
-            // (binary operators, field access, chained ?).
-            bool isPostfixContinuation =
-                (next == TokenKind::Plus || next == TokenKind::Minus ||
-                 next == TokenKind::Tilde ||
-                 next == TokenKind::Dot || next == TokenKind::BangBang ||
-                 next == TokenKind::Question);
-            if (!isPostfixContinuation &&
-                (next == TokenKind::Ident || next == TokenKind::Number ||
-                 next == TokenKind::Float || next == TokenKind::String ||
-                 next == TokenKind::True || next == TokenKind::False ||
-                 next == TokenKind::LParen || next == TokenKind::LBrace ||
-                 next == TokenKind::Not ||
-                 next == TokenKind::NoneKw || next == TokenKind::ErrorKw ||
-                 next == TokenKind::FStringStart ||
-                 next == TokenKind::Await ||
-                 next == TokenKind::LBracket ||
-                 next == TokenKind::RegexLiteral)) {
+            // If the next token is an operator/postfix continuation, the ? was
+            // postfix (e.g. `result? + 1`). If it starts a new expression but
+            // is NOT a continuation, the ? looks like a removed ternary.
+            if (!isPostfixContinuationKind(next) && isExprStartKind(next)) {
                 lex_.restoreState(std::move(saved));
                 break; // delegate to parseConditional()
             }
