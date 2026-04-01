@@ -1480,7 +1480,7 @@ TEST(ParserTest, AwaitOutsideAsyncFnRejected) {
     // await inside lambda within async function should also fail (lambda is not async)
     EXPECT_THROW(parseStr(
         "async function foo() -> int:\n"
-        "    f = (x: int): await bar()\n"
+        "    f = (x: int) => await bar()\n"
         "    return 1"), std::runtime_error);
 }
 
@@ -1910,6 +1910,13 @@ TEST(ParserTest, DefaultArgNoTypeError) {
 TEST(ParserTest, DefaultArgLambdaError) {
     // default args in lambda are not supported
     EXPECT_THROW(parseStr("f = (x: int = 10) => x"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectOldColonSingleExprLambda) {
+    // old `:` syntax for single-expression lambdas is rejected with guidance
+    EXPECT_THROW(parseStr("f = (x: int): x + 1"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (): 42"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (x: int) -> int: x + 1"), std::runtime_error);
 }
 
 TEST(ParserTest, RejectAnonymousFunctionLambda) {

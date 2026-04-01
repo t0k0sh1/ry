@@ -118,7 +118,7 @@ print(connect("localhost", 3000, 10))    # localhost:3000 (timeout=10)
 
 ## Lambda Functions
 
-Lambda functions let you write functions as expressions. They use the form `(parameters) => expression`. The return type is automatically inferred.
+Lambda functions let you write functions as expressions. Single-expression lambdas use the form `(parameters) => expression`, while block lambdas use `(parameters):` followed by an indented block. In both cases, the return type is automatically inferred.
 
 ### Single-Expression Lambda
 
