@@ -114,6 +114,27 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     }
 }
 
+void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val) {
+    if (!entry) return;
+    const auto &rtn = entry->returnTypeName;
+    if (rtn.size() > 5 && rtn.compare(0, 5, "Task<") == 0 && rtn.back() == '>') {
+        std::string inner = rtn.substr(5, rtn.size() - 6);
+        type_meta_[TM_TaskResult][val] = resolveType(inner);
+    } else if (rtn.size() > 5 && rtn.compare(0, 5, "List<") == 0 && rtn.back() == '>') {
+        std::string inner = rtn.substr(5, rtn.size() - 6);
+        type_meta_[TM_ListElem][val] = resolveType(inner);
+    } else if (rtn.size() > 4 && rtn.compare(0, 4, "Map<") == 0 && rtn.back() == '>') {
+        auto [keyTy, valTy] = parseMapTypeAnnotation(rtn);
+        if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
+        if (valTy) type_meta_[TM_MapValue][val] = valTy;
+    } else if (rtn.size() > 4 && rtn.compare(0, 4, "Set<") == 0 && rtn.back() == '>') {
+        std::string inner = rtn.substr(4, rtn.size() - 5);
+        type_meta_[TM_SetElem][val] = resolveType(inner);
+    } else if (isLowLevelTypeName(rtn)) {
+        low_level_type_names_[val] = rtn;
+    }
+}
+
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
     propagateCollectionMetadata(src, dst);
     propagateResourceTracking(src, dst);
