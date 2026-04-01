@@ -825,6 +825,8 @@ private:
     void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
+    void applyParamTypeMeta(const std::string &ptype, llvm::AllocaInst *alloca,
+                            llvm::Type *paramLLVMType, const std::string &paramName);
     // Shared Result-wrapping helpers for stdlib dispatchers
     llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
                                    std::function<llvm::Value*()> buildOk,

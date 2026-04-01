@@ -197,13 +197,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     paramTypes[idx], nullptr, e->params[idx].name);
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[e->params[idx].name] = alloca;
-                // Track fn type info for fn-typed parameters
                 const std::string ptype = e->params[idx].type->toString();
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 9 && resolvedPtype.substr(0, 9) == "function(") {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                }
-                registerResourceByTypeName(ptype, alloca);
+                applyParamTypeMeta(ptype, alloca, paramTypes[idx], e->params[idx].name);
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
