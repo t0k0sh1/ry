@@ -9,15 +9,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     // Try user-defined operator as (matches by source type + return type)
     auto fit = functions_.find("operatoras");
     if (fit != functions_.end()) {
-        auto sit = struct_types_.find(target);
-        if (sit != struct_types_.end()) {
-            llvm::Type *targetTy = sit->second.llvmType;
-            for (auto &entry : fit->second) {
-                if (entry.paramTypes.size() == 1 &&
-                    entry.paramTypes[0] == srcTy &&
-                    entry.func->getReturnType() == targetTy) {
-                    return builder_.CreateCall(entry.func, {val}, "cast_op");
-                }
+        llvm::Type *targetTy = resolveType(target);
+        for (auto &entry : fit->second) {
+            if (entry.paramTypes.size() == 1 &&
+                entry.paramTypes[0] == srcTy &&
+                entry.func->getReturnType() == targetTy) {
+                return builder_.CreateCall(entry.func, {val}, "cast_op");
             }
         }
     }
