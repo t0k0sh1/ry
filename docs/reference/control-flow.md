@@ -285,14 +285,9 @@ else:
 
 ## when
 
-`when` has two statement forms:
+`when:` provides multi-branch conditional flow without a subject value.
 
-- `when:` for multi-branch conditional flow
-- `match value:` for pattern matching on a subject value
-
-### Conditional `when:`
-
-#### Syntax
+### Syntax
 
 ```python
 when:
@@ -304,7 +299,7 @@ when:
         # fallback body
 ```
 
-#### Example
+### Example
 
 ```python
 x = 0
@@ -322,9 +317,11 @@ The conditional `when:` statement evaluates arms from top to bottom and executes
 
 For the expression form of `when:`, see [Operator Reference](operators.md#when-conditional-expression).
 
-### Pattern `match value:`
+---
 
-#### Syntax
+## match
+
+### Syntax
 
 ```python
 match expression:
@@ -336,7 +333,7 @@ match expression:
         # wildcard (matches anything)
 ```
 
-#### Pattern Types
+### Pattern Types
 
 | Pattern | Example | Description |
 |----------|-----|------|
@@ -351,11 +348,11 @@ match expression:
 | `Err(x)` | `Err(e)` | When Result is Err, binds the error value |
 | OR pattern | `1 \| 2 \| 3` | Matches if any alternative matches |
 
-#### Guard Clause
+### Guard Clause
 
 A guard condition can be specified in the form `case pattern if condition:`. The arm is executed only when the pattern matches and the guard condition is true.
 
-#### OR Pattern
+### OR Pattern
 
 Multiple patterns can be combined with `|` to match any of them. Variable bindings (`n`, `Some(x)`, `Ok(v)`, `Err(e)`) are not allowed in OR patterns.
 
@@ -374,7 +371,7 @@ match color:
         print("green")
 ```
 
-#### Exhaustiveness Checking
+### Exhaustiveness Checking
 
 - enum types: Must cover all variants or include `_`. OR patterns count each alternative individually.
 - Option types: Must cover both `Some` and `None` or include `_`.
@@ -382,7 +379,7 @@ match color:
 - int / float / str literals: `_` is required.
 - Guarded arms do not count toward exhaustiveness.
 
-#### Example
+### Example
 
 ```python
 # enum pattern match
@@ -438,7 +435,7 @@ match x:
         print("zero")
 ```
 
-#### ADT Enum Pattern Matching
+### ADT Enum Pattern Matching
 
 When an enum variant carries associated data, use a binding pattern to extract the value(s).
 

@@ -14,7 +14,7 @@
 | `-` | Subtraction | `3 - 2` | `1` |
 | `*` | Multiplication / string repetition | `3 * 2` | `6` |
 | `/` | Division (always float) | `7 / 2` | `3.5` |
-| `//` | Integer division (always int) | `7 // 2` | `3` |
+| `//` | Floor division (int for int operands, float if either is float) | `7 // 2` | `3` |
 | `%` | Modulo | `7 % 3` | `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` | `1024` |
 
@@ -127,6 +127,13 @@ Shorthand notation for updating the value of a variable.
 | `*=` | Multiplication assignment | `x = x * n` |
 | `/=` | Division assignment | `x = x / n` |
 | `%=` | Modulo assignment | `x = x % n` |
+| `//=` | Floor division assignment | `x = x // n` |
+| `**=` | Exponentiation assignment | `x = x ** n` |
+| `&=` | Bitwise AND assignment | `x = x & n` |
+| `|=` | Bitwise OR assignment | `x = x \| n` |
+| `^=` | Bitwise XOR assignment | `x = x ^ n` |
+| `<<=` | Left shift assignment | `x = x << n` |
+| `>>=` | Right shift assignment | `x = x >> n` |
 
 ```python
 x = 10

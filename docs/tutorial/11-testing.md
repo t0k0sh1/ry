@@ -58,7 +58,36 @@ describe("Calculator", ():
 | `to_be_false()` | Asserts `false` | bool |
 | `to_be_none()` | Asserts `None` | Option |
 | `to_be_some()` | Asserts Option is `Some` | Option |
-| `to_contain(val)` | Asserts container includes value | List, Set, str |
+| `to_be_ok()` | Asserts Result is `Ok` | Result |
+| `to_be_err()` | Asserts Result is `Err` | Result |
+| `to_contain(val)` | Asserts container includes value | List, Set, Map, str |
+| `to_not_contain(val)` | Asserts container does not include value | List, Set, Map, str |
+| `to_be_greater_than(v)` | Asserts `actual > v` | int, float |
+| `to_be_less_than(v)` | Asserts `actual < v` | int, float |
+| `to_be_greater_than_or_eq(v)` | Asserts `actual >= v` | int, float |
+| `to_be_less_than_or_eq(v)` | Asserts `actual <= v` | int, float |
+| `to_have_length(n)` | Asserts length equals `n` | List, Set, Map, str |
+| `to_be_empty()` | Asserts length is 0 | List, Set, Map, str |
+| `to_start_with(prefix)` | Asserts string starts with prefix | str |
+| `to_end_with(suffix)` | Asserts string ends with suffix | str |
+
+### fail
+
+`fail()` immediately marks the current test as failed.
+
+```python
+it("should handle error", ():
+    match result:
+        case Ok(v):
+            fail("expected error")
+        case Err(e):
+            expect(e.message).to_eq("not found")
+)
+```
+
+- `fail()` — marks the test as failed with a generic message
+- `fail(message)` — marks the test as failed with a custom message
+- Only available in `ry test` mode
 
 ---
 

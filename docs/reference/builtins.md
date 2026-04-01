@@ -17,16 +17,41 @@
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
-| `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
-| `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
-| `close(handle)` | Closes a `TcpStream` or `TcpListener` |
+| `send(stream, data)` | Sends `List<u8>` through `TcpStream` or `TlsStream`, returns `Result<int, Error>` |
+| `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
+| `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
+| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum) |
+| `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
 
 | Function | Description |
 |------|------|
 | `Some(expr)` | Constructs the value-present variant of an Option type |
+
+### Result / Error
+
+| Function | Description |
+|------|------|
+| `Ok(value)` | Constructs the success variant of a `Result<T, Error>` |
+| `Err(error)` | Constructs the error variant of a `Result<T, Error>` |
+| `Error(message)` | Creates an `Error` value with a message |
+| `Error(message, code)` | Creates an `Error` value with a message and error code |
+
+### Checked Arithmetic
+
+| Function | Description |
+|------|------|
+| `checked_add(a, b)` | Returns `Some(a + b)` if no overflow, otherwise `None` |
+| `checked_sub(a, b)` | Returns `Some(a - b)` if no overflow, otherwise `None` |
+| `checked_mul(a, b)` | Returns `Some(a * b)` if no overflow, otherwise `None` |
+| `saturating_add(a, b)` | Returns `a + b`, clamped to `int` range on overflow |
+| `saturating_sub(a, b)` | Returns `a - b`, clamped to `int` range on overflow |
+| `saturating_mul(a, b)` | Returns `a * b`, clamped to `int` range on overflow |
+| `wrapping_add(a, b)` | Returns `a + b` with wrapping on overflow |
+| `wrapping_sub(a, b)` | Returns `a - b` with wrapping on overflow |
+| `wrapping_mul(a, b)` | Returns `a * b` with wrapping on overflow |
 
 ### Collection Operations
 
@@ -59,6 +84,24 @@
 | `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
 | `is_subset(set, set)` | Returns whether the first set is a subset of the second |
 | `is_superset(set, set)` | Returns whether the first set is a superset of the second |
+| `first(list)` | Returns the first element as `Option<T>`, or `None` if empty |
+| `last(list)` | Returns the last element as `Option<T>`, or `None` if empty |
+| `remove(list, value)` | Removes the first occurrence of value from a list |
+| `is_empty(list)` | Returns whether the list is empty |
+| `distinct(list)` | Returns a new list with duplicates removed |
+| `flatten(list)` | Returns a new list with nested lists flattened |
+| `reduce(list, fn)` | Reduces a list to a single value using the reducer function |
+| `fold(list, init, fn)` | Folds a list with an initial accumulator value |
+| `any(list, pred)` | Returns `true` if any element matches the predicate |
+| `all(list, pred)` | Returns `true` if all elements match the predicate |
+| `sum(list)` | Returns the sum of all elements |
+| `min(list)` | Returns the minimum element |
+| `max(list)` | Returns the maximum element |
+| `enumerate(list)` | Returns a list of `(index, value)` tuples |
+| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists |
+| `keys(map)` | Returns all keys as a `List<K>` |
+| `values(map)` | Returns all values as a `List<V>` |
+| `merge(map1, map2)` | Returns a new map containing entries from both maps |
 
 ### Iterator
 

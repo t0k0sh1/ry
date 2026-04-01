@@ -261,8 +261,14 @@ function operator-(v: Vec2) -> Vec2:
 |----------|-----------|
 | Arithmetic | `+`, `-`, `*`, `/`, `%`, `**`, `//` |
 | Comparison | `==`, `!=`, `<`, `<=`, `>`, `>=` |
-| Bitwise | `&`, `\|`, `^`, `~`, `<<`, `>>` |
+| Bitwise | `&`, `\|`, `^`, `~`, `<<`, `>>`, `>>>` |
 | Logical | `and`, `or`, `not` |
+| Membership | `in` |
+| Index access | `[]` |
+| Index assignment | `[]=` |
+| Function call | `()` |
+| Type cast | `as` |
+| Compound assignment | `+=`, `-=`, `*=`, `/=`, `%=`, `//=`, `**=`, `&=`, `\|=`, `^=`, `<<=`, `>>=` |
 
 > **Why operator overloading?** It gives domain types natural syntax. A `Vec2 + Vec2` reads better than `vec2_add(a, b)`, and `==` lets your types work seamlessly with `when` and comparisons.
 
