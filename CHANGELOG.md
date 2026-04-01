@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Generic function parameters with collection types (`List<T>`, `Map<K, V>`, `Set<T>`) are now properly marked as ARC-managed during instantiation, preventing potential memory leaks (#524)
 - Return type inference now correctly resolves user-defined struct types in functions and lambdas without explicit type annotations (#515)
 - Return-path analysis now recognizes exhaustive `match` statements on custom enums and `bool`, removing false "does not return a value on all code paths" errors when all variants are covered (#513)
 - Indexing into `List`, `Map`, or `Set` fields of a record (e.g., `record.field[idx]`) no longer fails with "cannot determine list element type" (#511)

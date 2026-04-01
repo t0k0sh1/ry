@@ -916,6 +916,12 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
             registerResourceByTypeName(ptype, alloca);
+            // Mark ARC-managed for collection parameters
+            if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
+                markArcManaged(alloca);
+            }
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
