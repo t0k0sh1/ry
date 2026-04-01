@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Return type inference now correctly resolves user-defined struct types in functions and lambdas without explicit type annotations (#515)
 - Return-path analysis now recognizes exhaustive `match` statements on custom enums and `bool`, removing false "does not return a value on all code paths" errors when all variants are covered (#513)
 - Indexing into `List`, `Map`, or `Set` fields of a record (e.g., `record.field[idx]`) no longer fails with "cannot determine list element type" (#511)
 - `join()` now works correctly with UFCS string receiver (e.g., `",".join(parts)`) (#508)

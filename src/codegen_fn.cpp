@@ -776,9 +776,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     }
 
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        for (auto &[name, info] : struct_types_)
-            if (info.llvmType == st) return name;
-        std::string n = findAdtEnumName(st);
+        std::string n = findStructTypeName(st);
         if (!n.empty()) return n;
     }
 

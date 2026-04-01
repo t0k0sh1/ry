@@ -122,6 +122,13 @@ function infer_union(flag: bool):
     return 42
   return 3.14
 
+record InferPoint:
+  x: int
+  y: int
+
+function infer_struct():
+  return InferPoint(3, 4)
+
 describe("return type inference", ():
   it("infers int", ():
     expect(infer_int()).to_eq(42)
@@ -139,6 +146,18 @@ describe("return type inference", ():
     x = infer_union(true)
     y = infer_union(false)
     expect(true).to_be_true()
+  )
+  it("infers struct type", ():
+    p = infer_struct()
+    expect(p.x).to_eq(3)
+    expect(p.y).to_eq(4)
+  )
+  it("infers struct type from lambda", ():
+    make_point = (a: int, b: int):
+      return InferPoint(a, b)
+    p = make_point(5, 6)
+    expect(p.x).to_eq(5)
+    expect(p.y).to_eq(6)
   )
 )
 
