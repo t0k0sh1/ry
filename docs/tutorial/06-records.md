@@ -40,7 +40,12 @@ print(p.x)   # 10
 print(p.y)   # 20
 ```
 
-> **Note**: Passing a record directly to `print` causes an error. Pass individual fields instead.
+Records can be printed directly:
+
+```python
+p = Point(10, 20)
+print(p)   # Point(x: 10, y: 20)
+```
 
 ---
 

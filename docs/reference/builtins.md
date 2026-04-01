@@ -43,9 +43,9 @@
 
 | Function | Description |
 |------|------|
-| `checked_add(a, b)` | Returns `Some(a + b)` if no overflow, otherwise `None` |
-| `checked_sub(a, b)` | Returns `Some(a - b)` if no overflow, otherwise `None` |
-| `checked_mul(a, b)` | Returns `Some(a * b)` if no overflow, otherwise `None` |
+| `checked_add(a, b)` | Returns `Ok(a + b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checked_sub(a, b)` | Returns `Ok(a - b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checked_mul(a, b)` | Returns `Ok(a * b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
 | `saturating_add(a, b)` | Returns `a + b`, clamped to `int` range on overflow |
 | `saturating_sub(a, b)` | Returns `a - b`, clamped to `int` range on overflow |
 | `saturating_mul(a, b)` | Returns `a * b`, clamped to `int` range on overflow |
@@ -156,6 +156,7 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | `map` | `{key1: val1, key2: val2, ...}` |
 | `set` | `{elem1, elem2, ...}` |
 | `enum` | Variant name (e.g., `Red`) |
+| `record` | `RecordName(field: val, ...)` |
 
 ```python
 print(42)          # 42
@@ -175,7 +176,7 @@ print(1, "hello", true)   # 1 hello true
 print()                    # (empty line)
 ```
 
-**Error condition:** Passing a struct or tuple directly causes a compile error.
+**Error condition:** Passing a tuple directly causes a compile error.
 
 ---
 
