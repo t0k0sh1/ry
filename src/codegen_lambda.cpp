@@ -459,5 +459,9 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == ptrTy_) return "str";
     if (isAnyType(ty)) return "any";
     if (ty->isVoidTy()) return "Unit";
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string n = findAdtEnumName(st);
+        if (!n.empty()) return n;
+    }
     return "any"; // fallback
 }

@@ -225,10 +225,20 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
 
-    // enum name → i64
-    if (enum_types_.count(typeName)) return i64Ty_;
+    // enum name → i64 (simple) or ADT struct type
+    {
+        auto eit = enum_types_.find(typeName);
+        if (eit != enum_types_.end())
+            return eit->second.isADT ? eit->second.adtType : i64Ty_;
+    }
 
     codegenError("unknown type: " + typeName);
+}
+
+std::string CodeGen::findAdtEnumName(llvm::StructType *st) const {
+    for (auto &[name, info] : enum_types_)
+        if (info.isADT && info.adtType == st) return name;
+    return {};
 }
 
 llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {

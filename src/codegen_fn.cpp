@@ -767,6 +767,8 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
         for (auto &[name, info] : struct_types_)
             if (info.llvmType == st) return name;
+        std::string n = findAdtEnumName(st);
+        if (!n.empty()) return n;
     }
 
     return "any";
@@ -804,8 +806,10 @@ std::vector<std::string> CodeGen::inferTypeArgs(
                 std::string sname = st->getName().str();
                 if (struct_types_.count(sname))
                     resolved = sname;
-                else
-                    resolved = "any";
+                else {
+                    std::string n = findAdtEnumName(st);
+                    resolved = n.empty() ? "any" : n;
+                }
             }
             else resolved = "any";
 
