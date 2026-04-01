@@ -207,6 +207,7 @@ private:
     std::unordered_map<std::string, EnumInfo> enum_types_;
     EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
+    std::string findStructTypeName(llvm::StructType *st) const;
     std::unordered_map<llvm::Value*, std::string> enum_value_types_;
     llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
     llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);

@@ -244,6 +244,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 else if (retTy == ptrTy_)
                     builder_.CreateRet(llvm::ConstantPointerNull::get(
                         llvm::cast<llvm::PointerType>(ptrTy_)));
+                else
+                    builder_.CreateRet(llvm::UndefValue::get(retTy));
             }
         }
 
@@ -460,7 +462,7 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (isAnyType(ty)) return "any";
     if (ty->isVoidTy()) return "Unit";
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        std::string n = findAdtEnumName(st);
+        std::string n = findStructTypeName(st);
         if (!n.empty()) return n;
     }
     return "any"; // fallback

@@ -241,6 +241,12 @@ std::string CodeGen::findAdtEnumName(llvm::StructType *st) const {
     return {};
 }
 
+std::string CodeGen::findStructTypeName(llvm::StructType *st) const {
+    for (auto &[name, info] : struct_types_)
+        if (info.llvmType == st) return name;
+    return findAdtEnumName(st);
+}
+
 llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
     auto it = option_types_.find(innerTy);
     if (it != option_types_.end()) return it->second;
