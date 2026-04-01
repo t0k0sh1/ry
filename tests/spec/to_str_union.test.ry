@@ -1,11 +1,11 @@
 function show(x: int | str) -> str:
-    return to_str(x)
+  return to_str(x)
 
 function show_with_float(x: int | float) -> str:
-    return to_str(x)
+  return to_str(x)
 
 function show_with_bool(x: bool | str) -> str:
-    return to_str(x)
+  return to_str(x)
 
 describe("to_str union", ():
   it("converts int variant", ():
@@ -41,5 +41,10 @@ describe("to_str union", ():
   it("works with bool via function return", ():
     expect(show_with_bool(false)).to_eq("false")
     expect(show_with_bool("world")).to_eq("world")
+  )
+
+  it("preserves low-level type signedness", ():
+    x: u8 | str = 200 as u8
+    expect(to_str(x)).to_eq("200")
   )
 )

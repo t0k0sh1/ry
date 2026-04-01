@@ -608,8 +608,21 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                     llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
                 builder_.SetInsertPoint(caseBB);
 
+                const auto &compName = uinfo.componentNames[i];
+
+                // Reject non-stringifiable pointer-backed variants
+                if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
+                    codegenError("cannot convert " + compName +
+                                 " variant of union to string");
+                }
+
                 llvm::Value *innerVal = builder_.CreateLoad(
                     uinfo.componentTypes[i], dataTmp, "vts.union.inner");
+
+                // Propagate low-level type metadata for correct signedness formatting
+                if (isLowLevelTypeName(compName))
+                    low_level_type_names_[innerVal] = compName;
+
                 llvm::Value *innerStr = valueToString(innerVal);
 
                 phi->addIncoming(innerStr, builder_.GetInsertBlock());
