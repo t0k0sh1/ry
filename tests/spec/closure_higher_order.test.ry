@@ -1,0 +1,46 @@
+describe("closure — returned from function", ():
+  it("make_adder returns callable closure", ():
+    function make_adder(base: int) -> function(int) -> int:
+      return (x: int) => x + base
+
+    add5 = make_adder(5)
+    expect(add5(3)).to_eq(8)
+  )
+
+  it("returned closure with multiple captures", ():
+    function make_linear(a: int, b: int) -> function(int) -> int:
+      return (x: int) => a * x + b
+
+    f = make_linear(3, 10)
+    expect(f(5)).to_eq(25)
+  )
+
+  it("returned no-capture lambda", ():
+    function make_doubler() -> function(int) -> int:
+      return (x: int) => x * 2
+
+    double = make_doubler()
+    expect(double(7)).to_eq(14)
+  )
+)
+
+describe("closure — function-type parameter capture", ():
+  it("compose captures two function params", ():
+    function compose(f: function(int) -> int, g: function(int) -> int) -> function(int) -> int:
+      return (x: int) => f(g(x))
+
+    double = (x: int) => x * 2
+    inc = (x: int) => x + 1
+    double_then_inc = compose(inc, double)
+    expect(double_then_inc(5)).to_eq(11)
+  )
+
+  it("apply_twice captures function param", ():
+    function apply_twice(f: function(int) -> int, x: int) -> int:
+      g = (v: int) => f(f(v))
+      return g(x)
+
+    result = apply_twice((x: int) => x + 1, 5)
+    expect(result).to_eq(7)
+  )
+)

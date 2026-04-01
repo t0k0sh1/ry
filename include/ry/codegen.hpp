@@ -261,9 +261,10 @@ private:
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
         std::vector<CapturedArcKind> capturedArcKinds; // ARC kind per captured variable
         std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
-        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for CAK_Closure only
+        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for function-typed captures
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
+    std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
     // Nested closure shape for cache key differentiation
     struct NestedClosureShape {
