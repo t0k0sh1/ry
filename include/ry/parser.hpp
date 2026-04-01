@@ -109,6 +109,7 @@ private:
     ExprPtr parseParenLambdaExpr();
     bool couldBeLambda();
     bool couldBeGenericEnum();
+    TypeNodePtr parseCastTypeName();
     ExprPtr parseAwaitExpr();
 };
 
