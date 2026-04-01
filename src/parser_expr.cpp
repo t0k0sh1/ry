@@ -650,11 +650,28 @@ bool Parser::couldBeLambda() {
 }
 
 bool Parser::couldBeGenericEnum() {
-    // Conservative: type arguments always start with Ident; non-Ident
-    // (literals, operators) means this '<' is definitely a comparison.
+    // Conservative: return false only when '<' definitely starts a
+    // comparison.  Must cover all tokens that can begin a type
+    // (see parseTypeNameSingle): identifiers, Error, tuple/function
+    // types, and literal types.
     auto saved = lex_.saveState();
     lex_.next();
-    bool result = lex_.peek().kind == TokenKind::Ident;
+    TokenKind first = lex_.peek().kind;
+    bool result;
+    switch (first) {
+        case TokenKind::Ident:
+        case TokenKind::ErrorKw:
+        case TokenKind::LParen:
+        case TokenKind::Fn:
+        case TokenKind::Number:
+        case TokenKind::Minus:
+        case TokenKind::String:
+            result = true;
+            break;
+        default:
+            result = false;
+            break;
+    }
     lex_.restoreState(std::move(saved));
     return result;
 }
