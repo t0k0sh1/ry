@@ -953,7 +953,17 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
                 if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
             }
+            if (ptype.size() > 5 && ptype.compare(0, 5, "Task<") == 0 && ptype.back() == '>') {
+                std::string inner = ptype.substr(5, ptype.size() - 6);
+                type_meta_[TM_TaskResult][alloca] = resolveType(inner);
+            }
             registerResourceByTypeName(ptype, alloca);
+            // Mark ARC-managed for collection parameters
+            if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
+                (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
+                markArcManaged(alloca);
+            }
             // Track low-level type metadata for parameters
             if (isLowLevelTypeName(ptype))
                 low_level_type_names_[alloca] = ptype;
