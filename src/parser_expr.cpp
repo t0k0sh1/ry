@@ -68,9 +68,6 @@ ExprPtr Parser::parseConditional() {
     if (lex_.peek().kind == TokenKind::When)
         return parseWhenExpr();
     ExprPtr expr = parseNullCoalesce();
-    if (lex_.peek().kind == TokenKind::Question) {
-        parseError("ternary expressions are no longer supported; use 'when:'");
-    }
     return expr;
 }
 
@@ -754,51 +751,12 @@ ExprPtr Parser::makeErrorPropagateExpr(ExprPtr operand, const Token &tok) {
     return node;
 }
 
-// Token kind classification for postfix `?` disambiguation.
-// Returns true if the token kind continues a postfix chain (operators, field
-// access), meaning the preceding `?` was postfix error propagation.
-static constexpr bool isPostfixContinuationKind(TokenKind k) {
-    switch (k) {
-        case TokenKind::Plus: case TokenKind::Minus: case TokenKind::Tilde:
-        case TokenKind::Dot: case TokenKind::BangBang: case TokenKind::Question:
-            return true;
-        default:
-            return false;
-    }
-}
-
-// Returns true if the token kind can start an expression (used to detect
-// that `?` was NOT postfix but rather looks like a removed ternary).
-static constexpr bool isExprStartKind(TokenKind k) {
-    switch (k) {
-        case TokenKind::Ident: case TokenKind::Number: case TokenKind::Float:
-        case TokenKind::String: case TokenKind::True: case TokenKind::False:
-        case TokenKind::LParen: case TokenKind::LBrace: case TokenKind::Not:
-        case TokenKind::NoneKw: case TokenKind::ErrorKw:
-        case TokenKind::FStringStart: case TokenKind::Await:
-        case TokenKind::LBracket: case TokenKind::RegexLiteral:
-            return true;
-        default:
-            return false;
-    }
-}
-
 ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
     while (lex_.peek().kind == TokenKind::Dot || lex_.peek().kind == TokenKind::LBracket ||
            lex_.peek().kind == TokenKind::BangBang || lex_.peek().kind == TokenKind::Question) {
         if (lex_.peek().kind == TokenKind::Question) {
-            auto saved = lex_.saveState();
             Token qTok = lex_.next(); // consume '?'
-            TokenKind next = lex_.peek().kind;
-            // Disambiguate postfix ? (error propagation) from ternary ? :
-            // If the next token is an operator/postfix continuation, the ? was
-            // postfix (e.g. `result? + 1`). If it starts a new expression but
-            // is NOT a continuation, the ? looks like a removed ternary.
-            if (!isPostfixContinuationKind(next) && isExprStartKind(next)) {
-                lex_.restoreState(std::move(saved));
-                break; // delegate to parseConditional()
-            }
             expr = makeErrorPropagateExpr(std::move(expr), qTok);
             continue;
         }
