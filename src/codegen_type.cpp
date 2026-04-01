@@ -246,6 +246,19 @@ llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
     return optTy;
 }
 
+bool CodeGen::isTupleStructType(llvm::StructType *st) {
+    if (st->hasName()) {
+        std::string name = st->getName().str();
+        if (struct_types_.count(name)) return false;
+    }
+    for (auto &[name, info] : union_type_info_)
+        if (info.llvmType == st) return false;
+    if (isOptionType(st)) return false;
+    if (isResultType(st)) return false;
+    if (st == errorTy_) return false;
+    return true;
+}
+
 bool CodeGen::isOptionType(llvm::Type *ty) {
     auto *st = llvm::dyn_cast<llvm::StructType>(ty);
     if (!st) return false;

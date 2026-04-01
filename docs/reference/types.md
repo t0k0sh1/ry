@@ -285,7 +285,15 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 ### Supported Types in Interpolation
 
-Any expression that evaluates to `int`, `float`, `bool`, `str`, or a record type can be used inside `{}`.
+Any expression that evaluates to `int`, `float`, `bool`, `str`, a record type, a tuple, or a collection type (`List`, `Map`, `Set`) can be used inside `{}`.
+
+```python
+xs = [1, 2, 3]
+print(f"items: {xs}")     # items: [1, 2, 3]
+
+t = (1, "hello")
+print(f"tuple: {t}")      # tuple: (1, hello)
+```
 
 ### Escape Sequences
 

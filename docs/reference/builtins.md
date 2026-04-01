@@ -21,7 +21,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum) |
+| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -155,6 +155,7 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | `list` | `[elem1, elem2, ...]` |
 | `map` | `{key1: val1, key2: val2, ...}` |
 | `set` | `{elem1, elem2, ...}` |
+| `tuple` | `(elem1, elem2, ...)` |
 | `enum` | Variant name (e.g., `Red`) |
 | `record` | `RecordName(field: val, ...)` |
 
@@ -168,6 +169,7 @@ print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
+print((1, "hello"))  # (1, hello)
 
 # Multiple arguments (space-separated)
 print(1, 2, 3)             # 1 2 3
@@ -175,8 +177,6 @@ print("hello", "world")   # hello world
 print(1, "hello", true)   # 1 hello true
 print()                    # (empty line)
 ```
-
-**Error condition:** Passing a tuple directly causes a compile error.
 
 ---
 

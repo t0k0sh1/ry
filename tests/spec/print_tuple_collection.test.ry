@@ -1,0 +1,40 @@
+describe("tuple display", ():
+  it("simple tuple to_str", ():
+    t = (1, 2)
+    expect(to_str(t)).to_eq("(1, 2)")
+  )
+  it("mixed-type tuple to_str", ():
+    t = (1, "hello", 3.14)
+    expect(to_str(t)).to_eq("(1, hello, 3.14)")
+  )
+  it("nested tuple to_str", ():
+    t = ((1, 2), (3, 4))
+    expect(to_str(t)).to_eq("((1, 2), (3, 4))")
+  )
+)
+
+describe("list of tuples display", ():
+  it("zip result to_str", ():
+    result = zip([1, 2, 3], ["a", "b", "c"])
+    expect(to_str(result)).to_eq("[(1, a), (2, b), (3, c)]")
+  )
+)
+
+describe("f-string with collections", ():
+  it("f-string with list", ():
+    xs = [1, 2, 3]
+    expect(f"items: {xs}").to_eq("items: [1, 2, 3]")
+  )
+  it("f-string with map", ():
+    m = {"a": 1}
+    expect(f"map: {m}").to_eq("map: {a: 1}")
+  )
+  it("f-string with set", ():
+    s = {10, 20}
+    expect(f"set: {s}").to_eq("set: {10, 20}")
+  )
+  it("f-string with tuple", ():
+    t = (1, 2)
+    expect(f"t: {t}").to_eq("t: (1, 2)")
+  )
+)
