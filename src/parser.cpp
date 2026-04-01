@@ -31,9 +31,17 @@ bool Parser::isSnakeCase(const std::string &name) {
 
 bool Parser::isMutationFnName(const std::string &name) {
     if (name.empty()) return false;
-    if (name.back() == '!')
-        return name.size() > 1 && isSnakeCase(name.substr(0, name.size() - 1));
-    return isSnakeCase(name);
+    size_t len = name.back() == '!' ? name.size() - 1 : name.size();
+    if (len == 0) return false;
+    if (len == 1 && name[0] == '_') return true;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
+    for (size_t i = 1; i < len; ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
 }
 
 bool Parser::isScreamingSnakeCase(const std::string &name) {
