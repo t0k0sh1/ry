@@ -574,8 +574,25 @@ Token Lexer::readToken() {
         }
         std::string id(src_, start, pos_ - start);
         auto kit = keyword_map.find(id);
-        if (kit != keyword_map.end())
+        if (kit != keyword_map.end()) {
+            if (kit->second == TokenKind::Not) {
+                size_t savedPos = pos_;
+                int savedCol = col_;
+                while (pos_ < src_.size() && (src_[pos_] == ' ' || src_[pos_] == '\t')) {
+                    ++pos_; ++col_;
+                }
+                if (pos_ + 2 <= src_.size() &&
+                    src_[pos_] == 'i' && src_[pos_ + 1] == 'n' &&
+                    (pos_ + 2 >= src_.size() ||
+                     (!std::isalnum(static_cast<unsigned char>(src_[pos_ + 2])) && src_[pos_ + 2] != '_'))) {
+                    pos_ += 2; col_ += 2;
+                    return {TokenKind::NotIn, "not in", line_, startCol};
+                }
+                pos_ = savedPos;
+                col_ = savedCol;
+            }
             return {kit->second, std::move(id), line_, startCol};
+        }
         return {TokenKind::Ident, std::move(id), line_, startCol};
     }
 
