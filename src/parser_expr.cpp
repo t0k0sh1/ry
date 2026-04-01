@@ -342,11 +342,6 @@ ExprPtr Parser::parsePrimary() {
         node->loc = locFromToken(t);
         return node;
     }
-    if (t.kind == TokenKind::Fn) {
-        parseError(t.line,
-            "anonymous 'function' expressions (e.g. 'function(x) => x + 1') "
-            "are not supported; use paren-lambda syntax instead: (x: int): x + 1");
-    }
     // weak expr — create weak reference from strong reference
     if (t.kind == TokenKind::Ident && t.value == "weak") {
         lex_.next(); // consume 'weak'
