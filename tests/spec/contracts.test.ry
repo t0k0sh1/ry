@@ -22,37 +22,37 @@ record BankAccount:
   invariant:
     balance >= min_balance
 
-describe("require", function():
-  it("passes when precondition met", function():
+describe("require", ():
+  it("passes when precondition met", ():
     res = deposit(100, 50)
     expect(res).to_eq(150)
   )
 )
 
-describe("ensure", function():
-  it("passes when postcondition met", function():
+describe("ensure", ():
+  it("passes when postcondition met", ():
     expect(abs_val(-5)).to_eq(5)
     expect(abs_val(3)).to_eq(3)
   )
 )
 
-describe("ensure with arg reference", function():
-  it("captures value correctly", function():
+describe("ensure with arg reference", ():
+  it("captures value correctly", ():
     expect(increment(10)).to_eq(11)
     expect(increment(0)).to_eq(1)
   )
 )
 
-describe("struct invariant", function():
-  it("passes when invariant holds", function():
+describe("struct invariant", ():
+  it("passes when invariant holds", ():
     a = BankAccount(100, 0)
     expect(a.balance).to_eq(100)
     expect(a.min_balance).to_eq(0)
   )
 )
 
-describe("result as identifier", function():
-  it("can be used as a variable name", function():
+describe("result as identifier", ():
+  it("can be used as a variable name", ():
     result: int = 42
     expect(result).to_eq(42)
   )

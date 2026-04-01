@@ -37,7 +37,7 @@ from thread import thread_spawn, thread_join, lock_new, lock_acquire, lock_relea
 from thread import thread_spawn, thread_join, atomic_int_new, atomic_int_load, atomic_int_add
 
 counter = atomic_int_new(0)
-t = thread_spawn(function():
+t = thread_spawn(():
   atomic_int_add(counter, 1)
 )
 thread_join(t)

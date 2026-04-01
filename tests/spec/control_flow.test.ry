@@ -1,11 +1,11 @@
-describe("if / when", function():
-  it("if true", function():
+describe("if / when", ():
+  it("if true", ():
     res = 0
     if true:
       res = 1
     expect(res).to_eq(1)
   )
-  it("if false goes to else", function():
+  it("if false goes to else", ():
     res = 0
     if false:
       res = 1
@@ -13,7 +13,7 @@ describe("if / when", function():
       res = 2
     expect(res).to_eq(2)
   )
-  it("when multi-branch", function():
+  it("when multi-branch", ():
     res = 0
     x = 5
     when:
@@ -25,7 +25,7 @@ describe("if / when", function():
         res = 3
     expect(res).to_eq(2)
   )
-  it("when all false falls to else", function():
+  it("when all false falls to else", ():
     res = 0
     x = 99
     when:
@@ -37,7 +37,7 @@ describe("if / when", function():
         res = 3
     expect(res).to_eq(3)
   )
-  it("when first false second true", function():
+  it("when first false second true", ():
     res = 0
     x = 5
     when:
@@ -51,8 +51,8 @@ describe("if / when", function():
   )
 )
 
-describe("while", function():
-  it("basic loop", function():
+describe("while", ():
+  it("basic loop", ():
     i = 0
     sum = 0
     while i < 5:
@@ -60,7 +60,7 @@ describe("while", function():
       i = i + 1
     expect(sum).to_eq(10)
   )
-  it("break", function():
+  it("break", ():
     i = 0
     while true:
       if i >= 3:
@@ -68,7 +68,7 @@ describe("while", function():
       i = i + 1
     expect(i).to_eq(3)
   )
-  it("continue", function():
+  it("continue", ():
     sum = 0
     i = 0
     while i < 5:
@@ -80,52 +80,52 @@ describe("while", function():
   )
 )
 
-describe("for", function():
-  it("list iteration", function():
+describe("for", ():
+  it("list iteration", ():
     sum = 0
     xs = [10, 20, 30]
     for x in xs:
       sum = sum + x
     expect(sum).to_eq(60)
   )
-  it("range 1 arg", function():
+  it("range 1 arg", ():
     sum = 0
     for i in range(5):
       sum = sum + i
     expect(sum).to_eq(10)
   )
-  it("range 2 args", function():
+  it("range 2 args", ():
     sum = 0
     for i in range(2, 5):
       sum = sum + i
     expect(sum).to_eq(9)
   )
-  it("range 3 args", function():
+  it("range 3 args", ():
     sum = 0
     for i in range(0, 10, 3):
       sum = sum + i
     expect(sum).to_eq(18)
   )
-  it("range negative step", function():
+  it("range negative step", ():
     sum = 0
     for i in range(10, 0, -3):
       sum = sum + i
     expect(sum).to_eq(22)
   )
-  it(".. range", function():
+  it(".. range", ():
     sum = 0
     for i in 1..3:
       sum = sum + i
     expect(sum).to_eq(6)
   )
-  it("map key-value", function():
+  it("map key-value", ():
     m = {"a": 1, "b": 2}
     total = 0
     for k, v in m:
       total = total + v
     expect(total).to_eq(3)
   )
-  it("enumerate destructuring", function():
+  it("enumerate destructuring", ():
     xs = [10, 20, 30]
     idx_sum = 0
     val_sum = 0
@@ -135,13 +135,13 @@ describe("for", function():
     expect(idx_sum).to_eq(3)
     expect(val_sum).to_eq(60)
   )
-  it("zip destructuring", function():
+  it("zip destructuring", ():
     sum = 0
     for a, b in zip([1, 2], [10, 20]):
       sum = sum + (a + b)
     expect(sum).to_eq(33)
   )
-  it("3-element tuple destructuring", function():
+  it("3-element tuple destructuring", ():
     triples = [(1, 2, 3), (4, 5, 6)]
     sum_a = 0
     sum_b = 0
@@ -154,34 +154,34 @@ describe("for", function():
     expect(sum_b).to_eq(7)
     expect(sum_c).to_eq(9)
   )
-  it("3-element destructuring with wildcard", function():
+  it("3-element destructuring with wildcard", ():
     triples = [(1, 2, 3), (4, 5, 6)]
     sum = 0
     for a, _, c in triples:
       sum = sum + a + c
     expect(sum).to_eq(14)
   )
-  it("empty list iteration", function():
+  it("empty list iteration", ():
     sum = 0
     xs = [1]
-    empty = filter(xs, function(x: int) => x > 10)
+    empty = filter(xs, (x: int): x > 10)
     for x in empty:
       sum = sum + x
     expect(sum).to_eq(0)
   )
-  it("range(0) is empty", function():
+  it("range(0) is empty", ():
     sum = 0
     for i in range(0):
       sum = sum + 1
     expect(sum).to_eq(0)
   )
-  it("range with equal start and end", function():
+  it("range with equal start and end", ():
     sum = 0
     for i in range(5, 5):
       sum = sum + 1
     expect(sum).to_eq(0)
   )
-  it("range reverse without step", function():
+  it("range reverse without step", ():
     sum = 0
     for i in range(5, 3):
       sum = sum + 1
@@ -189,8 +189,8 @@ describe("for", function():
   )
 )
 
-describe("when", function():
-  it("literal pattern", function():
+describe("when", ():
+  it("literal pattern", ():
     res = 0
     x = 2
     match x:
@@ -202,7 +202,7 @@ describe("when", function():
         res = 30
     expect(res).to_eq(20)
   )
-  it("variable binding", function():
+  it("variable binding", ():
     res = 0
     x = 42
     match x:
@@ -212,7 +212,7 @@ describe("when", function():
         res = 0
     expect(res).to_eq(42)
   )
-  it("guard", function():
+  it("guard", ():
     res = ""
     x = -5
     match x:
@@ -224,7 +224,7 @@ describe("when", function():
         res = "zero"
     expect(res).to_eq("negative")
   )
-  it("OR pattern", function():
+  it("OR pattern", ():
     res = ""
     x = 2
     match x:
@@ -234,7 +234,7 @@ describe("when", function():
         res = "other"
     expect(res).to_eq("small")
   )
-  it("wildcard", function():
+  it("wildcard", ():
     res = ""
     x = 999
     match x:
@@ -244,7 +244,7 @@ describe("when", function():
         res = "other"
     expect(res).to_eq("other")
   )
-  it("string literal pattern", function():
+  it("string literal pattern", ():
     res = ""
     s = "hello"
     match s:
@@ -254,7 +254,7 @@ describe("when", function():
         res = "other"
     expect(res).to_eq("matched")
   )
-  it("negative literal pattern", function():
+  it("negative literal pattern", ():
     res = ""
     x = -1
     match x:
@@ -266,7 +266,7 @@ describe("when", function():
         res = "other"
     expect(res).to_eq("minus one")
   )
-  it("guard fallback to wildcard", function():
+  it("guard fallback to wildcard", ():
     res = ""
     x = 5
     match x:
@@ -278,7 +278,7 @@ describe("when", function():
         res = "small"
     expect(res).to_eq("small")
   )
-  it("OR pattern with many alternatives", function():
+  it("OR pattern with many alternatives", ():
     res = ""
     x = 4
     match x:
@@ -290,8 +290,8 @@ describe("when", function():
   )
 )
 
-describe("when Option", function():
-  it("Some", function():
+describe("when Option", ():
+  it("Some", ():
     res = 0
     x: Option<int> = Some(42)
     match x:
@@ -301,7 +301,7 @@ describe("when Option", function():
         res = -1
     expect(res).to_eq(42)
   )
-  it("None", function():
+  it("None", ():
     res = 0
     x: Option<int> = None
     match x:
@@ -319,8 +319,8 @@ enum Direction:
   East
   West
 
-describe("when enum", function():
-  it("simple enum", function():
+describe("when enum", ():
+  it("simple enum", ():
     res = ""
     d = Direction::North
     match d:
@@ -334,7 +334,7 @@ describe("when enum", function():
         res = "west"
     expect(res).to_eq("north")
   )
-  it("last enum variant matches", function():
+  it("last enum variant matches", ():
     res = ""
     d = Direction::West
     match d:
@@ -355,8 +355,8 @@ enum Shape:
   Rect(float, float)
   Point
 
-describe("when ADT enum", function():
-  it("with associated data", function():
+describe("when ADT enum", ():
+  it("with associated data", ():
     res = 0.0
     s = Shape::Circle(3.14)
     match s:
@@ -368,7 +368,7 @@ describe("when ADT enum", function():
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field variant", function():
+  it("multi-field variant", ():
     res = 0.0
     s = Shape::Rect(4.0, 5.0)
     match s:
@@ -382,8 +382,8 @@ describe("when ADT enum", function():
   )
 )
 
-describe("nested when", function():
-  it("when inside when", function():
+describe("nested when", ():
+  it("when inside when", ():
     res = ""
     x = 2
     y = 10
@@ -402,8 +402,8 @@ describe("nested when", function():
   )
 )
 
-describe("when ADT no-data variant", function():
-  it("matches Point variant", function():
+describe("when ADT no-data variant", ():
+  it("matches Point variant", ():
     res = 0.0
     s = Shape::Point
     match s:
@@ -417,8 +417,8 @@ describe("when ADT no-data variant", function():
   )
 )
 
-describe("scope and shadowing", function():
-  it("block scope", function():
+describe("scope and shadowing", ():
+  it("block scope", ():
     x = 10
     res = 0
     if true:

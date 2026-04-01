@@ -5,23 +5,23 @@ record HttpError < Error:
 function handle_error(e: Error) -> str:
   return e.message
 
-describe("record subtyping", function():
-  it("constructor with inherited fields", function():
+describe("record subtyping", ():
+  it("constructor with inherited fields", ():
     err = HttpError("not found", 404, 404, "/api")
     expect(err.message).to_eq("not found")
     expect(err.code).to_eq(404)
     expect(err.status).to_eq(404)
     expect(err.url).to_eq("/api")
   )
-  it("subtype coercion in function call", function():
+  it("subtype coercion in function call", ():
     err = HttpError("fail", 500, 500, "/x")
     expect(handle_error(err)).to_eq("fail")
   )
-  it("auto == includes inherited fields", function():
+  it("auto == includes inherited fields", ():
     expect(HttpError("a", 1, 200, "/x") == HttpError("a", 1, 200, "/x")).to_be_true()
     expect(HttpError("a", 1, 200, "/x") == HttpError("b", 1, 200, "/x")).to_be_false()
   )
-  it("auto to_str includes inherited fields", function():
+  it("auto to_str includes inherited fields", ():
     err = HttpError("err", 1, 404, "/api")
     expect(to_str(err)).to_eq("HttpError(message: err, code: 1, status: 404, url: /api)")
   )
@@ -30,8 +30,8 @@ describe("record subtyping", function():
 record DetailedHttpError < HttpError:
   detail: str
 
-describe("deep inheritance", function():
-  it("constructor with all ancestor fields", function():
+describe("deep inheritance", ():
+  it("constructor with all ancestor fields", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "server crash")
     expect(derr.message).to_eq("fail")
     expect(derr.code).to_eq(500)
@@ -39,7 +39,7 @@ describe("deep inheritance", function():
     expect(derr.url).to_eq("/x")
     expect(derr.detail).to_eq("server crash")
   )
-  it("deep coercion to grandparent", function():
+  it("deep coercion to grandparent", ():
     derr = DetailedHttpError("fail", 500, 500, "/x", "crash")
     expect(handle_error(derr)).to_eq("fail")
   )
@@ -54,8 +54,8 @@ record Positive:
 record NamedPositive < Positive:
   name: str
 
-describe("invariant inheritance", function():
-  it("child with valid parent fields succeeds", function():
+describe("invariant inheritance", ():
+  it("child with valid parent fields succeeds", ():
     np = NamedPositive(42, "good")
     expect(np.value).to_eq(42)
     expect(np.name).to_eq("good")
@@ -69,8 +69,8 @@ record ApiError < Error:
 function fetch_data(url: str) -> Result<int, Error>:
   return Err(ApiError("not found", 404, url))
 
-describe("Err auto-slicing", function():
-  it("Err(subtype) auto-slices to Error in Result", function():
+describe("Err auto-slicing", ():
+  it("Err(subtype) auto-slices to Error in Result", ():
     result = fetch_data("/api")
     match result:
       case Err(e):
@@ -85,8 +85,8 @@ describe("Err auto-slicing", function():
 function to_error(msg: str) -> Error:
   return ApiError(msg, 500, "/internal")
 
-describe("return subtype coercion", function():
-  it("return subtype auto-slices to parent return type", function():
+describe("return subtype coercion", ():
+  it("return subtype auto-slices to parent return type", ():
     e = to_error("fail")
     expect(e.message).to_eq("fail")
     expect(e.code).to_eq(500)
@@ -103,14 +103,14 @@ record Dog < Animal:
 function describe_animal(a: Animal) -> str:
   return f"{a.name} has {a.legs} legs"
 
-describe("non-Error subtyping", function():
-  it("basic field inheritance", function():
+describe("non-Error subtyping", ():
+  it("basic field inheritance", ():
     d = Dog("Rex", 4, "Labrador")
     expect(d.name).to_eq("Rex")
     expect(d.legs).to_eq(4)
     expect(d.breed).to_eq("Labrador")
   )
-  it("coercion to parent type", function():
+  it("coercion to parent type", ():
     d = Dog("Rex", 4, "Labrador")
     expect(describe_animal(d)).to_eq("Rex has 4 legs")
   )
@@ -120,8 +120,8 @@ describe("non-Error subtyping", function():
 record Owner:
   pet: Animal
 
-describe("field assignment subtype coercion", function():
-  it("assigns child type to parent-type field", function():
+describe("field assignment subtype coercion", ():
+  it("assigns child type to parent-type field", ():
     o = Owner(Animal("cat", 4))
     o.pet = Dog("Rex", 4, "Labrador")
     expect(o.pet.name).to_eq("Rex")
@@ -137,8 +137,8 @@ function process_data(url: str) -> Result<int, Error>:
   val = fetch_typed(url)?
   return Ok(val)
 
-describe("? operator subtype coercion", function():
-  it("propagates subtype error through ?", function():
+describe("? operator subtype coercion", ():
+  it("propagates subtype error through ?", ():
     result = process_data("/api")
     match result:
       case Err(e):

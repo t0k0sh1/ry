@@ -1,38 +1,38 @@
-describe("length", function():
-  it("List", function():
+describe("length", ():
+  it("List", ():
     expect([1, 2, 3]).to_have_length(3)
   )
-  it("Map", function():
+  it("Map", ():
     expect({"a": 1, "b": 2}).to_have_length(2)
   )
-  it("Set", function():
+  it("Set", ():
     expect({1, 2, 3}).to_have_length(3)
   )
-  it("str", function():
+  it("str", ():
     expect("hello").to_have_length(5)
   )
 )
 
-describe("range", function():
-  it("1 arg", function():
+describe("range", ():
+  it("1 arg", ():
     xs = range(3)
     expect(xs).to_have_length(3)
     expect(xs[0]).to_eq(0)
     expect(xs[2]).to_eq(2)
   )
-  it("2 args", function():
+  it("2 args", ():
     xs = range(2, 5)
     expect(xs).to_have_length(3)
     expect(xs[0]).to_eq(2)
     expect(xs[2]).to_eq(4)
   )
-  it("3 args", function():
+  it("3 args", ():
     xs = range(0, 10, 2)
     expect(xs).to_have_length(5)
     expect(xs[0]).to_eq(0)
     expect(xs[4]).to_eq(8)
   )
-  it("negative step", function():
+  it("negative step", ():
     xs = range(10, 0, -3)
     expect(xs).to_have_length(4)
     expect(xs[0]).to_eq(10)
@@ -42,12 +42,12 @@ describe("range", function():
   )
 )
 
-describe("Some / Option", function():
-  it("Some wraps value", function():
+describe("Some / Option", ():
+  it("Some wraps value", ():
     x = Some(42)
     expect(x).to_be_some()
   )
-  it("None is none", function():
+  it("None is none", ():
     x: Option<int> = None
     expect(x).to_be_none()
   )

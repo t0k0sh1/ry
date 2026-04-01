@@ -6,8 +6,8 @@
 
 TEST_F(CodeGenTest, FailWithMessage) {
     EXPECT_EQ(runTestSource(
-        "describe(\"fail helper\", function():\n"
-        "    it(\"marks test as failed\", function():\n"
+        "describe(\"fail helper\", ():\n"
+        "    it(\"marks test as failed\", ():\n"
         "        fail(\"intentional failure\")\n"
         "    )\n"
         ")\n"
@@ -20,8 +20,8 @@ TEST_F(CodeGenTest, FailWithMessage) {
 
 TEST_F(CodeGenTest, FailWithoutMessage) {
     EXPECT_EQ(runTestSource(
-        "describe(\"fail bare\", function():\n"
-        "    it(\"fails generically\", function():\n"
+        "describe(\"fail bare\", ():\n"
+        "    it(\"fails generically\", ():\n"
         "        fail()\n"
         "    )\n"
         ")\n"

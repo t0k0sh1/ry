@@ -200,7 +200,7 @@ Enables parameterized testing by running an `it` block multiple times with diffe
 
 ```
 @each([(arg1, arg2, ...), ...])
-it("description with {0} and {1}", function(param1: type, param2: type):
+it("description with {0} and {1}", (param1: type, param2: type):
     # test body
 )
 ```
@@ -220,7 +220,7 @@ Enables property-based testing by generating random inputs for an `it` block.
 
 ```
 @property(count=100)
-it("property name", function(a: int, b: int):
+it("property name", (a: int, b: int):
     # test body with random values
 )
 ```

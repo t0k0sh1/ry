@@ -58,7 +58,7 @@ TEST_F(CodeGenTest, MissingReturnBool) {
 
 TEST_F(CodeGenTest, MissingReturnLambdaExplicitType) {
     EXPECT_THROW(runSource(
-        "f = function() -> int:\n"
+        "f = () -> int:\n"
         "    x = 1\n"
         "f()\n"
     ), std::runtime_error);

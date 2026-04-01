@@ -1,29 +1,29 @@
-describe("@each parameterized tests", function():
+describe("@each parameterized tests", ():
   @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-  it("adds {0} + {1} = {2}", function(a: int, b: int, expected: int):
+  it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
   )
   @each([("hello", 5), ("", 0), ("ry", 2)])
-  it("length of \"{0}\" is {1}", function(s: str, expected: int):
+  it("length of \"{0}\" is {1}", (s: str, expected: int):
     expect(length(s)).to_eq(expected)
   )
 )
 
-describe("@property tests", function():
+describe("@property tests", ():
   @property(count=100)
-  it("addition is commutative", function(a: int, b: int):
+  it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
   )
   @property(count=50)
-  it("double is always even", function(n: int):
+  it("double is always even", (n: int):
     expect(n * 2 % 2).to_eq(0)
   )
   @property(count=20)
-  it("bool identity", function(x: bool):
+  it("bool identity", (x: bool):
     expect(x == x).to_be_true()
   )
   @property(count=20)
-  it("str length is non-negative", function(s: str):
+  it("str length is non-negative", (s: str):
     expect(length(s) >= 0).to_be_true()
   )
 )

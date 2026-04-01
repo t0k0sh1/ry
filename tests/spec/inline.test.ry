@@ -20,20 +20,20 @@ function fact(n: int) -> int:
     return 1
   return n * fact(n - 1)
 
-describe("@inline directive", function():
-  it("default (always)", function():
+describe("@inline directive", ():
+  it("default (always)", ():
     expect(add(3, 4)).to_eq(7)
   )
-  it("mode=always", function():
+  it("mode=always", ():
     expect(mul(5, 6)).to_eq(30)
   )
-  it("mode=hint", function():
+  it("mode=hint", ():
     expect(sub(10, 3)).to_eq(7)
   )
-  it("mode=never", function():
+  it("mode=never", ():
     expect(negate(-5)).to_eq(5)
   )
-  it("recursive", function():
+  it("recursive", ():
     expect(fact(5)).to_eq(120)
   )
 )

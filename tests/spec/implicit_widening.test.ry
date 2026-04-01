@@ -28,56 +28,56 @@ function prefer_widening(x) -> str:
 
 # --- tests ---
 
-describe("basic implicit widening", function():
-  it("int to float", function():
+describe("basic implicit widening", ():
+  it("int to float", ():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 to int", function():
+  it("u8 to int", ():
     b: u8 = 200
     result = accept_int(b)
     expect(result).to_eq(200)
   )
 
-  it("u8 to float", function():
+  it("u8 to float", ():
     b: u8 = 42
     result = accept_float(b)
     expect(result).to_eq(42.0)
   )
 )
 
-describe("return value correctness", function():
-  it("int widened to float returns float", function():
+describe("return value correctness", ():
+  it("int widened to float returns float", ():
     result = double_float(5)
     expect(result).to_eq(10.0)
   )
 
-  it("u8 widened to int preserves unsigned value", function():
+  it("u8 widened to int preserves unsigned value", ():
     b: u8 = 255
     result = accept_int(b)
     expect(result).to_eq(255)
   )
 )
 
-describe("overload resolution priority", function():
-  it("exact when wins over widening", function():
+describe("overload resolution priority", ():
+  it("exact when wins over widening", ():
     expect(typed(5)).to_eq("int")
     expect(typed(5.0)).to_eq("float")
   )
 
-  it("widening wins over any", function():
+  it("widening wins over any", ():
     expect(prefer_widening(5)).to_eq("float")
   )
 )
 
-describe("multi-arg widening", function():
-  it("both args widened", function():
+describe("multi-arg widening", ():
+  it("both args widened", ():
     result = add_floats(1, 2)
     expect(result).to_eq(3.0)
   )
 
-  it("mixed: one exact, one widened", function():
+  it("mixed: one exact, one widened", ():
     result = add_floats(1, 2.0)
     expect(result).to_eq(3.0)
   )

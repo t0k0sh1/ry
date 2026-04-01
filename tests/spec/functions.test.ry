@@ -34,34 +34,34 @@ function operator==(a: Vec2, b: Vec2) -> bool:
 function operator+=(a: Vec2, b: Vec2) -> Vec2:
   return Vec2(a.x + b.x, a.y + b.y)
 
-describe("basic function", function():
-  it("call", function():
+describe("basic function", ():
+  it("call", ():
     expect(add(1, 2)).to_eq(3)
   )
 )
 
-describe("recursion", function():
-  it("factorial", function():
+describe("recursion", ():
+  it("factorial", ():
     expect(factorial(5)).to_eq(120)
   )
 )
 
-describe("overloading", function():
-  it("1 arg", function():
+describe("overloading", ():
+  it("1 arg", ():
     expect(area(5)).to_eq(25)
   )
-  it("2 args", function():
+  it("2 args", ():
     expect(area(3, 4)).to_eq(12)
   )
 )
 
-describe("lambda", function():
-  it("single expression", function():
-    double = function(x: int) => x * 2
+describe("lambda", ():
+  it("single expression", ():
+    double = (x: int): x * 2
     expect(double(5)).to_eq(10)
   )
-  it("multi-line", function():
-    abs_val = function(x: int):
+  it("multi-line", ():
+    abs_val = (x: int):
       if x < 0:
         return -x
       return x
@@ -69,35 +69,35 @@ describe("lambda", function():
   )
 )
 
-describe("closure", function():
-  it("captures by value", function():
+describe("closure", ():
+  it("captures by value", ():
     base = 10
-    add_base = function(x: int) => x + base
+    add_base = (x: int): x + base
     base = 99
     expect(add_base(5)).to_eq(15)
   )
-  it("captures bool", function():
+  it("captures bool", ():
     flag = true
-    check = function() => flag
+    check = (): flag
     expect(check()).to_be_true()
   )
 )
 
-describe("higher-order function", function():
-  it("function as argument", function():
-    res = apply(function(x: int) => x * 3, 5)
+describe("higher-order function", ():
+  it("function as argument", ():
+    res = apply((x: int): x * 3, 5)
     expect(res).to_eq(15)
   )
-  it("named function as argument", function():
+  it("named function as argument", ():
     expect(apply(double, 5)).to_eq(10)
   )
 )
 
-describe("UFCS", function():
-  it("method-style call", function():
+describe("UFCS", ():
+  it("method-style call", ():
     expect(double(5)).to_eq(10)
   )
-  it("chaining", function():
+  it("chaining", ():
     expect(add_one(double(5))).to_eq(11)
   )
 )
@@ -122,40 +122,40 @@ function infer_union(flag: bool):
     return 42
   return 3.14
 
-describe("return type inference", function():
-  it("infers int", function():
+describe("return type inference", ():
+  it("infers int", ():
     expect(infer_int()).to_eq(42)
   )
-  it("infers float", function():
+  it("infers float", ():
     expect(infer_float()).to_eq(3.14)
   )
-  it("infers str", function():
+  it("infers str", ():
     expect(infer_str()).to_eq("hello")
   )
-  it("infers bool", function():
+  it("infers bool", ():
     expect(infer_bool()).to_be_true()
   )
-  it("infers union type from mixed returns", function():
+  it("infers union type from mixed returns", ():
     x = infer_union(true)
     y = infer_union(false)
     expect(true).to_be_true()
   )
 )
 
-describe("operator overloading", function():
-  it("binary +", function():
+describe("operator overloading", ():
+  it("binary +", ():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(3.0, 4.0)
     v3 = v1 + v2
     expect(v3.x).to_eq(4.0)
     expect(v3.y).to_eq(6.0)
   )
-  it("== comparison", function():
+  it("== comparison", ():
     v1 = Vec2(1.0, 2.0)
     v2 = Vec2(1.0, 2.0)
     expect(v1 == v2).to_be_true()
   )
-  it("compound += calls operator+=", function():
+  it("compound += calls operator+=", ():
     v = Vec2(1.0, 2.0)
     v += Vec2(3.0, 4.0)
     expect(v.x).to_eq(4.0)
@@ -171,14 +171,14 @@ function sum_to(n: int, acc: int) -> int:
 function get_value() -> int:
   return 42
 
-describe("zero arg function", function():
-  it("returns value", function():
+describe("zero arg function", ():
+  it("returns value", ():
     expect(get_value()).to_eq(42)
   )
 )
 
-describe("tail call optimization", function():
-  it("self-recursive tail call does not overflow", function():
+describe("tail call optimization", ():
+  it("self-recursive tail call does not overflow", ():
     expect(sum_to(1000000, 0)).to_eq(500000500000)
   )
 )

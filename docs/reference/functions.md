@@ -271,7 +271,7 @@ Anonymous functions can be defined inline.
  (param_name, ...): expression
 
 # Multi-line block
-function(param_name: type, ...):
+(param_name: type, ...):
     # multiple statements
     return value
 

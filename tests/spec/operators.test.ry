@@ -1,174 +1,174 @@
-describe("arithmetic", function():
-  it("addition", function():
+describe("arithmetic", ():
+  it("addition", ():
     expect(1 + 2).to_eq(3)
   )
-  it("subtraction", function():
+  it("subtraction", ():
     expect(5 - 3).to_eq(2)
   )
-  it("multiplication", function():
+  it("multiplication", ():
     expect(4 * 3).to_eq(12)
   )
-  it("division returns float", function():
+  it("division returns float", ():
     expect(7 / 2).to_eq(3.5)
   )
-  it("integer division", function():
+  it("integer division", ():
     expect(7 // 2).to_eq(3)
   )
-  it("floor division with negative dividend", function():
+  it("floor division with negative dividend", ():
     expect(-7 // 2).to_eq(-4)
   )
-  it("floor division with negative divisor", function():
+  it("floor division with negative divisor", ():
     expect(7 // -2).to_eq(-4)
   )
-  it("floor division with both negative", function():
+  it("floor division with both negative", ():
     expect(-7 // -2).to_eq(3)
   )
-  it("floor division with float operands", function():
+  it("floor division with float operands", ():
     expect(7.0 // 2.0).to_eq(3.0)
     expect(-7.0 // 2.0).to_eq(-4.0)
   )
-  it("floor division with mixed operands", function():
+  it("floor division with mixed operands", ():
     expect(7.0 // 2).to_eq(3.0)
     expect(7 // 2.0).to_eq(3.0)
     expect(-7.0 // 2).to_eq(-4.0)
     expect(7 // -2.0).to_eq(-4.0)
   )
-  it("modulo", function():
+  it("modulo", ():
     expect(7 % 3).to_eq(1)
   )
-  it("modulo negative dividend", function():
+  it("modulo negative dividend", ():
     expect(-7 % 3).to_eq(2)
   )
-  it("modulo negative divisor", function():
+  it("modulo negative divisor", ():
     expect(7 % -3).to_eq(-2)
   )
-  it("modulo both negative", function():
+  it("modulo both negative", ():
     expect(-7 % -3).to_eq(-1)
   )
-  it("modulo zero dividend", function():
+  it("modulo zero dividend", ():
     expect(0 % 5).to_eq(0)
   )
-  it("floor div and modulo identity", function():
+  it("floor div and modulo identity", ():
     expect((-7 // 3) * 3 + (-7 % 3)).to_eq(-7)
     expect((7 // -3) * -3 + (7 % -3)).to_eq(7)
     expect((-7 // -3) * -3 + (-7 % -3)).to_eq(-7)
   )
-  it("float modulo", function():
+  it("float modulo", ():
     expect(7.5 % 2.5).to_eq(0.0)
   )
-  it("float modulo negative", function():
+  it("float modulo negative", ():
     expect(-7.0 % 2.0).to_eq(1.0)
   )
-  it("float floor div", function():
+  it("float floor div", ():
     expect(7.5 // 2.0).to_eq(3.0)
   )
-  it("exponentiation", function():
+  it("exponentiation", ():
     expect(2 ** 10).to_eq(1024.0)
   )
-  it("exponentiation zero", function():
+  it("exponentiation zero", ():
     expect(1 ** 0).to_eq(1.0)
   )
-  it("exponentiation negative", function():
+  it("exponentiation negative", ():
     expect(2 ** -1).to_eq(0.5)
   )
-  it("zero times zero", function():
+  it("zero times zero", ():
     expect(0 * 0).to_eq(0)
   )
-  it("zero plus zero", function():
+  it("zero plus zero", ():
     expect(0 + 0).to_eq(0)
   )
 )
 
-describe("unary", function():
-  it("unary minus", function():
+describe("unary", ():
+  it("unary minus", ():
     expect(-5).to_eq(-5)
   )
-  it("unary plus", function():
+  it("unary plus", ():
     expect(+5).to_eq(5)
   )
 )
 
-describe("string operators", function():
-  it("concatenation", function():
+describe("string operators", ():
+  it("concatenation", ():
     expect("foo" + "bar").to_eq("foobar")
   )
-  it("repetition", function():
+  it("repetition", ():
     expect("ab" * 3).to_eq("ababab")
   )
 )
 
-describe("string auto concatenation", function():
-  it("str + int", function():
+describe("string auto concatenation", ():
+  it("str + int", ():
     expect("abc" + 2).to_eq("abc2")
   )
-  it("int + str", function():
+  it("int + str", ():
     expect(1 + "abc").to_eq("1abc")
   )
-  it("str + float", function():
+  it("str + float", ():
     expect("pi=" + 3.14).to_eq("pi=3.14")
   )
-  it("str + bool", function():
+  it("str + bool", ():
     expect("ok=" + true).to_eq("ok=true")
   )
-  it("bool + str", function():
+  it("bool + str", ():
     expect(false + " is false").to_eq("false is false")
   )
-  it("float + str", function():
+  it("float + str", ():
     expect(3.14 + " is pi").to_eq("3.14 is pi")
   )
 )
 
-describe("comparison", function():
-  it("equal", function():
+describe("comparison", ():
+  it("equal", ():
     expect(1 == 1).to_be_true()
   )
-  it("not equal", function():
+  it("not equal", ():
     expect(1 != 2).to_be_true()
   )
-  it("less than", function():
+  it("less than", ():
     expect(1).to_be_less_than(2)
   )
-  it("less than or equal", function():
+  it("less than or equal", ():
     expect(2).to_be_less_than_or_eq(2)
   )
-  it("greater than", function():
+  it("greater than", ():
     expect(3).to_be_greater_than(2)
   )
-  it("greater than or equal", function():
+  it("greater than or equal", ():
     expect(3).to_be_greater_than_or_eq(3)
   )
-  it("string comparison", function():
+  it("string comparison", ():
     expect("abc" < "abd").to_be_true()
   )
-  it("string equality", function():
+  it("string equality", ():
     expect("abc" == "abc").to_be_true()
     expect("" == "").to_be_true()
   )
-  it("empty string less than non-empty", function():
+  it("empty string less than non-empty", ():
     expect("" < "a").to_be_true()
   )
-  it("float equality", function():
+  it("float equality", ():
     expect(3.14 == 3.14).to_be_true()
   )
 )
 
-describe("logical", function():
-  it("and true", function():
+describe("logical", ():
+  it("and true", ():
     expect(true and true).to_be_true()
   )
-  it("and false", function():
+  it("and false", ():
     expect(true and false).to_be_false()
   )
-  it("or true", function():
+  it("or true", ():
     expect(false or true).to_be_true()
   )
-  it("or false", function():
+  it("or false", ():
     expect(false or false).to_be_false()
   )
-  it("not true", function():
+  it("not true", ():
     expect(not true).to_be_false()
   )
-  it("not false", function():
+  it("not false", ():
     expect(not false).to_be_true()
   )
 )
@@ -176,67 +176,67 @@ describe("logical", function():
 function side_effect_flag() -> bool:
   return true
 
-describe("short-circuit evaluation", function():
-  it("and short-circuits on false", function():
-    mock("side_effect_flag", function() => true)
+describe("short-circuit evaluation", ():
+  it("and short-circuits on false", ():
+    mock("side_effect_flag", (): true)
     r = false and side_effect_flag()
     expect(r).to_be_false()
     expect(verify("side_effect_flag")).to_eq(0)
   )
-  it("or short-circuits on true", function():
-    mock("side_effect_flag", function() => false)
+  it("or short-circuits on true", ():
+    mock("side_effect_flag", (): false)
     r = true or side_effect_flag()
     expect(r).to_be_true()
     expect(verify("side_effect_flag")).to_eq(0)
   )
 )
 
-describe("bitwise", function():
-  it("AND", function():
+describe("bitwise", ():
+  it("AND", ():
     expect(12 & 10).to_eq(8)
   )
-  it("OR", function():
+  it("OR", ():
     expect(12 | 10).to_eq(14)
   )
-  it("XOR", function():
+  it("XOR", ():
     expect(12 ^ 10).to_eq(6)
   )
-  it("NOT", function():
+  it("NOT", ():
     expect(~0).to_eq(-1)
   )
-  it("left shift", function():
+  it("left shift", ():
     expect(1 << 4).to_eq(16)
   )
-  it("arithmetic right shift", function():
+  it("arithmetic right shift", ():
     expect(16 >> 2).to_eq(4)
   )
-  it("logical right shift", function():
+  it("logical right shift", ():
     expect(-1 >>> 1).to_eq(9223372036854775807)
   )
-  it("shift by zero", function():
+  it("shift by zero", ():
     expect(0 << 0).to_eq(0)
     expect(0 >> 0).to_eq(0)
     expect(42 << 0).to_eq(42)
   )
-  it("NOT of minus one", function():
+  it("NOT of minus one", ():
     expect(~(-1)).to_eq(0)
   )
 )
 
-describe("when expression", function():
-  it("true branch", function():
+describe("when expression", ():
+  it("true branch", ():
     expect(when:
       true => 10
       else => 20
     ).to_eq(10)
   )
-  it("false branch", function():
+  it("false branch", ():
     expect(when:
       false => 10
       else => 20
     ).to_eq(20)
   )
-  it("multi-branch", function():
+  it("multi-branch", ():
     x = 2
     r = when:
       x == 1 => "one"
@@ -245,7 +245,7 @@ describe("when expression", function():
       else => "other"
     expect(r).to_eq("two")
   )
-  it("all false falls to else", function():
+  it("all false falls to else", ():
     x = 99
     r = when:
       x == 1 => "one"
@@ -253,7 +253,7 @@ describe("when expression", function():
       else => "none"
     expect(r).to_eq("none")
   )
-  it("first false second true", function():
+  it("first false second true", ():
     x = 5
     r = when:
       x > 10 => "big"
@@ -263,145 +263,145 @@ describe("when expression", function():
   )
 )
 
-describe("null coalescing", function():
-  it("Some value", function():
+describe("null coalescing", ():
+  it("Some value", ():
     a: int? = Some(10)
     expect(a ?? 0).to_eq(10)
   )
-  it("None value", function():
+  it("None value", ():
     b: int? = none
     expect(b ?? 0).to_eq(0)
   )
-  it("Some(0) is not None", function():
+  it("Some(0) is not None", ():
     c: int? = Some(0)
     expect(c ?? 99).to_eq(0)
   )
 )
 
-describe("compound assignment", function():
-  it("+=", function():
+describe("compound assignment", ():
+  it("+=", ():
     x = 10
     x = x + 5
     expect(x).to_eq(15)
   )
-  it("-=", function():
+  it("-=", ():
     x = 10
     x = x - 3
     expect(x).to_eq(7)
   )
-  it("*=", function():
+  it("*=", ():
     x = 4
     x = x * 3
     expect(x).to_eq(12)
   )
-  it("//=", function():
+  it("//=", ():
     x = 10
     x = x // 3
     expect(x).to_eq(3)
   )
-  it("%=", function():
+  it("%=", ():
     x = 10
     x = x % 3
     expect(x).to_eq(1)
   )
-  it("&=", function():
+  it("&=", ():
     x = 12
     x = x & 10
     expect(x).to_eq(8)
   )
-  it("|=", function():
+  it("|=", ():
     x = 12
     x = x | 3
     expect(x).to_eq(15)
   )
-  it("^=", function():
+  it("^=", ():
     x = 12
     x = x ^ 10
     expect(x).to_eq(6)
   )
-  it("<<=", function():
+  it("<<=", ():
     x = 1
     x = x << 4
     expect(x).to_eq(16)
   )
-  it(">>=", function():
+  it(">>=", ():
     x = 16
     x = x >> 2
     expect(x).to_eq(4)
   )
 )
 
-describe("membership", function():
-  it("in Set", function():
+describe("membership", ():
+  it("in Set", ():
     s = {1, 2, 3}
     expect(s).to_contain(2)
   )
-  it("not in Set", function():
+  it("not in Set", ():
     s = {1, 2, 3}
     expect(s).to_not_contain(4)
   )
-  it("in List", function():
+  it("in List", ():
     xs = [1, 2, 3]
     expect(xs).to_contain(2)
   )
-  it("not in List", function():
+  it("not in List", ():
     xs = [1, 2, 3]
     expect(xs).to_not_contain(4)
   )
-  it("in Map", function():
+  it("in Map", ():
     m = {"a": 1}
     expect(m).to_contain("a")
   )
-  it("not in Map", function():
+  it("not in Map", ():
     m = {"a": 1}
     expect(m).to_not_contain("b")
   )
 )
 
-describe("increment/decrement", function():
-  it("x++ increments int", function():
+describe("increment/decrement", ():
+  it("x++ increments int", ():
     x = 10
     x = x + 1
     expect(x).to_eq(11)
   )
-  it("x-- decrements int", function():
+  it("x-- decrements int", ():
     x = 10
     x = x - 1
     expect(x).to_eq(9)
   )
-  it("multiple increments", function():
+  it("multiple increments", ():
     x = 0
     x = x + 1
     x = x + 1
     x = x + 1
     expect(x).to_eq(3)
   )
-  it("decrement to negative", function():
+  it("decrement to negative", ():
     x = 1
     x = x - 1
     x = x - 1
     expect(x).to_eq(-1)
   )
-  it("f++ increments float", function():
+  it("f++ increments float", ():
     f = 1.5
     f = f + 1
     expect(f).to_eq(2.5)
   )
-  it("f-- decrements float", function():
+  it("f-- decrements float", ():
     f = 3.5
     f = f - 1
     expect(f).to_eq(2.5)
   )
 )
 
-describe("range operator", function():
-  it("creates inclusive range", function():
+describe("range operator", ():
+  it("creates inclusive range", ():
     xs = 1..5
     expect(xs).to_have_length(5)
     expect(xs[0]).to_eq(1)
     expect(xs[4]).to_eq(5)
   )
-  it("same start and end", function():
+  it("same start and end", ():
     xs = 5..5
     expect(xs).to_have_length(1)
     expect(xs[0]).to_eq(5)

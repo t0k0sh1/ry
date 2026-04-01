@@ -95,7 +95,7 @@ function complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
 function pending_tasks(tasks: List<Task>) -> List<Task>:
     return tasks
         .iter()
-        .filter(function(t: Task) => t.status == Status::Todo)
+        .filter((t: Task): t.status == Status::Todo)
         .to_list()
 ```
 
@@ -189,20 +189,20 @@ Create `tests/model.test.ry`:
 ```python
 from model import create_task, add_task, find_task, complete_task, pending_tasks, Status, Task
 
-describe("Task model", function():
-    it("creates a task with default status", function():
+describe("Task model", ():
+    it("creates a task with default status", ():
         t = create_task(1, "Test task")
         expect(t.status == Status::Todo).to_be_true()
     )
 
-    it("adds tasks to a list", function():
+    it("adds tasks to a list", ():
         tasks: List<Task> = []
         tasks = add_task(tasks, "First")
         tasks = add_task(tasks, "Second")
         expect(length(tasks)).to_eq(2)
     )
 
-    it("finds a task by id", function():
+    it("finds a task by id", ():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Target")
         match find_task(tasks, 1):
@@ -212,12 +212,12 @@ describe("Task model", function():
                 fail("expected to find task")
     )
 
-    it("returns None for missing task", function():
+    it("returns None for missing task", ():
         tasks: List<Task> = []
         expect(find_task(tasks, 99)).to_be_none()
     )
 
-    it("completes a task", function():
+    it("completes a task", ():
         tasks: List<Task> = []
         tasks = add_task(tasks, "Do it")
         match complete_task(tasks, 1):
@@ -228,7 +228,7 @@ describe("Task model", function():
                 fail("unexpected error")
     )
 
-    it("returns error for invalid id", function():
+    it("returns error for invalid id", ():
         tasks: List<Task> = []
         match complete_task(tasks, 999):
             case Ok(_):

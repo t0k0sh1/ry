@@ -155,28 +155,28 @@ TEST_F(CodeGenTest, RangeUsedAsList) {
 
 TEST_F(CodeGenTest, LambdaBasicExpr) {
     std::string src =
-        "double = function(x: int) => x * 2\n"
+        "double = (x: int): x * 2\n"
         "print(double(5))";
     EXPECT_EQ(runSource(src), "10\n");
 }
 
 TEST_F(CodeGenTest, LambdaNoParams) {
     std::string src =
-        "answer = function() => 42\n"
+        "answer = (): 42\n"
         "print(answer())";
     EXPECT_EQ(runSource(src), "42\n");
 }
 
 TEST_F(CodeGenTest, LambdaMultipleParams) {
     std::string src =
-        "add = function(a: int, b: int) => a + b\n"
+        "add = (a: int, b: int): a + b\n"
         "print(add(3, 4))";
     EXPECT_EQ(runSource(src), "7\n");
 }
 
 TEST_F(CodeGenTest, LambdaFloat) {
     std::string src =
-        "half = function(x: float) => x / 2.0\n"
+        "half = (x: float): x / 2.0\n"
         "print(half(7.0))";
     EXPECT_EQ(runSource(src), "3.5\n");
 }
@@ -185,7 +185,7 @@ TEST_F(CodeGenTest, LambdaAsArgument) {
     std::string src =
         "function apply(f: function(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "doubled = apply(function(n: int) => n * 2, 10)\n"
+        "doubled = apply((n: int): n * 2, 10)\n"
         "print(doubled)";
     EXPECT_EQ(runSource(src), "20\n");
 }
@@ -194,7 +194,7 @@ TEST_F(CodeGenTest, LambdaStoredAndPassed) {
     std::string src =
         "function apply(f: function(int) -> int, x: int) -> int:\n"
         "    return f(x)\n"
-        "triple = function(n: int) => n * 3\n"
+        "triple = (n: int): n * 3\n"
         "print(apply(triple, 5))";
     EXPECT_EQ(runSource(src), "15\n");
 }
@@ -211,7 +211,7 @@ TEST_F(CodeGenTest, FunctionReference) {
 
 TEST_F(CodeGenTest, LambdaBoolReturn) {
     std::string src =
-        "is_positive = function(x: int) => x > 0\n"
+        "is_positive = (x: int): x > 0\n"
         "print(is_positive(5))\n"
         "print(is_positive(-3))";
     EXPECT_EQ(runSource(src), "true\nfalse\n");
@@ -219,7 +219,7 @@ TEST_F(CodeGenTest, LambdaBoolReturn) {
 
 TEST_F(CodeGenTest, LambdaMultiLine) {
     std::string src =
-        "abs = function(x: int):\n"
+        "abs = (x: int):\n"
         "    if x < 0:\n"
         "        return -x\n"
         "    return x\n"
@@ -231,7 +231,7 @@ TEST_F(CodeGenTest, LambdaMultiLine) {
 TEST_F(CodeGenTest, LambdaClosure) {
     std::string src =
         "offset = 10\n"
-        "add_offset = function(x: int) => x + offset\n"
+        "add_offset = (x: int): x + offset\n"
         "print(add_offset(5))\n"
         "print(add_offset(20))";
     EXPECT_EQ(runSource(src), "15\n30\n");
@@ -239,14 +239,14 @@ TEST_F(CodeGenTest, LambdaClosure) {
 
 TEST_F(CodeGenTest, LambdaArgCountError) {
     std::string src =
-        "f = function(x: int) => x\n"
+        "f = (x: int): x\n"
         "f(1, 2)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, LambdaArgTypeError) {
     std::string src =
-        "f = function(x: int) => x\n"
+        "f = (x: int): x\n"
         "f(3.14)";
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
@@ -1162,8 +1162,8 @@ TEST_F(CodeGenTest, RawStringConcat) {
 
 TEST_F(CodeGenTest, ExpectToNotEq) {
     std::string src =
-        "describe(\"matchers\", function():\n"
-        "    it(\"not equal\", function():\n"
+        "describe(\"matchers\", ():\n"
+        "    it(\"not equal\", ():\n"
         "        expect(1).to_not_eq(2)\n"
         "    )\n"
         ")";
@@ -1174,8 +1174,8 @@ TEST_F(CodeGenTest, ExpectToNotEq) {
 
 TEST_F(CodeGenTest, ExpectToBeSome) {
     std::string src =
-        "describe(\"matchers\", function():\n"
-        "    it(\"some\", function():\n"
+        "describe(\"matchers\", ():\n"
+        "    it(\"some\", ():\n"
         "        x = Some(5)\n"
         "        expect(x).to_be_some()\n"
         "    )\n"
@@ -1187,8 +1187,8 @@ TEST_F(CodeGenTest, ExpectToBeSome) {
 
 TEST_F(CodeGenTest, ExpectToContainList) {
     std::string src =
-        "describe(\"matchers\", function():\n"
-        "    it(\"contains\", function():\n"
+        "describe(\"matchers\", ():\n"
+        "    it(\"contains\", ():\n"
         "        xs = [1, 2, 3]\n"
         "        expect(xs).to_contain(2)\n"
         "    )\n"
@@ -1198,8 +1198,8 @@ TEST_F(CodeGenTest, ExpectToContainList) {
 
 TEST_F(CodeGenTest, ExpectToContainString) {
     std::string src =
-        "describe(\"matchers\", function():\n"
-        "    it(\"contains str\", function():\n"
+        "describe(\"matchers\", ():\n"
+        "    it(\"contains str\", ():\n"
         "        s = \"hello world\"\n"
         "        expect(s).to_contain(\"world\")\n"
         "    )\n"
@@ -1211,11 +1211,11 @@ TEST_F(CodeGenTest, ExpectToContainString) {
 
 TEST_F(CodeGenTest, LambdaArgDescribeIt) {
     std::string src =
-        "describe(\"Calculator\", function():\n"
-        "    it(\"adds\", function():\n"
+        "describe(\"Calculator\", ():\n"
+        "    it(\"adds\", ():\n"
         "        expect(1 + 2).to_eq(3)\n"
         "    )\n"
-        "    it(\"subtracts\", function():\n"
+        "    it(\"subtracts\", ():\n"
         "        expect(5 - 3).to_eq(2)\n"
         "    )\n"
         ")";

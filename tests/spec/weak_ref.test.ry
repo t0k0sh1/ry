@@ -1,8 +1,8 @@
 function make_list() -> List<int>:
   return [10, 20, 30]
 
-describe("Weak references", function():
-  it("weak ref upgrade returns Some when strong ref is alive", function():
+describe("Weak references", ():
+  it("weak ref upgrade returns Some when strong ref is alive", ():
     xs = [1, 2, 3]
     w: weak List<int> = weak xs
     match w:
@@ -12,7 +12,7 @@ describe("Weak references", function():
         fail("expected Some but got None")
   )
 
-  it("weak ref upgrade returns Some for temporary (strong ref still alive in scope)", function():
+  it("weak ref upgrade returns Some for temporary (strong ref still alive in scope)", ():
     w: weak List<int> = weak make_list()
     # The temporary return value is still alive within this expression scope,
     # so the weak ref can still be upgraded to Some.
@@ -23,7 +23,7 @@ describe("Weak references", function():
         fail("expected Some — temporary should still be alive in scope")
   )
 
-  it("weak ref pattern matching with Some", function():
+  it("weak ref pattern matching with Some", ():
     data = [42, 99]
     ref: weak List<int> = weak data
     result = 0
@@ -35,14 +35,14 @@ describe("Weak references", function():
     expect(result).to_eq(2)
   )
 
-  it("weak ref with coalesce operator on string", function():
+  it("weak ref with coalesce operator on string", ():
     s = "coalesce"
     w: weak str = weak s
     val = w ?? "default"
     expect(val).to_eq("coalesce")
   )
 
-  it("weak ref reassignment", function():
+  it("weak ref reassignment", ():
     a = [1, 2]
     b = [3, 4, 5]
     w: weak List<int> = weak a

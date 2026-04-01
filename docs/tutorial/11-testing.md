@@ -28,22 +28,22 @@ When run without arguments, `ry test` searches for `package.toml` to find the pr
 Use `describe` to group related tests and `it` to define individual test cases.
 
 ```python
-describe("Calculator", function():
-    it("adds integers", function():
+describe("Calculator", ():
+    it("adds integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("subtracts integers", function():
+    it("subtracts integers", ():
         expect(5 - 3).to_eq(2)
 
     )
-    it("checks booleans", function():
+    it("checks booleans", ():
         expect(3 > 1).to_be_true()
     )
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `function():` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `():` as the second parameter
 - `describe`, `it`, `expect`, `mock`, and `verify` are only available with `ry test` (compile error with normal `ry` execution)
 
 ---
@@ -89,13 +89,13 @@ The original function's `require` and `ensure` contracts still run for mocked ca
 function fetch_data() -> str:
     return "real data"
 
-describe("mocking", function():
-    it("replaces function", function():
-        mock(fetch_data, function() => "fake")
+describe("mocking", ():
+    it("replaces function", ():
+        mock(fetch_data, (): "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", function():
+    it("auto-restores", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -106,9 +106,9 @@ describe("mocking", function():
 Returns the number of times a mocked function was called.
 
 ```python
-describe("verify", function():
-    it("counts calls", function():
-        mock(fetch_data, function() => "fake")
+describe("verify", ():
+    it("counts calls", ():
+        mock(fetch_data, (): "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -124,7 +124,7 @@ Use `@each` to run the same test with multiple inputs:
 
 ```python
 @each([(1, 2, 3), (0, 0, 0), (-1, 1, 0)])
-it("adds {0} + {1} = {2}", function(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -139,7 +139,7 @@ Use `@property` to test with randomly generated inputs:
 
 ```python
 @property(count=100)
-it("addition is commutative", function(a: int, b: int):
+it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -160,9 +160,9 @@ function deposit(amount: int, balance: int) -> int:
         v > balance
     return balance + amount
 
-describe("deposit", function():
-    it("mocked version still checks contracts", function():
-        mock(deposit, function(amount: int, balance: int) => balance + amount)
+describe("deposit", ():
+    it("mocked version still checks contracts", ():
+        mock(deposit, (amount: int, balance: int): balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) would terminate with "require failed"
     )

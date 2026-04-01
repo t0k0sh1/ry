@@ -1,62 +1,62 @@
-describe("range quantifiers", function():
-  it("{n} exact", function():
+describe("range quantifiers", ():
+  it("{n} exact", ():
     expect(regex_match("a{3}", "aaa")).to_eq(true)
     expect(regex_match("a{3}", "aa")).to_eq(false)
   )
-  it("{n,m} range", function():
+  it("{n,m} range", ():
     expect(regex_match("a{2,4}", "aaa")).to_eq(true)
     expect(regex_match("a{2,4}", "a")).to_eq(false)
     expect(regex_match("a{2,4}", "aaaaa")).to_eq(false)
   )
-  it("{n,} min only", function():
+  it("{n,} min only", ():
     expect(regex_match("a{2,}", "aa")).to_eq(true)
     expect(regex_match("a{2,}", "aaaa")).to_eq(true)
     expect(regex_match("a{2,}", "a")).to_eq(false)
   )
-  it("digit pattern", function():
+  it("digit pattern", ():
     expect(regex_match("\\d{3}-\\d{4}", "123-4567")).to_eq(true)
     expect(regex_match("\\d{3}-\\d{4}", "12-4567")).to_eq(false)
   )
 )
 
-describe("empty and edge patterns", function():
-  it("empty pattern matches empty string", function():
+describe("empty and edge patterns", ():
+  it("empty pattern matches empty string", ():
     expect(regex_match("", "")).to_eq(true)
   )
-  it("dot matches any character", function():
+  it("dot matches any character", ():
     expect(regex_match(".", "a")).to_eq(true)
     expect(regex_match(".", " ")).to_eq(true)
   )
-  it("dot does not match empty", function():
+  it("dot does not match empty", ():
     expect(regex_match(".", "")).to_eq(false)
   )
-  it("match entire string only", function():
+  it("match entire string only", ():
     expect(regex_match("abc", "abc")).to_eq(true)
     expect(regex_match("abc", "xabcx")).to_eq(false)
   )
-  it("search in empty string", function():
+  it("search in empty string", ():
     expect(regex_search("a", "")).to_eq(-1)
   )
-  it("find_all no matches", function():
+  it("find_all no matches", ():
     matches = regex_find_all("xyz", "hello world")
     expect(length(matches)).to_eq(0)
   )
-  it("replace no matches", function():
+  it("replace no matches", ():
     expect(regex_replace("xyz", "hello", "X")).to_eq("hello")
   )
 )
 
-describe("non-greedy when", function():
-  it("lazy star replace", function():
+describe("non-greedy when", ():
+  it("lazy star replace", ():
     expect(regex_replace("\".*?\"", "\"a\" and \"b\"", "X")).to_eq("X and X")
   )
-  it("lazy plus replace", function():
+  it("lazy plus replace", ():
     expect(regex_replace("a+?", "aaa", "X")).to_eq("XXX")
   )
-  it("lazy full when", function():
+  it("lazy full when", ():
     expect(regex_match("a+?", "aaa")).to_eq(true)
   )
-  it("lazy find_all", function():
+  it("lazy find_all", ():
     tags = regex_find_all("<.*?>", "<x> <yy> <zzz>")
     expect(length(tags)).to_eq(3)
     expect(tags[0]).to_eq("<x>")

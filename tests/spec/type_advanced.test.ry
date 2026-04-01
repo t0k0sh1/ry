@@ -1,107 +1,107 @@
-describe("f-string", function():
-  it("int interpolation", function():
+describe("f-string", ():
+  it("int interpolation", ():
     x = 42
     expect(f"value: {x}").to_eq("value: 42")
   )
-  it("float interpolation", function():
+  it("float interpolation", ():
     x = 3.14
     expect(f"pi: {x}").to_eq("pi: 3.14")
   )
-  it("bool interpolation", function():
+  it("bool interpolation", ():
     x = true
     expect(f"flag: {x}").to_eq("flag: true")
   )
-  it("expression interpolation", function():
+  it("expression interpolation", ():
     a = 1
     b = 2
     expect(f"{a} + {b} = {a + b}").to_eq("1 + 2 = 3")
   )
-  it("escaped braces", function():
+  it("escaped braces", ():
     expect("{braces}").to_eq("{braces}")
   )
 )
 
-describe("string auto concat edge cases", function():
-  it("empty string + int", function():
+describe("string auto concat edge cases", ():
+  it("empty string + int", ():
     expect("" + 0).to_eq("0")
   )
-  it("empty string + bool", function():
+  it("empty string + bool", ():
     expect("" + true).to_eq("true")
   )
-  it("empty string + float", function():
+  it("empty string + float", ():
     expect("" + 3.14).to_eq("3.14")
   )
 )
 
-describe("type cast as", function():
-  it("int to float", function():
+describe("type cast as", ():
+  it("int to float", ():
     expect(42 as float).to_eq(42.0)
   )
-  it("float to int", function():
+  it("float to int", ():
     expect(3.14 as int).to_eq(3)
   )
-  it("int to bool", function():
+  it("int to bool", ():
     expect(1 as bool).to_be_true()
     expect(0 as bool).to_be_false()
   )
-  it("int to str", function():
+  it("int to str", ():
     expect(42 as str).to_eq("42")
   )
-  it("u8 to int", function():
+  it("u8 to int", ():
     b: u8 = 200
     expect(b as int).to_eq(200)
   )
-  it("int to u8 to int", function():
+  it("int to u8 to int", ():
     b = 255 as u8
     expect(b as int).to_eq(255)
   )
-  it("negative float to int truncates toward zero", function():
+  it("negative float to int truncates toward zero", ():
     expect(-3.7 as int).to_eq(-3)
   )
-  it("negative half to int", function():
+  it("negative half to int", ():
     expect(-0.5 as int).to_eq(0)
   )
-  it("zero float to int", function():
+  it("zero float to int", ():
     expect(0.0 as int).to_eq(0)
   )
-  it("one float to int", function():
+  it("one float to int", ():
     expect(1.0 as int).to_eq(1)
   )
-  it("bool to int true", function():
+  it("bool to int true", ():
     expect(true as int).to_eq(1)
   )
-  it("bool to int false", function():
+  it("bool to int false", ():
     expect(false as int).to_eq(0)
   )
 )
 
-describe("type alias", function():
-  it("basic alias", function():
+describe("type alias", ():
+  it("basic alias", ():
     type Meters = float
     d: Meters = 3.14
     expect(d).to_eq(3.14)
   )
 )
 
-describe("Error type", function():
-  it("constructor with message", function():
+describe("Error type", ():
+  it("constructor with message", ():
     e = Error("something went wrong")
     expect(e.message).to_eq("something went wrong")
     expect(e.code).to_eq(0)
   )
-  it("constructor with code", function():
+  it("constructor with code", ():
     e = Error("not found", 404)
     expect(e.message).to_eq("not found")
     expect(e.code).to_eq(404)
   )
 )
 
-describe("Result type", function():
+describe("Result type", ():
   function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
       return Err(Error("division by zero"))
     return Ok(a // b)
-  it("returns Ok on success", function():
+  it("returns Ok on success", ():
     res = safe_divide(10, 2)
     match res:
       case Ok(v):
@@ -109,7 +109,7 @@ describe("Result type", function():
       case Err(e):
         fail("unexpected error")
   )
-  it("returns Err on failure", function():
+  it("returns Err on failure", ():
     res = safe_divide(10, 0)
     match res:
       case Ok(v):
@@ -122,11 +122,11 @@ describe("Result type", function():
 function accept_union(x: int | str) -> bool:
   return true
 
-describe("union type", function():
-  it("accepts int", function():
+describe("union type", ():
+  it("accepts int", ():
     expect(accept_union(42)).to_be_true()
   )
-  it("accepts str", function():
+  it("accepts str", ():
     expect(accept_union("hello")).to_be_true()
   )
 )

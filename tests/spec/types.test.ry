@@ -1,98 +1,98 @@
-describe("int", function():
-  it("decimal literal", function():
+describe("int", ():
+  it("decimal literal", ():
     expect(42).to_eq(42)
   )
-  it("negative", function():
+  it("negative", ():
     expect(-7).to_eq(-7)
   )
-  it("hex literal", function():
+  it("hex literal", ():
     expect(255).to_eq(255)
   )
-  it("binary literal", function():
+  it("binary literal", ():
     expect(10).to_eq(10)
   )
 )
 
-describe("float", function():
-  it("basic", function():
+describe("float", ():
+  it("basic", ():
     expect(3.14).to_eq(3.14)
   )
-  it("zero point five", function():
+  it("zero point five", ():
     expect(0.5).to_eq(0.5)
   )
 )
 
-describe("bool", function():
-  it("true", function():
+describe("bool", ():
+  it("true", ():
     expect(true).to_eq(true)
   )
-  it("false", function():
+  it("false", ():
     expect(false).to_eq(false)
   )
 )
 
-describe("str", function():
-  it("basic", function():
+describe("str", ():
+  it("basic", ():
     expect("hello").to_eq("hello")
   )
-  it("empty", function():
+  it("empty", ():
     expect("").to_eq("")
   )
-  it("escape newline", function():
+  it("escape newline", ():
     expect("a\nb").to_have_length(3)
   )
-  it("escape tab", function():
+  it("escape tab", ():
     expect("a\tb").to_have_length(3)
   )
-  it("escape backslash", function():
+  it("escape backslash", ():
     expect("a\\b").to_have_length(3)
   )
 )
 
-describe("u8", function():
-  it("as int", function():
+describe("u8", ():
+  it("as int", ():
     b: u8 = 42
     expect(b as int).to_eq(42)
   )
-  it("max value", function():
+  it("max value", ():
     b: u8 = 255
     expect(b as int).to_eq(255)
   )
 )
 
-describe("Option", function():
-  it("Some", function():
+describe("Option", ():
+  it("Some", ():
     x: Option<int> = Some(42)
     expect(x).to_be_some()
   )
-  it("None", function():
+  it("None", ():
     x: Option<int> = None
     expect(x).to_be_none()
   )
-  it("none keyword", function():
+  it("none keyword", ():
     x: int? = none
     expect(x).to_be_none()
   )
-  it("shorthand syntax", function():
+  it("shorthand syntax", ():
     x: int? = 42
     expect(x).to_be_some()
   )
-  it("Some(0) is Some not None", function():
+  it("Some(0) is Some not None", ():
     x: int? = Some(0)
     expect(x).to_be_some()
   )
-  it("Some(false) is Some not None", function():
+  it("Some(false) is Some not None", ():
     x: bool? = Some(false)
     expect(x).to_be_some()
   )
-  it("Some empty string is Some", function():
+  it("Some empty string is Some", ():
     x: str? = Some("")
     expect(x).to_be_some()
   )
 )
 
-describe("nested generic type", function():
-  it("Option<Option<int>> Some(Some)", function():
+describe("nested generic type", ():
+  it("Option<Option<int>> Some(Some)", ():
     inner: Option<int> = Some(42)
     x: Option<Option<int>> = Some(inner)
     match x:
@@ -101,18 +101,18 @@ describe("nested generic type", function():
       case None:
         expect(false).to_eq(true)
   )
-  it("Option<Option<int>> None", function():
+  it("Option<Option<int>> None", ():
     x: Option<Option<int>> = None
     expect(x).to_be_none()
   )
 )
 
-describe("Tuple", function():
-  it("element access", function():
+describe("Tuple", ():
+  it("element access", ():
     t = (10, 3.14)
     expect(t.0).to_eq(10)
   )
-  it("second element", function():
+  it("second element", ():
     t = (10, 3.14)
     expect(t.1).to_eq(3.14)
   )
