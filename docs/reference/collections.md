@@ -140,7 +140,7 @@ Removes and returns the last element. Returns `None` if the list is empty.
 ```python
 xs = [1, 2, 3]
 v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
 
@@ -302,7 +302,7 @@ Returns the first element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))   # 10
+print(first(xs))   # Some(10)
 ```
 
 ### last
@@ -311,7 +311,7 @@ Returns the last element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
-print(last(xs))   # 30
+print(last(xs))   # Some(30)
 ```
 
 ### is_empty

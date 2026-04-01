@@ -8,14 +8,14 @@
 
 ## Basic Function Definition
 
-Functions are defined with the `function` keyword. Parameter type declarations are required and use the `name: type` format. The return type is specified after `->`.
+Functions are defined with the `function` keyword. Parameter types use the `name: type` format. If a type is omitted, it defaults to `any`. The return type is specified after `->`.
 
 ```python
 function add(a: int, b: int) -> int:
     return a + b
 ```
 
-- Parameter type declarations are required.
+- Parameter type declarations are recommended. If omitted, the type defaults to `any`.
 - The return type is specified after `->`.
 - Use `return` to return a value.
 
