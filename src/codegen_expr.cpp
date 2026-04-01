@@ -796,33 +796,6 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.expr.merge", fn_);
     std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
-    auto validateBranchTypes = [&](llvm::Value *lhs, llvm::Value *rhs) {
-        if (lhs->getType() != rhs->getType())
-            codegenError("when expression: all branches must have the same type");
-
-        if (lhs->getType() == ptrTy_) {
-            // Classify pointer values by semantic kind using isStringValue and type_meta_
-            enum class SemanticKind { Str, List, Map, Set, Other };
-            auto classify = [&](llvm::Value *v) -> SemanticKind {
-                if (isStringValue(v)) return SemanticKind::Str;
-                if (lookupCollectionType(type_meta_[TM_ListElem], v)) return SemanticKind::List;
-                if (lookupCollectionType(type_meta_[TM_MapKey], v)) return SemanticKind::Map;
-                if (lookupCollectionType(type_meta_[TM_SetElem], v)) return SemanticKind::Set;
-                return SemanticKind::Other;
-            };
-            SemanticKind lhsKind = classify(lhs);
-            SemanticKind rhsKind = classify(rhs);
-            if (lhsKind != rhsKind)
-                codegenError("when expression: all branches must have the same type");
-            if (lhsKind == SemanticKind::List) {
-                llvm::Type *lhsElem = lookupCollectionType(type_meta_[TM_ListElem], lhs);
-                llvm::Type *rhsElem = lookupCollectionType(type_meta_[TM_ListElem], rhs);
-                if (lhsElem && rhsElem && lhsElem != rhsElem)
-                    codegenError("when expression: all branches must have the same type");
-            }
-        }
-    };
-
     llvm::Value *firstVal = nullptr;
 
     for (size_t i = 0; i < e->arms.size(); ++i) {
@@ -837,7 +810,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
         builder_.SetInsertPoint(thenBB);
         llvm::Value *armVal = emitExpr(*arm.value);
         if (!firstVal) firstVal = armVal;
-        else validateBranchTypes(firstVal, armVal);
+        else validateBranchTypes(firstVal, armVal, "when expression");
         llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
         builder_.CreateBr(mergeBB);
         incoming.push_back({armVal, armEndBB});
@@ -847,7 +820,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
 
     llvm::Value *elseVal = emitExpr(*e->else_expr);
     if (!firstVal) firstVal = elseVal;
-    else validateBranchTypes(firstVal, elseVal);
+    else validateBranchTypes(firstVal, elseVal, "when expression");
     llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
     builder_.CreateBr(mergeBB);
     incoming.push_back({elseVal, elseEndBB});

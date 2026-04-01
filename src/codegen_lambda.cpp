@@ -374,6 +374,10 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
             return i64Ty_; // fallback
         } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
             return inferExprType(*v->else_expr, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+            if (!v->arms.empty())
+                return inferExprType(*v->arms[0].value, paramTypeMap);
+            return i64Ty_;
         } else {
             return i64Ty_; // fallback
         }

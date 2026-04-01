@@ -87,6 +87,29 @@ label = when:
 
 This replaces nested ternary expressions and keeps multi-branch value selection readable.
 
+### `match` Expressions
+
+`match` can also be used as an expression with `=>` to return a value from each arm.
+
+```python
+res = match x:
+    case Some(v) => v
+    case None    => 0
+
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+category = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+```
+
+Match expressions support all the same patterns as match statements: literals, variables, enums, `Option`, `Result`, OR patterns (`|`), guards (`if`), and wildcards (`_`). The match must be exhaustive.
+
 ---
 
 ## while Loop

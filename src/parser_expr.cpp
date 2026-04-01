@@ -63,8 +63,70 @@ ExprPtr Parser::parseWhenExpr() {
     return node;
 }
 
+ExprPtr Parser::parseMatchExpr() {
+    Token matchTok = lex_.next(); // consume 'match'
+
+    ExprPtr subject = parseConditional();
+
+    if (lex_.peek().kind != TokenKind::Colon)
+        parseError("expected ':' after match subject");
+    lex_.next(); // consume ':'
+
+    if (lex_.peek().kind != TokenKind::Newline)
+        parseError("expected newline after ':'");
+    lex_.next();
+    skipNewlines();
+
+    if (lex_.peek().kind != TokenKind::Indent)
+        parseError("expected indented block");
+    lex_.next();
+
+    auto matchExpr = std::make_unique<MatchExpr>();
+    matchExpr->subject = std::move(subject);
+
+    while (lex_.peek().kind != TokenKind::Dedent &&
+           lex_.peek().kind != TokenKind::Eof) {
+        if (lex_.peek().kind != TokenKind::Case)
+            parseError(lex_.peek().line, "expected 'case' in match expression");
+        lex_.next(); // consume 'case'
+
+        MatchExprArm arm;
+        arm.pattern = parsePattern();
+        parseOrPattern(arm.pattern);
+
+        if (lex_.peek().kind == TokenKind::If) {
+            lex_.next();
+            arm.guard = parseConditional();
+        }
+
+        if (lex_.peek().kind != TokenKind::FatArrow)
+            parseError("expected '=>' after case pattern in match expression");
+        lex_.next(); // consume '=>'
+
+        arm.value = parseConditional();
+        matchExpr->arms.push_back(std::move(arm));
+
+        if (lex_.peek().kind == TokenKind::Newline)
+            lex_.next();
+        skipNewlines();
+    }
+
+    if (matchExpr->arms.empty())
+        parseError("match expression must have at least one case");
+
+    if (lex_.peek().kind == TokenKind::Dedent)
+        lex_.next();
+
+    auto node = std::make_unique<ExprNode>();
+    node->data = std::move(matchExpr);
+    node->loc = locFromToken(matchTok);
+    return node;
+}
+
 ExprPtr Parser::parseConditional() {
     RecursionGuard guard(*this);
+    if (lex_.peek().kind == TokenKind::Match)
+        return parseMatchExpr();
     if (lex_.peek().kind == TokenKind::When)
         return parseWhenExpr();
     ExprPtr expr = parseNullCoalesce();
