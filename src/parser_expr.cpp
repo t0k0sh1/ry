@@ -366,7 +366,7 @@ ExprPtr Parser::parsePrimary() {
             }
         }
         // Generic enum constructor: MyOption<int>::MySome(42)
-        if (lex_.peek().kind == TokenKind::Less) {
+        if (lex_.peek().kind == TokenKind::Less && couldBeGenericEnum()) {
             // Try to parse as generic type: Ident<Type>::Variant(...)
             auto savedState = lex_.saveState();
             try {
@@ -644,6 +644,33 @@ bool Parser::couldBeLambda() {
     } else {
         // (ident...) could be lambda; (non-ident...) cannot
         result = (first == TokenKind::Ident);
+    }
+    lex_.restoreState(std::move(saved));
+    return result;
+}
+
+bool Parser::couldBeGenericEnum() {
+    // Conservative: return false only when '<' definitely starts a
+    // comparison.  Must cover all tokens that can begin a type
+    // (see parseTypeNameSingle): identifiers, Error, tuple/function
+    // types, and literal types.
+    auto saved = lex_.saveState();
+    lex_.next();
+    TokenKind first = lex_.peek().kind;
+    bool result;
+    switch (first) {
+        case TokenKind::Ident:
+        case TokenKind::ErrorKw:
+        case TokenKind::LParen:
+        case TokenKind::Fn:
+        case TokenKind::Number:
+        case TokenKind::Minus:
+        case TokenKind::String:
+            result = true;
+            break;
+        default:
+            result = false;
+            break;
     }
     lex_.restoreState(std::move(saved));
     return result;
