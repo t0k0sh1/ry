@@ -119,18 +119,19 @@ Lists support `filter`, `map`, and `sort` operations. These return new lists wit
 xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-evens = xs.filter((x: int) => x > 3)
+evens = filter(xs, (x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-doubled = xs.map((x: int) => x * 2)
+doubled = map(xs, (x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
-sorted = [3, 1, 2].sort()
+sorted = sort([3, 1, 2])
 print(sorted)   # [1, 2, 3]
 
-# Chaining
+# Chaining with UFCS (Uniform Function Call Syntax)
+# x.f(args) is equivalent to f(x, args)
 result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
@@ -178,8 +179,8 @@ print(max(xs))   # 5
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))      # 10
-print(last(xs))       # 30
+print(first(xs))      # Some(10)
+print(last(xs))       # Some(30)
 print(is_empty(xs))   # false
 ```
 
@@ -257,7 +258,7 @@ print(m)   # {a: 99, b: 2, c: 3}
 Checks whether a key exists.
 
 ```python
-print(m.has_key("a"))   # true
+print(has_key(m, "a"))   # true
 ```
 
 ### keys, values
@@ -313,9 +314,9 @@ print(5 in s)   # false
 ### add / remove
 
 ```python
-s.add(4)       # Add element
-s.remove(1)    # Remove element
-s.add(2)       # Ignored since it already exists
+add(s, 4)       # Add element
+remove(s, 1)    # Remove element
+add(s, 2)       # Ignored since it already exists
 ```
 
 ### length / print
@@ -355,11 +356,11 @@ Iterators provide a **lazy** way to process collections. Instead of creating int
 
 ### Creating and Consuming
 
-Call `.iter()` on a collection to get an iterator, and `.to_list()` to materialize the results back into a list:
+Call `iter()` on a collection to get an iterator, and `to_list()` to materialize the results back into a list:
 
 ```python
 xs = [1, 2, 3]
-ys = xs.iter().to_list()   # [1, 2, 3]
+ys = to_list(iter(xs))   # [1, 2, 3]
 ```
 
 ### Chaining Operations
@@ -367,6 +368,10 @@ ys = xs.iter().to_list()   # [1, 2, 3]
 You can chain `filter`, `map`, and `take` to build pipelines. This uses the UFCS chaining style you learned in [Functions](05-functions.md):
 
 ```python
+result = to_list(take(map(filter(iter([1, 2, 3, 4, 5]), (x: int) => x > 2), (x: int) => x * 2), 2))
+print(result)   # [6, 8]
+
+# UFCS chaining style (equivalent):
 result = [1, 2, 3, 4, 5]
     .iter()
     .filter((x: int) => x > 2)
@@ -382,12 +387,7 @@ Here is a more realistic example — processing a list of scores:
 scores = [85, 42, 93, 67, 78, 55, 91]
 
 # Get the top 3 passing scores (>= 60), doubled for bonus
-top_bonus = scores
-    .iter()
-    .filter((s: int) => s >= 60)
-    .map((s: int) => s * 2)
-    .take(3)
-    .to_list()
+top_bonus = to_list(take(map(filter(iter(scores), (s: int) => s >= 60), (s: int) => s * 2), 3))
 print(top_bonus)   # [170, 186, 134]
 ```
 
@@ -396,10 +396,10 @@ print(top_bonus)   # [170, 186, 134]
 `next()` returns an `Option` — `Some(value)` if there is a next element, or `None` when the iterator is exhausted. You will learn more about `Option` in [Error Handling](08-error-handling.md).
 
 ```python
-it = [10, 20].iter()
-print(it.next())   # Some(10)
-print(it.next())   # Some(20)
-print(it.next())   # None
+it = iter([10, 20])
+print(next(it))   # Some(10)
+print(next(it))   # Some(20)
+print(next(it))   # None
 ```
 
 ### For Loops
@@ -407,7 +407,7 @@ print(it.next())   # None
 Iterators work directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter((x: int) => x > 1):
+for x in filter(iter([1, 2, 3]), (x: int) => x > 1):
     print(x)   # 2, 3
 ```
 
@@ -416,17 +416,17 @@ for x in [1, 2, 3].iter().filter((x: int) => x > 1):
 Maps produce key-value tuples. Sets produce individual elements:
 
 ```python
-for k, v in {"a": 1, "b": 2}.iter():
+for k, v in iter({"a": 1, "b": 2}):
     print(f"{k} = {v}")
 
-for x in {10, 20, 30}.iter():
+for x in iter({10, 20, 30}):
     print(x)
 ```
 
 ### Common Mistakes
 
-- **Forgetting `.to_list()`**: An iterator pipeline by itself does nothing — it is lazy. You must consume it with `.to_list()`, a `for` loop, or `next()`.
-- **Calling `.to_list()` too early**: Placing `.to_list()` before `.filter()` defeats the purpose of lazy evaluation since it materializes all elements first.
+- **Forgetting `to_list()`**: An iterator pipeline by itself does nothing — it is lazy. You must consume it with `to_list()`, a `for` loop, or `next()`.
+- **Calling `to_list()` too early**: Placing `to_list()` before `filter()` defeats the purpose of lazy evaluation since it materializes all elements first.
 
 ---
 

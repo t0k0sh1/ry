@@ -75,7 +75,7 @@ Add functions to `src/model.ry` for working with task lists:
 function add_task(tasks: List<Task>, title: str) -> List<Task>:
     id = length(tasks) + 1
     task = create_task(id, title)
-    tasks.append(task)
+    append(tasks, task)
     return tasks
 
 function find_task(tasks: List<Task>, id: int) -> Option<Task>:

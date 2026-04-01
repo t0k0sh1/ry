@@ -953,15 +953,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
         phi->addIncoming(mockResult, mockEndBB);
         phi->addIncoming(origResult, origEndBB);
-        if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
-            matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
-            matchedEntry->returnTypeName.back() == '>') {
-            std::string inner = matchedEntry->returnTypeName.substr(
-                5, matchedEntry->returnTypeName.size() - 6);
-            type_meta_[TM_TaskResult][phi] = resolveType(inner);
-        }
-        if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
-            low_level_type_names_[phi] = matchedEntry->returnTypeName;
+        propagateReturnTypeMeta(matchedEntry, phi);
         return phi;
     }
 
@@ -969,16 +961,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
-    if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
-        matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
-        matchedEntry->returnTypeName.back() == '>') {
-        std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
-        type_meta_[TM_TaskResult][callResult] = resolveType(inner);
-    }
-
-    // Propagate low-level type metadata from return type
-    if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
-        low_level_type_names_[callResult] = matchedEntry->returnTypeName;
+    propagateReturnTypeMeta(matchedEntry, callResult);
 
     return callResult;
 }
