@@ -327,6 +327,25 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         codegenError("body() requires HttpRequest or HttpClientResponse argument");
     }
 
+    // body_bytes(req_or_resp) -> List<u8> — binary-safe body access
+    if (e.callee == "body_bytes") {
+        requireArgs(e, 1);
+        llvm::Value *arg = emitExpr(*e.args[0]);
+        if (isHttpRequest(arg)) {
+            auto fn = mod_->getOrInsertFunction("__ry_http_body_bytes", fnTy_ptr_to_ptr_);
+            llvm::Value *result = builder_.CreateCall(fn, {arg}, "body_bytes");
+            type_meta_[TM_ListElem][result] = i8Ty_;
+            return result;
+        }
+        if (isHttpClientResponse(arg)) {
+            auto fn = mod_->getOrInsertFunction("__ry_http_client_body_bytes", fnTy_ptr_to_ptr_);
+            llvm::Value *result = builder_.CreateCall(fn, {arg}, "body_bytes");
+            type_meta_[TM_ListElem][result] = i8Ty_;
+            return result;
+        }
+        codegenError("body_bytes() requires HttpRequest or HttpClientResponse argument");
+    }
+
     // header(req_or_resp, key) -> Option<str> — overloaded for HttpRequest and HttpClientResponse
     if (e.callee == "header") {
         requireArgs(e, 2);

@@ -1,5 +1,6 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_io.hpp"
 #include "ry/runtime_net_types.hpp"
 #include "ry/runtime_arc.hpp"
 
@@ -516,6 +517,12 @@ extern "C" int64_t __ry_http_client_status(void *r) {
 extern "C" const char *__ry_http_client_body(void *r) {
     if (!r) return "";
     return ((HttpClientResponseHandle *)r)->body;
+}
+
+extern "C" void *__ry_http_client_body_bytes(void *r) {
+    if (!r) return makeByteList(nullptr, 0);
+    auto *resp = (HttpClientResponseHandle *)r;
+    return makeByteList((const uint8_t *)resp->body, resp->body_len);
 }
 
 extern "C" const char *__ry_http_client_header(void *r, const char *key) {

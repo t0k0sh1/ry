@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 // ListHeader layout: {i64 len, i64 cap, ptr data}
 // Matches the generic list ABI used by codegen.
@@ -10,6 +12,23 @@ struct IOListHeader {
     int64_t cap;
     int8_t *data;
 };
+
+// Build a heap-allocated IOListHeader from raw bytes.
+// Each byte is stored as an int8_t element.
+inline IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
+    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
+    if (!header) return nullptr;
+    header->len = len;
+    header->cap = len;
+    if (len > 0) {
+        header->data = (int8_t *)malloc(len);
+        if (!header->data) { free(header); return nullptr; }
+        memcpy(header->data, bytes, len);
+    } else {
+        header->data = nullptr;
+    }
+    return header;
+}
 
 extern "C" {
 
