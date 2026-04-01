@@ -61,7 +61,13 @@ private:
     // Cycle collector — static analysis & visit function generation
     std::unordered_set<std::string> potentially_cyclic_types_;
     std::unordered_map<std::string, llvm::Function*> gc_visit_functions_;
-    void computeCyclicTypes(Program &prog);
+    void collectTypeGraphFromStmt(
+        const StmtNode &stmt,
+        std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+        std::unordered_set<std::string> &all_types);
+    void runCyclicTypeAnalysis(
+        std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+        const std::unordered_set<std::string> &all_types);
     bool isPotentiallyCyclic(const std::string &typeName) const;
     llvm::Function *getOrCreateVisitFunction(const std::string &typeName);
     std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops

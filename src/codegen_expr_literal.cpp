@@ -119,7 +119,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
     std::vector<llvm::Type*> types;
+    types.reserve(e->elements.size());
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements) {
         llvm::Value *v = emitExpr(*el);
         types.push_back(v->getType());

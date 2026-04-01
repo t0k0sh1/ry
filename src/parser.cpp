@@ -118,6 +118,7 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
 
 std::vector<ExprPtr> Parser::parseArgList() {
     std::vector<ExprPtr> args;
+    args.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
         args.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
@@ -135,6 +136,7 @@ std::vector<ExprPtr> Parser::parseArgList() {
 
 Program Parser::parseProgram() {
     Program prog;
+    prog.reserve(32);
     skipNewlines();
     while (lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::From) {
@@ -278,6 +280,7 @@ StmtNode Parser::parseImportStatement() {
     }
 
     std::vector<std::string> names;
+    names.reserve(4);
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
         Token name = lex_.peek();
@@ -596,6 +599,7 @@ std::vector<StmtNode> Parser::parseBlock() {
     lex_.next(); // consume Indent
 
     std::vector<StmtNode> stmts;
+    stmts.reserve(8);
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         stmts.push_back(parseStatement());

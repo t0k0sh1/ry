@@ -27,6 +27,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     Token fnTok = lex_.next(); // consume 'function'
 
     auto fnStmt = std::make_unique<FnStmt>();
+    fnStmt->params.reserve(4);
     fnStmt->loc = locFromToken(fnTok);
     fnStmt->is_async = is_async;
 
@@ -109,6 +110,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         // Parse optional type parameters: function name<T, U>(...) or function name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
+            fnStmt->type_params.reserve(2);
             for (;;) {
                 fnStmt->type_params.push_back(parseOneTypeParam());
                 if (lex_.peek().kind != TokenKind::Comma)
@@ -343,6 +345,7 @@ StmtNode Parser::parseRecordStatement() {
     RecordStmt ts;
     ts.name = nameTok.value;
     ts.loc = locFromToken(recordTok);
+    ts.fields.reserve(8);
 
     // Optional parent type: record Child < Parent:
     if (lex_.peek().kind == TokenKind::Less) {
@@ -480,6 +483,7 @@ StmtNode Parser::parseEnumStatement() {
     es.name = nameTok.value;
     es.type_params = std::move(typeParams);
     es.loc = locFromToken(enumTok);
+    es.variants.reserve(4);
     std::unordered_set<std::string> seenVariants;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
@@ -605,6 +609,7 @@ TypeNodePtr Parser::parseTypeName() {
         return node;
     // Union type
     std::vector<TypeNodePtr> components;
+    components.reserve(4);
     components.push_back(std::move(node));
     while (lex_.peek().kind == TokenKind::Pipe) {
         lex_.next(); // consume '|'
@@ -618,6 +623,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('
         std::vector<TypeNodePtr> elements;
+        elements.reserve(4);
         elements.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
@@ -703,6 +709,7 @@ TypeNodePtr Parser::parseTypeNameSingle() {
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::vector<TypeNodePtr> typeArgs;
+        typeArgs.reserve(2);
         typeArgs.push_back(parseTypeName());
         if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
             // Two-parameter generic: Map<K, V> or Result<V, E>
@@ -746,6 +753,7 @@ TypeNodePtr Parser::parseFnType() {
         parseError("expected '(' after 'function' in function type");
     lex_.next(); // consume '('
     std::vector<TypeNodePtr> paramTypes;
+    paramTypes.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
         paramTypes.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
@@ -870,6 +878,7 @@ Pattern Parser::parsePattern() {
             if (lex_.peek().kind == TokenKind::LParen) {
                 lex_.next(); // consume '('
                 std::vector<std::string> bindings;
+                bindings.reserve(4);
                 if (lex_.peek().kind != TokenKind::RParen) {
                     for (;;) {
                         Token binding = lex_.peek();
@@ -912,6 +921,7 @@ StmtNode Parser::parseWhenStatement() {
 
         auto whenStmt = std::make_unique<WhenCondStmt>();
         whenStmt->loc = locFromToken(whenTok);
+        whenStmt->arms.reserve(4);
 
         bool seenElse = false;
         while (lex_.peek().kind != TokenKind::Dedent &&
@@ -973,6 +983,7 @@ StmtNode Parser::parseMatchStatement() {
     auto matchStmt = std::make_unique<MatchStmt>();
     matchStmt->subject = std::move(subject);
     matchStmt->loc = locFromToken(matchTok);
+    matchStmt->arms.reserve(4);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {

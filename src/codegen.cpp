@@ -319,55 +319,60 @@ bool CodeGen::isImmutable(const std::string &name) const {
     return false;
 }
 
-// Pre-pass: collect all function names targeted by mock() in the AST
-static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
-                                    std::unordered_set<std::string> &out) {
-    for (const auto &stmt : stmts) {
-        std::visit([&](const auto &s) {
-            using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, CallStmt>) {
-                if (s.callee == "mock" && !s.args.empty()) {
-                    if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
-                        out.insert(str->value);
-                }
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                collectMockedFunctions(s->branch.body, out);
-                collectMockedFunctions(s->else_body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
-                for (auto &arm : s->arms)
-                    collectMockedFunctions(arm.body, out);
-                collectMockedFunctions(s->else_body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
-                for (auto &arm : s->arms)
-                    collectMockedFunctions(arm.body, out);
+// Forward declaration for mutual recursion.
+static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
+                                             std::unordered_set<std::string> &out);
+
+// Scan a single statement (and its nested bodies) for mock() call targets.
+static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
+                                            std::unordered_set<std::string> &out) {
+    std::visit([&](const auto &s) {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, CallStmt>) {
+            if (s.callee == "mock" && !s.args.empty()) {
+                if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
+                    out.insert(str->value);
             }
-        }, stmt);
-        // Also scan lambda args (e.g., describe/it trailing blocks)
-        std::visit([&](const auto &s) {
-            using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, CallStmt>) {
-                for (auto &arg : s.args) {
-                    if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
-                        collectMockedFunctions((*lam)->body, out);
-                }
+            for (auto &arg : s.args) {
+                if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
+                    collectMockedFunctionsFromStmts((*lam)->body, out);
             }
-        }, stmt);
-    }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+            collectMockedFunctionsFromStmts(s->branch.body, out);
+            collectMockedFunctionsFromStmts(s->else_body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            for (auto &arm : s->arms)
+                collectMockedFunctionsFromStmts(arm.body, out);
+            collectMockedFunctionsFromStmts(s->else_body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            for (auto &arm : s->arms)
+                collectMockedFunctionsFromStmts(arm.body, out);
+        }
+    }, stmt);
+}
+
+static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
+                                             std::unordered_set<std::string> &out) {
+    for (const auto &stmt : stmts)
+        collectMockedFunctionsFromStmt(stmt, out);
 }
 
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
-    // Pre-pass: collect all mock targets before codegen
-    if (test_mode_)
-        collectMockedFunctions(prog, mocked_functions_);
-
-    // Pre-pass: compute potentially cyclic types for GC candidate tracking
-    computeCyclicTypes(prog);
+    // Single pre-pass: collect mock targets and build cyclic type graph together
+    std::unordered_map<std::string, std::unordered_set<std::string>> typeGraph;
+    std::unordered_set<std::string> allTypes;
+    for (auto &stmt : prog) {
+        collectTypeGraphFromStmt(stmt, typeGraph, allTypes);
+        if (test_mode_)
+            collectMockedFunctionsFromStmt(stmt, mocked_functions_);
+    }
+    runCyclicTypeAnalysis(typeGraph, allTypes);
 
     llvm::FunctionType *ft = llvm::FunctionType::get(i32Ty_, false);
     fn_ = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__ry_main__", *mod_);

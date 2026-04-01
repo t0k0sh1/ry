@@ -296,6 +296,8 @@ ExprPtr Parser::parsePrimary() {
     if (t.kind == TokenKind::FStringStart) {
         lex_.next(); // consume FStringStart
         auto interp = std::make_unique<InterpolatedStringExpr>();
+        interp->parts.reserve(4);
+        interp->exprs.reserve(4);
         interp->parts.push_back(t.value);
         interp->exprs.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::FStringMid) {
@@ -542,6 +544,8 @@ ExprPtr Parser::parsePrimary() {
             // Map literal: first expression was the key
             lex_.next(); // consume ':'
             auto map = std::make_unique<MapExpr>();
+            map->keys.reserve(4);
+            map->values.reserve(4);
             ExprPtr val = parseConditional();
             map->keys.push_back(std::move(first));
             map->values.push_back(std::move(val));
@@ -565,6 +569,7 @@ ExprPtr Parser::parsePrimary() {
         } else {
             // Set literal
             auto set = std::make_unique<SetExpr>();
+            set->elements.reserve(4);
             set->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
@@ -582,6 +587,7 @@ ExprPtr Parser::parsePrimary() {
     if (t.kind == TokenKind::LBracket) {
         lex_.next(); // consume '['
         auto list = std::make_unique<ListExpr>();
+        list->elements.reserve(4);
         skipStructuralTokens();
         if (lex_.peek().kind != TokenKind::RBracket) {
             list->elements.push_back(parseConditional());
@@ -621,6 +627,7 @@ ExprPtr Parser::parsePrimary() {
         if (lex_.peek().kind == TokenKind::Comma) {
             // Tuple literal: (expr, expr, ...)
             auto tuple = std::make_unique<TupleExpr>();
+            tuple->elements.reserve(4);
             tuple->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
@@ -671,6 +678,7 @@ ExprPtr Parser::parseParenLambdaExpr() {
     lex_.next(); // consume '('
 
     auto lambda = std::make_unique<LambdaExpr>();
+    lambda->params.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
         for (;;) {
             Token paramName = lex_.peek();
@@ -802,6 +810,7 @@ ExprPtr Parser::parsePostfix() {
         if (lex_.peek().kind == TokenKind::LBracket) {
             Token lbTok = lex_.next(); // consume '['
             std::vector<ExprPtr> indices;
+            indices.reserve(2);
             indices.push_back(parseConditional());
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','

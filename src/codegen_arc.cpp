@@ -992,31 +992,31 @@ static void collectReferencedTypes(const TypeNodePtr &tn,
     // FnType, RangeType: skip (functions don't form ownership cycles)
 }
 
-void CodeGen::computeCyclicTypes(Program &prog) {
-    // Build type reference graph from AST declarations.
-    // type_name -> set of type names it references (via ARC pointer fields)
-    std::unordered_map<std::string, std::unordered_set<std::string>> graph;
-    std::unordered_set<std::string> all_types;
-
-    for (auto &stmt : prog) {
-        if (auto *es = std::get_if<EnumStmt>(&stmt)) {
-            if (!es->type_params.empty()) continue;  // skip generic templates
-            all_types.insert(es->name);
-            auto &refs = graph[es->name];
-            for (auto &v : es->variants) {
-                for (auto &ft : v.field_types) {
-                    collectReferencedTypes(ft, refs);
-                }
-            }
-        } else if (auto *rs = std::get_if<RecordStmt>(&stmt)) {
-            all_types.insert(rs->name);
-            auto &refs = graph[rs->name];
-            for (auto &f : rs->fields) {
-                collectReferencedTypes(f.type, refs);
+void CodeGen::collectTypeGraphFromStmt(
+    const StmtNode &stmt,
+    std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+    std::unordered_set<std::string> &all_types) {
+    if (auto *es = std::get_if<EnumStmt>(&stmt)) {
+        if (!es->type_params.empty()) return;  // skip generic templates
+        all_types.insert(es->name);
+        auto &refs = graph[es->name];
+        for (auto &v : es->variants) {
+            for (auto &ft : v.field_types) {
+                collectReferencedTypes(ft, refs);
             }
         }
+    } else if (auto *rs = std::get_if<RecordStmt>(&stmt)) {
+        all_types.insert(rs->name);
+        auto &refs = graph[rs->name];
+        for (auto &f : rs->fields) {
+            collectReferencedTypes(f.type, refs);
+        }
     }
+}
 
+void CodeGen::runCyclicTypeAnalysis(
+    std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+    const std::unordered_set<std::string> &all_types) {
     // Remove edges to types not in our type set (built-in types like int, str, etc.).
     for (auto &[name, refs] : graph) {
         std::unordered_set<std::string> filtered;
