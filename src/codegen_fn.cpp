@@ -336,41 +336,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 paramTypes[idx], nullptr, s->params[idx].name);
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s->params[idx].name] = alloca;
-            // Track list element type for list parameters
             const std::string &ptype = paramTypeNames[idx];
-            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_ListElem][alloca] = resolveType(inner);
-            }
-            // Track set element type for set parameters
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                type_meta_[TM_SetElem][alloca] = resolveType(inner);
-            }
-            // Track enum type for enum parameters
-            if (enum_types_.count(ptype)) {
+            propagateTypeMeta(ptype, alloca);
+            if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
-            }
-            // Track map key/value types for map parameters
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
-                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
-                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
-            }
-            if (ptype.size() > 5 && ptype.compare(0, 5, "Task<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_TaskResult][alloca] = resolveType(inner);
-            }
             registerResourceByTypeName(ptype, alloca);
-            // Mark ARC-managed for collection parameters
             if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
                 (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
                 (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
                 markArcManaged(alloca);
             }
-            // Track low-level type metadata for parameters
-            if (isLowLevelTypeName(ptype))
-                low_level_type_names_[alloca] = ptype;
             // Track fn type info and constraint check (shared alias resolution)
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
@@ -937,26 +912,10 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             // Resolve the actual param type name (with substitution)
             std::string ptype = paramTypeNames[idx];
 
-            // Track collection element types
-            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_ListElem][alloca] = resolveType(inner);
-            }
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                type_meta_[TM_SetElem][alloca] = resolveType(inner);
-            }
+            propagateTypeMeta(ptype, alloca);
             if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
-                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
-                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
-            }
             registerResourceByTypeName(ptype, alloca);
-            // Track low-level type metadata for parameters
-            if (isLowLevelTypeName(ptype))
-                low_level_type_names_[alloca] = ptype;
             {
                 std::string resolvedPtype = resolveTypeAlias(ptype);
                 if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)

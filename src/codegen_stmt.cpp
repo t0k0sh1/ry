@@ -296,21 +296,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                 }
             }
-            if (inner.size() > 4 && inner.substr(0, 4) == "Map<") {
-                auto [k, v] = parseMapTypeAnnotation(inner);
-                if (k) type_meta_[TM_MapKey][ptr] = k;
-                if (v) type_meta_[TM_MapValue][ptr] = v;
-            } else if (inner.size() > 5 && inner.substr(0, 5) == "List<") {
-                std::string elemName = inner.substr(5, inner.size() - 6);
-                llvm::Type *elemTy = resolveType(elemName);
-                if (elemTy)
-                    type_meta_[TM_ListElem][ptr] = elemTy;
-            } else if (inner.size() > 4 && inner.substr(0, 4) == "Set<") {
-                std::string elemName = inner.substr(4, inner.size() - 5);
-                llvm::Type *elemTy = resolveType(elemName);
-                if (elemTy)
-                    type_meta_[TM_SetElem][ptr] = elemTy;
-            }
+            if (!inner.empty())
+                propagateTypeMeta(inner, ptr);
         }
     }
 
@@ -418,22 +405,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             std::string innerName = weakInnerTypeName(*annot);
             weak_inner_type_names_[ptr] = innerName;
             // Set collection metadata on weak alloca so it propagates through upgrade
-            auto ltPos = innerName.find('<');
-            if (ltPos != std::string::npos) {
-                std::string baseName = innerName.substr(0, ltPos);
-                std::string args = innerName.substr(ltPos + 1, innerName.size() - ltPos - 2);
-                if (baseName == "List")
-                    type_meta_[TM_ListElem][ptr] = resolveType(args);
-                else if (baseName == "Set")
-                    type_meta_[TM_SetElem][ptr] = resolveType(args);
-                else if (baseName == "Map") {
-                    auto commaPos = args.find(", ");
-                    if (commaPos != std::string::npos) {
-                        type_meta_[TM_MapKey][ptr] = resolveType(args.substr(0, commaPos));
-                        type_meta_[TM_MapValue][ptr] = resolveType(args.substr(commaPos + 2));
-                    }
-                }
-            }
+            propagateTypeMeta(innerName, ptr);
         }
         // --- ARC tracking ---
         else {
