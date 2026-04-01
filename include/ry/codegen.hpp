@@ -810,6 +810,7 @@ private:
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
     void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
+    void propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val);
     void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
