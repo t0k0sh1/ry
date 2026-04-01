@@ -65,4 +65,46 @@ describe("return check - all paths return", ():
     expect(check(Some(1))).to_eq("some")
     expect(check(None)).to_eq("none")
   )
+  it("match on ADT enum with all variants returns on all paths (#513)", ():
+    enum Shape:
+      Circle(float)
+      Rect(float, float)
+
+    function area(s: Shape) -> float:
+      match s:
+        case Shape::Circle(r):
+          return 3.14 * r * r
+        case Shape::Rect(w, h):
+          return w * h
+    expect(area(Shape::Circle(5.0))).to_eq(78.5)
+    expect(area(Shape::Rect(3.0, 4.0))).to_eq(12.0)
+  )
+  it("match on simple enum with all variants returns on all paths (#513)", ():
+    enum Color:
+      Red
+      Green
+      Blue
+
+    function name(c: Color) -> str:
+      match c:
+        case Color::Red:
+          return "red"
+        case Color::Green:
+          return "green"
+        case Color::Blue:
+          return "blue"
+    expect(name(Color::Red)).to_eq("red")
+    expect(name(Color::Green)).to_eq("green")
+    expect(name(Color::Blue)).to_eq("blue")
+  )
+  it("match on bool with true/false returns on all paths (#513)", ():
+    function describe(b: bool) -> str:
+      match b:
+        case true:
+          return "yes"
+        case false:
+          return "no"
+    expect(describe(true)).to_eq("yes")
+    expect(describe(false)).to_eq("no")
+  )
 )

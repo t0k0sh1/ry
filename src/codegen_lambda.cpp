@@ -168,7 +168,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // return on all paths
     if (!e->expr_body && e->return_type
         && !isAnyType(retTy) && !retTy->isVoidTy()) {
-        if (!allPathsReturn(e->body))
+        if (!allPathsReturn(e->body, buildEnumVariantRegistry()))
             codegenError("lambda with return type '" + retTypeStr +
                          "' does not return a value on all code paths");
     }

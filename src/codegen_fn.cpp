@@ -4,6 +4,17 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
+    EnumVariantRegistry reg;
+    for (auto &[name, info] : enum_types_) {
+        std::unordered_set<std::string> vars;
+        for (auto &[vname, _] : info.variants)
+            vars.insert(vname);
+        reg[name] = std::move(vars);
+    }
+    return reg;
+}
+
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
     static const std::pair<const char*, ResourceKind> table[] = {
         {"TcpListener", RK_TcpListener}, {"TcpStream", RK_TcpStream},
@@ -220,7 +231,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // Check that non-Unit, non-any functions return on all paths
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
         && !hasDirective(s->directives, "native")) {
-        if (!allPathsReturn(s->body))
+        if (!allPathsReturn(s->body, buildEnumVariantRegistry()))
             codegenError("function '" + s->name + "' with return type '" +
                          returnTypeStr + "' does not return a value on all code paths");
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ry/ast.hpp"
+#include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
 #include "ry/trace.hpp"
@@ -204,6 +205,7 @@ private:
         std::unordered_map<std::string, VariantFieldInfo> variantFields;
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
+    EnumVariantRegistry buildEnumVariantRegistry() const;
     std::string findAdtEnumName(llvm::StructType *st) const;
     std::unordered_map<llvm::Value*, std::string> enum_value_types_;
     llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
