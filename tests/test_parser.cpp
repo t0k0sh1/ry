@@ -554,8 +554,8 @@ TEST(ParserTest, FnExplicitUnitReturn) {
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
-    // (x: int): x + 1 → return type is empty (inferred at codegen time)
-    Program prog = parseStr("f = (x: int): x + 1");
+    // (x: int) => x + 1 → return type is empty (inferred at codegen time)
+    Program prog = parseStr("f = (x: int) => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -563,8 +563,8 @@ TEST(ParserTest, LambdaReturnTypeOmitted) {
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {
-    // (x: int) -> int: x + 1 → return type is "int"
-    Program prog = parseStr("f = (x: int) -> int: x + 1");
+    // (x: int) -> int => x + 1 → return type is "int"
+    Program prog = parseStr("f = (x: int) -> int => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -572,7 +572,7 @@ TEST(ParserTest, LambdaExplicitReturnType) {
 }
 
 TEST(ParserTest, LambdaOptionAWithParenPrefix) {
-    Program prog = parseStr("f = (x: int) -> int: x + 1");
+    Program prog = parseStr("f = (x: int) -> int => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -1909,7 +1909,7 @@ TEST(ParserTest, DefaultArgNoTypeError) {
 
 TEST(ParserTest, DefaultArgLambdaError) {
     // default args in lambda are not supported
-    EXPECT_THROW(parseStr("f = (x: int = 10): x"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (x: int = 10) => x"), std::runtime_error);
 }
 
 TEST(ParserTest, RejectAnonymousFunctionLambda) {

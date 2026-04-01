@@ -95,7 +95,7 @@ function complete_task(tasks: List<Task>, id: int) -> Result<List<Task>, Error>:
 function pending_tasks(tasks: List<Task>) -> List<Task>:
     return tasks
         .iter()
-        .filter((t: Task): t.status == Status::Todo)
+        .filter((t: Task) => t.status == Status::Todo)
         .to_list()
 ```
 

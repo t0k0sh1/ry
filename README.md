@@ -43,7 +43,7 @@ print(factorial(5))    # 120
 
 # Lambdas and closures
 offset = 10
-add_offset = (x: int) -> int: x + offset
+add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
 # Structs
@@ -69,7 +69,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter((x: int): x > 1).map((x: int): x * 10).sort()
+result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums

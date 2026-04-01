@@ -91,7 +91,7 @@ function fetch_data() -> str:
 
 describe("mocking", ():
     it("replaces function", ():
-        mock(fetch_data, (): "fake")
+        mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -108,7 +108,7 @@ Returns the number of times a mocked function was called.
 ```python
 describe("verify", ():
     it("counts calls", ():
-        mock(fetch_data, (): "fake")
+        mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -162,7 +162,7 @@ function deposit(amount: int, balance: int) -> int:
 
 describe("deposit", ():
     it("mocked version still checks contracts", ():
-        mock(deposit, (amount: int, balance: int): balance + amount)
+        mock(deposit, (amount: int, balance: int) => balance + amount)
         expect(deposit(10, 100)).to_eq(110)
         # deposit(-1, 100) would terminate with "require failed"
     )

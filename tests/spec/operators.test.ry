@@ -178,13 +178,13 @@ function side_effect_flag() -> bool:
 
 describe("short-circuit evaluation", ():
   it("and short-circuits on false", ():
-    mock("side_effect_flag", (): true)
+    mock("side_effect_flag", () => true)
     r = false and side_effect_flag()
     expect(r).to_be_false()
     expect(verify("side_effect_flag")).to_eq(0)
   )
   it("or short-circuits on true", ():
-    mock("side_effect_flag", (): false)
+    mock("side_effect_flag", () => false)
     r = true or side_effect_flag()
     expect(r).to_be_true()
     expect(verify("side_effect_flag")).to_eq(0)

@@ -164,7 +164,7 @@ describe("for", ():
   it("empty list iteration", ():
     sum = 0
     xs = [1]
-    empty = filter(xs, (x: int): x > 10)
+    empty = filter(xs, (x: int) => x > 10)
     for x in empty:
       sum = sum + x
     expect(sum).to_eq(0)

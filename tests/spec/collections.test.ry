@@ -26,7 +26,7 @@ describe("List", ():
   )
   it("pop empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     v = pop(ys)
     expect(v).to_be_none()
   )
@@ -46,13 +46,13 @@ describe("List", ():
   )
   it("filter", ():
     xs = [1, 2, 3, 4, 5]
-    ys = filter(xs, (x: int): x > 3)
+    ys = filter(xs, (x: int) => x > 3)
     expect(ys).to_have_length(2)
     expect(ys[0]).to_eq(4)
   )
   it("map", ():
     xs = [1, 2, 3]
-    ys = map(xs, (x: int): x * 2)
+    ys = map(xs, (x: int) => x * 2)
     expect(ys[0]).to_eq(2)
     expect(ys[1]).to_eq(4)
     expect(ys[2]).to_eq(6)
@@ -66,30 +66,30 @@ describe("List", ():
   )
   it("sort custom comparator", ():
     xs = [3, 1, 2]
-    ys = sort(xs, (a: int, b: int): a > b)
+    ys = sort(xs, (a: int, b: int) => a > b)
     expect(ys[0]).to_eq(3)
     expect(ys[1]).to_eq(2)
     expect(ys[2]).to_eq(1)
   )
   it("reduce", ():
     xs = [1, 2, 3, 4, 5]
-    total = reduce(xs, (a: int, b: int): a + b)
+    total = reduce(xs, (a: int, b: int) => a + b)
     expect(total).to_eq(15)
   )
   it("fold", ():
     xs = [1, 2, 3, 4, 5]
-    total = fold(xs, 0, (a: int, b: int): a + b)
+    total = fold(xs, 0, (a: int, b: int) => a + b)
     expect(total).to_eq(15)
   )
   it("any", ():
     xs = [1, 2, 3, 4, 5]
-    expect(any(xs, (x: int): x > 4)).to_be_true()
-    expect(any(xs, (x: int): x > 9)).to_be_false()
+    expect(any(xs, (x: int) => x > 4)).to_be_true()
+    expect(any(xs, (x: int) => x > 9)).to_be_false()
   )
   it("all", ():
     xs = [2, 4, 6]
-    expect(all(xs, (x: int): x > 0)).to_be_true()
-    expect(all(xs, (x: int): x > 3)).to_be_false()
+    expect(all(xs, (x: int) => x > 0)).to_be_true()
+    expect(all(xs, (x: int) => x > 3)).to_be_false()
   )
   it("sum", ():
     expect(sum([1, 2, 3, 4, 5])).to_eq(15)
@@ -105,7 +105,7 @@ describe("List", ():
   )
   it("first empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     expect(first(ys)).to_be_none()
   )
   it("last", ():
@@ -113,7 +113,7 @@ describe("List", ():
   )
   it("last empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     expect(last(ys)).to_be_none()
   )
   it("is_empty", ():
@@ -127,7 +127,7 @@ describe("List", ():
   )
   it("enumerate empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     pairs = enumerate(ys)
     expect(pairs).to_have_length(0)
   )
@@ -144,7 +144,7 @@ describe("List", ():
   )
   it("zip empty with non-empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     pairs = zip(ys, [10, 20])
     expect(pairs).to_have_length(0)
   )
@@ -237,7 +237,7 @@ describe("List", ():
   )
   it("tap returns original list", ():
     xs = [1, 2, 3]
-    ys = tap(xs, (x: int): x * 2)
+    ys = tap(xs, (x: int) => x * 2)
     expect(ys).to_have_length(3)
     expect(ys[0]).to_eq(1)
     expect(ys[1]).to_eq(2)
@@ -245,7 +245,7 @@ describe("List", ():
   )
   it("tap in chain", ():
     xs = [5, 3, 1, 4, 2]
-    res = sort(tap(filter(xs, (x: int): x > 2), (x: int): x + 1))
+    res = sort(tap(filter(xs, (x: int) => x > 2), (x: int) => x + 1))
     expect(res).to_have_length(3)
     expect(res[0]).to_eq(3)
     expect(res[1]).to_eq(4)
@@ -253,7 +253,7 @@ describe("List", ():
   )
   it("chain filter-map-sort", ():
     xs = [5, 3, 1, 4, 2]
-    res = sort(map(filter(xs, (x: int): x > 1), (x: int): x * 10))
+    res = sort(map(filter(xs, (x: int) => x > 1), (x: int) => x * 10))
     expect(res[0]).to_eq(20)
     expect(res[1]).to_eq(30)
     expect(res[2]).to_eq(40)
@@ -261,7 +261,7 @@ describe("List", ():
   )
   it("sort empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     zs = sort(ys)
     expect(zs).to_have_length(0)
   )
@@ -272,7 +272,7 @@ describe("List", ():
   )
   it("reverse empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     zs = reverse(ys)
     expect(zs).to_have_length(0)
   )
@@ -283,39 +283,39 @@ describe("List", ():
   )
   it("map empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
-    zs = map(ys, (x: int): x * 2)
+    ys = filter(xs, (x: int) => x > 10)
+    zs = map(ys, (x: int) => x * 2)
     expect(zs).to_have_length(0)
   )
   it("filter empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
-    zs = filter(ys, (x: int): true)
+    ys = filter(xs, (x: int) => x > 10)
+    zs = filter(ys, (x: int) => true)
     expect(zs).to_have_length(0)
   )
   it("sum empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     expect(sum(ys)).to_eq(0)
   )
   it("fold empty returns initial", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
-    expect(fold(ys, 42, (a: int, b: int): a + b)).to_eq(42)
+    ys = filter(xs, (x: int) => x > 10)
+    expect(fold(ys, 42, (a: int, b: int) => a + b)).to_eq(42)
   )
   it("any empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
-    expect(any(ys, (x: int): true)).to_be_false()
+    ys = filter(xs, (x: int) => x > 10)
+    expect(any(ys, (x: int) => true)).to_be_false()
   )
   it("all empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
-    expect(all(ys, (x: int): false)).to_be_true()
+    ys = filter(xs, (x: int) => x > 10)
+    expect(all(ys, (x: int) => false)).to_be_true()
   )
   it("is_empty true", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     expect(is_empty(ys)).to_be_true()
   )
   it("slice empty range", ():
@@ -337,7 +337,7 @@ describe("List", ():
   )
   it("distinct empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     zs = distinct(ys)
     expect(zs).to_have_length(0)
   )
@@ -363,7 +363,7 @@ describe("List", ():
   )
   it("take empty", ():
     xs = [1]
-    ys = filter(xs, (x: int): x > 10)
+    ys = filter(xs, (x: int) => x > 10)
     zs = take(ys, 5)
     expect(zs).to_have_length(0)
   )
@@ -381,7 +381,7 @@ describe("List", ():
   )
   it("sort stability", ():
     xs = [201, 102, 303, 104, 205]
-    ys = sort(xs, (a: int, b: int): a / 100 < b / 100)
+    ys = sort(xs, (a: int, b: int) => a / 100 < b / 100)
     expect(ys[0]).to_eq(102)
     expect(ys[1]).to_eq(104)
     expect(ys[2]).to_eq(201)

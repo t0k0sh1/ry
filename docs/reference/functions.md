@@ -265,10 +265,10 @@ Anonymous functions can be defined inline.
 
 ```python
 # Single expression (return type inferred from expression)
- (param_name: type, ...): expression
+ (param_name: type, ...) => expression
 
 # Parameter type can be omitted (defaults to any)
- (param_name, ...): expression
+ (param_name, ...) => expression
 
 # Multi-line block
 (param_name: type, ...):
@@ -276,16 +276,16 @@ Anonymous functions can be defined inline.
     return value
 
 # With explicit return type (optional)
- (param_name: type, ...) -> return_type: expression
+ (param_name: type, ...) -> return_type => expression
 ```
 
 ### Example
 
 ```python
-double = (x: int): x * 2
+double = (x: int) => x * 2
 result = double(5)   # 10
 
-add = (a: int, b: int): a + b
+add = (a: int, b: int) => a + b
 sum = add(3, 4)      # 7
 
 # Multi-line lambda
@@ -303,7 +303,7 @@ Lambda functions **capture by value** the variables from the outer scope at the 
 
 ```python
 base = 10
-add_base = (x: int): x + base   # Captures base by value
+add_base = (x: int) => x + base   # Captures base by value
 
 base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
@@ -332,8 +332,8 @@ function(param_type1, param_type2, ...) -> return_type
 ### Example
 
 ```python
-f: function(int) -> int = (x: int): x * 2
-g: function(int, int) -> int = (a: int, b: int): a + b
+f: function(int) -> int = (x: int) => x * 2
+g: function(int, int) -> int = (a: int, b: int) => a + b
 
 function apply(func: function(int) -> int, x: int) -> int:
     return func(x)
@@ -354,7 +354,7 @@ function map_list(xs: List<int>, f: function(int) -> int) -> List<int>:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], (x: int): x * 2)
+doubled = map_list([1, 2, 3], (x: int) => x * 2)
 # [2, 4, 6]
 ```
 

@@ -162,7 +162,7 @@ describe("split and join", ():
   )
   it("join empty list", ():
     parts: List<str> = ["x"]
-    empty = filter(parts, (s: str): false)
+    empty = filter(parts, (s: str) => false)
     expect(join(empty, ",")).to_eq("")
   )
   it("join single element", ():

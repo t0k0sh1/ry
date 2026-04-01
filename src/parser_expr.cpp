@@ -637,10 +637,10 @@ bool Parser::couldBeLambda() {
     TokenKind first = lex_.peek().kind;
     bool result;
     if (first == TokenKind::RParen) {
-        // () — could be lambda if followed by ':' or '->'
+        // () — could be lambda if followed by ':', '=>', or '->'
         lex_.next(); // consume ')'
         TokenKind after = lex_.peek().kind;
-        result = (after == TokenKind::Colon || after == TokenKind::Arrow);
+        result = (after == TokenKind::Colon || after == TokenKind::Arrow || after == TokenKind::FatArrow);
     } else {
         // (ident...) could be lambda; (non-ident...) cannot
         result = (first == TokenKind::Ident);
@@ -716,31 +716,38 @@ ExprPtr Parser::parseParenLambdaExpr() {
         lambda->return_type = nullptr;
     }
 
-    if (lex_.peek().kind != TokenKind::Colon)
-        parseError("expected ':' after lambda signature");
-    lex_.next(); // consume ':'
-
     bool prev_in_async = in_async_fn_;
     in_async_fn_ = false;
-    if (lex_.peek().kind == TokenKind::Newline) {
-        lex_.next();
-        skipNewlines();
-        if (lex_.peek().kind != TokenKind::Indent)
-            parseError("expected indented block after ':' in lambda");
-        lex_.next(); // consume Indent
-        while (lex_.peek().kind != TokenKind::Dedent &&
-               lex_.peek().kind != TokenKind::Eof) {
-            lambda->body.push_back(parseStatement());
-            if (lex_.peek().kind == TokenKind::Newline)
-                lex_.next();
-            skipNewlines();
-        }
-        if (lambda->body.empty())
-            parseError("empty lambda body is not allowed");
-        if (lex_.peek().kind == TokenKind::Dedent)
-            lex_.next();
-    } else {
+
+    if (lex_.peek().kind == TokenKind::FatArrow) {
+        // Single-expression lambda: (params) => expr
+        lex_.next(); // consume '=>'
         lambda->expr_body = parseConditional();
+    } else if (lex_.peek().kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+        if (lex_.peek().kind == TokenKind::Newline) {
+            // Block lambda: (params):\n  body
+            lex_.next();
+            skipNewlines();
+            if (lex_.peek().kind != TokenKind::Indent)
+                parseError("expected indented block after ':' in lambda");
+            lex_.next(); // consume Indent
+            while (lex_.peek().kind != TokenKind::Dedent &&
+                   lex_.peek().kind != TokenKind::Eof) {
+                lambda->body.push_back(parseStatement());
+                if (lex_.peek().kind == TokenKind::Newline)
+                    lex_.next();
+                skipNewlines();
+            }
+            if (lambda->body.empty())
+                parseError("empty lambda body is not allowed");
+            if (lex_.peek().kind == TokenKind::Dedent)
+                lex_.next();
+        } else {
+            parseError("use '=>' instead of ':' for single-expression lambdas");
+        }
+    } else {
+        parseError("expected '=>' or ':' after lambda signature");
     }
     in_async_fn_ = prev_in_async;
 
