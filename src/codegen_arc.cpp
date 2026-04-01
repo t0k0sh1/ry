@@ -335,6 +335,24 @@ void CodeGen::emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloc
     builder_.SetInsertPoint(skipBB);
 }
 
+// ===== Collection type name helpers =====
+
+bool CodeGen::isListTypeName(const std::string &typeName) {
+    return typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0;
+}
+
+bool CodeGen::isMapTypeName(const std::string &typeName) {
+    return typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0;
+}
+
+bool CodeGen::isSetTypeName(const std::string &typeName) {
+    return typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0;
+}
+
+bool CodeGen::isCollectionTypeName(const std::string &typeName) {
+    return isListTypeName(typeName) || isMapTypeName(typeName) || isSetTypeName(typeName);
+}
+
 // ===== Weak reference operations =====
 
 bool CodeGen::isWeakTypeName(const std::string &typeName) {
@@ -1097,7 +1115,7 @@ bool CodeGen::isPotentiallyCyclic(const std::string &typeName) const {
     if (typeName.size() > 1 && typeName.back() == '?')
         return isPotentiallyCyclic(typeName.substr(0, typeName.size() - 1));
     // Map<K,V> — check both K and V
-    if (typeName.size() > 5 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
+    if (isMapTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         // Find the comma separating K and V (handle nested generics)
         int depth = 0;

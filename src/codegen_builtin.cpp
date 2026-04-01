@@ -118,18 +118,18 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
     if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
         type_meta_[TM_TaskResult][val] = resolveType(inner);
-    } else if (typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0 && typeName.back() == '>') {
+    } else if (isListTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(5, typeName.size() - 6);
         type_meta_[TM_ListElem][val] = resolveType(inner);
-        if (inner.size() > 5 && inner.compare(0, 5, "List<") == 0 && inner.back() == '>') {
+        if (isListTypeName(inner) && inner.back() == '>') {
             std::string nested = inner.substr(5, inner.size() - 6);
             type_meta_[TM_NestedListElem][val] = resolveType(nested);
         }
-    } else if (typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
+    } else if (isMapTypeName(typeName) && typeName.back() == '>') {
         auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
         if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
         if (valTy) type_meta_[TM_MapValue][val] = valTy;
-    } else if (typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0 && typeName.back() == '>') {
+    } else if (isSetTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         type_meta_[TM_SetElem][val] = resolveType(inner);
     } else if (isLowLevelTypeName(typeName)) {

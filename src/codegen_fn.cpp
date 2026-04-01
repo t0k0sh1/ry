@@ -341,9 +341,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (enum_types_.count(ptype))
                 enum_value_types_[alloca] = ptype;
             registerResourceByTypeName(ptype, alloca);
-            if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
-                (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
-                (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
+            if (isCollectionTypeName(ptype)) {
                 markArcManaged(alloca);
             }
             // Track fn type info and constraint check (shared alias resolution)
@@ -917,9 +915,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
                 enum_value_types_[alloca] = ptype;
             registerResourceByTypeName(ptype, alloca);
             // Mark ARC-managed for collection parameters
-            if ((ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0) ||
-                (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0) ||
-                (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0)) {
+            if (isCollectionTypeName(ptype)) {
                 markArcManaged(alloca);
             }
             {

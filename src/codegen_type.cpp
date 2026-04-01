@@ -148,18 +148,8 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return ptrTy_;
     }
 
-    // List<T> parsing
-    if (typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0 && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Map<K, V> parsing
-    if (typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Set<T> parsing
-    if (typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0 && typeName.back() == '>') {
+    // Collection type parsing (List<T>, Map<K, V>, Set<T>)
+    if (isCollectionTypeName(typeName) && typeName.back() == '>') {
         return ptrTy_;
     }
 
