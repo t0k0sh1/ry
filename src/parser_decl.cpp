@@ -1,6 +1,5 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -21,32 +20,6 @@ TypeParam Parser::parseOneTypeParam() {
         param.bound = bound.value;
     }
     return param;
-}
-
-static bool isSnakeCase(const std::string &name) {
-    if (name.empty()) return false;
-    if (name == "_") return true;
-    static const std::regex pattern("[a-z_][a-z0-9_]*");
-    return std::regex_match(name, pattern);
-}
-
-// snake_case with optional trailing '!' for mutating function names (sort!, reverse!)
-static bool isMutationFnName(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[a-z_][a-z0-9_]*!?");
-    return std::regex_match(name, pattern);
-}
-
-static bool isScreamingSnakeCase(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[A-Z][A-Z0-9_]*");
-    return std::regex_match(name, pattern);
-}
-
-static bool isPascalCase(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[A-Z][a-zA-Z0-9]*");
-    return std::regex_match(name, pattern);
 }
 
 
