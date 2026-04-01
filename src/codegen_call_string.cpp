@@ -882,8 +882,13 @@ llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
     if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
         codegenError("join() requires List<str> and str arguments");
     llvm::Type *elemTy = getListElementType(listPtr);
-    if (!elemTy)
-        return nullptr; // First arg is not a list; fall through to stdlib
+    if (!elemTy) {
+        // Support sep.join(list) — UFCS places the receiver first
+        elemTy = getListElementType(sep);
+        if (!elemTy)
+            return nullptr;
+        std::swap(listPtr, sep);
+    }
     if (elemTy != ptrTy_)
         codegenError("join() requires List<str> as first argument");
     auto strlenFn = getStdlibStrlen();

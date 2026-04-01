@@ -580,6 +580,25 @@ TEST_F(CodeGenTest, JoinVariants) {
             "print(parts.join(\"-\"))";
         EXPECT_EQ(runSource(src), "x-y-z\n");
     }
+    // JoinUFCS_StringReceiver (Python-style: separator.join(list))
+    {
+        std::string src =
+            "parts = [\"a\", \"b\", \"c\"]\n"
+            "print(\",\".join(parts))";
+        EXPECT_EQ(runSource(src), "a,b,c\n");
+    }
+    {
+        std::string src =
+            "words = [\"hello\", \"world\"]\n"
+            "print(\" \".join(words))";
+        EXPECT_EQ(runSource(src), "hello world\n");
+    }
+    {
+        std::string src =
+            "parts = [\"only\"]\n"
+            "print(\",\".join(parts))";
+        EXPECT_EQ(runSource(src), "only\n");
+    }
 }
 
 // ===== 関数オーバーロードテスト =====

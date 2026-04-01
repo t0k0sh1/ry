@@ -542,3 +542,52 @@ describe("match expression in function argument", ():
     ).to_eq(100)
   )
 )
+
+# --- ADT enum as function parameter (#507) ---
+
+function shape_area(s: Shape) -> float:
+  return match s:
+    case Shape::Circle(r) => 3.14 * r * r
+    case Shape::Rect(w, h) => w * h
+    case Shape::Point => 0.0
+
+function shape_name(s: Shape) -> str:
+  return match s:
+    case Shape::Circle(r) => "circle"
+    case Shape::Rect(w, h) => "rect"
+    case Shape::Point => "point"
+
+function make_shape(kind: int) -> Shape:
+  if kind == 0:
+    return Shape::Circle(1.0)
+  if kind == 1:
+    return Shape::Rect(3.0, 4.0)
+  return Shape::Point
+
+describe("ADT enum as function parameter (#507)", ():
+  it("match on ADT enum parameter", ():
+    expect(shape_area(Shape::Circle(1.0))).to_eq(3.14)
+    expect(shape_area(Shape::Rect(4.0, 5.0))).to_eq(20.0)
+    expect(shape_area(Shape::Point)).to_eq(0.0)
+  )
+  it("multiple functions matching same ADT enum parameter", ():
+    c = Shape::Circle(2.0)
+    expect(shape_area(c)).to_eq(12.56)
+    expect(shape_name(c)).to_eq("circle")
+    r = Shape::Rect(3.0, 4.0)
+    expect(shape_area(r)).to_eq(12.0)
+    expect(shape_name(r)).to_eq("rect")
+  )
+  it("ADT enum as return type", ():
+    s = make_shape(0)
+    expect(shape_name(s)).to_eq("circle")
+    s2 = make_shape(2)
+    expect(shape_name(s2)).to_eq("point")
+  )
+  it("ADT enum equality", ():
+    expect(Shape::Point == Shape::Point).to_eq(true)
+    expect(Shape::Point != Shape::Circle(1.0)).to_eq(true)
+    expect(Shape::Circle(1.0) == Shape::Circle(2.0)).to_eq(true)
+    expect(Shape::Circle(1.0) != Shape::Rect(1.0, 2.0)).to_eq(true)
+  )
+)

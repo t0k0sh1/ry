@@ -169,6 +169,12 @@ describe("split and join", ():
     parts = ["only"]
     expect(join(parts, ",")).to_eq("only")
   )
+  it("join UFCS string receiver", ():
+    parts = ["a", "b", "c"]
+    expect(",".join(parts)).to_eq("a,b,c")
+    expect("-".join(parts)).to_eq("a-b-c")
+    expect("".join(parts)).to_eq("abc")
+  )
 )
 
 describe("UTF-8 support", ():
