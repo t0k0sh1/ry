@@ -579,6 +579,47 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     }
 
     if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
+        for (auto &[uname, uinfo] : union_type_info_) {
+            if (uinfo.llvmType != structTy) continue;
+
+            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.union.tag");
+            llvm::Value *dataBytes = builder_.CreateExtractValue(val, 1, "vts.union.data");
+            auto *dataTy = uinfo.llvmType->getElementType(1);
+            llvm::AllocaInst *dataTmp = builder_.CreateAlloca(dataTy, nullptr, "vts.union.data.tmp");
+            dataTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
+            builder_.CreateStore(dataBytes, dataTmp);
+
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.union.merge", fn_);
+            llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.union.default", fn_);
+            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, defaultBB, uinfo.componentTypes.size());
+
+            builder_.SetInsertPoint(defaultBB);
+            llvm::Constant *unknownStr = cachedGlobalString("?", ".vts_union_unknown");
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            auto *phi = builder_.CreatePHI(ptrTy_, uinfo.componentTypes.size() + 1, "vts.union.str");
+            phi->addIncoming(unknownStr, defaultBB);
+
+            for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {
+                llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                    *ctx_, "vts.union.case" + std::to_string(i), fn_);
+                sw->addCase(llvm::ConstantInt::get(
+                    llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
+                builder_.SetInsertPoint(caseBB);
+
+                llvm::Value *innerVal = builder_.CreateLoad(
+                    uinfo.componentTypes[i], dataTmp, "vts.union.inner");
+                llvm::Value *innerStr = valueToString(innerVal);
+
+                phi->addIncoming(innerStr, builder_.GetInsertBlock());
+                builder_.CreateBr(mergeBB);
+            }
+
+            builder_.SetInsertPoint(mergeBB);
+            return phi;
+        }
+
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
             return structToString(val);
