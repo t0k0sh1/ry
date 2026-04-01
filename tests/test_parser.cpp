@@ -1913,8 +1913,15 @@ TEST(ParserTest, DefaultArgLambdaError) {
 }
 
 TEST(ParserTest, RejectAnonymousFunctionLambda) {
-    // function(...) lambda form is no longer supported
-    EXPECT_THROW(parseStr("f = function(x: int) => x + 1"), std::runtime_error);
+    // function(...) lambda form is no longer supported — verify error message guides to paren-lambda
+    try {
+        parseStr("f = function(x: int) => x + 1");
+        FAIL() << "expected parse error";
+    } catch (const std::runtime_error &e) {
+        std::string msg = e.what();
+        EXPECT_NE(msg.find("paren-lambda"), std::string::npos)
+            << "error message should mention paren-lambda syntax: " << msg;
+    }
 }
 
 TEST(ParserTest, RejectAnonymousFunctionLambdaWithReturnType) {

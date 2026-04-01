@@ -344,8 +344,8 @@ ExprPtr Parser::parsePrimary() {
     }
     if (t.kind == TokenKind::Fn) {
         parseError(t.line,
-            "anonymous function expressions are not supported; "
-            "use lambda syntax instead: (x: int): x + 1");
+            "anonymous 'function' expressions (e.g. 'function(x) => x + 1') "
+            "are not supported; use paren-lambda syntax instead: (x: int): x + 1");
     }
     // weak expr — create weak reference from strong reference
     if (t.kind == TokenKind::Ident && t.value == "weak") {
