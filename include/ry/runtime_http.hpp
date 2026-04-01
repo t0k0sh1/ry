@@ -9,6 +9,7 @@ const char *__ry_http_method(void *req);
 const char *__ry_http_path(void *req);
 const char *__ry_http_header(void *req, const char *key);
 const char *__ry_http_body(void *req);
+void       *__ry_http_body_bytes(void *req);
 void       *__ry_http_response_create(int64_t status, void *headers_map, const char *body);
 void        __ry_http_send_response(void *stream, void *response, int64_t keep_alive);
 int64_t     __ry_http_should_keep_alive(void *req);
@@ -39,6 +40,7 @@ void       *__ry_http_get(const char *url);
 void       *__ry_http_post(const char *url, const char *body, void *headers_map);
 int64_t     __ry_http_client_status(void *resp);
 const char *__ry_http_client_body(void *resp);
+void       *__ry_http_client_body_bytes(void *resp);
 const char *__ry_http_client_header(void *resp, const char *key);
 void        __ry_http_client_response_free(void *resp);
 

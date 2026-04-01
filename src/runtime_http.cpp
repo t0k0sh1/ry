@@ -1,5 +1,6 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_io.hpp"
 #include "ry/runtime_net_types.hpp"
 #include "ry/runtime_arc.hpp"
 
@@ -549,6 +550,11 @@ extern "C" const char *__ry_http_header(void *r, const char *key) {
 extern "C" const char *__ry_http_body(void *r) {
     auto *req = (HttpRequestHandle *)r;
     return req->body;
+}
+
+extern "C" void *__ry_http_body_bytes(void *r) {
+    auto *req = (HttpRequestHandle *)r;
+    return makeByteList((const uint8_t *)req->body, req->body_len);
 }
 
 extern "C" const char *__ry_http_query(void *r, const char *key) {

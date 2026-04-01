@@ -21,6 +21,9 @@ function header(req: HttpRequest, key: str) -> Option<str>
 function body(req: HttpRequest) -> str
 
 @native
+function body_bytes(req: HttpRequest) -> List<u8>
+
+@native
 function query(req: HttpRequest, key: str) -> Option<str>
 
 @native
@@ -59,6 +62,9 @@ function status(response: HttpClientResponse) -> int
 
 @native
 function body(response: HttpClientResponse) -> str
+
+@native
+function body_bytes(response: HttpClientResponse) -> List<u8>
 
 @native
 function header(response: HttpClientResponse, key: str) -> Option<str>

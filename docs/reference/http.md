@@ -17,7 +17,7 @@
 These functions require explicit import:
 
 ```python
-from http import listen, method, path, header, body, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
+from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
 ### Server
@@ -35,7 +35,8 @@ from http import listen, method, path, header, body, query, query_all, cookie, c
 | `method` | `(req: HttpRequest) -> str` | Returns the HTTP method (e.g., `"GET"`, `"POST"`). |
 | `path` | `(req: HttpRequest) -> str` | Returns the request path without the query string (e.g., `"/search"` for `"/search?q=hello"`). |
 | `header` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a request header (case-insensitive lookup). Returns `None` if not found. |
-| `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. |
+| `body` | `(req: HttpRequest) -> str` | Returns the request body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
+| `body_bytes` | `(req: HttpRequest) -> List<u8>` | Returns the request body as a byte list. Binary-safe — preserves all bytes including NUL. |
 | `query` | `(req: HttpRequest, key: str) -> Option<str>` | Returns the value of a query parameter. Returns `None` if not found. Values are automatically URL-decoded. |
 | `query_all` | `(req: HttpRequest) -> Map<str, str>` | Returns all query parameters as a map. Keys and values are automatically URL-decoded. |
 | `cookie` | `(req: HttpRequest, name: str) -> Option<str>` | Returns the value of a cookie by name. Returns `None` if not found. |
@@ -269,7 +270,8 @@ Other status codes use `"Unknown"` as the reason phrase.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `status` | `(resp: HttpClientResponse) -> int` | Returns the HTTP status code. |
-| `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. |
+| `body` | `(resp: HttpClientResponse) -> str` | Returns the response body as a string. Truncated at the first NUL byte; use `body_bytes` for binary data. |
+| `body_bytes` | `(resp: HttpClientResponse) -> List<u8>` | Returns the response body as a byte list. Binary-safe — preserves all bytes including NUL. |
 | `header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | Returns the value of a response header (case-insensitive). Returns `None` if not found. |
 | `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | Frees the response and its associated memory. Call when done with the response. |
 
