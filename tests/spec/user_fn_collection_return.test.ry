@@ -1,0 +1,34 @@
+describe("List returned from user-defined function", ():
+  function get_list() -> List<int>:
+    return [1, 2, 3]
+
+  it("append! on returned list", ():
+    xs = get_list()
+    xs.append!(4)
+    expect(xs).to_have_length(4)
+    expect(xs[3]).to_eq(4)
+  )
+
+  it("appended on returned list", ():
+    xs = get_list()
+    ys = xs.appended(4)
+    expect(xs).to_have_length(3)
+    expect(ys).to_have_length(4)
+    expect(ys[3]).to_eq(4)
+  )
+
+  it("append on returned list", ():
+    xs = get_list()
+    append(xs, 4)
+    expect(xs).to_have_length(4)
+    expect(xs[3]).to_eq(4)
+  )
+
+  it("chained operations on returned list", ():
+    xs = get_list()
+    xs.append!(4)
+    xs.append!(5)
+    expect(xs).to_have_length(5)
+    expect(xs[4]).to_eq(5)
+  )
+)

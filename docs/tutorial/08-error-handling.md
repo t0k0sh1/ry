@@ -45,9 +45,9 @@ You have already seen `Option` in action: `iterator.next()` returns `Option<T>`,
 `Result<T, E>` is used for operations that may fail. Return `Ok(value)` for success and `Err(error)` for failure.
 
 ```python
-function divide(a: int, b: int) -> Result<int, str>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
-        return Err("division by zero")
+        return Err(Error("division by zero"))
     return Ok(a // b)
 ```
 
@@ -59,7 +59,7 @@ match r:
     case Ok(v):
         print(v)
     case Err(e):
-        print(e)   # division by zero
+        print(e.message)   # division by zero
 ```
 
 ### The `?` Operator (Error Propagation)
