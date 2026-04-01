@@ -118,22 +118,22 @@ print(connect("localhost", 3000, 10))    # localhost:3000 (timeout=10)
 
 ## Lambda Functions
 
-Lambda functions let you write functions as expressions. They use the form `(parameters): expression`. The return type is automatically inferred.
+Lambda functions let you write functions as expressions. Single-expression lambdas use the form `(parameters) => expression`, while block lambdas use `(parameters):` followed by an indented block. In both cases, the return type is automatically inferred.
 
 ### Single-Expression Lambda
 
 ```python
-double = (x: int): x * 2
+double = (x: int) => x * 2
 print(double(5))  # 10
 
-add = (a: int, b: int): a + b
+add = (a: int, b: int) => a + b
 print(add(3, 4))  # 7
 ```
 
 ### No-Parameter Lambda
 
 ```python
-answer = (): 42
+answer = () => 42
 print(answer())  # 42
 ```
 
@@ -161,7 +161,7 @@ Lambda functions can capture variables from the scope in which they are defined.
 
 ```python
 offset = 10
-add_offset = (x: int): x + offset
+add_offset = (x: int) => x + offset
 print(add_offset(5))  # 15
 ```
 
@@ -169,7 +169,7 @@ Closures capture variables **by value** — changing the original variable after
 
 ```python
 base = 10
-f = (x: int): x + base
+f = (x: int) => x + base
 base = 999
 print(f(1))  # 11 (still uses the captured value 10)
 ```
@@ -186,9 +186,9 @@ You can define functions that take other functions as arguments. Function types 
 function apply(f: function(int) -> int, x: int) -> int:
     return f(x)
 
-double = (x: int): x * 2
+double = (x: int) => x * 2
 print(apply(double, 3))                # 6
-print(apply((n: int): n + 1, 10))  # 11
+print(apply((n: int) => n + 1, 10))  # 11
 ```
 
 ### Functions as Values
@@ -246,7 +246,7 @@ print(double(add(x, 2)))   # 6
 
 1. **Default arguments**: Write a function `format_price(amount: int, currency: str = "USD", decimals: int = 2) -> str` that formats a price. Verify that `format_price(42)` and `format_price(42, "EUR")` both work.
 
-2. **Higher-order function**: Write a function `apply_twice(f: function(int) -> int, x: int) -> int` that applies `f` to `x` twice (i.e., `f(f(x))`). Test it with `(x: int): x + 1` and verify that `apply_twice((x: int): x + 1, 5)` returns `7`.
+2. **Higher-order function**: Write a function `apply_twice(f: function(int) -> int, x: int) -> int` that applies `f` to `x` twice (i.e., `f(f(x))`). Test it with `(x: int) => x + 1` and verify that `apply_twice((x: int) => x + 1, 5)` returns `7`.
 
 3. **UFCS chaining**: Define `inc(n: int) -> int` (adds 1) and `triple(n: int) -> int` (multiplies by 3). Use UFCS to write `5.inc().triple()` and verify the result is `18`.
 

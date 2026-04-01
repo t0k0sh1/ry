@@ -335,7 +335,7 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
             std::string result = "(" + formatParams(v->params) + ")";
             if (v->return_type) result += " -> " + v->return_type->toString();
             if (v->expr_body) {
-                result += ": " + formatExpr(*v->expr_body);
+                result += " => " + formatExpr(*v->expr_body);
                 return result;
             } else if (!v->body.empty()) {
                 result += ":\n";

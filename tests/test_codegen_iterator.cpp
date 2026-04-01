@@ -16,7 +16,7 @@ TEST_F(CodeGenTest, IteratorBasicToList) {
 TEST_F(CodeGenTest, IteratorLazyFilter) {
     std::string src =
         "xs = [1, 2, 3, 4, 5]\n"
-        "ys = xs.iter().filter((x: int): x > 2).to_list()\n"
+        "ys = xs.iter().filter((x: int) => x > 2).to_list()\n"
         "print(length(ys))\n"
         "print(ys[0])\n"
         "print(ys[1])\n"
@@ -27,7 +27,7 @@ TEST_F(CodeGenTest, IteratorLazyFilter) {
 TEST_F(CodeGenTest, IteratorLazyMap) {
     std::string src =
         "xs = [1, 2, 3]\n"
-        "ys = xs.iter().map((x: int): x * 10).to_list()\n"
+        "ys = xs.iter().map((x: int) => x * 10).to_list()\n"
         "print(ys[0])\n"
         "print(ys[1])\n"
         "print(ys[2])";
@@ -37,7 +37,7 @@ TEST_F(CodeGenTest, IteratorLazyMap) {
 TEST_F(CodeGenTest, IteratorLazyMapUntypedLambdaParam) {
     std::string src =
         "xs = [1, 2, 3]\n"
-        "ys = xs.iter().map((x) -> int: 2).to_list()\n"
+        "ys = xs.iter().map((x) -> int => 2).to_list()\n"
         "print(ys[0])\n"
         "print(ys[1])\n"
         "print(ys[2])";
@@ -57,7 +57,7 @@ TEST_F(CodeGenTest, IteratorLazyTake) {
 TEST_F(CodeGenTest, IteratorChained) {
     std::string src =
         "xs = [1, 2, 3, 4, 5]\n"
-        "ys = xs.iter().filter((x: int): x > 2).map((x: int): x * 2).take(2).to_list()\n"
+        "ys = xs.iter().filter((x: int) => x > 2).map((x: int) => x * 2).take(2).to_list()\n"
         "print(length(ys))\n"
         "print(ys[0])\n"
         "print(ys[1])";
@@ -78,7 +78,7 @@ TEST_F(CodeGenTest, IteratorForLoopWithFilter) {
     std::string src =
         "xs = [1, 2, 3, 4, 5]\n"
         "sum = 0\n"
-        "for x in xs.iter().filter((x: int): x > 3):\n"
+        "for x in xs.iter().filter((x: int) => x > 3):\n"
         "    sum = sum + x\n"
         "print(sum)";
     EXPECT_EQ(runSource(src), "9\n");

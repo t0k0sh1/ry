@@ -161,7 +161,7 @@ function fetch_data() -> str:
 
 describe("mocking", ():
     it("replaces function", ():
-        mock(fetch_data, (): "fake")
+        mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
@@ -184,7 +184,7 @@ Returns the number of times a mocked function was called (as `int`).
 ```
 describe("verify", ():
     it("counts calls", ():
-        mock(fetch_data, (): "fake")
+        mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)

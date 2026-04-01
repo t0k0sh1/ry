@@ -554,8 +554,8 @@ TEST(ParserTest, FnExplicitUnitReturn) {
 }
 
 TEST(ParserTest, LambdaReturnTypeOmitted) {
-    // (x: int): x + 1 → return type is empty (inferred at codegen time)
-    Program prog = parseStr("f = (x: int): x + 1");
+    // (x: int) => x + 1 → return type is empty (inferred at codegen time)
+    Program prog = parseStr("f = (x: int) => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -563,8 +563,8 @@ TEST(ParserTest, LambdaReturnTypeOmitted) {
 }
 
 TEST(ParserTest, LambdaExplicitReturnType) {
-    // (x: int) -> int: x + 1 → return type is "int"
-    Program prog = parseStr("f = (x: int) -> int: x + 1");
+    // (x: int) -> int => x + 1 → return type is "int"
+    Program prog = parseStr("f = (x: int) -> int => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -572,7 +572,7 @@ TEST(ParserTest, LambdaExplicitReturnType) {
 }
 
 TEST(ParserTest, LambdaOptionAWithParenPrefix) {
-    Program prog = parseStr("f = (x: int) -> int: x + 1");
+    Program prog = parseStr("f = (x: int) -> int => x + 1");
     ASSERT_EQ(prog.size(), 1u);
     const auto &assign = std::get<AssignStmt>(prog[0]);
     const auto &lambda = std::get<std::unique_ptr<LambdaExpr>>(assign.value->data);
@@ -1480,7 +1480,7 @@ TEST(ParserTest, AwaitOutsideAsyncFnRejected) {
     // await inside lambda within async function should also fail (lambda is not async)
     EXPECT_THROW(parseStr(
         "async function foo() -> int:\n"
-        "    f = (x: int): await bar()\n"
+        "    f = (x: int) => await bar()\n"
         "    return 1"), std::runtime_error);
 }
 
@@ -1909,7 +1909,14 @@ TEST(ParserTest, DefaultArgNoTypeError) {
 
 TEST(ParserTest, DefaultArgLambdaError) {
     // default args in lambda are not supported
-    EXPECT_THROW(parseStr("f = (x: int = 10): x"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (x: int = 10) => x"), std::runtime_error);
+}
+
+TEST(ParserTest, RejectOldColonSingleExprLambda) {
+    // old `:` syntax for single-expression lambdas is rejected with guidance
+    EXPECT_THROW(parseStr("f = (x: int): x + 1"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (): 42"), std::runtime_error);
+    EXPECT_THROW(parseStr("f = (x: int) -> int: x + 1"), std::runtime_error);
 }
 
 TEST(ParserTest, RejectAnonymousFunctionLambda) {
