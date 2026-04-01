@@ -740,6 +740,8 @@ void CodeGen::emitStmt(EnumStmt &s) {
 
     // Create global string array for variant names (for printing)
     std::vector<llvm::Constant*> nameStrings;
+    nameStrings.reserve(s.variants.size());
+    info.variantOrder.reserve(s.variants.size());
     std::unordered_set<int64_t> seenValues;
     for (size_t i = 0; i < s.variants.size(); ++i) {
         int64_t val = s.variants[i].explicit_value.value_or(static_cast<int64_t>(i));

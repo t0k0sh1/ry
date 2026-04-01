@@ -226,6 +226,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
     // Convert each expression to string
     std::vector<llvm::Value*> strParts;
+    strParts.reserve(e->parts.size() + e->exprs.size());
     for (size_t i = 0; i < e->parts.size(); ++i) {
         if (!e->parts[i].empty())
             strParts.push_back(cachedGlobalString(e->parts[i], ".fstr_lit"));

@@ -165,6 +165,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     }
 
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type->toString()));
 
@@ -218,6 +219,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // Compute minArity and collect default values
     size_t newMinArity = 0;
     std::vector<ExprPtr> defaults;
+    defaults.reserve(s->params.size());
     for (size_t i = 0; i < s->params.size(); ++i) {
         if (!s->params[i].default_value) newMinArity = i + 1;
         defaults.push_back(std::move(s->params[i].default_value));
@@ -259,9 +261,11 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
     std::vector<std::string> paramNames;
+    paramNames.reserve(s->params.size());
     for (auto &p : s->params)
         paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
     overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
@@ -457,6 +461,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "async_env_typed");
         std::vector<llvm::Value*> thunkArgs;
+        thunkArgs.reserve(paramTypes.size());
         for (size_t i = 0; i < paramTypes.size(); ++i) {
             llvm::Value *argField = builder_.CreateStructGEP(
                 envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
@@ -545,6 +550,7 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
     if (info.invariants.empty() && info.parent_name.empty()) return;
 
     std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
+    allInvariants.reserve(8);
     for (auto &inv : info.invariants)
         allInvariants.push_back({typeName, &inv});
     const std::string *parent = &info.parent_name;
@@ -646,6 +652,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 
     bool hasADT = false;
     std::vector<llvm::Constant*> nameStrings;
+    nameStrings.reserve(tmpl.variants.size());
     for (size_t i = 0; i < tmpl.variants.size(); ++i) {
         auto &v = tmpl.variants[i];
         info.variants[v.name] = static_cast<int64_t>(i);
@@ -847,6 +854,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
 
     // Resolve parameter types and return type using type_param_scope_
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(s.params.size());
     for (auto &p : s.params)
         paramTypes.push_back(resolveType(p.type->toString()));
     std::string sReturnType = s.return_type ? s.return_type->toString() : "";
@@ -866,9 +874,11 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
         ft, llvm::Function::InternalLinkage, irName, *mod_);
 
     std::vector<std::string> paramNames;
+    paramNames.reserve(s.params.size());
     for (auto &p : s.params)
         paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(s.params.size());
     for (auto &p : s.params) {
         // Substitute type params in param type names for FnTypeInfo
         std::string pTypeStr = p.type->toString();
