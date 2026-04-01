@@ -341,7 +341,7 @@ x = value as Option<int>
 y = data as Map<str, int>
 ```
 
-Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
 
 ## Enum with Associated Data (ADT)
 
