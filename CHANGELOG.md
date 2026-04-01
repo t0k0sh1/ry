@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Operator overloads (`operator[]`, `operator+`, etc.) now correctly propagate return type metadata for collection types, fixing "cannot determine list element type for index access" when `operator[]` returns `List<T>` (#537)
+- `operator as` overload resolution now uses semantic type names instead of LLVM types, preventing false matches between pointer-backed types (`str`, `List<T>`, `Map<K,V>`, etc.) (#537)
 - `to_str()` on union-typed values now returns the string representation of the actual value instead of the discriminant index (#536)
 - Option/Result type-meta guard now checks all collection metadata keys (`TM_ListElem`, `TM_SetElem`, `TM_TaskResult`), not just `TM_MapKey`, preventing potential metadata overwrites when wrapping collection types (#525)
 - Generic function parameters with collection types (`List<T>`, `Map<K, V>`, `Set<T>`) are now properly marked as ARC-managed during instantiation, preventing potential memory leaks (#524)

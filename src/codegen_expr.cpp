@@ -186,7 +186,9 @@ llvm::Value *CodeGen::findAndCallOverload(const std::string &opFnName,
         if (!match) continue;
         if (entry.func->getReturnType()->isVoidTy())
             return builder_.CreateCall(entry.func, args);
-        return builder_.CreateCall(entry.func, args, callName);
+        llvm::Value *result = builder_.CreateCall(entry.func, args, callName);
+        propagateReturnTypeMeta(&entry, result);
+        return result;
     }
     return nullptr;
 }

@@ -6,15 +6,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Type *srcTy = val->getType();
     const std::string target = e->target_type->toString();
 
-    // Try user-defined operator as (matches by source type + return type)
+    // Try user-defined operator as (matches by source type + semantic return type name)
     auto fit = functions_.find("operatoras");
     if (fit != functions_.end()) {
-        llvm::Type *targetTy = resolveType(target);
+        std::string resolvedTarget = resolveTypeAlias(target);
         for (auto &entry : fit->second) {
             if (entry.paramTypes.size() == 1 &&
                 entry.paramTypes[0] == srcTy &&
-                entry.func->getReturnType() == targetTy) {
-                return builder_.CreateCall(entry.func, {val}, "cast_op");
+                resolveTypeAlias(entry.returnTypeName) == resolvedTarget) {
+                llvm::Value *result = builder_.CreateCall(entry.func, {val}, "cast_op");
+                propagateReturnTypeMeta(&entry, result);
+                return result;
             }
         }
     }
