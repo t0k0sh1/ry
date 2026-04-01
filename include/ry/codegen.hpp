@@ -98,6 +98,12 @@ private:
     void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
     bool tryRetainArcSource(llvm::Value *val);
 
+    // Collection type name helpers
+    static bool isListTypeName(const std::string &typeName);
+    static bool isMapTypeName(const std::string &typeName);
+    static bool isSetTypeName(const std::string &typeName);
+    static bool isCollectionTypeName(const std::string &typeName);
+
     // Weak reference operations
     static bool isWeakTypeName(const std::string &typeName);
     static std::string weakInnerTypeName(const std::string &typeName);

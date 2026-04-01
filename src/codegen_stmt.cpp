@@ -26,7 +26,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!annot)
             codegenError("empty {} literal requires type annotation");
-        if (annot->size() > 4 && annot->substr(0, 4) == "Set<") {
+        if (isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
@@ -59,7 +59,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (annot->size() > 4 && annot->substr(0, 4) == "Map<") {
+        if (isMapTypeName(*annot)) {
             auto [keyTy, valTy] = parseMapTypeAnnotation(*annot);
             if (!keyTy || !valTy)
                 codegenError("invalid map type annotation: " + *annot);
@@ -309,8 +309,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (newTy == ptrTy_) {
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
-        if (!elemTy && annot && annot->size() > 5 &&
-            annot->substr(0, 5) == "List<") {
+        if (!elemTy && annot && isListTypeName(*annot)) {
             std::string inner = annot->substr(5, annot->size() - 6);
             elemTy = resolveType(inner);
         }
@@ -347,8 +346,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
         }
         // From type annotation: Map<K, V>
-        if (!keyTy && annot && annot->size() > 4 &&
-            annot->substr(0, 4) == "Map<") {
+        if (!keyTy && annot && isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
         if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
@@ -361,8 +359,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setElemTy = getSetElementType(load->getPointerOperand());
             }
         }
-        if (!setElemTy && annot && annot->size() > 4 &&
-            annot->substr(0, 4) == "Set<") {
+        if (!setElemTy && annot && isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             setElemTy = resolveType(inner);
         }
