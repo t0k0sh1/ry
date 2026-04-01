@@ -259,6 +259,13 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             auto it = struct_types_.find(typeName);
             if (it != struct_types_.end())
                 return emitStructComparison(op, lhs, rhs, it->second);
+            // ADT enum: compare by tag
+            if (!findAdtEnumName(lhsST).empty()) {
+                llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
+                llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
+                if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
+                return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+            }
         }
     }
 
