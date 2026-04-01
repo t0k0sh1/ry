@@ -1,0 +1,74 @@
+describe("record_field_index", ():
+
+  it("list field index access", ():
+    record Container:
+      items: List<int>
+
+    c = Container([10, 20, 30])
+    expect(c.items[0]).to_eq(10)
+    expect(c.items[1]).to_eq(20)
+    expect(c.items[2]).to_eq(30)
+  )
+
+  it("list field assigned to variable then indexed", ():
+    record Holder:
+      data: List<int>
+
+    h = Holder([100, 200, 300])
+    xs = h.data
+    expect(xs[0]).to_eq(100)
+    expect(xs[2]).to_eq(300)
+  )
+
+  it("map field index access", ():
+    record Config:
+      settings: Map<str, str>
+
+    cfg = Config({"host": "localhost", "port": "8080"})
+    expect(cfg.settings["host"]).to_eq("localhost")
+    expect(cfg.settings["port"]).to_eq("8080")
+  )
+
+  it("list field index in function", ():
+    record Matrix:
+      data: List<int>
+
+    function get_element(m: Matrix, idx: int) -> int:
+      return m.data[idx]
+
+    mat = Matrix([5, 10, 15, 20])
+    expect(get_element(mat, 0)).to_eq(5)
+    expect(get_element(mat, 3)).to_eq(20)
+  )
+
+  it("nested list field index access", ():
+    record Grid:
+      rows: List<List<int>>
+
+    g = Grid([[1, 2], [3, 4], [5, 6]])
+    row = g.rows[0]
+    expect(row[0]).to_eq(1)
+    expect(row[1]).to_eq(2)
+  )
+
+  it("list field with negative index", ():
+    record Bag:
+      items: List<int>
+
+    b = Bag([10, 20, 30])
+    expect(b.items[-1]).to_eq(30)
+    expect(b.items[-3]).to_eq(10)
+  )
+
+  it("operator overload using record list field", ():
+    record Vec:
+      elems: List<int>
+
+    function operator[](v: Vec, idx: int) -> int:
+      return v.elems[idx]
+
+    v = Vec([7, 8, 9])
+    expect(v[0]).to_eq(7)
+    expect(v[2]).to_eq(9)
+  )
+)

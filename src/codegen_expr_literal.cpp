@@ -110,7 +110,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
             std::string qualifiedField = typeName + "." + e->field;
             if (deprecated_fields_.count(qualifiedField))
                 emitDeprecationWarning(qualifiedField);
-            return builder_.CreateExtractValue(obj, i, e->field);
+            llvm::Value *fieldVal = builder_.CreateExtractValue(obj, i, e->field);
+            if (info.fields[i].type)
+                propagateTypeMeta(info.fields[i].type->toString(), fieldVal);
+            return fieldVal;
         }
     }
 
@@ -511,7 +514,14 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
-    return builder_.CreateLoad(elemTy, elemPtr, "elem");
+    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
+
+    // Without this, chained indexing like matrix[i][j] loses element type metadata.
+    llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
+    if (nestedElemTy)
+        type_meta_[TM_ListElem][elem] = nestedElemTy;
+
+    return elem;
 }
 
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
