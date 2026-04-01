@@ -527,6 +527,20 @@ void CodeGen::emitPrintSingle(llvm::Value *val, llvm::FunctionCallee printfFn) {
             builder_.CreateCall(printfFn, {fmt, str});
             return;
         }
+        if (isTupleStructType(structTy)) {
+            builder_.CreateCall(printfFn, {cachedGlobalString("(", ".fmt_tuple_open")});
+            unsigned n = structTy->getNumElements();
+            for (unsigned i = 0; i < n; ++i) {
+                if (i > 0)
+                    builder_.CreateCall(printfFn, {cachedGlobalString(", ", ".fmt_tuple_sep")});
+                llvm::Value *elem = builder_.CreateExtractValue(val, i, "tuple_elem");
+                emitPrintSingle(elem, printfFn);
+            }
+            if (n == 1)
+                builder_.CreateCall(printfFn, {cachedGlobalString(",", ".fmt_tuple_trail")});
+            builder_.CreateCall(printfFn, {cachedGlobalString(")", ".fmt_tuple_close")});
+            return;
+        }
         codegenError("print() does not support this struct type");
     }
 

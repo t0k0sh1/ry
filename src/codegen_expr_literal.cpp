@@ -636,15 +636,17 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
             return structToString(val);
+        if (isTupleStructType(structTy))
+            return tupleToString(val, structTy);
     }
 
     if (ty->isPointerTy()) {
-        // Reject non-string pointer types (collections, function pointers)
+        // Convert collections to string via sprint buffer
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
             llvm::Value *src = load->getPointerOperand();
             if (type_meta_[TM_ListElem].count(src) || type_meta_[TM_MapKey].count(src) ||
                 type_meta_[TM_SetElem].count(src))
-                codegenError("cannot convert collection to string");
+                return collectionToString(val);
         }
         if (fn_type_info_.count(val))
             codegenError("cannot convert function to string");
@@ -749,12 +751,9 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
 
     // Auto-generate: "TypeName(field1: val1, field2: val2)"
     auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
 
-    // Build string parts with lengths (use constants for literals, strlen for dynamic values)
-    struct StringPart { llvm::Value *str; llvm::Value *len; };
-    std::vector<StringPart> parts;
+    using SP = std::pair<llvm::Value*, llvm::Value*>;
+    std::vector<SP> parts;
 
     auto addLiteral = [&](const std::string &s, const char *label) {
         parts.push_back({cachedGlobalString(s, label),
@@ -774,24 +773,72 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
 
     addLiteral(")", ".sts_suffix");
 
-    // Compute total length
+    return concatStringParts(parts, "sts");
+}
+
+llvm::Value *CodeGen::tupleToString(llvm::Value *val, llvm::StructType *st) {
+    auto strlenFn = getStdlibStrlen();
+
+    using SP = std::pair<llvm::Value*, llvm::Value*>;
+    std::vector<SP> parts;
+
+    auto addLiteral = [&](const std::string &s, const char *label) {
+        parts.push_back({cachedGlobalString(s, label),
+                         llvm::ConstantInt::get(i64Ty_, s.size())});
+    };
+
+    unsigned n = st->getNumElements();
+    addLiteral("(", ".tts_prefix");
+    for (unsigned i = 0; i < n; ++i) {
+        if (i > 0)
+            addLiteral(", ", ".tts_sep");
+        llvm::Value *elem = builder_.CreateExtractValue(val, i, "tts_elem");
+        llvm::Value *elemStr = valueToString(elem);
+        parts.push_back({elemStr, builder_.CreateCall(strlenFn, {elemStr}, "tts_len")});
+    }
+    if (n == 1)
+        addLiteral(",", ".tts_trail");
+    addLiteral(")", ".tts_suffix");
+
+    return concatStringParts(parts, "tts");
+}
+
+llvm::Value *CodeGen::concatStringParts(
+    const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
+    const std::string &prefix) {
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts)
-        totalLen = builder_.CreateAdd(totalLen, p.len, "sts_total");
+        totalLen = builder_.CreateAdd(totalLen, p.second, prefix + "_total");
 
-    // Allocate and concatenate
-    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "sts_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "sts_buf");
-    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *bufSize = builder_.CreateAdd(
+        totalLen, llvm::ConstantInt::get(i64Ty_, 1), prefix + "_bufsize");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, prefix + "_buf");
+    llvm::Value *off = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts) {
-        llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_dst");
-        builder_.CreateCall(memcpyFn, {dst, p.str, p.len});
-        offset = builder_.CreateAdd(offset, p.len, "sts_off");
+        llvm::Value *dst = builder_.CreateGEP(
+            builder_.getInt8Ty(), buf, {off}, prefix + "_dst");
+        builder_.CreateCall(memcpyFn, {dst, p.first, p.second});
+        off = builder_.CreateAdd(off, p.second, prefix + "_off");
     }
 
-    // Null-terminate
-    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_end");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
-
+    llvm::Value *ep = builder_.CreateGEP(
+        builder_.getInt8Ty(), buf, {off}, prefix + "_end");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), ep);
     return buf;
+}
+
+llvm::Value *CodeGen::collectionToString(llvm::Value *val) {
+    // Use sprint buffer: begin → print collection → end (returns char*)
+    builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
+        llvm::Type::getVoidTy(*ctx_), {}));
+
+    auto sprintfFn = getSprintPrintf();
+    emitPrintSingle(val, sprintfFn);
+
+    return builder_.CreateCall(
+        getRuntimeFn("__ry_sprint_end", ptrTy_, {}),
+        {}, "col_str");
 }

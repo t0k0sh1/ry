@@ -1167,6 +1167,11 @@ llvm::FunctionCallee CodeGen::getBufferedPrintf() {
     return mod_->getOrInsertFunction("__ry_print_printf", ty);
 }
 
+llvm::FunctionCallee CodeGen::getSprintPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("__ry_sprint_printf", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibExit() {
     auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
     return mod_->getOrInsertFunction("exit", ty);
@@ -1335,6 +1340,10 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
             llvm::Value *str = structToString(val);
             llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_struct" + suffix);
             builder_.CreateCall(printfFn, {fmt, str});
+        } else if (isTupleStructType(st)) {
+            emitPrintSingle(val, printfFn);
+        } else {
+            emitPrintSingle(val, printfFn);
         }
     } else {
         std::string llName = getLowLevelTypeName(val);

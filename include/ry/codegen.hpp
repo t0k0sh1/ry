@@ -546,6 +546,12 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
     llvm::Value *structToString(llvm::Value *val);
+    bool isTupleStructType(llvm::StructType *st);
+    llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
+    llvm::Value *collectionToString(llvm::Value *val);
+    llvm::Value *concatStringParts(
+        const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
+        const std::string &prefix);
 
     // Operator overload helpers
     llvm::Value *findAndCallOverload(const std::string &opFnName,
@@ -643,6 +649,7 @@ private:
     llvm::FunctionCallee getStdlibSnprintf();
     llvm::FunctionCallee getStdlibPrintf();
     llvm::FunctionCallee getBufferedPrintf();
+    llvm::FunctionCallee getSprintPrintf();
     llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
