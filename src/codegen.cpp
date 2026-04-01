@@ -815,6 +815,21 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // Propagate fn_type_info for function-type return values
+    auto propagateReturnFnType = [&](llvm::Value *dest) {
+        auto retFnIt = return_fn_type_info_.find(fn);
+        if (retFnIt != return_fn_type_info_.end()) {
+            fn_type_info_[dest] = retFnIt->second;
+            return;
+        }
+        if (!matchedEntry) return;
+        const auto &rtn = matchedEntry->returnTypeName;
+        if (rtn.size() <= 9 || rtn.compare(0, 9, "function(") != 0) return;
+        std::string resolved = resolveTypeAlias(rtn);
+        if (resolved.size() > 9 && resolved.compare(0, 9, "function(") == 0)
+            fn_type_info_[dest] = parseFnTypeAnnotation(resolved);
+    };
+
     // ARC: retain arguments that are ARC-managed before passing to callee
     for (auto *argVal : argVals)
         tryRetainArcSource(argVal);
@@ -962,6 +977,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
         if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
             low_level_type_names_[phi] = matchedEntry->returnTypeName;
+        propagateReturnFnType(phi);
         return phi;
     }
 
@@ -979,6 +995,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
     // Propagate low-level type metadata from return type
     if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
         low_level_type_names_[callResult] = matchedEntry->returnTypeName;
+
+    propagateReturnFnType(callResult);
 
     return callResult;
 }
