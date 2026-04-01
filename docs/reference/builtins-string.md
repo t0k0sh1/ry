@@ -303,6 +303,7 @@ Joins the elements of a string list with separator `sep` and returns a string.
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
+print(",".join(parts))         # a,b,c (UFCS, Python-style)
 ```
 
 ---
