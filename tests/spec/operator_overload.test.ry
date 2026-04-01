@@ -116,6 +116,16 @@ describe("operator as", ():
     expect(f.value).to_eq(212)
   )
 
+  it("cast to generic Option type", ():
+    record Temperature:
+      value: int
+    function operator as(t: Temperature) -> int?:
+      return Some(t.value)
+    t = Temperature(42)
+    result: int? = t as int?
+    expect(result ?? -1).to_eq(42)
+  )
+
   it("built-in cast still works", ():
     x: float = 42 as float
     expect(x + 0.5).to_eq(42.5)

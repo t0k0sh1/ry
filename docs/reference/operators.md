@@ -482,4 +482,17 @@ c = Celsius(100)
 f = c as Fahrenheit   # Fahrenheit(212)
 ```
 
+The target type can be any type the compiler can resolve, including generic types:
+
+```python
+record Temperature:
+    value: int
+
+function operator as(t: Temperature) -> int?:
+    return Some(t.value)
+
+t = Temperature(42)
+result: int? = t as int?   # Some(42)
+```
+
 User-defined `as` operators are tried first; if no match is found, built-in casts (int, float, bool, str, etc.) are used as a fallback.

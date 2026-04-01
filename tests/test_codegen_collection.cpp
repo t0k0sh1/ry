@@ -2310,6 +2310,18 @@ TEST_F(CodeGenTest, OperatorAsParamValidation) {
         "    return a\n"), std::runtime_error);
 }
 
+TEST_F(CodeGenTest, OperatorAsGenericOptionTarget) {
+    std::string src =
+        "record Celsius:\n"
+        "    value: int\n"
+        "function operator as(c: Celsius) -> int?:\n"
+        "    return Some(c.value)\n"
+        "c = Celsius(42)\n"
+        "result: int? = c as int?\n"
+        "print(result ?? -1)\n";
+    EXPECT_EQ(runSource(src), "42\n");
+}
+
 // ===== Bounds checking tests =====
 
 TEST_F(CodeGenTest, ListNegativeIndexWrapAll) {
