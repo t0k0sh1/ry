@@ -144,6 +144,17 @@ describe("operator as", ():
     expect(result ?? -1).to_eq(42)
   )
 
+  it("cast returning collection preserves type info", ():
+    record Row:
+      items: List<int>
+    function operator as(r: Row) -> List<int>:
+      return r.items
+    r = Row([10, 20, 30])
+    xs = r as List<int>
+    expect(xs[0]).to_eq(10)
+    expect(xs[2]).to_eq(30)
+  )
+
   it("built-in cast still works", ():
     x: float = 42 as float
     expect(x + 0.5).to_eq(42.5)
