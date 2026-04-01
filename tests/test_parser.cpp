@@ -1927,3 +1927,56 @@ TEST(ParserTest, RejectAnonymousFunctionLambdaBlock) {
 TEST(ParserTest, RejectAnonymousFunctionLambdaNoParams) {
     EXPECT_THROW(parseStr("f = function() => 42"), std::runtime_error);
 }
+
+// ===== Cast expression with generic types (#490) =====
+
+TEST(ParserTest, CastSimpleType) {
+    Program prog = parseStr("x = 42 as float");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(s.value->data));
+    const auto &cast = *std::get<std::unique_ptr<CastExpr>>(s.value->data);
+    EXPECT_EQ(cast.target_type->toString(), "float");
+}
+
+TEST(ParserTest, CastGenericType) {
+    Program prog = parseStr("x = y as Option<int>");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(s.value->data));
+    const auto &cast = *std::get<std::unique_ptr<CastExpr>>(s.value->data);
+    EXPECT_EQ(cast.target_type->toString(), "Option<int>");
+}
+
+TEST(ParserTest, CastGenericTwoParams) {
+    Program prog = parseStr("x = y as Map<str, int>");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(s.value->data));
+    const auto &cast = *std::get<std::unique_ptr<CastExpr>>(s.value->data);
+    EXPECT_EQ(cast.target_type->toString(), "Map<str, int>");
+}
+
+TEST(ParserTest, CastFollowedByComparison) {
+    Program prog = parseStr("x = y as float > 3.0");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<BinaryExpr>>(s.value->data));
+    const auto &bin = *std::get<std::unique_ptr<BinaryExpr>>(s.value->data);
+    EXPECT_EQ(bin.op, ">");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(bin.lhs->data));
+    const auto &cast = *std::get<std::unique_ptr<CastExpr>>(bin.lhs->data);
+    EXPECT_EQ(cast.target_type->toString(), "float");
+}
+
+TEST(ParserTest, CastChained) {
+    Program prog = parseStr("x = 42 as float as str");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(s.value->data));
+    const auto &outer = *std::get<std::unique_ptr<CastExpr>>(s.value->data);
+    EXPECT_EQ(outer.target_type->toString(), "str");
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<CastExpr>>(outer.value->data));
+    const auto &inner = *std::get<std::unique_ptr<CastExpr>>(outer.value->data);
+    EXPECT_EQ(inner.target_type->toString(), "float");
+}

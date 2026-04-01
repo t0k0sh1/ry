@@ -157,13 +157,10 @@ ExprPtr Parser::parseCast() {
     ExprPtr expr = parsePower();
     while (lex_.peek().kind == TokenKind::As) {
         Token asTok = lex_.next(); // consume 'as'
-        Token typeTok = lex_.peek();
-        if (typeTok.kind != TokenKind::Ident)
-            parseError(typeTok.line, "expected type name after 'as'");
-        std::string targetType = lex_.next().value;
+        auto targetType = parseCastTypeName();
         auto cast = std::make_unique<CastExpr>();
         cast->value = std::move(expr);
-        cast->target_type = TypeNode::makeBasic(targetType);
+        cast->target_type = std::move(targetType);
         auto node = std::make_unique<ExprNode>();
         node->data = std::move(cast);
         node->loc = locFromToken(asTok);
@@ -647,6 +644,30 @@ bool Parser::couldBeLambda() {
     }
     lex_.restoreState(std::move(saved));
     return result;
+}
+
+TypeNodePtr Parser::parseCastTypeName() {
+    // In expression context after 'as', '<' is ambiguous between generic type
+    // parameter and comparison operator.  Use speculative parse: try
+    // parseTypeName() and fall back to a basic type if it fails (i.e. '<' was
+    // actually a comparison operator).
+    auto saved = lex_.saveState();
+    try {
+        auto ty = parseTypeName();
+        // If parseTypeName consumed '<' as generic, verify it also consumed '>'.
+        // A quick sanity check: the next token must NOT be inside an
+        // unfinished generic parse.  Since parseTypeName throws on malformed
+        // generics, reaching here means the parse was valid.
+        return ty;
+    } catch (...) {
+        lex_.restoreState(std::move(saved));
+    }
+    // Fallback: parse a simple identifier type (original behaviour).
+    Token typeTok = lex_.peek();
+    if (typeTok.kind != TokenKind::Ident)
+        parseError(typeTok.line, "expected type name after 'as'");
+    std::string targetType = lex_.next().value;
+    return TypeNode::makeBasic(targetType);
 }
 
 bool Parser::couldBeGenericEnum() {

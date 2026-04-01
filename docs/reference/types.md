@@ -334,7 +334,14 @@ b = 255 as u8         # u8 value 255
 | unsigned int | `f32` | `UIToFP` |
 | `f32` | signed / unsigned int | `FPToSI` / `FPToUI` |
 
-Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+The target type of `as` supports the full type syntax, including generic types:
+
+```python
+x = value as Option<int>
+y = data as Map<str, int>
+```
+
+Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
 
 ## Enum with Associated Data (ADT)
 
