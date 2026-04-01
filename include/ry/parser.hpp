@@ -108,6 +108,7 @@ private:
     ExprPtr parseRange();
     ExprPtr parseParenLambdaExpr();
     bool couldBeLambda();
+    bool couldBeGenericEnum();
     ExprPtr parseAwaitExpr();
 };
 

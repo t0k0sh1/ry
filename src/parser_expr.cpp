@@ -366,7 +366,7 @@ ExprPtr Parser::parsePrimary() {
             }
         }
         // Generic enum constructor: MyOption<int>::MySome(42)
-        if (lex_.peek().kind == TokenKind::Less) {
+        if (lex_.peek().kind == TokenKind::Less && couldBeGenericEnum()) {
             // Try to parse as generic type: Ident<Type>::Variant(...)
             auto savedState = lex_.saveState();
             try {
@@ -645,6 +645,16 @@ bool Parser::couldBeLambda() {
         // (ident...) could be lambda; (non-ident...) cannot
         result = (first == TokenKind::Ident);
     }
+    lex_.restoreState(std::move(saved));
+    return result;
+}
+
+bool Parser::couldBeGenericEnum() {
+    // Conservative: type arguments always start with Ident; non-Ident
+    // (literals, operators) means this '<' is definitely a comparison.
+    auto saved = lex_.saveState();
+    lex_.next();
+    bool result = lex_.peek().kind == TokenKind::Ident;
     lex_.restoreState(std::move(saved));
     return result;
 }
