@@ -29,6 +29,33 @@ void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Valu
         if (typeName == name) { resource_sets_[rk].insert(val); return; }
 }
 
+void CodeGen::applyParamTypeMeta(const std::string &ptype,
+                                  llvm::AllocaInst *alloca,
+                                  llvm::Type *paramLLVMType,
+                                  const std::string &paramName) {
+    propagateTypeMeta(ptype, alloca);
+    if (enum_types_.count(ptype))
+        enum_value_types_[alloca] = ptype;
+    registerResourceByTypeName(ptype, alloca);
+    if (isCollectionTypeName(ptype))
+        markArcManaged(alloca);
+    {
+        std::string resolvedPtype = resolveTypeAlias(ptype);
+        if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
+            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+        auto constraint = parseTypeConstraint(resolvedPtype);
+        if (constraint) {
+            type_constraints_[alloca] = *constraint;
+            llvm::Value *argVal = builder_.CreateLoad(
+                paramLLVMType, alloca, paramName + ".load");
+            emitConstraintCheck(argVal, *constraint, paramName);
+        } else {
+            if (isUnionType(ptype))
+                union_value_types_[alloca] = normalizeUnionType(ptype);
+        }
+    }
+}
+
 void CodeGen::emitStmt(AwaitStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
@@ -337,31 +364,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s->params[idx].name] = alloca;
             const std::string &ptype = paramTypeNames[idx];
-            propagateTypeMeta(ptype, alloca);
-            if (enum_types_.count(ptype))
-                enum_value_types_[alloca] = ptype;
-            registerResourceByTypeName(ptype, alloca);
-            if (isCollectionTypeName(ptype)) {
-                markArcManaged(alloca);
-            }
-            // Track fn type info and constraint check (shared alias resolution)
-            {
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0) {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                }
-                auto constraint = parseTypeConstraint(resolvedPtype);
-                if (constraint) {
-                    type_constraints_[alloca] = *constraint;
-                    llvm::Value *argVal = builder_.CreateLoad(
-                        paramTypes[idx], alloca, s->params[idx].name + ".load");
-                    emitConstraintCheck(argVal, *constraint, s->params[idx].name);
-                } else {
-                    // Track union type only for non-literal unions
-                    if (isUnionType(ptype))
-                        union_value_types_[alloca] = normalizeUnionType(ptype);
-                }
-            }
+            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
             ++idx;
         }
 
@@ -907,24 +910,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s.params[idx].name] = alloca;
 
-            // Resolve the actual param type name (with substitution)
             std::string ptype = paramTypeNames[idx];
-
-            propagateTypeMeta(ptype, alloca);
-            if (enum_types_.count(ptype))
-                enum_value_types_[alloca] = ptype;
-            registerResourceByTypeName(ptype, alloca);
-            // Mark ARC-managed for collection parameters
-            if (isCollectionTypeName(ptype)) {
-                markArcManaged(alloca);
-            }
-            {
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                if (isUnionType(ptype))
-                    union_value_types_[alloca] = normalizeUnionType(ptype);
-            }
+            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s.params[idx].name);
             ++idx;
         }
 
