@@ -113,21 +113,21 @@ ModuleLoader::ModuleLoader(const std::vector<std::string> &search_paths,
 std::string ModuleLoader::cachedCanonical(const std::string &raw, std::error_code &ec) {
     auto it = canonical_cache_.find(raw);
     if (it != canonical_cache_.end()) {
-        if (it->second.empty())
-            ec = std::make_error_code(std::errc::no_such_file_or_directory);
-        else
-            ec.clear();
-        return it->second;
+        ec = it->second.ec;
+        return it->second.path;
     }
     std::string result = fs::canonical(fs::path(raw), ec).string();
     if (ec) result.clear();
-    canonical_cache_[raw] = result;
+    canonical_cache_[raw] = {result, ec};
     return result;
 }
 
 std::string ModuleLoader::cachedCanonical(const std::string &raw) {
     std::error_code ec;
-    return cachedCanonical(raw, ec);
+    std::string result = cachedCanonical(raw, ec);
+    if (ec)
+        throw fs::filesystem_error("cachedCanonical", fs::path(raw), ec);
+    return result;
 }
 
 std::string ModuleLoader::cachedCanonical(const fs::path &p, std::error_code &ec) {
@@ -135,8 +135,7 @@ std::string ModuleLoader::cachedCanonical(const fs::path &p, std::error_code &ec
 }
 
 std::string ModuleLoader::cachedCanonical(const fs::path &p) {
-    std::error_code ec;
-    return cachedCanonical(p.string(), ec);
+    return cachedCanonical(p.string());
 }
 
 ModuleLoader::ResolvedPath ModuleLoader::resolve(const std::string &package_path,

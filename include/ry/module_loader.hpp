@@ -29,13 +29,18 @@ private:
     // Cache: abs_path -> set of exported names defined in that package/file
     std::unordered_map<std::string, std::unordered_set<std::string>> fn_cache_;
 
-    // Cache: raw path string -> canonical path (empty on failure)
-    std::unordered_map<std::string, std::string> canonical_cache_;
+    // Cache: raw path string -> (canonical path, error_code)
+    struct CanonicalEntry {
+        std::string path;
+        std::error_code ec;
+    };
+    std::unordered_map<std::string, CanonicalEntry> canonical_cache_;
     // Cache: "package_path\0referrer_dir" -> resolved path + is_directory flag
     std::unordered_map<std::string, ResolvedPath> resolve_cache_;
 
-    // Cached fs::canonical — core implementation keyed by raw string
+    // Cached fs::canonical — populates ec with original error on failure
     std::string cachedCanonical(const std::string &raw, std::error_code &ec);
+    // Cached fs::canonical — throws filesystem_error on failure (like fs::canonical)
     std::string cachedCanonical(const std::string &raw);
     // Convenience overloads accepting fs::path
     std::string cachedCanonical(const std::filesystem::path &p, std::error_code &ec);
