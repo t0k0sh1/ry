@@ -275,53 +275,7 @@ llvm::Value *CodeGen::emitPatternTest(const Pattern &pattern,
         } else if constexpr (std::is_same_v<T, std::unique_ptr<OrPattern>>) {
             testResult = llvm::ConstantInt::get(i1Ty_, 0);
             for (auto &alt : pat->alternatives) {
-                llvm::Value *altResult = nullptr;
-                std::visit([&](auto &altPat) {
-                    using U = std::decay_t<decltype(altPat)>;
-                    if constexpr (std::is_same_v<U, LiteralPattern>) {
-                        llvm::Value *litVal = emitExpr(*altPat.value);
-                        if (subjectTy == i64Ty_ && litVal->getType() == i64Ty_)
-                            altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.eq");
-                        else if (subjectTy == f64Ty_ && litVal->getType() == f64Ty_)
-                            altResult = builder_.CreateFCmpOEQ(subjectVal, litVal, "or.feq");
-                        else if (subjectTy == i1Ty_ && litVal->getType() == i1Ty_)
-                            altResult = builder_.CreateICmpEQ(subjectVal, litVal, "or.beq");
-                        else if (subjectTy == ptrTy_ && litVal->getType() == ptrTy_) {
-                            auto strcmpFn = getStdlibStrcmp();
-                            llvm::Value *cmp = builder_.CreateCall(strcmpFn, {subjectVal, litVal}, "strcmp");
-                            altResult = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "or.streq");
-                        } else {
-                            codegenError("match: incompatible types in OR literal pattern");
-                        }
-                    } else if constexpr (std::is_same_v<U, EnumPattern>) {
-                        auto enumIt = enum_types_.find(altPat.enum_name);
-                        if (enumIt == enum_types_.end())
-                            codegenError("match: unknown enum '" + altPat.enum_name + "'");
-                        auto varIt = enumIt->second.variants.find(altPat.variant_name);
-                        if (varIt == enumIt->second.variants.end())
-                            codegenError("match: unknown variant '" + altPat.enum_name + "::" + altPat.variant_name + "'");
-                        llvm::Value *tag = llvm::ConstantInt::get(i64Ty_, varIt->second);
-                        altResult = builder_.CreateICmpEQ(subjectVal, tag, "or.enum_eq");
-                    } else if constexpr (std::is_same_v<U, WildcardPattern>) {
-                        altResult = llvm::ConstantInt::get(i1Ty_, 1);
-                    } else if constexpr (std::is_same_v<U, NonePattern>) {
-                        if (!isOptionType(subjectTy))
-                            codegenError("match: None pattern requires Option type");
-                        llvm::Value *hasValue = builder_.CreateExtractValue(subjectVal, 0, "has_value");
-                        altResult = builder_.CreateNot(hasValue, "is_none");
-                    } else if constexpr (std::is_same_v<U, OkPattern>) {
-                        if (!isResultType(subjectTy))
-                            codegenError("match: Ok pattern requires Result type");
-                        altResult = builder_.CreateExtractValue(subjectVal, 0, "or.is_ok");
-                    } else if constexpr (std::is_same_v<U, ErrPattern>) {
-                        if (!isResultType(subjectTy))
-                            codegenError("match: Err pattern requires Result type");
-                        llvm::Value *isOk = builder_.CreateExtractValue(subjectVal, 0, "is_ok");
-                        altResult = builder_.CreateNot(isOk, "or.is_err");
-                    } else {
-                        codegenError("match: unsupported pattern type in OR pattern");
-                    }
-                }, alt);
+                llvm::Value *altResult = emitPatternTest(alt, subjectVal, subjectTy, subjectEnumType);
                 testResult = builder_.CreateOr(testResult, altResult, "or.comb");
             }
         }
@@ -341,11 +295,13 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
             if (!subjectEnumType.empty())
                 enum_value_types_[varAlloca] = subjectEnumType;
         } else if constexpr (std::is_same_v<T, SomePattern>) {
-            llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
-            llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
-            llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
-            builder_.CreateStore(inner, varAlloca);
-            propagateAllMetadata(subjectAlloca, varAlloca);
+            if (pat.binding != "_") {
+                llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "opt_val");
+                llvm::Value *inner = builder_.CreateExtractValue(sv, 1, "some_val");
+                llvm::AllocaInst *varAlloca = getOrCreateVar(pat.binding, inner->getType());
+                builder_.CreateStore(inner, varAlloca);
+                propagateAllMetadata(subjectAlloca, varAlloca);
+            }
         } else if constexpr (std::is_same_v<T, OkPattern>) {
             if (pat.binding != "_") {
                 llvm::Value *sv = builder_.CreateLoad(subjectTy, subjectAlloca, "res_val");
@@ -381,14 +337,19 @@ void CodeGen::emitPatternBindings(const Pattern &pattern,
                     size_t offset = 0;
                     for (size_t bi = 0; bi < pat.bindings.size() && bi < fit->second.fieldTypes.size(); ++bi) {
                         llvm::Type *fieldTy = fit->second.fieldTypes[bi];
+                        const std::string &bindingName = pat.bindings[bi];
                         uint64_t align = dl.getABITypeAlign(fieldTy).value();
                         offset = (offset + align - 1) / align * align;
+                        if (bindingName == "_") {
+                            offset += dl.getTypeAllocSize(fieldTy);
+                            continue;
+                        }
                         llvm::Value *fieldPtr = builder_.CreateGEP(
                             llvm::Type::getInt8Ty(*ctx_), payloadPtr,
                             {llvm::ConstantInt::get(i64Ty_, offset)},
                             "adt.bind." + std::to_string(bi));
-                        llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, pat.bindings[bi]);
-                        llvm::AllocaInst *bindAlloca = getOrCreateVar(pat.bindings[bi], fieldTy);
+                        llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, bindingName);
+                        llvm::AllocaInst *bindAlloca = getOrCreateVar(bindingName, fieldTy);
                         builder_.CreateStore(fieldVal, bindAlloca);
                         offset += dl.getTypeAllocSize(fieldTy);
                     }

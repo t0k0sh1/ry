@@ -309,11 +309,14 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
         } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
             std::string indent((indent_level_ + 1) * indent_width_, ' ');
             std::string out = "match " + formatExpr(*v->subject) + ":\n";
-            for (const auto &arm : v->arms) {
+            for (size_t i = 0; i < v->arms.size(); ++i) {
+                const auto &arm = v->arms[i];
                 out += indent + "case " + formatPattern(arm.pattern);
                 if (arm.guard)
                     out += " if " + formatExpr(*arm.guard);
-                out += " => " + formatExpr(*arm.value) + "\n";
+                out += " => " + formatExpr(*arm.value);
+                if (i + 1 < v->arms.size())
+                    out += "\n";
             }
             return out;
         } else if constexpr (std::is_same_v<T, std::unique_ptr<RangeExpr>>) {
