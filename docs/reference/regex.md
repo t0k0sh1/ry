@@ -67,21 +67,21 @@ parts = "hello world".split(/\s+/)
 nums = "a1b2c3".find_all(/[0-9]/)
 ```
 
-### Legacy Functions (pattern-first)
+### Legacy Functions (text-first)
 
-The original `regex_*` functions remain available for backward compatibility. They take pattern strings (not regex literals) with pattern-first argument order:
+The original `regex_*` functions remain available for backward compatibility. They take pattern strings (not regex literals) with text-first argument order, consistent with the regex literal API:
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `regex_match` | `(str, str) -> bool` | Returns whether the entire text matches the pattern |
-| `regex_search` | `(str, str) -> int` | Returns the start position of the first match (-1 if not found) |
-| `regex_replace` | `(str, str, str) -> str` | Replaces all matches with a replacement string |
-| `regex_split` | `(str, str) -> List<str>` | Splits text by pattern matches |
-| `regex_find_all` | `(str, str) -> List<str>` | Returns all non-overlapping matches |
+| `regex_match` | `(text: str, pattern: str) -> bool` | Returns whether the entire text matches the pattern |
+| `regex_search` | `(text: str, pattern: str) -> int` | Returns the start position of the first match (-1 if not found) |
+| `regex_replace` | `(text: str, pattern: str, replacement: str) -> str` | Replaces all matches with a replacement string |
+| `regex_split` | `(text: str, pattern: str) -> List<str>` | Splits text by pattern matches |
+| `regex_find_all` | `(text: str, pattern: str) -> List<str>` | Returns all non-overlapping matches |
 
 ```ry
-print(regex_match("[a-z]+", "hello"))   # true
-pos = regex_search("[0-9]+", "abc123")  # 3
+print(regex_match("hello", "[a-z]+"))   # true
+pos = regex_search("abc123", "[0-9]+")  # 3
 ```
 
 ## Supported Pattern Syntax
@@ -123,24 +123,24 @@ pos = regex_search("[0-9]+", "abc123")  # 3
 ### Range Quantifiers
 
 ```ry
-print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
-print(regex_match("a{2,4}", "aaa"))               # true
-print(regex_match("(ab){2,}", "ababab"))           # true
+print(regex_match("123-4567", "\\d{3}-\\d{4}"))  # true
+print(regex_match("aaa", "a{2,4}"))               # true
+print(regex_match("ababab", "(ab){2,}"))           # true
 ```
 
 ### Non-Greedy (Lazy) Match
 
 ```ry
 # Greedy: matches longest
-g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+g = regex_replace("\"a\" and \"b\"", "\".*\"", "X")
 print(g)  # X
 
 # Non-greedy: matches shortest
-l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+l = regex_replace("\"a\" and \"b\"", "\".*?\"", "X")
 print(l)  # X and X
 
 # Find individual HTML-like tags
-tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
 print(length(tags))  # 3
 ```
 
@@ -150,11 +150,11 @@ print(length(tags))  # 3
 
 ```ry
 # Match whole words only
-pos = regex_search("\\bworld\\b", "hello world")
+pos = regex_search("hello world", "\\bworld\\b")
 print(pos)  # 6
 
 # Find all words
-words = regex_find_all("\\b\\w+\\b", "hello world foo")
+words = regex_find_all("hello world foo", "\\b\\w+\\b")
 print(length(words))  # 3
 ```
 
@@ -162,8 +162,8 @@ print(length(words))  # 3
 
 ```ry
 # (?i) at the start of pattern enables case-insensitive matching
-print(regex_match("(?i)hello", "HELLO"))  # true
-print(regex_match("(?i)hello", "Hello"))  # true
+print(regex_match("HELLO", "(?i)hello"))  # true
+print(regex_match("Hello", "(?i)hello"))  # true
 ```
 
 > **Note:** `(?i)` must appear at the beginning of the pattern and applies to the entire pattern. Partial case-insensitive matching (e.g., `(?i:sub)pattern`) is not supported.

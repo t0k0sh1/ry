@@ -13,28 +13,31 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
             if (!isStringValue(args.back()))
                 codegenError(name + "() requires str arguments");
         }
+        // Legacy API accepts (text, pattern, ...) but runtime expects
+        // (pattern, text, ...) — swap the first two arguments.
+        if (nargs >= 2) std::swap(args[0], args[1]);
         auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
         return builder_.CreateCall(fn, args, name);
     };
 
-    // regex_match(pattern, text) -> bool
+    // regex_match(text, pattern) -> bool
     if (e.callee == "regex_match") {
         llvm::Value *r = emitRegexCall("regex_match", 2, fnTy_ptr_ptr_to_i64_);
         return builder_.CreateTrunc(r, i1Ty_, "regex_match_bool");
     }
-    // regex_search(pattern, text) -> int
+    // regex_search(text, pattern) -> int
     if (e.callee == "regex_search")
         return emitRegexCall("regex_search", 2, fnTy_ptr_ptr_to_i64_);
-    // regex_replace(pattern, text, replacement) -> str
+    // regex_replace(text, pattern, replacement) -> str
     if (e.callee == "regex_replace")
         return emitRegexCall("regex_replace", 3, fnTy_ptr_ptr_ptr_to_ptr_);
-    // regex_split(pattern, text) -> List<str>
+    // regex_split(text, pattern) -> List<str>
     if (e.callee == "regex_split") {
         llvm::Value *r = emitRegexCall("regex_split", 2, fnTy_ptr_ptr_to_ptr_);
         type_meta_[TM_ListElem][r] = ptrTy_;
         return r;
     }
-    // regex_find_all(pattern, text) -> List<str>
+    // regex_find_all(text, pattern) -> List<str>
     if (e.callee == "regex_find_all") {
         llvm::Value *r = emitRegexCall("regex_find_all", 2, fnTy_ptr_ptr_to_ptr_);
         type_meta_[TM_ListElem][r] = ptrTy_;
@@ -50,6 +53,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
         llvm::Value *pattern = emitExpr(*e.args[1]);
         if (!isRegex(pattern) || !isStringValue(text)) return nullptr;
         auto fn = mod_->getOrInsertFunction("__ry_" + rtName, fnTy);
+        // Runtime expects (pattern, text) — pass in that order.
         return builder_.CreateCall(fn, {pattern, text}, rtName);
     };
 
