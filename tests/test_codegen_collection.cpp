@@ -341,6 +341,9 @@ TEST_F(CodeGenTest, StringToInt) {
     checkToInt("abc", "err\n");
     checkToInt("", "err\n");
     checkToInt("12abc", "err\n");
+    // Overflow returns Err
+    checkToInt("9223372036854775808", "err\n");
+    checkToInt("-9223372036854775809", "err\n");
     // UFCS
     EXPECT_EQ(runSource(R"(
 s = "123"

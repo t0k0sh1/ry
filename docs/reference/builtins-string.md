@@ -322,7 +322,7 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 
 **Signature:** `to_int(string: str) -> Result<int, Error>`
 
-Converts a string to an integer. Returns `Err` if the string is empty, contains non-numeric characters, or overflows.
+Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```python
 match to_int("42"):

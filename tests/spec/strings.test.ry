@@ -247,6 +247,8 @@ describe("type conversion", ():
     expect(to_int("abc")).to_be_err()
     expect(to_int("")).to_be_err()
     expect(to_int("12abc")).to_be_err()
+    expect(to_int("9223372036854775808")).to_be_err()
+    expect(to_int("-9223372036854775809")).to_be_err()
   )
   it("to_int UFCS returns Result", ():
     match "99".to_int():
