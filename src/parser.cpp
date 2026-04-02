@@ -619,6 +619,16 @@ std::vector<StmtNode> Parser::parseBlock() {
     return stmts;
 }
 
+std::vector<StmtNode> Parser::parseBlockOrInline() {
+    if (lex_.peek().kind == TokenKind::Newline) {
+        return parseBlock();
+    }
+    // Inline body: single statement on same line
+    std::vector<StmtNode> stmts;
+    stmts.push_back(parseStatement());
+    return stmts;
+}
+
 StmtNode Parser::parseWhileStatement() {
     Token whileTok = lex_.next(); // consume 'while'
     ExprPtr cond = parseConditional();
