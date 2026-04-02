@@ -327,14 +327,29 @@ TEST_F(CodeGenTest, StringEndsWithIgnoreCase) {
 }
 
 TEST_F(CodeGenTest, StringToInt) {
-    // ToIntBasic
-    EXPECT_EQ(runSource("print(to_int(\"42\"))"), "42\n");
-    // ToIntNegative
-    EXPECT_EQ(runSource("print(to_int(\"-7\"))"), "-7\n");
-    // ToIntZero
-    EXPECT_EQ(runSource("print(to_int(\"0\"))"), "0\n");
-    // ToIntUFCS
-    EXPECT_EQ(runSource("s = \"123\"\nprint(s.to_int())"), "123\n");
+    auto checkToInt = [&](const char *input, const char *expected) {
+        std::string src = "match to_int(\"";
+        src += input;
+        src += "\"):\n    case Ok(v):\n        print(v)\n    case Err(e):\n        print(\"err\")";
+        EXPECT_EQ(runSource(src), expected);
+    };
+    // Valid input returns Ok
+    checkToInt("42", "42\n");
+    checkToInt("-7", "-7\n");
+    checkToInt("0", "0\n");
+    // Invalid input returns Err
+    checkToInt("abc", "err\n");
+    checkToInt("", "err\n");
+    checkToInt("12abc", "err\n");
+    // UFCS
+    EXPECT_EQ(runSource(R"(
+s = "123"
+match s.to_int():
+    case Ok(v):
+        print(v)
+    case Err(e):
+        print("err")
+)"), "123\n");
 }
 
 TEST_F(CodeGenTest, StringToFloat) {

@@ -229,14 +229,31 @@ describe("UTF-8 support", ():
 )
 
 describe("type conversion", ():
-  it("to_int", ():
-    expect(to_int("42")).to_eq(42)
-    expect(to_int("-7")).to_eq(-7)
-    expect(to_int("123")).to_eq(123)
+  it("to_int valid input returns Ok", ():
+    match to_int("42"):
+      case Ok(v):
+        expect(v).to_eq(42)
+      case Err(_):
+        expect(false).to_eq(true)
+    match to_int("-7"):
+      case Ok(v):
+        expect(v).to_eq(-7)
+      case Err(_):
+        expect(false).to_eq(true)
+    expect(to_int("123")).to_be_ok()
+    expect(to_int("0")).to_be_ok()
   )
-  it("to_int non-numeric returns 0", ():
-    expect(to_int("abc")).to_eq(0)
-    expect(to_int("")).to_eq(0)
+  it("to_int invalid input returns Err", ():
+    expect(to_int("abc")).to_be_err()
+    expect(to_int("")).to_be_err()
+    expect(to_int("12abc")).to_be_err()
+  )
+  it("to_int UFCS returns Result", ():
+    match "99".to_int():
+      case Ok(v):
+        expect(v).to_eq(99)
+      case Err(_):
+        expect(false).to_eq(true)
   )
   it("to_float", ():
     expect(to_float("3.14")).to_eq(3.14)

@@ -1,6 +1,6 @@
 # Type conversion functions
 @native
-function to_int(value: str) -> int
+function to_int(value: str) -> Result<int, Error>
 
 @native
 function to_float(value: str) -> float

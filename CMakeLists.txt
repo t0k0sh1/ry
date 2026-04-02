@@ -129,6 +129,7 @@ add_library(ry_lib STATIC
     src/codegen_arc.cpp
     src/runtime_gc.cpp
     src/codegen_call_gc.cpp
+    src/runtime_convert.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
