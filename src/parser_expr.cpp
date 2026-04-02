@@ -667,6 +667,8 @@ ExprPtr Parser::parsePrimary() {
             tuple->elements.push_back(std::move(first));
             while (lex_.peek().kind == TokenKind::Comma) {
                 lex_.next(); // consume ','
+                if (lex_.peek().kind == TokenKind::RParen)
+                    break; // trailing comma
                 tuple->elements.push_back(parseConditional());
             }
             if (lex_.peek().kind != TokenKind::RParen)

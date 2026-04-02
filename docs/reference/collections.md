@@ -11,6 +11,7 @@ A fixed-length combination of heterogeneous values. Implemented as a stack-alloc
 ### Syntax
 
 ```python
+t = (42,)                      # single-element tuple (trailing comma required)
 t = (1, 3.14)
 t: (int, float) = (1, 3.14)
 ```
@@ -48,7 +49,6 @@ print(result.1)   # 1
 | Constraint | Details |
 |------|------|
 | Out-of-range index | Compile error |
-| Passing a tuple directly to `print` | Compile error (not supported by print) |
 
 ---
 

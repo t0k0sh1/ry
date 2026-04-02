@@ -267,6 +267,8 @@ std::string Formatter::formatExprInner(const ExprNode &expr) {
                 if (i > 0) elems += ", ";
                 elems += formatExpr(*v->elements[i]);
             }
+            if (v->elements.size() == 1)
+                return "(" + elems + ",)";
             return "(" + elems + ")";
         } else if constexpr (std::is_same_v<T, std::unique_ptr<ListExpr>>) {
             std::string elems;
