@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Empty list literal `[]` is now supported with type annotation (e.g., `xs: List<int> = []`) (#545)
+- List concatenation with `+` and `+=` operators (e.g., `[1, 2] + [3, 4]` → `[1, 2, 3, 4]`) (#546)
 - Tuple `==` and `!=` comparison now works via element-wise comparison (e.g., `(1, 2) == (1, 2)` → `true`) (#542)
 - Single-element tuple type annotation `(int,)` is now supported in variable declarations and function signatures (#561)
 - `split(s, "")` now splits a string into individual characters with full UTF-8 support (e.g., `split("hello", "")` → `["h", "e", "l", "l", "o"]`) (#549)

@@ -101,6 +101,53 @@ void CodeGen::emitVarDecl(const std::string &name,
         codegenError("empty {} requires Set<T> or Map<K, V> type annotation");
     }
 
+    // Handle empty list literal: xs: List<int> = []
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data); le && (*le)->elements.empty()) {
+        if (!annot)
+            codegenError("empty list literal requires a List<T> type annotation");
+        std::string resolvedAnnot = resolveTypeAlias(*annot);
+        if (!isListTypeName(resolvedAnnot) || resolvedAnnot.size() < 7 || resolvedAnnot.back() != '>')
+            codegenError("empty list literal requires a List<T> type annotation");
+        std::string inner = resolvedAnnot.substr(5, resolvedAnnot.size() - 6);
+        llvm::Type *elemTy = resolveType(inner);
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+        auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
+        llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+
+        auto mallocFn = getStdlibMalloc();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+        llvm::Value *elemsPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_list_elems");
+
+        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0);
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
+        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1);
+        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
+        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2);
+        builder_.CreateStore(elemsPtr, dataPtrField);
+
+        llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
+        builder_.CreateStore(headerPtr, ptr);
+        type_meta_[TM_ListElem][ptr] = elemTy;
+        markArcManaged(ptr);
+        arc_backed_vars_.insert(ptr);
+
+        // Set nested-list metadata for List<List<T>> annotations
+        if (isListTypeName(inner) && inner.back() == '>') {
+            std::string nestedInner = inner.substr(5, inner.size() - 6);
+            llvm::Type *nestedElemTy = resolveType(nestedInner);
+            if (nestedElemTy)
+                type_meta_[TM_NestedListElem][ptr] = nestedElemTy;
+        }
+
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
+        return;
+    }
+
     // Handle None literal (VariableExpr("None") or NoneExpr)
     bool isNone = std::holds_alternative<NoneExpr>(value.data) ||
                   (std::holds_alternative<VariableExpr>(value.data) &&

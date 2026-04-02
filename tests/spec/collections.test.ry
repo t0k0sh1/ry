@@ -388,6 +388,51 @@ describe("List", ():
     expect(ys[3]).to_eq(205)
     expect(ys[4]).to_eq(303)
   )
+  it("empty list literal with type annotation int", ():
+    xs: List<int> = []
+    expect(xs).to_have_length(0)
+    append(xs, 42)
+    expect(xs).to_have_length(1)
+    expect(xs[0]).to_eq(42)
+  )
+  it("empty list literal with type annotation str", ():
+    xs: List<str> = []
+    expect(xs).to_have_length(0)
+    append(xs, "hello")
+    expect(xs).to_have_length(1)
+    expect(xs[0]).to_eq("hello")
+  )
+  it("concatenation with +", ():
+    a = [1, 2, 3]
+    b = [4, 5, 6]
+    c = a + b
+    expect(c).to_have_length(6)
+    expect(c[0]).to_eq(1)
+    expect(c[3]).to_eq(4)
+    expect(c[5]).to_eq(6)
+  )
+  it("concatenation with +=", ():
+    a = [1, 2, 3]
+    a += [4, 5]
+    expect(a).to_have_length(5)
+    expect(a[0]).to_eq(1)
+    expect(a[3]).to_eq(4)
+    expect(a[4]).to_eq(5)
+  )
+  it("concatenation with empty list", ():
+    a: List<int> = []
+    b = [1, 2]
+    c = a + b
+    expect(c).to_have_length(2)
+    expect(c[0]).to_eq(1)
+  )
+  it("concatenation string lists", ():
+    a = ["a", "b"]
+    b = ["c"]
+    c = a + b
+    expect(c).to_have_length(3)
+    expect(c[2]).to_eq("c")
+  )
 )
 
 describe("Map", ():
