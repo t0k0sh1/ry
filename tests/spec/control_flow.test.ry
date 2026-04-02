@@ -456,6 +456,26 @@ describe("inline case body", ():
   )
 )
 
+describe("inline when body", ():
+  it("inline when arm and inline else", ():
+    res = 0
+    x = 5
+    when:
+      x > 10: res = 1
+      x == 5: res = 2
+      else: res = 3
+    expect(res).to_eq(2)
+  )
+  it("inline when else fallback", ():
+    res = 0
+    x = 1
+    when:
+      x > 10: res = 1
+      else: res = 9
+    expect(res).to_eq(9)
+  )
+)
+
 describe("scope and shadowing", ():
   it("block scope", ():
     x = 10
