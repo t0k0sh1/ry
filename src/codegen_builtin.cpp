@@ -104,6 +104,7 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     tryPropagate(fn_type_info_);
     tryPropagate(union_value_types_);
     tryPropagate(enum_value_types_);
+    tryPropagate(map_value_type_names_);
 
     // Propagate ARC managed status
     auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);
@@ -129,6 +130,8 @@ void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
         auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
         if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
         if (valTy) type_meta_[TM_MapValue][val] = valTy;
+        std::string vtn = extractMapValueTypeName(typeName);
+        if (!vtn.empty()) map_value_type_names_[val] = vtn;
     } else if (isSetTypeName(typeName) && typeName.back() == '>') {
         std::string inner = typeName.substr(4, typeName.size() - 5);
         type_meta_[TM_SetElem][val] = resolveType(inner);
@@ -152,6 +155,30 @@ void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Functi
     std::string resolved = resolveTypeAlias(entry->returnTypeName);
     if (resolved.size() <= 9 || resolved.compare(0, 9, "function(") != 0) return;
     fn_type_info_[result] = parseFnTypeAnnotation(resolved);
+}
+
+std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
+    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return "";
+    std::string vStr = parts[1];
+    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+    return vStr;
+}
+
+std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
+    if (auto *keyTy = getMapKeyType(val)) {
+        std::string keyName = reverseResolveTypeName(keyTy);
+        auto it = map_value_type_names_.find(val);
+        std::string valName = (it != map_value_type_names_.end())
+            ? it->second : reverseResolveTypeName(getMapValueType(val));
+        return "Map<" + keyName + ", " + valName + ">";
+    }
+    if (auto *elemTy = getListElementType(val))
+        return "List<" + reverseResolveTypeName(elemTy) + ">";
+    if (auto *setTy = getSetElementType(val))
+        return "Set<" + reverseResolveTypeName(setTy) + ">";
+    return "";
 }
 
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
