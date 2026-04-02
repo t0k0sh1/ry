@@ -113,6 +113,48 @@ llvm::Value *CodeGen::emitSaturatingArithmetic(const std::string &callee,
     return result;
 }
 
+// ===== int overflow check (panic on overflow) =====
+
+llvm::Value *CodeGen::emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
+                                            llvm::Value *lhs, llvm::Value *rhs,
+                                            const std::string &opName) {
+    // Constant folding: if both operands are constants, compute at compile time
+    if (auto *cl = llvm::dyn_cast<llvm::ConstantInt>(lhs)) {
+        if (auto *cr = llvm::dyn_cast<llvm::ConstantInt>(rhs)) {
+            llvm::APInt a = cl->getValue();
+            llvm::APInt b = cr->getValue();
+            bool overflow = false;
+            llvm::APInt result;
+            if (intrinsicId == llvm::Intrinsic::sadd_with_overflow)
+                result = a.sadd_ov(b, overflow);
+            else if (intrinsicId == llvm::Intrinsic::ssub_with_overflow)
+                result = a.ssub_ov(b, overflow);
+            else
+                result = a.smul_ov(b, overflow);
+            if (overflow)
+                codegenError("integer overflow");
+            return llvm::ConstantInt::get(lhs->getType(), result);
+        }
+    }
+
+    llvm::Function *intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
+        mod_.get(), intrinsicId, {lhs->getType()});
+    llvm::Value *result = builder_.CreateCall(intrinsic, {lhs, rhs}, opName + "_ov");
+    llvm::Value *value = builder_.CreateExtractValue(result, 0, opName + "_val");
+    llvm::Value *overflow = builder_.CreateExtractValue(result, 1, opName + "_flag");
+
+    llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, opName + ".overflow_err", fn_);
+    llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, opName + ".ok", fn_);
+    builder_.CreateCondBr(overflow, errBB, okBB);
+
+    builder_.SetInsertPoint(errBB);
+    emitRuntimeError("runtime error: integer overflow\n",
+                      ".int_overflow_err_" + std::to_string(overflow_err_counter_++));
+
+    builder_.SetInsertPoint(okBB);
+    return value;
+}
+
 // ===== wrapping_add / wrapping_sub / wrapping_mul =====
 
 llvm::Value *CodeGen::emitWrappingArithmetic(const std::string &callee,

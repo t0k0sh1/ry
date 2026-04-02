@@ -370,6 +370,7 @@ private:
     std::unordered_map<llvm::AllocaInst*, TypeConstraint> type_constraints_;
     int constraint_err_counter_ = 0;
     int arith_zero_err_counter_ = 0;
+    int overflow_err_counter_ = 0;
 
     bool isIntLiteralType(const std::string &typeName);
     bool isStrLiteralType(const std::string &typeName);
@@ -507,6 +508,9 @@ private:
     llvm::Value *emitCheckedArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitSaturatingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitWrappingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
+                                       llvm::Value *lhs, llvm::Value *rhs,
+                                       const std::string &opName);
 
     // Type promotion helpers (B1)
     void ensureNumericType(llvm::Value *v, const std::string &context);

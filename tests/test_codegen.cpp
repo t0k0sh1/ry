@@ -396,6 +396,58 @@ TEST_F(CodeGenTest, FloorDivModWorks) {
     EXPECT_EQ(runSource("print((7 // -3) * -3 + (7 % -3))"), "7\n");
 }
 
+// ===== Integer overflow guard tests (death tests) =====
+
+TEST_F(CodeGenTest, IntAddOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nprint(x + 1)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntSubOverflowExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\nprint(x - 1)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntMulOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nprint(x * 2)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntNegOverflowExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\nprint(-x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntOverflowConstantFolding) {
+    // Compile-time overflow detection
+    EXPECT_THROW(runSource("print(9223372036854775807 + 1)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(9223372036854775807 * 2)"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntArithmeticNoOverflow) {
+    EXPECT_EQ(runSource("print(1000000 * 1000000)"), "1000000000000\n");
+    EXPECT_EQ(runSource("print(9223372036854775807 + 0)"), "9223372036854775807\n");
+    // INT64_MIN exactly: -9223372036854775807 - 1 = -9223372036854775808, no overflow
+    EXPECT_EQ(runSource("print(-9223372036854775807 - 1)"), "-9223372036854775808\n");
+    EXPECT_EQ(runSource("print(100 + 200)"), "300\n");
+    EXPECT_EQ(runSource("print(50 - 100)"), "-50\n");
+    EXPECT_EQ(runSource("print(12345 * 67890)"), "838102050\n");
+}
+
+TEST_F(CodeGenTest, IntCompoundAssignOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nx += 1\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, LowLevelIntStillWraps) {
+    EXPECT_EQ(runSource("x = 2147483647i32\nprint(wrapping_add(x, 1i32) as int)"), "-2147483648\n");
+}
+
 // ===== any type rejection =====
 
 TEST_F(CodeGenTest, AnyTypeRejection) {

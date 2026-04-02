@@ -31,6 +31,8 @@ print(a % b)    # 1
 print(2 ** 8)   # 256 (float)
 ```
 
+> **Overflow safety:** Arithmetic on `int` (`+`, `-`, `*`, unary `-`) raises a runtime error if the result overflows the 64-bit signed range. Constant expressions that overflow are caught at compile time. Low-level types (`i32`, `u8`, etc.) wrap silently — use `checked_add`/`saturating_add`/`wrapping_add` for explicit overflow control.
+
 ---
 
 ## Comparison Operators
