@@ -111,6 +111,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
     savedResourceManaged_ = std::move(cg_.resource_managed_vars_);
     savedClosureManaged_ = std::move(cg_.closure_managed_vars_);
+    savedIteratorMallocs_ = std::move(cg_.iterator_malloc_stack_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
@@ -126,6 +127,7 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     cg_.weak_inner_type_names_.clear();
     cg_.resource_managed_vars_.clear();
     cg_.closure_managed_vars_.clear();
+    cg_.iterator_malloc_stack_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
@@ -143,6 +145,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
     cg_.resource_managed_vars_ = std::move(savedResourceManaged_);
     cg_.closure_managed_vars_ = std::move(savedClosureManaged_);
+    cg_.iterator_malloc_stack_ = std::move(savedIteratorMallocs_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
@@ -272,12 +275,14 @@ void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
 void CodeGen::pushScope() {
     scope_stack_.emplace_back();
     immutable_scope_stack_.emplace_back();
+    iterator_malloc_stack_.emplace_back();
 }
 
 void CodeGen::popScope() {
     emitScopeCleanup();
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
+    iterator_malloc_stack_.pop_back();
 }
 
 void CodeGen::emitScopeCleanup() {
@@ -298,6 +303,13 @@ void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
             if (!arc_managed_vars_.count(alloca)) continue;
             emitArcReleaseVar(name, alloca);
             arc_managed_vars_.erase(alloca);
+        }
+        auto &iterMallocs = iterator_malloc_stack_[i - 1];
+        if (!iterMallocs.empty()) {
+            auto freeFn = getStdlibFree();
+            for (auto *ptr : iterMallocs) {
+                builder_.CreateCall(freeFn, {ptr});
+            }
         }
     }
 }
