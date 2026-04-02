@@ -187,7 +187,6 @@ print(counter)  # 0 (outer variable unchanged)
 ```
 
 > **Why capture by value?** It ensures safety and predictability — you can always reason about a variable's value by looking at the current scope alone, without worrying about mutations happening inside closures.
-
 > **Why closures?** They let you create specialized functions on the fly. For example, you can create a family of adder functions from a single template.
 
 ---

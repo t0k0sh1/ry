@@ -332,7 +332,7 @@ print(counter)      # 0 (outer variable unchanged)
 | Effect of outer variable changes | None (the closure holds its own copy) |
 | Effect of mutations inside the closure | None (does not propagate to the outer scope) |
 
-> **Note for Python/JavaScript users**: In those languages, closures capture variables by reference, so mutations inside the closure are visible outside. In Ry, closures always capture by value. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
+> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and mutations of captured objects (for example, appending to a list) are visible outside, but rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
 
 ---
 
