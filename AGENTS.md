@@ -204,16 +204,25 @@ echo 'print(1)' | ./build/ry --trace -c
 
 ### 2. CHANGELOG 更新チェック
 
-ユーザーに影響のある変更（`feat:`, `fix:`, 破壊的変更）を行った場合、`CHANGELOG.md` の `[Unreleased]` セクションに変更内容を追記する。
+ユーザーに影響のある変更（`feat:`, `fix:`, 破壊的変更）を行った場合、`changelog.d/` にフラグメントファイルを作成する。
 
-カテゴリ:
+**ファイル名**: `changelog.d/{issue番号}-{slug}.md`（例: `changelog.d/545-546-list-improvements.md`）
 
-- **Added** — 新機能
-- **Changed** — 既存機能の変更
-- **Fixed** — バグ修正
-- **Removed** — 削除された機能
+**内容**: `### Added` / `### Changed` / `### Fixed` / `### Removed` セクションのみを記述する。複数カテゴリにまたがる場合は 1 ファイルに複数セクションを含める。
 
-内部リファクタリング・テスト追加・CI 変更のみの場合は追記不要。
+```markdown
+### Added
+
+- Empty list literal `[]` is now supported with type annotation (#545)
+
+### Fixed
+
+- Some bugfix description (#545)
+```
+
+> **注意**: `CHANGELOG.md` を直接編集しないこと。フラグメントファイルはリリース準備時に `scripts/assemble-changelog.sh` で CHANGELOG.md に集約される。
+
+内部リファクタリング・テスト追加・CI 変更のみの場合はフラグメント作成不要。
 
 ### 3. 全テスト実行
 
@@ -249,7 +258,7 @@ ASan エラーが検出された場合は、原因を修正してから作業完
 
 1. `vx.x.x` から `chore/pre-release-vx.x.x` ブランチを作成
 2. `VERSION` ファイルをリリースバージョンに更新（例: `0.0.5`）
-3. `CHANGELOG.md` の `[Unreleased]` を `[x.x.x] - YYYY-MM-DD` に変更し、新しい空の `[Unreleased]` セクションを追加。末尾の比較リンクも更新する
+3. `scripts/assemble-changelog.sh` を実行してフラグメントファイルを `CHANGELOG.md` に集約する。その後 `[Unreleased]` を `[x.x.x] - YYYY-MM-DD` に変更し、新しい空の `[Unreleased]` セクションを追加。末尾の比較リンクも更新する
 4. 翻訳と PDF 生成を実施（下記参照）
 5. `chore/pre-release-vx.x.x` を `vx.x.x` にマージ
 6. `vx.x.x` を `main` にマージする PR を作成・マージ
