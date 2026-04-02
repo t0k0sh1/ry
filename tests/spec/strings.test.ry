@@ -155,6 +155,31 @@ describe("split and join", ():
     expect(parts).to_have_length(1)
     expect(parts[0]).to_eq("hello")
   )
+  it("split empty delimiter", ():
+    parts = split("hello", "")
+    expect(parts).to_have_length(5)
+    expect(parts[0]).to_eq("h")
+    expect(parts[1]).to_eq("e")
+    expect(parts[2]).to_eq("l")
+    expect(parts[3]).to_eq("l")
+    expect(parts[4]).to_eq("o")
+  )
+  it("split empty delimiter single char", ():
+    parts = split("x", "")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("x")
+  )
+  it("split empty string empty delimiter", ():
+    parts = split("", "")
+    expect(parts).to_have_length(0)
+  )
+  it("split empty delimiter unicode", ():
+    parts = split("あいう", "")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("あ")
+    expect(parts[1]).to_eq("い")
+    expect(parts[2]).to_eq("う")
+  )
   it("join", ():
     parts = ["a", "b", "c"]
     expect(join(parts, ",")).to_eq("a,b,c")
