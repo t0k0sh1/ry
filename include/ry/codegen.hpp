@@ -462,6 +462,18 @@ private:
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
     void forwardDeclareFunctions(Program &prog);
+    llvm::Function *declareFunction(
+        const std::string &name,
+        std::vector<llvm::Type*> &paramTypes,
+        std::vector<FnParam> &params,
+        llvm::Type *exposedRetTy,
+        const std::string &exposedReturnTypeName,
+        const std::vector<Directive> &directives,
+        const std::vector<ExprPtr> *preconditions,
+        const std::vector<ExprPtr> *postconditions,
+        const std::vector<std::string> *ensureBindings);
+    void applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives);
+    llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
