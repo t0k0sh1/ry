@@ -80,6 +80,7 @@ private:
     TypeNodePtr parseTypeNameSingle();
     TypeNodePtr parseFnType();
     std::vector<StmtNode> parseBlock();
+    std::vector<StmtNode> parseBlockOrInline();
     std::vector<ExprPtr> parseArgList();
     void parseContractClause(const std::string &clauseName, std::vector<ExprPtr> &out);
     void parseEnsureClause(FnStmt &fn);

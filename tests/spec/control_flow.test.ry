@@ -417,6 +417,65 @@ describe("when ADT no-data variant", ():
   )
 )
 
+describe("inline case body", ():
+  it("basic inline case", ():
+    res = 0
+    x = 2
+    match x:
+      case 1: res = 10
+      case 2: res = 20
+      case _: res = 30
+    expect(res).to_eq(20)
+  )
+  it("inline and block case mixed", ():
+    res = 0
+    x = 3
+    match x:
+      case 1: res = 10
+      case 3:
+        res = 30
+      case _: res = 99
+    expect(res).to_eq(30)
+  )
+  it("inline case with guard", ():
+    res = ""
+    x = -5
+    match x:
+      case n if n > 0: res = "positive"
+      case n if n < 0: res = "negative"
+      case _: res = "zero"
+    expect(res).to_eq("negative")
+  )
+  it("inline case with destructuring", ():
+    res = 0
+    x: Option<int> = Some(42)
+    match x:
+      case Some(v): res = v
+      case None: res = -1
+    expect(res).to_eq(42)
+  )
+)
+
+describe("inline when body", ():
+  it("inline when arm and inline else", ():
+    res = 0
+    x = 5
+    when:
+      x > 10: res = 1
+      x == 5: res = 2
+      else: res = 3
+    expect(res).to_eq(2)
+  )
+  it("inline when else fallback", ():
+    res = 0
+    x = 1
+    when:
+      x > 10: res = 1
+      else: res = 9
+    expect(res).to_eq(9)
+  )
+)
+
 describe("scope and shadowing", ():
   it("block scope", ():
     x = 10
