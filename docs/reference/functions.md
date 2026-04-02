@@ -104,7 +104,7 @@ function factorial(n: int) -> int:
 
 ### Mutual Recursion
 
-Functions can call each other regardless of definition order. The compiler automatically forward-declares all top-level functions with explicit return types before processing function bodies.
+Functions can call each other regardless of definition order. The compiler forward-declares top-level functions with explicit return types before processing function bodies, provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
 
 ```python
 function is_even(n: int) -> bool:

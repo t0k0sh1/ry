@@ -185,6 +185,7 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
         auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
         if (!fnPtr) continue;
         auto &s = *fnPtr;
+        if (s->loc.isValid()) current_loc_ = s->loc;
 
         // Skip generic functions (already lazily instantiated)
         if (!s->type_params.empty()) continue;
