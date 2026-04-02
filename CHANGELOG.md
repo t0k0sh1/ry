@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Single-element tuple literal `(42,)` and trailing commas in tuple literals now parse correctly (#556)
 - `print()` and `to_str()` now support tuples including nested tuples, displaying them as `(elem1, elem2)` (#541)
 - `print()` on lists of tuples (e.g., `zip()` result) now correctly displays tuple elements instead of empty entries (#540)
 - f-string interpolation now supports collection types (List, Map, Set) and tuples (e.g., `f"items: {xs}"`) (#547)

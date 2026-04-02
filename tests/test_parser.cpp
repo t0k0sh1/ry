@@ -789,6 +789,37 @@ TEST(ParserTest, ParenGroupingStillWorks) {
     EXPECT_EQ(outer.op, "*");
 }
 
+TEST(ParserTest, TupleSingleElement) {
+    Program prog = parseStr("t = (42,)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 1u);
+    EXPECT_EQ(std::get<NumberExpr>(tuple.elements[0]->data).value, 42);
+}
+
+TEST(ParserTest, TupleTrailingComma) {
+    Program prog = parseStr("t = (1, 2,)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 2u);
+    EXPECT_EQ(std::get<NumberExpr>(tuple.elements[0]->data).value, 1);
+    EXPECT_EQ(std::get<NumberExpr>(tuple.elements[1]->data).value, 2);
+}
+
+TEST(ParserTest, TupleSingleElementString) {
+    Program prog = parseStr("t = (\"hello\",)");
+    ASSERT_EQ(prog.size(), 1u);
+    const auto &s = std::get<AssignStmt>(prog[0]);
+    ASSERT_TRUE(std::holds_alternative<std::unique_ptr<TupleExpr>>(s.value->data));
+    const auto &tuple = *std::get<std::unique_ptr<TupleExpr>>(s.value->data);
+    ASSERT_EQ(tuple.elements.size(), 1u);
+    ASSERT_TRUE(std::holds_alternative<StringExpr>(tuple.elements[0]->data));
+}
+
 // ===== UFCS パーサーテスト =====
 
 TEST(ParserTest, UFCSBasic) {
