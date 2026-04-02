@@ -146,6 +146,7 @@ private:
     static constexpr int64_t TAG_UNIT  = 4; // reserved for future use
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
+    std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
@@ -409,6 +410,7 @@ private:
         std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
         std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
         std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
+        std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;
