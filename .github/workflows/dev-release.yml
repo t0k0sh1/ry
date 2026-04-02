@@ -76,6 +76,8 @@ jobs:
         run: brew install llvm@21
       - name: Install dependencies
         run: brew install openssl@3 ninja googletest
+      - name: Set OpenSSL path
+        run: echo "OPENSSL_BIN=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
@@ -107,6 +109,7 @@ jobs:
         uses: ./.github/actions/sign-checksums
         with:
           checksums_dir: dist
+          openssl_bin: ${{ env.OPENSSL_BIN }}
         env:
           RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
       - name: Cleanup old prereleases
@@ -161,6 +164,8 @@ jobs:
         run: brew install llvm@21
       - name: Install dependencies
         run: brew install openssl@3 ninja googletest
+      - name: Set OpenSSL path
+        run: echo "OPENSSL_BIN=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
@@ -192,6 +197,7 @@ jobs:
         uses: ./.github/actions/sign-checksums
         with:
           checksums_dir: dist
+          openssl_bin: ${{ env.OPENSSL_BIN }}
         env:
           RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
       - name: Cleanup old prereleases
