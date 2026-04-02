@@ -152,6 +152,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         if (isUnsignedLowLevel(val))
             codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
         val = promoteToInt(val);
+        // Overflow check only for high-level int; low-level i64 wraps
+        bool isLowLevel = isLowLevelTy(val);
+        if (!isLowLevel) {
+            if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
+                isLowLevel = isLowLevelTypeName(ne->suffix);
+        }
+        if (val->getType() == i64Ty_ && !isLowLevel)
+            return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow,
+                                         llvm::ConstantInt::get(i64Ty_, 0), val, "neg");
         return builder_.CreateNeg(val, "neg");
     }
     if (e->op == "not") {
@@ -640,9 +649,23 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (op == "*") return builder_.CreateFMul(lhs, rhs, "fmul");
         codegenError("unknown operator: " + op);
     }
-    if (op == "+") return builder_.CreateAdd(lhs, rhs, "add");
-    if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
-    if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
+    // Overflow check only for high-level int; low-level i64/u64 wraps
+    if (llNameHint.empty()) {
+        if (op == "+") return emitIntOverflowCheck(llvm::Intrinsic::sadd_with_overflow, lhs, rhs, "add");
+        if (op == "-") return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow, lhs, rhs, "sub");
+        if (op == "*") return emitIntOverflowCheck(llvm::Intrinsic::smul_with_overflow, lhs, rhs, "mul");
+    }
+    // Low-level i64/u64 fallthrough: wrap and propagate metadata
+    // Note: This may tag ConstantInt values (#311), but the risk is limited because
+    // propagateHint only fires when an explicit i64/u64 suffix is in the AST.
+    // A proper fix (recursive getExprLowLevelSuffix) is tracked in #595.
+    auto propagateHint = [&](llvm::Value *result) -> llvm::Value* {
+        if (!llNameHint.empty()) low_level_type_names_[result] = llNameHint;
+        return result;
+    };
+    if (op == "+") return propagateHint(builder_.CreateAdd(lhs, rhs, "add"));
+    if (op == "-") return propagateHint(builder_.CreateSub(lhs, rhs, "sub"));
+    if (op == "*") return propagateHint(builder_.CreateMul(lhs, rhs, "mul"));
     codegenError("unknown operator: " + op);
 }
 
