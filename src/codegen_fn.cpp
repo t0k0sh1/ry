@@ -178,6 +178,109 @@ void CodeGen::emitStmt(ReturnStmt &s) {
     builder_.SetInsertPoint(deadBB);
 }
 
+// ===== Shared function declaration helpers =====
+
+llvm::Type *CodeGen::tryResolveType(const std::string &typeName) {
+    try {
+        return resolveType(typeName);
+    } catch (const DiagnosticError &) {
+        return nullptr;
+    }
+}
+
+llvm::Function *CodeGen::declareFunction(
+    const std::string &name,
+    std::vector<llvm::Type*> &paramTypes,
+    std::vector<FnParam> &params,
+    llvm::Type *exposedRetTy,
+    const std::string &exposedReturnTypeName,
+    const std::vector<Directive> &directives,
+    const std::vector<ExprPtr> *preconditions,
+    const std::vector<ExprPtr> *postconditions,
+    const std::vector<std::string> *ensureBindings) {
+
+    // Compute minArity and collect default values
+    size_t newMinArity = 0;
+    std::vector<ExprPtr> defaults;
+    defaults.reserve(params.size());
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (!params[i].default_value) newMinArity = i + 1;
+        defaults.push_back(std::move(params[i].default_value));
+    }
+    size_t newMaxArity = paramTypes.size();
+
+    // Check for duplicate/conflicting signatures
+    auto &overloads = functions_[name];
+    for (auto &entry : overloads) {
+        if (entry.paramTypes == paramTypes) {
+            if (entry.func->getReturnType() == exposedRetTy)
+                codegenError("function '" + name +
+                    "' is already defined with the same signature");
+            else
+                codegenError("function '" + name +
+                    "': overloads with same parameter types but different return types");
+        }
+        size_t overlapMin = std::max(newMinArity, entry.minArity);
+        size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
+        for (size_t n = overlapMin; n <= overlapMax; ++n) {
+            bool typesMatch = true;
+            for (size_t i = 0; i < n; ++i) {
+                if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
+            }
+            if (typesMatch)
+                codegenError("function '" + name +
+                    "' with default arguments creates ambiguous overload");
+        }
+    }
+
+    // LLVM IR function name: first overload uses original name, subsequent use name.N
+    std::string irName = name;
+    if (!overloads.empty())
+        irName = name + "." + std::to_string(overloads.size());
+
+    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
+    llvm::Function *func = llvm::Function::Create(
+        ft, llvm::Function::ExternalLinkage, irName, *mod_);
+
+    std::vector<std::string> paramNames;
+    paramNames.reserve(params.size());
+    for (auto &p : params)
+        paramNames.push_back(p.name);
+    std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(params.size());
+    for (auto &p : params)
+        paramTypeNames.push_back(p.type->toString());
+    overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
+                         newMinArity, std::move(defaults),
+                         preconditions, postconditions, ensureBindings});
+
+    if (hasDirective(directives, "deprecated"))
+        deprecated_functions_.insert(name);
+
+    return func;
+}
+
+void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives) {
+    if (!hasDirective(directives, "inline")) return;
+    std::string mode = "always";
+    for (auto &d : directives) {
+        if (d.name == "inline") {
+            for (auto &p : d.params) {
+                if (p.key == "mode") mode = p.value;
+            }
+        }
+    }
+    if (mode == "always")
+        func->addFnAttr(llvm::Attribute::AlwaysInline);
+    else if (mode == "never")
+        func->addFnAttr(llvm::Attribute::NoInline);
+    else if (mode == "hint")
+        func->addFnAttr(llvm::Attribute::InlineHint);
+    else
+        codegenError("unknown @inline mode: '" + mode +
+                     "' (expected 'always', 'never', or 'hint')");
+}
+
 // ===== Forward declaration pre-pass for mutual recursion =====
 
 void CodeGen::forwardDeclareFunctions(Program &prog) {
@@ -197,15 +300,16 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
         // Try to resolve all types; skip if any type is not yet known
         // (e.g., record types defined later in the file)
         std::vector<llvm::Type*> paramTypes;
-        llvm::Type *bodyRetTy;
-        try {
-            paramTypes.reserve(s->params.size());
-            for (auto &p : s->params)
-                paramTypes.push_back(resolveType(p.type->toString()));
-            bodyRetTy = resolveType(s->return_type->toString());
-        } catch (const DiagnosticError &) {
-            continue;  // type not yet available, skip forward declaration
+        paramTypes.reserve(s->params.size());
+        bool typesFailed = false;
+        for (auto &p : s->params) {
+            if (auto *ty = tryResolveType(p.type->toString()))
+                paramTypes.push_back(ty);
+            else { typesFailed = true; break; }
         }
+        if (typesFailed) continue;
+        llvm::Type *bodyRetTy = tryResolveType(s->return_type->toString());
+        if (!bodyRetTy) continue;
 
         std::string returnTypeStr = s->return_type->toString();
         std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
@@ -219,83 +323,11 @@ void CodeGen::forwardDeclareFunctions(Program &prog) {
             }
         }
 
-        // Compute minArity and collect default values
-        size_t newMinArity = 0;
-        std::vector<ExprPtr> defaults;
-        defaults.reserve(s->params.size());
-        for (size_t i = 0; i < s->params.size(); ++i) {
-            if (!s->params[i].default_value) newMinArity = i + 1;
-            defaults.push_back(std::move(s->params[i].default_value));
-        }
-        size_t newMaxArity = paramTypes.size();
-
-        // Check for duplicate/conflicting signatures
-        auto &overloads = functions_[s->name];
-        for (auto &entry : overloads) {
-            if (entry.paramTypes == paramTypes) {
-                if (entry.func->getReturnType() == exposedRetTy)
-                    codegenError("function '" + s->name +
-                        "' is already defined with the same signature");
-                else
-                    codegenError("function '" + s->name +
-                        "': overloads with same parameter types but different return types");
-            }
-            size_t overlapMin = std::max(newMinArity, entry.minArity);
-            size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
-            for (size_t n = overlapMin; n <= overlapMax; ++n) {
-                bool typesMatch = true;
-                for (size_t i = 0; i < n; ++i) {
-                    if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
-                }
-                if (typesMatch)
-                    codegenError("function '" + s->name +
-                        "' with default arguments creates ambiguous overload");
-            }
-        }
-
-        // LLVM IR function name
-        std::string irName = s->name;
-        if (!overloads.empty())
-            irName = s->name + "." + std::to_string(overloads.size());
-
-        llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-        llvm::Function *func = llvm::Function::Create(
-            ft, llvm::Function::ExternalLinkage, irName, *mod_);
-
-        std::vector<std::string> paramNames;
-        paramNames.reserve(s->params.size());
-        for (auto &p : s->params)
-            paramNames.push_back(p.name);
-        std::vector<std::string> paramTypeNames;
-        paramTypeNames.reserve(s->params.size());
-        for (auto &p : s->params)
-            paramTypeNames.push_back(p.type->toString());
-        overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
-                             newMinArity, std::move(defaults),
-                             &s->preconditions, &s->postconditions, &s->ensure_bindings});
-
-        if (hasDirective(s->directives, "deprecated"))
-            deprecated_functions_.insert(s->name);
-
-        if (hasDirective(s->directives, "inline")) {
-            std::string mode = "always";
-            for (auto &d : s->directives) {
-                if (d.name == "inline") {
-                    for (auto &p : d.params) {
-                        if (p.key == "mode") mode = p.value;
-                    }
-                }
-            }
-            if (mode == "always")
-                func->addFnAttr(llvm::Attribute::AlwaysInline);
-            else if (mode == "never")
-                func->addFnAttr(llvm::Attribute::NoInline);
-            else if (mode == "hint")
-                func->addFnAttr(llvm::Attribute::InlineHint);
-            else
-                codegenError("unknown @inline mode: '" + mode +
-                             "' (expected 'always', 'never', or 'hint')");
-        }
+        llvm::Function *func = declareFunction(
+            s->name, paramTypes, s->params, exposedRetTy,
+            exposedReturnTypeName, s->directives,
+            &s->preconditions, &s->postconditions, &s->ensure_bindings);
+        applyInlineDirective(func, s->directives);
 
         forward_declared_fns_.insert(func);
     }
@@ -347,10 +379,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     paramTypes.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type->toString()));
-    std::vector<std::string> paramTypeNames;
-    paramTypeNames.reserve(s->params.size());
-    for (auto &p : s->params)
-        paramTypeNames.push_back(p.type->toString());
 
     // Check if this function was already forward-declared
     llvm::Function *func = nullptr;
@@ -415,81 +443,17 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     // If not forward-declared, do the full declaration now
     if (!func) {
-        // Compute minArity and collect default values
-        size_t newMinArity = 0;
-        std::vector<ExprPtr> defaults;
-        defaults.reserve(s->params.size());
-        for (size_t i = 0; i < s->params.size(); ++i) {
-            if (!s->params[i].default_value) newMinArity = i + 1;
-            defaults.push_back(std::move(s->params[i].default_value));
-        }
-        size_t newMaxArity = paramTypes.size();
-
-        // Check for duplicate/conflicting signatures
-        auto &overloads = functions_[s->name];
-        for (auto &entry : overloads) {
-            if (entry.paramTypes == paramTypes) {
-                if (entry.func->getReturnType() == exposedRetTy)
-                    codegenError("function '" + s->name +
-                        "' is already defined with the same signature");
-                else
-                    codegenError("function '" + s->name +
-                        "': overloads with same parameter types but different return types");
-            }
-            // Check arity range overlap for default argument conflicts
-            size_t overlapMin = std::max(newMinArity, entry.minArity);
-            size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
-            for (size_t n = overlapMin; n <= overlapMax; ++n) {
-                bool typesMatch = true;
-                for (size_t i = 0; i < n; ++i) {
-                    if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
-                }
-                if (typesMatch)
-                    codegenError("function '" + s->name +
-                        "' with default arguments creates ambiguous overload");
-            }
-        }
-
-        // LLVM IR function name: first overload uses original name, subsequent use name.N
-        std::string irName = s->name;
-        if (!overloads.empty())
-            irName = s->name + "." + std::to_string(overloads.size());
-
-        llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-        func = llvm::Function::Create(
-            ft, llvm::Function::ExternalLinkage, irName, *mod_);
-
-        std::vector<std::string> paramNames;
-        paramNames.reserve(s->params.size());
-        for (auto &p : s->params)
-            paramNames.push_back(p.name);
-        overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
-                             newMinArity, std::move(defaults),
-                             &s->preconditions, &s->postconditions, &s->ensure_bindings});
-
-        if (hasDirective(s->directives, "deprecated"))
-            deprecated_functions_.insert(s->name);
-
-        if (hasDirective(s->directives, "inline")) {
-            std::string mode = "always";
-            for (auto &d : s->directives) {
-                if (d.name == "inline") {
-                    for (auto &p : d.params) {
-                        if (p.key == "mode") mode = p.value;
-                    }
-                }
-            }
-            if (mode == "always")
-                func->addFnAttr(llvm::Attribute::AlwaysInline);
-            else if (mode == "never")
-                func->addFnAttr(llvm::Attribute::NoInline);
-            else if (mode == "hint")
-                func->addFnAttr(llvm::Attribute::InlineHint);
-            else
-                codegenError("unknown @inline mode: '" + mode +
-                             "' (expected 'always', 'never', or 'hint')");
-        }
+        func = declareFunction(
+            s->name, paramTypes, s->params, exposedRetTy,
+            exposedReturnTypeName, s->directives,
+            &s->preconditions, &s->postconditions, &s->ensure_bindings);
+        applyInlineDirective(func, s->directives);
     }
+
+    std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(s->params.size());
+    for (auto &p : s->params)
+        paramTypeNames.push_back(p.type->toString());
 
     auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
                                 const std::string &returnTypeName, const std::string &fnNameForErrors) {
