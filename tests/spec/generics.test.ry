@@ -37,3 +37,35 @@ describe("generic function", ():
     expect(identity(true)).to_be_true()
   )
 )
+
+function maybe_none<T>(x: T, flag: bool) -> T?:
+    if flag:
+        return none
+    return Some(x)
+
+describe("generic function with optional return", ():
+  it("return none with T=int", ():
+    r = maybe_none[int](42, true)
+    expect(r).to_be_none()
+  )
+  it("return Some with T=int", ():
+    r = maybe_none[int](42, false)
+    expect(r).to_be_some()
+  )
+  it("return none with T=str", ():
+    r = maybe_none[str]("hello", true)
+    expect(r).to_be_none()
+  )
+  it("return Some with T=str", ():
+    r = maybe_none[str]("hello", false)
+    expect(r).to_be_some()
+  )
+  it("return none with T=float", ():
+    r = maybe_none[float](3.14, true)
+    expect(r).to_be_none()
+  )
+  it("return none with T=bool", ():
+    r = maybe_none[bool](true, true)
+    expect(r).to_be_none()
+  )
+)
