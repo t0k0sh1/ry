@@ -160,6 +160,7 @@ private:
         const std::vector<std::string> *ensureBindings = nullptr;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
+    std::unordered_set<llvm::Function*> forward_declared_fns_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
@@ -459,6 +460,7 @@ private:
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
+    void forwardDeclareFunctions(Program &prog);
     void emitStmt(std::unique_ptr<MatchStmt> &s);
     llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
                                   llvm::Type *subjectTy, const std::string &subjectEnumType);

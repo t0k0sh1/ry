@@ -1366,3 +1366,55 @@ TEST_F(CodeGenTest, NonTailRecursionStillWorks) {
         "  return n * factorial(n - 1)\n"
         "print(factorial(10))"), "3628800\n");
 }
+
+// ===== Mutual Recursion (Forward Function References) =====
+
+TEST_F(CodeGenTest, MutualRecursion) {
+    EXPECT_EQ(runSource(
+        "function is_even(n: int) -> bool:\n"
+        "  if n == 0:\n"
+        "    return true\n"
+        "  return is_odd(n - 1)\n"
+        "\n"
+        "function is_odd(n: int) -> bool:\n"
+        "  if n == 0:\n"
+        "    return false\n"
+        "  return is_even(n - 1)\n"
+        "\n"
+        "print(is_even(4))\n"
+        "print(is_odd(3))"), "true\ntrue\n");
+}
+
+TEST_F(CodeGenTest, ThreeWayMutualRecursion) {
+    EXPECT_EQ(runSource(
+        "function fa(n: int) -> str:\n"
+        "  if n <= 0:\n"
+        "    return \"a\"\n"
+        "  return fb(n - 1)\n"
+        "\n"
+        "function fb(n: int) -> str:\n"
+        "  if n <= 0:\n"
+        "    return \"b\"\n"
+        "  return fc(n - 1)\n"
+        "\n"
+        "function fc(n: int) -> str:\n"
+        "  if n <= 0:\n"
+        "    return \"c\"\n"
+        "  return fa(n - 1)\n"
+        "\n"
+        "print(fa(0))\n"
+        "print(fa(1))\n"
+        "print(fa(2))\n"
+        "print(fa(3))"), "a\nb\nc\na\n");
+}
+
+TEST_F(CodeGenTest, ForwardFunctionReference) {
+    EXPECT_EQ(runSource(
+        "function caller(n: int) -> int:\n"
+        "  return callee(n) + 1\n"
+        "\n"
+        "function callee(n: int) -> int:\n"
+        "  return n * 2\n"
+        "\n"
+        "print(caller(5))"), "11\n");
+}

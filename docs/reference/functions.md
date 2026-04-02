@@ -102,6 +102,28 @@ function factorial(n: int) -> int:
     return n * factorial(n - 1)
 ```
 
+### Mutual Recursion
+
+Functions can call each other regardless of definition order. The compiler forward-declares top-level functions with explicit return types before processing function bodies, provided all referenced types are already known (primitive types are always available; record/enum types must be defined earlier in the file).
+
+```python
+function is_even(n: int) -> bool:
+    if n == 0:
+        return true
+    return is_odd(n - 1)       # calls is_odd defined below
+
+function is_odd(n: int) -> bool:
+    if n == 0:
+        return false
+    return is_even(n - 1)      # calls is_even defined above
+```
+
+**Requirements for forward references:**
+
+- The function must have an **explicit return type** annotation (`-> type`). Functions with inferred return types cannot be forward-referenced.
+- The function must be defined at the **top level** (not nested inside another function).
+- All parameter and return types must be resolvable at the point of forward declaration (e.g., record types must be defined before the functions that use them).
+
 ### Tail Call Optimization
 
 The compiler automatically detects self-recursive tail calls — where the last action in a function is a call to itself — and applies LLVM's `musttail` optimization. This guarantees that tail-recursive functions use constant stack space, preventing stack overflow for deep recursion.
@@ -121,7 +143,7 @@ sum_to(1000000, 0)    # works without stack overflow
 - The call result is returned without any further computation (`return n * f(n-1)` is NOT a tail call)
 - The function has no `ensure` (postcondition) clauses
 
-Mutual recursion (A calls B, B calls A) is not currently optimized.
+Mutual recursion (A calls B, B calls A) is not currently optimized for tail calls.
 
 ---
 
