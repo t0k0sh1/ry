@@ -448,6 +448,17 @@ TEST_F(CodeGenTest, LowLevelIntStillWraps) {
     EXPECT_EQ(runSource("x = 2147483647i32\nprint(wrapping_add(x, 1i32) as int)"), "-2147483648\n");
 }
 
+TEST_F(CodeGenTest, LowLevelI64StillWraps) {
+    // i64 constants: overflow should wrap, not panic
+    EXPECT_EQ(runSource("x = 9223372036854775807i64\ny = 1i64\nprint((x + y) as int)"),
+              "-9223372036854775808\n");
+    EXPECT_EQ(runSource("print((9223372036854775807i64 + 1i64) as int)"),
+              "-9223372036854775808\n");
+    // i64 unary negation should wrap
+    EXPECT_EQ(runSource("x = -9223372036854775807i64 - 1i64\nprint((-x) as int)"),
+              "-9223372036854775808\n");
+}
+
 // ===== any type rejection =====
 
 TEST_F(CodeGenTest, AnyTypeRejection) {
