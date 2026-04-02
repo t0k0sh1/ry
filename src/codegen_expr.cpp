@@ -522,6 +522,17 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
+    // List concatenation: [1,2] + [3,4] → [1,2,3,4]
+    if (op == "+") {
+        llvm::Type *lhsElemTy = getListElementType(lhs);
+        llvm::Type *rhsElemTy = getListElementType(rhs);
+        if (lhsElemTy && rhsElemTy) {
+            if (lhsElemTy != rhsElemTy)
+                codegenError("type error: list concatenation requires matching element types");
+            return emitListConcat(lhs, rhs, lhsElemTy);
+        }
+    }
+
     // Reject str with non-str operands (must come after string concat/repeat checks)
     if (lhsIsStr || rhsIsStr)
         codegenError("type error: operator '" + op + "' not supported between str and non-str types");
@@ -936,4 +947,38 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     if (val->getType() != ptrTy_)
         codegenError("weak can only be applied to ARC-managed reference values (str, List, Map, Set)");
     return emitArcGetHeaderFromData(val);
+}
+
+// Plain-malloc header (same as appended/slice/take) — caller stores into ARC-managed var.
+llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
+    auto lf = loadListHeader(lhs, "catl");
+    auto rf = loadListHeader(rhs, "catr");
+
+    llvm::Value *newLen = builder_.CreateAdd(lf.len, rf.len, "cat_len");
+
+    llvm::Value *newHeader = builder_.CreateCall(
+        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "cat_header");
+
+    llvm::Value *dataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ds");
+    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "cat_data");
+
+    llvm::Value *lhsSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ls");
+    builder_.CreateCall(memcpyFn, {newData, lf.data, lhsSize});
+
+    llvm::Value *rhsDst = builder_.CreateGEP(elemTy, newData, lf.len, "cat_rhs_dst");
+    llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
+    builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
+
+    builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
+    builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
+    builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+
+    type_meta_[TM_ListElem][newHeader] = elemTy;
+    return newHeader;
 }

@@ -77,6 +77,28 @@ xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
 ```
 
+### Empty List
+
+An empty list requires a type annotation so the element type can be determined:
+
+```python
+xs: List<int> = []
+xs: List<str> = []
+```
+
+### Concatenation
+
+Lists can be concatenated with `+` and `+=`:
+
+```python
+a = [1, 2, 3]
+b = [4, 5, 6]
+c = a + b       # [1, 2, 3, 4, 5, 6]
+a += [7, 8]     # a is now [1, 2, 3, 7, 8]
+```
+
+Both operands must have the same element type.
+
 ### Supported Element Types
 
 `int`, `float`, `bool`, `str`
@@ -438,7 +460,7 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | Constraint | Details |
 |------|------|
 | All elements must be the same type | Mixed types cause a compile error |
-| Empty list `[]` | Compile error because type cannot be inferred |
+| Empty list `[]` | Requires type annotation (e.g., `xs: List<int> = []`) |
 | Out-of-range access | Runtime error (exit(1)) |
 
 ---
