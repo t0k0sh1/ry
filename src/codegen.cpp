@@ -641,7 +641,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     // Identify which args are None literals
     std::vector<bool> isNone(args.size(), false);
     for (size_t i = 0; i < args.size(); ++i) {
-        if (auto *ve = std::get_if<VariableExpr>(&args[i]->data); ve && ve->name == "None")
+        if (isNoneLiteral(*args[i]))
             isNone[i] = true;
     }
 
@@ -785,10 +785,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
 
     // Fill in default values for omitted parameters
     for (size_t i = args.size(); i < chosen->paramTypes.size(); ++i) {
-        bool isNoneLit = std::holds_alternative<NoneExpr>(chosen->defaultValues[i]->data) ||
-                         (std::holds_alternative<VariableExpr>(chosen->defaultValues[i]->data) &&
-                          std::get<VariableExpr>(chosen->defaultValues[i]->data).name == "None");
-        if (isNoneLit) {
+        if (isNoneLiteral(*chosen->defaultValues[i])) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
             continue;
         }

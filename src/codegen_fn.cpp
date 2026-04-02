@@ -87,71 +87,78 @@ void CodeGen::emitStmt(ReturnStmt &s) {
             builder_.CreateRetVoid();
         }
     } else {
-        llvm::Value *val = emitExpr(*s.value);
+        // Build None with correct Option type from fn return type instead of
+        // the default Option<int> that emitExpr(NoneExpr) would produce.
+        llvm::Value *val;
+        if (isNoneLiteral(*s.value) && isOptionType(fn_->getReturnType())) {
+            val = buildNoneValue(fn_->getReturnType());
+        } else {
+            val = emitExpr(*s.value);
 
-        // Propagate fn_type_info for function-type return values
-        {
-            auto fnIt = fn_type_info_.find(val);
-            if (fnIt == fn_type_info_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                    fnIt = fn_type_info_.find(load->getPointerOperand());
-            }
-            if (fnIt != fn_type_info_.end())
-                return_fn_type_info_[fn_] = fnIt->second;
-        }
-
-        // Tail call optimization: self-recursive tail call → musttail
-        if (!current_postconditions_) {
-            if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
-                if (ci->getCalledFunction() == fn_) {
-                    ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
-                    // Note: Do not emit function-exit tracing here; LLVM requires
-                    // a musttail call to be immediately followed by the ret.
-                    builder_.CreateRet(val);
-                    llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
-                    builder_.SetInsertPoint(dead);
-                    return;
+            // Propagate fn_type_info for function-type return values
+            {
+                auto fnIt = fn_type_info_.find(val);
+                if (fnIt == fn_type_info_.end()) {
+                    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                        fnIt = fn_type_info_.find(load->getPointerOperand());
                 }
+                if (fnIt != fn_type_info_.end())
+                    return_fn_type_info_[fn_] = fnIt->second;
             }
-        }
 
-        llvm::Type *retTy = fn_->getReturnType();
-        if (retTy->isVoidTy())
-            codegenError("cannot return a value from Unit function '" +
-                                     std::string(fn_->getName()) + "'");
-        if (val->getType() != retTy) {
-            if (isAnyType(retTy)) {
-                val = wrapInAny(val);
-            } else if (isUnionType(current_fn_return_type_)) {
-                val = wrapInUnion(val, current_fn_return_type_);
-            } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
-                val = sliced;
-            } else {
-                // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
-                auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
-                auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
-                if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                    codegenError("return type mismatch");
-
-                // Find which elements need coercion
-                bool needsCoercion = false;
-                for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                    if (valST->getElementType(i) != retST->getElementType(i)) {
-                        if (!(isOptionType(valST->getElementType(i)) &&
-                              isOptionType(retST->getElementType(i))))
-                            codegenError("return type mismatch");
-                        needsCoercion = true;
+            // Tail call optimization: self-recursive tail call → musttail
+            if (!current_postconditions_) {
+                if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
+                    if (ci->getCalledFunction() == fn_) {
+                        ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
+                        // Note: Do not emit function-exit tracing here; LLVM requires
+                        // a musttail call to be immediately followed by the ret.
+                        builder_.CreateRet(val);
+                        llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+                        builder_.SetInsertPoint(dead);
+                        return;
                     }
                 }
-                if (needsCoercion) {
-                    llvm::Value *coerced = llvm::UndefValue::get(retTy);
+            }
+
+            llvm::Type *retTy = fn_->getReturnType();
+            if (retTy->isVoidTy())
+                codegenError("cannot return a value from Unit function '" +
+                                         std::string(fn_->getName()) + "'");
+            if (val->getType() != retTy) {
+                if (isAnyType(retTy)) {
+                    val = wrapInAny(val);
+                } else if (isUnionType(current_fn_return_type_)) {
+                    val = wrapInUnion(val, current_fn_return_type_);
+                } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
+                    val = sliced;
+                } else {
+                    // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
+                    auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
+                    auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
+                        codegenError("return type mismatch");
+
+                    // Find which elements need coercion
+                    bool needsCoercion = false;
                     for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                        llvm::Value *elem = builder_.CreateExtractValue(val, i);
-                        if (valST->getElementType(i) != retST->getElementType(i))
-                            elem = buildNoneValue(retST->getElementType(i));
-                        coerced = builder_.CreateInsertValue(coerced, elem, i);
+                        if (valST->getElementType(i) != retST->getElementType(i)) {
+                            if (!(isOptionType(valST->getElementType(i)) &&
+                                  isOptionType(retST->getElementType(i))))
+                                codegenError("return type mismatch");
+                            needsCoercion = true;
+                        }
                     }
-                    val = coerced;
+                    if (needsCoercion) {
+                        llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                        for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                            llvm::Value *elem = builder_.CreateExtractValue(val, i);
+                            if (valST->getElementType(i) != retST->getElementType(i))
+                                elem = buildNoneValue(retST->getElementType(i));
+                            coerced = builder_.CreateInsertValue(coerced, elem, i);
+                        }
+                        val = coerced;
+                    }
                 }
             }
         }
@@ -1009,8 +1016,14 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     // Substitute type params in return type name
     std::string exposedReturnTypeName = sReturnType;
     auto retTpit = type_param_scope_.find(sReturnType);
-    if (retTpit != type_param_scope_.end())
+    if (retTpit != type_param_scope_.end()) {
         exposedReturnTypeName = retTpit->second;
+    } else if (!sReturnType.empty() && sReturnType.back() == '?') {
+        std::string inner = sReturnType.substr(0, sReturnType.size() - 1);
+        auto innerIt = type_param_scope_.find(inner);
+        if (innerIt != type_param_scope_.end())
+            exposedReturnTypeName = innerIt->second + "?";
+    }
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
@@ -1042,7 +1055,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     {
         FnScope guard(*this);
         fn_ = func;
-        current_fn_return_type_ = sReturnType;
+        current_fn_return_type_ = exposedReturnTypeName;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
