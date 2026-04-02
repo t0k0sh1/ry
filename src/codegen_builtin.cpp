@@ -169,7 +169,10 @@ std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
 std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
     if (auto *keyTy = getMapKeyType(val)) {
         std::string keyName = reverseResolveTypeName(keyTy);
-        auto it = map_value_type_names_.find(val);
+        llvm::Value *metaKey = val;
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            metaKey = load->getPointerOperand();
+        auto it = map_value_type_names_.find(metaKey);
         std::string valName = (it != map_value_type_names_.end())
             ? it->second : reverseResolveTypeName(getMapValueType(val));
         return "Map<" + keyName + ", " + valName + ">";
