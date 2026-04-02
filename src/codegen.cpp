@@ -393,6 +393,9 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
 
     pushScope();
 
+    // Forward-declare top-level functions for mutual recursion support
+    forwardDeclareFunctions(prog);
+
     for (auto &stmt : prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
     }
@@ -627,7 +630,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 "Did you forget to add a case in codegen_call_*.cpp "
                 "or add emitBuiltin*() to the dispatch chain in codegen_call.cpp?");
         } else {
-            codegenError("undefined function: " + callee);
+            codegenError("undefined function: " + callee +
+                " (hint: if this function is defined later in the file, "
+                "add an explicit return type to enable forward references)");
         }
     }
 
