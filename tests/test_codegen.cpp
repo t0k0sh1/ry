@@ -425,7 +425,9 @@ TEST_F(CodeGenTest, IntNegOverflowExits) {
 TEST_F(CodeGenTest, IntOverflowConstantFolding) {
     // Compile-time overflow detection
     EXPECT_THROW(runSource("print(9223372036854775807 + 1)"), std::runtime_error);
+    EXPECT_THROW(runSource("print((-9223372036854775807 - 1) - 1)"), std::runtime_error);
     EXPECT_THROW(runSource("print(9223372036854775807 * 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(-(-9223372036854775807 - 1))"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, IntArithmeticNoOverflow) {
