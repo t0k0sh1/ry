@@ -101,6 +101,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s.object); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
                 scanExpr(*s.value);
+            } else if constexpr (std::is_same_v<T, ExprStmt>) {
+                scanExpr(*s.expr);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
                 scanExpr(*s->branch.condition);
                 for (auto &st : s->branch.body) scanStmt(st);

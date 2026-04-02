@@ -103,6 +103,13 @@ void Formatter::formatCall(const CallStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
+void Formatter::formatExprStmt(const ExprStmt &s) {
+    emit(formatExpr(*s.expr));
+    emitInlineComment(s.loc.line);
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+}
+
 void Formatter::formatReturn(const ReturnStmt &s) {
     emit("return");
     if (s.value) {

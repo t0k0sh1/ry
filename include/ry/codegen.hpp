@@ -439,6 +439,7 @@ private:
 
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
+    void emitStmt(ExprStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
     void emitStmt(RecordStmt &s);

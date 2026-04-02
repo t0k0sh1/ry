@@ -49,6 +49,7 @@ private:
     void formatStmt(const StmtNode &stmt);
     void formatAssign(const AssignStmt &s);
     void formatCall(const CallStmt &s);
+    void formatExprStmt(const ExprStmt &s);
     void formatReturn(const ReturnStmt &s);
     void formatImport(const ImportStmt &s);
     void formatRecord(const RecordStmt &s);

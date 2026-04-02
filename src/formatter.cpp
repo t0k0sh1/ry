@@ -512,6 +512,7 @@ int Formatter::getStmtLine(const StmtNode &stmt) const {
             return v.loc.line;
         }
         else if constexpr (std::is_same_v<T, ReturnStmt>) return v.loc.line;
+        else if constexpr (std::is_same_v<T, ExprStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, ImportStmt>) return v.loc.line;
         else if constexpr (std::is_same_v<T, RecordStmt>) {
             if (!v.directives.empty()) return v.directives.front().loc.line;
@@ -541,6 +542,7 @@ void Formatter::formatStmt(const StmtNode &stmt) {
         using T = std::decay_t<decltype(v)>;
         if constexpr (std::is_same_v<T, AssignStmt>) formatAssign(v);
         else if constexpr (std::is_same_v<T, CallStmt>) formatCall(v);
+        else if constexpr (std::is_same_v<T, ExprStmt>) formatExprStmt(v);
         else if constexpr (std::is_same_v<T, ReturnStmt>) formatReturn(v);
         else if constexpr (std::is_same_v<T, ImportStmt>) formatImport(v);
         else if constexpr (std::is_same_v<T, RecordStmt>) formatRecord(v);

@@ -424,9 +424,11 @@ StmtNode Parser::parseStatement() {
         return s;
     }
 
-    // identifier-leading statements: assignment, index assignment, or function call
-    if (first.kind != TokenKind::Ident)
-        parseError(first.line, "unexpected token '" + first.value + "'");
+    // Non-identifier expression statement: e.g. [1, 2, 3].map(f)
+    if (first.kind != TokenKind::Ident) {
+        ExprPtr expr = parseConditional();
+        return ExprStmt{std::move(expr), locFromToken(first)};
+    }
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
