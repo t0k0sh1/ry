@@ -257,6 +257,7 @@ bool CodeGen::isTupleStructType(llvm::StructType *st) {
     if (isOptionType(st)) return false;
     if (isResultType(st)) return false;
     if (st == errorTy_) return false;
+    if (!findAdtEnumName(st).empty()) return false;
     return true;
 }
 
