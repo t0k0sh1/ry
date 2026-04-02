@@ -633,4 +633,22 @@ describe("Tuple", ():
     expect(t.1).to_eq("a")
     expect(t.2).to_be_true()
   )
+  it("equality", ():
+    expect((1, 2) == (1, 2)).to_be_true()
+    expect((1, 2) == (1, 3)).to_be_false()
+  )
+  it("inequality", ():
+    expect((1, 2) != (3, 4)).to_be_true()
+    expect((1, 2) != (1, 2)).to_be_false()
+  )
+  it("equality with mixed types", ():
+    expect(("a", 1) == ("a", 1)).to_be_true()
+    expect(("a", 1) == ("b", 1)).to_be_false()
+  )
+  it("equality via variables", ():
+    t1 = (1, 2)
+    t2 = (1, 2)
+    expect(t1 == t2).to_be_true()
+    expect(t1 != t2).to_be_false()
+  )
 )

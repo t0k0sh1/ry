@@ -136,6 +136,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
                 size_t e = elem.find_last_not_of(' ');
                 if (s != std::string::npos)
                     elem = elem.substr(s, e - s + 1);
+                if (elem.empty()) continue; // trailing comma
                 elementTypes.push_back(resolveType(elem));
                 start = i + 1;
             }
