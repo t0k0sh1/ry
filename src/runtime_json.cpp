@@ -755,10 +755,12 @@ int64_t __ry_json_len(void *value) {
 
 void *__ry_json_keys(void *value) {
     auto *header = (ListHeader*)malloc(sizeof(ListHeader));
+    if (!header) return nullptr;
     if (!value || ((JsonValue*)value)->type != JsonType::Object) {
         header->len = 0;
         header->cap = 1;
         header->data = (char **)malloc(sizeof(const char*));
+        if (!header->data) { free(header); return nullptr; }
         return header;
     }
     auto *v = (JsonValue*)value;
@@ -766,6 +768,7 @@ void *__ry_json_keys(void *value) {
     header->len = len;
     header->cap = len > 0 ? len : 1;
     auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
+    if (!data) { free(header); return nullptr; }
     for (int64_t i = 0; i < len; i++)
         data[i] = strdup(v->object_val.keys[i]);
     header->data = (char **)data;
