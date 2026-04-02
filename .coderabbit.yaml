@@ -10,5 +10,3 @@ reviews:
     - '!build/**'
     - '!build-asan/**'
     - '!**/*.pdf'
-  tools:
-    enabled: true
