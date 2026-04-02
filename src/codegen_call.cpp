@@ -4,16 +4,26 @@
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // to_int(s) → int — fall through for JsonValue to let JSON dispatcher handle it
+    // to_int(s) → Result<int, Error> — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_int") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
         if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
-        auto atolTy = fnTy_ptr_to_i64_;
-        auto atolFn = mod_->getOrInsertFunction("atol", atolTy);
-        return builder_.CreateCall(atolFn, {s}, "to_int");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "to_int_err");
+        llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "to_int_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
     // to_float(s) → float — fall through for JsonValue to let JSON dispatcher handle it

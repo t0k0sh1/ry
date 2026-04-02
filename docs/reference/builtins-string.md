@@ -59,7 +59,7 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `to_int` | `str -> int` | Convert string to integer |
+| `to_int` | `str -> Result<int, Error>` | Convert string to integer |
 | `to_float` | `str -> float` | Convert string to floating-point number |
 | `to_str` | `int/float/bool/str/enum/record -> str` | Convert value to string |
 
@@ -320,14 +320,26 @@ print(",".join(parts))         # a,b,c (UFCS, Python-style)
 
 ## to_int
 
-**Signature:** `to_int(string: str) -> int`
+**Signature:** `to_int(string: str) -> Result<int, Error>`
 
-Converts a string to an integer.
+Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```python
-print(to_int("42"))       # 42
-print(to_int("-7"))       # -7
-print("123".to_int())     # 123 (UFCS)
+match to_int("42"):
+    case Ok(v):
+        print(v)              # 42
+    case Err(e):
+        print(e.message)
+
+match "123".to_int():          # UFCS
+    case Ok(v):
+        print(v)              # 123
+    case Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(to_int("abc"))          # Err(Error("to_int: invalid character in 'abc'"))
+print(to_int(""))             # Err(Error("to_int: empty string"))
 ```
 
 ---
