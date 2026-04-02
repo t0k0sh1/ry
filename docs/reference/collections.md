@@ -49,6 +49,7 @@ print(result.1)   # 1
 | Constraint | Details |
 |------|------|
 | Out-of-range index | Compile error |
+| Single-element tuple type annotation | `(int,)` type syntax is not yet supported; use type inference instead (e.g., `t = (42,)`) |
 
 ---
 

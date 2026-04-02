@@ -435,6 +435,22 @@ TEST(Formatter, RoundTripAndIdempotency) {
     }
 }
 
+TEST(FormatterTest, TupleSingleElementRoundTrip) {
+    auto src = "t = (42,)\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, "t = (42,)\n");
+    auto second = Formatter::formatSource(first);
+    EXPECT_EQ(first, second);
+}
+
+TEST(FormatterTest, TupleMultiElementRoundTrip) {
+    auto src = "t = (1, 2)\n";
+    auto first = Formatter::formatSource(src);
+    EXPECT_EQ(first, "t = (1, 2)\n");
+    auto second = Formatter::formatSource(first);
+    EXPECT_EQ(first, second);
+}
+
 TEST(FormatterTest, DefaultArgRoundTrip) {
     auto src = "function greet(name: str, greeting: str = \"Hello\") -> str:\n  return greeting\n";
     auto first = Formatter::formatSource(src);
