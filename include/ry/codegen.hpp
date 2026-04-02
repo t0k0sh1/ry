@@ -179,6 +179,7 @@ private:
     };
     std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[TM_COUNT];
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
+    std::unordered_map<llvm::Value*, std::string> map_value_type_names_;
 
     // Fixed-length array element type names (e.g., "i32", "u8")
     // elementType and size are derivable from AllocaInst->getAllocatedType()
@@ -880,6 +881,8 @@ private:
         std::vector<llvm::Type*> &out);
     llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
     std::string reverseResolveTypeName(llvm::Type *ty);
+    std::string inferCollectionTypeName(llvm::Value *val);
+    std::string extractMapValueTypeName(const std::string &mapTypeName);
 
     // Union type helpers
     std::vector<std::string> parseUnionComponents(const std::string &typeName);

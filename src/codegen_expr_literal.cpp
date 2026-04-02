@@ -307,6 +307,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     type_meta_[TM_MapKey][headerPtr] = keyTy;
     type_meta_[TM_MapValue][headerPtr] = valTy;
 
+    if (valTy == ptrTy_ && !valVals.empty()) {
+        std::string valTypeName = inferCollectionTypeName(valVals[0]);
+        if (!valTypeName.empty())
+            map_value_type_names_[headerPtr] = valTypeName;
+    }
+
     return headerPtr;
 }
 
@@ -498,7 +504,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
-        return builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
+        llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
+
+        auto mvtn = map_value_type_names_.find(objPtr);
+        if (mvtn == map_value_type_names_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr))
+                mvtn = map_value_type_names_.find(load->getPointerOperand());
+        }
+        if (mvtn != map_value_type_names_.end())
+            propagateTypeMeta(mvtn->second, mapVal);
+
+        return mapVal;
     }
 
     // List index access

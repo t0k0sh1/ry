@@ -93,6 +93,10 @@ void CodeGen::emitVarDecl(const std::string &name,
             builder_.CreateStore(headerPtr, ptr);
             type_meta_[TM_MapKey][ptr] = keyTy;
             type_meta_[TM_MapValue][ptr] = valTy;
+            {
+                std::string vtn = extractMapValueTypeName(*annot);
+                if (!vtn.empty()) map_value_type_names_[ptr] = vtn;
+            }
             markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
@@ -398,6 +402,15 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
         if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
         if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
+        {
+            auto mvtn = map_value_type_names_.find(val);
+            if (mvtn == map_value_type_names_.end()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    mvtn = map_value_type_names_.find(load->getPointerOperand());
+            }
+            if (mvtn != map_value_type_names_.end())
+                map_value_type_names_[ptr] = mvtn->second;
+        }
 
         // --- Set tracking ---
         llvm::Type *setElemTy = getSetElementType(val);
