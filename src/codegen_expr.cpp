@@ -656,6 +656,9 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (op == "*") return emitIntOverflowCheck(llvm::Intrinsic::smul_with_overflow, lhs, rhs, "mul");
     }
     // Low-level i64/u64 fallthrough: wrap and propagate metadata
+    // Note: This may tag ConstantInt values (#311), but the risk is limited because
+    // propagateHint only fires when an explicit i64/u64 suffix is in the AST.
+    // A proper fix (recursive getExprLowLevelSuffix) is tracked in #595.
     auto propagateHint = [&](llvm::Value *result) -> llvm::Value* {
         if (!llNameHint.empty()) low_level_type_names_[result] = llNameHint;
         return result;
