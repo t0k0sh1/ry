@@ -142,6 +142,20 @@ void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *v
     propagateTypeMeta(entry->returnTypeName, val);
 }
 
+void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {
+    auto retFnIt = return_fn_type_info_.find(fn);
+    if (retFnIt != return_fn_type_info_.end()) {
+        fn_type_info_[result] = retFnIt->second;
+        return;
+    }
+    if (!entry) return;
+    const auto &rtn = entry->returnTypeName;
+    if (rtn.size() <= 9 || rtn.compare(0, 9, "function(") != 0) return;
+    std::string resolved = resolveTypeAlias(rtn);
+    if (resolved.size() > 9 && resolved.compare(0, 9, "function(") == 0)
+        fn_type_info_[result] = parseFnTypeAnnotation(resolved);
+}
+
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {
     propagateCollectionMetadata(src, dst);
     propagateResourceTracking(src, dst);

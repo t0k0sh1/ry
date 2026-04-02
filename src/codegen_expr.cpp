@@ -188,6 +188,7 @@ llvm::Value *CodeGen::findAndCallOverload(const std::string &opFnName,
             return builder_.CreateCall(entry.func, args);
         llvm::Value *result = builder_.CreateCall(entry.func, args, callName);
         propagateReturnTypeMeta(&entry, result);
+        propagateReturnFnTypeMeta(&entry, entry.func, result);
         return result;
     }
     return nullptr;

@@ -1,0 +1,33 @@
+describe("operator[] returning function type", ():
+  it("subscript returns a callable and can be invoked", ():
+    record FnMap:
+      base: int
+    function operator[](m: FnMap, key: int) -> function(int) -> int:
+      return (x: int) => m.base + x + key
+    fm = FnMap(10)
+    f = fm[1]
+    expect(f(100)).to_eq(111)
+  )
+
+  it("subscript return called via variable", ():
+    record Dispatch:
+      offset: int
+    function operator[](d: Dispatch, idx: int) -> function(int) -> int:
+      return (x: int) => d.offset * idx + x
+    d = Dispatch(3)
+    g = d[2]
+    expect(g(10)).to_eq(16)
+  )
+)
+
+describe("operator as returning function type", ():
+  it("cast returns a callable and can be invoked", ():
+    record Multiplier:
+      factor: int
+    function operator as(m: Multiplier) -> function(int) -> int:
+      return (x: int) => x * m.factor
+    m = Multiplier(5)
+    f = m as function(int) -> int
+    expect(f(7)).to_eq(35)
+  )
+)

@@ -830,6 +830,7 @@ private:
     void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateTypeMeta(const std::string &typeName, llvm::Value *val);
     void propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val);
+    void propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result);
     void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);

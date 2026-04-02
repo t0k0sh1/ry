@@ -16,6 +16,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
                 resolveTypeAlias(entry.returnTypeName) == resolvedTarget) {
                 llvm::Value *result = builder_.CreateCall(entry.func, {val}, "cast_op");
                 propagateReturnTypeMeta(&entry, result);
+                propagateReturnFnTypeMeta(&entry, entry.func, result);
                 return result;
             }
         }
