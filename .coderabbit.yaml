@@ -5,7 +5,7 @@ reviews:
     enabled: true
     drafts: false
     base_branches:
-      - 'v[0-9]+\.[0-9]+\.[0-9]+'
+      - '^v\d+\.\d+\.\d+$'
   path_filters:
     - '!build/**'
     - '!build-asan/**'
