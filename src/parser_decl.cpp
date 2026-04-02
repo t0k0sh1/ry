@@ -968,7 +968,7 @@ StmtNode Parser::parseWhenStatement() {
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after else");
                 lex_.next();
-                whenStmt->else_body = parseBlock();
+                whenStmt->else_body = parseBlockOrInline();
                 seenElse = true;
             } else {
                 if (seenElse)
@@ -978,7 +978,7 @@ StmtNode Parser::parseWhenStatement() {
                 if (lex_.peek().kind != TokenKind::Colon)
                     parseError("expected ':' after when condition");
                 lex_.next();
-                arm.body = parseBlock();
+                arm.body = parseBlockOrInline();
                 whenStmt->arms.push_back(std::move(arm));
             }
             skipNewlines();
@@ -1039,7 +1039,7 @@ StmtNode Parser::parseMatchStatement() {
             parseError("expected ':' after case pattern");
         lex_.next();
 
-        arm.body = parseBlock();
+        arm.body = parseBlockOrInline();
         matchStmt->arms.push_back(std::move(arm));
         skipNewlines();
     }
