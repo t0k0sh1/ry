@@ -79,11 +79,13 @@ bool CodeGen::isRegex(llvm::Value *val) { return lookupValueSet(resource_sets_[R
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)
         if (resource_sets_[i].count(src)) resource_sets_[i].insert(dst);
+    if (json_type_only_.count(src)) json_type_only_.insert(dst);
 }
 
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)
         if (lookupValueSetWide(resource_sets_[i], src)) resource_sets_[i].insert(dst);
+    if (lookupValueSetWide(json_type_only_, src)) json_type_only_.insert(dst);
 }
 
 void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
