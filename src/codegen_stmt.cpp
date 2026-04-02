@@ -573,7 +573,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
         if (!result) {
             // Priority 2: user-defined binary operator or built-in (e.g., operator+)
-            result = emitBinaryOp(*s.compound_op, currentVal, rhs);
+            std::string rhsHint = getExprLowLevelSuffix(*s.value);
+            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
         }
 
         // Type compatibility check (same as plain assignment path)

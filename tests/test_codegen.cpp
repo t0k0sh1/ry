@@ -509,6 +509,12 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("a = 1\nb: i64 = 2\nc = a + b"), std::runtime_error);
     // u64 + int → error (#595)
     EXPECT_THROW(runSource("a: u64 = 1\nb = 2\nc = a + b"), std::runtime_error);
+    // i64 += int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\na += 1"), std::runtime_error);
+    // int += i64 → error (#595)
+    EXPECT_THROW(runSource("a = 1\na += 1i64"), std::runtime_error);
+    // u64 += int → error (#595)
+    EXPECT_THROW(runSource("a: u64 = 1\na += 1"), std::runtime_error);
     // i64 literal + int literal → error (#595)
     EXPECT_THROW(runSource("c = 1i64 + 1"), std::runtime_error);
     // int literal + i64 literal → error (#595)

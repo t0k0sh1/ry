@@ -497,8 +497,8 @@ void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std
     // Fall back to AST suffix hints for constants that lack metadata (#311, #595)
     const std::string &lhsRef = getLowLevelTypeName(lhs);
     const std::string &rhsRef = getLowLevelTypeName(rhs);
-    const std::string &lhsName = (!lhsRef.empty() || lhsHint.empty()) ? lhsRef : lhsHint;
-    const std::string &rhsName = (!rhsRef.empty() || rhsHint.empty()) ? rhsRef : rhsHint;
+    const std::string &lhsName = !lhsRef.empty() ? lhsRef : lhsHint;
+    const std::string &rhsName = !rhsRef.empty() ? rhsRef : rhsHint;
     bool lhsLL = !lhsName.empty() || isLowLevelTy(lhs->getType());
     bool rhsLL = !rhsName.empty() || isLowLevelTy(rhs->getType());
     if (!lhsLL && !rhsLL) return;
