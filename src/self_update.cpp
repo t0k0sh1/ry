@@ -734,7 +734,7 @@ int cmd_self_update(int argc, char *argv[]) {
 
     std::cerr << "Current version: ry " << RY_VERSION << "\n";
 
-    std::string mode = "stable";
+    std::string mode = detail::is_prerelease(RY_VERSION) ? "nightly" : "stable";
     if (argc >= 1) {
         std::string arg = argv[0];
         if (arg == "--nightly") {
