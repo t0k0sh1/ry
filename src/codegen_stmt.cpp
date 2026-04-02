@@ -103,19 +103,20 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     // Handle empty list literal: xs: List<int> = []
     if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data); le && (*le)->elements.empty()) {
-        if (!annot || !isListTypeName(*annot))
+        if (!annot)
             codegenError("empty list literal requires a List<T> type annotation");
-        std::string inner = annot->substr(5, annot->size() - 6);
+        std::string resolvedAnnot = resolveTypeAlias(*annot);
+        if (!isListTypeName(resolvedAnnot) || resolvedAnnot.size() < 7 || resolvedAnnot.back() != '>')
+            codegenError("empty list literal requires a List<T> type annotation");
+        std::string inner = resolvedAnnot.substr(5, resolvedAnnot.size() - 6);
         llvm::Type *elemTy = resolveType(inner);
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
-        // Allocate ListHeader with ARC
         uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
         llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
 
-        // Initial capacity = 4
         auto mallocFn = getStdlibMalloc();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         llvm::Value *elemsPtr = builder_.CreateCall(
@@ -132,6 +133,16 @@ void CodeGen::emitVarDecl(const std::string &name,
         builder_.CreateStore(headerPtr, ptr);
         type_meta_[TM_ListElem][ptr] = elemTy;
         markArcManaged(ptr);
+        arc_backed_vars_.insert(ptr);
+
+        // Set nested-list metadata for List<List<T>> annotations
+        if (isListTypeName(inner) && inner.back() == '>') {
+            std::string nestedInner = inner.substr(5, inner.size() - 6);
+            llvm::Type *nestedElemTy = resolveType(nestedInner);
+            if (nestedElemTy)
+                type_meta_[TM_NestedListElem][ptr] = nestedElemTy;
+        }
+
         if (is_immutable)
             immutable_scope_stack_.back().insert(name);
         return;

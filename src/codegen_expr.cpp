@@ -980,5 +980,15 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
 
     type_meta_[TM_ListElem][newHeader] = elemTy;
+
+    // Propagate nested-list metadata so flatten() works on concatenated results
+    if (elemTy == ptrTy_) {
+        auto &nestedMap = type_meta_[TM_NestedListElem];
+        auto itL = nestedMap.find(lhs);
+        auto itR = nestedMap.find(rhs);
+        if (itL != nestedMap.end() && itR != nestedMap.end() && itL->second == itR->second)
+            nestedMap[newHeader] = itL->second;
+    }
+
     return newHeader;
 }
