@@ -19,8 +19,19 @@ t: (int, float) = (1, 3.14)
 ### Type Annotation
 
 ```python
+single: (int,) = (42,)                     # trailing comma required for single-element
 pair: (int, str) = (42, "hello")
 triple: (int, float, bool) = (1, 2.0, true)
+```
+
+### Comparison
+
+Tuples support `==` and `!=` via element-wise comparison.
+
+```python
+print((1, 2) == (1, 2))    # true
+print((1, 2) != (3, 4))    # true
+print(("a", 1) == ("b", 1))  # false
 ```
 
 ### Element Access
@@ -49,7 +60,7 @@ print(result.1)   # 1
 | Constraint | Details |
 |------|------|
 | Out-of-range index | Compile error |
-| Single-element tuple type annotation | `(int,)` type syntax is not yet supported; use type inference instead (e.g., `t = (42,)`) |
+| Comparison operators | Only `==` and `!=` are supported; `<`, `<=`, `>`, `>=` are not |
 
 ---
 

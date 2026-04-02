@@ -627,6 +627,8 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         elements.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break; // trailing comma
             elements.push_back(parseTypeName());
         }
         if (lex_.peek().kind != TokenKind::RParen)

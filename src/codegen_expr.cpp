@@ -261,6 +261,18 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             auto it = struct_types_.find(typeName);
             if (it != struct_types_.end())
                 return emitStructComparison(op, lhs, rhs, it->second);
+            // Tuple (anonymous struct) comparison: field-by-field
+            if (isTupleStructType(lhsST)) {
+                StructInfo synth;
+                synth.llvmType = lhsST;
+                synth.fields.reserve(lhsST->getNumElements());
+                for (unsigned i = 0; i < lhsST->getNumElements(); ++i) {
+                    FieldDef fd;
+                    fd.name = std::to_string(i);
+                    synth.fields.push_back(std::move(fd));
+                }
+                return emitStructComparison(op, lhs, rhs, synth);
+            }
             // ADT enum: compare by tag
             if (!findAdtEnumName(lhsST).empty()) {
                 llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");

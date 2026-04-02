@@ -21,6 +21,7 @@ std::string TypeNode::toString() const {
                 if (i > 0) result += ", ";
                 result += v.elements[i]->toString();
             }
+            if (v.elements.size() == 1) result += ",";
             result += ")";
             return result;
         } else if constexpr (std::is_same_v<T, FnType>) {

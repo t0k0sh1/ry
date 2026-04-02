@@ -136,6 +136,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
                 size_t e = elem.find_last_not_of(' ');
                 if (s != std::string::npos)
                     elem = elem.substr(s, e - s + 1);
+                if (elem.empty()) continue; // trailing comma
                 elementTypes.push_back(resolveType(elem));
                 start = i + 1;
             }
@@ -256,6 +257,7 @@ bool CodeGen::isTupleStructType(llvm::StructType *st) {
     if (isOptionType(st)) return false;
     if (isResultType(st)) return false;
     if (st == errorTy_) return false;
+    if (!findAdtEnumName(st).empty()) return false;
     return true;
 }
 
