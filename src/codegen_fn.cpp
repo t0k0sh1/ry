@@ -342,26 +342,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
-    // Check if this function was already forward-declared
-    llvm::Function *func = nullptr;
-    auto fwdIt = functions_.find(s->name);
-    if (fwdIt != functions_.end()) {
-        for (auto &entry : fwdIt->second) {
-            if (forward_declared_fns_.count(entry.func)) {
-                // Verify param types match to handle overloads correctly
-                std::vector<llvm::Type*> checkTypes;
-                checkTypes.reserve(s->params.size());
-                for (auto &p : s->params)
-                    checkTypes.push_back(resolveType(p.type->toString()));
-                if (checkTypes == entry.paramTypes) {
-                    func = entry.func;
-                    forward_declared_fns_.erase(func);
-                    break;
-                }
-            }
-        }
-    }
-
     std::vector<llvm::Type*> paramTypes;
     paramTypes.reserve(s->params.size());
     for (auto &p : s->params)
@@ -370,6 +350,20 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     paramTypeNames.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
+
+    // Check if this function was already forward-declared
+    llvm::Function *func = nullptr;
+    auto fwdIt = functions_.find(s->name);
+    if (fwdIt != functions_.end()) {
+        for (auto &entry : fwdIt->second) {
+            if (forward_declared_fns_.count(entry.func) &&
+                paramTypes == entry.paramTypes) {
+                func = entry.func;
+                forward_declared_fns_.erase(func);
+                break;
+            }
+        }
+    }
 
     llvm::Type *bodyRetTy;
     if (!s->return_type) {
