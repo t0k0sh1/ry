@@ -299,7 +299,9 @@ abs = (x: int):
 
 ## Closures
 
-Lambda functions **capture by value** the variables from the outer scope at the time of definition.
+Lambda functions **capture by value** the variables from the outer scope at the time of definition. This means the closure works with its own independent copy — changes in either direction (outer → closure or closure → outer) are not visible to the other side.
+
+### Outer changes do not affect the closure
 
 ```python
 base = 10
@@ -309,13 +311,28 @@ base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
 ```
 
+### Closure mutations do not affect the outer scope
+
+```python
+counter = 0
+items = [1, 2, 3, 4, 5]
+items.map((x: int):
+    counter += x    # Modifies the closure's local copy only
+    return x
+)
+print(counter)      # 0 (outer variable unchanged)
+```
+
 ### Capture Rules
 
 | Item | Details |
 |---|---|
 | Capture method | Capture by value (copy) |
 | Capture timing | At lambda definition time |
-| Effect of outer variable changes | None (because it is a copy) |
+| Effect of outer variable changes | None (the closure holds its own copy) |
+| Effect of mutations inside the closure | None (does not propagate to the outer scope) |
+
+> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and mutations of captured objects (for example, appending to a list) are visible outside, but rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
 
 ---
 
