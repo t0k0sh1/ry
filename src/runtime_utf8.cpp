@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "ry/runtime_list.hpp"
+
 static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
 // UTF-8 lead byte → byte count using null-terminator detection.
@@ -164,6 +166,28 @@ int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
         ++charIdx;
     }
     return charIdx;
+}
+
+void *__ry_split_chars(const char *s) {
+    // First pass: count UTF-8 characters
+    int64_t count = 0;
+    for (const char *p = s; *p; p += utf8_char_len_nul(p))
+        ++count;
+
+    // Build ListHeader directly (avoids intermediate vector + double-copy)
+    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
+    header->len = count;
+    header->cap = count;
+    header->data = (char **)malloc(sizeof(char *) * (count ? count : 1));
+
+    // Second pass: populate string array
+    const char *p = s;
+    for (int64_t i = 0; i < count; ++i) {
+        int len = utf8_char_len_nul(p);
+        header->data[i] = dupString(p, len);
+        p += len;
+    }
+    return header;
 }
 
 } // extern "C"

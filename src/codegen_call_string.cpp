@@ -777,12 +777,31 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
         codegenError("split() requires str arguments");
+
+    // Empty delimiter: split into individual characters (UTF-8 aware)
     auto strlenFn = getStdlibStrlen();
+    llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
+    llvm::Value *isEmptyDelim = builder_.CreateICmpEQ(
+        delimLen, llvm::ConstantInt::get(i64Ty_, 0), "split_empty_delim");
+
+    llvm::BasicBlock *emptyDelimBB = llvm::BasicBlock::Create(*ctx_, "split.empty_delim", fn_);
+    llvm::BasicBlock *normalBB = llvm::BasicBlock::Create(*ctx_, "split.normal", fn_);
+    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "split.done", fn_);
+
+    builder_.CreateCondBr(isEmptyDelim, emptyDelimBB, normalBB);
+
+    // --- Empty delimiter path: call __ry_split_chars runtime ---
+    builder_.SetInsertPoint(emptyDelimBB);
+    auto splitCharsFn = mod_->getOrInsertFunction("__ry_split_chars", fnTy_ptr_to_ptr_);
+    llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s}, "split_chars");
+    builder_.CreateBr(doneBB);
+
+    // --- Normal delimiter path ---
+    builder_.SetInsertPoint(normalBB);
     auto strstrFn = getStdlibStrstr();
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
     llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
     llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "split_count");
@@ -869,8 +888,16 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "split_data_field");
     builder_.CreateStore(dataPtr, dataPtrField);
 
-    type_meta_[TM_ListElem][headerPtr] = ptrTy_;
-    return headerPtr;
+    builder_.CreateBr(doneBB);
+
+    // --- Merge point ---
+    builder_.SetInsertPoint(doneBB);
+    llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "split_result");
+    result->addIncoming(charsResult, emptyDelimBB);
+    result->addIncoming(headerPtr, buildEndBB);
+
+    type_meta_[TM_ListElem][result] = ptrTy_;
+    return result;
 }
 
 // join(list, sep) → str

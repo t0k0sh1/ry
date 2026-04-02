@@ -279,6 +279,8 @@ print(length("あいう"))        # 3 (characters)
 
 Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
 
+When the delimiter is an empty string `""`, the string is split into individual characters (UTF-8 aware).
+
 ```python
 parts = split("a,b,c", ",")
 print(parts[0])   # a
@@ -289,6 +291,14 @@ for word in "hello world".split(" "):
     print(word)
 # hello
 # world
+
+# Split into characters
+chars = split("hello", "")
+print(chars)   # [h, e, l, l, o]
+
+# UTF-8 characters
+chars = split("あいう", "")
+print(chars)   # [あ, い, う]
 ```
 
 ---
