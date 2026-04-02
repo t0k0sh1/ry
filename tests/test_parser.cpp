@@ -227,11 +227,11 @@ TEST(ParserTest, InvalidSyntaxThrows) {
 
 TEST(ParserTest, UnexpectedTokenMessage) {
     try {
-        parseStr("- 1");
+        parseStr("; 1");
         FAIL() << "expected exception";
     } catch (const DiagnosticError &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("unexpected token '-'"), std::string::npos);
+        EXPECT_NE(msg.find("unexpected token ';'"), std::string::npos);
         // 'expect' should not be listed as a keyword
         EXPECT_EQ(msg.find("'expect'"), std::string::npos);
     }

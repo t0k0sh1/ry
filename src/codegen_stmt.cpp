@@ -511,6 +511,12 @@ void CodeGen::emitVarDecl(const std::string &name,
         immutable_scope_stack_.back().insert(name);
 }
 
+void CodeGen::emitStmt(ExprStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
+    emitExpr(*s.expr);
+}
+
 void CodeGen::emitStmt(AssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
