@@ -112,7 +112,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_str", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_str");
-        return wrapJsonPtrResult(ptr);
+        return wrapPtrAsResult(ptr);
     }
 
     // to_int(value) -> Result<int, Error> — for JsonValue
@@ -203,8 +203,10 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
     if (e.callee == "json_free") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
+        if (!lookupJsonSet(resource_sets_[RK_JsonValue], val))
             codegenError("json_free() requires a JsonValue argument");
+        if (lookupJsonSet(json_type_only_, val))
+            codegenError("json_free() cannot free borrowed child values from get()/at()");
         return emitResourceFree(val, RK_JsonValue, *e.args[0]);
     }
 

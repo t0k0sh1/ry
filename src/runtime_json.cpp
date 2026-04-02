@@ -769,8 +769,16 @@ void *__ry_json_keys(void *value) {
     header->cap = len > 0 ? len : 1;
     auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
     if (!data) { free(header); return nullptr; }
-    for (int64_t i = 0; i < len; i++)
+    for (int64_t i = 0; i < len; i++) {
         data[i] = strdup(v->object_val.keys[i]);
+        if (!data[i]) {
+            for (int64_t j = 0; j < i; j++)
+                free((void*)data[j]);
+            free((void*)data);
+            free(header);
+            return nullptr;
+        }
+    }
     header->data = (char **)data;
     return header;
 }
