@@ -492,22 +492,25 @@ bool CodeGen::isLowLevelTy(llvm::Value *val) const {
     return isLowLevelIntTy(val) || isLowLevelFloatTy(val->getType());
 }
 
-void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op) {
-    std::string lhsName = getLowLevelTypeName(lhs);
-    std::string rhsName = getLowLevelTypeName(rhs);
+void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op,
+                                    const std::string &lhsHint, const std::string &rhsHint) {
+    // Fall back to AST suffix hints for constants that lack metadata (#311, #595)
+    const std::string &lhsRef = getLowLevelTypeName(lhs);
+    const std::string &rhsRef = getLowLevelTypeName(rhs);
+    const std::string &lhsName = (!lhsRef.empty() || lhsHint.empty()) ? lhsRef : lhsHint;
+    const std::string &rhsName = (!rhsRef.empty() || rhsHint.empty()) ? rhsRef : rhsHint;
     bool lhsLL = !lhsName.empty() || isLowLevelTy(lhs->getType());
     bool rhsLL = !rhsName.empty() || isLowLevelTy(rhs->getType());
-    if (lhsLL || rhsLL) {
-        if (lhs->getType() != rhs->getType()) {
-            codegenError("type error: cannot mix types in operator '" + op +
-                         "'; low-level numeric types require explicit 'as' cast");
-        }
-        // Both have metadata: must match (e.g., u32 vs i32 is an error)
-        if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName) {
-            codegenError("type error: cannot mix types in operator '" + op +
-                         "'; low-level numeric types require explicit 'as' cast");
-        }
-    }
+    if (!lhsLL && !rhsLL) return;
+
+    auto mixError = [&] {
+        codegenError("type error: cannot mix types in operator '" + op +
+                     "'; low-level numeric types require explicit 'as' cast");
+    };
+    if (lhsLL != rhsLL) mixError();                                    // (#595)
+    if (lhs->getType() != rhs->getType()) mixError();                 // different widths
+    if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName)   // e.g., u32 vs i32
+        mixError();
 }
 
 // ===== B1: Type promotion helpers =====

@@ -508,7 +508,8 @@ private:
     bool isLowLevelFloatTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Value *val) const;
-    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
+    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op,
+                              const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
                                        const std::string &typeName,
                                        const std::string &context,
@@ -589,17 +590,17 @@ private:
 
     // Binary operation dispatch (user-defined → any → built-in)
     llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                               const std::string &llNameHint = "");
+                               const std::string &lhsHint = "", const std::string &rhsHint = "");
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                   const std::string &llNameHint = "");
+                                   const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
                                        llvm::Value *rhs, const StructInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                const std::string &llNameHint = "");
+                                const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                   const std::string &llNameHint = "");
+                                   const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
