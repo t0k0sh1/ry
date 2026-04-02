@@ -148,11 +148,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         return;
     }
 
-    // Handle None literal (VariableExpr("None") or NoneExpr)
-    bool isNone = std::holds_alternative<NoneExpr>(value.data) ||
-                  (std::holds_alternative<VariableExpr>(value.data) &&
-                   std::get<VariableExpr>(value.data).name == "None");
-    if (isNone) {
+    if (isNoneLiteral(value)) {
         if (!annot)
             codegenError("type annotation required for None");
         llvm::Type *annotTy = resolveType(*annot);

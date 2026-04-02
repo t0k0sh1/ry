@@ -894,4 +894,5 @@ private:
     bool isNonStrPointer(llvm::Value *val);
     bool isStringValue(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal);
+    static bool isNoneLiteral(const ExprNode &expr);
 };

@@ -261,6 +261,12 @@ bool CodeGen::isTupleStructType(llvm::StructType *st) {
     return true;
 }
 
+bool CodeGen::isNoneLiteral(const ExprNode &expr) {
+    return std::holds_alternative<NoneExpr>(expr.data) ||
+           (std::holds_alternative<VariableExpr>(expr.data) &&
+            std::get<VariableExpr>(expr.data).name == "None");
+}
+
 bool CodeGen::isOptionType(llvm::Type *ty) {
     auto *st = llvm::dyn_cast<llvm::StructType>(ty);
     if (!st) return false;
