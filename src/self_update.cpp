@@ -743,7 +743,7 @@ int cmd_self_update(int argc, char *argv[]) {
             std::cerr << "Usage: ry self-update [--nightly | <version>]\n";
             std::cerr << "\n";
             std::cerr << "Options:\n";
-            std::cerr << "  (no args)    Update to latest stable release\n";
+            std::cerr << "  (no args)    Update to latest release (nightly if current version is prerelease)\n";
             std::cerr << "  --nightly    Update to latest nightly/prerelease\n";
             std::cerr << "  <version>    Update to a specific version (e.g. v0.0.1)\n";
             std::cerr << "\nEnvironment:\n";
