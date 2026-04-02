@@ -174,6 +174,20 @@ base = 999
 print(f(1))  # 11 (still uses the captured value 10)
 ```
 
+This works in both directions — mutations inside the closure do not affect the outer variable either:
+
+```python
+counter = 0
+items = [1, 2, 3]
+items.map((x: int):
+    counter += x    # Only modifies the closure's local copy
+    return x
+)
+print(counter)  # 0 (outer variable unchanged)
+```
+
+> **Why capture by value?** It ensures safety and predictability — you can always reason about a variable's value by looking at the current scope alone, without worrying about mutations happening inside closures.
+
 > **Why closures?** They let you create specialized functions on the fly. For example, you can create a family of adder functions from a single template.
 
 ---
