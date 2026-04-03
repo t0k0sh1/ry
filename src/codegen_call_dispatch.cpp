@@ -261,8 +261,8 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 // ===== Shared Result-wrapping helpers =====
 
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                        std::function<llvm::Value*()> buildOk,
-                                        std::function<llvm::Value*()> buildErr) {
+                                        llvm::function_ref<llvm::Value*()> buildOk,
+                                        llvm::function_ref<llvm::Value*()> buildErr) {
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok", fn_);
     llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "res.err", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.merge", fn_);
