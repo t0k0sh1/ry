@@ -202,10 +202,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *copySize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
         builder_.CreateCall(memcpyFn, {lf.data, sf.data, copySize});
 
-        // Free the temporary sorted list (data buffer + ARC header)
-        auto freeFn = getStdlibFree();
-        builder_.CreateCall(freeFn, {sf.data});
-        builder_.CreateCall(freeFn, {emitArcGetHeaderFromData(sorted)});
+        // Release the temporary sorted list through ARC (destructor frees data buffer)
+        auto *sortedHdr = emitArcGetHeaderFromData(sorted);
+        emitArcRelease(sortedHdr, false, getOrCreateCollectionDestructor(CollectionKind::List));
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }

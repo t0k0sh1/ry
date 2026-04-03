@@ -737,7 +737,8 @@ private:
     // prepended via emitArcAllocCollectionHeader(). This ensures:
     // - Scope cleanup (emitArcReleaseVar) can safely read the ARC header
     // - CoW checks (emitCowCheck) work correctly via arc_backed_vars_
-    // - No memory leaks when operation results are discarded
+    // - Collection values are represented in a form compatible with ARC-based
+    //   cleanup paths such as scope cleanup and assignment/rebinding
     //
     // Data buffers (element arrays, key/value arrays) inside collection headers
     // are allocated with plain malloc and freed by the collection destructor
