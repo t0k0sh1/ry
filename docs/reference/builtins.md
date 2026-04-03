@@ -21,7 +21,7 @@
 | `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
 | `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
-| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`) |
+| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`) |
 | `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
@@ -152,6 +152,8 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
+| `Result` (Ok) | `Ok(value)` |
+| `Result` (Err) | `Err(value)` |
 | `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
 | `list` | `[elem1, elem2, ...]` |
@@ -166,6 +168,8 @@ print(42)          # 42
 print(3.14)        # 3.14
 print(true)        # true
 print("hello")     # hello
+print(Ok(42))      # Ok(42)
+print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]

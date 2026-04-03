@@ -624,6 +624,9 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             return phi;
         }
 
+        if (isOptionType(ty) || isResultType(ty))
+            return collectionToString(val);
+
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
             return structToString(val);

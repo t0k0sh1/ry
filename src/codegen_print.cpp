@@ -210,12 +210,12 @@ void CodeGen::emitPrintSingle(llvm::Value *val, llvm::FunctionCallee printfFn) {
         // Some branch
         builder_.SetInsertPoint(someBB);
         llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "opt_value");
-        llvm::Type *innerTy = innerVal->getType();
+        propagateCollectionMetadata(val, innerVal);
 
         llvm::Constant *somePrefix = cachedGlobalString("Some(", ".fmt_some_pre");
         builder_.CreateCall(printfFn, {somePrefix});
 
-        emitPrintValue(innerVal, innerTy, printfFn, "_opt");
+        emitPrintSingle(innerVal, printfFn);
 
         llvm::Constant *someSuffix = cachedGlobalString(")", ".fmt_some_post");
         builder_.CreateCall(printfFn, {someSuffix});
@@ -509,6 +509,37 @@ void CodeGen::emitPrintSingle(llvm::Value *val, llvm::FunctionCallee printfFn) {
 
     if (val->getType() == errorTy_) {
         emitPrintValue(val, errorTy_, printfFn, "_err");
+        return;
+    }
+
+    // Result type printing
+    if (isResultType(val->getType())) {
+        llvm::Value *isOk = builder_.CreateExtractValue(val, 0, "is_ok");
+        llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "print.ok", fn_);
+        llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "print.err", fn_);
+        llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "print.res_end", fn_);
+
+        builder_.CreateCondBr(isOk, okBB, errBB);
+
+        // Ok branch
+        builder_.SetInsertPoint(okBB);
+        llvm::Value *okVal = builder_.CreateExtractValue(val, 1, "ok_value");
+        propagateCollectionMetadata(val, okVal);
+        builder_.CreateCall(printfFn, {cachedGlobalString("Ok(", ".fmt_ok_pre")});
+        emitPrintSingle(okVal, printfFn);
+        builder_.CreateCall(printfFn, {cachedGlobalString(")", ".fmt_ok_post")});
+        builder_.CreateBr(endBB);
+
+        // Err branch
+        builder_.SetInsertPoint(errBB);
+        llvm::Value *errVal = builder_.CreateExtractValue(val, 2, "err_value");
+        propagateCollectionMetadata(val, errVal);
+        builder_.CreateCall(printfFn, {cachedGlobalString("Err(", ".fmt_err_pre")});
+        emitPrintSingle(errVal, printfFn);
+        builder_.CreateCall(printfFn, {cachedGlobalString(")", ".fmt_err_post")});
+        builder_.CreateBr(endBB);
+
+        builder_.SetInsertPoint(endBB);
         return;
     }
 
