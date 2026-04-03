@@ -14,7 +14,7 @@
 | `-` | Subtraction | `3 - 2` | `1` |
 | `*` | Multiplication / string repetition | `3 * 2` | `6` |
 | `/` | Division (always float) | `7 / 2` | `3.5` |
-| `//` | Floor division (int for int operands, float if either is float) | `7 // 2` | `3` |
+| `//` | Floor division (int if both int, float if either is float) | `7 // 2` | `3` |
 | `%` | Modulo | `7 % 3` | `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` | `1024` |
 
@@ -180,9 +180,9 @@ print(1.0 + 2)    # 3 (float)
 # / always produces float
 print(4 / 2)      # 2 (float)
 
-# // always produces int
+# // produces int if both int, float if either is float
 print(7 // 2)     # 3 (int)
-print(7.0 // 2)   # 3 (int)
+print(7.0 // 2)   # 3 (float)
 
 # ** always produces float
 print(2 ** 3)     # 8 (float)

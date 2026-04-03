@@ -6,7 +6,7 @@
 
 ```bash
 ry <file.ry> [args...]              # Run a Ry script
-echo '<code>' | ry                  # Run code from stdin
+echo '<code>' | ry -c               # Run code from stdin
 ry test [options] [<file> | <dir>]  # Run tests
 ry init                             # Initialize a project
 ry new <project-name>               # Create a new project
