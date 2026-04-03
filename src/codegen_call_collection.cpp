@@ -4,7 +4,11 @@
 
 // ===== Builtin Collection =====
 
-llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e,
+                                              llvm::Value *preEmittedArg0) {
+    if (preEmittedArg0 && e.callee == "take")
+        return emitCollOp_take_impl(e, preEmittedArg0);
+
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
         {"add",       &CodeGen::emitCollOp_add},
@@ -524,8 +528,11 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
-    // take(list, n) -> new list with first n elements
-    llvm::Value *listPtr = emitExpr(*e.args[0]);
+    return emitCollOp_take_impl(e, emitExpr(*e.args[0]));
+}
+
+llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
+                                            llvm::Value *listPtr) {
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
         llvm::Value *nVal = emitExpr(*e.args[1]);

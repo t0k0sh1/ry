@@ -94,6 +94,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (auto *v = emitBuiltinResult(*e, arg0))      return v;
         if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
         if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
+    } else if (e->args.size() == 2 && e->callee == "take") {
+        llvm::Value *arg0 = emitExpr(*e->args[0]);
+        if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
+        if (auto *v = emitBuiltinCollection(*e, arg0))  return v;
     } else {
         // Dispatch to language-builtin helpers (Pattern B: no @native registry)
         if (auto *v = emitBuiltinResult(*e))      return v;
@@ -261,8 +265,8 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 // ===== Shared Result-wrapping helpers =====
 
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                        std::function<llvm::Value*()> buildOk,
-                                        std::function<llvm::Value*()> buildErr) {
+                                        llvm::function_ref<llvm::Value*()> buildOk,
+                                        llvm::function_ref<llvm::Value*()> buildErr) {
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok", fn_);
     llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "res.err", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.merge", fn_);

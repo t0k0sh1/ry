@@ -6,6 +6,7 @@
 #include "ry/source_manager.hpp"
 #include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -787,7 +788,7 @@ private:
 
     // Builtin dispatch helpers (Step 4)
     llvm::Value *emitBuiltinCore(const CallExpr &e);
-    llvm::Value *emitBuiltinCollection(const CallExpr &e);
+    llvm::Value *emitBuiltinCollection(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
 
     // Collection operation handlers
     llvm::Value *emitCollOp_add(const CallExpr &e);
@@ -800,6 +801,7 @@ private:
     llvm::Value *emitCollOp_pop(const CallExpr &e);
     llvm::Value *emitCollOp_slice(const CallExpr &e);
     llvm::Value *emitCollOp_take(const CallExpr &e);
+    llvm::Value *emitCollOp_take_impl(const CallExpr &e, llvm::Value *listPtr);
     llvm::Value *emitCollOp_insert(const CallExpr &e);
     llvm::Value *emitCollOp_remove_at(const CallExpr &e);
     llvm::Value *emitCollOp_distinct(const CallExpr &e);
@@ -884,8 +886,8 @@ private:
                             llvm::Type *paramLLVMType, const std::string &paramName);
     // Shared Result-wrapping helpers for stdlib dispatchers
     llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                   std::function<llvm::Value*()> buildOk,
-                                   std::function<llvm::Value*()> buildErr);
+                                   llvm::function_ref<llvm::Value*()> buildOk,
+                                   llvm::function_ref<llvm::Value*()> buildErr);
     llvm::Value *buildErrorFromRuntime(const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
