@@ -6,7 +6,7 @@
 
 ---
 
-## if / elif / else
+## if / else
 
 Use `if` to branch execution based on conditions.
 
@@ -15,13 +15,11 @@ x = 10
 
 if x > 0:
     print(x)
-elif x == 0:
-    print(0)
 else:
-    print(-1)
+    print(0)
 ```
 
-- `elif` and `else` are optional.
+- `else` is optional.
 - Conditions are not limited to `bool` values. For `int`, `0` is treated as false and non-`0` as true.
 - `if` statements can be nested.
 
@@ -33,6 +31,84 @@ if a > 0:
     if b > 0:
         print(a + b)   # 8
 ```
+
+---
+
+## when
+
+Use `when:` for multi-branch conditionals, or `match value:` for pattern matching.
+
+### Conditional `when:`
+
+```python
+x = -2
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+This is the preferred form when you would otherwise chain multiple branches.
+
+### Pattern `match value:`
+
+```python
+enum Color:
+    Red
+    Green
+    Blue
+
+c = Color::Green
+match c:
+    case Color::Red:
+        print("red")
+    case Color::Green:
+        print("green")
+    case Color::Blue:
+        print("blue")
+```
+
+Use this form to destructure enums, `Option`, `Result`, and literal patterns safely.
+
+### `when:` Expressions
+
+`when:` can also be used as an expression. The `else =>` arm is required.
+
+```python
+label = when:
+    score >= 90 => "A"
+    score >= 80 => "B"
+    else => "C"
+```
+
+This replaces nested ternary expressions and keeps multi-branch value selection readable.
+
+### `match` Expressions
+
+`match` can also be used as an expression with `=>` to return a value from each arm.
+
+```python
+res = match x:
+    case Some(v) => v
+    case None    => 0
+
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+category = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+```
+
+Match expressions support all the same patterns as match statements: literals, variables, enums, `Option`, `Result`, OR patterns (`|`), guards (`if`), and wildcards (`_`). The match must be exhaustive.
 
 ---
 
@@ -202,9 +278,9 @@ print(x)       # 99
 
 ---
 
-## match
+## Pattern Matching
 
-`match` is a construct for branching based on a value. It can safely handle enums and Options.
+`match value:` safely branches on enums, `Option`, `Result`, and literals.
 
 ```python
 enum Color:
@@ -225,7 +301,7 @@ match c:
 
 ### Option Matching
 
-Use `match` to safely handle both the `Some` and `None` cases.
+Use `match value:` to safely handle both the `Some` and `None` cases.
 
 ```python
 x: Option<int> = Some(42)
@@ -267,7 +343,7 @@ match n:
         print("zero")
 ```
 
-> **Note**: `match` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
+> **Note**: `match value:` must be exhaustive. For enums, all variants must be covered. For Options, both `Some` and `None` are required. For literals, a `_` wildcard is needed.
 
 ---
 

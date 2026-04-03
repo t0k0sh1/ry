@@ -2,7 +2,7 @@
 
 # Packages
 
-[<- Prev: Advanced Features](08-advanced.md) | [Next: Design by Contract ->](10-contracts.md)
+[<- Prev: Error Handling](08-error-handling.md) | [Next: Concurrency ->](10-concurrency.md)
 
 Ry uses a package system to organize code across files and directories. For the full specification, see [Package Reference](../reference/packages.md).
 
@@ -39,8 +39,8 @@ A package can be either a single `.ry` file or a directory containing multiple `
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -49,6 +49,29 @@ from mypackage import add   # imports only add
 ```
 
 No special entry file (like `__init__.py`) is needed. Files starting with `_` are excluded.
+
+---
+
+## Relative Imports
+
+Use a leading `.` to import relative to the current file's directory. This is especially useful for test files that need to import from sibling modules.
+
+```python
+from .helper import greet       # Import from helper.ry in the same directory
+from .utils import add          # Import from utils/ subdirectory
+from .utils.calc import mul     # Import from utils/calc/ nested subdirectory
+from . import add, sub          # Import symbols from the current directory package
+```
+
+Relative imports resolve **only** against the current file's directory — the standard library and other search paths are not searched. This prevents name collisions when your project has modules with the same name as standard library packages.
+
+```python
+# If your project has src/math/stats.ry:
+from .math import mean    # Always resolves to your local math package
+from math import sqrt     # Resolves to the standard library math package
+```
+
+> **Note:** Parent directory imports (`from ..`) are not supported.
 
 ---
 
@@ -116,4 +139,4 @@ Once set, packages in the specified directories can be imported from anywhere.
 
 ---
 
-[<- Prev: Advanced Features](08-advanced.md) | [Next: Design by Contract ->](10-contracts.md)
+[<- Prev: Error Handling](08-error-handling.md) | [Next: Concurrency ->](10-concurrency.md)

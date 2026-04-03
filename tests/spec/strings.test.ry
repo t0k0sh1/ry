@@ -1,66 +1,123 @@
-describe("search and check", fn():
-  it("contains", fn():
+describe("search and check", ():
+  it("contains", ():
     expect("hello").to_contain("ell")
     expect(contains("hello", "xyz")).to_be_false()
   )
-  it("starts_with", fn():
+  it("starts_with", ():
     expect("hello").to_start_with("hel")
     expect(starts_with("hello", "world")).to_be_false()
   )
-  it("ends_with", fn():
+  it("ends_with", ():
     expect("hello").to_end_with("llo")
     expect(ends_with("hello", "world")).to_be_false()
   )
-  it("find", fn():
+  it("contains ignore_case", ():
+    expect(contains("Hello World", "hello", true)).to_be_true()
+    expect(contains("Hello World", "WORLD", true)).to_be_true()
+    expect(contains("Hello World", "xyz", true)).to_be_false()
+    expect(contains("Hello", "hello", false)).to_be_false()
+    expect("Hello".contains("hello", true)).to_be_true()
+  )
+  it("starts_with ignore_case", ():
+    expect(starts_with("Hello World", "hello", true)).to_be_true()
+    expect(starts_with("Hello World", "HELLO", true)).to_be_true()
+    expect(starts_with("Hello World", "world", true)).to_be_false()
+    expect("Hello".starts_with("hel", true)).to_be_true()
+  )
+  it("ends_with ignore_case", ():
+    expect(ends_with("Hello World", "world", true)).to_be_true()
+    expect(ends_with("Hello World", "WORLD", true)).to_be_true()
+    expect(ends_with("Hello World", "hello", true)).to_be_false()
+    expect(ends_with("hi", "HELLO", true)).to_be_false()
+    expect("Hello".ends_with("llo", true)).to_be_true()
+  )
+  it("find", ():
     expect(find("hello world", "world")).to_eq(Some(6))
     expect(find("hello", "xyz")).to_be_none()
     expect(find("abcdef", "cd")).to_eq(Some(2))
   )
+  it("find in empty string", ():
+    expect(find("", "x")).to_be_none()
+  )
+  it("find empty needle", ():
+    expect(find("hello", "")).to_eq(Some(0))
+  )
+  it("contains empty needle", ():
+    expect(contains("hello", "")).to_be_true()
+  )
+  it("contains empty haystack and needle", ():
+    expect(contains("", "")).to_be_true()
+  )
 )
 
-describe("extraction and transformation", fn():
-  it("substring", fn():
+describe("extraction and transformation", ():
+  it("substring", ():
     expect(substring("hello world", 0, 5)).to_eq("hello")
     expect(substring("abcdef", 1, 4)).to_eq("bcd")
   )
-  it("char_at", fn():
+  it("substring out of bounds clamps", ():
+    expect(substring("abc", 0, 100)).to_eq("abc")
+    expect(substring("abc", 5, 10)).to_eq("")
+  )
+  it("substring negative clamps to zero", ():
+    expect(substring("abc", -1, 2)).to_eq("ab")
+  )
+  it("char_at", ():
     expect(char_at("hello", 0)).to_eq("h")
     expect(char_at("abc", 2)).to_eq("c")
   )
-  it("replace", fn():
+  it("replace", ():
     expect(replace("hello world", "world", "ry")).to_eq("hello ry")
     expect(replace("foo bar foo", "foo", "baz")).to_eq("baz bar baz")
   )
+  it("replace not found", ():
+    expect(replace("hello", "xyz", "abc")).to_eq("hello")
+  )
 )
 
-describe("case conversion", fn():
-  it("to_upper", fn():
+describe("case conversion", ():
+  it("to_upper", ():
     expect(to_upper("hello")).to_eq("HELLO")
     expect(to_upper("Hello World")).to_eq("HELLO WORLD")
   )
-  it("to_lower", fn():
+  it("to_upper empty", ():
+    expect(to_upper("")).to_eq("")
+  )
+  it("to_lower", ():
     expect(to_lower("HELLO")).to_eq("hello")
     expect(to_lower("Hello World")).to_eq("hello world")
   )
+  it("to_lower empty", ():
+    expect(to_lower("")).to_eq("")
+  )
 )
 
-describe("whitespace", fn():
-  it("trim", fn():
+describe("whitespace", ():
+  it("trim", ():
     expect(trim("  hello  ")).to_eq("hello")
     expect(trim("  hi  ")).to_eq("hi")
   )
-  it("trim_start", fn():
+  it("trim empty", ():
+    expect(trim("")).to_eq("")
+  )
+  it("trim_start", ():
     expect(trim_start("  hello  ")).to_eq("hello  ")
     expect(trim_start("  hi")).to_eq("hi")
   )
-  it("trim_end", fn():
+  it("trim_start empty", ():
+    expect(trim_start("")).to_eq("")
+  )
+  it("trim_end", ():
     expect(trim_end("  hello  ")).to_eq("  hello")
     expect(trim_end("hi  ")).to_eq("hi")
   )
+  it("trim_end empty", ():
+    expect(trim_end("")).to_eq("")
+  )
 )
 
-describe("generation", fn():
-  it("repeat", fn():
+describe("generation", ():
+  it("repeat", ():
     expect(repeat("ab", 3)).to_eq("ababab")
     expect(repeat("ha", 3)).to_eq("hahaha")
     expect(repeat("a", 0)).to_eq("")
@@ -68,58 +125,147 @@ describe("generation", fn():
     expect(repeat("abc", -100)).to_eq("")
     expect(repeat("hello", 1)).to_eq("hello")
   )
-  it("reverse", fn():
+  it("repeat empty string", ():
+    expect(repeat("", 5)).to_eq("")
+  )
+  it("reverse", ():
     expect(reverse("hello")).to_eq("olleh")
     expect(reverse("abc")).to_eq("cba")
   )
+  it("reverse empty", ():
+    expect(reverse("")).to_eq("")
+  )
 )
 
-describe("split and join", fn():
-  it("split", fn():
+describe("split and join", ():
+  it("split", ():
     parts = split("a,b,c", ",")
     expect(parts).to_have_length(3)
     expect(parts[0]).to_eq("a")
     expect(parts[1]).to_eq("b")
     expect(parts[2]).to_eq("c")
   )
-  it("join", fn():
+  it("split empty string", ():
+    parts = split("", ",")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("")
+  )
+  it("split no delimiter found", ():
+    parts = split("hello", ",")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("hello")
+  )
+  it("split empty delimiter", ():
+    parts = split("hello", "")
+    expect(parts).to_have_length(5)
+    expect(parts[0]).to_eq("h")
+    expect(parts[1]).to_eq("e")
+    expect(parts[2]).to_eq("l")
+    expect(parts[3]).to_eq("l")
+    expect(parts[4]).to_eq("o")
+  )
+  it("split empty delimiter single char", ():
+    parts = split("x", "")
+    expect(parts).to_have_length(1)
+    expect(parts[0]).to_eq("x")
+  )
+  it("split empty string empty delimiter", ():
+    parts = split("", "")
+    expect(parts).to_have_length(0)
+  )
+  it("split empty delimiter unicode", ():
+    parts = split("あいう", "")
+    expect(parts).to_have_length(3)
+    expect(parts[0]).to_eq("あ")
+    expect(parts[1]).to_eq("い")
+    expect(parts[2]).to_eq("う")
+  )
+  it("join", ():
     parts = ["a", "b", "c"]
     expect(join(parts, ",")).to_eq("a,b,c")
     expect(join(parts, "-")).to_eq("a-b-c")
   )
+  it("join empty list", ():
+    parts: List<str> = ["x"]
+    empty = filter(parts, (s: str) => false)
+    expect(join(empty, ",")).to_eq("")
+  )
+  it("join single element", ():
+    parts = ["only"]
+    expect(join(parts, ",")).to_eq("only")
+  )
+  it("join UFCS string receiver", ():
+    parts = ["a", "b", "c"]
+    expect(",".join(parts)).to_eq("a,b,c")
+    expect("-".join(parts)).to_eq("a-b-c")
+    expect("".join(parts)).to_eq("abc")
+  )
 )
 
-describe("UTF-8 support", fn():
-  it("length counts characters", fn():
+describe("UTF-8 support", ():
+  it("length counts characters", ():
     expect("hello").to_have_length(5)
     expect("あいう").to_have_length(3)
   )
-  it("byte_len counts bytes", fn():
+  it("byte_len counts bytes", ():
     expect(byte_len("hello")).to_eq(5)
     expect(byte_len("あいう")).to_eq(9)
   )
-  it("char_at UTF-8", fn():
+  it("length empty", ():
+    expect("").to_have_length(0)
+  )
+  it("byte_len empty", ():
+    expect(byte_len("")).to_eq(0)
+  )
+  it("char_at UTF-8", ():
     expect(char_at("あいう", 1)).to_eq("い")
   )
-  it("substring UTF-8", fn():
+  it("substring UTF-8", ():
     expect(substring("あいう", 0, 2)).to_eq("あい")
   )
-  it("reverse UTF-8", fn():
+  it("reverse UTF-8", ():
     expect(reverse("あいう")).to_eq("ういあ")
   )
 )
 
-describe("type conversion", fn():
-  it("to_int", fn():
-    expect(to_int("42")).to_eq(42)
-    expect(to_int("-7")).to_eq(-7)
-    expect(to_int("123")).to_eq(123)
+describe("type conversion", ():
+  it("to_int valid input returns Ok", ():
+    match to_int("42"):
+      case Ok(v):
+        expect(v).to_eq(42)
+      case Err(_):
+        expect(false).to_eq(true)
+    match to_int("-7"):
+      case Ok(v):
+        expect(v).to_eq(-7)
+      case Err(_):
+        expect(false).to_eq(true)
+    expect(to_int("123")).to_be_ok()
+    expect(to_int("0")).to_be_ok()
   )
-  it("to_float", fn():
+  it("to_int invalid input returns Err", ():
+    expect(to_int("abc")).to_be_err()
+    expect(to_int("")).to_be_err()
+    expect(to_int("12abc")).to_be_err()
+    expect(to_int("9223372036854775808")).to_be_err()
+    expect(to_int("-9223372036854775809")).to_be_err()
+  )
+  it("to_int UFCS returns Result", ():
+    match "99".to_int():
+      case Ok(v):
+        expect(v).to_eq(99)
+      case Err(_):
+        expect(false).to_eq(true)
+  )
+  it("to_float", ():
     expect(to_float("3.14")).to_eq(3.14)
     expect(to_float("2.5")).to_eq(2.5)
   )
-  it("to_str", fn():
+  it("to_float non-numeric returns 0", ():
+    expect(to_float("xyz")).to_eq(0.0)
+    expect(to_float("")).to_eq(0.0)
+  )
+  it("to_str", ():
     expect(to_str(42)).to_eq("42")
     expect(to_str(true)).to_eq("true")
     expect(to_str(99)).to_eq("99")

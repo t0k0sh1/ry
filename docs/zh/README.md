@@ -1,57 +1,62 @@
-[English](../README.md) | [日本語](../ja/README.md) | [繁體中文](README.md)
+[English](../README.md) | [日本語](../ja/README.md) | [简体中文](README.md)
 
-# Ry 語言文件
+# Ry 语言文档
 
-Ry 是一個基於 LLVM JIT 的簡潔程式語言。採用 Python 風格的縮排區塊語法，結合靜態型別與型別推論，設計簡單易用。
+Ry 是一个基于 LLVM JIT 的简洁编程语言。采用 Python 风格的缩进块语法，结合静态类型与类型推断，设计简单易用。
 
 ---
 
-## 教學
+## 教程
 
-初次使用 Ry 的使用者，請依序閱讀以下內容。
+初次使用 Ry 的用户，请依序阅读以下内容。
 
-| # | 標題 | 內容 |
+| # | 标题 | 内容 |
 |---|------|------|
-| 01 | [入門](tutorial/01-getting-started.md) | 環境建置、Hello World、註解 |
-| 02 | [變數與型別](tutorial/02-variables-and-types.md) | 變數宣告、常數、型別標註、基本型別 |
-| 03 | [運算子](tutorial/03-operators.md) | 算術、比較、邏輯、位元、複合賦值運算子 |
-| 04 | [控制流程](tutorial/04-control-flow.md) | if/elif/else、while、for/range、break/continue |
-| 05 | [函式定義](tutorial/05-functions.md) | fn 定義、遞迴、多載、Lambda、UFCS |
-| 06 | [結構體與列舉型別](tutorial/06-structs.md) | type 定義、欄位存取、方法、enum |
-| 07 | [集合型別](tutorial/07-collections.md) | 元組、串列、映射、集合 |
-| 08 | [進階功能](tutorial/08-advanced.md) | 閉包、運算子多載、Option 型別 |
-| 09 | [套件](tutorial/09-modules.md) | 套件、std 函式庫、目錄套件 |
-| 10 | [契約式設計](tutorial/10-contracts.md) | require、ensure、invariant、old、result |
-| 11 | [測試](tutorial/11-testing.md) | describe/it/expect、匹配器、mock/verify |
+| 01 | [入门](tutorial/01-getting-started.md) | 环境搭建、Hello World、注释 |
+| 02 | [变量与类型](tutorial/02-variables-and-types.md) | 变量声明、常量、类型注解、基本类型、f-string、类型转换 |
+| 03 | [运算符](tutorial/03-operators.md) | 算术、比较、逻辑、位运算、复合赋值运算符 |
+| 04 | [控制流](tutorial/04-control-flow.md) | if/else、when、while、for/range、break/continue |
+| 05 | [函数定义](tutorial/05-functions.md) | function 定义、递归、重载、默认参数、Lambda、闭包、高阶函数、UFCS |
+| 06 | [Record 与枚举类型](tutorial/06-records.md) | type 定义、字段访问、enum、ADT、泛型 enum、运算符重载 |
+| 07 | [集合与迭代器](tutorial/07-collections.md) | 元组、列表、映射、集合、惰性迭代器 |
+| 08 | [错误处理](tutorial/08-error-handling.md) | Option、Result、`?` 运算符、契约式设计 |
+| 09 | [包](tutorial/09-modules.md) | 包、std 标准库、目录包 |
+| 10 | [并发](tutorial/10-concurrency.md) | async/await、@parallel、线程、网络 |
+| 11 | [测试](tutorial/11-testing.md) | describe/it/expect、匹配器、mock/verify、契约测试 |
+| 12 | [构建项目](tutorial/12-building-a-project.md) | 结合所有功能的实战 CLI 项目 |
 
-環境建置與建置方法請參閱 [01 - 入門](tutorial/01-getting-started.md)。
+环境搭建与构建方法请参阅 [01 - 入门](tutorial/01-getting-started.md)。
 
 ---
 
-## 參考手冊
+## 参考手册
 
-語言規格的詳細內容請參閱參考手冊。
+语言规格的详细内容请参阅参考手册。
 
-| 頁面 | 內容 |
+| 页面 | 内容 |
 |------|------|
-| [型別一覽與型別規則](reference/types.md) | 所有型別的說明、型別提升規則、型別轉換 |
-| [運算子一覽與優先順序](reference/operators.md) | 所有運算子與優先順序表 |
-| [控制流程](reference/control-flow.md) | if、while、for 的完整文法 |
-| [函式、Lambda、UFCS、運算子多載](reference/functions.md) | 函式定義的所有形式 |
-| [結構體與列舉型別](reference/structs.md) | type 定義、enum 定義的完整文法 |
-| [元組、串列、映射、集合](reference/collections.md) | 集合型別的操作方法 |
-| [內建函式](reference/builtins.md) | print、length、Some 等 |
-| [字串操作函式](reference/builtins-string.md) | contains、find、replace、split、join 等 |
-| [正規表達式](reference/regex.md) | regex_match、regex_search、regex_replace、regex_split、regex_find_all |
-| [數學函式](reference/math.md) | PI、E、sqrt、sin、cos、abs、floor、ceil、round 等 |
-| [I/O 函式](reference/io.md) | read_text、write_text、file_exists、read_bytes、str_to_bytes 等 |
-| [JSON](reference/json.md) | parse、stringify、json_get、json_at、json_str、json_int 等 |
-| [网络（TCP）](reference/net.md) | bind、listen、accept、connect、TCP 套接字的 send/recv/close |
-| [HTTP 服务器](reference/http.md) | http_listen、http_method、http_path、http_header、http_body、http_response |
+| [类型一览与类型规则](reference/types.md) | 所有类型的说明、类型提升规则、类型转换 |
+| [运算符一览与优先级](reference/operators.md) | 所有运算符与优先级表 |
+| [控制流](reference/control-flow.md) | if/else、when、while、for 的完整语法 |
+| [函数、Lambda、UFCS、运算符重载](reference/functions.md) | 函数定义的所有形式 |
+| [结构体与枚举类型](reference/structs.md) | type 定义、enum 定义的完整语法 |
+| [元组、列表、映射、集合](reference/collections.md) | 集合类型的操作方法 |
+| [内置函数](reference/builtins.md) | print、length、Some、range 等 |
+| [字符串操作函数](reference/builtins-string.md) | contains、find、replace、split、join 等 |
+| [正则表达式](reference/regex.md) | regex_match、regex_search、regex_replace、regex_split、regex_find_all |
+| [数学函数](reference/math.md) | PI、E、sqrt、sin、cos、abs、floor、ceil、round 等 |
+| [I/O 函数](reference/io.md) | read_text、write_text、exists、read_bytes、to_bytes 等 |
+| [JSON](reference/json.md) | parse、stringify、get、at、to_str、to_int 等 |
+| [网络（TCP）](reference/net.md) | bind、listen、accept、connect、TCP 套接字的 send/receive/close |
+| [HTTP 服务器](reference/http.md) | listen、method、path、header、body、response |
 | [Base64](reference/base64.md) | encode、decode、encode_url_safe、decode_url_safe |
-| [套件系統](reference/packages.md) | from/import 的文法、目錄套件、std、RY_HOME |
-| [測試功能](reference/testing.md) | 使用 describe/it/expect 進行測試 |
-| [專案管理](reference/project.md) | ry init 與 package.toml 的規格 |
-| [契約式設計](reference/contracts.md) | require、ensure、invariant、old、result |
-| [指令](reference/directives.md) | @deprecated 與編譯時元資料 |
-| [錯誤一覽](reference/errors.md) | 編譯錯誤與執行時錯誤的說明 |
+| [Path](reference/path.md) | join、basename、dirname、extension、resolve、is_absolute |
+| [文件系统](reference/filesystem.md) | list_dir、walk、glob_files、copy、move、remove、make_dir、chmod、symlink |
+| [线程](reference/thread.md) | thread_spawn、thread_join、Lock、RWLock、Semaphore、Barrier、AtomicInt、AtomicBool |
+| [GC](reference/gc.md) | collect、enable、disable、set_threshold — ARC 循环收集器 |
+| [包系统](reference/packages.md) | from/import 的语法、目录包、std、RY_HOME |
+| [测试功能](reference/testing.md) | 使用 describe/it/expect 进行测试 |
+| [项目管理](reference/project.md) | ry init 与 package.toml 的规格 |
+| [契约式设计](reference/contracts.md) | require、ensure、invariant、old、result |
+| [指令](reference/directives.md) | @deprecated 与编译时元数据 |
+| [错误一览](reference/errors.md) | 编译错误与运行时错误的说明 |

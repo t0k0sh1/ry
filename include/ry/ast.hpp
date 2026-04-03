@@ -25,6 +25,7 @@ struct TupleType    { std::vector<TypeNodePtr> elements; };
 struct FnType       { std::vector<TypeNodePtr> param_types; TypeNodePtr return_type; };
 struct UnionType    { std::vector<TypeNodePtr> components; };
 struct OptionalType { TypeNodePtr inner; };
+struct WeakType     { TypeNodePtr inner; };
 struct RangeType    { std::string start; std::string end; };
 
 struct TypeNode {
@@ -36,6 +37,7 @@ struct TypeNode {
         FnType,
         UnionType,
         OptionalType,
+        WeakType,
         RangeType
     > data;
 
@@ -48,6 +50,7 @@ struct TypeNode {
     static TypeNodePtr makeFn(std::vector<TypeNodePtr> params, TypeNodePtr ret);
     static TypeNodePtr makeUnion(std::vector<TypeNodePtr> comps);
     static TypeNodePtr makeOptional(TypeNodePtr inner);
+    static TypeNodePtr makeWeak(TypeNodePtr inner);
     static TypeNodePtr makeRange(std::string start, std::string end);
     static TypeNodePtr clone(const TypeNodePtr &src);
 };
@@ -111,6 +114,7 @@ struct NumberExpr   { int64_t value; std::string suffix; };
 struct FloatExpr    { double value;  std::string suffix; };
 struct BoolExpr     { bool value; };
 struct StringExpr   { std::string value; };
+struct RegexExpr    { std::string pattern; };
 struct VariableExpr { std::string name; };
 struct BinaryExpr;
 struct UnaryExpr;
@@ -131,14 +135,16 @@ struct EnumAccessExpr {
 
 struct CastExpr;
 struct InterpolatedStringExpr;
-struct TernaryExpr;
+struct WhenCondExpr;
+struct MatchExpr;
 struct RangeExpr;
 struct NoneExpr {};
 struct ErrorPropagateExpr;
 struct AwaitExpr;
+struct WeakExpr;
 
 struct ExprNode {
-    std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, VariableExpr,
+    std::variant<NumberExpr, FloatExpr, BoolExpr, StringExpr, RegexExpr, VariableExpr,
                  std::unique_ptr<BinaryExpr>,
                  std::unique_ptr<UnaryExpr>,
                  std::unique_ptr<CallExpr>,
@@ -152,11 +158,13 @@ struct ExprNode {
                  std::unique_ptr<LambdaExpr>,
                  std::unique_ptr<CastExpr>,
                  std::unique_ptr<InterpolatedStringExpr>,
-                 std::unique_ptr<TernaryExpr>,
+                 std::unique_ptr<WhenCondExpr>,
+                 std::unique_ptr<MatchExpr>,
                  std::unique_ptr<RangeExpr>,
                  NoneExpr,
                  std::unique_ptr<ErrorPropagateExpr>,
-                 std::unique_ptr<AwaitExpr>> data;
+                 std::unique_ptr<AwaitExpr>,
+                 std::unique_ptr<WeakExpr>> data;
     SourceLocation loc;
 };
 
@@ -204,6 +212,7 @@ struct SetExpr {
 
 struct AssignStmt { std::string name; TypeNodePtr type_annotation; ExprPtr value; std::optional<std::string> compound_op; std::vector<Directive> directives; SourceLocation loc; };
 struct CallStmt   { std::string callee; std::vector<ExprPtr> args; std::vector<Directive> directives; SourceLocation loc; };
+struct ExprStmt   { ExprPtr expr; SourceLocation loc; };
 
 struct ReturnStmt { ExprPtr value; SourceLocation loc; };
 struct FnParam { std::string name; TypeNodePtr type; ExprPtr default_value; };
@@ -265,6 +274,7 @@ struct WhileStmt;
 struct ForStmt;
 struct FnStmt;
 struct MatchStmt;
+struct WhenCondStmt;
 struct AwaitStmt;
 
 struct ExpectStmt {
@@ -274,12 +284,13 @@ struct ExpectStmt {
     SourceLocation loc;
 };
 
-using StmtNode = std::variant<AssignStmt, CallStmt,
+using StmtNode = std::variant<AssignStmt, CallStmt, ExprStmt,
                               ReturnStmt, ImportStmt, RecordStmt,
                               IndexAssignStmt, BreakStmt, ContinueStmt, EllipsisStmt,
                               FieldAssignStmt, EnumStmt, ExpectStmt, AwaitStmt,
                               TupleDestructStmt, TypeAliasStmt,
                               std::unique_ptr<IfStmt>,
+                              std::unique_ptr<WhenCondStmt>,
                               std::unique_ptr<WhileStmt>,
                               std::unique_ptr<ForStmt>,
                               std::unique_ptr<FnStmt>,
@@ -292,8 +303,19 @@ struct IfBranch {
 };
 
 struct IfStmt {
-    std::vector<IfBranch> branches;    // if + elif*
+    IfBranch branch;
     std::vector<StmtNode> else_body;   // else（空なら else なし）
+    SourceLocation loc;
+};
+
+struct WhenCondArm {
+    ExprPtr condition;
+    std::vector<StmtNode> body;
+};
+
+struct WhenCondStmt {
+    std::vector<WhenCondArm> arms;
+    std::vector<StmtNode> else_body;
     SourceLocation loc;
 };
 
@@ -316,10 +338,14 @@ struct CastExpr {
     TypeNodePtr target_type;
 };
 
-struct TernaryExpr {
+struct WhenCondExprArm {
     ExprPtr condition;
-    ExprPtr true_expr;
-    ExprPtr false_expr;
+    ExprPtr value;
+};
+
+struct WhenCondExpr {
+    std::vector<WhenCondExprArm> arms;
+    ExprPtr else_expr;
 };
 
 struct InterpolatedStringExpr {
@@ -337,6 +363,10 @@ struct ErrorPropagateExpr {
 };
 
 struct AwaitExpr {
+    ExprPtr operand;
+};
+
+struct WeakExpr {
     ExprPtr operand;
 };
 
@@ -405,4 +435,15 @@ struct MatchStmt {
     ExprPtr subject;
     std::vector<MatchArm> arms;
     SourceLocation loc;
+};
+
+struct MatchExprArm {
+    Pattern pattern;
+    ExprPtr guard;
+    ExprPtr value;
+};
+
+struct MatchExpr {
+    ExprPtr subject;
+    std::vector<MatchExprArm> arms;
 };

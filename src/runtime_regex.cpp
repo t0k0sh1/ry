@@ -1,5 +1,6 @@
 #include "ry/runtime_regex.hpp"
 #include "ry/runtime_regex_internal.hpp"
+#include "ry/runtime_list.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -639,34 +640,6 @@ struct CompiledRegex {
     }
 };
 
-// ============================================================
-// ListHeader layout: {i64 len, i64 cap, ptr data}
-// ============================================================
-
-struct ListHeader {
-    int64_t len;
-    int64_t cap;
-    char **data;
-};
-
-static char *dupString(const char *s, size_t n) {
-    char *buf = (char *)malloc(n + 1);
-    memcpy(buf, s, n);
-    buf[n] = '\0';
-    return buf;
-}
-
-static ListHeader *makeStringList(const std::vector<std::string> &items) {
-    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
-    header->len = (int64_t)items.size();
-    header->cap = (int64_t)items.size();
-    header->data = (char **)malloc(sizeof(char *) * items.size());
-    for (size_t i = 0; i < items.size(); ++i) {
-        header->data[i] = dupString(items[i].c_str(), items[i].size());
-    }
-    return header;
-}
-
 } // anonymous namespace
 
 // ============================================================
@@ -676,11 +649,13 @@ static ListHeader *makeStringList(const std::vector<std::string> &items) {
 extern "C" {
 
 int64_t __ry_regex_match(const char *pattern, const char *text) {
+    if (!pattern || !text) return 0;
     auto cr = CompiledRegex::compile(pattern);
     return cr.fullMatch(text) ? 1 : 0;
 }
 
 int64_t __ry_regex_search(const char *pattern, const char *text) {
+    if (!pattern || !text) return -1;
     auto cr = CompiledRegex::compile(pattern);
     auto result = cr.search(text);
     return result.first;
@@ -688,6 +663,7 @@ int64_t __ry_regex_search(const char *pattern, const char *text) {
 
 const char *__ry_regex_replace(const char *pattern, const char *text,
                                 const char *replacement) {
+    if (!pattern || !text || !replacement) return text ? dupString(text, strlen(text)) : dupString("", 0);
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
     if (matches.empty()) {
@@ -709,6 +685,7 @@ const char *__ry_regex_replace(const char *pattern, const char *text,
 }
 
 void *__ry_regex_split(const char *pattern, const char *text) {
+    if (!pattern || !text) return makeStringList({});
     auto cr = CompiledRegex::compile(pattern);
     auto matches = cr.findAll(text);
 

@@ -61,6 +61,36 @@ TEST(LexerTest, KeywordRecognition) {
         ASSERT_EQ(toks.size(), 2u);
         EXPECT_EQ(toks[0].kind, TokenKind::Not);
     }
+    // not in (fused token)
+    {
+        auto toks = tokenize("x not in s");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].kind, TokenKind::NotIn);
+        EXPECT_EQ(toks[1].value, "not in");
+        EXPECT_EQ(toks[2].kind, TokenKind::Ident);
+    }
+    // not in with multiple spaces
+    {
+        auto toks = tokenize("x not  in s");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[1].kind, TokenKind::NotIn);
+    }
+    // not followed by non-in identifier
+    {
+        auto toks = tokenize("not inside");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Not);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "inside");
+    }
+    // standalone not (unary)
+    {
+        auto toks = tokenize("not x");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Not);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+    }
     // true
     {
         auto toks = tokenize("true");
@@ -82,12 +112,12 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::If);
         EXPECT_EQ(toks[0].value, "if");
     }
-    // elif
+    // when
     {
-        auto toks = tokenize("elif");
+        auto toks = tokenize("when");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Elif);
-        EXPECT_EQ(toks[0].value, "elif");
+        EXPECT_EQ(toks[0].kind, TokenKind::When);
+        EXPECT_EQ(toks[0].value, "when");
     }
     // else
     {
@@ -103,11 +133,18 @@ TEST(LexerTest, KeywordRecognition) {
         EXPECT_EQ(toks[0].kind, TokenKind::While);
         EXPECT_EQ(toks[0].value, "while");
     }
-    // fn
+    // function
+    {
+        auto toks = tokenize("function");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
+        EXPECT_EQ(toks[0].value, "function");
+    }
+    // fn is no longer a keyword
     {
         auto toks = tokenize("fn");
         ASSERT_EQ(toks.size(), 2u);
-        EXPECT_EQ(toks[0].kind, TokenKind::Fn);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
         EXPECT_EQ(toks[0].value, "fn");
     }
     // return
@@ -257,12 +294,18 @@ TEST(LexerTest, MultiCharOperators) {
     }
     // SlashVsSlashSlash
     {
-        auto toks1 = tokenize("/");
-        EXPECT_EQ(toks1[0].kind, TokenKind::Slash);
+        // After a value-producing token, / is division
+        auto toks1 = tokenize("a /");
+        EXPECT_EQ(toks1[1].kind, TokenKind::Slash);
 
         auto toks2 = tokenize("//");
         EXPECT_EQ(toks2[0].kind, TokenKind::SlashSlash);
         EXPECT_EQ(toks2[0].value, "//");
+
+        // At statement start, /pattern/ is a regex literal
+        auto toks3 = tokenize("/abc/");
+        EXPECT_EQ(toks3[0].kind, TokenKind::RegexLiteral);
+        EXPECT_EQ(toks3[0].value, "abc");
     }
     // EqVsEqEq
     {
@@ -1114,4 +1157,127 @@ TEST(LexerTest, IntDotDigitIsFloat) {
     ASSERT_EQ(toks.size(), 2u);
     EXPECT_EQ(toks[0].kind, TokenKind::Float);
     EXPECT_EQ(toks[0].value, "3.14");
+}
+
+TEST(LexerTest, LeadingDotFloat) {
+    {
+        auto toks = tokenize(".5");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5");
+    }
+    {
+        auto toks = tokenize(".01");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".01");
+    }
+    {
+        auto toks = tokenize(".5f64");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5f64");
+    }
+    {
+        auto toks = tokenize(".5f32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5f32");
+    }
+    {
+        auto toks = tokenize(".5i32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5i32");
+    }
+    {
+        auto toks = tokenize(".foo");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[1].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[1].value, "foo");
+    }
+    {
+        auto toks = tokenize("..5");
+        ASSERT_EQ(toks.size(), 3u);
+        EXPECT_EQ(toks[0].kind, TokenKind::DotDot);
+        EXPECT_EQ(toks[1].kind, TokenKind::Number);
+        EXPECT_EQ(toks[1].value, "5");
+    }
+    {
+        auto toks = tokenize("t.0");
+        ASSERT_EQ(toks.size(), 4u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Ident);
+        EXPECT_EQ(toks[0].value, "t");
+        EXPECT_EQ(toks[1].kind, TokenKind::Dot);
+        EXPECT_EQ(toks[2].kind, TokenKind::Number);
+        EXPECT_EQ(toks[2].value, "0");
+    }
+}
+
+TEST(LexerTest, NumericUnderscoreSeparators) {
+    // Decimal integers
+    {
+        auto toks = tokenize("100_000");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "100_000");
+    }
+    {
+        auto toks = tokenize("1_000_000");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "1_000_000");
+    }
+    // Hex
+    {
+        auto toks = tokenize("0xFF_FF");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "0xFF_FF");
+    }
+    // Binary
+    {
+        auto toks = tokenize("0b1010_0101");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "0b1010_0101");
+    }
+    // Float
+    {
+        auto toks = tokenize("3.14_159");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14_159");
+    }
+    // Leading-dot float
+    {
+        auto toks = tokenize(".5_0");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, ".5_0");
+    }
+    // With suffix
+    {
+        auto toks = tokenize("100_000i32");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Number);
+        EXPECT_EQ(toks[0].value, "100_000i32");
+    }
+    {
+        auto toks = tokenize("3.14_159f64");
+        ASSERT_EQ(toks.size(), 2u);
+        EXPECT_EQ(toks[0].kind, TokenKind::Float);
+        EXPECT_EQ(toks[0].value, "3.14_159f64");
+    }
+    // Invalid: consecutive underscores
+    EXPECT_THROW(tokenize("100__000"), std::runtime_error);
+    // Invalid: trailing underscore
+    EXPECT_THROW(tokenize("100_"), std::runtime_error);
+    // Invalid: underscore after hex prefix
+    EXPECT_THROW(tokenize("0x_FF"), std::runtime_error);
+    // Invalid: underscore after binary prefix
+    EXPECT_THROW(tokenize("0b_1010"), std::runtime_error);
+    // Invalid: trailing underscore in float fractional part
+    EXPECT_THROW(tokenize("3.14_"), std::runtime_error);
 }

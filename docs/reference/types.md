@@ -6,9 +6,9 @@
 
 | Type | Internal Representation | Literal Examples | Description |
 |---|---|---|---|
-| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64-bit signed integer |
+| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64-bit signed integer |
 | `u8` | i8 | (no dedicated literal) | Unsigned 8-bit integer (0-255). Used with type annotation `b: u8 = 42` |
-| `float` | f64 | `3.14`, `0.5` | 64-bit floating-point number |
+| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64-bit floating-point number |
 | `bool` | i1 | `true`, `false` | Boolean value |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | String (immutable byte sequence on the heap) |
 | `Unit` | void | (no return value) | Return type for functions with no return value. Must be specified explicitly with `-> Unit` |
@@ -17,7 +17,7 @@
 | `List<T>` | ptr (heap) | `[1, 2, 3]` | Dynamic array |
 | `Map<K, V>` | ptr (heap) | `{"a": 1}` | Hash map |
 | `Set<T>` | ptr (heap) | `{1, 2, 3}` | Set with no duplicates |
-| `fn(T1, T2) -> R` | ptr (function pointer) | `fn(x: int) => x * 2` | Function type |
+| `function(T1, T2) -> R` | ptr (function pointer) | `(x: int) => x * 2` | Function type |
 | User-defined type | LLVM StructType (named) | `record Point: ...` | Struct defined with the `record` keyword |
 | `enum` | i64 / tagged union | `Color::Red`, `Shape::Circle(3.14)` | Enumeration defined with the `enum` keyword (supports associated data) |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | Built-in error type |
@@ -35,7 +35,12 @@
 | `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32-bit unsigned integer (low-level, no implicit conversion) |
 | `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64-bit unsigned integer (low-level, no implicit conversion) |
 | `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32-bit floating-point (low-level, no implicit conversion) |
-| `[T; N]` | `[N x T]` | `buf: [i32; 8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
+| `weak T` | ptr (header) | `weak s` | Weak reference to an ARC-managed value (does not prevent deallocation) |
+| `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | Regular expression pattern (created via regex literal syntax) |
+| `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | A type representing success (`Ok`) or failure (`Err`) |
+| `Task<T>` | ptr | (returned by async functions) | Asynchronous task handle (used with `await` and `block_on`) |
+| `Iterator<T>` | ptr | (created by `iter()`) | Lazy iterator for sequential element access |
+| `T[N]` | `[N x T]` | `buf: i32[8]` | Fixed-length contiguous array of low-level type T with N elements (stack-allocated) |
 
 ## Type Annotation Syntax
 
@@ -52,7 +57,8 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int) => x * 2
+fn_val: function(int) -> int = (x: int) => x * 2
+rx: Regex = /[0-9]+/
 u: int | str = 42
 a: any = 42
 ```
@@ -72,7 +78,7 @@ a: any = 42
 | `List<T>` | Generic dynamic array type |
 | `Map<K, V>` | Generic hash map type |
 | `Set<T>` | Generic set type |
-| `fn(T1, ...) -> R` | Function type |
+| `function(T1, ...) -> R` | Function type |
 | `Error` | Built-in error type (`message: str`, `code: int`) |
 | `any` | Built-in type that can hold any primitive value (`int`, `float`, `bool`, `str`) or `Unit`. Supports implicit conversion: concrete values are automatically wrapped when assigned to `any`, and `any` values are automatically unwrapped (with runtime type check) when assigned to a concrete type. `any(int)` → `float` auto-promotion is supported. See [any Type](#any-type) for details |
 | `T1 \| T2 \| ...` | Union type (one of multiple types separated by `\|`) |
@@ -85,7 +91,7 @@ a: any = 42
 | `u32` | Low-level 32-bit unsigned integer (no implicit conversion) |
 | `u64` | Low-level 64-bit unsigned integer (no implicit conversion) |
 | `f32` | Low-level 32-bit floating-point (no implicit conversion) |
-| `[T; N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `length()` |
+| `T[N]` | Fixed-length array of low-level type `T` with `N` elements. Stack-allocated, contiguous memory. Supports index read/write and `length()` |
 | User-defined type name | Type declared with the `record` or `enum` keyword |
 
 ## Type Aliases
@@ -105,9 +111,9 @@ names: StringList = ["Alice", "Bob"]
 Type aliases also work with function types, literal types, and range types:
 
 ```python
-type Callback = fn(int, int) -> int
+type Callback = function(int, int) -> int
 
-add: Callback = fn(a: int, b: int) => a + b
+add: Callback = function(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -174,7 +180,7 @@ x = 12                      # OK
 ### In Function Parameters
 
 ```python
-fn set_month(m: 1..12) -> int:
+function set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
@@ -193,12 +199,74 @@ The `T?` syntax is a shorthand for `Option<T>`.
 x: int? = 42       # equivalent to Option<int>
 y: int? = none      # equivalent to None
 
-fn find(xs: List<int>, val: int) -> int?:
+function find(xs: List<int>, val: int) -> int?:
     for x in xs:
         if x == val:
             return Some(x)
     return none
 ```
+
+---
+
+## Weak References (`weak T`)
+
+A `weak` reference is a non-owning reference to an ARC-managed value. Unlike strong references, weak references do not increment the strong reference count. When the last strong reference is released, the referenced object is deallocated — and any surviving weak references automatically become `None`.
+
+Weak references are the user-facing mechanism for breaking reference cycles.
+
+### Creating a Weak Reference
+
+Use the `weak` keyword in both type annotation and expression position:
+
+```python
+s = "hello"
+w: weak str = weak s
+```
+
+The type `weak T` is a new type constructor where `T` must be an ARC-managed type (currently `str`, `List<T>`, `Map<K, V>`, `Set<T>`).
+
+### Accessing a Weak Reference (Upgrade)
+
+Accessing a weak variable automatically performs an **upgrade** — an atomic check-and-increment of the strong reference count. The result is always `Option<T>`:
+
+- `Some(value)` if the referent is still alive (strong count > 0)
+- `None` if the referent has been deallocated (strong count == 0)
+
+```python
+s = "alive"
+w: weak str = weak s
+match w:
+  case Some(v):
+    print(v)           # "alive"
+  case None:
+    print("deallocated")
+```
+
+The coalesce operator (`??`) also works with weak references:
+
+```python
+w: weak str = weak s
+val = w ?? "default"
+```
+
+### Reassignment
+
+Weak references can be reassigned. The old weak reference is released and the new one is retained:
+
+```python
+a = "first"
+b = "second"
+w: weak str = weak a
+w = weak b
+```
+
+### Thread Safety
+
+The upgrade operation uses a compare-and-swap (CAS) loop internally, making it safe to use across threads. This is essential since the strong reference may be released concurrently.
+
+### Scope Cleanup
+
+Weak references are automatically released when they go out of scope. If both strong and weak reference counts reach zero, the ARC header is freed.
 
 ---
 
@@ -217,7 +285,15 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 ### Supported Types in Interpolation
 
-Any expression that evaluates to `int`, `float`, `bool`, or `str` can be used inside `{}`.
+Any expression that evaluates to `int`, `float`, `bool`, `str`, a record type, a tuple, or a collection type (`List`, `Map`, `Set`) can be used inside `{}`.
+
+```python
+xs = [1, 2, 3]
+print(f"items: {xs}")     # items: [1, 2, 3]
+
+t = (1, "hello")
+print(f"tuple: {t}")      # tuple: (1, hello)
+```
 
 ### Escape Sequences
 
@@ -271,7 +347,14 @@ b = 255 as u8         # u8 value 255
 | unsigned int | `f32` | `UIToFP` |
 | `f32` | signed / unsigned int | `FPToSI` / `FPToUI` |
 
-Unsupported casts (e.g. `str as int`) cause a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
+The target type of `as` supports the full type syntax, including generic types:
+
+```python
+x = value as Option<int>
+y = data as Map<str, int>
+```
+
+Any `as` cast (including with generics) must be a built-in cast or have a matching user-defined `operator as`, otherwise it is a compile error. Use `to_int()` / `to_float()` for string-to-number conversions.
 
 ## Enum with Associated Data (ADT)
 
@@ -376,7 +459,7 @@ print(e2)          # Error: not found (code: 404)
 Functions that can fail return `Result<V, E>`:
 
 ```python
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -391,7 +474,7 @@ match divide(10, 2):
 When the return value is not meaningful, use `Result<Unit, Error>`:
 
 ```python
-fn save(path: str, data: str) -> Result<Unit, Error>:
+function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit placeholder
 
 match save("/tmp/test.txt", "hello"):
@@ -432,11 +515,11 @@ print(x)        # hello
 ### Usage in Function Parameters and Return Types
 
 ```python
-fn show(x: int | str) -> int:
+function show(x: int | str) -> int:
     print(x)
     return 0
 
-fn get_val(flag: bool) -> int | str:
+function get_val(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -490,7 +573,7 @@ x: any = 42          # int is wrapped into any
 x = "hello"          # reassignment with a different type is allowed
 
 # Unwrapping: any → concrete
-fn get_value() -> any:
+function get_value() -> any:
     return 42
 n: int = get_value()  # any(int) is unwrapped to int
 
@@ -573,7 +656,7 @@ Conversion rules: `int` → decimal string, `float` → `%g` format, `bool` → 
 An `any` value can be passed to a function with concrete parameter types. The value is automatically unwrapped with a runtime type check:
 
 ```python
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 v: any = 42
@@ -630,7 +713,9 @@ result = add_one(v)   # any(int) is unwrapped to int; result is 43
 - **Variable types are fixed at declaration** -- A variable declared as `int` cannot be reassigned a `float` value.
 - **Bitwise operations are for `int` only** -- Applying bitwise operations to `float` or `bool` causes a compile error.
 - **Non-`bool` types can be used in conditions** -- `if` conditions accept `int` (0 = false, non-zero = true) and other types besides `bool`.
-- **Numeric literal suffixes** -- Low-level types can be specified via literal suffixes: `42i32`, `255u8`, `3.14f32`, `0xFFu8`, `0b1010u8`. An integer literal with a float suffix (`42f32`) produces a float value. A float literal with an integer suffix (`3.14i32`) is a compile error. Out-of-range values (e.g., `256u8`, `129i8`) are also compile errors.
+- **Numeric literal separators** -- Underscores can be used as visual separators in numeric literals: `100_000`, `0xFF_FF`, `0b1010_0101`, `3.14_159`. Underscores must appear between digits (no leading, trailing, or consecutive underscores).
+- **Numeric literal suffixes** -- Low-level types can be specified via literal suffixes: `42i32`, `255u8`, `3.14f32`, `.5f32`, `0xFFu8`, `0b1010u8`. An integer literal with a float suffix (`42f32`) produces a float value. A float literal with an integer suffix (`3.14i32`) is a compile error. Out-of-range values (e.g., `256u8`, `129i8`) are also compile errors.
 - **Low-level numeric types (`i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `f32`) have no implicit conversions** -- Mixing low-level types with each other or with high-level types (`int`, `float`) causes a compile error. Use explicit `as` casts. The `/` operator on low-level integers performs integer division (like Rust), not float division. Signed types use `SDiv`/`SRem`, unsigned types use `UDiv`/`URem`.
 - **Signed vs unsigned** -- Signed types (`i8`, `i16`, `i32`, `i64`) use signed comparison (`ICMP_SLT` etc.) and arithmetic right shift (`AShr`). Unsigned types (`u8`, `u16`, `u32`, `u64`) use unsigned comparison (`ICMP_ULT` etc.) and logical right shift (`LShr`). The `>>>` operator always performs logical shift regardless of signedness.
-- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses two's complement wrapping on overflow (signed) or modular arithmetic (unsigned). For example, `i32` max value `2147483647 + 1` wraps to `-2147483648`. This matches C behavior. Use the high-level `int` type (64-bit) if overflow is a concern. For explicit overflow control, use `checked_add/sub/mul` (returns `Result<T, Error>`), `saturating_add/sub/mul` (clamps to type bounds), or `wrapping_add/sub/mul` (self-documenting wrapping). See [Function Reference](functions.md#checkedsaturating-arithmetic).
+- **`int` arithmetic overflow is a runtime error** -- Arithmetic (`+`, `-`, `*`, unary `-`) on the high-level `int` type raises a runtime error on overflow, similar to Swift's default behavior. This prevents silent data corruption from two's complement wrapping. Constant expressions that overflow are caught at compile time.
+- **Low-level integer overflow wraps around** -- Arithmetic on low-level integer types uses Ry-defined two's complement wrapping on overflow for signed types and modular arithmetic for unsigned types. For example, `2147483647i32 + 1i32` wraps to `-2147483648`. For explicit overflow control, use `checked_add/sub/mul` (returns `Result<T, Error>`), `saturating_add/sub/mul` (clamps to type bounds), or `wrapping_add/sub/mul` (self-documenting wrapping). See [Function Reference](functions.md#checkedsaturating-arithmetic).

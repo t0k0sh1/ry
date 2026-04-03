@@ -8,25 +8,52 @@
 
 | 函数 | 说明 |
 |------|------|
-| `print(expr)` | 将值输出到标准输出 |
+| `print()` / `print(expr1, expr2, ...)` | 将值输出到标准输出（以空格分隔） |
 | `length(value)` | 返回列表、映射、集合的元素数量，或字符串的 UTF-8 字符数 |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 生成整数列表 |
 | `exit(code)` | 以指定的退出码终止进程 |
-| `args()` | 以 `List<str>` 返回命令行参数 |
+| `arguments()` | 以 `List<str>` 返回命令行参数 |
 | `available_parallelism()` | 返回运行时工作线程数（`int`） |
 | `sleep(duration_ms)` | 暂停执行指定的毫秒数 |
 | `env(key)` | 返回环境变量为 `Option<str>` |
 | `env(key, default)` | 返回环境变量，若未设置则返回 `default` |
-| `send(stream, data)` | 通过 `TcpStream` 发送 `List<u8>`，返回发送的字节数 |
-| `recv(stream, max)` | 从 `TcpStream` 接收最多 `max` 字节，返回 `List<u8>` |
-| `close(handle)` | 关闭 `TcpStream` 或 `TcpListener` |
+| `send(stream, data)` | 通过 `TcpStream` 或 `TlsStream` 发送 `List<u8>`，返回 `Result<int, Error>` |
+| `receive(stream, max)` | 从 `TcpStream` 或 `TlsStream` 接收最多 `max` 字节，返回 `Result<List<u8>, Error>` |
+| `close(handle)` | 关闭 `TcpStream`、`TlsStream` 或 `TcpListener` |
 | `block_on(task)` | 阻塞当前线程直到 `Task<T>` 完成并返回其结果 |
+| `to_str(value)` | 将值转换为其字符串表示（`int`、`float`、`bool`、`str`、record、enum、tuple、`List`、`Map`、`Set`、`Result`、`Option`） |
+| `fail()` / `fail(message)` | 将当前测试标记为失败（仅在 `ry test` 模式下可用） |
 
 ### Option
 
 | 函数 | 说明 |
 |------|------|
 | `Some(expr)` | 构造 Option 类型的有值变体 |
+
+### Result / Error
+
+| 函数 | 说明 |
+|------|------|
+| `Ok(value)` | 构造 `Result<T, Error>` 的成功变体 |
+| `Err(error)` | 构造 `Result<T, Error>` 的错误变体 |
+| `Error(message)` | 创建带有消息的 `Error` 值 |
+| `Error(message, code)` | 创建带有消息和错误码的 `Error` 值 |
+| `result.and_then(closure)` | 若为 `Ok`，调用 `closure`（返回 `Result<U, E>`）；若为 `Err`，传播错误 |
+| `result.map(closure)` | 若为 `Ok`，对值应用 `closure` 并将返回值包装在 `Ok` 中；若为 `Err`，传播错误 |
+
+### 检查算术
+
+| 函数 | 说明 |
+|------|------|
+| `checked_add(a, b)` | 无溢出时返回 `Ok(a + b)`，否则返回 `Err(Error("arithmetic overflow"))` |
+| `checked_sub(a, b)` | 无溢出时返回 `Ok(a - b)`，否则返回 `Err(Error("arithmetic overflow"))` |
+| `checked_mul(a, b)` | 无溢出时返回 `Ok(a * b)`，否则返回 `Err(Error("arithmetic overflow"))` |
+| `saturating_add(a, b)` | 返回 `a + b`，溢出时钳制到 `int` 范围 |
+| `saturating_sub(a, b)` | 返回 `a - b`，溢出时钳制到 `int` 范围 |
+| `saturating_mul(a, b)` | 返回 `a * b`，溢出时钳制到 `int` 范围 |
+| `wrapping_add(a, b)` | 返回溢出时回绕的 `a + b` |
+| `wrapping_sub(a, b)` | 返回溢出时回绕的 `a - b` |
+| `wrapping_mul(a, b)` | 返回溢出时回绕的 `a * b` |
 
 ### 集合操作
 
@@ -41,10 +68,10 @@
 | `reverse(list)` | 返回反转后的新列表（也适用于字符串） |
 | `reverse!(list)` | 就地反转列表（破坏性） |
 | `slice(list, start, end)` | 返回从 start 到 end 的新子列表 |
-| `take(list, n)` | 返回包含前 n 个元素的新列表 |
-| `tap(list, fn)` | 对每个元素调用 fn 以执行副作用，返回原始列表 |
+| `take(list, count)` | 返回包含前 count 个元素的新列表 |
+| `tap(list, function)` | 对每个元素调用 function 以执行副作用，返回原始列表 |
 | `filter(list, pred)` | 返回仅包含满足谓词的元素的新列表 |
-| `map(list, fn)` | 返回将每个元素转换后的新列表 |
+| `map(list, function)` | 返回将每个元素转换后的新列表 |
 | `sort(list)` / `sort(list, comp)` | 返回排序后的新列表（默认升序） |
 | `sort!(list)` / `sort!(list, comp)` | 就地排序列表（破坏性） |
 | `insert(list, i, val)` | 在索引 i 处插入元素 |
@@ -59,6 +86,24 @@
 | `symmetric_difference(set, set)` | 返回两个集合的对称差 |
 | `is_subset(set, set)` | 返回第一个集合是否为第二个的子集 |
 | `is_superset(set, set)` | 返回第一个集合是否为第二个的超集 |
+| `first(list)` | 返回第一个元素（`Option<T>`），列表为空时返回 `None` |
+| `last(list)` | 返回最后一个元素（`Option<T>`），列表为空时返回 `None` |
+| `remove(list, value)` | 从列表中移除第一个匹配的值 |
+| `is_empty(list)` | 返回列表是否为空 |
+| `distinct(list)` | 返回移除重复元素后的新列表 |
+| `flatten(list)` | 返回将嵌套列表展开后的新列表 |
+| `reduce(list, fn)` | 使用归约函数将列表归约为单个值 |
+| `fold(list, init, fn)` | 使用初始累加器值折叠列表 |
+| `any(list, pred)` | 如果任一元素满足谓词则返回 `true` |
+| `all(list, pred)` | 如果所有元素都满足谓词则返回 `true` |
+| `sum(list)` | 返回所有元素的总和 |
+| `min(list)` | 返回最小的元素 |
+| `max(list)` | 返回最大的元素 |
+| `enumerate(list)` | 返回 `(index, value)` 元组的列表 |
+| `zip(list1, list2)` | 返回将两个列表的元素配对的 `(a, b)` 元组列表 |
+| `keys(map)` | 以 `List<K>` 返回所有键 |
+| `values(map)` | 以 `List<V>` 返回所有值 |
+| `merge(map1, map2)` | 返回包含两个映射所有条目的新映射 |
 
 ### 迭代器
 
@@ -68,8 +113,8 @@
 | `next(iter)` | 返回下一个元素（`Option<T>`），耗尽时返回 `None` |
 | `to_list(iter)` | 将迭代器剩余的所有元素收集到 `List<T>` |
 | `filter(iter, pred)` | 返回只产出满足谓词的元素的惰性迭代器 |
-| `map(iter, fn)` | 返回转换每个元素的惰性迭代器 |
-| `take(iter, n)` | 返回最多产出 n 个元素的惰性迭代器 |
+| `map(iter, function)` | 返回转换每个元素的惰性迭代器 |
+| `take(iter, count)` | 返回最多产出 count 个元素的惰性迭代器 |
 
 ### [字符串操作](builtins-string.md)
 
@@ -89,7 +134,7 @@
 | `reverse(string)` | 反转字符串 |
 | `split(string, delimiter)` | 分割字符串并返回列表 |
 | `join(list, sep)` | 以分隔符连接列表中的字符串 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 类型转换 |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 类型转换（`to_int` 返回 `Result<int, Error>`） |
 
 -> 详细请参阅 **[字符串操作函数参考](builtins-string.md)**
 
@@ -97,9 +142,9 @@
 
 ## print
 
-**签名：** `print(expr)`
+**签名：** `print()` / `print(expr1, expr2, ...)`
 
-将值输出到标准输出。末尾会追加换行。
+将一个或多个值输出到标准输出，以空格分隔。末尾会追加换行。不带参数调用时仅输出换行。
 
 | 类型 | 输出格式 |
 |----|---------|
@@ -107,26 +152,37 @@
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
+| `Result` (Ok) | `Ok(value)` |
+| `Result` (Err) | `Err(value)` |
 | `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
 | `list` | `[elem1, elem2, ...]` |
 | `map` | `{key1: val1, key2: val2, ...}` |
 | `set` | `{elem1, elem2, ...}` |
+| `tuple` | `(elem1, elem2, ...)` |
 | `enum` | 变体名称（例如：`Red`） |
+| `record` | `RecordName(field: val, ...)` |
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
 print(true)        # true
 print("hello")     # hello
+print(Ok(42))      # Ok(42)
+print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
-```
+print((1, "hello"))  # (1, hello)
 
-**错误条件：** 直接传入结构体或元组会产生编译错误。
+# 多个参数（以空格分隔）
+print(1, 2, 3)             # 1 2 3
+print("hello", "world")   # hello world
+print(1, "hello", true)   # 1 hello true
+print()                    # （空行）
+```
 
 ---
 
@@ -248,20 +304,20 @@ exit(1)        # 错误终止
 
 ---
 
-## args
+## arguments
 
-**签名：** `args() -> List<str>`
+**签名：** `arguments() -> List<str>`
 
 以字符串列表的形式返回传递给脚本的命令行参数。不包含解释器名称或脚本文件名——仅包含脚本路径之后的参数。
 
 ```python
 # 运行：ry script.ry hello world
-a = args()
+a = arguments()
 print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
-for x in args():
+for x in arguments():
     print(x)
 ```
 
@@ -387,9 +443,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（钳制）
 
 ## take
 
-**签名：** `take(list: List<T>, n: int) -> List<T>`
+**签名：** `take(list: List<T>, count: int) -> List<T>`
 
-返回包含前 `n` 个元素的新列表。若 `n` 超过列表长度，返回整个列表的副本。若 `n <= 0`，返回空列表。原始列表不会被修改。也可使用 UFCS 记法。
+返回包含前 `count` 个元素的新列表。若 `count` 超过列表长度，返回整个列表的副本。若 `count <= 0`，返回空列表。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -403,13 +459,13 @@ print(xs.take(0))    # []
 
 ## tap
 
-**签名：** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+**签名：** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
 
 对每个元素调用给定函数（忽略返回值），然后返回原始列表。适用于方法链中的调试或插入副作用。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # 输出 1, 2, 3，然后 ys = [2, 4, 6]
 ```
 
@@ -417,13 +473,13 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ## filter
 
-**签名：** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+**签名：** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
 返回仅包含谓词返回 `true` 的元素的新列表。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]（未修改）
 ```
@@ -432,13 +488,13 @@ print(xs)   # [1, 2, 3, 4, 5]（未修改）
 
 ## map
 
-**签名：** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+**签名：** `map(list: List<T>, function: function(T) -> U) -> List<U>`
 
 返回将每个元素以给定函数转换后的新列表。输出元素类型可以与输入不同。原始列表不会被修改。也可使用 UFCS 记法。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -446,7 +502,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**签名：** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**签名：** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
 
 返回排序后的新列表。默认为升序。可提供自定义比较函数（第一参数应排在第二参数之前时返回 `true`）。原始列表不会被修改。排序是**稳定的**（相等元素保持原始顺序）。也可使用 UFCS 记法。
 
@@ -455,7 +511,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降序排序
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -463,7 +519,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**签名：** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**签名：** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
 
 就地排序列表。排序算法与 `sort()` 相同，但修改原始列表而非创建新列表。也可使用 UFCS 记法。
 
@@ -595,6 +651,6 @@ print(it.next())   # None
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```

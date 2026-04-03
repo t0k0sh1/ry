@@ -10,76 +10,77 @@
 | `HttpResponse` | 送信 HTTP レスポンスの不透明ハンドル |
 | `HttpClientResponse` | HTTP クライアントレスポンスの不透明ハンドル |
 
-`HttpRequest` はサーバーフレームワークから提供されます。`HttpResponse` は `http_response()` で作成します。`HttpClientResponse` はクライアント関数（`http_get`、`http_post`、`http_request`）から返されます。
+`HttpRequest` はサーバーフレームワークから提供されます。`HttpResponse` は `response()` で作成します。`HttpClientResponse` はクライアント関数（`http_get`、`http_post`、`http_request`）から返されます。
 
 ## 関数（`http` パッケージ）
 
 これらの関数は明示的なインポートが必要です:
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_form_field, http_form_file, http_form_fields, http_response
+from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
 ### サーバー
 
 | 関数 | シグネチャ | 説明 |
 |----------|-----------|-------------|
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | 指定アドレスで HTTP サーバーを起動します。accept ループでブロックし、リクエストごとに `handler` を呼び出します。 |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | `max_requests` 件のリクエストを処理した後に停止する HTTP サーバーを起動します。`async fn` + `block_on()` によるライフサイクル管理が可能になります。 |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit` | 上記と同じですが、`bind` + `listen` 成功後に実際にバインドされたポートで `port_callback` を呼び出します。OS が割り当てるエフェメラルポートを使用するにはポート `0` を指定します。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit` | 指定アドレスで HTTP サーバーを起動します。accept ループでブロックし、リクエストごとに `handler` を呼び出します。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | `max_requests` 件のリクエストを処理した後に停止する HTTP サーバーを起動します。`async function` + `block_on()` によるライフサイクル管理が可能になります。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit` | 上記と同じですが、`bind` + `listen` 成功後に実際にバインドされたポートで `port_callback` を呼び出します。OS が割り当てるエフェメラルポートを使用するにはポート `0` を指定します。 |
 
 ### リクエストアクセサ
 
 | 関数 | シグネチャ | 説明 |
 |----------|-----------|-------------|
-| `http_method` | `(req: HttpRequest) -> str` | HTTP メソッドを返します（例: `"GET"`、`"POST"`）。 |
-| `http_path` | `(req: HttpRequest) -> str` | クエリ文字列を除いたリクエストパスを返します（例: `"/search?q=hello"` の場合 `"/search"`）。 |
-| `http_header` | `(req: HttpRequest, key: str) -> Option<str>` | リクエストヘッダーの値を返します（大文字小文字を区別しない検索）。見つからない場合は `None` を返します。 |
-| `http_body` | `(req: HttpRequest) -> str` | リクエストボディを文字列として返します。 |
-| `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | クエリパラメータの値を返します。見つからない場合は `None` を返します。値は自動的に URL デコードされます。 |
-| `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | すべてのクエリパラメータをマップとして返します。キーと値は自動的に URL デコードされます。 |
-| `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | 名前で指定した Cookie の値を返します。見つからない場合は `None` を返します。 |
-| `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | すべての Cookie をマップとして返します。 |
-| `http_form_field` | `(req: HttpRequest, name: str) -> Option<str>` | マルチパートフォームのテキストフィールドの値を返します。見つからない場合は `None` を返します。 |
-| `http_form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | ファイルアップロード情報を `Option` として返します。`Some(map)` には `"filename"`、`"content_type"`、`"data"` のキーが含まれます。見つからない場合は `None` を返します。 |
-| `http_form_fields` | `(req: HttpRequest) -> Map<str, str>` | すべてのマルチパートフォームのテキストフィールドをマップとして返します。 |
+| `method` | `(req: HttpRequest) -> str` | HTTP メソッドを返します（例: `"GET"`、`"POST"`）。 |
+| `path` | `(req: HttpRequest) -> str` | クエリ文字列を除いたリクエストパスを返します（例: `"/search?q=hello"` の場合 `"/search"`）。 |
+| `header` | `(req: HttpRequest, key: str) -> Option<str>` | リクエストヘッダーの値を返します（大文字小文字を区別しない検索）。見つからない場合は `None` を返します。 |
+| `body` | `(req: HttpRequest) -> str` | リクエストボディを文字列として返します。最初の NUL バイトで切り詰められます。バイナリデータには `body_bytes` を使用してください。 |
+| `body_bytes` | `(req: HttpRequest) -> List<u8>` | リクエストボディをバイトリストとして返します。バイナリセーフで、NUL を含むすべてのバイトを保持します。 |
+| `query` | `(req: HttpRequest, key: str) -> Option<str>` | クエリパラメータの値を返します。見つからない場合は `None` を返します。値は自動的に URL デコードされます。 |
+| `query_all` | `(req: HttpRequest) -> Map<str, str>` | すべてのクエリパラメータをマップとして返します。キーと値は自動的に URL デコードされます。 |
+| `cookie` | `(req: HttpRequest, name: str) -> Option<str>` | 名前で指定した Cookie の値を返します。見つからない場合は `None` を返します。 |
+| `cookies` | `(req: HttpRequest) -> Map<str, str>` | すべての Cookie をマップとして返します。 |
+| `form_field` | `(req: HttpRequest, name: str) -> Option<str>` | マルチパートフォームのテキストフィールドの値を返します。見つからない場合は `None` を返します。 |
+| `form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | ファイルアップロード情報を `Option` として返します。`Some(map)` には `"filename"`、`"content_type"`、`"data"` のキーが含まれます。見つからない場合は `None` を返します。 |
+| `form_fields` | `(req: HttpRequest) -> Map<str, str>` | すべてのマルチパートフォームのテキストフィールドをマップとして返します。 |
 
 ### レスポンスビルダー
 
 | 関数 | シグネチャ | 説明 |
 |----------|-----------|-------------|
-| `http_response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | 指定したステータスコード、ヘッダー、ボディで HTTP レスポンスを作成します。 |
+| `response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | 指定したステータスコード、ヘッダー、ボディで HTTP レスポンスを作成します。 |
 
 ## 使用例
 
 ### 基本的な HTTP サーバー
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import listen, method, path, header, body, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    method = http_method(req)
-    path = http_path(req)
-    if path == "/hello":
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello, World!")
-    if path == "/echo":
-        body = http_body(req)
-        return http_response(200, {"Content-Type": "text/plain"}, body)
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    m = method(req)
+    p = path(req)
+    if p == "/hello":
+        return response(200, {"Content-Type": "text/plain"}, "Hello, World!")
+    if p == "/echo":
+        b = body(req)
+        return response(200, {"Content-Type": "text/plain"}, b)
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
-### `async fn` によるノンブロッキングサーバー
+### `async function` によるノンブロッキングサーバー
 
 ```python
-from http import http_listen, http_path, http_response
+from http import listen, path, response
 
-async fn start_server(port: int) -> str:
-    http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        if path == "/api/health":
-            return http_response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
-        return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+async function start_server(port: int) -> str:
+    listen("127.0.0.1", port, (req: HttpRequest) -> HttpResponse:
+        p = path(req)
+        if p == "/api/health":
+            return response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
+        return response(404, {"Content-Type": "text/plain"}, "Not Found")
     )
     return "done"
 
@@ -90,15 +91,15 @@ t = start_server(8080)
 ### リクエスト制限付きサーバー（`max_requests`）
 
 ```python
-from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
-fn on_port(p: int) -> Unit:
+function on_port(p: int) -> Unit:
     port_holder[0] = p
 
-async fn start_server() -> str:
-    http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
+async function start_server() -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> HttpResponse:
+        return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # 1 リクエスト後に停止; on_port にバインドされたポートを通知
     return "done"
 
@@ -108,7 +109,7 @@ port = port_holder[0]
 
 match http_get("http://127.0.0.1:" + to_str(port) + "/"):
     case Ok(resp):
-        print(http_client_body(resp))  # "Hello!"
+        print(body(resp))  # "Hello!"
     case Err(e):
         print("error")
 
@@ -118,92 +119,92 @@ result = block_on(t)  # サーバーは 1 リクエスト後に終了; block_on 
 ### クエリパラメータの読み取り
 
 ```python
-from http import http_listen, http_path, http_query, http_query_all, http_response
+from http import listen, path, query, query_all, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    path = http_path(req)
-    if path == "/search":
-        match http_query(req, "q"):
-            case Some(query):
-                return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    p = path(req)
+    if p == "/search":
+        match query(req, "q"):
+            case Some(q):
+                return response(200, {"Content-Type": "text/plain"}, "Search: " + q)
             case None:
-                return http_response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+                return response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
 ### ヘッダーの読み取り
 
 ```python
-from http import http_listen, http_header, http_response
+from http import listen, header, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_header(req, "Authorization"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match header(req, "Authorization"):
         case Some(token):
-            return http_response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
+            return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "Unauthorized")
+            return response(401, {"Content-Type": "text/plain"}, "Unauthorized")
 )
 ```
 
 ### フォーム送信の処理
 
 ```python
-from http import http_listen, http_form_field, http_form_file, http_response
+from http import listen, form_field, form_file, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_form_field(req, "username"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match form_field(req, "username"):
         case Some(name):
-            match http_form_file(req, "avatar"):
+            match form_file(req, "avatar"):
                 case Some(file_info):
                     filename = file_info["filename"]
-                    return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+                    return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
                 case None:
-                    return http_response(400, {"Content-Type": "text/plain"}, "No file uploaded")
+                    return response(400, {"Content-Type": "text/plain"}, "No file uploaded")
         case None:
-            return http_response(400, {"Content-Type": "text/plain"}, "Missing username")
+            return response(400, {"Content-Type": "text/plain"}, "Missing username")
 )
 ```
 
 ### Cookie の読み取り
 
 ```python
-from http import http_listen, http_cookie, http_cookies, http_response
+from http import listen, cookie, cookies, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    match http_cookie(req, "session_id"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match cookie(req, "session_id"):
         case Some(sid):
-            return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
+            return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "No session")
+            return response(401, {"Content-Type": "text/plain"}, "No session")
 )
 ```
 
 ## 動作仕様
 
-- `http_listen()` はアドレスにバインドし、リスニングを開始して accept ループに入ります。
+- `listen()` はアドレスにバインドし、リスニングを開始して accept ループに入ります。
 - 引数 3 つで呼び出した場合、accept ループは無期限に実行されます。
-- 引数 4 つで呼び出した場合（`max_requests`）、指定した数のリクエストを処理した後にサーバーが停止します。`max_requests` は正の整数でなければなりません。これにより `async fn` + `block_on()` によるライフサイクル管理が可能になります。不正なリクエスト（サイレントにスキップされる）は制限のカウントに含まれません。
+- 引数 4 つで呼び出した場合（`max_requests`）、指定した数のリクエストを処理した後にサーバーが停止します。`max_requests` は正の整数でなければなりません。これにより `async function` + `block_on()` によるライフサイクル管理が可能になります。不正なリクエスト（サイレントにスキップされる）は制限のカウントに含まれません。
 - 引数 5 つで呼び出した場合（`max_requests`、`port_callback`）、`bind` + `listen` 成功後に `port_callback` が実際にバインドされたポートで同期的に呼び出されます。並列テストでのポート競合を避けるため、ポート `0`（OS が割り当てるエフェメラルポート）と組み合わせて使用できます。
 - サーバーはデフォルトで HTTP/1.1 キープアライブをサポートします。単一の接続で複数のリクエストを処理できます。サーバーは各リクエストの `Connection` ヘッダーを確認します: `Connection: close` が送信された場合、レスポンス後に接続が閉じられます。それ以外の場合、接続は後続のリクエストのために維持されます。アイドル接続は 5 秒のタイムアウト後に閉じられます。
 - `Content-Length` がヘッダーマップに指定されていない場合、レスポンスに自動的に追加されます。
 - サーバーは `Content-Length` ベースのボディ読み取りと `Transfer-Encoding: chunked` デコードを含む HTTP/1.1 をサポートします。
 - リクエストに `Transfer-Encoding: chunked` が存在する場合、ボディは自動的にデコード・結合されます。Ry コードは完全なボディを透過的に受け取ります。
 - `Transfer-Encoding: chunked` と `Content-Length` の両方が存在する場合、リクエストは不正として拒否されます（RFC 9112 準拠）。
-- チャンクレスポンスを送信するには、`http_response()` に渡すヘッダーマップに `"Transfer-Encoding": "chunked"` を含めます。ボディは自動的にチャンク形式でエンコードされます。
-- `http_header()` によるヘッダー検索は大文字小文字を区別しません。
-- `http_path()` はクエリ文字列を除いたパスを返します。クエリパラメータは `http_query()` または `http_query_all()` で別途アクセスします。
+- チャンクレスポンスを送信するには、`response()` に渡すヘッダーマップに `"Transfer-Encoding": "chunked"` を含めます。ボディは自動的にチャンク形式でエンコードされます。
+- `header()` によるヘッダー検索は大文字小文字を区別しません。
+- `path()` はクエリ文字列を除いたパスを返します。クエリパラメータは `query()` または `query_all()` で別途アクセスします。
 - クエリパラメータの値は自動的に URL デコードされます（`%20` → スペース、`+` → スペース）。
 - 重複するクエリパラメータキーの場合、最初の値が返されます。
-- `http_cookie()` と `http_cookies()` は `Cookie` ヘッダーを `;` で分割し、各ペアを最初の `=` で分割してパースします。名前と値の先頭と末尾の空白はトリムされます。
+- `cookie()` と `cookies()` は `Cookie` ヘッダーを `;` で分割し、各ペアを最初の `=` で分割してパースします。名前と値の先頭と末尾の空白はトリムされます。
 - 重複する Cookie 名の場合、最初の値が返されます。
 - Cookie の値には `=` 文字を含めることができます（最初の `=` のみが名前と値の区切りとなります）。
-- `http_form_field()`、`http_form_file()`、`http_form_fields()` は `multipart/form-data` リクエストボディをパースします。パースは遅延実行され、最初の呼び出し時にパースされてキャッシュされます。
+- `form_field()`、`form_file()`、`form_fields()` は `multipart/form-data` リクエストボディをパースします。パースは遅延実行され、最初の呼び出し時にパースされてキャッシュされます。
 - `boundary` パラメータは `Content-Type` ヘッダーから抽出され、クォート付きとクォートなしの両方の値をサポートします。
 - `Content-Disposition` に `filename` を持つパートはファイルアップロードとして扱われ、持たないパートはテキストフィールドとして扱われます。
 - 重複するフィールド/ファイル名の場合、最初の値が返されます。
-- `http_form_file()` は `"filename"`、`"content_type"`、`"data"` のキーを持つ `Some(map)` を返すか、フィールドが見つからない場合は `None` を返します。パートに `Content-Type` が指定されていない場合、デフォルトで `"application/octet-stream"` になります。
-- マルチパートでないリクエストの場合、フォーム関数は `None`（`http_form_field`、`http_form_file`）または空のマップ（`http_form_fields`）を返します。
+- `form_file()` は `"filename"`、`"content_type"`、`"data"` のキーを持つ `Some(map)` を返すか、フィールドが見つからない場合は `None` を返します。パートに `Content-Type` が指定されていない場合、デフォルトで `"application/octet-stream"` になります。
+- マルチパートでないリクエストの場合、フォーム関数は `None`（`form_field`、`form_file`）または空のマップ（`form_fields`）を返します。
 
 ## サポートされるステータスコード
 
@@ -268,22 +269,23 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 
 | 関数 | シグネチャ | 説明 |
 |----------|-----------|-------------|
-| `http_client_status` | `(resp: HttpClientResponse) -> int` | HTTP ステータスコードを返します。 |
-| `http_client_body` | `(resp: HttpClientResponse) -> str` | レスポンスボディを文字列として返します。 |
-| `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | レスポンスヘッダーの値を返します（大文字小文字を区別しない検索）。見つからない場合は `None` を返します。 |
+| `status` | `(resp: HttpClientResponse) -> int` | HTTP ステータスコードを返します。 |
+| `body` | `(resp: HttpClientResponse) -> str` | レスポンスボディを文字列として返します。最初の NUL バイトで切り詰められます。バイナリデータには `body_bytes` を使用してください。 |
+| `body_bytes` | `(resp: HttpClientResponse) -> List<u8>` | レスポンスボディをバイトリストとして返します。バイナリセーフで、NUL を含むすべてのバイトを保持します。 |
+| `header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | レスポンスヘッダーの値を返します（大文字小文字を区別しない検索）。見つからない場合は `None` を返します。 |
 | `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | レスポンスと関連メモリを解放します。レスポンスの使用が終わったら呼び出してください。 |
 
 ### クライアントの使用例
 
 ```python
-from http import http_get, http_post, http_client_status, http_client_body, http_client_header
+from http import http_get, http_post, status, body, header
 
 # シンプルな GET リクエスト
 match http_get("http://example.com/api/data"):
     case Ok(resp):
-        status = http_client_status(resp)
-        body = http_client_body(resp)
-        print(to_str(status) + ": " + body)
+        s = status(resp)
+        b = body(resp)
+        print(to_str(s) + ": " + b)
     case Err(e):
         print("Request failed")
 
@@ -291,7 +293,7 @@ match http_get("http://example.com/api/data"):
 headers: Map<str, str> = {"Content-Type": "application/json"}
 match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     case Ok(resp):
-        print(http_client_body(resp))
+        print(body(resp))
     case Err(e):
         print("Request failed")
 ```
@@ -325,7 +327,7 @@ HTTP クライアント関数はリダイレクトレスポンス（`Location` �
 
 ## エラー処理
 
-- `http_listen()` は `bind()` が失敗した場合（例: ポートが既に使用中）にランタイムエラーを発生させます。
+- `listen()` は `bind()` が失敗した場合（例: ポートが既に使用中）にランタイムエラーを発生させます。
 - 不正なリクエストやキープアライブ接続のアイドルタイムアウトにより接続が閉じられます。その後サーバーは新しい接続の受け入れを再開します。
 - ハンドラ関数は常に `HttpResponse` を返す必要があります。デフォルトのレスポンスはありません。
 - クライアント関数は `Result<HttpClientResponse, Error>` を返します。成功と失敗を処理するには `match` を使用してください。

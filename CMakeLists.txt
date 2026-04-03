@@ -24,6 +24,12 @@ find_package(OpenSSL 3.0 REQUIRED)
 # LLVM は -fno-rtti でビルドされているため合わせる
 add_compile_options(-fno-rtti)
 
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
+if(ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -52,6 +58,7 @@ FetchContent_MakeAvailable(googletest)
 
 # ===== 共有ライブラリ =====
 add_library(ry_lib STATIC
+    src/trace.cpp
     src/source_manager.cpp
     src/diagnostic.cpp
     src/lexer.cpp
@@ -79,6 +86,7 @@ add_library(ry_lib STATIC
     src/codegen_call_higher_order.cpp
     src/codegen_call_io.cpp
     src/codegen_call_iterator.cpp
+    src/codegen_call_result.cpp
     src/codegen_lambda.cpp
     src/sema_return.cpp
     src/module_loader.cpp
@@ -94,6 +102,7 @@ add_library(ry_lib STATIC
     src/args_runtime.cpp
     src/paths.cpp
     src/runtime_parallel.cpp
+    src/runtime_print.cpp
     src/runtime_io.cpp
     src/runtime_net.cpp
     src/runtime_http.cpp
@@ -109,9 +118,19 @@ add_library(ry_lib STATIC
     src/runtime_tls.cpp
     src/runtime_base64.cpp
     src/codegen_call_base64.cpp
+    src/runtime_path.cpp
+    src/codegen_call_path.cpp
+    src/runtime_filesystem.cpp
+    src/codegen_call_filesystem.cpp
+    src/runtime_thread.cpp
+    src/codegen_call_thread.cpp
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
+    src/codegen_arc.cpp
+    src/runtime_gc.cpp
+    src/codegen_call_gc.cpp
+    src/runtime_convert.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -152,8 +171,10 @@ add_executable(ry src/main.cpp)
 if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
 else()
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive)
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed atomic -Wl,--as-needed)
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
+    # -rdynamic: プロセスシンボルを JIT に公開
+    # --no-as-needed atomic: __atomic_* シンボルを JIT 実行時に解決可能にするため強制ロード
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 
@@ -194,7 +215,12 @@ add_executable(ry_tests
     tests/test_runtime_json.cpp
     tests/test_runtime_any.cpp
     tests/test_stdin.cpp
+    tests/test_entry_point.cpp
     tests/test_help.cpp
+    tests/test_trace.cpp
+    tests/test_codegen_arc.cpp
+    tests/test_runtime_gc.cpp
+    tests/test_codegen_type_safety.cpp
 )
 if(APPLE)
     target_link_libraries(ry_tests PRIVATE
@@ -208,12 +234,22 @@ else()
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
         GTest::gtest_main
         GTest::gmock
+        -Wl,--no-as-needed atomic -Wl,--as-needed
     )
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
 endif()
 
+target_compile_definitions(ry_tests PRIVATE RY_BINARY_PATH="$<TARGET_FILE:ry>")
 target_precompile_headers(ry_tests REUSE_FROM ry_lib)
 
 include(GoogleTest)
-gtest_discover_tests(ry_tests)
+if(ENABLE_ASAN)
+    # ASan 有効時は gtest_discover_tests を使わない（ビルド時のバイナリ実行で
+    # LLVM の container-overflow false positive が発生するため）
+    add_test(NAME ry_tests COMMAND ry_tests)
+    set_tests_properties(ry_tests PROPERTIES
+        ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+else()
+    gtest_discover_tests(ry_tests)
+endif()

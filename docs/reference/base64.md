@@ -53,13 +53,13 @@ match decode_url_safe(encoded):
 
 ### Working with Byte Data
 
-To encode/decode byte data, combine with `str_to_bytes` / `bytes_to_str` from `io`.
+To encode/decode byte data, combine with `to_bytes` / `bytes_to_str` from `io`.
 
 ```python
 from base64 import encode, decode
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-bytes = str_to_bytes("binary data")
+bytes = to_bytes("binary data")
 encoded = encode(bytes_to_str(bytes)?)
 ```
 
@@ -78,7 +78,7 @@ match decode("!!!not-valid!!!"):
 With the `?` operator:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

@@ -28,7 +28,7 @@ static std::pair<std::string, int> runRyStdin(const std::string &code) {
         close(pipeIn[0]);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl("./build/ry", "ry", nullptr);
+        execl(RY_BINARY_PATH, "ry", "-c", nullptr);
         _exit(127);
     }
 
@@ -78,7 +78,7 @@ TEST(StdinExecution, MultilineCode) {
 
 TEST(StdinExecution, IndentedCode) {
     auto [out, rc] = runRyStdin(
-        "fn add(x: int, y: int) -> int:\n"
+        "function add(x: int, y: int) -> int:\n"
         "    return x + y\n"
         "print(add(3, 4))");
     EXPECT_EQ(out, "7\n");
@@ -110,7 +110,7 @@ TEST(StdinExecution, FileExecutionStillWorks) {
         dup2(pipeOut[1], STDERR_FILENO);
         close(pipeOut[1]);
         setenv("RY_ENV", "internal", 1);
-        execl("./build/ry", "ry", tmp.c_str(), nullptr);
+        execl(RY_BINARY_PATH, "ry", tmp.c_str(), nullptr);
         _exit(127);
     }
 

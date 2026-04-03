@@ -1,5 +1,6 @@
 # Prerequisites
 *.d
+!changelog.d/
 
 # Compiled Object files
 *.slo
@@ -42,5 +43,6 @@
 
 # build files
 build/
+build-asan/
 
 .DS_Store

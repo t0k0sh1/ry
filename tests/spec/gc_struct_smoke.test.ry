@@ -1,0 +1,30 @@
+from gc import collect, enable, set_threshold
+
+# Smoke test: record types embedded in ADT enum variants compile and run
+# without crashes. Does not test actual cycle collection (Ry currently
+# lacks forward declarations needed for mutually recursive types).
+record Payload:
+    value: int
+    name: str
+
+enum Shape:
+    Circle(float)
+    Tagged(Payload)
+
+describe("Cycle Collector - Struct Visit Functions (smoke)", ():
+  it("ADT enum with record payload compiles and runs", ():
+    p = Payload(42, "hello")
+    s = Shape::Tagged(p)
+    c = Shape::Circle(3.14)
+
+    expect(p.value).to_eq(42)
+    expect(p.name).to_eq("hello")
+  )
+
+  it("gc.collect does not crash with record-in-ADT types", ():
+    enable()
+    set_threshold(10000)
+    n = collect()
+    expect(n >= 0).to_eq(true)
+  )
+)

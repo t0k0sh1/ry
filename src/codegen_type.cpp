@@ -29,6 +29,23 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     if (typeName == "u64")   return i64Ty_;
     if (typeName == "f32")   return f32Ty_;
 
+    // Weak reference type: "weak str", "weak List<int>"
+    if (isWeakTypeName(typeName)) {
+        std::string inner = weakInnerTypeName(typeName);
+        // Resolve aliases to canonical name
+        auto aliasIt = type_aliases_.find(inner);
+        std::string canonical = (aliasIt != type_aliases_.end()) ? resolveTypeAlias(inner) : inner;
+        // Extract base type name (before generic args)
+        std::string base = canonical;
+        auto ltPos = base.find('<');
+        if (ltPos != std::string::npos)
+            base = base.substr(0, ltPos);
+        if (base != "str" && base != "List" && base != "Map" && base != "Set")
+            codegenError("weak references require an ARC-managed type (str, List, Map, Set), got: " + inner);
+        resolveType(inner);  // validate inner type exists
+        return ptrTy_;  // weak ref stores a header pointer
+    }
+
     // Optional type suffix: "int?" -> Option<int>
     if (!typeName.empty() && typeName.back() == '?') {
         std::string inner = typeName.substr(0, typeName.size() - 1);
@@ -83,13 +100,12 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
         return unionTy;
     }
 
-    // Fixed-length array type: [T; N]
-    if (!typeName.empty() && typeName.front() == '[' && typeName.back() == ']') {
-        size_t semiPos = typeName.find(';');
-        if (semiPos != std::string::npos) {
-            std::string elemStr = typeName.substr(1, semiPos - 1);
-            while (!elemStr.empty() && elemStr.back() == ' ') elemStr.pop_back();
-            std::string sizeStr = typeName.substr(semiPos + 1, typeName.size() - semiPos - 2);
+    // Fixed-length array type: T[N]
+    if (!typeName.empty() && typeName.back() == ']') {
+        size_t bracketPos = typeName.find('[');
+        if (bracketPos != std::string::npos && bracketPos > 0) {
+            std::string elemStr = typeName.substr(0, bracketPos);
+            std::string sizeStr = typeName.substr(bracketPos + 1, typeName.size() - bracketPos - 2);
             size_t s = sizeStr.find_first_not_of(' ');
             if (s != std::string::npos) sizeStr = sizeStr.substr(s);
             while (!sizeStr.empty() && sizeStr.back() == ' ') sizeStr.pop_back();
@@ -120,6 +136,7 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
                 size_t e = elem.find_last_not_of(' ');
                 if (s != std::string::npos)
                     elem = elem.substr(s, e - s + 1);
+                if (elem.empty()) continue; // trailing comma
                 elementTypes.push_back(resolveType(elem));
                 start = i + 1;
             }
@@ -128,22 +145,12 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     }
 
     // fn(...) -> T function type → opaque pointer
-    if (typeName.size() > 3 && typeName.compare(0, 3, "fn(") == 0) {
+    if (typeName.size() > 9 && typeName.compare(0, 9, "function(") == 0) {
         return ptrTy_;
     }
 
-    // List<T> parsing
-    if (typeName.size() > 5 && typeName.compare(0, 5, "List<") == 0 && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Map<K, V> parsing
-    if (typeName.size() > 4 && typeName.compare(0, 4, "Map<") == 0 && typeName.back() == '>') {
-        return ptrTy_;
-    }
-
-    // Set<T> parsing
-    if (typeName.size() > 4 && typeName.compare(0, 4, "Set<") == 0 && typeName.back() == '>') {
+    // Collection type parsing (List<T>, Map<K, V>, Set<T>)
+    if (isCollectionTypeName(typeName) && typeName.back() == '>') {
         return ptrTy_;
     }
 
@@ -169,6 +176,9 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
 
     // JSON opaque handle type
     if (typeName == "JsonValue") return ptrTy_;
+
+    // Regex opaque type
+    if (typeName == "Regex") return ptrTy_;
 
     // Option<T> parsing
     if (typeName.size() > 7 && typeName.compare(0, 7, "Option<") == 0 && typeName.back() == '>') {
@@ -206,10 +216,26 @@ llvm::Type *CodeGen::resolveType(const std::string &typeName) {
     auto it = struct_types_.find(typeName);
     if (it != struct_types_.end()) return it->second.llvmType;
 
-    // enum name → i64
-    if (enum_types_.count(typeName)) return i64Ty_;
+    // enum name → i64 (simple) or ADT struct type
+    {
+        auto eit = enum_types_.find(typeName);
+        if (eit != enum_types_.end())
+            return eit->second.isADT ? eit->second.adtType : i64Ty_;
+    }
 
     codegenError("unknown type: " + typeName);
+}
+
+std::string CodeGen::findAdtEnumName(llvm::StructType *st) const {
+    for (auto &[name, info] : enum_types_)
+        if (info.isADT && info.adtType == st) return name;
+    return {};
+}
+
+std::string CodeGen::findStructTypeName(llvm::StructType *st) const {
+    for (auto &[name, info] : struct_types_)
+        if (info.llvmType == st) return name;
+    return findAdtEnumName(st);
 }
 
 llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
@@ -219,6 +245,26 @@ llvm::StructType *CodeGen::getOptionType(llvm::Type *innerTy) {
         *ctx_, {i1Ty_, innerTy}, "Option");
     option_types_[innerTy] = optTy;
     return optTy;
+}
+
+bool CodeGen::isTupleStructType(llvm::StructType *st) {
+    if (st->hasName()) {
+        std::string name = st->getName().str();
+        if (struct_types_.count(name)) return false;
+    }
+    for (auto &[name, info] : union_type_info_)
+        if (info.llvmType == st) return false;
+    if (isOptionType(st)) return false;
+    if (isResultType(st)) return false;
+    if (st == errorTy_) return false;
+    if (!findAdtEnumName(st).empty()) return false;
+    return true;
+}
+
+bool CodeGen::isNoneLiteral(const ExprNode &expr) {
+    return std::holds_alternative<NoneExpr>(expr.data) ||
+           (std::holds_alternative<VariableExpr>(expr.data) &&
+            std::get<VariableExpr>(expr.data).name == "None");
 }
 
 bool CodeGen::isOptionType(llvm::Type *ty) {
@@ -274,21 +320,36 @@ llvm::Value *CodeGen::buildStaticError(const std::string &msg, const std::string
     return errStruct;
 }
 
+std::vector<std::string> CodeGen::splitTypeArgs(const std::string &argsStr) {
+    std::vector<std::string> typeArgs;
+    std::string curr;
+    int angleBrackets = 0;
+    int parens = 0;
+    for (char c : argsStr) {
+        if (c == '<') angleBrackets++;
+        else if (c == '>') angleBrackets--;
+        else if (c == '(') parens++;
+        else if (c == ')') parens--;
+        else if (c == ',' && angleBrackets == 0 && parens == 0) {
+            typeArgs.push_back(curr);
+            curr.clear();
+            continue;
+        }
+        curr += c;
+    }
+    if (!curr.empty()) typeArgs.push_back(curr);
+    return typeArgs;
+}
+
 std::pair<llvm::Type*, llvm::Type*> CodeGen::parseMapTypeAnnotation(const std::string &typeStr) {
     std::string inner = typeStr.substr(4, typeStr.size() - 5);
-    size_t depth = 0;
-    for (size_t i = 0; i < inner.size(); ++i) {
-        if (inner[i] == '<') ++depth;
-        else if (inner[i] == '>') --depth;
-        else if (inner[i] == ',' && depth == 0) {
-            std::string kStr = inner.substr(0, i);
-            std::string vStr = inner.substr(i + 1);
-            while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
-            while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
-            return {resolveType(kStr), resolveType(vStr)};
-        }
-    }
-    return {nullptr, nullptr};
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return {nullptr, nullptr};
+    auto &kStr = parts[0];
+    auto &vStr = parts[1];
+    while (!kStr.empty() && kStr.back() == ' ') kStr.pop_back();
+    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+    return {resolveType(kStr), resolveType(vStr)};
 }
 
 llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
@@ -296,7 +357,7 @@ llvm::Type *CodeGen::getTaskResultType(llvm::Value *taskVal) {
 }
 
 CodeGen::FnTypeInfo CodeGen::parseFnTypeAnnotation(const std::string &typeStr) {
-    // Parse "fn(int, float) -> int"
+    // Parse "function(int, float) -> int"
     FnTypeInfo info;
     // Find the opening paren
     size_t openParen = typeStr.find('(');

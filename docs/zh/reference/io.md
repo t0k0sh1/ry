@@ -5,7 +5,7 @@
 标准输入输出与文件操作。所有函数均需从 `io` 明确导入。
 
 ```python
-from io import read_text, write_text, file_exists
+from io import read_text, write_text, exists
 ```
 
 ## 函数列表
@@ -24,7 +24,7 @@ from io import read_text, write_text, file_exists
 | `read_text` | `(str) -> Result<str, Error>` | 将整个文件作为字符串读取 |
 | `write_text` | `(str, str) -> Result<Unit, Error>` | 将字符串写入文件（覆盖） |
 | `append_text` | `(str, str) -> Result<Unit, Error>` | 在文件末尾追加字符串 |
-| `file_exists` | `(str) -> bool` | 检查文件是否存在 |
+| `exists` | `(str) -> bool` | 检查文件是否存在 |
 | `delete_file` | `(str) -> Result<Unit, Error>` | 删除文件 |
 | `read_bytes` | `(str) -> Result<List<u8>, Error>` | 将文件作为字节列表读取 |
 | `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | 将字节列表写入文件 |
@@ -33,7 +33,7 @@ from io import read_text, write_text, file_exists
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `str_to_bytes` | `(str) -> List<u8>` | 将字符串转换为 UTF-8 字节 |
+| `to_bytes` | `(str) -> List<u8>` | 将字符串转换为 UTF-8 字节 |
 | `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | 将字节列表转换为字符串 |
 
 ## 使用示例
@@ -41,7 +41,7 @@ from io import read_text, write_text, file_exists
 ### 读写文件
 
 ```python
-from io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, exists, delete_file
 
 match write_text("hello.txt", "Hello, World!"):
     case Ok(_):
@@ -53,11 +53,11 @@ match write_text("hello.txt", "Hello, World!"):
     case Err(e):
         print(e.message)
 
-print(file_exists("hello.txt"))   # true
+print(exists("hello.txt"))   # true
 
 match delete_file("hello.txt"):
     case Ok(_):
-        print(file_exists("hello.txt"))   # false
+        print(exists("hello.txt"))   # false
     case Err(e):
         print(e.message)
 ```
@@ -65,9 +65,9 @@ match delete_file("hello.txt"):
 ### 字节操作
 
 ```python
-from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
-bs = str_to_bytes("ABC")
+bs = to_bytes("ABC")
 print(length(bs))    # 3
 
 match write_bytes("data.bin", bs):

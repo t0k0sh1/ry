@@ -1,14 +1,16 @@
 #include "ry/runtime_json.hpp"
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_arc.hpp"
+#include "ry/runtime_list.hpp"
 
 #include <cctype>
+#include <new>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <vector>
 
 // ===== JsonValue definition =====
 
@@ -28,8 +30,16 @@ struct JsonValue {
 
 // ===== Memory management =====
 
+// Release internal fields without freeing the node itself.
+static void json_release_contents(JsonValue *v);
+
 static void json_free_recursive(JsonValue *v) {
     if (!v) return;
+    json_release_contents(v);
+    arc_free(v);
+}
+
+static void json_release_contents(JsonValue *v) {
     switch (v->type) {
         case JsonType::String: free(v->string_val); break;
         case JsonType::Array:
@@ -47,7 +57,6 @@ static void json_free_recursive(JsonValue *v) {
             break;
         default: break;
     }
-    delete v;
 }
 
 // ===== Parser =====
@@ -102,13 +111,44 @@ struct Parser {
 
     JsonValue *parse_string() {
         pos++; // skip opening "
+
+        // Fast path: scan for closing quote without backslash (common case)
+        size_t scan = pos;
+        while (scan < src_len && src[scan] != '"' && src[scan] != '\\')
+            scan++;
+        if (scan < src_len && src[scan] == '"') {
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
+            v->type = JsonType::String;
+            v->string_val = strndup(src + pos, scan - pos);
+            if (!v->string_val) { arc_free(v); error = "out of memory"; return nullptr; }
+            pos = scan + 1;
+            return v;
+        }
+
+        // Slow path: string contains escape sequences
         std::string buf;
+        // Pre-fill with already-scanned clean prefix (avoids re-scanning)
+        if (scan > pos) {
+            buf.append(src + pos, scan - pos);
+            pos = scan;
+        }
         while (!at_end()) {
             char c = advance();
             if (c == '"') {
-                auto *v = new JsonValue;
+                void *mem = arc_alloc(sizeof(JsonValue));
+                if (!mem) {
+                    error = "out of memory";
+                    return nullptr;
+                }
+                auto *v = new (mem) JsonValue;
                 v->type = JsonType::String;
                 v->string_val = strdup(buf.c_str());
+                if (!v->string_val) { arc_free(v); error = "out of memory"; return nullptr; }
                 return v;
             }
             if (c == '\\') {
@@ -200,23 +240,29 @@ struct Parser {
             }
             while (!at_end() && isdigit((unsigned char)src[pos])) pos++;
         }
-        std::string numstr(src + start, pos - start);
-        auto *v = new JsonValue;
+        // src is NUL-terminated and pos sits at a non-numeric character
+        // (delimiter, whitespace, or NUL), so strtod/strtoll stop correctly.
+        void *mem = arc_alloc(sizeof(JsonValue));
+        if (!mem) {
+            error = "out of memory";
+            return nullptr;
+        }
+        auto *v = new (mem) JsonValue;
         if (is_float) {
             v->type = JsonType::Float;
             errno = 0;
-            v->float_val = strtod(numstr.c_str(), nullptr);
+            v->float_val = strtod(src + start, nullptr);
             if (!std::isfinite(v->float_val)) {
-                delete v;
+                arc_free(v);
                 error = "number out of range at position " + std::to_string(start);
                 return nullptr;
             }
         } else {
             v->type = JsonType::Int;
             errno = 0;
-            v->int_val = strtoll(numstr.c_str(), nullptr, 10);
+            v->int_val = strtoll(src + start, nullptr, 10);
             if (errno == ERANGE) {
-                delete v;
+                arc_free(v);
                 error = "integer overflow at position " + std::to_string(start);
                 return nullptr;
             }
@@ -228,7 +274,12 @@ struct Parser {
         if (strncmp(src + pos, "true", 4) == 0 &&
             (src[pos+4] == '\0' || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
-            auto *v = new JsonValue;
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
             v->type = JsonType::Bool;
             v->bool_val = true;
             return v;
@@ -236,7 +287,12 @@ struct Parser {
         if (strncmp(src + pos, "false", 5) == 0 &&
             (src[pos+5] == '\0' || !isalnum((unsigned char)src[pos+5]))) {
             pos += 5;
-            auto *v = new JsonValue;
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
             v->type = JsonType::Bool;
             v->bool_val = false;
             return v;
@@ -249,7 +305,12 @@ struct Parser {
         if (strncmp(src + pos, "null", 4) == 0 &&
             (src[pos+4] == '\0' || !isalnum((unsigned char)src[pos+4]))) {
             pos += 4;
-            auto *v = new JsonValue;
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
             v->type = JsonType::Null;
             return v;
         }
@@ -260,56 +321,107 @@ struct Parser {
     JsonValue *parse_array() {
         pos++; // skip [
         skip_ws();
-        std::vector<JsonValue*> items;
         if (!at_end() && peek() == ']') {
             pos++;
-            auto *v = new JsonValue;
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
             v->type = JsonType::Array;
             v->array_val.items = nullptr;
             v->array_val.len = 0;
             return v;
         }
+
+        size_t cap = 8, len = 0;
+        JsonValue **items = (JsonValue**)malloc(sizeof(JsonValue*) * cap);
+        if (!items) { error = "out of memory"; return nullptr; }
+
         while (true) {
             JsonValue *item = parse_value();
             if (!item) {
-                for (auto *i : items) json_free_recursive(i);
+                for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+                free(items);
                 return nullptr;
             }
-            items.push_back(item);
+            if (len == cap) {
+                if (cap > SIZE_MAX / 2 / sizeof(JsonValue*)) {
+                    json_free_recursive(item);
+                    for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+                    free(items);
+                    error = "array too large";
+                    return nullptr;
+                }
+                cap *= 2;
+                JsonValue **tmp = (JsonValue**)realloc(items, sizeof(JsonValue*) * cap);
+                if (!tmp) {
+                    json_free_recursive(item);
+                    for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+                    free(items);
+                    error = "out of memory";
+                    return nullptr;
+                }
+                items = tmp;
+            }
+            items[len++] = item;
             skip_ws();
             if (at_end()) { error = "unterminated array"; break; }
             if (peek() == ']') { pos++; break; }
             if (!expect(',')) {
-                for (auto *i : items) json_free_recursive(i);
+                for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+                free(items);
                 return nullptr;
             }
         }
         if (!error.empty()) {
-            for (auto *i : items) json_free_recursive(i);
+            for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+            free(items);
             return nullptr;
         }
-        auto *v = new JsonValue;
+        void *mem = arc_alloc(sizeof(JsonValue));
+        if (!mem) {
+            for (size_t i = 0; i < len; i++) json_free_recursive(items[i]);
+            free(items);
+            error = "out of memory";
+            return nullptr;
+        }
+        auto *v = new (mem) JsonValue;
         v->type = JsonType::Array;
-        v->array_val.len = (int64_t)items.size();
-        v->array_val.items = (JsonValue**)malloc(sizeof(JsonValue*) * items.size());
-        memcpy(v->array_val.items, items.data(), sizeof(JsonValue*) * items.size());
+        v->array_val.len = (int64_t)len;
+        v->array_val.items = items;
         return v;
     }
 
     JsonValue *parse_object() {
         pos++; // skip {
         skip_ws();
-        std::vector<char*> keys;
-        std::vector<JsonValue*> values;
         if (!at_end() && peek() == '}') {
             pos++;
-            auto *v = new JsonValue;
+            void *mem = arc_alloc(sizeof(JsonValue));
+            if (!mem) {
+                error = "out of memory";
+                return nullptr;
+            }
+            auto *v = new (mem) JsonValue;
             v->type = JsonType::Object;
             v->object_val.keys = nullptr;
             v->object_val.values = nullptr;
             v->object_val.len = 0;
             return v;
         }
+
+        size_t cap = 8, len = 0;
+        char **keys = (char**)malloc(sizeof(char*) * cap);
+        JsonValue **vals = (JsonValue**)malloc(sizeof(JsonValue*) * cap);
+        if (!keys || !vals) { free(keys); free(vals); error = "out of memory"; return nullptr; }
+
+        auto cleanup = [&]() {
+            for (size_t i = 0; i < len; i++) { free(keys[i]); json_free_recursive(vals[i]); }
+            free(keys); free(vals);
+        };
+
         while (true) {
             skip_ws();
             if (at_end() || peek() != '"') {
@@ -320,15 +432,35 @@ struct Parser {
             if (!keyVal) break;
             char *key = keyVal->string_val;
             keyVal->string_val = nullptr;
-            delete keyVal;
+            arc_free(keyVal);
 
             if (!expect(':')) { free(key); break; }
 
             JsonValue *val = parse_value();
             if (!val) { free(key); break; }
 
-            keys.push_back(key);
-            values.push_back(val);
+            if (len == cap) {
+                if (cap > SIZE_MAX / 2 / sizeof(JsonValue*)) {
+                    free(key); json_free_recursive(val);
+                    error = "object too large"; cleanup(); return nullptr;
+                }
+                cap *= 2;
+                char **tmp_keys = (char**)realloc(keys, sizeof(char*) * cap);
+                if (!tmp_keys) {
+                    free(key); json_free_recursive(val);
+                    error = "out of memory"; cleanup(); return nullptr;
+                }
+                keys = tmp_keys;
+                JsonValue **tmp_vals = (JsonValue**)realloc(vals, sizeof(JsonValue*) * cap);
+                if (!tmp_vals) {
+                    free(key); json_free_recursive(val);
+                    error = "out of memory"; cleanup(); return nullptr;
+                }
+                vals = tmp_vals;
+            }
+            keys[len] = key;
+            vals[len] = val;
+            len++;
 
             skip_ws();
             if (at_end()) { error = "unterminated object"; break; }
@@ -336,17 +468,20 @@ struct Parser {
             if (!expect(',')) break;
         }
         if (!error.empty()) {
-            for (auto *k : keys) free(k);
-            for (auto *v : values) json_free_recursive(v);
+            cleanup();
             return nullptr;
         }
-        auto *v = new JsonValue;
+        void *mem = arc_alloc(sizeof(JsonValue));
+        if (!mem) {
+            cleanup();
+            error = "out of memory";
+            return nullptr;
+        }
+        auto *v = new (mem) JsonValue;
         v->type = JsonType::Object;
-        v->object_val.len = (int64_t)keys.size();
-        v->object_val.keys = (char**)malloc(sizeof(char*) * keys.size());
-        v->object_val.values = (JsonValue**)malloc(sizeof(JsonValue*) * values.size());
-        memcpy(v->object_val.keys, keys.data(), sizeof(char*) * keys.size());
-        memcpy(v->object_val.values, values.data(), sizeof(JsonValue*) * values.size());
+        v->object_val.len = (int64_t)len;
+        v->object_val.keys = keys;
+        v->object_val.values = vals;
         return v;
     }
 
@@ -439,13 +574,13 @@ static void stringify_value(const JsonValue *v, std::string &out,
     }
 }
 
-// ===== ListHeader (matches IOListHeader in runtime_io.hpp) =====
-
-struct ListHeader {
-    int64_t len;
-    int64_t cap;
-    void *data;
-};
+// Allocate a C string copy using known size (avoids strlen in strdup).
+static char *string_to_cstr(const std::string &s) {
+    size_t len = s.size();
+    char *r = (char *)malloc(len + 1);
+    if (r) { memcpy(r, s.data(), len); r[len] = '\0'; }
+    return r;
+}
 
 // ===== extern "C" implementations =====
 
@@ -476,7 +611,7 @@ const char *__ry_json_stringify(void *value) {
     auto *v = (JsonValue*)value;
     std::string out;
     stringify_value(v, out, 0, 0, false);
-    return strdup(out.c_str());
+    return string_to_cstr(out);
 }
 
 const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
@@ -487,7 +622,7 @@ const char *__ry_json_stringify_pretty(void *value, int64_t indent) {
     } else {
         stringify_value(v, out, (int)indent, 0, true);
     }
-    return strdup(out.c_str());
+    return string_to_cstr(out);
 }
 
 const char *__ry_json_type(void *value) {
@@ -619,26 +754,37 @@ int64_t __ry_json_len(void *value) {
 }
 
 void *__ry_json_keys(void *value) {
-    auto *header = (ListHeader*)malloc(sizeof(ListHeader));
-    if (!value || ((JsonValue*)value)->type != JsonType::Object) {
-        header->len = 0;
-        header->cap = 1;
-        header->data = malloc(sizeof(const char*));
-        return header;
+    if (!value) {
+        __ry_set_last_error("json_keys: value is null");
+        return nullptr;
     }
-    auto *v = (JsonValue*)value;
+    auto *v = static_cast<JsonValue*>(value);
+    if (v->type != JsonType::Object) {
+        __ry_set_last_error("json_keys: value is not an object");
+        return nullptr;
+    }
     int64_t len = v->object_val.len;
-    header->len = len;
-    header->cap = len > 0 ? len : 1;
-    auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
-    for (int64_t i = 0; i < len; i++)
-        data[i] = strdup(v->object_val.keys[i]);
-    header->data = data;
-    return header;
+    try {
+        std::vector<std::string> keys;
+        keys.reserve(static_cast<size_t>(len));
+        for (int64_t i = 0; i < len; i++)
+            keys.emplace_back(v->object_val.keys[i]);
+        if (auto *result = makeStringList(keys))
+            return result;
+    } catch (const std::exception &) {
+    }
+    __ry_set_last_error("json_keys: out of memory");
+    return nullptr;
 }
 
 void __ry_json_free(void *value) {
     json_free_recursive((JsonValue*)value);
+}
+
+void __ry_json_cleanup(void *value) {
+    auto *v = (JsonValue*)value;
+    if (!v) return;
+    json_release_contents(v);
 }
 
 } // extern "C"

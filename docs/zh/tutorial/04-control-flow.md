@@ -1,29 +1,27 @@
-[English](../../tutorial/04-control-flow.md) | [日本語](../../ja/tutorial/04-control-flow.md) | [繁體中文](04-control-flow.md)
+[English](../../tutorial/04-control-flow.md) | [日本語](../../ja/tutorial/04-control-flow.md) | [简体中文](04-control-flow.md)
 
-# 控制流程
+# 控制流
 
-[← 前一篇：運算子](03-operators.md) | [下一篇：函式 →](05-functions.md)
+[<- 上一篇：运算符](03-operators.md) | [下一篇：函数 ->](05-functions.md)
 
 ---
 
-## if / elif / else
+## if / else
 
-使用 `if` 根據條件進行分支處理。
+使用 `if` 根据条件进行分支处理。
 
 ```python
 x = 10
 
 if x > 0:
     print(x)
-elif x == 0:
-    print(0)
 else:
-    print(-1)
+    print(0)
 ```
 
-- `elif` 和 `else` 可以省略。
-- 條件式不限於 `bool`，也可以指定其他型別。對於 `int`，`0` 視為假，非 `0` 視為真。
-- `if` 可以巢狀使用。
+- `else` 可以省略。
+- 条件不限于 `bool` 值。对于 `int`，`0` 视为假，非 `0` 视为真。
+- `if` 语句可以嵌套。
 
 ```python
 a = 5
@@ -36,9 +34,87 @@ if a > 0:
 
 ---
 
-## while 迴圈
+## when
 
-當條件為真時，重複執行區塊。
+使用 `when:` 进行多分支条件判断，或使用 `match value:` 进行模式匹配。
+
+### 条件分支 `when:`
+
+```python
+x = -2
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+当需要链接多个分支时，这是推荐的形式。
+
+### 模式匹配 `match value:`
+
+```python
+enum Color:
+    Red
+    Green
+    Blue
+
+c = Color::Green
+match c:
+    case Color::Red:
+        print("red")
+    case Color::Green:
+        print("green")
+    case Color::Blue:
+        print("blue")
+```
+
+使用此形式安全地解构 enum、`Option`、`Result` 和字面值模式。
+
+### `when:` 表达式
+
+`when:` 也可以用作表达式。`else =>` 分支是必需的。
+
+```python
+label = when:
+    score >= 90 => "A"
+    score >= 80 => "B"
+    else => "C"
+```
+
+这替代了嵌套的三元表达式，使多分支值选择更具可读性。
+
+### `match` 表达式
+
+`match` 也可以用作表达式，使用 `=>` 从每个分支返回值。
+
+```python
+res = match x:
+    case Some(v) => v
+    case None    => 0
+
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+category = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+```
+
+match 表达式支持与 match 语句相同的所有模式：字面值、变量、enum、`Option`、`Result`、OR 模式（`|`）、守卫（`if`）和通配符（`_`）。匹配必须是穷尽的。
+
+---
+
+## while 循环
+
+当条件为真时，重复执行块。
 
 ```python
 i = 3
@@ -52,9 +128,9 @@ while i > 0:
 
 ---
 
-## for 迴圈與 range
+## for 循环与 range
 
-可使用列表或 `range` 進行迭代。
+可使用列表或 `range` 进行迭代。
 
 ```python
 for x in [1, 2, 3]:
@@ -64,7 +140,7 @@ for x in [1, 2, 3]:
 # 3
 ```
 
-`range(n)` 產生從 `0` 到 `n - 1` 的整數。
+`range(n)` 产生从 `0` 到 `n - 1` 的整数。
 
 ```python
 for i in range(5):
@@ -76,7 +152,7 @@ for i in range(5):
 # 4
 ```
 
-`range(start, end)` 產生從 `start` 到 `end - 1` 的整數。
+`range(start, end)` 产生从 `start` 到 `end - 1` 的整数。
 
 ```python
 for i in range(2, 5):
@@ -86,7 +162,7 @@ for i in range(2, 5):
 # 4
 ```
 
-`..` 範圍運算子建立包含兩端的範圍。`1 .. 3` 產生 `[1, 2, 3]`。
+`..` 范围运算符创建包含两端的范围：`1 .. 3` 产生 `[1, 2, 3]`。
 
 ```python
 for i in 1 .. 3:
@@ -96,7 +172,7 @@ for i in 1 .. 3:
 # 3
 ```
 
-使用 `for k, v in map` 可以走訪映射的鍵值對。
+使用 `for k, v in map` 可以遍历映射的键值对：
 
 ```python
 m = {"x": 10, "y": 20}
@@ -107,9 +183,9 @@ for k, v in m:
 
 ---
 
-## break 與 continue
+## break 与 continue
 
-`break` 立即跳出迴圈。`continue` 跳過目前的迭代，進入下一次迭代。
+`break` 立即跳出循环。`continue` 跳过当前迭代，进入下一次迭代。
 
 ```python
 for i in range(10):
@@ -122,7 +198,7 @@ for i in range(10):
 # 3
 ```
 
-在 `while` 中也可同樣使用。
+在 `while` 循环中也可同样使用。
 
 ```python
 n = 0
@@ -139,13 +215,13 @@ while true:
 # 7
 ```
 
-> **注意**：在巢狀迴圈中，`break` / `continue` 僅作用於最內層的迴圈。在迴圈外使用會產生編譯錯誤。
+> **注意**：在嵌套循环中，`break` / `continue` 仅作用于最内层的循环。在循环外使用会产生编译错误。
 
 ---
 
-## 巢狀範例
+## 嵌套示例
 
-`for` 和 `while` 可以巢狀使用。
+`for` 和 `while` 循环可以嵌套。
 
 ```python
 for i in range(1, 4):
@@ -163,23 +239,23 @@ for i in range(1, 4):
 
 ---
 
-## 作用域規則
+## 作用域规则
 
-控制流程的區塊具有作用域。
+控制流块有自己的作用域。
 
-### 區塊作用域
+### 块作用域
 
-在區塊內宣告的變數無法從區塊外部參照。
+在块内声明的变量无法从块外部引用。
 
 ```python
 if true:
     inner = 42
-# 在此處參照 inner 會產生編譯錯誤
+# 在此处引用 inner 会产生编译错误
 ```
 
-### 參照與重新賦值外部變數
+### 引用与重新赋值外部变量
 
-可以從區塊內參照和重新賦值外部的變數。
+可以从块内引用和重新赋值外部的变量。
 
 ```python
 count = 0
@@ -188,9 +264,9 @@ for i in range(5):
 print(count)   # 10
 ```
 
-### 內層作用域的重新賦值
+### 内层作用域的重新赋值
 
-在區塊內對變數賦值會修改外層的變數（Python 風格的作用域）。不會產生遮蔽——內層的賦值會修改同一個變數。
+在块内对变量赋值会修改外层的变量（Python 风格的作用域）。不会产生遮蔽 —— 内层的赋值会修改同一个变量。
 
 ```python
 x = 1
@@ -202,9 +278,9 @@ print(x)       # 99
 
 ---
 
-## match
+## 模式匹配
 
-`match` 是根據值進行分支的語法，可安全地處理 enum 和 Option。
+`match value:` 安全地对 enum、`Option`、`Result` 和字面值进行分支。
 
 ```python
 enum Color:
@@ -223,9 +299,9 @@ match c:
 # green
 ```
 
-### Option 的匹配
+### Option 匹配
 
-使用 `match` 可以安全地處理 `None` 的情況。
+使用 `match value:` 安全地处理 `Some` 和 `None` 两种情况。
 
 ```python
 x: Option<int> = Some(42)
@@ -237,9 +313,9 @@ match x:
 # 42
 ```
 
-### 萬用字元與字面值
+### 通配符与字面值
 
-`_` 是可匹配任何值的萬用字元模式。也可以使用字面值（數值、字串、布林值）進行匹配。
+`_` 是匹配任何值的通配符模式。也可以使用字面值（数字、字符串、布尔值）进行匹配。
 
 ```python
 n = 5
@@ -253,9 +329,9 @@ match n:
 # other
 ```
 
-### guard 子句
+### 守卫子句
 
-可以使用 `if` 新增守衛條件。
+可以使用 `if` 添加守卫条件。
 
 ```python
 match n:
@@ -267,8 +343,8 @@ match n:
         print("zero")
 ```
 
-> **注意**：`match` 必須涵蓋所有模式。enum 必須包含所有變體，Option 必須包含 `Some` 和 `None`，字面值則需要 `_`。
+> **注意**：`match value:` 必须是穷尽的。对于 enum，必须覆盖所有变体。对于 Option，需要同时覆盖 `Some` 和 `None`。对于字面值，需要 `_` 通配符。
 
 ---
 
-[← 前一篇：運算子](03-operators.md) | [下一篇：函式 →](05-functions.md)
+[<- 上一篇：运算符](03-operators.md) | [下一篇：函数 ->](05-functions.md)

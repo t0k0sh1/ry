@@ -1,8 +1,8 @@
-from net import bind, listen, accept, connect, listener_port, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
-from io import str_to_bytes, bytes_to_str
+from net import bind, listen, accept, connect, listener_port, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
+from io import to_bytes, bytes_to_str
 
-describe("TCP socket API", fn():
-  it("bind returns Ok on valid address", fn():
+describe("TCP socket API", ():
+  it("bind returns Ok on valid address", ():
     match bind("127.0.0.1", 0):
       case Ok(server):
         close(server)
@@ -10,7 +10,7 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("listen returns Ok on valid listener", fn():
+  it("listen returns Ok on valid listener", ():
     match bind("127.0.0.1", 0):
       case Ok(server):
         match listen(server, 1):
@@ -22,7 +22,7 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("tls_connect to closed port returns Err", fn():
+  it("tls_connect to closed port returns Err", ():
     match tls_connect("127.0.0.1", 19991):
       case Ok(conn):
         close(conn)
@@ -30,7 +30,7 @@ describe("TCP socket API", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("connect to closed port returns Err", fn():
+  it("connect to closed port returns Err", ():
     match connect("127.0.0.1", 19998):
       case Ok(conn):
         close(conn)
@@ -38,8 +38,8 @@ describe("TCP socket API", fn():
       case Err(e):
         expect(true).to_eq(true)
   )
-  it("set_recv_timeout causes recv to return Err on timeout", fn():
-    async fn timeout_server(server: TcpListener) -> str:
+  it("set_receive_timeout causes receive to return Err on timeout", ():
+    async function timeout_server(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
           sleep(500)
@@ -56,8 +56,8 @@ describe("TCP socket API", fn():
             t = timeout_server(server)
             match connect("127.0.0.1", port):
               case Ok(conn):
-                set_recv_timeout(conn, 100)
-                match recv(conn, 4096):
+                set_receive_timeout(conn, 100)
+                match receive(conn, 4096):
                   case Ok(data):
                     fail("expected Err but got Ok")
                   case Err(e):
@@ -71,15 +71,15 @@ describe("TCP socket API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("echo round-trip with async fn", fn():
-    async fn run_server(server: TcpListener) -> str:
+  it("echo round-trip with async function", ():
+    async function run_server(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
-          match recv(conn, 4096):
+          match receive(conn, 4096):
             case Ok(data):
               match bytes_to_str(data):
                 case Ok(msg):
-                  match send(conn, str_to_bytes("echo:" + msg)):
+                  match send(conn, to_bytes("echo:" + msg)):
                     case Ok(_):
                       ...
                     case Err(e):
@@ -93,15 +93,15 @@ describe("TCP socket API", fn():
           ...
       close(server)
       return "done"
-    fn run_client(port: int) -> str:
+    function run_client(port: int) -> str:
       match connect("127.0.0.1", port):
         case Ok(conn):
-          match send(conn, str_to_bytes("hello")):
+          match send(conn, to_bytes("hello")):
             case Ok(_):
               ...
             case Err(e):
               ...
-          match recv(conn, 4096):
+          match receive(conn, 4096):
             case Ok(resp):
               match bytes_to_str(resp):
                 case Ok(msg):

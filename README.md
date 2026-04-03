@@ -15,12 +15,14 @@
 - **Rich Type System** — `int`, `float`, `bool`, `str`, `Option<T>`, `Error`, tuples, `List<T>`, `Map<K,V>`, `Set<T>`, `enum`, function types, user-defined structs
 - **Operators** — Arithmetic, comparison, logical, bitwise (`>>>` logical right shift), compound assignment, `in` / `not in`, string repetition (`"ab" * 3`), `as` type cast, with operator overloading support
 - **F-String** — String interpolation with `f"Hello {name}"`
-- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (struct invariants), `old()`, `result`
+- **Design by Contract** — `require` (preconditions), `ensure` (postconditions), `invariant` (record invariants), `old()`, `result`
 - **Directives** — `@deprecated` compile-time metadata annotations
-- **Functions** — `fn` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
-- **Control Flow** — `if`/`elif`/`else`, `while`, `for...in`, `break`/`continue`
+- **Functions** — `function` definitions, recursion, overloading, lambdas (closures), higher-order functions, UFCS
+- **Control Flow** — `if`/`else`, `when`, `while`, `for...in`, `break`/`continue`
 - **File I/O** — File read/write, byte operations, standard input (`std.io`)
+- **Filesystem** — Directory listing, recursive walk, glob, copy, move, remove, permissions (`std.filesystem`)
 - **Packages** — Directory-based packages, auto-imported `std` library, `from ... import ...`
+- **Concurrency** — `async`/`await` with work-stealing scheduler, `@parallel` for loops, native thread API (`std.thread`)
 - **Type Safety** — Type inference, type annotations, immutable type bindings, `@const` directive
 
 ## Sample Code
@@ -32,7 +34,7 @@ name: str = "hello"
 pi = 3.14159
 
 # Function definition
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -41,15 +43,15 @@ print(factorial(5))    # 120
 
 # Lambdas and closures
 offset = 10
-add_offset = (x: int): int => x + offset
+add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
 # Structs
-type Point:
+record Point:
     x: int
     y: int
 
-fn operator+(a: Point, b: Point) -> Point:
+function operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
 p = Point(1, 2) + Point(3, 4)
@@ -67,7 +69,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # Stream-like operations (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # Enums
@@ -118,18 +120,21 @@ cmake --build build
 
 ```bash
 ry <file.ry>              # Run a Ry script
-echo '<code>' | ry         # Run code from stdin
+echo '<code>' | ry -c      # Run code from stdin
 ry test [options] [path]   # Run tests (*.test.ry)
 ry init                    # Initialize a project in current directory
 ry new <name>              # Create a new project
+ry run [<script-name>]     # Run a project script
 ry fmt [options] [path]    # Format source files
 ry self-update             # Update ry itself
 ```
 
+The `self-update` command verifies release artifacts using Ed25519 signature verification and SHA-256 checksums. Signature verification is required by default; if the signature file is unavailable, the update is aborted. Set `RY_SKIP_SIGNATURE=1` to allow proceeding when the signature file is missing (not recommended). Invalid signatures always abort the update regardless of this setting.
+
 Stdin also supports here-documents:
 
 ```bash
-ry <<'RY'
+ry -c <<'RY'
 a = 1
 b = 2
 print(a + b)
@@ -137,6 +142,16 @@ RY
 ```
 
 Run `ry <command> --help` for detailed options.
+
+For internal execution analysis, Ry also supports a structured trace mode:
+
+```bash
+ry --trace app/main.ry
+ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
+ry test --trace tests/spec
+```
+
+`--trace` emits JSON Lines to stderr by default. Use `--trace-out` to redirect the trace stream to a file while keeping program stdout unchanged.
 
 ## Development
 

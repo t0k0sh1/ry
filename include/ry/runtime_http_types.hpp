@@ -172,6 +172,19 @@ inline const char *find_in_kv_pairs(char **keys, char **vals, int64_t count,
 }
 
 // ---------------------------------------------------------------------------
+// CRLF validation — used by both client and server paths to prevent
+// HTTP request/response splitting via injected CR/LF in headers.
+// ---------------------------------------------------------------------------
+
+inline bool has_crlf(const char *s) {
+    if (!s) return false;
+    for (; *s; s++) {
+        if (*s == '\r' || *s == '\n') return true;
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // Header parsing helpers
 // ---------------------------------------------------------------------------
 

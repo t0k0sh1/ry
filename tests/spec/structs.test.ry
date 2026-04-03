@@ -6,18 +6,18 @@ record Circle:
   center: Point
   radius: float
 
-describe("record", fn():
-  it("constructor and field access", fn():
+describe("record", ():
+  it("constructor and field access", ():
     p = Point(10, 20)
     expect(p.x).to_eq(10)
     expect(p.y).to_eq(20)
   )
-  it("var field assignment", fn():
+  it("var field assignment", ():
     p = Point(10, 20)
     p.x = 100
     expect(p.x).to_eq(100)
   )
-  it("nested record", fn():
+  it("nested record", ():
     c = Circle(Point(0, 0), 1.0)
     expect(c.center.x).to_eq(0)
     expect(c.center.y).to_eq(0)
@@ -25,26 +25,26 @@ describe("record", fn():
   )
 )
 
-describe("record to_str", fn():
-  it("auto-generated to_str", fn():
+describe("record to_str", ():
+  it("auto-generated to_str", ():
     p = Point(10, 20)
     expect(to_str(p)).to_eq("Point(x: 10, y: 20)")
   )
-  it("f-string interpolation", fn():
+  it("f-string interpolation", ():
     p = Point(3, 4)
     expect(f"{p}").to_eq("Point(x: 3, y: 4)")
   )
-  it("nested record to_str", fn():
+  it("nested record to_str", ():
     c = Circle(Point(1, 2), 3.14)
     expect(to_str(c)).to_eq("Circle(center: Point(x: 1, y: 2), radius: 3.14)")
   )
-  it("user-defined to_str overrides auto-generated", fn():
-    fn to_str(p: Point) -> str:
+  it("user-defined to_str overrides auto-generated", ():
+    function to_str(p: Point) -> str:
       return f"({p.x}, {p.y})"
     p = Point(5, 6)
     expect(to_str(p)).to_eq("(5, 6)")
   )
-  it("string field", fn():
+  it("string field", ():
     record Person:
       name: str
       age: int
@@ -62,35 +62,38 @@ record Mixed:
 record AlwaysEqual:
   x: int
 
-fn operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
+function operator==(a: AlwaysEqual, b: AlwaysEqual) -> bool:
   return true
 
-describe("record equality", fn():
-  it("equal records", fn():
+describe("record equality", ():
+  it("zero fields equal", ():
+    expect(Point(0, 0) == Point(0, 0)).to_be_true()
+  )
+  it("equal records", ():
     expect(Point(1, 2) == Point(1, 2)).to_be_true()
   )
-  it("unequal records", fn():
+  it("unequal records", ():
     expect(Point(1, 2) == Point(3, 4)).to_be_false()
   )
-  it("!= operator", fn():
+  it("!= operator", ():
     expect(Point(1, 2) != Point(3, 4)).to_be_true()
     expect(Point(1, 2) != Point(1, 2)).to_be_false()
   )
-  it("mixed field types", fn():
+  it("mixed field types", ():
     a = Mixed("hello", 42, 3.14, true)
     b = Mixed("hello", 42, 3.14, true)
     c = Mixed("world", 42, 3.14, true)
     expect(a == b).to_be_true()
     expect(a != c).to_be_true()
   )
-  it("nested record equality", fn():
+  it("nested record equality", ():
     c1 = Circle(Point(0, 0), 1.0)
     c2 = Circle(Point(0, 0), 1.0)
     c3 = Circle(Point(1, 0), 1.0)
     expect(c1 == c2).to_be_true()
     expect(c1 != c3).to_be_true()
   )
-  it("user-defined operator== takes precedence", fn():
+  it("user-defined operator== takes precedence", ():
     # AlwaysEqual always returns true regardless of field values
     expect(AlwaysEqual(1) == AlwaysEqual(2)).to_be_true()
   )
@@ -101,16 +104,16 @@ enum Color:
   Green
   Blue
 
-describe("simple enum", fn():
-  it("variant access", fn():
+describe("simple enum", ():
+  it("variant access", ():
     c = Color::Red
     expect(c == Color::Red).to_be_true()
   )
-  it("comparison", fn():
+  it("comparison", ():
     expect(Color::Red == Color::Red).to_be_true()
     expect(Color::Red != Color::Green).to_be_true()
   )
-  it("match", fn():
+  it("when", ():
     res = ""
     c = Color::Blue
     match c:
@@ -122,6 +125,11 @@ describe("simple enum", fn():
         res = "blue"
     expect(res).to_eq("blue")
   )
+  it("to_str shows variant name", ():
+    expect(to_str(Color::Red)).to_eq("Red")
+    expect(to_str(Color::Green)).to_eq("Green")
+    expect(to_str(Color::Blue)).to_eq("Blue")
+  )
 )
 
 enum Shape:
@@ -129,8 +137,8 @@ enum Shape:
   RectS(float, float)
   PointS
 
-describe("ADT enum", fn():
-  it("associated data", fn():
+describe("ADT enum", ():
+  it("associated data", ():
     s = Shape::CircleS(3.14)
     res = 0.0
     match s:
@@ -142,7 +150,7 @@ describe("ADT enum", fn():
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field pattern match", fn():
+  it("multi-field pattern when", ():
     s = Shape::RectS(4.0, 5.0)
     res = 0.0
     match s:
@@ -161,8 +169,8 @@ enum NamedShape:
   Rect(width: float, height: float)
   Point
 
-describe("ADT enum with named fields", fn():
-  it("construction is positional", fn():
+describe("ADT enum with named fields", ():
+  it("construction is positional", ():
     s = NamedShape::Circle(3.14)
     res = 0.0
     match s:
@@ -174,7 +182,7 @@ describe("ADT enum with named fields", fn():
         res = 0.0
     expect(res).to_eq(3.14)
   )
-  it("multi-field named variant", fn():
+  it("multi-field named variant", ():
     s = NamedShape::Rect(4.0, 5.0)
     res = 0.0
     match s:
@@ -198,16 +206,16 @@ enum Permission:
   Write = 2
   Execute = 4
 
-describe("explicit enum values", fn():
-  it("variant access with explicit value", fn():
+describe("explicit enum values", ():
+  it("variant access with explicit value", ():
     s = HttpStatus::Ok
     expect(s == HttpStatus::Ok).to_be_true()
   )
-  it("comparison with explicit values", fn():
+  it("comparison with explicit values", ():
     expect(HttpStatus::Ok == HttpStatus::Ok).to_be_true()
     expect(HttpStatus::Ok != HttpStatus::NotFound).to_be_true()
   )
-  it("match with explicit values", fn():
+  it("when with explicit values", ():
     res = ""
     s = HttpStatus::NotFound
     match s:
@@ -219,11 +227,11 @@ describe("explicit enum values", fn():
         res = "error"
     expect(res).to_eq("not found")
   )
-  it("print shows variant name", fn():
+  it("print shows variant name", ():
     s = HttpStatus::Ok
     expect(to_str(s)).to_eq("Ok")
   )
-  it("bitmask-style values", fn():
+  it("bitmask-style values", ():
     p = Permission::Execute
     expect(p == Permission::Execute).to_be_true()
     expect(p != Permission::Read).to_be_true()
@@ -234,8 +242,8 @@ enum MyOption<T>:
   MySome(T)
   MyNone
 
-describe("generic enum", fn():
-  it("with type parameter", fn():
+describe("generic enum", ():
+  it("with type parameter", ():
     a = MyOption<int>::MySome(42)
     res = 0
     match a:
@@ -245,7 +253,7 @@ describe("generic enum", fn():
         res = -1
     expect(res).to_eq(42)
   )
-  it("none variant", fn():
+  it("none variant", ():
     b = MyOption<int>::MyNone
     res = 0
     match b:

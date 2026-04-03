@@ -19,6 +19,7 @@ ry test -w -p        # Watch mode with parallel execution
 ry test -w tests/    # Watch a specific directory
 ry test --coverage   # Run all tests with line coverage summary
 ry test --cov        # Short alias for --coverage
+ry test --outline    # Print describe/it structure without running tests
 ```
 
 The exit code is 0 if all tests passed, 1 if any test failed.
@@ -38,15 +39,15 @@ When `ry test` is run without arguments, it:
 ### describe / it
 
 ```
-describe("description", fn():
-    it("test case name", fn():
+describe("description", ():
+    it("test case name", ():
         # test body
         expect(actual_value).to_eq(expected_value)
     )
 )
 ```
 
-- `describe` and `it` take a description string and a **lambda argument** `fn():` as the second parameter
+- `describe` and `it` take a description string and a **lambda argument** `():` as the second parameter
 - `it` blocks and other statements (e.g., variable declarations) can be written inside a `describe` block
 - Each `it` block is an independent test case
 - `describe` / `expect` are only available with `ry test` (compile error with normal `ry` execution)
@@ -60,7 +61,7 @@ Any function call (except `describe`/`it`/`mock`) can use trailing block syntax.
 foo("arg"):
     bar()
 
-foo("arg", fn():
+foo("arg", ():
     bar()
 )
 ```
@@ -93,7 +94,7 @@ foo("arg", fn():
 Immediately marks the current test as failed.
 
 ```
-it("should not reach here", fn():
+it("should not reach here", ():
     fail("unexpected error")
 )
 ```
@@ -125,22 +126,22 @@ Calculator
 ## Example
 
 ```
-describe("Arithmetic", fn():
-    it("adds integers", fn():
+describe("Arithmetic", ():
+    it("adds integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", fn():
+    it("compares strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", fn():
+    it("checks booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
-describe("Booleans", fn():
-    it("false check", fn():
+describe("Booleans", ():
+    it("false check", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -155,16 +156,16 @@ describe("Booleans", fn():
 Replaces a function with a mock implementation for the current `it` block. The mock is automatically cleared when the `it` block ends.
 
 ```
-fn fetch_data() -> str:
+function fetch_data() -> str:
     return "real data"
 
-describe("mocking", fn():
-    it("replaces function", fn():
-        mock(fetch_data, fn() => "fake")
+describe("mocking", ():
+    it("replaces function", ():
+        mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", fn():
+    it("auto-restores", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -173,6 +174,7 @@ describe("mocking", fn():
 - The first argument is the function name (identifier, not a string)
 - The second argument is a replacement lambda
 - The replacement must have the same parameter types and return type as the original function
+- `require` and `ensure` contracts on the original function are still enforced when the mock is called
 - Mocks are automatically restored at the end of each `it` block
 
 ### verify(fn_name)
@@ -180,9 +182,9 @@ describe("mocking", fn():
 Returns the number of times a mocked function was called (as `int`).
 
 ```
-describe("verify", fn():
-    it("counts calls", fn():
-        mock(fetch_data, fn() => "fake")
+describe("verify", ():
+    it("counts calls", ():
+        mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -194,7 +196,7 @@ describe("verify", fn():
 
 - Overloaded functions cannot be mocked
 - Capture-based closures cannot be used as replacements (use plain lambdas)
-- `@native fn` functions cannot be mocked
+- `@native function` functions cannot be mocked
 
 ---
 
@@ -208,7 +210,7 @@ describe("verify", fn():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -226,7 +228,7 @@ it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
 
 ```
 @property(count=100)
-it("addition is commutative", fn(a: int, b: int):
+it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -260,6 +262,32 @@ Test Coverage Summary:
 
 - Only user code is reported; standard library files are excluded
 - `--coverage` with `--parallel` falls back to sequential execution
+
+---
+
+## Test Outline
+
+Use `--outline` to display the `describe`/`it` structure of test files without executing any test bodies:
+
+```bash
+ry test --outline tests/spec/mock.test.ry
+```
+
+Output:
+
+```
+describe mock
+  it replaces function
+  it auto-restores after it block
+  it with arguments
+describe verify
+  it counts calls
+  it zero calls
+```
+
+- Works with individual files, directories, and `-p` (all test files)
+- `@each` parameterized tests show the format template with an `(@each)` suffix
+- `@property` tests show the label with a `(@property)` suffix
 
 ---
 

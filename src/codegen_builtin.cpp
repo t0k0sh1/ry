@@ -67,15 +67,25 @@ bool CodeGen::isTlsStream(llvm::Value *val) { return lookupValueSet(resource_set
 bool CodeGen::isHttpRequest(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpRequest], val); }
 bool CodeGen::isHttpResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpResponse], val); }
 bool CodeGen::isHttpClientResponse(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_HttpClientResponse], val); }
+bool CodeGen::isThread(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Thread], val); }
+bool CodeGen::isLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Lock], val); }
+bool CodeGen::isRWLock(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_RWLock], val); }
+bool CodeGen::isSemaphore(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Semaphore], val); }
+bool CodeGen::isBarrier(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Barrier], val); }
+bool CodeGen::isAtomicInt(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicInt], val); }
+bool CodeGen::isAtomicBool(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_AtomicBool], val); }
+bool CodeGen::isRegex(llvm::Value *val) { return lookupValueSet(resource_sets_[RK_Regex], val); }
 
 void CodeGen::propagateResourceTracking(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)
         if (resource_sets_[i].count(src)) resource_sets_[i].insert(dst);
+    if (json_type_only_.count(src)) json_type_only_.insert(dst);
 }
 
 void CodeGen::propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst) {
     for (int i = 0; i < RK_COUNT; ++i)
         if (lookupValueSetWide(resource_sets_[i], src)) resource_sets_[i].insert(dst);
+    if (lookupValueSetWide(json_type_only_, src)) json_type_only_.insert(dst);
 }
 
 void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
@@ -96,6 +106,84 @@ void CodeGen::propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst) {
     tryPropagate(fn_type_info_);
     tryPropagate(union_value_types_);
     tryPropagate(enum_value_types_);
+    tryPropagate(map_value_type_names_);
+
+    // Propagate ARC managed status
+    auto *dstAlloca = llvm::dyn_cast<llvm::AllocaInst>(dst);
+    if (dstAlloca) {
+        auto *srcAlloca = llvm::dyn_cast<llvm::AllocaInst>(resolved);
+        if (srcAlloca && isArcManaged(srcAlloca))
+            markArcManaged(dstAlloca);
+    }
+}
+
+void CodeGen::propagateTypeMeta(const std::string &typeName, llvm::Value *val) {
+    if (typeName.size() > 5 && typeName.compare(0, 5, "Task<") == 0 && typeName.back() == '>') {
+        std::string inner = typeName.substr(5, typeName.size() - 6);
+        type_meta_[TM_TaskResult][val] = resolveType(inner);
+    } else if (isListTypeName(typeName) && typeName.back() == '>') {
+        std::string inner = typeName.substr(5, typeName.size() - 6);
+        type_meta_[TM_ListElem][val] = resolveType(inner);
+        if (isListTypeName(inner) && inner.back() == '>') {
+            std::string nested = inner.substr(5, inner.size() - 6);
+            type_meta_[TM_NestedListElem][val] = resolveType(nested);
+        }
+    } else if (isMapTypeName(typeName) && typeName.back() == '>') {
+        auto [keyTy, valTy] = parseMapTypeAnnotation(typeName);
+        if (keyTy) type_meta_[TM_MapKey][val] = keyTy;
+        if (valTy) type_meta_[TM_MapValue][val] = valTy;
+        std::string vtn = extractMapValueTypeName(typeName);
+        if (!vtn.empty()) map_value_type_names_[val] = vtn;
+    } else if (isSetTypeName(typeName) && typeName.back() == '>') {
+        std::string inner = typeName.substr(4, typeName.size() - 5);
+        type_meta_[TM_SetElem][val] = resolveType(inner);
+    } else if (isLowLevelTypeName(typeName)) {
+        low_level_type_names_[val] = typeName;
+    }
+}
+
+void CodeGen::propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val) {
+    if (!entry) return;
+    propagateTypeMeta(entry->returnTypeName, val);
+}
+
+void CodeGen::propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result) {
+    auto retFnIt = return_fn_type_info_.find(fn);
+    if (retFnIt != return_fn_type_info_.end()) {
+        fn_type_info_[result] = retFnIt->second;
+        return;
+    }
+    if (!entry) return;
+    std::string resolved = resolveTypeAlias(entry->returnTypeName);
+    if (resolved.size() <= 9 || resolved.compare(0, 9, "function(") != 0) return;
+    fn_type_info_[result] = parseFnTypeAnnotation(resolved);
+}
+
+std::string CodeGen::extractMapValueTypeName(const std::string &mapTypeName) {
+    std::string inner = mapTypeName.substr(4, mapTypeName.size() - 5);
+    auto parts = splitTypeArgs(inner);
+    if (parts.size() != 2) return "";
+    std::string vStr = parts[1];
+    while (!vStr.empty() && vStr.front() == ' ') vStr = vStr.substr(1);
+    return vStr;
+}
+
+std::string CodeGen::inferCollectionTypeName(llvm::Value *val) {
+    if (auto *keyTy = getMapKeyType(val)) {
+        std::string keyName = reverseResolveTypeName(keyTy);
+        llvm::Value *metaKey = val;
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            metaKey = load->getPointerOperand();
+        auto it = map_value_type_names_.find(metaKey);
+        std::string valName = (it != map_value_type_names_.end())
+            ? it->second : reverseResolveTypeName(getMapValueType(val));
+        return "Map<" + keyName + ", " + valName + ">";
+    }
+    if (auto *elemTy = getListElementType(val))
+        return "List<" + reverseResolveTypeName(elemTy) + ">";
+    if (auto *setTy = getSetElementType(val))
+        return "Set<" + reverseResolveTypeName(setTy) + ">";
+    return "";
 }
 
 void CodeGen::propagateAllMetadata(llvm::Value *src, llvm::Value *dst) {

@@ -76,13 +76,12 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
         auto sf2 = loadSetHeader(set2, "u2");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
         // Allocate max possible size (len1 + len2)
         llvm::Value *maxLen = builder_.CreateAdd(sf1.len, sf2.len, "u_max_len");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "u_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(maxLen, llvm::ConstantInt::get(i64Ty_, elemSize), "u_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "u_data");
 
@@ -92,10 +91,8 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, sf1.elems, copy1Size});
 
         // Init header with len1
+        storeSetHeaderFields(newHeader, sf1.len, maxLen, newData);
         llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newHeader, 0, "u_len_ptr");
-        builder_.CreateStore(sf1.len, lenPtr);
-        builder_.CreateStore(maxLen, builder_.CreateStructGEP(setHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(setHeaderTy_, newHeader, 2));
 
         // Init buckets for the new set
         emitBucketInit(newHeader, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 16);
@@ -175,18 +172,15 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         auto sf = loadSetHeader(set1, "is");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "is_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(sf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "is_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "is_data");
 
+        storeSetHeaderFields(newHeader, llvm::ConstantInt::get(i64Ty_, 0), sf.len, newData);
         llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newHeader, 0, "is_len_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-        builder_.CreateStore(sf.len, builder_.CreateStructGEP(setHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(setHeaderTy_, newHeader, 2));
         emitBucketInit(newHeader, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 16);
 
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "is_i");
@@ -240,18 +234,15 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         auto sf = loadSetHeader(set1, "df");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "df_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(sf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "df_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "df_data");
 
+        storeSetHeaderFields(newHeader, llvm::ConstantInt::get(i64Ty_, 0), sf.len, newData);
         llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newHeader, 0, "df_len_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-        builder_.CreateStore(sf.len, builder_.CreateStructGEP(setHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(setHeaderTy_, newHeader, 2));
         emitBucketInit(newHeader, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 16);
 
         llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "df_i");
@@ -306,19 +297,16 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         auto sf2 = loadSetHeader(set2, "sd2");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
         llvm::Value *maxLen = builder_.CreateAdd(sf1.len, sf2.len, "sd_max_len");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sd_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(maxLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sd_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sd_data");
 
+        storeSetHeaderFields(newHeader, llvm::ConstantInt::get(i64Ty_, 0), maxLen, newData);
         llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, newHeader, 0, "sd_len_ptr");
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-        builder_.CreateStore(maxLen, builder_.CreateStructGEP(setHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(setHeaderTy_, newHeader, 2));
         emitBucketInit(newHeader, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 16);
 
         // Add elements from set1 not in set2

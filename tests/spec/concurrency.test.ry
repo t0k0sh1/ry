@@ -1,33 +1,33 @@
-describe("async and await", fn():
-  it("block_on awaits direct async call", fn():
-    async fn async_add_direct(a: int, b: int) -> int:
+describe("async and await", ():
+  it("block_on awaits direct async call", ():
+    async function async_add_direct(a: int, b: int) -> int:
       return a + b
     expect(block_on(async_add_direct(20, 22))).to_eq(42)
   )
-  it("block_on awaits task variable", fn():
-    async fn async_add_task(a: int, b: int) -> int:
+  it("block_on awaits task variable", ():
+    async function async_add_task(a: int, b: int) -> int:
       return a + b
     t: Task<int> = async_add_task(7, 8)
     expect(block_on(t)).to_eq(15)
   )
-  it("chains async functions with await inside async fn", fn():
-    async fn inner() -> int:
+  it("chains async functions with await inside async function", ():
+    async function inner() -> int:
       return 21
-    async fn outer() -> int:
+    async function outer() -> int:
       return (await inner()) * 2
     expect(block_on(outer())).to_eq(42)
   )
-  it("supports Unit-returning async functions through block_on", fn():
-    async fn bump() -> Unit:
+  it("supports Unit-returning async functions through block_on", ():
+    async function bump() -> Unit:
       print("done")
     block_on(bump())
     expect(1).to_eq(1)
   )
 )
 
-describe("parallel for", fn():
-  it("executes counted loops", fn():
-    fn consume(x: int) -> int:
+describe("parallel for", ():
+  it("executes counted loops", ():
+    function consume(x: int) -> int:
       return x + 1
     expect(available_parallelism() > 0).to_be_true()
     @parallel

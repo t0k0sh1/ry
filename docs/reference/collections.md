@@ -11,6 +11,7 @@ A fixed-length combination of heterogeneous values. Implemented as a stack-alloc
 ### Syntax
 
 ```python
+t = (42,)                      # single-element tuple (trailing comma required)
 t = (1, 3.14)
 t: (int, float) = (1, 3.14)
 ```
@@ -18,8 +19,19 @@ t: (int, float) = (1, 3.14)
 ### Type Annotation
 
 ```python
+single: (int,) = (42,)                     # trailing comma required for single-element
 pair: (int, str) = (42, "hello")
 triple: (int, float, bool) = (1, 2.0, true)
+```
+
+### Comparison
+
+Tuples support `==` and `!=` via element-wise comparison.
+
+```python
+print((1, 2) == (1, 2))    # true
+print((1, 2) != (3, 4))    # true
+print(("a", 1) == ("b", 1))  # false
 ```
 
 ### Element Access
@@ -35,7 +47,7 @@ print(t.1)   # 3.14
 ### Function Return Values
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -48,7 +60,7 @@ print(result.1)   # 1
 | Constraint | Details |
 |------|------|
 | Out-of-range index | Compile error |
-| Passing a tuple directly to `print` | Compile error (not supported by print) |
+| Comparison operators | Only `==` and `!=` are supported; `<`, `<=`, `>`, `>=` are not |
 
 ---
 
@@ -65,6 +77,28 @@ xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
 ```
 
+### Empty List
+
+An empty list requires a type annotation so the element type can be determined:
+
+```python
+xs: List<int> = []
+xs: List<str> = []
+```
+
+### Concatenation
+
+Lists can be concatenated with `+` and `+=`:
+
+```python
+a = [1, 2, 3]
+b = [4, 5, 6]
+c = a + b       # [1, 2, 3, 4, 5, 6]
+a += [7, 8]     # a is now [1, 2, 3, 7, 8]
+```
+
+Both operands must have the same element type.
+
 ### Supported Element Types
 
 `int`, `float`, `bool`, `str`
@@ -77,12 +111,25 @@ print(xs[0])   # 1
 print(xs[2])   # 3
 ```
 
+Negative indices wrap around from the end (Python-style):
+
+```python
+xs = [10, 20, 30]
+print(xs[-1])   # 30 (last element)
+print(xs[-2])   # 20
+print(xs[-3])   # 10
+```
+
+Out-of-bounds access (including negative indices that exceed the list length) raises a runtime error.
+
 ### Index Assignment
 
 ```python
 xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
+xs[-1] = 42    # assigns to last element
+print(xs[2])   # 42
 ```
 
 ### length
@@ -122,12 +169,12 @@ print(xs)   # [1, 2, 3]
 
 ### pop
 
-Removes and returns the last element. Causes a runtime error on an empty list.
+Removes and returns the last element. Returns `None` if the list is empty.
 
 ```python
 xs = [1, 2, 3]
 v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
 
@@ -153,7 +200,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ### take
 
-Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified.
+Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified.
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -169,7 +216,7 @@ Calls the given function on each element (ignoring any return value), then retur
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -179,7 +226,7 @@ Returns a new list containing only elements that satisfy the predicate. The orig
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -189,7 +236,7 @@ Returns a new list with each element transformed by the given function. The outp
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -202,7 +249,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order with comparator
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -212,7 +259,7 @@ These functions return new lists, so they can be chained via UFCS.
 
 ```python
 xs = [5, 3, 1, 4, 2]
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -222,7 +269,7 @@ Reduces a list to a single value using an accumulator function, starting with th
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -232,7 +279,7 @@ Folds a list to a single value using an accumulator function and an explicit ini
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = fold(xs, 0, fn(a: int, b: int) => a + b)
+total = fold(xs, 0, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -242,8 +289,8 @@ Returns `true` if at least one element satisfies the predicate.
 
 ```python
 xs = [1, 2, 3, 4, 5]
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 ```
 
 ### all
@@ -252,8 +299,8 @@ Returns `true` if every element satisfies the predicate.
 
 ```python
 xs = [2, 4, 6]
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum
@@ -285,20 +332,20 @@ print(max(xs))   # 5
 
 ### first
 
-Returns the first element. Causes a runtime error on an empty list.
+Returns the first element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))   # 10
+print(first(xs))   # Some(10)
 ```
 
 ### last
 
-Returns the last element. Causes a runtime error on an empty list.
+Returns the last element. Returns `None` if the list is empty.
 
 ```python
 xs = [10, 20, 30]
-print(last(xs))   # 30
+print(last(xs))   # Some(30)
 ```
 
 ### is_empty
@@ -413,8 +460,39 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | Constraint | Details |
 |------|------|
 | All elements must be the same type | Mixed types cause a compile error |
-| Empty list `[]` | Compile error because type cannot be inferred |
+| Empty list `[]` | Requires type annotation (e.g., `xs: List<int> = []`) |
 | Out-of-range access | Runtime error (exit(1)) |
+
+---
+
+## Copy-on-Write (CoW) Semantics
+
+All collection types (List, Map, Set) use **Copy-on-Write** semantics when managed by ARC. This means:
+
+- **Assignment shares data**: `b = a` does not copy the collection — both variables reference the same data. The reference count is incremented.
+- **Mutation triggers a copy**: When a shared collection is mutated (e.g., `append`, `remove`, index assignment), a deep copy is automatically created before the mutation. Only the mutator pays the cost.
+- **Unique owners mutate in-place**: When a collection has only one reference (`strong_count == 1`), mutations are performed in-place with zero copy overhead.
+
+```python
+a = [1, 2, 3]       # strong_count = 1
+b = a                # strong_count = 2 (shared)
+append(b, 4)         # strong_count > 1 → deep copy b, then mutate
+                     # a = [1, 2, 3]  (strong_count = 1)
+                     # b = [1, 2, 3, 4]  (strong_count = 1, new allocation)
+
+c = [10, 20]         # strong_count = 1
+append(c, 30)        # strong_count == 1 → mutate in-place (no copy)
+```
+
+### Operations that trigger CoW
+
+| Type | Mutating operations |
+|------|-------------------|
+| **List** | `append()`, `pop()`, `insert()`, `remove()`, `remove_at()`, `sort!()`, `reverse!()`, index assignment (`xs[i] = val`) |
+| **Map** | `remove()`, index assignment (`m[key] = val`) |
+| **Set** | `add()`, `remove()` |
+
+Non-mutating operations (`appended`, `slice`, `take`, `filter`, `map`, `sort`, `reverse`, `get`, `items`, etc.) create new collections and do not trigger CoW.
 
 ---
 
@@ -619,7 +697,7 @@ s: Set<int> = {}
 ### Function Parameters
 
 ```python
-fn has_value(s: Set<int>, v: int) -> bool:
+function has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 
@@ -723,15 +801,15 @@ Iterator methods return new iterators, forming a pipeline that is only evaluated
 
 | Method | Description |
 |--------|-------------|
-| `.filter(fn)` | Yields only elements where the predicate returns `true` |
-| `.map(fn)` | Transforms each element using the given function |
-| `.take(n)` | Yields at most `n` elements |
+| `.filter(function)` | Yields only elements where the predicate returns `true` |
+| `.map(function)` | Transforms each element using the given function |
+| `.take(count)` | Yields at most `count` elements |
 
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()   # [6, 8]
 ```
@@ -755,7 +833,7 @@ print(it.next())   # None
 Iterators can be used directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in [1, 2, 3].iter().filter((x: int) => x > 1):
     print(x)
 # 2
 # 3

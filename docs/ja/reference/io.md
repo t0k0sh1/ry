@@ -5,7 +5,7 @@
 標準入出力とファイル操作の関数一覧です。すべての関数は `io` からの明示的なインポートが必要です。
 
 ```python
-from io import read_text, write_text, file_exists
+from io import read_text, write_text, exists
 ```
 
 ## 関数一覧
@@ -24,7 +24,7 @@ from io import read_text, write_text, file_exists
 | `read_text` | `(str) -> Result<str, Error>` | ファイル全体を文字列として読み取り |
 | `write_text` | `(str, str) -> Result<Unit, Error>` | ファイルに文字列を書き込み（上書き） |
 | `append_text` | `(str, str) -> Result<Unit, Error>` | ファイル末尾に文字列を追記 |
-| `file_exists` | `(str) -> bool` | ファイル存在チェック |
+| `exists` | `(str) -> bool` | ファイル存在チェック |
 | `delete_file` | `(str) -> Result<Unit, Error>` | ファイル削除 |
 | `read_bytes` | `(str) -> Result<List<u8>, Error>` | ファイルをバイト列として読み取り |
 | `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | バイト列をファイルに書き込み |
@@ -33,7 +33,7 @@ from io import read_text, write_text, file_exists
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `str_to_bytes` | `(str) -> List<u8>` | 文字列を UTF-8 バイト列に変換 |
+| `to_bytes` | `(str) -> List<u8>` | 文字列を UTF-8 バイト列に変換 |
 | `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | バイト列を文字列に変換 |
 
 ## 使用例
@@ -41,7 +41,7 @@ from io import read_text, write_text, file_exists
 ### ファイルの読み書き
 
 ```python
-from io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, exists, delete_file
 
 match write_text("hello.txt", "Hello, World!"):
     case Ok(_):
@@ -53,11 +53,11 @@ match write_text("hello.txt", "Hello, World!"):
     case Err(e):
         print(e.message)
 
-print(file_exists("hello.txt"))   # true
+print(exists("hello.txt"))   # true
 
 match delete_file("hello.txt"):
     case Ok(_):
-        print(file_exists("hello.txt"))   # false
+        print(exists("hello.txt"))   # false
     case Err(e):
         print(e.message)
 ```
@@ -65,9 +65,9 @@ match delete_file("hello.txt"):
 ### バイト操作
 
 ```python
-from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
-bs = str_to_bytes("ABC")
+bs = to_bytes("ABC")
 print(length(bs))    # 3
 
 match write_bytes("data.bin", bs):

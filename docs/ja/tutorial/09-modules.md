@@ -2,7 +2,7 @@
 
 # パッケージ
 
-[← 前: 高度な機能](08-advanced.md) | [次: 契約による設計 →](10-contracts.md)
+[<- 前: エラーハンドリング](08-error-handling.md) | [次: 並行処理 ->](10-concurrency.md)
 
 Ry はパッケージシステムを使って、ファイルやディレクトリにまたがるコードを管理します。詳細な仕様は[パッケージリファレンス](../reference/packages.md)を参照してください。
 
@@ -39,8 +39,8 @@ from utils.calc import add   # utils/calc.ry をインポート
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -49,6 +49,29 @@ from mypackage import add   # add のみインポート
 ```
 
 特別なエントリファイル（`__init__.py` のようなもの）は不要です。`_` で始まるファイルは除外されます。
+
+---
+
+## 相対インポート
+
+先頭の `.` を使って、現在のファイルのディレクトリからの相対パスでインポートします。テストファイルから兄弟モジュールをインポートする際に特に便利です。
+
+```python
+from .helper import greet       # 同じディレクトリの helper.ry からインポート
+from .utils import add          # utils/ サブディレクトリからインポート
+from .utils.calc import mul     # utils/calc/ ネストされたサブディレクトリからインポート
+from . import add, sub          # 現在のディレクトリパッケージからシンボルをインポート
+```
+
+相対インポートは現在のファイルのディレクトリに対して**のみ**解決されます -- 標準ライブラリやその他の検索パスは検索されません。プロジェクトに標準ライブラリパッケージと同名のモジュールがある場合の名前衝突を防ぎます。
+
+```python
+# プロジェクトに src/math/stats.ry がある場合:
+from .math import mean    # 常にローカルの math パッケージに解決される
+from math import sqrt     # 標準ライブラリの math パッケージに解決される
+```
+
+> **注意:** 親ディレクトリインポート（`from ..`）はサポートされていません。
 
 ---
 
@@ -63,7 +86,7 @@ n = length("world")
 xs = range(5)
 ```
 
-標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます。
+標準ライブラリのパッケージから特定の定義を明示的にインポートすることもできます:
 
 ```python
 from str import contains
@@ -81,12 +104,12 @@ export RY_HOME="$HOME/.ry"   # デフォルト
 
 ## 検索パスの優先順位
 
-パッケージファイルは以下の順序で検索されます。
+パッケージファイルは以下の順序で検索されます:
 
-1. **インポート元ファイルのディレクトリ** — インポートを記述したファイルと同じディレクトリを最初に探します。
-2. **`$RY_HOME/lib`** — 標準ライブラリの場所。
-3. **実行ファイル相対の `lib/`** — `ry` 実行ファイルからの相対ディレクトリ。
-4. **`RY_PATH` 環境変数** — 見つからない場合は `RY_PATH` に指定されたディレクトリを順番に検索します。
+1. **インポート元ファイルのディレクトリ** -- インポートを記述したファイルと同じディレクトリを最初に探します。
+2. **`$RY_HOME/lib`** -- 標準ライブラリの場所。
+3. **実行ファイル相対の `lib/`** -- `ry` 実行ファイルからの相対ディレクトリ。
+4. **`RY_PATH` 環境変数** -- 見つからない場合は `RY_PATH` に指定されたディレクトリを順番に検索します。
 
 ---
 
@@ -116,4 +139,4 @@ export RY_PATH=/home/user/ry-libs:/usr/local/ry-libs
 
 ---
 
-[← 前: 高度な機能](08-advanced.md) | [次: 契約による設計 →](10-contracts.md)
+[<- 前: エラーハンドリング](08-error-handling.md) | [次: 並行処理 ->](10-concurrency.md)

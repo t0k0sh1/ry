@@ -1,4 +1,5 @@
 #include "ry/runtime_io.hpp"
+#include "ry/runtime_http_types.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -43,16 +44,7 @@ extern "C" const char *__ry_get_last_error() {
     return strdup(last_error_buf);
 }
 
-// IOListHeader is defined in runtime_io.hpp (shared with runtime_net.cpp)
-
-static IOListHeader *makeByteList(const uint8_t *bytes, int64_t len) {
-    auto *header = (IOListHeader *)malloc(sizeof(IOListHeader));
-    header->len = len;
-    header->cap = len;
-    header->data = (int8_t *)malloc(len);
-    memcpy(header->data, bytes, len);
-    return header;
-}
+// IOListHeader and makeByteList are defined in runtime_io.hpp
 
 // ===== Standard input =====
 
@@ -72,12 +64,15 @@ extern "C" const char *__ry_read_line() {
 extern "C" const char *__ry_read_all() {
     size_t cap = 4096;
     size_t len = 0;
-    char *buf = (char *)malloc(cap);
+    char *buf = (char *)checked_malloc(cap);
 
     for (;;) {
         if (len + 1 >= cap) {
+            if (cap > SIZE_MAX / 2) { free(buf); oom_abort(); }
             cap *= 2;
-            buf = (char *)realloc(buf, cap);
+            char *newBuf = (char *)realloc(buf, cap);
+            if (!newBuf) { free(buf); oom_abort(); }
+            buf = newBuf;
         }
         size_t to_read = cap - len - 1;
         size_t n = fread(buf + len, 1, to_read, stdin);

@@ -1,10 +1,11 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
+#include "ry/runtime_io.hpp"
 #include "ry/runtime_net_types.hpp"
+#include "ry/runtime_arc.hpp"
 
 #include <openssl/err.h>
 
-#include <unordered_set>
 #include <sys/socket.h>
 #include <sys/time.h>
 
@@ -76,13 +77,13 @@ static int hex_digit(char c) {
     return -1;
 }
 
-static std::string url_decode(const std::string &src) {
+static std::string url_decode(const char *src, size_t len) {
     std::string out;
-    out.reserve(src.size());
-    for (size_t i = 0; i < src.size(); i++) {
+    out.reserve(len);
+    for (size_t i = 0; i < len; i++) {
         if (src[i] == '+') {
             out += ' ';
-        } else if (src[i] == '%' && i + 2 < src.size()) {
+        } else if (src[i] == '%' && i + 2 < len) {
             int hi = hex_digit(src[i + 1]);
             int lo = hex_digit(src[i + 2]);
             if (hi >= 0 && lo >= 0) {
@@ -105,8 +106,8 @@ static std::string url_decode(const std::string &src) {
     return out;
 }
 
-static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
-    if (qs.empty()) {
+static void parse_query_string(const char *qs, size_t qs_len, HttpRequestHandle *req) {
+    if (!qs || qs_len == 0) {
         req->query_keys = nullptr;
         req->query_values = nullptr;
         req->query_count = 0;
@@ -115,27 +116,31 @@ static void parse_query_string(const std::string &qs, HttpRequestHandle *req) {
 
     struct QParam { char *key; char *val; };
     std::vector<QParam> params;
-    std::unordered_set<std::string> seen_keys;
 
     size_t pos = 0;
-    while (pos < qs.size()) {
-        size_t amp = qs.find('&', pos);
-        if (amp == std::string::npos) amp = qs.size();
-        if (amp > pos) {
-            std::string pair = qs.substr(pos, amp - pos);
-            size_t eq = pair.find('=');
+    while (pos < qs_len) {
+        const char *seg = qs + pos;
+        const char *amp = (const char *)memchr(seg, '&', qs_len - pos);
+        size_t seg_len = amp ? (size_t)(amp - seg) : qs_len - pos;
+        if (seg_len > 0) {
+            const char *eq = (const char *)memchr(seg, '=', seg_len);
             std::string key, val;
-            if (eq != std::string::npos) {
-                key = url_decode(pair.substr(0, eq));
-                val = url_decode(pair.substr(eq + 1));
+            if (eq) {
+                size_t key_raw_len = (size_t)(eq - seg);
+                key = url_decode(seg, key_raw_len);
+                val = url_decode(eq + 1, seg_len - key_raw_len - 1);
             } else {
-                key = url_decode(pair);
+                key = url_decode(seg, seg_len);
             }
-            // First-value-wins for duplicate keys
-            if (seen_keys.insert(key).second)
+            // First-value-wins: linear scan (query params are typically few)
+            bool dup = false;
+            for (size_t j = 0; j < params.size(); j++) {
+                if (strcmp(params[j].key, key.c_str()) == 0) { dup = true; break; }
+            }
+            if (!dup)
                 params.push_back({checked_strdup(key.c_str()), checked_strdup(val.c_str())});
         }
-        pos = amp + 1;
+        pos += seg_len + 1;
     }
 
     assign_kv_pairs(params, &req->query_keys, &req->query_values, &req->query_count,
@@ -164,7 +169,6 @@ static void parse_cookie_header(HttpRequestHandle *req) {
 
     struct CookiePair { char *key; char *val; };
     std::vector<CookiePair> pairs;
-    std::unordered_set<std::string> seen_keys;
 
     const char *p = cookie_str;
     while (*p) {
@@ -190,8 +194,14 @@ static void parse_cookie_header(HttpRequestHandle *req) {
             size_t val_len = (size_t)(val_end - val_start);
 
             if (key_len > 0) {
-                std::string key_s(p, key_len);
-                if (seen_keys.insert(key_s).second)
+                // Linear scan for duplicate detection (cookies are typically few)
+                bool dup = false;
+                for (size_t j = 0; j < pairs.size(); j++) {
+                    if (strlen(pairs[j].key) == key_len && memcmp(pairs[j].key, p, key_len) == 0) {
+                        dup = true; break;
+                    }
+                }
+                if (!dup)
                     pairs.push_back({checked_strndup(p, key_len), checked_strndup(val_start, val_len)});
             }
         }
@@ -394,27 +404,30 @@ static bool parse_request_line(const std::string &raw, HttpRequestHandle *req,
     size_t line_end = raw.find("\r\n");
     if (line_end == std::string::npos) return false;
 
-    std::string request_line = raw.substr(0, line_end);
+    const char *line = raw.c_str();
 
-    size_t sp1 = request_line.find(' ');
-    if (sp1 == std::string::npos) return false;
+    // Find first space (end of method)
+    const char *sp1 = (const char *)memchr(line, ' ', line_end);
+    if (!sp1) return false;
 
-    req->method = checked_strdup(request_line.substr(0, sp1).c_str());
+    req->method = checked_strndup(line, (size_t)(sp1 - line));
 
-    size_t sp2 = request_line.find(' ', sp1 + 1);
-    std::string full_path;
-    if (sp2 != std::string::npos)
-        full_path = request_line.substr(sp1 + 1, sp2 - sp1 - 1);
-    else
-        full_path = request_line.substr(sp1 + 1);
+    // Find second space (end of path, before HTTP/x.x)
+    size_t remaining = line_end - (size_t)(sp1 + 1 - line);
+    const char *sp2 = (const char *)memchr(sp1 + 1, ' ', remaining);
+    const char *path_start = sp1 + 1;
+    size_t path_len = sp2 ? (size_t)(sp2 - path_start) : line_end - (size_t)(path_start - line);
 
-    size_t qmark = full_path.find('?');
-    if (qmark != std::string::npos) {
-        req->path = checked_strdup(full_path.substr(0, qmark).c_str());
-        parse_query_string(full_path.substr(qmark + 1), req);
+    // Find '?' within path to split path and query string
+    const char *qmark = (const char *)memchr(path_start, '?', path_len);
+    if (qmark) {
+        req->path = checked_strndup(path_start, (size_t)(qmark - path_start));
+        const char *qs = qmark + 1;
+        size_t qs_len = path_len - (size_t)(qs - path_start);
+        parse_query_string(qs, qs_len, req);
     } else {
-        req->path = checked_strdup(full_path.c_str());
-        parse_query_string("", req);
+        req->path = checked_strndup(path_start, path_len);
+        parse_query_string(nullptr, 0, req);
     }
     line_end_out = line_end;
     return true;
@@ -446,30 +459,39 @@ static bool read_request_body(int fd, std::string &raw, size_t body_start,
     int64_t content_length = __ry_http_parse_content_length(cl_value);
     if (content_length == -2 || content_length == -3) return false;
 
-    std::string body_data;
-    if (body_start < raw.size())
-        body_data = raw.substr(body_start);
+    size_t initial_len = (body_start < raw.size()) ? raw.size() - body_start : 0;
 
-    if (content_length > 0 && (int64_t)body_data.size() < content_length) {
-        size_t remaining = (size_t)content_length - body_data.size();
-        char *extra = (char *)checked_malloc(remaining);
-        size_t got = 0;
-        while (got < remaining) {
-            ssize_t n = ::recv(fd, extra + got, remaining - got, 0);
+    if (content_length > 0) {
+        // Allocate final buffer directly to avoid intermediate string copy
+        size_t cl = (size_t)content_length;
+        char *body = (char *)checked_malloc(cl + 1);
+        size_t have = (initial_len < cl) ? initial_len : cl;
+        if (have > 0)
+            memcpy(body, raw.c_str() + body_start, have);
+
+        // Recv remaining bytes directly into the final buffer
+        size_t got = have;
+        while (got < cl) {
+            ssize_t n = ::recv(fd, body + got, cl - got, 0);
             if (n <= 0) break;
             got += (size_t)n;
         }
-        body_data.append(extra, got);
-        free(extra);
 
-        if ((int64_t)body_data.size() < content_length) return false;
+        if ((int64_t)got < content_length) { free(body); return false; }
+
+        body[cl] = '\0';
+        req->body_len = content_length;
+        req->body = body;
+    } else if (content_length == 0) {
+        req->body_len = 0;
+        req->body = checked_memdup("", 0);
+    } else {
+        // No Content-Length: use whatever data is available after headers
+        req->body_len = (int64_t)initial_len;
+        req->body = (initial_len > 0)
+            ? checked_memdup(raw.c_str() + body_start, initial_len)
+            : checked_memdup("", 0);
     }
-
-    if (content_length >= 0 && (int64_t)body_data.size() > content_length)
-        body_data.resize((size_t)content_length);
-
-    req->body_len = (int64_t)body_data.size();
-    req->body = checked_memdup(body_data.data(), body_data.size());
     return true;
 }
 
@@ -480,12 +502,13 @@ extern "C" void *__ry_http_read_request(void *stream) {
     std::string raw = recv_all(handle->fd, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
 
-    auto *req = (HttpRequestHandle *)checked_malloc(sizeof(HttpRequestHandle));
-    memset(req, 0, sizeof(HttpRequestHandle));
+    void *req_mem = arc_alloc(sizeof(HttpRequestHandle));
+    if (!req_mem) return nullptr;
+    auto *req = new (req_mem) HttpRequestHandle{};
 
     size_t line_end;
     if (!parse_request_line(raw, req, line_end)) {
-        free(req);
+        arc_free(req);
         return nullptr;
     }
 
@@ -529,6 +552,11 @@ extern "C" const char *__ry_http_body(void *r) {
     return req->body;
 }
 
+extern "C" void *__ry_http_body_bytes(void *r) {
+    auto *req = (HttpRequestHandle *)r;
+    return makeByteList((const uint8_t *)req->body, req->body_len);
+}
+
 extern "C" const char *__ry_http_query(void *r, const char *key) {
     auto *req = (HttpRequestHandle *)r;
     return find_in_kv_pairs(req->query_keys, req->query_values, req->query_count, key);
@@ -550,21 +578,26 @@ extern "C" void *__ry_http_cookies(void *r) {
 }
 
 extern "C" void *__ry_http_response_create(int64_t status, void *headers_map, const char *body) {
-    auto *resp = (HttpResponseHandle *)checked_malloc(sizeof(HttpResponseHandle));
+    void *resp_mem = arc_alloc(sizeof(HttpResponseHandle));
+    if (!resp_mem) return nullptr;
+    auto *resp = new (resp_mem) HttpResponseHandle{};
     resp->status = status;
     const char *b = body ? body : "";
     resp->body_len = (int64_t)strlen(b);
     resp->body = checked_memdup(b, (size_t)resp->body_len);
 
     auto *map = (MapHeader *)headers_map;
-    resp->header_count = map->len;
     if (map->len > 0) {
         resp->header_keys = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
         resp->header_values = (char **)checked_malloc(sizeof(char *) * (size_t)map->len);
+        int64_t actual = 0;
         for (int64_t i = 0; i < map->len; i++) {
-            resp->header_keys[i] = checked_strdup(map->keys[i]);
-            resp->header_values[i] = checked_strdup(map->vals[i]);
+            if (has_crlf(map->keys[i]) || has_crlf(map->vals[i])) continue;
+            resp->header_keys[actual] = checked_strdup(map->keys[i]);
+            resp->header_values[actual] = checked_strdup(map->vals[i]);
+            actual++;
         }
+        resp->header_count = actual;
     } else {
         resp->header_keys = nullptr;
         resp->header_values = nullptr;
@@ -708,7 +741,9 @@ extern "C" void __ry_http_send_response(void *stream, void *response, int64_t ke
     __ry_send_all(handle->fd, out.c_str(), out.size());
 }
 
-extern "C" void __ry_http_request_free(void *r) {
+// Free internal fields of an HttpRequestHandle but NOT the handle memory itself.
+// Used by ARC weak-reference cleanup paths.
+extern "C" void __ry_http_request_cleanup(void *r) {
     if (!r) return;
     auto *req = (HttpRequestHandle *)r;
     free(req->method);
@@ -729,13 +764,25 @@ extern "C" void __ry_http_request_free(void *r) {
     }
     free(req->form_files);
     free(req->body);
-    free(req);
 }
 
-extern "C" void __ry_http_response_free(void *r) {
+extern "C" void __ry_http_request_free(void *r) {
+    if (!r) return;
+    __ry_http_request_cleanup(r);
+    arc_free(r);
+}
+
+// Free internal fields of an HttpResponseHandle but NOT the handle memory itself.
+// Used by ARC weak-reference cleanup paths.
+extern "C" void __ry_http_response_cleanup(void *r) {
     if (!r) return;
     auto *resp = (HttpResponseHandle *)r;
     free_kv_pairs(resp->header_keys, resp->header_values, resp->header_count);
     free(resp->body);
-    free(resp);
+}
+
+extern "C" void __ry_http_response_free(void *r) {
+    if (!r) return;
+    __ry_http_response_cleanup(r);
+    arc_free(r);
 }

@@ -215,12 +215,12 @@ TEST_F(CmdNewTest, CreatesProjectStructure) {
     EXPECT_TRUE(fs::is_directory(project_dir / "src"));
     EXPECT_TRUE(fs::exists(project_dir / "src" / "main.ry"));
 
-    // Verify package.toml content
+    // Verify package.toml content (hyphens normalized to underscores)
     std::ifstream f(project_dir / "package.toml");
     std::string content((std::istreambuf_iterator<char>(f)),
                          std::istreambuf_iterator<char>());
     auto config = ProjectConfigParser::load(content);
-    EXPECT_EQ(config.name, "my-app");
+    EXPECT_EQ(config.name, "my_app");
     EXPECT_EQ(config.version, "0.1.0");
     EXPECT_EQ(config.entry, "src/main.ry");
 }
@@ -252,4 +252,165 @@ TEST_F(CmdNewTest, RejectsNestedPath) {
     char arg[] = "foo/bar";
     char *argv[] = {arg};
     EXPECT_EQ(cmd_new(1, argv), 1);
+}
+
+// --- Scripts Parsing Tests ---
+
+TEST(ProjectConfigParser, LoadScriptsSection) {
+    std::string toml = R"(
+[project]
+name = "my-app"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+
+[scripts]
+build = "make -j4"
+clean = "rm -rf build"
+test = "echo testing"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    ASSERT_EQ(config.scripts.size(), 3u);
+    EXPECT_EQ(config.scripts.at("build"), "make -j4");
+    EXPECT_EQ(config.scripts.at("clean"), "rm -rf build");
+    EXPECT_EQ(config.scripts.at("test"), "echo testing");
+}
+
+TEST(ProjectConfigParser, LoadWithoutScriptsSection) {
+    std::string toml = R"(
+[project]
+name = "my-app"
+version = "1.0.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+)";
+    auto config = ProjectConfigParser::load(toml);
+    EXPECT_TRUE(config.scripts.empty());
+}
+
+// --- cmd_run Tests ---
+
+class CmdRunTest : public ::testing::Test {
+protected:
+    fs::path tmpdir;
+    fs::path original_cwd;
+
+    void SetUp() override {
+        original_cwd = fs::current_path();
+        tmpdir = fs::temp_directory_path() / "ry_test_run";
+        fs::remove_all(tmpdir);
+        fs::create_directories(tmpdir);
+        fs::current_path(tmpdir);
+    }
+
+    void TearDown() override {
+        fs::current_path(original_cwd);
+        fs::remove_all(tmpdir);
+    }
+
+    void writePackageToml(const std::string &content) {
+        std::ofstream f(tmpdir / "package.toml");
+        f << content;
+    }
+};
+
+TEST_F(CmdRunTest, ListsScripts) {
+    writePackageToml(R"(
+[project]
+name = "test"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+
+[scripts]
+build = "make"
+clean = "rm -rf build"
+)");
+    // Just verify it returns 0 (success)
+    EXPECT_EQ(cmd_run(0, nullptr), 0);
+}
+
+TEST_F(CmdRunTest, ListsEmptyScripts) {
+    writePackageToml(R"(
+[project]
+name = "test"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+)");
+    EXPECT_EQ(cmd_run(0, nullptr), 0);
+}
+
+TEST_F(CmdRunTest, ExecutesCommand) {
+    writePackageToml(R"(
+[project]
+name = "test"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+
+[scripts]
+ok = "true"
+)");
+    char arg[] = "ok";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_run(1, argv), 0);
+}
+
+TEST_F(CmdRunTest, PropagatesExitCode) {
+    writePackageToml(R"(
+[project]
+name = "test"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+
+[scripts]
+fail = "false"
+)");
+    char arg[] = "fail";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_run(1, argv), 1);
+}
+
+TEST_F(CmdRunTest, UnknownScript) {
+    writePackageToml(R"(
+[project]
+name = "test"
+version = "0.1.0"
+entry = "src/main.ry"
+
+[paths]
+src = "src"
+
+[scripts]
+build = "make"
+)");
+    char arg[] = "nonexistent";
+    char *argv[] = {arg};
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(cmd_run(1, argv), 1);
+    std::string err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("nonexistent"), std::string::npos);
+    EXPECT_NE(err.find("build"), std::string::npos);
+}
+
+TEST_F(CmdRunTest, NoPackageToml) {
+    // tmpdir has no package.toml
+    fs::remove(tmpdir / "package.toml");
+    char arg[] = "build";
+    char *argv[] = {arg};
+    EXPECT_EQ(cmd_run(1, argv), 1);
 }

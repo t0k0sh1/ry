@@ -17,7 +17,7 @@
 
 ディレクティブは以下の宣言に適用できます:
 
-- `fn` - 関数定義
+- `function` - 関数定義
 - `record` - 構造体定義
 - 変数宣言（`@const` 付きまたは通常代入）
 - `record` 定義内のフィールド
@@ -34,7 +34,7 @@
 
 ```
 @deprecated
-fn old_function() -> int:
+function old_function() -> int:
     return 42
 
 print(old_function())   # warning: 'old_function' is deprecated
@@ -108,7 +108,7 @@ a, b = (1, 2)
 
 ```
 @native
-fn contains(string: str, substring: str) -> bool
+function contains(string: str, substring: str) -> bool
 
 print(contains("hello world", "world"))  # true
 ```
@@ -117,7 +117,7 @@ print(contains("hello world", "world"))  # true
 
 ```
 @native
-fn operator+(a: str, b: str) -> str
+function operator+(a: str, b: str) -> str
 
 print("hello" + " world")  # hello world
 ```
@@ -126,7 +126,7 @@ print("hello" + " world")  # hello world
 
 ```
 @native
-fn to_upper(string: str) -> str
+function to_upper(string: str) -> str
 
 print("hello".to_upper())  # HELLO
 ```
@@ -137,9 +137,9 @@ print("hello".to_upper())  # HELLO
 
 ```
 @native
-fn range(n: int) -> List<int>
+function range(n: int) -> List<int>
 @native
-fn range(start: int, end: int) -> List<int>
+function range(start: int, end: int) -> List<int>
 
 print(length(range(5)))       # OK: 1引数のオーバーロードにマッチ
 print(length(range(1, 10)))   # OK: 2引数のオーバーロードにマッチ
@@ -200,7 +200,7 @@ for i in range(8):
 
 ```
 @each([(arg1, arg2, ...), ...])
-it("description with {0} and {1}", fn(param1: type, param2: type):
+it("description with {0} and {1}", (param1: type, param2: type):
     # テスト本体
 )
 ```
@@ -220,7 +220,7 @@ it("description with {0} and {1}", fn(param1: type, param2: type):
 
 ```
 @property(count=100)
-it("property name", fn(a: int, b: int):
+it("property name", (a: int, b: int):
     # ランダム値によるテスト本体
 )
 ```
@@ -252,7 +252,7 @@ LLVM オプティマイザにインライン化のヒントを与えます。デ
 
 ```
 @inline
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 ```
 
@@ -260,15 +260,15 @@ fn add(a: int, b: int) -> int:
 
 ```
 @inline(mode="always")
-fn hot_path(x: int) -> int:
+function hot_path(x: int) -> int:
     return x * 2 + 1
 
 @inline(mode="hint")
-fn medium_path(x: int) -> int:
+function medium_path(x: int) -> int:
     return x + 1
 
 @inline(mode="never")
-fn cold_error_handler(msg: str):
+function cold_error_handler(msg: str):
     print("ERROR: " + msg)
 ```
 
@@ -290,7 +290,7 @@ fn cold_error_handler(msg: str):
 
 ```
 @deprecated(reason="use new_api instead")
-fn old_api() -> int:
+function old_api() -> int:
     return 0
 ```
 

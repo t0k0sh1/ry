@@ -8,25 +8,52 @@
 
 | Function | Description |
 |------|------|
-| `print(expr)` | Prints a value to standard output |
+| `print()` / `print(expr1, expr2, ...)` | Prints values to standard output (space-separated) |
 | `length(value)` | Returns the number of elements in a list, map, or set, or the number of UTF-8 characters in a string |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | Generates a list of integers |
 | `exit(code)` | Terminates the process with the given exit code |
-| `args()` | Returns command-line arguments as `List<str>` |
+| `arguments()` | Returns command-line arguments as `List<str>` |
 | `available_parallelism()` | Returns the runtime worker count as `int` |
 | `sleep(duration_ms)` | Suspends execution for the specified number of milliseconds |
 | `env(key)` | Returns the environment variable as `Option<str>` |
 | `env(key, default)` | Returns the environment variable, or `default` if not set |
-| `send(stream, data)` | Sends `List<u8>` through `TcpStream`, returns bytes sent |
-| `recv(stream, max)` | Receives up to `max` bytes from `TcpStream` as `List<u8>` |
-| `close(handle)` | Closes a `TcpStream` or `TcpListener` |
+| `send(stream, data)` | Sends `List<u8>` through `TcpStream` or `TlsStream`, returns `Result<int, Error>` |
+| `receive(stream, max)` | Receives up to `max` bytes from `TcpStream` or `TlsStream` as `Result<List<u8>, Error>` |
+| `close(handle)` | Closes a `TcpStream`, `TlsStream`, or `TcpListener` |
 | `block_on(task)` | Blocks the current thread until a `Task<T>` completes and returns its result |
+| `to_str(value)` | Converts a value to its string representation (`int`, `float`, `bool`, `str`, record, enum, tuple, `List`, `Map`, `Set`, `Result`, `Option`) |
+| `fail()` / `fail(message)` | Marks the current test as failed (only available in `ry test` mode) |
 
 ### Option
 
 | Function | Description |
 |------|------|
 | `Some(expr)` | Constructs the value-present variant of an Option type |
+
+### Result / Error
+
+| Function | Description |
+|------|------|
+| `Ok(value)` | Constructs the success variant of a `Result<T, Error>` |
+| `Err(error)` | Constructs the error variant of a `Result<T, Error>` |
+| `Error(message)` | Creates an `Error` value with a message |
+| `Error(message, code)` | Creates an `Error` value with a message and error code |
+| `result.and_then(closure)` | If `Ok`, calls `closure` (which returns `Result<U, E>`); if `Err`, propagates the error |
+| `result.map(closure)` | If `Ok`, applies `closure` to the value and wraps the return in `Ok`; if `Err`, propagates the error |
+
+### Checked Arithmetic
+
+| Function | Description |
+|------|------|
+| `checked_add(a, b)` | Returns `Ok(a + b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checked_sub(a, b)` | Returns `Ok(a - b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `checked_mul(a, b)` | Returns `Ok(a * b)` if no overflow, otherwise `Err(Error("arithmetic overflow"))` |
+| `saturating_add(a, b)` | Returns `a + b`, clamped to `int` range on overflow |
+| `saturating_sub(a, b)` | Returns `a - b`, clamped to `int` range on overflow |
+| `saturating_mul(a, b)` | Returns `a * b`, clamped to `int` range on overflow |
+| `wrapping_add(a, b)` | Returns `a + b` with wrapping on overflow |
+| `wrapping_sub(a, b)` | Returns `a - b` with wrapping on overflow |
+| `wrapping_mul(a, b)` | Returns `a * b` with wrapping on overflow |
 
 ### Collection Operations
 
@@ -41,10 +68,10 @@
 | `reverse(list)` | Returns a new reversed list (also works on strings) |
 | `reverse!(list)` | Reverses a list in place (mutating) |
 | `slice(list, start, end)` | Returns a new sub-list from start to end |
-| `take(list, n)` | Returns a new list with the first n elements |
-| `tap(list, fn)` | Calls fn on each element for side effects, returns the original list |
+| `take(list, count)` | Returns a new list with the first count elements |
+| `tap(list, function)` | Calls function on each element for side effects, returns the original list |
 | `filter(list, pred)` | Returns a new list with elements matching the predicate |
-| `map(list, fn)` | Returns a new list with each element transformed |
+| `map(list, function)` | Returns a new list with each element transformed |
 | `sort(list)` / `sort(list, comp)` | Returns a new sorted list (default ascending) |
 | `sort!(list)` / `sort!(list, comp)` | Sorts a list in place (mutating) |
 | `insert(list, i, val)` | Inserts an element at index i |
@@ -59,6 +86,24 @@
 | `symmetric_difference(set, set)` | Returns the symmetric difference of two sets |
 | `is_subset(set, set)` | Returns whether the first set is a subset of the second |
 | `is_superset(set, set)` | Returns whether the first set is a superset of the second |
+| `first(list)` | Returns the first element as `Option<T>`, or `None` if empty |
+| `last(list)` | Returns the last element as `Option<T>`, or `None` if empty |
+| `remove(list, value)` | Removes the first occurrence of value from a list |
+| `is_empty(list)` | Returns whether the list is empty |
+| `distinct(list)` | Returns a new list with duplicates removed |
+| `flatten(list)` | Returns a new list with nested lists flattened |
+| `reduce(list, fn)` | Reduces a list to a single value using the reducer function |
+| `fold(list, init, fn)` | Folds a list with an initial accumulator value |
+| `any(list, pred)` | Returns `true` if any element matches the predicate |
+| `all(list, pred)` | Returns `true` if all elements match the predicate |
+| `sum(list)` | Returns the sum of all elements |
+| `min(list)` | Returns the minimum element |
+| `max(list)` | Returns the maximum element |
+| `enumerate(list)` | Returns a list of `(index, value)` tuples |
+| `zip(list1, list2)` | Returns a list of `(a, b)` tuples pairing elements from two lists |
+| `keys(map)` | Returns all keys as a `List<K>` |
+| `values(map)` | Returns all values as a `List<V>` |
+| `merge(map1, map2)` | Returns a new map containing entries from both maps |
 
 ### Iterator
 
@@ -68,8 +113,8 @@
 | `next(iter)` | Returns the next element as `Option<T>`, or `None` if exhausted |
 | `to_list(iter)` | Collects all remaining iterator elements into a `List<T>` |
 | `filter(iter, pred)` | Returns a lazy iterator that yields only elements matching the predicate |
-| `map(iter, fn)` | Returns a lazy iterator that transforms each element |
-| `take(iter, n)` | Returns a lazy iterator that yields at most n elements |
+| `map(iter, function)` | Returns a lazy iterator that transforms each element |
+| `take(iter, count)` | Returns a lazy iterator that yields at most count elements |
 
 ### [String Operations](builtins-string.md)
 
@@ -89,7 +134,7 @@
 | `reverse(string)` | Reverse a string |
 | `split(string, delimiter)` | Split a string into a list |
 | `join(list, sep)` | Join list elements with a separator |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | Type conversion (`to_int` returns `Result<int, Error>`) |
 
 -> See **[String Operation Function Reference](builtins-string.md)** for details
 
@@ -97,9 +142,9 @@
 
 ## print
 
-**Signature:** `print(expr)`
+**Signature:** `print()` / `print(expr1, expr2, ...)`
 
-Prints a value to standard output. A newline is appended at the end.
+Prints one or more values to standard output, separated by spaces. A newline is appended at the end. When called with no arguments, prints only a newline.
 
 | Type | Output Format |
 |----|---------|
@@ -107,26 +152,37 @@ Prints a value to standard output. A newline is appended at the end.
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
+| `Result` (Ok) | `Ok(value)` |
+| `Result` (Err) | `Err(value)` |
 | `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
 | `list` | `[elem1, elem2, ...]` |
 | `map` | `{key1: val1, key2: val2, ...}` |
 | `set` | `{elem1, elem2, ...}` |
+| `tuple` | `(elem1, elem2, ...)` |
 | `enum` | Variant name (e.g., `Red`) |
+| `record` | `RecordName(field: val, ...)` |
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
 print(true)        # true
 print("hello")     # hello
+print(Ok(42))      # Ok(42)
+print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
-```
+print((1, "hello"))  # (1, hello)
 
-**Error condition:** Passing a struct or tuple directly causes a compile error.
+# Multiple arguments (space-separated)
+print(1, 2, 3)             # 1 2 3
+print("hello", "world")   # hello world
+print(1, "hello", true)   # 1 hello true
+print()                    # (empty line)
+```
 
 ---
 
@@ -248,20 +304,20 @@ exit(1)        # error termination
 
 ---
 
-## args
+## arguments
 
-**Signature:** `args() -> List<str>`
+**Signature:** `arguments() -> List<str>`
 
 Returns the command-line arguments passed to the script as a list of strings. Does not include the interpreter name or the script filename — only the arguments after the script path.
 
 ```python
 # Run: ry script.ry hello world
-a = args()
+a = arguments()
 print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
-for x in args():
+for x in arguments():
     print(x)
 ```
 
@@ -387,9 +443,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ## take
 
-**Signature:** `take(list: List<T>, n: int) -> List<T>`
+**Signature:** `take(list: List<T>, count: int) -> List<T>`
 
-Returns a new list with the first `n` elements. If `n` exceeds the list length, returns a copy of the entire list. If `n <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
+Returns a new list with the first `count` elements. If `count` exceeds the list length, returns a copy of the entire list. If `count <= 0`, returns an empty list. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -403,13 +459,13 @@ print(xs.take(0))    # []
 
 ## tap
 
-**Signature:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+**Signature:** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
 
 Calls the given function on each element (ignoring any return value), then returns the original list unchanged. Useful for debugging or inserting side effects in a method chain. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -417,13 +473,13 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ## filter
 
-**Signature:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+**Signature:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
 Returns a new list containing only elements for which the predicate returns `true`. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 ```
@@ -432,13 +488,13 @@ print(xs)   # [1, 2, 3, 4, 5]  (unchanged)
 
 ## map
 
-**Signature:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+**Signature:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
 
 Returns a new list with each element transformed by the given function. The output element type can differ from the input type. The original list is not modified. UFCS notation is also available.
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -446,7 +502,7 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**Signature:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
 
 Returns a new sorted list. Default is ascending order. An optional comparator function can be provided that returns `true` if the first argument should come before the second. The original list is not modified. The sort is **stable** (equal elements preserve their original order). UFCS notation is also available.
 
@@ -455,7 +511,7 @@ xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # Descending order
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -463,7 +519,7 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**Signature:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
 
 Sorts a list in place. Same sorting algorithm as `sort()`, but modifies the original list instead of creating a new one. UFCS notation is also available.
 
@@ -595,6 +651,6 @@ Collects all remaining elements from the iterator into a new list. UFCS notation
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```

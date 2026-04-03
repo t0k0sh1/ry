@@ -1,20 +1,88 @@
 [English](regex.md) | [日本語](../ja/reference/regex.md) | [繁體中文](../zh/reference/regex.md)
 
-# Regular Expression Function Reference
+# Regular Expression Reference
 
-A list of regular expression functions. All functions support UFCS notation. Pattern strings use standard regex syntax.
+## Regex Literal Syntax
 
-> **Note:** Phase 1 passes patterns as plain strings. A dedicated regex literal syntax may be added in the future.
+Regex literals use the `/pattern/` syntax and produce a `Regex` type value:
+
+```ry
+from regex import is_match, split, replace
+
+# Regex literals enable type-based overloading
+"hello".is_match(/[a-z]+/)        # true
+"a1b2c".split(/[0-9]/)         # ["a", "b", "c"]
+"abc123".replace(/[0-9]+/, "X") # "abcX"
+```
+
+Regex literals can be stored in variables:
+
+```ry
+pat = /[a-z]+/
+"hello".is_match(pat)  # true
+```
+
+The `/` inside a regex literal can be escaped with `\/`:
+
+```ry
+"a/b".is_match(/a\/b/)  # true
+```
+
+### Division vs Regex
+
+The lexer uses context to distinguish regex literals from division:
+
+- After value-producing tokens (identifiers, numbers, string literals, `)` or `]`), `/` is parsed as division
+- After operators, keywords, or delimiters that expect an expression (`(`, `[`, `,`, `=`), `/` starts a regex literal
+
+```ry
+x = 10 / 2         # division: 5
+y = is_match("a", /a/) # regex literal
+```
 
 ## Function List
 
+### Regex Literal Functions (text-first, UFCS-compatible)
+
+These functions take a `Regex` type pattern and use text-first argument order for UFCS:
+
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `regex_match` | `(str, str) -> bool` | Returns whether the entire text matches the pattern |
-| `regex_search` | `(str, str) -> int` | Returns the start position of the first match (-1 if not found) |
-| `regex_replace` | `(str, str, str) -> str` | Replaces all matches with a replacement string |
-| `regex_split` | `(str, str) -> List<str>` | Splits text by pattern matches |
-| `regex_find_all` | `(str, str) -> List<str>` | Returns all non-overlapping matches |
+| `is_match` | `(str, Regex) -> bool` | Returns whether the entire text matches the pattern |
+| `search` | `(str, Regex) -> int` | Returns the start position of the first match (-1 if not found) |
+| `replace` | `(str, Regex, str) -> str` | Replaces all matches with a replacement string |
+| `split` | `(str, Regex) -> List<str>` | Splits text by pattern matches |
+| `find_all` | `(str, Regex) -> List<str>` | Returns all non-overlapping matches |
+
+```ry
+from regex import is_match, search, replace, split, find_all
+
+# Direct call
+print(is_match("hello", /[a-z]+/))       # true
+
+# UFCS (text.function(pattern))
+print("abc123".search(/[0-9]+/))          # 3
+print("abc123".replace(/[0-9]+/, "X"))    # abcX
+parts = "hello world".split(/\s+/)
+nums = "a1b2c3".find_all(/[0-9]/)
+```
+
+### Legacy Functions (text-first)
+
+The original `regex_*` functions remain available for backward compatibility. They take pattern strings (not regex literals) with text-first argument order, consistent with the regex literal API:
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `regex_match` | `(text: str, pattern: str) -> bool` | Returns whether the entire text matches the pattern |
+| `regex_search` | `(text: str, pattern: str) -> int` | Returns the start position of the first match (-1 if not found) |
+| `regex_replace` | `(text: str, pattern: str, replacement: str) -> str` | Replaces all matches with a replacement string |
+| `regex_split` | `(text: str, pattern: str) -> List<str>` | Splits text by pattern matches |
+| `regex_find_all` | `(text: str, pattern: str) -> List<str>` | Returns all non-overlapping matches |
+
+```ry
+print(regex_match("hello", "[a-z]+"))   # true
+pos = regex_search("abc123", "[0-9]+")  # 3
+```
 
 ## Supported Pattern Syntax
 
@@ -52,67 +120,27 @@ A list of regular expression functions. All functions support UFCS notation. Pat
 
 ## Usage Examples
 
-### regex_match
-
-```ry
-print(regex_match("[a-z]+", "hello"))   # true
-print(regex_match("[0-9]+", "hello"))   # false
-print(regex_match("[a-zA-Z_]\\w*", "my_var"))  # true
-```
-
-### regex_search
-
-```ry
-pos = regex_search("[0-9]+", "abc123def")
-print(pos)  # 3
-```
-
-### regex_replace
-
-```ry
-s = regex_replace("[0-9]+", "a1b2c3", "X")
-print(s)  # aXbXcX
-```
-
-### regex_split
-
-```ry
-parts = regex_split("\\s+", "hello  world  foo")
-print(length(parts))  # 3
-print(parts[0])    # hello
-```
-
-### regex_find_all
-
-```ry
-matches = regex_find_all("[0-9]+", "a1b23c456")
-print(length(matches))  # 3
-print(matches[0])    # 1
-print(matches[1])    # 23
-print(matches[2])    # 456
-```
-
 ### Range Quantifiers
 
 ```ry
-print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
-print(regex_match("a{2,4}", "aaa"))               # true
-print(regex_match("(ab){2,}", "ababab"))           # true
+print(regex_match("123-4567", "\\d{3}-\\d{4}"))  # true
+print(regex_match("aaa", "a{2,4}"))               # true
+print(regex_match("ababab", "(ab){2,}"))           # true
 ```
 
 ### Non-Greedy (Lazy) Match
 
 ```ry
 # Greedy: matches longest
-g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+g = regex_replace("\"a\" and \"b\"", "\".*\"", "X")
 print(g)  # X
 
 # Non-greedy: matches shortest
-l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+l = regex_replace("\"a\" and \"b\"", "\".*?\"", "X")
 print(l)  # X and X
 
 # Find individual HTML-like tags
-tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
 print(length(tags))  # 3
 ```
 
@@ -122,39 +150,20 @@ print(length(tags))  # 3
 
 ```ry
 # Match whole words only
-pos = regex_search("\\bworld\\b", "hello world")
+pos = regex_search("hello world", "\\bworld\\b")
 print(pos)  # 6
 
 # Find all words
-words = regex_find_all("\\b\\w+\\b", "hello world foo")
+words = regex_find_all("hello world foo", "\\b\\w+\\b")
 print(length(words))  # 3
-
-# \B matches non-boundary (inside a word)
-pos2 = regex_search("\\Bworld", "helloworld")
-print(pos2)  # 5
 ```
 
 ### Case-Insensitive Matching
 
 ```ry
 # (?i) at the start of pattern enables case-insensitive matching
-print(regex_match("(?i)hello", "HELLO"))  # true
-print(regex_match("(?i)hello", "Hello"))  # true
-
-# Works with character classes
-print(regex_match("(?i)[a-z]+", "ABC"))  # true
-
-# Works with replace and find_all
-s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
-print(s)  # X X X
+print(regex_match("HELLO", "(?i)hello"))  # true
+print(regex_match("Hello", "(?i)hello"))  # true
 ```
 
 > **Note:** `(?i)` must appear at the beginning of the pattern and applies to the entire pattern. Partial case-insensitive matching (e.g., `(?i:sub)pattern`) is not supported.
-
-### UFCS Notation
-
-```ry
-# pattern.function(text, ...)
-m = "[a-z]+".regex_match("hello")
-print(m)  # true
-```

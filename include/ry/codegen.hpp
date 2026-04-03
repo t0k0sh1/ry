@@ -1,9 +1,12 @@
 #pragma once
 
 #include "ry/ast.hpp"
+#include "ry/sema_return.hpp"
 #include "ry/source_location.hpp"
 #include "ry/source_manager.hpp"
+#include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -18,7 +21,8 @@
 class CodeGen {
 public:
     explicit CodeGen(bool test_mode = false, const SourceManager *sm = nullptr,
-                     bool coverage_mode = false, int coverage_file_id_offset = 0);
+                     bool coverage_mode = false, int coverage_file_id_offset = 0,
+                     bool outline_mode = false);
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
 
@@ -42,7 +46,100 @@ private:
     llvm::StructType *iteratorHeaderTy_;
     llvm::StructType *errorTy_;
     llvm::StructType *anyTy_;
+
+    // Resource type tracking
+    enum ResourceKind : int {
+        RK_TcpListener, RK_TcpStream, RK_TlsStream,
+        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue,
+        RK_Thread, RK_Lock, RK_RWLock, RK_Semaphore, RK_Barrier,
+        RK_AtomicInt, RK_AtomicBool, RK_Regex, RK_COUNT
+    };
+
+    // ARC infrastructure
+    llvm::StructType *arcHeaderTy_;                       // { i64 strong_count, i64 weak_count }
+    static constexpr uint64_t ARC_HEADER_SIZE = 16;
+    static constexpr int64_t ARC_IMMORTAL = INT64_MAX;    // sentinel: never retain/release
+
+    // Cycle collector — static analysis & visit function generation
+    std::unordered_set<std::string> potentially_cyclic_types_;
+    std::unordered_map<std::string, llvm::Function*> gc_visit_functions_;
+    void collectTypeGraphFromStmt(
+        const StmtNode &stmt,
+        std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+        std::unordered_set<std::string> &all_types);
+    void runCyclicTypeAnalysis(
+        std::unordered_map<std::string, std::unordered_set<std::string>> &graph,
+        const std::unordered_set<std::string> &all_types);
+    bool isPotentiallyCyclic(const std::string &typeName) const;
+    llvm::Function *getOrCreateVisitFunction(const std::string &typeName);
+    std::unordered_set<llvm::Value*> arc_atomic_values_;  // values requiring atomic refcount ops
+    std::unordered_set<llvm::AllocaInst*> arc_managed_vars_; // allocas holding ARC-managed ptrs
+    std::unordered_set<llvm::Value*> arc_owned_values_;  // values produced by emitArcAlloc (data ptrs)
+    std::unordered_set<llvm::AllocaInst*> arc_backed_vars_; // allocas that hold ARC-allocated collections (have ARC header)
+    std::unordered_set<llvm::AllocaInst*> weak_managed_vars_; // allocas holding weak ref ptrs (header ptrs)
+    std::unordered_map<llvm::AllocaInst*, std::string> weak_inner_type_names_; // inner type name for upgrade
+    std::unordered_map<llvm::AllocaInst*, ResourceKind> resource_managed_vars_;
+    std::unordered_set<llvm::AllocaInst*> closure_managed_vars_; // allocas holding ARC-managed closures
+
+    // ARC emit methods
+    llvm::Value *emitArcAlloc(llvm::Value *dataSize);
+    void emitArcRetain(llvm::Value *headerPtr, bool atomic = false);
+    void emitArcRelease(llvm::Value *headerPtr, bool atomic = false,
+                        llvm::FunctionCallee destructor = {},
+                        llvm::Function *gcVisitFn = nullptr);
+    llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
+    llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
+    llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
+    bool isArcAtomic(llvm::Value *val) const;
+    void markArcAtomic(llvm::Value *val);
+    void markArcManaged(llvm::AllocaInst *alloca);
+    bool isArcManaged(llvm::AllocaInst *alloca) const;
+    void emitScopeCleanup();
+    void emitScopeCleanupToDepth(size_t targetDepth);
+    llvm::FunctionCallee resolveCollectionDestructor(llvm::AllocaInst *alloca);
+    void emitArcReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
+    bool tryRetainArcSource(llvm::Value *val);
+
+    // Collection type name helpers
+    static bool isListTypeName(const std::string &typeName);
+    static bool isMapTypeName(const std::string &typeName);
+    static bool isSetTypeName(const std::string &typeName);
+    static bool isCollectionTypeName(const std::string &typeName);
+
+    // Weak reference operations
+    static bool isWeakTypeName(const std::string &typeName);
+    static std::string weakInnerTypeName(const std::string &typeName);
+    void markWeakManaged(llvm::AllocaInst *alloca);
+    bool isWeakManaged(llvm::AllocaInst *alloca) const;
+    void emitWeakRetain(llvm::Value *headerPtr);
+    void emitWeakRelease(llvm::Value *headerPtr);
+    llvm::Value *emitWeakUpgrade(llvm::Value *headerPtr, const std::string &innerTypeName);
+    void emitWeakReleaseVar(const std::string &name, llvm::AllocaInst *alloca);
+
+    // ARC destructor generation — frees internal buffers of collections
+    enum class CollectionKind { List, Map, Set };
+    llvm::FunctionCallee getOrCreateCollectionDestructor(CollectionKind kind);
+
+    // Copy-on-Write (CoW) support
+    llvm::AllocaInst *tryGetReceiverAlloca(const ExprNode &expr);
+    llvm::Value *emitCowCheck(llvm::Value *dataPtr, llvm::AllocaInst *alloca, CollectionKind kind);
+    llvm::Value *emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy);
+    llvm::Value *emitCowDeepCopyMap(llvm::Value *oldDataPtr, llvm::Type *keyTy, llvm::Type *valTy);
+    llvm::Value *emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy);
+    void emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len, const std::string &tag);
+    std::map<CollectionKind, llvm::FunctionCallee> arc_destructors_cache_;
+    llvm::FunctionCallee getOrCreateResourceDestructor(ResourceKind rk);
+    std::map<ResourceKind, llvm::FunctionCallee> resource_destructors_cache_;
+    llvm::FunctionCallee resolveDestructor(llvm::AllocaInst *alloca);
+    ResourceKind detectResourceKind(llvm::Value *val);
+    void nullifyResourceVar(const ExprNode &argExpr);
+    llvm::Value *emitResourceFree(llvm::Value *dataPtr, ResourceKind rk,
+                                   const ExprNode &argExpr);
+
     std::unordered_map<std::string, llvm::Constant*> global_string_cache_;
+    std::unordered_map<std::string, llvm::Constant*> regex_global_cache_;
+    llvm::Constant *buildArcGlobal(const std::string &str, const llvm::Twine &name,
+                                    std::unordered_map<std::string, llvm::Constant*> &cache);
     llvm::Constant *cachedGlobalString(const std::string &str, const llvm::Twine &name = "");
     static constexpr int64_t TAG_INT   = 0;
     static constexpr int64_t TAG_FLOAT = 1;
@@ -51,15 +148,21 @@ private:
     static constexpr int64_t TAG_UNIT  = 4; // reserved for future use
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
+    std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
+        std::vector<std::string> paramNames;
         std::vector<std::string> paramTypeNames;
         std::string returnTypeName;
         size_t minArity = 0;
         std::vector<ExprPtr> defaultValues;
+        const std::vector<ExprPtr> *preconditions = nullptr;
+        const std::vector<ExprPtr> *postconditions = nullptr;
+        const std::vector<std::string> *ensureBindings = nullptr;
     };
     std::unordered_map<std::string, std::vector<OverloadEntry>> functions_;
+    std::unordered_set<llvm::Function*> forward_declared_fns_;
     using BuiltinFn = std::function<void(const std::vector<ExprPtr>&)>;
     std::unordered_map<std::string, BuiltinFn> builtins_;
 
@@ -79,6 +182,7 @@ private:
     };
     std::unordered_map<llvm::Value*, llvm::Type*> type_meta_[TM_COUNT];
     std::unordered_map<llvm::Value*, std::string> low_level_type_names_;
+    std::unordered_map<llvm::Value*, std::string> map_value_type_names_;
 
     // Fixed-length array element type names (e.g., "i32", "u8")
     // elementType and size are derivable from AllocaInst->getAllocatedType()
@@ -112,7 +216,18 @@ private:
         std::unordered_map<std::string, VariantFieldInfo> variantFields;
     };
     std::unordered_map<std::string, EnumInfo> enum_types_;
+    EnumVariantRegistry buildEnumVariantRegistry() const;
+    std::string findAdtEnumName(llvm::StructType *st) const;
+    std::string findStructTypeName(llvm::StructType *st) const;
     std::unordered_map<llvm::Value*, std::string> enum_value_types_;
+    llvm::Function *createAdtVisitFunction(const std::string &typeName, const EnumInfo &info);
+    llvm::Function *createStructVisitFunction(const std::string &typeName, const StructInfo &info);
+    void emitGcVisitField(llvm::Value *fieldPtr, llvm::Type *fieldTy,
+                          const std::string &fieldTypeName,
+                          llvm::Value *visitorFn,
+                          llvm::FunctionType *visitorCallTy,
+                          llvm::FunctionType *visitFnTy,
+                          llvm::Function *parentFn);
 
     struct GenericEnumTemplate {
         std::string name;
@@ -140,6 +255,17 @@ private:
                                            const std::vector<ExprPtr> &args);
     std::string reverseResolveType(llvm::Value *val);
 
+    // Captured variable ARC kind — determines which destructor to use on release
+    enum CapturedArcKind {
+        CAK_None,       // not ARC-managed
+        CAK_List,
+        CAK_Map,
+        CAK_Set,
+        CAK_Closure,
+        CAK_Resource,   // generic resource (destructor not tracked per-capture)
+        CAK_Generic,    // ARC-managed but no sub-destructor (e.g., f-strings)
+    };
+
     // Function type info for indirect calls (lambda / function pointers)
     struct FnTypeInfo {
         std::vector<llvm::Type*> paramTypes;
@@ -147,18 +273,72 @@ private:
         llvm::Type *returnType;
         std::vector<std::string> capturedVars;   // for closure support
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
+        std::vector<CapturedArcKind> capturedArcKinds; // ARC kind per captured variable
+        std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
+        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for function-typed captures
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
+    std::unordered_map<llvm::Value*, FnTypeInfo>::iterator
+    lookupFnTypeInfo(llvm::Value *val);
+    std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
+    llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
+    // Nested closure shape for cache key differentiation
+    struct NestedClosureShape {
+        size_t index;
+        std::vector<CapturedArcKind> arcKinds;
+        std::vector<llvm::Type*> types;
+        std::vector<ResourceKind> resourceKinds;
+        bool operator<(const NestedClosureShape &o) const {
+            if (index != o.index) return index < o.index;
+            if (arcKinds != o.arcKinds) return arcKinds < o.arcKinds;
+            if (types.size() != o.types.size()) return types.size() < o.types.size();
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (types[i] != o.types[i])
+                    return std::less<llvm::Type*>{}(types[i], o.types[i]);
+            }
+            return resourceKinds < o.resourceKinds;
+        }
+    };
+    struct ClosureDtorKey {
+        std::vector<CapturedArcKind> arcKinds;
+        std::vector<llvm::Type*> types;
+        std::vector<ResourceKind> resourceKinds;
+        std::vector<NestedClosureShape> nestedShapes;
+        bool operator<(const ClosureDtorKey &o) const {
+            if (arcKinds != o.arcKinds) return arcKinds < o.arcKinds;
+            if (types.size() != o.types.size()) return types.size() < o.types.size();
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (types[i] != o.types[i])
+                    return std::less<llvm::Type*>{}(types[i], o.types[i]);
+            }
+            if (resourceKinds != o.resourceKinds) return resourceKinds < o.resourceKinds;
+            return nestedShapes < o.nestedShapes;
+        }
+    };
+    std::map<ClosureDtorKey, llvm::FunctionCallee> closure_destructors_cache_;
+    CapturedArcKind detectCapturedArcKind(llvm::AllocaInst *alloca) const;
     int lambda_counter_ = 0;
     bool test_mode_ = false;
+    bool outline_mode_ = false;
+    int outline_depth_ = 0;
     bool coverage_mode_ = false;
     int coverage_file_id_offset_ = 0;
     int test_fn_counter_ = 0;
     const SourceManager *sm_ = nullptr;
     SourceLocation current_loc_;
+    std::string current_function_name_;
     std::unordered_set<int64_t> registered_coverage_lines_;
 
     void emitCoverage(const SourceLocation &loc);
+    void emitTraceSymbolDefine(const std::string &kind, const std::string &name,
+                               const SourceLocation &loc);
+    llvm::Value *emitTraceSourceString(const std::string &text);
+    llvm::Value *emitTraceFileString(const SourceLocation &loc);
+    void emitTraceFunctionEnter(const std::string &fnName, const SourceLocation &loc);
+    void emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc);
+    void emitTraceReturn(const SourceLocation &loc);
+    void emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc);
+    void emitTraceWhenBranch(int armIndex, const SourceLocation &loc);
 
     // Contract (Design by Contract) support
     std::vector<ExprPtr> *current_postconditions_ = nullptr;
@@ -194,6 +374,7 @@ private:
     std::unordered_map<llvm::AllocaInst*, TypeConstraint> type_constraints_;
     int constraint_err_counter_ = 0;
     int arith_zero_err_counter_ = 0;
+    int overflow_err_counter_ = 0;
 
     bool isIntLiteralType(const std::string &typeName);
     bool isStrLiteralType(const std::string &typeName);
@@ -205,7 +386,8 @@ private:
     std::string resolveTypeAlias(const std::string &typeName);
 
     // Loop context stack for break/continue (condBB, endBB)
-    std::vector<std::pair<llvm::BasicBlock*, llvm::BasicBlock*>> loop_stack_;
+    // { condBB, endBB, scopeDepth at loop entry }
+    std::vector<std::tuple<llvm::BasicBlock*, llvm::BasicBlock*, size_t>> loop_stack_;
 
     // Indexed for-loop helper: emits loop scaffolding and calls bindVars for each iteration
     void emitIndexedForLoop(llvm::Value *length,
@@ -228,12 +410,21 @@ private:
         llvm::Function *savedFn_;
         std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> savedScope_;
         std::vector<std::unordered_set<std::string>> savedConstScope_;
+        std::unordered_set<llvm::AllocaInst*> savedArcManaged_;
+        std::unordered_set<llvm::Value*> savedArcOwned_;
+        std::unordered_set<llvm::AllocaInst*> savedArcBacked_;
+        std::unordered_set<llvm::AllocaInst*> savedWeakManaged_;
+        std::unordered_map<llvm::AllocaInst*, std::string> savedWeakInnerTypeNames_;
+        std::unordered_map<llvm::AllocaInst*, ResourceKind> savedResourceManaged_;
+        std::unordered_set<llvm::AllocaInst*> savedClosureManaged_;
+        std::vector<std::vector<llvm::Value*>> savedIteratorMallocs_;
         llvm::BasicBlock *savedBlock_;
         llvm::BasicBlock::iterator savedPoint_;
         std::vector<ExprPtr> *savedPostconditions_;
         std::vector<std::string> *savedEnsureBindings_;
         bool savedInEnsureContext_;
         std::string savedFnReturnType_;
+        std::string savedFnName_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
@@ -255,6 +446,7 @@ private:
 
     void emitStmt(AssignStmt &s);
     void emitStmt(CallStmt &s);
+    void emitStmt(ExprStmt &s);
     void emitStmt(ReturnStmt &s);
     void emitStmt(ImportStmt &s);
     void emitStmt(RecordStmt &s);
@@ -269,14 +461,37 @@ private:
     void emitStmt(AwaitStmt &s);
     void emitStmt(TupleDestructStmt &s);
     void emitStmt(std::unique_ptr<IfStmt> &s);
+    void emitStmt(std::unique_ptr<WhenCondStmt> &s);
     void emitStmt(std::unique_ptr<WhileStmt> &s);
     void emitStmt(std::unique_ptr<ForStmt> &s);
     void emitStmt(std::unique_ptr<FnStmt> &s);
+    void forwardDeclareFunctions(Program &prog);
+    llvm::Function *declareFunction(
+        const std::string &name,
+        std::vector<llvm::Type*> &paramTypes,
+        std::vector<FnParam> &params,
+        llvm::Type *exposedRetTy,
+        const std::string &exposedReturnTypeName,
+        const std::vector<Directive> &directives,
+        const std::vector<ExprPtr> *preconditions,
+        const std::vector<ExprPtr> *postconditions,
+        const std::vector<std::string> *ensureBindings);
+    void applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives);
+    llvm::Type *tryResolveType(const std::string &typeName);
     void emitStmt(std::unique_ptr<MatchStmt> &s);
+    llvm::Value *emitPatternTest(const Pattern &pattern, llvm::Value *subjectVal,
+                                  llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void emitPatternBindings(const Pattern &pattern, llvm::AllocaInst *subjectAlloca,
+                              llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void checkMatchExhaustiveness(const std::vector<std::pair<const Pattern*, bool>> &armPatterns,
+                                   llvm::Type *subjectTy, const std::string &subjectEnumType);
+    void validateBranchTypes(llvm::Value *lhs, llvm::Value *rhs, const char *exprKind);
+    std::string resolveEnumType(llvm::Value *val) const;
     void emitDescribeCall(CallStmt &s);
     void emitItCall(CallStmt &s);
     void emitEachItCall(CallStmt &s);
     void emitPropertyItCall(CallStmt &s);
+    void emitOutlinePrintf(const std::string &label, llvm::Value *nameVal = nullptr);
     std::pair<llvm::FunctionCallee, llvm::FunctionCallee> getTestItFunctions();
     llvm::Function *emitTestFunction(const std::string &namePrefix,
         const std::vector<llvm::Type*> &paramTypes, LambdaExpr &lam, const std::string &context);
@@ -298,7 +513,8 @@ private:
     bool isLowLevelFloatTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Value *val) const;
-    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op);
+    void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op,
+                              const std::string &lhsHint, const std::string &rhsHint);
     llvm::Value *coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
                                        const std::string &typeName,
                                        const std::string &context,
@@ -309,8 +525,12 @@ private:
     llvm::Value *emitCheckedArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitSaturatingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitWrappingArithmetic(const std::string &callee, llvm::Value *lhs, llvm::Value *rhs);
+    llvm::Value *emitIntOverflowCheck(llvm::Intrinsic::ID intrinsicId,
+                                       llvm::Value *lhs, llvm::Value *rhs,
+                                       const std::string &opName);
 
     // Type promotion helpers (B1)
+    void ensureNumericType(llvm::Value *v, const std::string &context);
     llvm::Value *promoteToInt(llvm::Value *v);
     std::pair<llvm::Value*, llvm::Value*> promoteToFloat(llvm::Value *lhs, llvm::Value *rhs);
 
@@ -329,6 +549,7 @@ private:
     llvm::Value *emitExprVariant(const FloatExpr &e);
     llvm::Value *emitExprVariant(const BoolExpr &e);
     llvm::Value *emitExprVariant(const StringExpr &e);
+    llvm::Value *emitExprVariant(const RegexExpr &e);
     llvm::Value *emitExprVariant(const VariableExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<UnaryExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<BinaryExpr> &e);
@@ -343,13 +564,21 @@ private:
     llvm::Value *emitExprVariant(const std::unique_ptr<LambdaExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<CastExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e);
-    llvm::Value *emitExprVariant(const std::unique_ptr<TernaryExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<WhenCondExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<MatchExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<RangeExpr> &e);
     llvm::Value *emitExprVariant(const NoneExpr &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> &e);
     llvm::Value *emitExprVariant(const std::unique_ptr<AwaitExpr> &e);
+    llvm::Value *emitExprVariant(const std::unique_ptr<WeakExpr> &e);
     llvm::Value *valueToString(llvm::Value *val);
     llvm::Value *structToString(llvm::Value *val);
+    bool isTupleStructType(llvm::StructType *st);
+    llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
+    llvm::Value *collectionToString(llvm::Value *val);
+    llvm::Value *concatStringParts(
+        const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
+        const std::string &prefix);
 
     // Operator overload helpers
     llvm::Value *findAndCallOverload(const std::string &opFnName,
@@ -369,17 +598,17 @@ private:
 
     // Binary operation dispatch (user-defined → any → built-in)
     llvm::Value *emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                               const std::string &llNameHint = "");
+                               const std::string &lhsHint = "", const std::string &rhsHint = "");
 
     // BinaryExpr sub-dispatchers (B2)
     llvm::Value *emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                   const std::string &llNameHint = "");
+                                   const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitStructComparison(const std::string &op, llvm::Value *lhs,
                                        llvm::Value *rhs, const StructInfo &info);
     llvm::Value *emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                const std::string &llNameHint = "");
+                                const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                   const std::string &llNameHint = "");
+                                   const std::string &lhsHint = "", const std::string &rhsHint = "");
     llvm::Value *emitAnyBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs);
     llvm::Value *emitAnyUnaryNeg(llvm::Value *operand);
 
@@ -400,9 +629,15 @@ private:
     llvm::Value *buildOkValue(llvm::Value *inner, llvm::StructType *resultTy);
     llvm::Value *buildErrValue(llvm::Value *inner, llvm::StructType *resultTy);
     llvm::Value *buildStaticError(const std::string &msg, const std::string &globalName);
+    static std::vector<std::string> splitTypeArgs(const std::string &argsStr);
     std::pair<llvm::Type*, llvm::Type*> parseMapTypeAnnotation(const std::string &typeStr);
     FnTypeInfo parseFnTypeAnnotation(const std::string &typeStr);
-    void emitRuntimeError(const std::string &message, const std::string &globalName);
+    void emitRuntimeError(const std::string &message, const std::string &globalName,
+                          llvm::ArrayRef<llvm::Value *> extraArgs = {});
+    void emitBoundsError(llvm::Value *index, llvm::Value *size,
+                         const std::string &fmtMsg, const std::string &globalName);
+    llvm::Value *emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
+                                        const std::string &prefix);
     void emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
                          const std::string &errMsg, const std::string &globalName,
                          const std::string &bbPrefix);
@@ -434,10 +669,14 @@ private:
     llvm::FunctionCallee getStdlibStrcmp();
     llvm::FunctionCallee getStdlibStrncmp();
     llvm::FunctionCallee getStdlibStrstr();
+    llvm::FunctionCallee getStdlibStrcasestr();
+    llvm::FunctionCallee getStdlibStrncasecmp();
     llvm::FunctionCallee getStdlibStrcpy();
     llvm::FunctionCallee getStdlibStrcat();
     llvm::FunctionCallee getStdlibSnprintf();
     llvm::FunctionCallee getStdlibPrintf();
+    llvm::FunctionCallee getBufferedPrintf();
+    llvm::FunctionCallee getSprintPrintf();
     llvm::FunctionCallee getStdlibExit();
     llvm::Type *getSetElementType(llvm::Value *setVal);
     llvm::Type *getNestedListElementType(llvm::Value *listVal);
@@ -492,6 +731,19 @@ private:
         llvm::Value *oldIndex, llvm::Value *newIndex,
         const std::string &prefix);
 
+    // ===== Collection Header Allocation Policy =====
+    //
+    // All collection headers (List, Set, Map) are allocated with an ARC header
+    // prepended via emitArcAllocCollectionHeader(). This ensures:
+    // - Scope cleanup (emitArcReleaseVar) can safely read the ARC header
+    // - CoW checks (emitCowCheck) work correctly via arc_backed_vars_
+    // - Discarded expression results (ExprStmt) are released immediately
+    // - Collection values are compatible with scope cleanup and assignment
+    //
+    // Data buffers (element arrays, key/value arrays) inside collection headers
+    // are allocated with plain malloc and freed by the collection destructor
+    // (getOrCreateCollectionDestructor).
+
     // Data structure field helpers
     struct ListFields {
         llvm::Value *lenPtr = nullptr;
@@ -525,11 +777,19 @@ private:
     };
     MapFields loadMapHeader(llvm::Value *mapVal, const std::string &prefix);
 
+    void storeListHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                               llvm::Value *cap, llvm::Value *data);
+    void storeSetHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                              llvm::Value *cap, llvm::Value *elems);
+    void storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                              llvm::Value *cap, llvm::Value *keys,
+                              llvm::Value *vals);
+
     llvm::Value *wrapPtrAsOption(llvm::Value *ptr, const std::string &hint);
 
     // Builtin dispatch helpers (Step 4)
     llvm::Value *emitBuiltinCore(const CallExpr &e);
-    llvm::Value *emitBuiltinCollection(const CallExpr &e);
+    llvm::Value *emitBuiltinCollection(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
 
     // Collection operation handlers
     llvm::Value *emitCollOp_add(const CallExpr &e);
@@ -542,6 +802,7 @@ private:
     llvm::Value *emitCollOp_pop(const CallExpr &e);
     llvm::Value *emitCollOp_slice(const CallExpr &e);
     llvm::Value *emitCollOp_take(const CallExpr &e);
+    llvm::Value *emitCollOp_take_impl(const CallExpr &e, llvm::Value *listPtr);
     llvm::Value *emitCollOp_insert(const CallExpr &e);
     llvm::Value *emitCollOp_remove_at(const CallExpr &e);
     llvm::Value *emitCollOp_distinct(const CallExpr &e);
@@ -567,12 +828,13 @@ private:
     llvm::Value *emitStrOp_trim_end(const CallExpr &e);
     llvm::Value *emitStrOp_repeat(const CallExpr &e);
     llvm::Value *emitStringRepeat(llvm::Value *strVal, llvm::Value *n);
+    llvm::Value *emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy);
     llvm::Value *emitStrOp_reverse(const CallExpr &e);
     llvm::Value *emitStrOp_reverse_mut(const CallExpr &e);
     llvm::Value *emitStrOp_split(const CallExpr &e);
     llvm::Value *emitStrOp_join(const CallExpr &e);
 
-    llvm::Value *emitBuiltinHigherOrder(const CallExpr &e);
+    llvm::Value *emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args, const std::string &callee);
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
@@ -593,6 +855,10 @@ private:
     llvm::Value *emitBuiltinHttp(const CallExpr &e);
     llvm::Value *emitBuiltinJson(const CallExpr &e);
     llvm::Value *emitBuiltinBase64(const CallExpr &e);
+    llvm::Value *emitBuiltinPath(const CallExpr &e);
+    llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
+    llvm::Value *emitBuiltinThread(const CallExpr &e);
+    llvm::Value *emitBuiltinGc(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);
@@ -600,29 +866,40 @@ private:
     bool isHttpResponse(llvm::Value *val);
     bool isHttpClientResponse(llvm::Value *val);
     bool isJsonValue(llvm::Value *val);
+    bool isThread(llvm::Value *val);
+    bool isLock(llvm::Value *val);
+    bool isRWLock(llvm::Value *val);
+    bool isSemaphore(llvm::Value *val);
+    bool isBarrier(llvm::Value *val);
+    bool isAtomicInt(llvm::Value *val);
+    bool isAtomicBool(llvm::Value *val);
+    bool isRegex(llvm::Value *val);
     void propagateResourceTracking(llvm::Value *src, llvm::Value *dst);
     void propagateResourceTrackingWide(llvm::Value *src, llvm::Value *dst);
     void propagateCollectionMetadata(llvm::Value *src, llvm::Value *dst);
+    void propagateTypeMeta(const std::string &typeName, llvm::Value *val);
+    void propagateReturnTypeMeta(const OverloadEntry *entry, llvm::Value *val);
+    void propagateReturnFnTypeMeta(const OverloadEntry *entry, llvm::Function *fn, llvm::Value *result);
     void propagateAllMetadata(llvm::Value *src, llvm::Value *dst);
     void propagateAllMetadataWide(llvm::Value *src, llvm::Value *dst);
     void registerResourceByTypeName(const std::string &typeName, llvm::Value *val);
+    void applyParamTypeMeta(const std::string &ptype, llvm::AllocaInst *alloca,
+                            llvm::Type *paramLLVMType, const std::string &paramName);
     // Shared Result-wrapping helpers for stdlib dispatchers
     llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                   std::function<llvm::Value*()> buildOk,
-                                   std::function<llvm::Value*()> buildErr);
+                                   llvm::function_ref<llvm::Value*()> buildOk,
+                                   llvm::function_ref<llvm::Value*()> buildErr);
     llvm::Value *buildErrorFromRuntime(const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
-    enum ResourceKind : int {
-        RK_TcpListener, RK_TcpStream, RK_TlsStream,
-        RK_HttpRequest, RK_HttpResponse, RK_HttpClientResponse, RK_JsonValue, RK_COUNT
-    };
     std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
+    std::unordered_set<llvm::Value*> json_type_only_;
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, ResourceKind rk);
-    llvm::Value *emitBuiltinIterator(const CallExpr &e);
+    llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
+    llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
@@ -631,6 +908,7 @@ private:
                                          unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
+    void emitPrintSingle(llvm::Value *val, llvm::FunctionCallee printfFn);
     void emitExit(const std::vector<ExprPtr> &args);
 
     // Lambda call helper: invoke a lambda/closure value with given args
@@ -650,6 +928,8 @@ private:
         std::vector<llvm::Type*> &out);
     llvm::Type *deduceReturnType(const std::vector<llvm::Type*> &types);
     std::string reverseResolveTypeName(llvm::Type *ty);
+    std::string inferCollectionTypeName(llvm::Value *val);
+    std::string extractMapValueTypeName(const std::string &mapTypeName);
 
     // Union type helpers
     std::vector<std::string> parseUnionComponents(const std::string &typeName);
@@ -664,5 +944,7 @@ private:
     bool isAnyType(llvm::Type *ty) const;
     bool canAnyHoldType(llvm::Type *ty) const;
     bool isNonStrPointer(llvm::Value *val);
+    bool isStringValue(llvm::Value *val);
     llvm::Value *emitAnyToString(llvm::Value *anyVal);
+    static bool isNoneLiteral(const ExprNode &expr);
 };

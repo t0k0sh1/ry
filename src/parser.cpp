@@ -1,13 +1,12 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 
 // ===== Mock/verify helper: coerce first arg identifier to string =====
 
-static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
+void Parser::coerceFirstArgToString(std::vector<ExprPtr> &args) {
     if (!args.empty()) {
         if (auto *ve = std::get_if<VariableExpr>(&args[0]->data)) {
             args[0]->data = StringExpr{ve->name};
@@ -17,11 +16,56 @@ static void coerceFirstArgToString(std::vector<ExprPtr> &args) {
 
 // ===== Naming convention helpers =====
 
-static bool isSnakeCase(const std::string &name) {
+bool Parser::isSnakeCase(const std::string &name) {
     if (name.empty()) return false;
     if (name == "_") return true;
-    static const std::regex pattern("[a-z_][a-z0-9_]*");
-    return std::regex_match(name, pattern);
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
+}
+
+bool Parser::isMutationFnName(const std::string &name) {
+    if (name.empty()) return false;
+    size_t len = name.back() == '!' ? name.size() - 1 : name.size();
+    if (len == 0) return false;
+    if (len == 1 && name[0] == '_') return true;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'a' && first <= 'z') && first != '_') return false;
+    for (size_t i = 1; i < len; ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
+}
+
+bool Parser::isScreamingSnakeCase(const std::string &name) {
+    if (name.empty()) return false;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'A' && first <= 'Z')) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'))
+            return false;
+    }
+    return true;
+}
+
+bool Parser::isPascalCase(const std::string &name) {
+    if (name.empty()) return false;
+    unsigned char first = static_cast<unsigned char>(name[0]);
+    if (!(first >= 'A' && first <= 'Z')) return false;
+    for (size_t i = 1; i < name.size(); ++i) {
+        unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')))
+            return false;
+    }
+    return true;
 }
 
 // ===== A1: parseError helpers =====
@@ -74,11 +118,12 @@ ExprPtr Parser::parseBinaryLeft(ParseFn operand, std::initializer_list<TokenKind
 
 std::vector<ExprPtr> Parser::parseArgList() {
     std::vector<ExprPtr> args;
+    args.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
-        args.push_back(parseTernary());
+        args.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next();
-            args.push_back(parseTernary());
+            args.push_back(parseConditional());
         }
     }
     if (lex_.peek().kind != TokenKind::RParen)
@@ -91,6 +136,7 @@ std::vector<ExprPtr> Parser::parseArgList() {
 
 Program Parser::parseProgram() {
     Program prog;
+    prog.reserve(32);
     skipNewlines();
     while (lex_.peek().kind != TokenKind::Eof) {
         if (lex_.peek().kind == TokenKind::From) {
@@ -189,21 +235,52 @@ std::vector<Directive> Parser::parseDirectives() {
 }
 
 StmtNode Parser::parseImportStatement() {
+    static constexpr const char *kHyphenError =
+        "hyphens '-' are not allowed in package names; "
+        "use underscores '_' instead";
+
+    // Parse dot-separated path segments: ident ('.' ident)*
+    // Checks for hyphens after each segment and after each dot.
+    auto parseDotPath = [&](std::string &path) {
+        if (lex_.peek().kind == TokenKind::Minus)
+            parseError(lex_.peek().line, kHyphenError);
+        while (lex_.peek().kind == TokenKind::Dot) {
+            lex_.next();
+            Token part = lex_.peek();
+            if (part.kind == TokenKind::Minus)
+                parseError(part.line, kHyphenError);
+            if (part.kind != TokenKind::Ident)
+                parseError(part.line, "expected identifier after '.'");
+            path += "/" + lex_.next().value;
+        }
+    };
+
     Token fromTok = lex_.next(); // consume 'from'
 
+    std::string modulePath;
     Token modTok = lex_.peek();
-    if (modTok.kind != TokenKind::Ident)
-        parseError(modTok.line, "expected package name after 'from'");
-    std::string modulePath = lex_.next().value;
 
-    while (lex_.peek().kind == TokenKind::Dot) {
-        lex_.next(); // consume '.'
-        Token part = lex_.peek();
-        if (part.kind != TokenKind::Ident)
-            parseError(part.line, "expected identifier after '.'");
-        modulePath += "/" + lex_.next().value;
+    if (modTok.kind == TokenKind::DotDot) {
+        parseError(modTok.line,
+            "parent directory imports ('from ..') are not supported");
+    } else if (modTok.kind == TokenKind::Dot) {
+        lex_.next();
+        modulePath = ".";
+        if (lex_.peek().kind == TokenKind::Minus)
+            parseError(lex_.peek().line, kHyphenError);
+        if (lex_.peek().kind == TokenKind::Ident) {
+            modulePath += "/" + lex_.next().value;
+            parseDotPath(modulePath);
+        }
+    } else if (modTok.kind == TokenKind::Ident) {
+        modulePath = lex_.next().value;
+        parseDotPath(modulePath);
+    } else {
+        parseError(modTok.line, "expected package name after 'from'");
     }
+
     std::vector<std::string> names;
+    names.reserve(4);
     if (lex_.peek().kind == TokenKind::Import) {
         lex_.next(); // consume 'import'
         Token name = lex_.peek();
@@ -257,7 +334,7 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Async) {
         lex_.next(); // consume 'async'
         if (lex_.peek().kind != TokenKind::Fn)
-            parseError(first.line, "expected 'fn' after 'async'");
+            parseError(first.line, "expected 'function' after 'async'");
         auto stmt = parseFnStatement(directives, true);
         auto &fs = std::get<std::unique_ptr<FnStmt>>(stmt);
         fs->directives = std::move(directives);
@@ -307,6 +384,9 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Return)
         return parseReturnStatement();
 
+    if (first.kind == TokenKind::When)
+        return parseWhenStatement();
+
     if (first.kind == TokenKind::Match)
         return parseMatchStatement();
 
@@ -337,16 +417,18 @@ StmtNode Parser::parseStatement() {
     if (first.kind == TokenKind::Await) {
         Token awaitTok = lex_.next(); // consume 'await'
         if (!in_async_fn_)
-            parseError(awaitTok.line, "'await' can only be used inside an 'async fn'; use 'block_on()' in synchronous context");
+            parseError(awaitTok.line, "'await' can only be used inside an 'async function'; use 'block_on()' in synchronous context");
         AwaitStmt s;
         s.operand = parseLogicalNot();
         s.loc = locFromToken(awaitTok);
         return s;
     }
 
-    // identifier-leading statements: assignment, index assignment, or function call
-    if (first.kind != TokenKind::Ident)
-        parseError(first.line, "expected 'if', 'while', 'for', 'fn', 'async fn', 'return', 'break', 'continue', 'await', '...', 'enum', 'match', 'expect', 'record', 'type', or identifier, got '" + first.value + "'");
+    // Non-identifier expression statement: e.g. [1, 2, 3].map(f)
+    if (first.kind != TokenKind::Ident) {
+        ExprPtr expr = parseConditional();
+        return ExprStmt{std::move(expr), locFromToken(first)};
+    }
     lex_.next(); // consume ident
 
     Token next = lex_.peek();
@@ -361,7 +443,7 @@ StmtNode Parser::parseStatement() {
         s.loc = locFromToken(first);
         if (lex_.peek().kind == TokenKind::Equals) {
             lex_.next(); // consume '='
-            s.value = parseTernary();
+            s.value = parseConditional();
         } else {
             // Value-less declaration (e.g., @native @const PI: float)
             if (!hasDirective(s.directives, "native"))
@@ -374,10 +456,10 @@ StmtNode Parser::parseStatement() {
         // index assignment: ident[expr, ...] = value
         lex_.next(); // consume '['
         std::vector<ExprPtr> indices;
-        indices.push_back(parseTernary());
+        indices.push_back(parseConditional());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
-            indices.push_back(parseTernary());
+            indices.push_back(parseConditional());
         }
         if (lex_.peek().kind != TokenKind::RBracket)
             parseError("expected ']'");
@@ -385,7 +467,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after index expression");
         lex_.next(); // consume '='
-        ExprPtr val = parseTernary();
+        ExprPtr val = parseConditional();
         IndexAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -425,7 +507,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' after field name");
         lex_.next(); // consume '='
-        ExprPtr val = parseTernary();
+        ExprPtr val = parseConditional();
         FieldAssignStmt s;
         auto obj = std::make_unique<ExprNode>();
         obj->data = VariableExpr{first.value};
@@ -450,7 +532,7 @@ StmtNode Parser::parseStatement() {
         if (lex_.peek().kind != TokenKind::Equals)
             parseError("expected '=' in tuple destructuring");
         lex_.next(); // consume '='
-        ExprPtr value = parseTernary();
+        ExprPtr value = parseConditional();
         TupleDestructStmt s;
         s.names = std::move(names);
         s.value = std::move(value);
@@ -462,7 +544,7 @@ StmtNode Parser::parseStatement() {
         lex_.next(); // consume '='
         AssignStmt s;
         s.name  = first.value;
-        s.value = parseTernary();
+        s.value = parseConditional();
         s.directives = std::move(directives);
         s.loc = locFromToken(first);
         return s;
@@ -478,7 +560,7 @@ StmtNode Parser::parseStatement() {
         // Compound assignment: preserve compound_op for codegen resolution
         Token opTok = lex_.next(); // consume +=, -=, //=, **=, etc.
         std::string op = opTok.value.substr(0, opTok.value.size() - 1); // extract "//" from "//="
-        return makeCompoundAssign(first, op, parseTernary());
+        return makeCompoundAssign(first, op, parseConditional());
     } else if (next.kind == TokenKind::PlusPlus || next.kind == TokenKind::MinusMinus) {
         Token opTok = lex_.next(); // consume ++ or --
         std::string op = (opTok.kind == TokenKind::PlusPlus) ? "+" : "-";
@@ -519,6 +601,7 @@ std::vector<StmtNode> Parser::parseBlock() {
     lex_.next(); // consume Indent
 
     std::vector<StmtNode> stmts;
+    stmts.reserve(8);
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
         stmts.push_back(parseStatement());
@@ -536,9 +619,19 @@ std::vector<StmtNode> Parser::parseBlock() {
     return stmts;
 }
 
+std::vector<StmtNode> Parser::parseBlockOrInline() {
+    if (lex_.peek().kind == TokenKind::Newline) {
+        return parseBlock();
+    }
+    // Inline body: single statement on same line
+    std::vector<StmtNode> stmts;
+    stmts.push_back(parseStatement());
+    return stmts;
+}
+
 StmtNode Parser::parseWhileStatement() {
     Token whileTok = lex_.next(); // consume 'while'
-    ExprPtr cond = parseTernary();
+    ExprPtr cond = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after while condition");
@@ -579,7 +672,7 @@ StmtNode Parser::parseForStatement() {
         parseError("expected 'in' after variable name in for loop");
     lex_.next(); // consume 'in'
 
-    ExprPtr iterable = parseTernary();
+    ExprPtr iterable = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after for loop iterable");
@@ -598,30 +691,14 @@ StmtNode Parser::parseIfStatement() {
 
     Token ifTok = lex_.next(); // consume 'if'
     ifStmt->loc = locFromToken(ifTok);
-    ExprPtr cond = parseTernary();
+    ExprPtr cond = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after if condition");
     lex_.next(); // consume ':'
 
-    IfBranch branch;
-    branch.condition = std::move(cond);
-    branch.body = parseBlock();
-    ifStmt->branches.push_back(std::move(branch));
-
-    while (lex_.peek().kind == TokenKind::Elif) {
-        lex_.next(); // consume 'elif'
-        ExprPtr elifCond = parseTernary();
-
-        if (lex_.peek().kind != TokenKind::Colon)
-            parseError("expected ':' after elif condition");
-        lex_.next(); // consume ':'
-
-        IfBranch elifBranch;
-        elifBranch.condition = std::move(elifCond);
-        elifBranch.body = parseBlock();
-        ifStmt->branches.push_back(std::move(elifBranch));
-    }
+    ifStmt->branch.condition = std::move(cond);
+    ifStmt->branch.body = parseBlock();
 
     if (lex_.peek().kind == TokenKind::Else) {
         lex_.next(); // consume 'else'
@@ -646,7 +723,7 @@ StmtNode Parser::parseExpectStatement() {
         parseError("expected '(' after 'expect'");
     lex_.next(); // consume '('
 
-    ExprPtr actual = parseTernary();
+    ExprPtr actual = parseConditional();
 
     if (lex_.peek().kind != TokenKind::RParen)
         parseError("expected ')'");
@@ -683,7 +760,7 @@ StmtNode Parser::parseExpectStatement() {
     };
 
     if (matchers_with_arg.count(matcher)) {
-        es.expected = parseTernary();
+        es.expected = parseConditional();
     } else if (matchers_no_arg.count(matcher)) {
         // no argument
     } else {
@@ -696,4 +773,3 @@ StmtNode Parser::parseExpectStatement() {
 
     return es;
 }
-

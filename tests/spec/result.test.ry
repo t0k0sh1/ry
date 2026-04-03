@@ -1,80 +1,92 @@
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+function safe_divide(a: int, b: int) -> Result<int, Error>:
   if b == 0:
     return Err(Error("division by zero"))
   return Ok(a // b)
 
-fn divide_and_add(a: int, b: int) -> Result<int, Error>:
+function divide_and_add(a: int, b: int) -> Result<int, Error>:
   v = safe_divide(a, b)?
   return Ok(v + 1)
 
-fn chained(a: int, b: int, c: int) -> Result<int, Error>:
+function chained(a: int, b: int, c: int) -> Result<int, Error>:
   x = safe_divide(a, b)?
   y = safe_divide(x, c)?
   return Ok(y)
 
-fn inline_expr(a: int, b: int) -> Result<int, Error>:
+function inline_expr(a: int, b: int) -> Result<int, Error>:
   return Ok(safe_divide(a, b)? + 1)
 
-describe("Result type", fn():
-  it("Ok wraps value", fn():
+describe("Result type", ():
+  it("Ok wraps value", ():
     res = Ok(42)
     expect(res).to_be_ok()
   )
-  it("Err wraps error", fn():
+  it("Err wraps error", ():
     res = Err(Error("fail"))
     expect(res).to_be_err()
   )
-  it("match Ok extracts value", fn():
+  it("when Ok extracts value", ():
     match safe_divide(10, 2):
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
         fail("unexpected error")
   )
-  it("match Err extracts error", fn():
+  it("when Err extracts error", ():
     match safe_divide(10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
-  it("? unwraps Ok value", fn():
+  it("? unwraps Ok value", ():
     match divide_and_add(10, 2):
       case Ok(v):
         expect(v).to_eq(6)
       case Err(e):
         fail("unexpected error")
   )
-  it("? propagates Err", fn():
+  it("? propagates Err", ():
     match divide_and_add(10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
-  it("chained ? propagation", fn():
+  it("chained ? propagation", ():
     match chained(100, 10, 2):
       case Ok(v):
         expect(v).to_eq(5)
       case Err(e):
         fail("unexpected error")
   )
-  it("chained ? propagates from second call", fn():
+  it("chained ? propagates from second call", ():
     match chained(100, 10, 0):
       case Ok(v):
         fail("expected Err but got Ok")
       case Err(e):
         expect(e.message).to_eq("division by zero")
   )
-  it("? in expression position with arithmetic", fn():
+  it("? in expression position with arithmetic", ():
     match inline_expr(10, 2):
       case Ok(v):
         expect(v).to_eq(6)
       case Err(e):
         fail("unexpected error")
   )
-  it("match Ok with wildcard for Unit result", fn():
-    fn unit_ok() -> Result<Unit, Error>:
+  it("Ok(0) is still Ok", ():
+    res = Ok(0)
+    expect(res).to_be_ok()
+  )
+  it("Ok empty string is still Ok", ():
+    res: Result<str, Error> = Ok("")
+    expect(res).to_be_ok()
+  )
+  it("Err with empty message", ():
+    res = Err(Error(""))
+    expect(res).to_be_err()
+  )
+  it("when Ok with wildcard for Unit result", ():
+    function unit_ok() -> Result<Unit, Error>:
       return Ok(0 as u8)
     match unit_ok():
       case Ok(_):

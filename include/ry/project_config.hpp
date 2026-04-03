@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 struct ProjectConfig {
     std::string name;
@@ -9,6 +10,7 @@ struct ProjectConfig {
     std::string entry;
     std::string src_dir;
     std::optional<std::string> dev_stdlib_dir;
+    std::unordered_map<std::string, std::string> scripts;
 };
 
 class ProjectConfigParser {
@@ -21,3 +23,4 @@ std::optional<std::string> findProjectRoot(const std::string &start_dir = "");
 
 int cmd_init();
 int cmd_new(int argc, char *argv[]);
+int cmd_run(int argc, char *argv[]);

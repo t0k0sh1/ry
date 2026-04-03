@@ -6,18 +6,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
     llvm::Type *srcTy = val->getType();
     const std::string target = e->target_type->toString();
 
-    // Try user-defined operator as (matches by source type + return type)
+    // Try user-defined operator as (matches by source type + semantic return type name)
     auto fit = functions_.find("operatoras");
     if (fit != functions_.end()) {
-        auto sit = struct_types_.find(target);
-        if (sit != struct_types_.end()) {
-            llvm::Type *targetTy = sit->second.llvmType;
-            for (auto &entry : fit->second) {
-                if (entry.paramTypes.size() == 1 &&
-                    entry.paramTypes[0] == srcTy &&
-                    entry.func->getReturnType() == targetTy) {
-                    return builder_.CreateCall(entry.func, {val}, "cast_op");
-                }
+        std::string resolvedTarget = resolveTypeAlias(target);
+        for (auto &entry : fit->second) {
+            if (entry.paramTypes.size() == 1 &&
+                entry.paramTypes[0] == srcTy &&
+                resolveTypeAlias(entry.returnTypeName) == resolvedTarget) {
+                llvm::Value *result = builder_.CreateCall(entry.func, {val}, "cast_op");
+                propagateReturnTypeMeta(&entry, result);
+                propagateReturnFnTypeMeta(&entry, entry.func, result);
+                return result;
             }
         }
     }
@@ -226,6 +226,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CastExpr> &e) {
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringExpr> &e) {
     // Convert each expression to string
     std::vector<llvm::Value*> strParts;
+    strParts.reserve(e->parts.size() + e->exprs.size());
     for (size_t i = 0; i < e->parts.size(); ++i) {
         if (!e->parts[i].empty())
             strParts.push_back(cachedGlobalString(e->parts[i], ".fstr_lit"));
@@ -254,9 +255,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
         }
     }
 
-    // Allocate result buffer
+    // Allocate result buffer with ARC header
     llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "fstr_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "fstr_buf");
+    auto *arcHdr = emitArcAlloc(bufSize);
+    llvm::Value *buf = emitArcGetDataPtr(arcHdr);
 
     // Copy segments
     llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
@@ -278,6 +280,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<InterpolatedStringEx
 // ===== TypeAliasStmt =====
 
 void CodeGen::emitStmt(TypeAliasStmt &s) {
+    emitTraceSymbolDefine("type_alias", s.name, s.loc);
     // Type aliases are resolved at compile time via resolveType()
     // Store the alias mapping for later lookup
     type_aliases_[s.name] = s.target_type->toString();
@@ -302,20 +305,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
 
     // Allocate list: header + data
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
 
     auto mallocFn = getStdlibMalloc();
 
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_hdr");
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "data_size");
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
 
     // Store header: len, cap, data
-    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
-    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
-    builder_.CreateStore(dataPtr, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+    storeListHeaderFields(headerPtr, length, length, dataPtr);
 
     // Fill data with start..end
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);

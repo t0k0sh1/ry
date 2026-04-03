@@ -1,70 +1,70 @@
-describe("any return from function", fn():
-  it("return int from any-returning function", fn():
-    fn get_int() -> any:
+describe("any return from function", ():
+  it("return int from any-returning function", ():
+    function get_int() -> any:
       return 42
     x: any = get_int()
     expect(true).to_eq(true)
   )
-  it("return float from any-returning function", fn():
-    fn get_float() -> any:
+  it("return float from any-returning function", ():
+    function get_float() -> any:
       return 3.14
     x: any = get_float()
     expect(true).to_eq(true)
   )
-  it("return str from any-returning function", fn():
-    fn get_str() -> any:
+  it("return str from any-returning function", ():
+    function get_str() -> any:
       return "hello"
     x: any = get_str()
     expect(true).to_eq(true)
   )
-  it("return bool from any-returning function", fn():
-    fn get_bool() -> any:
+  it("return bool from any-returning function", ():
+    function get_bool() -> any:
       return true
     x: any = get_bool()
     expect(true).to_eq(true)
   )
-  it("return without value from any-returning function", fn():
-    fn no_val() -> any:
+  it("return without value from any-returning function", ():
+    function no_val() -> any:
       return
     x: any = no_val()
     expect(true).to_eq(true)
   )
-  it("implicit return from any-returning function", fn():
-    fn implicit_any() -> any:
+  it("implicit return from any-returning function", ():
+    function implicit_any() -> any:
       y = 1
     x: any = implicit_any()
     expect(true).to_eq(true)
   )
 )
 
-describe("any return from lambda", fn():
-  it("lambda expr body returns any", fn():
-    f = fn() -> any => 42
+describe("any return from lambda", ():
+  it("lambda expr body returns any", ():
+    f = () -> any => 42
     x: any = f()
     expect(true).to_eq(true)
   )
-  it("lambda block body returns any", fn():
-    f = fn() -> any:
+  it("lambda block body returns any", ():
+    f = () -> any:
       return "hello"
     x: any = f()
     expect(true).to_eq(true)
   )
-  it("lambda implicit return is unit any", fn():
-    f = fn() -> any:
+  it("lambda implicit return is unit any", ():
+    f = () -> any:
       y = 1
     x: any = f()
     expect(true).to_eq(true)
   )
 )
 
-describe("omitted return type function (inferred)", fn():
-  it("function with omitted return type infers int", fn():
-    fn get_val():
+describe("omitted return type function (inferred)", ():
+  it("function with omitted return type infers int", ():
+    function get_val():
       return 42
     expect(get_val()).to_eq(42)
   )
-  it("function with omitted return type infers Unit", fn():
-    fn do_nothing():
+  it("function with omitted return type infers Unit", ():
+    function do_nothing():
       y = 1
     do_nothing()
     expect(true).to_eq(true)

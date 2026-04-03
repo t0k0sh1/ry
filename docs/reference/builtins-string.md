@@ -12,9 +12,9 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `contains` | `(str, str) -> bool` | Returns whether a substring is contained |
-| `starts_with` | `(str, str) -> bool` | Returns whether it starts with a prefix |
-| `ends_with` | `(str, str) -> bool` | Returns whether it ends with a suffix |
+| `contains` | `(str, str, bool = false) -> bool` | Returns whether a substring is contained |
+| `starts_with` | `(str, str, bool = false) -> bool` | Returns whether it starts with a prefix |
+| `ends_with` | `(str, str, bool = false) -> bool` | Returns whether it ends with a suffix |
 | `find` | `(str, str) -> Option<int>` | Returns the character position of a substring (`None` if not found) |
 
 ### Extraction and Transformation
@@ -59,47 +59,50 @@ A list of operation functions for strings (`str`). All functions support UFCS no
 
 | Function | Signature | Description |
 |------|-----------|------|
-| `to_int` | `str -> int` | Convert string to integer |
+| `to_int` | `str -> Result<int, Error>` | Convert string to integer |
 | `to_float` | `str -> float` | Convert string to floating-point number |
-| `to_str` | `int/float/bool/str/record -> str` | Convert value to string |
+| `to_str` | `int/float/bool/str/enum/record -> str` | Convert value to string |
 
 ---
 
 ## contains
 
-**Signature:** `contains(string: str, substring: str) -> bool`
+**Signature:** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` contains the substring `substring`.
+Returns whether string `string` contains the substring `substring`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(contains("hello", "ell"))   # true
-print("hello".contains("xyz"))    # false (UFCS)
+print(contains("hello", "ell"))              # true
+print("hello".contains("xyz"))               # false (UFCS)
+print(contains("Hello World", "hello", true))  # true (case-insensitive)
 ```
 
 ---
 
 ## starts_with
 
-**Signature:** `starts_with(string: str, prefix: str) -> bool`
+**Signature:** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` starts with `prefix`.
+Returns whether string `string` starts with `prefix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(starts_with("hello", "hel"))   # true
-print("hello".starts_with("world"))  # false (UFCS)
+print(starts_with("hello", "hel"))              # true
+print("hello".starts_with("world"))              # false (UFCS)
+print(starts_with("Hello", "hello", true))  # true (case-insensitive)
 ```
 
 ---
 
 ## ends_with
 
-**Signature:** `ends_with(string: str, suffix: str) -> bool`
+**Signature:** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
-Returns whether string `string` ends with `suffix`.
+Returns whether string `string` ends with `suffix`. When `ignore_case` is `true`, the comparison is case-insensitive (ASCII only).
 
 ```python
-print(ends_with("hello", "llo"))   # true
-print("hello".ends_with("world"))  # false (UFCS)
+print(ends_with("hello", "llo"))              # true
+print("hello".ends_with("world"))              # false (UFCS)
+print(ends_with("Hello World", "WORLD", true))  # true (case-insensitive)
 ```
 
 ---
@@ -124,10 +127,13 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 Returns the substring of `string` from `start` to `end` (exclusive). Indices are character positions (UTF-8 aware).
 
+Out-of-range indices are clamped to `[0, length]`. If `end < start` after clamping, returns an empty string.
+
 ```python
 print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
+print(substring("hello", -1, 100))      # hello (clamped)
 ```
 
 ---
@@ -136,10 +142,13 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **Signature:** `char_at(string: str, i: int) -> str`
 
-Returns the UTF-8 character at position `i` in string `string` as a string.
+Returns the UTF-8 character at position `i` in string `string` as a string. Raises a runtime error if the index is out of bounds.
+
+Negative indices wrap around from the end (Python-style): `-1` refers to the last character, `-2` to the second-to-last, and so on.
 
 ```python
-print(char_at("hello", 0))   # h
+print(char_at("hello", 0))    # h
+print(char_at("hello", -1))   # o (last character)
 print("abc".char_at(2))       # c (UFCS)
 ```
 
@@ -270,6 +279,8 @@ print(length("あいう"))        # 3 (characters)
 
 Splits string `string` by delimiter `delimiter` and returns a `List<str>`.
 
+When the delimiter is an empty string `""`, the string is split into individual characters (UTF-8 aware).
+
 ```python
 parts = split("a,b,c", ",")
 print(parts[0])   # a
@@ -280,6 +291,14 @@ for word in "hello world".split(" "):
     print(word)
 # hello
 # world
+
+# Split into characters
+chars = split("hello", "")
+print(chars)   # [h, e, l, l, o]
+
+# UTF-8 characters
+chars = split("あいう", "")
+print(chars)   # [あ, い, う]
 ```
 
 ---
@@ -294,20 +313,33 @@ Joins the elements of a string list with separator `sep` and returns a string.
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
+print(",".join(parts))         # a,b,c (UFCS, Python-style)
 ```
 
 ---
 
 ## to_int
 
-**Signature:** `to_int(string: str) -> int`
+**Signature:** `to_int(string: str) -> Result<int, Error>`
 
-Converts a string to an integer.
+Converts a string to an integer. Leading whitespace is allowed. Returns `Err` if the string is empty, contains invalid characters, or overflows.
 
 ```python
-print(to_int("42"))       # 42
-print(to_int("-7"))       # -7
-print("123".to_int())     # 123 (UFCS)
+match to_int("42"):
+    case Ok(v):
+        print(v)              # 42
+    case Err(e):
+        print(e.message)
+
+match "123".to_int():          # UFCS
+    case Ok(v):
+        print(v)              # 123
+    case Err(e):
+        print(e.message)
+
+# Invalid input returns Err
+print(to_int("abc"))          # Err(Error("to_int: invalid character in 'abc'"))
+print(to_int(""))             # Err(Error("to_int: empty string"))
 ```
 
 ---
@@ -327,7 +359,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**Signature:** `to_str(v: int | float | bool | str | record) -> str`
+**Signature:** `to_str(v: int | float | bool | str | enum | record) -> str`
 
 Converts a value to a string.
 
@@ -337,15 +369,22 @@ Converts a value to a string.
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | Returned as-is |
+| enum | Variant name (e.g. `"Red"`) |
 | record | `TypeName(field1: val1, field2: val2)` |
 
-Record types automatically generate a `to_str` representation. If a user-defined `fn to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
+Record types automatically generate a `to_str` representation. If a user-defined `function to_str(v: MyRecord) -> str` is provided, it takes precedence over the auto-generated version. This also works with `print()` and f-string interpolation.
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+enum Color:
+    Red
+    Green
+
+print(to_str(Color::Red))   # Red
 
 record Point:
     x: int

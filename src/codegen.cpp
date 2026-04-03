@@ -6,11 +6,12 @@
 #include <llvm/Support/raw_ostream.h>
 
 CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
-                 int coverage_file_id_offset)
+                 int coverage_file_id_offset, bool outline_mode)
     : ctx_(std::make_unique<llvm::LLVMContext>()),
       mod_(std::make_unique<llvm::Module>("ry", *ctx_)),
       builder_(*ctx_),
       test_mode_(test_mode),
+      outline_mode_(outline_mode),
       coverage_mode_(coverage_mode),
       coverage_file_id_offset_(coverage_file_id_offset),
       sm_(sm) {
@@ -38,6 +39,7 @@ CodeGen::CodeGen(bool test_mode, const SourceManager *sm, bool coverage_mode,
     mapHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, ptrTy_, i64Ty_, ptrTy_}, "MapHeader");
     setHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_, ptrTy_, i64Ty_, ptrTy_}, "SetHeader");
     iteratorHeaderTy_ = llvm::StructType::create(*ctx_, {ptrTy_, ptrTy_}, "IteratorHeader");
+    arcHeaderTy_ = llvm::StructType::create(*ctx_, {i64Ty_, i64Ty_}, "ArcHeader");
 
     anyTy_ = llvm::StructType::create(
         *ctx_, {i64Ty_, llvm::ArrayType::get(i8Ty_, 8)}, "Any");
@@ -58,12 +60,42 @@ llvm::FunctionCallee CodeGen::getRuntimeFn(const char *name, llvm::Type *retTy,
     return mod_->getOrInsertFunction(name, fnTy);
 }
 
-llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
-    auto it = global_string_cache_.find(str);
-    if (it != global_string_cache_.end()) return it->second;
-    auto *gs = builder_.CreateGlobalString(str, name);
-    global_string_cache_[str] = gs;
+llvm::Constant *CodeGen::buildArcGlobal(
+        const std::string &str, const llvm::Twine &name,
+        std::unordered_map<std::string, llvm::Constant*> &cache) {
+    auto it = cache.find(str);
+    if (it != cache.end()) return it->second;
+
+    // Create global with ARC header prefix: { i64 INT64_MAX, i64 0, [N+1 x i8] "...\0" }
+    // The returned pointer points to the string data (after ARC header),
+    // so existing code uses it as char*. If ARC retain/release is called,
+    // ptr-16 leads to the immortal sentinel (INT64_MAX) which skips the op.
+    auto *strData = llvm::ConstantDataArray::getString(*ctx_, str);
+    auto *wrapTy = llvm::StructType::get(
+        *ctx_, {i64Ty_, i64Ty_, strData->getType()});
+    auto *initVal = llvm::ConstantStruct::get(wrapTy,
+        {llvm::ConstantInt::get(i64Ty_, ARC_IMMORTAL),
+         llvm::ConstantInt::get(i64Ty_, 0),
+         strData});
+    auto *gv = new llvm::GlobalVariable(
+        *mod_, wrapTy, /*isConstant=*/true,
+        llvm::GlobalValue::PrivateLinkage, initVal,
+        name + ".arc");
+    gv->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+    gv->setAlignment(llvm::Align(8));
+
+    // GEP to the string data part (index 2, then index 0 for first byte)
+    auto *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    auto *idx2 = llvm::ConstantInt::get(i32Ty_, 2);
+    auto *gs = llvm::ConstantExpr::getInBoundsGetElementPtr(
+        wrapTy, gv, llvm::ArrayRef<llvm::Constant*>{zero, idx2, zero});
+
+    cache[str] = gs;
     return gs;
+}
+
+llvm::Constant *CodeGen::cachedGlobalString(const std::string &str, const llvm::Twine &name) {
+    return buildArcGlobal(str, name, global_string_cache_);
 }
 
 // ===== B5: FnScope RAII =====
@@ -72,28 +104,54 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedFn_ = cg_.fn_;
     savedScope_ = std::move(cg_.scope_stack_);
     savedConstScope_ = std::move(cg_.immutable_scope_stack_);
+    savedArcManaged_ = std::move(cg_.arc_managed_vars_);
+    savedArcOwned_ = std::move(cg_.arc_owned_values_);
+    savedArcBacked_ = std::move(cg_.arc_backed_vars_);
+    savedWeakManaged_ = std::move(cg_.weak_managed_vars_);
+    savedWeakInnerTypeNames_ = std::move(cg_.weak_inner_type_names_);
+    savedResourceManaged_ = std::move(cg_.resource_managed_vars_);
+    savedClosureManaged_ = std::move(cg_.closure_managed_vars_);
+    savedIteratorMallocs_ = std::move(cg_.iterator_malloc_stack_);
     savedBlock_ = cg_.builder_.GetInsertBlock();
     savedPoint_ = cg_.builder_.GetInsertPoint();
     savedPostconditions_ = cg_.current_postconditions_;
     savedEnsureBindings_ = cg_.ensure_bindings_;
     savedInEnsureContext_ = cg_.in_ensure_context_;
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
+    savedFnName_ = std::move(cg_.current_function_name_);
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
+    cg_.arc_managed_vars_.clear();
+    cg_.arc_owned_values_.clear();
+    cg_.weak_managed_vars_.clear();
+    cg_.weak_inner_type_names_.clear();
+    cg_.resource_managed_vars_.clear();
+    cg_.closure_managed_vars_.clear();
+    cg_.iterator_malloc_stack_.clear();
     cg_.current_postconditions_ = nullptr;
     cg_.ensure_bindings_ = nullptr;
     cg_.in_ensure_context_ = false;
+    cg_.current_function_name_.clear();
 }
 
 CodeGen::FnScope::~FnScope() {
     cg_.fn_ = savedFn_;
     cg_.scope_stack_ = std::move(savedScope_);
     cg_.immutable_scope_stack_ = std::move(savedConstScope_);
+    cg_.arc_managed_vars_ = std::move(savedArcManaged_);
+    cg_.arc_owned_values_ = std::move(savedArcOwned_);
+    cg_.arc_backed_vars_ = std::move(savedArcBacked_);
+    cg_.weak_managed_vars_ = std::move(savedWeakManaged_);
+    cg_.weak_inner_type_names_ = std::move(savedWeakInnerTypeNames_);
+    cg_.resource_managed_vars_ = std::move(savedResourceManaged_);
+    cg_.closure_managed_vars_ = std::move(savedClosureManaged_);
+    cg_.iterator_malloc_stack_ = std::move(savedIteratorMallocs_);
     cg_.builder_.SetInsertPoint(savedBlock_, savedPoint_);
     cg_.current_postconditions_ = savedPostconditions_;
     cg_.ensure_bindings_ = savedEnsureBindings_;
     cg_.in_ensure_context_ = savedInEnsureContext_;
     cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
+    cg_.current_function_name_ = std::move(savedFnName_);
 }
 
 // ===== Coverage instrumentation =====
@@ -116,6 +174,92 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
          llvm::ConstantInt::get(i32Ty_, loc.line)});
 }
 
+void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &name,
+                                    const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    // Skip stdlib symbols to reduce noise — users care about their own definitions
+    if (sm_ && loc.file_id >= 0 && loc.file_id < sm_->getFileCount()) {
+        const auto &fname = sm_->getFilename(loc.file_id);
+        if (fname.find("/lib/std/") != std::string::npos)
+            return;
+    }
+    ry::emitTraceEvent("symbol.define", "compile", &loc,
+                       {ry::TraceField("kind", kind),
+                        ry::TraceField("symbol", name),
+                        ry::TraceField("file", sm_ ? sm_->getFilename(loc.file_id) : "")});
+}
+
+llvm::Value *CodeGen::emitTraceSourceString(const std::string &text) {
+    return cachedGlobalString(text, ".trace_str");
+}
+
+llvm::Value *CodeGen::emitTraceFileString(const SourceLocation &loc) {
+    if (!sm_ || loc.file_id < 0 || loc.file_id >= sm_->getFileCount())
+        return emitTraceSourceString("");
+    return emitTraceSourceString(sm_->getFilename(loc.file_id));
+}
+
+void CodeGen::emitTraceFunctionEnter(const std::string &fnName, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_function_enter",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(fnName),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceFunctionExit(const std::string &fnName, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_function_exit",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(fnName),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceReturn(const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_return",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, ptrTy_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceSourceString(current_function_name_),
+                                 emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col)});
+}
+
+void CodeGen::emitTraceIfBranch(llvm::Value *cond, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_branch_if",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
+    llvm::Value *taken = builder_.CreateZExt(cond, i32Ty_, "trace_if_taken");
+    builder_.CreateCall(callee, {emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 taken});
+}
+
+void CodeGen::emitTraceWhenBranch(int armIndex, const SourceLocation &loc) {
+    if (!ry::traceEnabled()) return;
+    auto callee = mod_->getOrInsertFunction(
+        "__ry_trace_branch_when",
+        llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_),
+                                {ptrTy_, i32Ty_, i32Ty_, i32Ty_}, false));
+    builder_.CreateCall(callee, {emitTraceFileString(loc),
+                                 llvm::ConstantInt::get(i32Ty_, loc.line),
+                                 llvm::ConstantInt::get(i32Ty_, loc.col),
+                                 llvm::ConstantInt::get(i32Ty_, armIndex)});
+}
+
 // ===== Error helpers =====
 
 [[noreturn]] void CodeGen::codegenError(const SourceLocation &loc, const std::string &msg) {
@@ -131,11 +275,43 @@ void CodeGen::emitCoverage(const SourceLocation &loc) {
 void CodeGen::pushScope() {
     scope_stack_.emplace_back();
     immutable_scope_stack_.emplace_back();
+    iterator_malloc_stack_.emplace_back();
 }
 
 void CodeGen::popScope() {
+    emitScopeCleanup();
     scope_stack_.pop_back();
     immutable_scope_stack_.pop_back();
+    iterator_malloc_stack_.pop_back();
+}
+
+void CodeGen::emitScopeCleanup() {
+    if (scope_stack_.empty()) return;
+    emitScopeCleanupToDepth(scope_stack_.size() - 1);
+}
+
+void CodeGen::emitScopeCleanupToDepth(size_t targetDepth) {
+    for (size_t i = scope_stack_.size(); i > targetDepth; --i) {
+        auto &scope = scope_stack_[i - 1];
+        for (auto &[name, alloca] : scope) {
+            if (weak_managed_vars_.count(alloca)) {
+                emitWeakReleaseVar(name, alloca);
+                weak_managed_vars_.erase(alloca);
+                weak_inner_type_names_.erase(alloca);
+                continue;
+            }
+            if (!arc_managed_vars_.count(alloca)) continue;
+            emitArcReleaseVar(name, alloca);
+            arc_managed_vars_.erase(alloca);
+        }
+        auto &iterMallocs = iterator_malloc_stack_[i - 1];
+        if (!iterMallocs.empty()) {
+            auto freeFn = getStdlibFree();
+            for (auto *ptr : iterMallocs) {
+                builder_.CreateCall(freeFn, {ptr});
+            }
+        }
+    }
 }
 
 llvm::AllocaInst *CodeGen::findVar(const std::string &name) {
@@ -155,49 +331,60 @@ bool CodeGen::isImmutable(const std::string &name) const {
     return false;
 }
 
-// Pre-pass: collect all function names targeted by mock() in the AST
-static void collectMockedFunctions(const std::vector<StmtNode> &stmts,
-                                    std::unordered_set<std::string> &out) {
-    for (const auto &stmt : stmts) {
-        std::visit([&](const auto &s) {
-            using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, CallStmt>) {
-                if (s.callee == "mock" && !s.args.empty()) {
-                    if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
-                        out.insert(str->value);
-                }
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches)
-                    collectMockedFunctions(br.body, out);
-                collectMockedFunctions(s->else_body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
-                collectMockedFunctions(s->body, out);
-            } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
-                for (auto &arm : s->arms)
-                    collectMockedFunctions(arm.body, out);
+// Forward declaration for mutual recursion.
+static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
+                                             std::unordered_set<std::string> &out);
+
+// Scan a single statement (and its nested bodies) for mock() call targets.
+static void collectMockedFunctionsFromStmt(const StmtNode &stmt,
+                                            std::unordered_set<std::string> &out) {
+    std::visit([&](const auto &s) {
+        using T = std::decay_t<decltype(s)>;
+        if constexpr (std::is_same_v<T, CallStmt>) {
+            if (s.callee == "mock" && !s.args.empty()) {
+                if (auto *str = std::get_if<StringExpr>(&s.args[0]->data))
+                    out.insert(str->value);
             }
-        }, stmt);
-        // Also scan lambda args (e.g., describe/it trailing blocks)
-        std::visit([&](const auto &s) {
-            using T = std::decay_t<decltype(s)>;
-            if constexpr (std::is_same_v<T, CallStmt>) {
-                for (auto &arg : s.args) {
-                    if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
-                        collectMockedFunctions((*lam)->body, out);
-                }
+            for (auto &arg : s.args) {
+                if (auto *lam = std::get_if<std::unique_ptr<LambdaExpr>>(&arg->data))
+                    collectMockedFunctionsFromStmts((*lam)->body, out);
             }
-        }, stmt);
-    }
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
+            collectMockedFunctionsFromStmts(s->branch.body, out);
+            collectMockedFunctionsFromStmts(s->else_body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+            for (auto &arm : s->arms)
+                collectMockedFunctionsFromStmts(arm.body, out);
+            collectMockedFunctionsFromStmts(s->else_body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<ForStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<FnStmt>>) {
+            collectMockedFunctionsFromStmts(s->body, out);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
+            for (auto &arm : s->arms)
+                collectMockedFunctionsFromStmts(arm.body, out);
+        }
+    }, stmt);
+}
+
+static void collectMockedFunctionsFromStmts(const std::vector<StmtNode> &stmts,
+                                             std::unordered_set<std::string> &out) {
+    for (const auto &stmt : stmts)
+        collectMockedFunctionsFromStmt(stmt, out);
 }
 
 llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
-    // Pre-pass: collect all mock targets before codegen
-    if (test_mode_)
-        collectMockedFunctions(prog, mocked_functions_);
+    // Single pre-pass: collect mock targets and build cyclic type graph together
+    std::unordered_map<std::string, std::unordered_set<std::string>> typeGraph;
+    std::unordered_set<std::string> allTypes;
+    for (auto &stmt : prog) {
+        collectTypeGraphFromStmt(stmt, typeGraph, allTypes);
+        if (test_mode_)
+            collectMockedFunctionsFromStmt(stmt, mocked_functions_);
+    }
+    runCyclicTypeAnalysis(typeGraph, allTypes);
 
     llvm::FunctionType *ft = llvm::FunctionType::get(i32Ty_, false);
     fn_ = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "__ry_main__", *mod_);
@@ -206,12 +393,15 @@ llvm::orc::ThreadSafeModule CodeGen::compile(Program &prog) {
 
     pushScope();
 
+    // Forward-declare top-level functions for mutual recursion support
+    forwardDeclareFunctions(prog);
+
     for (auto &stmt : prog) {
         std::visit([this](auto &s) { emitStmt(s); }, stmt);
     }
 
     if (!builder_.GetInsertBlock()->getTerminator()) {
-        if (test_mode_) {
+        if (test_mode_ && !outline_mode_) {
             // Call __ry_test_summary() and return its result as exit code
             llvm::FunctionType *summaryTy = llvm::FunctionType::get(i32Ty_, false);
             llvm::FunctionCallee summaryFn = mod_->getOrInsertFunction("__ry_test_summary", summaryTy);
@@ -271,6 +461,10 @@ bool CodeGen::isLowLevelTypeName(const std::string &name) {
 }
 
 std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {
+    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&node.data)) {
+        if ((*ue)->op == "+" || (*ue)->op == "-")
+            return getExprLowLevelSuffix(*(*ue)->operand);
+    }
     if (auto *ne = std::get_if<NumberExpr>(&node.data)) {
         if (isLowLevelTypeName(ne->suffix)) return ne->suffix;
     }
@@ -302,27 +496,39 @@ bool CodeGen::isLowLevelTy(llvm::Value *val) const {
     return isLowLevelIntTy(val) || isLowLevelFloatTy(val->getType());
 }
 
-void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op) {
-    std::string lhsName = getLowLevelTypeName(lhs);
-    std::string rhsName = getLowLevelTypeName(rhs);
+void CodeGen::checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op,
+                                    const std::string &lhsHint, const std::string &rhsHint) {
+    // Fall back to AST suffix hints for constants that lack metadata (#311, #595)
+    const std::string &lhsRef = getLowLevelTypeName(lhs);
+    const std::string &rhsRef = getLowLevelTypeName(rhs);
+    const std::string &lhsName = !lhsRef.empty() ? lhsRef : lhsHint;
+    const std::string &rhsName = !rhsRef.empty() ? rhsRef : rhsHint;
     bool lhsLL = !lhsName.empty() || isLowLevelTy(lhs->getType());
     bool rhsLL = !rhsName.empty() || isLowLevelTy(rhs->getType());
-    if (lhsLL || rhsLL) {
-        if (lhs->getType() != rhs->getType()) {
-            codegenError("type error: cannot mix types in operator '" + op +
-                         "'; low-level numeric types require explicit 'as' cast");
-        }
-        // Both have metadata: must match (e.g., u32 vs i32 is an error)
-        if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName) {
-            codegenError("type error: cannot mix types in operator '" + op +
-                         "'; low-level numeric types require explicit 'as' cast");
-        }
-    }
+    if (!lhsLL && !rhsLL) return;
+
+    auto mixError = [&] {
+        codegenError("type error: cannot mix types in operator '" + op +
+                     "'; low-level numeric types require explicit 'as' cast");
+    };
+    if (lhsLL != rhsLL) mixError();                                    // (#595)
+    if (lhs->getType() != rhs->getType()) mixError();                 // different widths
+    if (!lhsName.empty() && !rhsName.empty() && lhsName != rhsName)   // e.g., u32 vs i32
+        mixError();
 }
 
 // ===== B1: Type promotion helpers =====
 
+void CodeGen::ensureNumericType(llvm::Value *v, const std::string &context) {
+    llvm::Type *ty = v->getType();
+    if (ty->isStructTy())
+        codegenError("type error: " + context + " requires numeric type, got struct");
+    if (ty->isPointerTy())
+        codegenError("type error: " + context + " requires numeric type, got pointer");
+}
+
 llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
+    ensureNumericType(v, "numeric operation");
     if (v->getType() == i1Ty_)
         return builder_.CreateZExt(v, i64Ty_, "boolext");
     if (v->getType() == i8Ty_ && !isLowLevelIntTy(v))
@@ -331,6 +537,8 @@ llvm::Value *CodeGen::promoteToInt(llvm::Value *v) {
 }
 
 std::pair<llvm::Value*, llvm::Value*> CodeGen::promoteToFloat(llvm::Value *lhs, llvm::Value *rhs) {
+    ensureNumericType(lhs, "numeric operation");
+    ensureNumericType(rhs, "numeric operation");
     if (!lhs->getType()->isDoubleTy() && !isLowLevelTy(lhs)) {
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
@@ -429,7 +637,9 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                 "Did you forget to add a case in codegen_call_*.cpp "
                 "or add emitBuiltin*() to the dispatch chain in codegen_call.cpp?");
         } else {
-            codegenError("undefined function: " + callee);
+            codegenError("undefined function: " + callee +
+                " (hint: if this function is defined later in the file, "
+                "add an explicit return type to enable forward references)");
         }
     }
 
@@ -438,7 +648,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     // Identify which args are None literals
     std::vector<bool> isNone(args.size(), false);
     for (size_t i = 0; i < args.size(); ++i) {
-        if (auto *ve = std::get_if<VariableExpr>(&args[i]->data); ve && ve->name == "None")
+        if (isNoneLiteral(*args[i]))
             isNone[i] = true;
     }
 
@@ -582,10 +792,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
 
     // Fill in default values for omitted parameters
     for (size_t i = args.size(); i < chosen->paramTypes.size(); ++i) {
-        bool isNoneLit = std::holds_alternative<NoneExpr>(chosen->defaultValues[i]->data) ||
-                         (std::holds_alternative<VariableExpr>(chosen->defaultValues[i]->data) &&
-                          std::get<VariableExpr>(chosen->defaultValues[i]->data).name == "None");
-        if (isNoneLit) {
+        if (isNoneLiteral(*chosen->defaultValues[i])) {
             outArgVals.push_back(buildNoneValue(chosen->paramTypes[i]));
             continue;
         }
@@ -629,6 +836,10 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
     }
 
+    // ARC: retain arguments that are ARC-managed before passing to callee
+    for (auto *argVal : argVals)
+        tryRetainArcSource(argVal);
+
     // Check literal/range constraints on arguments at call site
     if (matchedEntry) {
         for (size_t i = 0; i < matchedEntry->paramTypeNames.size() && i < argVals.size(); ++i) {
@@ -640,6 +851,74 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
             }
         }
     }
+
+    auto bindContractValue = [&](const std::string &name, llvm::Value *val,
+                                 const std::string *typeName) {
+        llvm::AllocaInst *alloca = builder_.CreateAlloca(val->getType(), nullptr, name);
+        builder_.CreateStore(val, alloca);
+        scope_stack_.back()[name] = alloca;
+        immutable_scope_stack_.back().insert(name);
+        if (!typeName) return;
+
+        std::string resolvedType = resolveTypeAlias(*typeName);
+        if (isLowLevelTypeName(resolvedType))
+            low_level_type_names_[alloca] = resolvedType;
+        if (resolvedType.size() > 9 && resolvedType.compare(0, 9, "function(") == 0)
+            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedType);
+        auto constraint = parseTypeConstraint(resolvedType);
+        if (constraint)
+            type_constraints_[alloca] = *constraint;
+        else if (isUnionType(resolvedType))
+            union_value_types_[alloca] = normalizeUnionType(resolvedType);
+    };
+
+    auto bindMockContractParams = [&]() {
+        if (!matchedEntry) return;
+        for (size_t i = 0; i < matchedEntry->paramNames.size() && i < argVals.size(); ++i) {
+            const std::string *typeName = i < matchedEntry->paramTypeNames.size()
+                ? &matchedEntry->paramTypeNames[i]
+                : nullptr;
+            bindContractValue(matchedEntry->paramNames[i], argVals[i], typeName);
+        }
+    };
+
+    auto emitMockRequireChecks = [&]() {
+        if (!matchedEntry || !matchedEntry->preconditions || matchedEntry->preconditions->empty())
+            return;
+        pushScope();
+        bindMockContractParams();
+        for (const auto &precondition : *matchedEntry->preconditions)
+            emitContractCheck("require", callee, precondition);
+        popScope();
+    };
+
+    auto emitMockEnsureChecks = [&](llvm::Value *retVal) {
+        if (!matchedEntry || !matchedEntry->postconditions || matchedEntry->postconditions->empty() ||
+            !matchedEntry->ensureBindings)
+            return;
+
+        pushScope();
+        bindMockContractParams();
+        auto &bindings = *matchedEntry->ensureBindings;
+        if (bindings.size() == 1) {
+            bindContractValue(bindings[0], retVal, nullptr);
+        } else {
+            auto *structTy = llvm::dyn_cast<llvm::StructType>(retVal->getType());
+            if (!structTy || structTy->isLiteral() || structTy->getNumElements() != bindings.size())
+                codegenError("ensure destructuring requires tuple return; binding count does not match tuple element count");
+            for (unsigned i = 0; i < bindings.size(); ++i) {
+                llvm::Value *elem = builder_.CreateExtractValue(retVal, i);
+                bindContractValue(bindings[i], elem, nullptr);
+            }
+        }
+
+        bool savedInEnsureContext = in_ensure_context_;
+        in_ensure_context_ = true;
+        for (const auto &postcondition : *matchedEntry->postconditions)
+            emitContractCheck("ensure", callee, postcondition);
+        in_ensure_context_ = savedInEnsureContext;
+        popScope();
+    };
 
     // In test mode, inject mock dispatch only for functions targeted by mock()
     if (test_mode_ && mocked_functions_.count(callee)) {
@@ -663,6 +942,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
 
         // Mock path
         builder_.SetInsertPoint(mockBB);
+        emitMockRequireChecks();
         builder_.CreateCall(mockIncFn, {nameStr});
         llvm::FunctionType *fnTy = fn->getFunctionType();
         if (fn->getReturnType()->isVoidTy()) {
@@ -679,6 +959,7 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         }
 
         llvm::Value *mockResult = builder_.CreateCall(fnTy, mockPtr, argVals, "mock_result");
+        emitMockEnsureChecks(mockResult);
         builder_.CreateBr(mergeBB);
         llvm::BasicBlock *mockEndBB = builder_.GetInsertBlock();
 
@@ -693,6 +974,8 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         llvm::PHINode *phi = builder_.CreatePHI(fn->getReturnType(), 2, "call_result");
         phi->addIncoming(mockResult, mockEndBB);
         phi->addIncoming(origResult, origEndBB);
+        propagateReturnTypeMeta(matchedEntry, phi);
+        propagateReturnFnTypeMeta(matchedEntry, fn, phi);
         return phi;
     }
 
@@ -700,16 +983,9 @@ llvm::Value *CodeGen::emitUserFnCall(const std::string &callee, const std::vecto
         return builder_.CreateCall(fn, argVals);
     llvm::Value *callResult = builder_.CreateCall(fn, argVals, "calltmp");
 
-    if (matchedEntry && matchedEntry->returnTypeName.size() > 5 &&
-        matchedEntry->returnTypeName.compare(0, 5, "Task<") == 0 &&
-        matchedEntry->returnTypeName.back() == '>') {
-        std::string inner = matchedEntry->returnTypeName.substr(5, matchedEntry->returnTypeName.size() - 6);
-        type_meta_[TM_TaskResult][callResult] = resolveType(inner);
-    }
+    propagateReturnTypeMeta(matchedEntry, callResult);
 
-    // Propagate low-level type metadata from return type
-    if (matchedEntry && isLowLevelTypeName(matchedEntry->returnTypeName))
-        low_level_type_names_[callResult] = matchedEntry->returnTypeName;
+    propagateReturnFnTypeMeta(matchedEntry, fn, callResult);
 
     return callResult;
 }
@@ -740,25 +1016,6 @@ void CodeGen::emitStmt(CallStmt &s) {
     auto sit = struct_types_.find(s.callee);
     if (sit != struct_types_.end()) {
         emitStructConstructor(sit->second, s.callee, s.args);
-        return;
-    }
-    if (s.callee == "available_parallelism" || s.callee == "args" ||
-        s.callee == "range" || s.callee == "send" ||
-        s.callee == "recv" ||
-        s.callee == "close" ||
-        s.callee == "write_text" || s.callee == "append_text" ||
-        s.callee == "delete_file" || s.callee == "write_bytes" ||
-        s.callee == "listen" ||
-        s.callee == "http_listen" ||
-        s.callee == "sleep" ||
-        s.callee == "block_on" ||
-        s.callee == "set_timeout" || s.callee == "set_recv_timeout" || s.callee == "set_send_timeout" ||
-        s.callee == "shutdown" ||
-        s.callee == "json_free") {
-        auto ce = std::make_unique<CallExpr>();
-        ce->callee = s.callee;
-        ce->args = std::move(s.args);
-        emitExprVariant(ce);
         return;
     }
     // Intercept collection operations and route through CallExpr emitter
@@ -810,7 +1067,13 @@ void CodeGen::emitStmt(CallStmt &s) {
     }
     if (tryCallOperator(s.callee, s.args))
         return;
-    emitUserFnCall(s.callee, s.args);
+    // Route all remaining calls through the unified CallExpr dispatch chain.
+    // This covers @native stdlib functions, language builtins (close, range,
+    // sleep, etc.), and user-defined functions without a hardcoded whitelist.
+    auto ce = std::make_unique<CallExpr>();
+    ce->callee = s.callee;
+    ce->args = std::move(s.args);
+    emitExprVariant(ce);
 }
 
 llvm::Value *CodeGen::toBool(llvm::Value *v) {
@@ -875,6 +1138,16 @@ llvm::FunctionCallee CodeGen::getStdlibStrstr() {
     return mod_->getOrInsertFunction("strstr", ty);
 }
 
+llvm::FunctionCallee CodeGen::getStdlibStrcasestr() {
+    auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
+    return mod_->getOrInsertFunction("strcasestr", ty);
+}
+
+llvm::FunctionCallee CodeGen::getStdlibStrncasecmp() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_, i64Ty_}, false);
+    return mod_->getOrInsertFunction("strncasecmp", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibStrcpy() {
     auto ty = llvm::FunctionType::get(ptrTy_, {ptrTy_, ptrTy_}, false);
     return mod_->getOrInsertFunction("strcpy", ty);
@@ -895,13 +1168,23 @@ llvm::FunctionCallee CodeGen::getStdlibPrintf() {
     return mod_->getOrInsertFunction("printf", ty);
 }
 
+llvm::FunctionCallee CodeGen::getBufferedPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("__ry_print_printf", ty);
+}
+
+llvm::FunctionCallee CodeGen::getSprintPrintf() {
+    auto ty = llvm::FunctionType::get(i32Ty_, {ptrTy_}, true);
+    return mod_->getOrInsertFunction("__ry_sprint_printf", ty);
+}
+
 llvm::FunctionCallee CodeGen::getStdlibExit() {
     auto ty = llvm::FunctionType::get(llvm::Type::getVoidTy(*ctx_), {i32Ty_}, false);
     return mod_->getOrInsertFunction("exit", ty);
 }
 
-void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName) {
-    // fprintf(stderr, message)
+void CodeGen::emitRuntimeError(const std::string &message, const std::string &globalName,
+                                llvm::ArrayRef<llvm::Value *> extraArgs) {
     auto fprintfTy = llvm::FunctionType::get(i32Ty_, {ptrTy_, ptrTy_}, true);
     auto fprintfFn = mod_->getOrInsertFunction("fprintf", fprintfTy);
 #ifdef __APPLE__
@@ -912,10 +1195,25 @@ void CodeGen::emitRuntimeError(const std::string &message, const std::string &gl
     auto *stderrGlobal = mod_->getOrInsertGlobal(stderrName, ptrTy_);
     llvm::Value *stderrVal = builder_.CreateLoad(ptrTy_, stderrGlobal, "stderr");
     llvm::Constant *errMsg = cachedGlobalString(message, globalName);
-    builder_.CreateCall(fprintfFn, {stderrVal, errMsg});
+    llvm::SmallVector<llvm::Value *, 4> args = {stderrVal, errMsg};
+    args.append(extraArgs.begin(), extraArgs.end());
+    builder_.CreateCall(fprintfFn, args);
     auto exitFn = getStdlibExit();
     builder_.CreateCall(exitFn, {llvm::ConstantInt::get(i32Ty_, 1)});
     builder_.CreateUnreachable();
+}
+
+void CodeGen::emitBoundsError(llvm::Value *index, llvm::Value *size,
+                               const std::string &fmtMsg, const std::string &globalName) {
+    emitRuntimeError(fmtMsg, globalName, {index, size});
+}
+
+llvm::Value *CodeGen::emitNegativeIndexWrap(llvm::Value *idx, llvm::Value *wrapBase,
+                                              const std::string &prefix) {
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *isNeg = builder_.CreateICmpSLT(idx, zero, prefix + "_is_neg");
+    llvm::Value *wrapped = builder_.CreateAdd(idx, wrapBase, prefix + "_wrapped");
+    return builder_.CreateSelect(isNeg, wrapped, idx, prefix + "_idx");
 }
 
 void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
@@ -924,26 +1222,33 @@ void CodeGen::emitBoundsCheck(llvm::Value *&index, llvm::Value *size,
     if (index->getType() == i1Ty_)
         index = builder_.CreateZExt(index, i64Ty_, "idx_ext");
 
+    // Compile-time constant check with negative index wrap-around
     if (auto *ci = llvm::dyn_cast<llvm::ConstantInt>(index)) {
         if (auto *cs = llvm::dyn_cast<llvm::ConstantInt>(size)) {
             int64_t idx = ci->getSExtValue();
-            uint64_t sz = cs->getZExtValue();
-            if (idx < 0 || (uint64_t)idx >= sz)
-                codegenError("index " + std::to_string(idx) +
+            int64_t sz = static_cast<int64_t>(cs->getZExtValue());
+            if (idx < 0) idx += sz;
+            if (idx < 0 || idx >= sz)
+                codegenError("index " + std::to_string(ci->getSExtValue()) +
                              " out of bounds (size " + std::to_string(sz) + ")");
+            index = llvm::ConstantInt::get(i64Ty_, idx);
             return;
         }
     }
 
+    llvm::Value *origIndex = index;
+    index = emitNegativeIndexWrap(index, size, bbPrefix);
+
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
     llvm::Value *negCheck = builder_.CreateICmpSLT(
-        index, llvm::ConstantInt::get(i64Ty_, 0), bbPrefix + "_neg");
+        index, zero, bbPrefix + "_neg");
     llvm::Value *overCheck = builder_.CreateICmpSGE(index, size, bbPrefix + "_over");
     llvm::Value *oob = builder_.CreateOr(negCheck, overCheck, bbPrefix + "_oob");
     llvm::BasicBlock *oobBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".oob", fn_);
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, bbPrefix + ".ok", fn_);
     builder_.CreateCondBr(oob, oobBB, okBB);
     builder_.SetInsertPoint(oobBB);
-    emitRuntimeError(errMsg, globalName);
+    emitBoundsError(origIndex, size, errMsg, globalName);
     builder_.SetInsertPoint(okBB);
 }
 
@@ -1041,6 +1346,10 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
             llvm::Value *str = structToString(val);
             llvm::Constant *fmt = cachedGlobalString("%s", ".fmt_struct" + suffix);
             builder_.CreateCall(printfFn, {fmt, str});
+        } else if (isTupleStructType(st)) {
+            emitPrintSingle(val, printfFn);
+        } else {
+            emitPrintSingle(val, printfFn);
         }
     } else {
         std::string llName = getLowLevelTypeName(val);
@@ -1054,3 +1363,12 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
     }
 }
 
+auto CodeGen::lookupFnTypeInfo(llvm::Value *val)
+    -> std::unordered_map<llvm::Value*, FnTypeInfo>::iterator {
+    auto it = fn_type_info_.find(val);
+    if (it == fn_type_info_.end()) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            it = fn_type_info_.find(load->getPointerOperand());
+    }
+    return it;
+}

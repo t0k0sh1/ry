@@ -6,10 +6,11 @@
 
 ```bash
 ry <file.ry> [args...]              # Run a Ry script
-echo '<code>' | ry                  # Run code from stdin
+echo '<code>' | ry -c               # Run code from stdin
 ry test [options] [<file> | <dir>]  # Run tests
 ry init                             # Initialize a project
 ry new <project-name>               # Create a new project
+ry run [<script-name>]              # Run a project script
 ry fmt [options] [<file> | <dir>]   # Format source files
 ry self-update [options]            # Update ry itself
 ```
@@ -18,16 +19,28 @@ ry self-update [options]            # Update ry itself
 
 | Option | Description |
 |---|---|
+| `-c` | Read and execute code from stdin |
 | `-h`, `--help` | Show help |
 | `-v`, `--version` | Show version |
 | `--env=<env>` | Set environment (`production`\|`development`\|`internal`). Overrides the `RY_ENV` environment variable. |
 
-### Stdin Execution
+### Entry Point Execution
 
-When no file argument is given and stdin is not a terminal, `ry` reads source code from stdin and executes it:
+When no file argument is given, `ry` looks for a `package.toml` in the current directory (or parent directories) and runs the file specified by the `entry` field:
 
 ```bash
-echo 'print("hello")' | ry
+ry                        # runs entry file (e.g. src/main.ry)
+ry -- arg1 arg2           # runs entry file with arguments
+```
+
+If no `package.toml` is found or no `entry` field is set, `ry` prints help and exits.
+
+### Stdin Execution
+
+Use the `-c` flag to read and execute code from stdin:
+
+```bash
+echo 'print("hello")' | ry -c
 ```
 
 ---
@@ -83,6 +96,32 @@ my-project/
 4. Creates the `src/` directory inside it
 5. Generates `package.toml` (`name` is set to the given project name)
 6. Generates `src/main.ry`
+
+---
+
+## `ry run` - Run Project Scripts
+
+Executes a script defined in the `[scripts]` section of `package.toml`.
+
+```bash
+ry run              # List all available scripts
+ry run build        # Run the "build" script
+ry run test         # Run the "test" script
+```
+
+### Behavior
+
+1. Searches for `package.toml` from the current directory upward
+2. Without arguments, lists all available scripts and their commands
+3. With a script name, executes the corresponding shell command via `/bin/sh -c`
+4. The exit code of the executed command is propagated
+5. If the script name is not found, shows an error with a list of available scripts
+
+### Notes
+
+- Does not require LLVM initialization (fast startup)
+- Commands are executed in the current working directory
+- Shell features (pipes, redirects, etc.) are supported since commands run through the shell
 
 ---
 
@@ -171,6 +210,17 @@ ry self-update v0.0.1       # Update to a specified version
 3. If the current version is the same, exits with `"Already up to date."`
 4. Downloads the binary and replaces the current executable
 
+### Security
+
+Release archives are verified in two steps:
+
+1. **Authenticity**: The `checksums.txt.sig` file is verified against the embedded Ed25519 public key.
+   - If the signature file is **missing**, the update is aborted unless `RY_SKIP_SIGNATURE=1` is set.
+   - If the signature file is **present but invalid**, the update is aborted regardless of `RY_SKIP_SIGNATURE`.
+2. **Integrity**: The archive's SHA-256 hash is compared against `checksums.txt`.
+
+To bypass the failure caused by a missing signature file (not recommended), set `RY_SKIP_SIGNATURE=1`. This does **not** bypass verification when a signature file is present but invalid.
+
 ### Notes
 
 - Requires `curl` and `tar` commands
@@ -191,6 +241,11 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
+
+[scripts]
+build = "cmake --preset default && cmake --build build"
+test = "./build/ry_tests"
+clean = "rm -rf build"
 ```
 
 ### `[project]` Section
@@ -206,6 +261,14 @@ src = "src"
 | Key | Description |
 |------|------|
 | `src` | Source code directory |
+
+### `[scripts]` Section
+
+Defines named scripts that can be executed with `ry run <name>`. Each key is a script name and the value is a shell command string.
+
+| Key | Description |
+|------|------|
+| `<name>` | Shell command to execute (run with `ry run <name>`) |
 
 ### TOML Subset Specification
 

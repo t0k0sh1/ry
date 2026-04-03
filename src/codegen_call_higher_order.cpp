@@ -4,24 +4,19 @@
 
 // ===== Builtin Higher-Order =====
 
-llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0) {
     // filter(list, predicate) → new list with elements matching predicate
     if (e.callee == "filter") {
         requireArgs(e, 2);
 
-        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *listVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
             codegenError("filter() requires a list as first argument");
 
-        // Get lambda type info (handle LoadInst for variable-passed functions)
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("filter() requires a function as second argument");
         auto &info = fnIt->second;
@@ -35,9 +30,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         // Allocate new list header + data (capacity = source length)
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "filter_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "filter_data_size");
@@ -107,18 +100,14 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     if (e.callee == "map") {
         requireArgs(e, 2);
 
-        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *listVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy)
             codegenError("map() requires a list as first argument");
 
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("map() requires a function as second argument");
         auto &info = fnIt->second;
@@ -134,9 +123,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         // Allocate new list
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t outElemSize = dl.getTypeAllocSize(outElemTy);
         llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, outElemSize), "map_data_size");
@@ -195,9 +182,11 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (e.args.size() < 1 || e.args.size() > 2)
             codegenError("sort!() takes 1 or 2 arguments");
 
+        llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
         llvm::Value *listPtr = emitExpr(*e.args[0]);
         llvm::Type *elemTy = getListElementType(listPtr);
         if (!elemTy) codegenError("sort!() requires a list");
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
 
         llvm::Value *sorted = emitSortCore(listPtr, e.args, "sort!");
         if (!sorted)
@@ -213,10 +202,9 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *copySize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
         builder_.CreateCall(memcpyFn, {lf.data, sf.data, copySize});
 
-        // Free the temporary sorted list
-        auto freeFn = getStdlibFree();
-        builder_.CreateCall(freeFn, {sf.data});
-        builder_.CreateCall(freeFn, {sorted});
+        // Release the temporary sorted list through ARC (destructor frees data buffer)
+        auto *sortedHdr = emitArcGetHeaderFromData(sorted);
+        emitArcRelease(sortedHdr, false, getOrCreateCollectionDestructor(CollectionKind::List));
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -228,10 +216,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("reduce() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("reduce() requires a function");
         auto &info = fnIt->second;
@@ -283,10 +268,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *lambdaVal = emitExpr(*e.args[2]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("fold() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("fold() requires a function");
         auto &info = fnIt->second;
@@ -330,10 +312,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("any() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("any() requires a function");
         auto &info = fnIt->second;
@@ -379,10 +358,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("all() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("all() requires a function");
         auto &info = fnIt->second;
@@ -537,11 +513,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
         if (!elemTy)
             codegenError("tap() requires a list as first argument");
 
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("tap() requires a function as second argument");
         auto &info = fnIt->second;
@@ -593,11 +565,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     FnTypeInfo compInfo;
     if (hasComparator) {
         compVal = emitExpr(*args[1]);
-        auto fnIt = fn_type_info_.find(compVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(compVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(compVal);
         if (fnIt == fn_type_info_.end())
             codegenError(callee + "() comparator must be a function");
         compInfo = fnIt->second;
@@ -613,9 +581,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     // Allocate new list and copy data
     auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *newHeader = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sort_header");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
     uint64_t elemSz = dl.getTypeAllocSize(elemTy);
     llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSz), "sort_data_size");

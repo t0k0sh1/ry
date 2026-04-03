@@ -17,20 +17,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
                 if (ltPos != std::string::npos && enumName.back() == '>') {
                     std::string baseName = enumName.substr(0, ltPos);
                     std::string argsStr = enumName.substr(ltPos + 1, enumName.size() - ltPos - 2);
-                    std::vector<std::string> typeArgs;
-                    std::string curr;
-                    int depth = 0;
-                    for (char c : argsStr) {
-                        if (c == '<') depth++;
-                        else if (c == '>') depth--;
-                        else if (c == ',' && depth == 0) {
-                            typeArgs.push_back(curr);
-                            curr.clear();
-                            continue;
-                        }
-                        curr += c;
-                    }
-                    if (!curr.empty()) typeArgs.push_back(curr);
+                    auto typeArgs = splitTypeArgs(argsStr);
                     instantiateGenericEnum(enumName, baseName, typeArgs);
                 }
             }
@@ -97,16 +84,33 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 
-    // Dispatch to language-builtin helpers (Pattern B: no @native registry)
-    if (auto *v = emitBuiltinIterator(*e))    return v;
-    if (auto *v = emitBuiltinString(*e))      return v;
-    if (auto *v = emitBuiltinConversion(*e))  return v;
-    if (auto *v = emitBuiltinQuery(*e))       return v;
-    if (auto *v = emitBuiltinCore(*e))        return v;
-    if (auto *v = emitBuiltinHigherOrder(*e)) return v;
-    if (auto *v = emitBuiltinCollection(*e))  return v;
-    if (auto *v = emitBuiltinSetOps(*e))      return v;
-    if (auto *v = emitBuiltinRegex(*e))       return v;
+    // Fast path: pre-emit args[0] once for callee names shared by multiple
+    // dispatchers, then route through the same try-chain order to avoid
+    // emitting dead IR from earlier dispatchers that don't match the type.
+    // The else branch ensures the normal chain is skipped when the fast path
+    // handles these names, preventing duplicate emission on fallthrough.
+    if (e->args.size() >= 2 && (e->callee == "map" || e->callee == "filter")) {
+        llvm::Value *arg0 = emitExpr(*e->args[0]);
+        if (auto *v = emitBuiltinResult(*e, arg0))      return v;
+        if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
+        if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
+    } else if (e->args.size() == 2 && e->callee == "take") {
+        llvm::Value *arg0 = emitExpr(*e->args[0]);
+        if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
+        if (auto *v = emitBuiltinCollection(*e, arg0))  return v;
+    } else {
+        // Dispatch to language-builtin helpers (Pattern B: no @native registry)
+        if (auto *v = emitBuiltinResult(*e))      return v;
+        if (auto *v = emitBuiltinIterator(*e))    return v;
+        if (auto *v = emitBuiltinString(*e))      return v;
+        if (auto *v = emitBuiltinConversion(*e))  return v;
+        if (auto *v = emitBuiltinQuery(*e))       return v;
+        if (auto *v = emitBuiltinCore(*e))        return v;
+        if (auto *v = emitBuiltinHigherOrder(*e)) return v;
+        if (auto *v = emitBuiltinCollection(*e))  return v;
+        if (auto *v = emitBuiltinSetOps(*e))      return v;
+        if (auto *v = emitBuiltinRegex(*e))       return v;
+    }
 
     // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
     using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
@@ -153,19 +157,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         if (ltPos != std::string::npos && baseName.back() == '>') {
             std::string argsStr = baseName.substr(ltPos + 1, baseName.size() - ltPos - 2);
             baseName = baseName.substr(0, ltPos);
-            std::string curr;
-            int depth = 0;
-            for (char c : argsStr) {
-                if (c == '<') depth++;
-                else if (c == '>') depth--;
-                else if (c == ',' && depth == 0) {
-                    typeArgs.push_back(curr);
-                    curr.clear();
-                    continue;
-                }
-                curr += c;
-            }
-            if (!curr.empty()) typeArgs.push_back(curr);
+            typeArgs = splitTypeArgs(argsStr);
         }
 
         if (generic_fn_templates_.count(baseName)) {
@@ -273,8 +265,8 @@ llvm::Value *CodeGen::emitLambdaCall(llvm::Value *lambdaVal, const FnTypeInfo &i
 // ===== Shared Result-wrapping helpers =====
 
 llvm::Value *CodeGen::emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                        std::function<llvm::Value*()> buildOk,
-                                        std::function<llvm::Value*()> buildErr) {
+                                        llvm::function_ref<llvm::Value*()> buildOk,
+                                        llvm::function_ref<llvm::Value*()> buildErr) {
     llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "res.ok", fn_);
     llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "res.err", fn_);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "res.merge", fn_);

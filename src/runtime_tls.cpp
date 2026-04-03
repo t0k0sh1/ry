@@ -1,4 +1,5 @@
 #include "ry/runtime_tls.hpp"
+#include "ry/runtime_arc.hpp"
 #include "ry/runtime_net.hpp"
 #include "ry/runtime_io.hpp"
 
@@ -67,13 +68,7 @@ ssize_t __ry_tls_send_all(SSL *ssl, const void *buf, size_t len) {
 // tls_connect
 // ============================================================
 
-extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
-    // Establish plain TCP connection first
-    void *tcp = __ry_connect(host, port);
-    if (!tcp) return nullptr;
-
-    int fd = __ry_tcp_take_fd(tcp);
-
+static void *tls_handshake(const char *host, int fd) {
     SSL_CTX *ctx = get_global_tls_ctx();
     if (!ctx) {
         ::close(fd);
@@ -97,7 +92,6 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
     if (ret != 1) {
         SSL_free(ssl);
         ::close(fd);
-
         return nullptr;
     }
 
@@ -107,20 +101,34 @@ extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
-
         return nullptr;
     }
 
-    auto *handle = new (std::nothrow) TlsStreamHandle;
-    if (!handle) {
+    void *mem = arc_alloc(sizeof(TlsStreamHandle));
+    if (!mem) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
         ::close(fd);
         return nullptr;
     }
+    auto *handle = new (mem) TlsStreamHandle;
     handle->fd = fd;
     handle->ssl = ssl;
     return handle;
+}
+
+extern "C" void *__ry_tls_connect_resolved(const char *host, const struct addrinfo *info) {
+    void *tcp = __ry_connect_resolved(info);
+    if (!tcp) return nullptr;
+    int fd = __ry_tcp_take_fd(tcp);
+    return tls_handshake(host, fd);
+}
+
+extern "C" void *__ry_tls_connect(const char *host, int64_t port) {
+    void *tcp = __ry_connect(host, port);
+    if (!tcp) return nullptr;
+    int fd = __ry_tcp_take_fd(tcp);
+    return tls_handshake(host, fd);
 }
 
 // ============================================================
@@ -135,10 +143,10 @@ extern "C" int64_t __ry_tls_send(void *tls_stream, void *byte_list) {
 }
 
 // ============================================================
-// tls_recv
+// tls_receive
 // ============================================================
 
-extern "C" void *__ry_tls_recv(void *tls_stream, int64_t max_bytes) {
+extern "C" void *__ry_tls_receive(void *tls_stream, int64_t max_bytes) {
     auto *h = (TlsStreamHandle *)tls_stream;
     __ry_apply_default_recv_timeout(h->fd);
     if (max_bytes <= 0) {
@@ -181,7 +189,21 @@ extern "C" void __ry_tls_close(void *tls_stream) {
     SSL_shutdown(handle->ssl);
     SSL_free(handle->ssl);
     ::close(handle->fd);
-    delete handle;
+    arc_free(tls_stream);
+}
+
+extern "C" void __ry_tls_cleanup(void *tls_stream) {
+    if (!tls_stream) return;
+    auto *handle = (TlsStreamHandle *)tls_stream;
+    if (handle->ssl) {
+        SSL_shutdown(handle->ssl);
+        SSL_free(handle->ssl);
+        handle->ssl = nullptr;
+    }
+    if (handle->fd >= 0) {
+        ::close(handle->fd);
+        handle->fd = -1;
+    }
 }
 
 // ============================================================
@@ -192,7 +214,7 @@ void __ry_tls_take_ownership(void *tls_stream, int *out_fd, SSL **out_ssl) {
     auto *handle = (TlsStreamHandle *)tls_stream;
     *out_fd = handle->fd;
     *out_ssl = handle->ssl;
-    delete handle;
+    arc_free(tls_stream);
 }
 
 // ============================================================

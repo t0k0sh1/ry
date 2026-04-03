@@ -1,8 +1,8 @@
 [English](07-collections.md) | [日本語](../ja/tutorial/07-collections.md) | [繁體中文](../zh/tutorial/07-collections.md)
 
-# Collections
+# Collections and Iterators
 
-[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)
+[<- Prev: Records and Enums](06-records.md) | [Next: Error Handling ->](08-error-handling.md)
 
 Ry has four collection types: **Tuples**, **Lists**, **Maps**, and **Sets**.
 
@@ -39,7 +39,7 @@ print(t.1)   # 3.14
 Tuples are useful when you want to return multiple values.
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -107,7 +107,7 @@ for x in xs:
 ### Function Parameters
 
 ```python
-fn first(xs: List<int>) -> int:
+function first(xs: List<int>) -> int:
     return xs[0]
 ```
 
@@ -119,19 +119,20 @@ Lists support `filter`, `map`, and `sort` operations. These return new lists wit
 xs = [1, 2, 3, 4, 5]
 
 # filter: keep elements matching a condition
-evens = xs.filter(fn(x: int) => x > 3)
+evens = filter(xs, (x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: transform each element
-doubled = xs.map(fn(x: int) => x * 2)
+doubled = map(xs, (x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: sort in ascending order (default)
-sorted = [3, 1, 2].sort()
+sorted = sort([3, 1, 2])
 print(sorted)   # [1, 2, 3]
 
-# Chaining
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+# Chaining with UFCS (Uniform Function Call Syntax)
+# x.f(args) is equivalent to f(x, args)
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +144,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: start from first element
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: provide an explicit initial value
-total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
+total2 = fold(xs, 0, (a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +159,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum, min, max
@@ -178,8 +179,8 @@ print(max(xs))   # 5
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))      # 10
-print(last(xs))       # 30
+print(first(xs))      # Some(10)
+print(last(xs))       # Some(30)
 print(is_empty(xs))   # false
 ```
 
@@ -257,7 +258,7 @@ print(m)   # {a: 99, b: 2, c: 3}
 Checks whether a key exists.
 
 ```python
-print(m.has_key("a"))   # true
+print(has_key(m, "a"))   # true
 ```
 
 ### keys, values
@@ -273,7 +274,7 @@ print(values(m))   # [1, 2, 3]
 ### Function Parameters
 
 ```python
-fn get_val(m: Map<str, int>, k: str) -> int:
+function get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
@@ -313,9 +314,9 @@ print(5 in s)   # false
 ### add / remove
 
 ```python
-s.add(4)       # Add element
-s.remove(1)    # Remove element
-s.add(2)       # Ignored since it already exists
+add(s, 4)       # Add element
+remove(s, 1)    # Remove element
+add(s, 2)       # Ignored since it already exists
 ```
 
 ### length / print
@@ -351,34 +352,54 @@ empty: Set<int> = {}
 
 Iterators provide a **lazy** way to process collections. Instead of creating intermediate lists at each step, iterators process elements one at a time through a pipeline.
 
+> **Why lazy iterators?** When you chain `filter` and `map` on a list directly, each step creates a new intermediate list. With iterators, elements flow through the entire pipeline one at a time — no intermediate allocations. This matters when processing large collections or when you only need the first few results (using `take`).
+
 ### Creating and Consuming
+
+Call `iter()` on a collection to get an iterator, and `to_list()` to materialize the results back into a list:
 
 ```python
 xs = [1, 2, 3]
-ys = xs.iter().to_list()   # [1, 2, 3]
+ys = to_list(iter(xs))   # [1, 2, 3]
 ```
 
 ### Chaining Operations
 
-You can chain `filter`, `map`, and `take` to build pipelines:
+You can chain `filter`, `map`, and `take` to build pipelines. This uses the UFCS chaining style you learned in [Functions](05-functions.md):
 
 ```python
+result = to_list(take(map(filter(iter([1, 2, 3, 4, 5]), (x: int) => x > 2), (x: int) => x * 2), 2))
+print(result)   # [6, 8]
+
+# UFCS chaining style (equivalent):
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()
 print(result)   # [6, 8]
 ```
 
-### Manual Iteration with next()
+Here is a more realistic example — processing a list of scores:
 
 ```python
-it = [10, 20].iter()
-print(it.next())   # Some(10)
-print(it.next())   # Some(20)
-print(it.next())   # None
+scores = [85, 42, 93, 67, 78, 55, 91]
+
+# Get the top 3 passing scores (>= 60), doubled for bonus
+top_bonus = to_list(take(map(filter(iter(scores), (s: int) => s >= 60), (s: int) => s * 2), 3))
+print(top_bonus)   # [170, 186, 134]
+```
+
+### Manual Iteration with next()
+
+`next()` returns an `Option` — `Some(value)` if there is a next element, or `None` when the iterator is exhausted. You will learn more about `Option` in [Error Handling](08-error-handling.md).
+
+```python
+it = iter([10, 20])
+print(next(it))   # Some(10)
+print(next(it))   # Some(20)
+print(next(it))   # None
 ```
 
 ### For Loops
@@ -386,17 +407,35 @@ print(it.next())   # None
 Iterators work directly in `for` loops:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in filter(iter([1, 2, 3]), (x: int) => x > 1):
     print(x)   # 2, 3
 ```
 
-Maps produce tuple elements:
+### Iterating over Maps and Sets
+
+Maps produce key-value tuples. Sets produce individual elements:
 
 ```python
-for k, v in {"a": 1, "b": 2}.iter():
-    print(k)
+for k, v in iter({"a": 1, "b": 2}):
+    print(f"{k} = {v}")
+
+for x in iter({10, 20, 30}):
+    print(x)
 ```
+
+### Common Mistakes
+
+- **Forgetting `to_list()`**: An iterator pipeline by itself does nothing — it is lazy. You must consume it with `to_list()`, a `for` loop, or `next()`.
+- **Calling `to_list()` too early**: Placing `to_list()` before `filter()` defeats the purpose of lazy evaluation since it materializes all elements first.
 
 ---
 
-[<- Prev: Structs](06-structs.md) | [Next: Advanced Features ->](08-advanced.md)
+## Exercises
+
+1. **Iterator pipeline**: Given `xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`, use an iterator pipeline to compute the sum of even numbers. (Hint: use `.filter()` then `.to_list()` and `sum()`.)
+
+2. **Manual iteration**: Create an iterator over `[100, 200, 300]` and use `next()` in a `when` block to handle the `Some` and `None` cases.
+
+---
+
+[<- Prev: Records and Enums](06-records.md) | [Next: Error Handling ->](08-error-handling.md)

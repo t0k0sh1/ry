@@ -12,6 +12,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     std::vector<std::string> capturedNames;
     std::vector<llvm::Value*> capturedValues;
     std::vector<llvm::Type*> capturedTypes;
+    std::vector<CapturedArcKind> capturedArcKinds;
+    std::vector<ResourceKind> capturedResourceKinds;
+    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
 
     // Build a set of parameter names
     std::unordered_set<std::string> paramNames;
@@ -24,25 +27,45 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     std::function<void(const StmtNode&)> scanStmt;
     std::unordered_set<std::string> found;
 
+    // Try to capture a variable by name (used for both VariableExpr and CallExpr callee)
+    auto tryCaptureVar = [&](const std::string &varName) {
+        if (paramNames.count(varName) || found.count(varName))
+            return;
+        llvm::AllocaInst *alloca = findVar(varName);
+        if (!alloca)
+            return;
+        found.insert(varName);
+        capturedNames.push_back(varName);
+        llvm::Value *val = builder_.CreateLoad(
+            alloca->getAllocatedType(), alloca, varName + ".cap");
+        capturedValues.push_back(val);
+        capturedTypes.push_back(val->getType());
+        auto cak = detectCapturedArcKind(alloca);
+        capturedArcKinds.push_back(cak);
+        if (cak == CAK_Resource) {
+            auto rmIt = resource_managed_vars_.find(alloca);
+            capturedResourceKinds.push_back(
+                rmIt != resource_managed_vars_.end() ? rmIt->second : RK_COUNT);
+        } else {
+            capturedResourceKinds.push_back(RK_COUNT);
+        }
+        // Store fn_type_info for any function-typed capture (closure or plain fn pointer)
+        auto fnIt = fn_type_info_.find(alloca);
+        if (fnIt != fn_type_info_.end())
+            capturedClosureInfos[capturedNames.size() - 1] = fnIt->second;
+    };
+
     scanExpr = [&](const ExprNode &node) {
         std::visit([&](const auto &v) {
             using T = std::decay_t<decltype(v)>;
             if constexpr (std::is_same_v<T, VariableExpr>) {
-                if (!paramNames.count(v.name) && !found.count(v.name)) {
-                    if (llvm::AllocaInst *alloca = findVar(v.name)) {
-                        found.insert(v.name);
-                        capturedNames.push_back(v.name);
-                        llvm::Value *val = builder_.CreateLoad(
-                            alloca->getAllocatedType(), alloca, v.name + ".cap");
-                        capturedValues.push_back(val);
-                        capturedTypes.push_back(val->getType());
-                    }
-                }
+                tryCaptureVar(v.name);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<BinaryExpr>>) {
                 scanExpr(*v->lhs); scanExpr(*v->rhs);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<UnaryExpr>>) {
                 scanExpr(*v->operand);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<CallExpr>>) {
+                tryCaptureVar(v->callee);
                 for (auto &arg : v->args) scanExpr(*arg);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<FieldAccessExpr>>) {
                 scanExpr(*v->object);
@@ -68,6 +91,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
             if constexpr (std::is_same_v<T, AssignStmt>) {
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
+                tryCaptureVar(s.callee);
                 for (auto &arg : s.args) scanExpr(*arg);
             } else if constexpr (std::is_same_v<T, ReturnStmt>) {
                 if (s.value) scanExpr(*s.value);
@@ -77,10 +101,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 scanExpr(*s.object); scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, TupleDestructStmt>) {
                 scanExpr(*s.value);
+            } else if constexpr (std::is_same_v<T, ExprStmt>) {
+                scanExpr(*s.expr);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches) {
-                    scanExpr(*br.condition);
-                    for (auto &st : br.body) scanStmt(st);
+                scanExpr(*s->branch.condition);
+                for (auto &st : s->branch.body) scanStmt(st);
+                for (auto &st : s->else_body) scanStmt(st);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms) {
+                    scanExpr(*arm.condition);
+                    for (auto &st : arm.body) scanStmt(st);
                 }
                 for (auto &st : s->else_body) scanStmt(st);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<WhileStmt>>) {
@@ -140,7 +170,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     // return on all paths
     if (!e->expr_body && e->return_type
         && !isAnyType(retTy) && !retTy->isVoidTy()) {
-        if (!allPathsReturn(e->body))
+        if (!allPathsReturn(e->body, buildEnumVariantRegistry()))
             codegenError("lambda with return type '" + retTypeStr +
                          "' does not return a value on all code paths");
     }
@@ -169,13 +199,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     paramTypes[idx], nullptr, e->params[idx].name);
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[e->params[idx].name] = alloca;
-                // Track fn type info for fn-typed parameters
                 const std::string ptype = e->params[idx].type->toString();
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.substr(0, 3) == "fn(") {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                }
-                registerResourceByTypeName(ptype, alloca);
+                applyParamTypeMeta(ptype, alloca, paramTypes[idx], e->params[idx].name);
             } else {
                 // Captured variable
                 size_t capIdx = idx - e->params.size();
@@ -184,6 +209,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     capturedTypes[capIdx], nullptr, capturedNames[capIdx]);
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[capturedNames[capIdx]] = alloca;
+                // Propagate fn_type_info for captured function-type variables
+                auto closureIt = capturedClosureInfos.find(capIdx);
+                if (closureIt != capturedClosureInfos.end())
+                    fn_type_info_[alloca] = closureIt->second;
             }
             ++idx;
         }
@@ -212,6 +241,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 else if (retTy == ptrTy_)
                     builder_.CreateRet(llvm::ConstantPointerNull::get(
                         llvm::cast<llvm::PointerType>(ptrTy_)));
+                else
+                    builder_.CreateRet(llvm::UndefValue::get(retTy));
             }
         }
 
@@ -229,6 +260,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.returnType = retTy;
     info.capturedVars = capturedNames;
     info.capturedTypes = capturedTypes;
+    info.capturedArcKinds = capturedArcKinds;
+    info.capturedResourceKinds = capturedResourceKinds;
+    info.capturedClosureInfos = capturedClosureInfos;
     fn_type_info_[func] = info;
 
     // If no captures, just return the function pointer
@@ -242,21 +276,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         closureFields.push_back(t);
     llvm::StructType *closureTy = llvm::StructType::get(*ctx_, closureFields);
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
     uint64_t closureSize = dl.getTypeAllocSize(closureTy);
-    llvm::Value *closurePtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, closureSize)}, "closure");
+    auto *arcHeader = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, closureSize));
+    llvm::Value *closurePtr = emitArcGetDataPtr(arcHeader);
 
     // Store function pointer
     llvm::Value *fnField = builder_.CreateStructGEP(closureTy, closurePtr, 0, "closure.fn");
     builder_.CreateStore(func, fnField);
 
-    // Store captured values
+    // Store captured values and retain ARC-managed ones
     for (size_t i = 0; i < capturedValues.size(); ++i) {
         llvm::Value *capField = builder_.CreateStructGEP(
             closureTy, closurePtr, i + 1, "closure.cap." + std::to_string(i));
         builder_.CreateStore(capturedValues[i], capField);
+        if (capturedArcKinds[i] != CAK_None) {
+            auto *hdr = emitArcGetHeaderFromData(capturedValues[i]);
+            emitArcRetain(hdr, false);
+        }
     }
 
     // Register the closure pointer with fn_type_info
@@ -344,8 +381,12 @@ llvm::Type *CodeGen::inferExprType(const ExprNode &expr,
                 c == "keys" || c == "values" || c == "enumerate" || c == "zip")
                 return ptrTy_;
             return i64Ty_; // fallback
-        } else if constexpr (std::is_same_v<T, std::unique_ptr<TernaryExpr>>) {
-            return inferExprType(*v->true_expr, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondExpr>>) {
+            return inferExprType(*v->else_expr, paramTypeMap);
+        } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchExpr>>) {
+            if (!v->arms.empty())
+                return inferExprType(*v->arms[0].value, paramTypeMap);
+            return i64Ty_;
         } else {
             return i64Ty_; // fallback
         }
@@ -369,8 +410,11 @@ void CodeGen::collectReturnTypes(const std::vector<StmtNode> &body,
                 if (s.value)
                     out.push_back(inferExprType(*s.value, paramTypeMap));
             } else if constexpr (std::is_same_v<T, std::unique_ptr<IfStmt>>) {
-                for (auto &br : s->branches)
-                    collectReturnTypes(br.body, paramTypeMap, out);
+                collectReturnTypes(s->branch.body, paramTypeMap, out);
+                collectReturnTypes(s->else_body, paramTypeMap, out);
+            } else if constexpr (std::is_same_v<T, std::unique_ptr<WhenCondStmt>>) {
+                for (auto &arm : s->arms)
+                    collectReturnTypes(arm.body, paramTypeMap, out);
                 collectReturnTypes(s->else_body, paramTypeMap, out);
             } else if constexpr (std::is_same_v<T, std::unique_ptr<MatchStmt>>) {
                 for (auto &arm : s->arms)
@@ -414,5 +458,9 @@ std::string CodeGen::reverseResolveTypeName(llvm::Type *ty) {
     if (ty == ptrTy_) return "str";
     if (isAnyType(ty)) return "any";
     if (ty->isVoidTy()) return "Unit";
+    if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
+        std::string n = findStructTypeName(st);
+        if (!n.empty()) return n;
+    }
     return "any"; // fallback
 }

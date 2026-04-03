@@ -1,0 +1,8 @@
+from . import add, sub
+
+describe("relative import from current directory", ():
+    it("imports symbols from multiple files in same directory", ():
+        expect(add(2, 3)).to_eq(5)
+        expect(sub(10, 4)).to_eq(6)
+    )
+)

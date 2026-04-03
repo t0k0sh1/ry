@@ -11,6 +11,7 @@
 ### 構文
 
 ```python
+t = (42,)                      # 単一要素タプル（末尾カンマ必須）
 t = (1, 3.14)
 t: (int, float) = (1, 3.14)
 ```
@@ -18,8 +19,19 @@ t: (int, float) = (1, 3.14)
 ### 型アノテーション
 
 ```python
+single: (int,) = (42,)                     # 単一要素には末尾カンマ必須
 pair: (int, str) = (42, "hello")
 triple: (int, float, bool) = (1, 2.0, true)
+```
+
+### 比較
+
+タプルは要素ごとの比較による `==` と `!=` をサポートします。
+
+```python
+print((1, 2) == (1, 2))    # true
+print((1, 2) != (3, 4))    # true
+print(("a", 1) == ("b", 1))  # false
 ```
 
 ### 要素アクセス
@@ -35,7 +47,7 @@ print(t.1)   # 3.14
 ### 関数戻り値
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -48,7 +60,7 @@ print(result.1)   # 1
 | 制約 | 詳細 |
 |------|------|
 | 範囲外インデックス | コンパイルエラー |
-| `print` にタプルを直接渡す | コンパイルエラー（print非対応） |
+| 比較演算子 | `==` と `!=` のみサポート。`<`、`<=`、`>`、`>=` は未対応 |
 
 ---
 
@@ -65,6 +77,28 @@ xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
 ```
 
+### 空リスト
+
+空リストは要素型を決定するために型アノテーションが必要です:
+
+```python
+xs: List<int> = []
+xs: List<str> = []
+```
+
+### 連結
+
+リストは `+` と `+=` で連結できます:
+
+```python
+a = [1, 2, 3]
+b = [4, 5, 6]
+c = a + b       # [1, 2, 3, 4, 5, 6]
+a += [7, 8]     # a は [1, 2, 3, 7, 8] になる
+```
+
+両方のオペランドは同じ要素型でなければなりません。
+
 ### 対応する要素型
 
 `int`, `float`, `bool`, `str`
@@ -77,12 +111,25 @@ print(xs[0])   # 1
 print(xs[2])   # 3
 ```
 
+負のインデックスは末尾から数えます（Python スタイル）:
+
+```python
+xs = [10, 20, 30]
+print(xs[-1])   # 30（最後の要素）
+print(xs[-2])   # 20
+print(xs[-3])   # 10
+```
+
+範囲外アクセス（リストの長さを超える負のインデックスを含む）はランタイムエラーになります。
+
 ### インデックス代入
 
 ```python
 xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
+xs[-1] = 42    # 最後の要素に代入
+print(xs[2])   # 42
 ```
 
 ### length
@@ -122,12 +169,12 @@ print(xs)   # [1, 2, 3]
 
 ### pop
 
-リストの末尾の要素を削除して返します。空のリストに対して呼び出すとランタイムエラーになります。
+リストの末尾の要素を削除して返します。空のリストの場合は `None` を返します。
 
 ```python
 xs = [1, 2, 3]
 v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
 
@@ -153,7 +200,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 
 ### take
 
-先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。
+先頭 `count` 要素の新しいリストを返します。`count` がリストの長さを超える場合はリスト全体のコピーを返します。`count <= 0` の場合は空リストを返します。元のリストは変更されません。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -169,7 +216,7 @@ print(xs.take(0))    # []
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
@@ -179,7 +226,7 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -189,20 +236,20 @@ print(ys)   # [4, 5]
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
 ### sort
 
-ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。内部的にTimSortを使用しています。
+ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。内部的に TimSort を使用しています。
 
 ```python
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -212,7 +259,7 @@ print(desc)   # [3, 2, 1]
 
 ```python
 xs = [5, 3, 1, 4, 2]
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -222,7 +269,7 @@ print(result)   # [20, 30, 40, 50]
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -232,7 +279,7 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = fold(xs, 0, fn(a: int, b: int) => a + b)
+total = fold(xs, 0, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -242,8 +289,8 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 ```
 
 ### all
@@ -252,8 +299,8 @@ print(any(xs, fn(x: int) => x > 9))   # false
 
 ```python
 xs = [2, 4, 6]
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum
@@ -285,20 +332,20 @@ print(max(xs))   # 5
 
 ### first
 
-最初の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
+最初の要素を返します。空のリストの場合は `None` を返します。
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))   # 10
+print(first(xs))   # Some(10)
 ```
 
 ### last
 
-最後の要素を返します。空のリストに対して呼び出すとランタイムエラーになります。
+最後の要素を返します。空のリストの場合は `None` を返します。
 
 ```python
 xs = [10, 20, 30]
-print(last(xs))   # 30
+print(last(xs))   # Some(30)
 ```
 
 ### is_empty
@@ -413,8 +460,39 @@ print(xs)            # [[1, 2], [3, 4]]（変更なし）
 | 制約 | 詳細 |
 |------|------|
 | 全要素は同一型 | 異なる型が混在するとコンパイルエラー |
-| 空リスト `[]` | 型推論できないためコンパイルエラー |
+| 空リスト `[]` | 型アノテーションが必要（例: `xs: List<int> = []`） |
 | 範囲外アクセス | ランタイムエラー（exit(1)） |
+
+---
+
+## Copy-on-Write (CoW) セマンティクス
+
+すべてのコレクション型（List、Map、Set）は ARC 管理下で **Copy-on-Write** セマンティクスを使用します。これは以下を意味します:
+
+- **代入はデータを共有する**: `b = a` はコレクションをコピーしません。両方の変数が同じデータを参照します。参照カウントがインクリメントされます。
+- **変更時にコピーが発生する**: 共有されたコレクションが変更される場合（例: `append`、`remove`、インデックス代入）、変更前にディープコピーが自動的に作成されます。コピーのコストは変更側のみが負担します。
+- **単一所有者はその場で変更する**: コレクションの参照が1つだけの場合（`strong_count == 1`）、変更はコピーなしでその場で行われます。
+
+```python
+a = [1, 2, 3]       # strong_count = 1
+b = a                # strong_count = 2（共有）
+append(b, 4)         # strong_count > 1 → b をディープコピーしてから変更
+                     # a = [1, 2, 3]  (strong_count = 1)
+                     # b = [1, 2, 3, 4]  (strong_count = 1, 新しい割り当て)
+
+c = [10, 20]         # strong_count = 1
+append(c, 30)        # strong_count == 1 → その場で変更（コピーなし）
+```
+
+### CoW が発生する操作
+
+| 型 | 変更操作 |
+|------|-------------------|
+| **List** | `append()`、`pop()`、`insert()`、`remove()`、`remove_at()`、`sort!()`、`reverse!()`、インデックス代入（`xs[i] = val`） |
+| **Map** | `remove()`、インデックス代入（`m[key] = val`） |
+| **Set** | `add()`、`remove()` |
+
+非変更操作（`appended`、`slice`、`take`、`filter`、`map`、`sort`、`reverse`、`get`、`items` 等）は新しいコレクションを作成し、CoW は発生しません。
 
 ---
 
@@ -619,7 +697,7 @@ s: Set<int> = {}
 ### 関数引数
 
 ```python
-fn has_value(s: Set<int>, v: int) -> bool:
+function has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 
@@ -723,15 +801,15 @@ mit = m.iter()           # Iterator<(str, int)>
 
 | メソッド | 説明 |
 |--------|------|
-| `.filter(fn)` | 述語が `true` を返す要素のみを生成 |
-| `.map(fn)` | 各要素を関数で変換 |
-| `.take(n)` | 最大 `n` 要素を生成 |
+| `.filter(function)` | 述語が `true` を返す要素のみを生成 |
+| `.map(function)` | 各要素を関数で変換 |
+| `.take(count)` | 最大 `count` 要素を生成 |
 
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()   # [6, 8]
 ```
@@ -755,7 +833,7 @@ print(it.next())   # None
 イテレータは `for` ループで直接使用できます:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in [1, 2, 3].iter().filter((x: int) => x > 1):
     print(x)
 # 2
 # 3

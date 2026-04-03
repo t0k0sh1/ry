@@ -5,6 +5,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
+#include <string>
 
 using namespace ry::self_update;
 using namespace ry::self_update::detail;
@@ -28,10 +29,10 @@ TEST(SelfUpdate, BuildDownloadUrl) {
     PlatformInfo linux_amd64{"linux", "amd64"};
 
     auto url1 = build_download_url("v0.0.1", darwin_arm64);
-    EXPECT_EQ(url1, "https://github.com/t0k0sh1/ry/releases/download/v0.0.1/ry-darwin-arm64.tar.gz");
+    EXPECT_EQ(url1, "https://github.com/t0k0sh1/ry/releases/download/v0.0.1/ry-v0.0.1-darwin-arm64.tar.gz");
 
     auto url2 = build_download_url("v0.0.2-dev.20250101", linux_amd64);
-    EXPECT_EQ(url2, "https://github.com/t0k0sh1/ry/releases/download/v0.0.2-dev.20250101/ry-linux-amd64.tar.gz");
+    EXPECT_EQ(url2, "https://github.com/t0k0sh1/ry/releases/download/v0.0.2-dev.20250101/ry-v0.0.2-dev.20250101-linux-amd64.tar.gz");
 }
 
 TEST(SelfUpdate, ExtractJsonString) {
@@ -300,6 +301,19 @@ protected:
     void TearDown() override {
         fs::remove_all(tmp_root);
     }
+
+    fs::path create_tar_with_python(const std::string &filename,
+                                     const std::string &entry_setup) {
+        auto archive = tmp_root / filename;
+        std::string script =
+            "import tarfile, io\n"
+            "with tarfile.open('" + archive.string() + "', 'w:gz') as t:\n"
+            + entry_setup;
+        int status = run_command({"python3", "-c", script});
+        EXPECT_EQ(status, 0) << "python3 failed to create tar archive";
+        EXPECT_TRUE(fs::exists(archive)) << "Expected archive to be created at " << archive;
+        return archive;
+    }
 };
 
 TEST_F(TarValidationTest, SafeArchive) {
@@ -367,4 +381,131 @@ TEST_F(TarValidationTest, Hardlink) {
     run_command({"python3", "-c", script});
 
     EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, BlockDevice) {
+    auto archive = create_tar_with_python("blockdev.tar.gz",
+        "    info = tarfile.TarInfo(name='devzero')\n"
+        "    info.type = tarfile.BLKTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 5\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, CharDevice) {
+    auto archive = create_tar_with_python("chardev.tar.gz",
+        "    info = tarfile.TarInfo(name='devnull')\n"
+        "    info.type = tarfile.CHRTYPE\n"
+        "    info.devmajor = 1\n"
+        "    info.devminor = 3\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+TEST_F(TarValidationTest, Fifo) {
+    auto archive = create_tar_with_python("fifo.tar.gz",
+        "    info = tarfile.TarInfo(name='mypipe')\n"
+        "    info.type = tarfile.FIFOTYPE\n"
+        "    info.size = 0\n"
+        "    t.addfile(info)\n");
+    EXPECT_FALSE(validate_tar_entries(archive.string()));
+}
+
+// --- Signature verification tests ---
+
+// Dedicated test Ed25519 key pair — distinct from the production SIGNING_PUBLIC_KEY.
+static const unsigned char TEST_PUBKEY[32] = {
+    0xcb, 0xe4, 0xb6, 0x66, 0x4e, 0x4b, 0x97, 0x5c, 0x79, 0x50, 0x4d, 0x1a,
+    0x0c, 0x5a, 0x28, 0x46, 0x8e, 0x1e, 0x01, 0xdc, 0x36, 0x08, 0xc9, 0xc1,
+    0x83, 0x0c, 0x9a, 0x76, 0xeb, 0x64, 0x74, 0x00
+};
+static const char *TEST_MESSAGE = "test message for signature verification";
+static const char *TEST_SIGNATURE_B64 =
+    "LWqzIGYP9gIf2aFVk7qaTIkD2g36unUqDtw4jG8+EhiGA1bTbHJ0+YkpWKJTwNfKIymzI9HQ8XHbo1B8G20gAA==";
+
+TEST(SelfUpdate, BuildSignatureUrl) {
+    auto url = build_signature_url("v0.0.5");
+    EXPECT_EQ(url, "https://github.com/t0k0sh1/ry/releases/download/v0.0.5/checksums.txt.sig");
+}
+
+TEST(SelfUpdate, Base64DecodeKnown) {
+    auto decoded = base64_decode("aGVsbG8=");
+    EXPECT_EQ(decoded, "hello");
+}
+
+TEST(SelfUpdate, Base64DecodePaddedShort) {
+    auto decoded = base64_decode("aGk=");
+    EXPECT_EQ(decoded, "hi");
+}
+
+TEST(SelfUpdate, Base64DecodeEmpty) {
+    auto decoded = base64_decode("");
+    EXPECT_TRUE(decoded.empty());
+}
+
+TEST(SelfUpdate, VerifySignatureValid) {
+    EXPECT_TRUE(verify_signature(TEST_MESSAGE, TEST_SIGNATURE_B64,
+                                 TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureInvalid) {
+    std::string bad_sig = std::string(TEST_SIGNATURE_B64);
+    bad_sig[0] = (bad_sig[0] == 'A') ? 'B' : 'A';
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, bad_sig.c_str(),
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureWrongMessage) {
+    EXPECT_FALSE(verify_signature("wrong message", TEST_SIGNATURE_B64,
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureMalformedBase64) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "!!!not-base64!!!",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureEmptySignature) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+TEST(SelfUpdate, VerifySignatureShortSignature) {
+    EXPECT_FALSE(verify_signature(TEST_MESSAGE, "AAAA",
+                                  TEST_PUBKEY, sizeof(TEST_PUBKEY)));
+}
+
+// --- Signature policy tests ---
+
+TEST(SelfUpdate, SignaturePolicyValidSignature) {
+    auto action = evaluate_signature_policy(true, true, false);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyValidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, true, true);
+    EXPECT_EQ(action, SignatureAction::VERIFIED);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignature) {
+    auto action = evaluate_signature_policy(true, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyInvalidSignatureWithSkipSet) {
+    auto action = evaluate_signature_policy(true, false, true);
+    EXPECT_EQ(action, SignatureAction::FAIL_INVALID);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureDefault) {
+    auto action = evaluate_signature_policy(false, false, false);
+    EXPECT_EQ(action, SignatureAction::FAIL_MISSING);
+}
+
+TEST(SelfUpdate, SignaturePolicyMissingSignatureSkipAllowed) {
+    auto action = evaluate_signature_policy(false, false, true);
+    EXPECT_EQ(action, SignatureAction::SKIP_ALLOWED);
 }

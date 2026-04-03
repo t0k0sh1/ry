@@ -4,21 +4,33 @@
 // ===== Builtin Conversion =====
 
 llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
-    // to_int(s) → int
+    // to_int(s) → Result<int, Error> — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_int") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
+        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_int() requires str argument");
-        auto atolTy = fnTy_ptr_to_i64_;
-        auto atolFn = mod_->getOrInsertFunction("atol", atolTy);
-        return builder_.CreateCall(atolFn, {s}, "to_int");
+        llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
+        auto fnTy = fnTy_ptr_ptr_to_i64_;
+        auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
+        llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
+        llvm::Value *isErr = builder_.CreateICmpNE(status,
+            llvm::ConstantInt::get(i64Ty_, 0), "to_int_err");
+        llvm::StructType *resTy = getResultType(i64Ty_, errorTy_);
+        return emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(i64Ty_, outSlot, "to_int_val");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() { return buildErrValue(buildErrorFromRuntime("__ry_convert_get_last_error"), resTy); });
     }
 
-    // to_float(s) → float
+    // to_float(s) → float — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_float") {
         requireArgs(e, 1);
         llvm::Value *s = emitExpr(*e.args[0]);
+        if (isJsonValue(s)) return nullptr;
         if (s->getType() != ptrTy_)
             codegenError("to_float() requires str argument");
         auto atofTy = llvm::FunctionType::get(f64Ty_, {ptrTy_}, false);
@@ -26,10 +38,12 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         return builder_.CreateCall(atofFn, {s}, "to_float");
     }
 
-    // to_str(v) → str (int/float/bool/str → str)
+    // to_str(v) → str — fall through for JsonValue to let JSON dispatcher handle it
     if (e.callee == "to_str") {
         requireArgs(e, 1);
-        return valueToString(emitExpr(*e.args[0]));
+        llvm::Value *v = emitExpr(*e.args[0]);
+        if (isJsonValue(v)) return nullptr;
+        return valueToString(v);
     }
 
     return nullptr;
@@ -38,10 +52,11 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
 // ===== Builtin Query =====
 
 llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
-    // ===== keys(map) =====
+    // ===== keys(map) — fall through for JsonValue =====
     if (e.callee == "keys") {
         requireArgs(e, 1);
         llvm::Value *mapVal = emitExpr(*e.args[0]);
+        if (isJsonValue(mapVal)) return nullptr;
         llvm::Type *keyTy = getMapKeyType(mapVal);
         if (!keyTy) codegenError("keys() requires a map");
 
@@ -51,17 +66,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "keys_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         type_meta_[TM_ListElem][newHeader] = keyTy;
         return newHeader;
     }
@@ -79,17 +91,14 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "vals_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         type_meta_[TM_ListElem][newHeader] = valTy;
         return newHeader;
     }
@@ -194,8 +203,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "enum_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
         llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "enum_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "enum_nd");
@@ -221,9 +229,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, srcLen, srcLen, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -249,8 +255,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "zip_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
         llvm::Value *dataSize = builder_.CreateMul(minLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "zip_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "zip_nd");
@@ -278,9 +283,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, minLen, minLen, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -299,10 +302,10 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return llvm::UndefValue::get(i64Ty_);
     }
 
-    // args() → List<str>
-    if (e.callee == "args") {
+    // arguments() → List<str>
+    if (e.callee == "arguments") {
         if (!e.args.empty())
-            codegenError("args() takes no arguments");
+            codegenError("arguments() takes no arguments");
 
         // Call __ry_args_count()
         llvm::FunctionType *countTy = llvm::FunctionType::get(i32Ty_, false);
@@ -313,9 +316,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Allocate list header
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *headerPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "args_header");
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array (ptr per element)
         uint64_t elemSize = dl.getTypeAllocSize(ptrTy_);
@@ -356,12 +357,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "args_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "args_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "args_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = ptrTy_;
         return headerPtr;
@@ -441,24 +437,24 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return builder_.CreateSelect(isErr, errVal, okVal, "send_result");
     }
 
-    if (e.callee == "recv") {
+    if (e.callee == "receive") {
         requireArgs(e, 2);
-        // TCP/TLS recv(stream, max_bytes) -> Result<List<u8>, Error>
+        // TCP/TLS receive(stream, max_bytes) -> Result<List<u8>, Error>
         llvm::Value *streamVal = emitExpr(*e.args[0]);
         if (!isTcpStream(streamVal) && !isTlsStream(streamVal))
-            codegenError("recv() requires TcpStream or TlsStream as first argument");
+            codegenError("receive() requires TcpStream or TlsStream as first argument");
         llvm::Value *maxBytes = emitExpr(*e.args[1]);
         auto fnTy = llvm::FunctionType::get(ptrTy_, {ptrTy_, i64Ty_}, false);
-        std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_recv" : "__ry_tcp_recv";
+        std::string rtFn = isTlsStream(streamVal) ? "__ry_tls_receive" : "__ry_tcp_receive";
         auto fn = mod_->getOrInsertFunction(rtFn, fnTy);
-        llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_recv");
+        llvm::Value *ptr = builder_.CreateCall(fn, {streamVal, maxBytes}, "tcp_receive");
         // Wrap in Result<List<u8>, Error>: nullptr = Err, non-null = Ok
         llvm::Value *isNull = builder_.CreateICmpEQ(ptr,
-            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "recv_null");
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)), "receive_null");
         llvm::StructType *resTy = getResultType(ptrTy_, errorTy_);
         llvm::Value *okVal = buildOkValue(ptr, resTy);
-        llvm::Value *errVal = buildErrValue(buildStaticError("recv failed", ".recv_err_msg"), resTy);
-        llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "recv_result");
+        llvm::Value *errVal = buildErrValue(buildStaticError("receive failed", ".receive_err_msg"), resTy);
+        llvm::Value *result = builder_.CreateSelect(isNull, errVal, okVal, "receive_result");
         type_meta_[TM_ListElem][result] = i8Ty_;
         return result;
     }
@@ -466,20 +462,12 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
     if (e.callee == "close") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        auto *voidPtrFnTy = llvm::FunctionType::get(
-            llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
-        if (isTcpListener(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_listener_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
-        }
-        if (isTcpStream(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tcp_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
-        }
-        if (isTlsStream(val)) {
-            auto fn = mod_->getOrInsertFunction("__ry_tls_close", voidPtrFnTy);
-            return builder_.CreateCall(fn, {val});
-        }
+        if (isTcpListener(val))
+            return emitResourceFree(val, RK_TcpListener, *e.args[0]);
+        if (isTcpStream(val))
+            return emitResourceFree(val, RK_TcpStream, *e.args[0]);
+        if (isTlsStream(val))
+            return emitResourceFree(val, RK_TlsStream, *e.args[0]);
         codegenError("close() requires TcpStream, TlsStream, or TcpListener argument");
     }
 
@@ -542,9 +530,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Allocate list header
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *headerPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_header");
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array
         uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
@@ -579,21 +565,17 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "range_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "range_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "range_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = i64Ty_;
         return headerPtr;
     }
 
-    // length(xs) → list/map/array length
+    // length(xs) → list/map/array length — fall through for JsonValue
     if (e.callee == "length") {
         requireArgs(e, 1);
         llvm::Value *ptr = emitExpr(*e.args[0]);
+        if (isJsonValue(ptr)) return nullptr;
         // Fixed-length array: return compile-time constant
         if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(ptr)) {
             if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType()))
@@ -692,9 +674,9 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         return result;
     }
 
-    // unwrap() has been removed — use match or ?? instead
+    // unwrap() has been removed — use when or ?? instead
     if (e.callee == "unwrap") {
-        codegenError("unwrap() has been removed. Use match or ?? instead");
+        codegenError("unwrap() has been removed. Use when or ?? instead");
     }
 
     // has_key(map, key) → bool
@@ -777,6 +759,31 @@ CodeGen::MapFields CodeGen::loadMapHeader(llvm::Value *mapVal, const std::string
     f.valsPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3, p + "_vals_ptr");
     f.vals = builder_.CreateLoad(ptrTy_, f.valsPtr, p + "_vals");
     return f;
+}
+
+// ===== Header stores =====
+
+void CodeGen::storeListHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                    llvm::Value *cap, llvm::Value *data) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(data, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+}
+
+void CodeGen::storeSetHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                   llvm::Value *cap, llvm::Value *elems) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(elems, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2));
+}
+
+void CodeGen::storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                   llvm::Value *cap, llvm::Value *keys,
+                                   llvm::Value *vals) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(keys, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2));
+    builder_.CreateStore(vals, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3));
 }
 
 // ===== Builtin Math =====

@@ -4,6 +4,31 @@
 #include <stdexcept>
 #include <unordered_map>
 
+static const auto isDecDigit = [](unsigned char c) { return std::isdigit(c) != 0; };
+static const auto isHexDigit = [](unsigned char c) { return std::isxdigit(c) != 0; };
+static const auto isBinDigit = [](unsigned char c) { return c == '0' || c == '1'; };
+
+// Consume digits with optional underscore separators.
+// Underscore must appear between two valid digits (no leading/trailing/consecutive _).
+template <typename Pred>
+static void consumeDigitsWithSeparators(const std::string &src, size_t &pos,
+                                        int &col, int line, Pred isValid) {
+    while (pos < src.size()) {
+        if (isValid(static_cast<unsigned char>(src[pos]))) {
+            ++pos; ++col;
+        } else if (src[pos] == '_') {
+            if (pos + 1 >= src.size() ||
+                !isValid(static_cast<unsigned char>(src[pos + 1])))
+                throw std::runtime_error(
+                    "line " + std::to_string(line) +
+                    ": invalid underscore in numeric literal");
+            ++pos; ++col;
+        } else {
+            break;
+        }
+    }
+}
+
 static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"and",       TokenKind::And},
     {"or",        TokenKind::Or},
@@ -11,14 +36,15 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"true",      TokenKind::True},
     {"false",     TokenKind::False},
     {"if",        TokenKind::If},
-    {"elif",      TokenKind::Elif},
     {"else",      TokenKind::Else},
+    {"when",      TokenKind::When},
+    {"match",     TokenKind::Match},
     {"while",     TokenKind::While},
     {"for",       TokenKind::For},
     {"in",        TokenKind::In},
     {"break",     TokenKind::Break},
     {"continue",  TokenKind::Continue},
-    {"fn",        TokenKind::Fn},
+    {"function",  TokenKind::Fn},
     {"return",    TokenKind::Return},
     {"from",      TokenKind::From},
     {"import",    TokenKind::Import},
@@ -26,7 +52,6 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
     {"record",    TokenKind::Record},
     {"operator",  TokenKind::Operator},
     {"enum",      TokenKind::Enum},
-    {"match",     TokenKind::Match},
     {"case",      TokenKind::Case},
     {"expect",    TokenKind::Expect},
     {"require",   TokenKind::Require},
@@ -41,6 +66,7 @@ static const std::unordered_map<std::string, TokenKind> keyword_map = {
 
 Token Lexer::next() {
     Token t = current_;
+    prev_kind_ = t.kind;
     current_ = readToken();
     return t;
 }
@@ -62,7 +88,7 @@ bool Lexer::consumeGreaterInTypeContext() {
 }
 
 Lexer::State Lexer::saveState() const {
-    return {pos_, line_, col_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_};
+    return {pos_, line_, col_, at_line_start_, indent_stack_, pending_, current_, fstring_brace_depth_, prev_kind_};
 }
 
 void Lexer::restoreState(State s) {
@@ -74,6 +100,7 @@ void Lexer::restoreState(State s) {
     pending_ = std::move(s.pending);
     current_ = std::move(s.current);
     fstring_brace_depth_ = s.fstring_brace_depth;
+    prev_kind_ = s.prev_kind;
 }
 
 void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
@@ -93,7 +120,7 @@ void Lexer::tryConsumeNumericSuffix(TokenKind &kind) {
         // Avoid matching partial identifiers like `42i32x`
         if (pos_ + len < src_.size()) {
             char after = src_[pos_ + len];
-            if (std::isalnum(after) || after == '_') continue;
+            if (std::isalnum(static_cast<unsigned char>(after)) || after == '_') continue;
         }
         pos_ += len;
         col_ += static_cast<int>(len);
@@ -264,6 +291,29 @@ Token Lexer::readToken() {
         if (pos_ < src_.size() && src_[pos_] == '=') {
             ++pos_; ++col_; return {TokenKind::SlashEq, "/=", line_, startCol};
         }
+        // Regex literal: `/` starts a regex when NOT preceded by a value-producing token
+        if (prev_kind_ != TokenKind::Number && prev_kind_ != TokenKind::Float &&
+            prev_kind_ != TokenKind::String && prev_kind_ != TokenKind::FStringEnd &&
+            prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::RParen &&
+            prev_kind_ != TokenKind::RBracket && prev_kind_ != TokenKind::RBrace &&
+            prev_kind_ != TokenKind::True && prev_kind_ != TokenKind::False &&
+            prev_kind_ != TokenKind::NoneKw && prev_kind_ != TokenKind::PlusPlus &&
+            prev_kind_ != TokenKind::MinusMinus && prev_kind_ != TokenKind::RegexLiteral) {
+            size_t regexStart = pos_;
+            while (pos_ < src_.size() && src_[pos_] != '/' && src_[pos_] != '\n') {
+                if (src_[pos_] == '\\') {
+                    ++pos_; ++col_;
+                    if (pos_ >= src_.size() || src_[pos_] == '\n')
+                        return {TokenKind::Error, "unterminated regex literal", line_, startCol};
+                }
+                ++pos_; ++col_;
+            }
+            if (pos_ >= src_.size() || src_[pos_] != '/')
+                return {TokenKind::Error, "unterminated regex literal", line_, startCol};
+            std::string pattern(src_, regexStart, pos_ - regexStart);
+            ++pos_; ++col_; // consume closing /
+            return {TokenKind::RegexLiteral, std::move(pattern), line_, startCol};
+        }
         return {TokenKind::Slash, "/", line_, startCol};
     }
     if (c == '=') {
@@ -357,6 +407,20 @@ Token Lexer::readToken() {
                 ++pos_; ++col_; return {TokenKind::Ellipsis, "...", line_, startCol};
             }
             return {TokenKind::DotDot, "..", line_, startCol};
+        }
+        if (pos_ < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_])) &&
+            prev_kind_ != TokenKind::Ident && prev_kind_ != TokenKind::Number &&
+            prev_kind_ != TokenKind::Float && prev_kind_ != TokenKind::String &&
+            prev_kind_ != TokenKind::RParen && prev_kind_ != TokenKind::RBracket &&
+            prev_kind_ != TokenKind::RBrace && prev_kind_ != TokenKind::True &&
+            prev_kind_ != TokenKind::False && prev_kind_ != TokenKind::NoneKw &&
+            prev_kind_ != TokenKind::FStringEnd) {
+            size_t start = pos_ - 1;
+            consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                isDecDigit);
+            TokenKind numKind = TokenKind::Float;
+            tryConsumeNumericSuffix(numKind);
+            return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
         }
         return {TokenKind::Dot, ".", line_, startCol};
     }
@@ -460,16 +524,17 @@ Token Lexer::readToken() {
         return {TokenKind::String, str, line_, startCol};
     }
 
-    if (std::isdigit(c)) {
+    if (std::isdigit(static_cast<unsigned char>(c))) {
         size_t start = pos_;
         TokenKind numKind = TokenKind::Number;
         if (c == '0' && pos_ + 1 < src_.size()) {
             char next = src_[pos_ + 1];
             if (next == 'x' || next == 'X') {
                 pos_ += 2; col_ += 2;
-                if (pos_ >= src_.size() || !std::isxdigit(src_[pos_]))
+                if (pos_ >= src_.size() || !std::isxdigit(static_cast<unsigned char>(src_[pos_])))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid hex literal");
-                while (pos_ < src_.size() && std::isxdigit(src_[pos_])) { ++pos_; ++col_; }
+                consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                    isHexDigit);
                 tryConsumeNumericSuffix(numKind);
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
@@ -477,16 +542,19 @@ Token Lexer::readToken() {
                 pos_ += 2; col_ += 2;
                 if (pos_ >= src_.size() || (src_[pos_] != '0' && src_[pos_] != '1'))
                     throw std::runtime_error("line " + std::to_string(line_) + ": invalid binary literal");
-                while (pos_ < src_.size() && (src_[pos_] == '0' || src_[pos_] == '1')) { ++pos_; ++col_; }
+                consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                    isBinDigit);
                 tryConsumeNumericSuffix(numKind);
                 return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
             }
         }
-        while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+        consumeDigitsWithSeparators(src_, pos_, col_, line_,
+            isDecDigit);
         if (pos_ < src_.size() && src_[pos_] == '.' &&
-            pos_ + 1 < src_.size() && std::isdigit(src_[pos_ + 1])) {
+            pos_ + 1 < src_.size() && std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))) {
             ++pos_; ++col_;
-            while (pos_ < src_.size() && std::isdigit(src_[pos_])) { ++pos_; ++col_; }
+            consumeDigitsWithSeparators(src_, pos_, col_, line_,
+                isDecDigit);
             numKind = TokenKind::Float;
             tryConsumeNumericSuffix(numKind);
             return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
@@ -495,9 +563,9 @@ Token Lexer::readToken() {
         return {numKind, std::string(src_, start, pos_ - start), line_, startCol};
     }
 
-    if (std::isalpha(c) || c == '_') {
+    if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
         size_t start = pos_;
-        while (pos_ < src_.size() && (std::isalnum(src_[pos_]) || src_[pos_] == '_')) { ++pos_; ++col_; }
+        while (pos_ < src_.size() && (std::isalnum(static_cast<unsigned char>(src_[pos_])) || src_[pos_] == '_')) { ++pos_; ++col_; }
         // Allow trailing '!' for mutating method names (e.g., sort!, reverse!)
         // but not '!=' which is the not-equal operator
         if (pos_ < src_.size() && src_[pos_] == '!' &&
@@ -506,8 +574,25 @@ Token Lexer::readToken() {
         }
         std::string id(src_, start, pos_ - start);
         auto kit = keyword_map.find(id);
-        if (kit != keyword_map.end())
+        if (kit != keyword_map.end()) {
+            if (kit->second == TokenKind::Not) {
+                size_t savedPos = pos_;
+                int savedCol = col_;
+                while (pos_ < src_.size() && (src_[pos_] == ' ' || src_[pos_] == '\t')) {
+                    ++pos_; ++col_;
+                }
+                if (pos_ + 2 <= src_.size() &&
+                    src_[pos_] == 'i' && src_[pos_ + 1] == 'n' &&
+                    (pos_ + 2 >= src_.size() ||
+                     (!std::isalnum(static_cast<unsigned char>(src_[pos_ + 2])) && src_[pos_ + 2] != '_'))) {
+                    pos_ += 2; col_ += 2;
+                    return {TokenKind::NotIn, "not in", line_, startCol};
+                }
+                pos_ = savedPos;
+                col_ = savedCol;
+            }
             return {kit->second, std::move(id), line_, startCol};
+        }
         return {TokenKind::Ident, std::move(id), line_, startCol};
     }
 

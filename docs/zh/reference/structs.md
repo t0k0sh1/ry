@@ -76,10 +76,10 @@ q.x = 100    # 错误：@const 变量的字段不可变更
 ## 作为函数参数与返回值使用
 
 ```python
-fn distance(p: Point) -> float:
+function distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-fn make_point(x: int, y: int) -> Point:
+function make_point(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -162,7 +162,7 @@ print(err.status)   # 404（自有字段）
 子值可以传递给期望父类型的地方。子值会被自动切片以提取父前缀字段（值类型切片）。
 
 ```python
-fn handle(e: Error) -> str:
+function handle(e: Error) -> str:
     return e.message
 
 err = HttpError("fail", 500, 500, "/api")
@@ -188,7 +188,7 @@ handle(derr)  # OK — 强制转换为 Error（祖父类型）
 |------|------|
 | 仅支持单继承 | `record A < B:` — 只能有一个父类 |
 | 深层继承 | `record C < B:` 其中 `record B < A:` — 允许 |
-| 名称冲突 | 子字段与父字段同名 → 编译错误 |
+| 名称冲突 | 子字段与父字段同名 -> 编译错误 |
 | 自动 `==` / `to_str` | 包含所有继承字段 |
 | 不变量继承 | 构造或修改子记录时检查父的 `invariant:` 子句 |
 | 子类型强制转换 | 适用于：函数参数、返回值、`Err()`、字段赋值、`?` 运算符 |
@@ -203,17 +203,12 @@ handle(derr)  # OK — 强制转换为 Error（祖父类型）
 |------|------|
 | 相同字段名重复 | 编译错误 |
 | `@const` 变量的字段赋值 | 编译错误 |
-| 直接将结构体传给 `print` | 编译错误（print 不支持） |
 
 ```python
 # 错误示例：相同字段名重复
 record Bad:
     x: int
     x: int   # 错误
-
-# 错误示例：将结构体传给 print
-p = Point(1, 2)
-print(p)   # 错误
 ```
 
 ---
@@ -264,12 +259,13 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-if c == Color::Red:
-    print("red")
-elif c == Color::Green:
-    print("green")
-else:
-    print("blue")
+when:
+    c == Color::Red:
+        print("red")
+    c == Color::Green:
+        print("green")
+    else:
+        print("blue")
 ```
 
 ### 函数参数
@@ -277,7 +273,7 @@ else:
 类型名称使用 enum 名称。
 
 ```python
-fn is_red(c: Color) -> bool:
+function is_red(c: Color) -> bool:
     return c == Color::Red
 
 print(is_red(Color::Red))    # true

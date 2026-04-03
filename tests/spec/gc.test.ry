@@ -1,0 +1,25 @@
+from gc import collect, enable, disable, set_threshold
+
+describe("Cycle Collector", ():
+  it("gc.collect returns 0 when no cycles exist", ():
+    n = collect()
+    expect(n).to_eq(0)
+  )
+
+  it("gc.enable and gc.disable do not crash", ():
+    disable()
+    enable()
+    n = collect()
+    expect(n).to_eq(0)
+  )
+
+  it("gc.set_threshold does not crash", ():
+    set_threshold(1000)
+    set_threshold(700)
+  )
+
+  it("gc.collect returns int", ():
+    result = collect()
+    expect(result >= 0).to_eq(true)
+  )
+)

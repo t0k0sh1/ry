@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <sys/types.h>
+#include <netdb.h>
 
 // Send all bytes, retrying on EINTR and partial writes.
 // Returns total bytes sent, or -1 on error.
@@ -22,14 +23,22 @@ int __ry_tcp_take_fd(void *stream);
 // SSRF protection: check if a hostname resolves to a private/loopback IP
 bool __ry_is_private_host(const char *host, int64_t port);
 
+// SSRF protection: check if any address in a pre-resolved addrinfo list is private
+bool __ry_is_private_addrinfo(const struct addrinfo *info);
+
+// Resolve hostname to addrinfo list. Caller must freeaddrinfo(*out).
+// Returns 0 on success, -1 on failure.
+int __ry_resolve(const char *host, int64_t port, struct addrinfo **out);
+
 extern "C" {
 
 void *__ry_bind(const char *host, int64_t port);
 int64_t __ry_listen(void *listener, int64_t backlog);
 void *__ry_accept(void *listener);
 void *__ry_connect(const char *host, int64_t port);
+void *__ry_connect_resolved(const struct addrinfo *info);
 int64_t __ry_tcp_send(void *stream, void *byte_list);
-void   *__ry_tcp_recv(void *stream, int64_t max_bytes);
+void   *__ry_tcp_receive(void *stream, int64_t max_bytes);
 void    __ry_tcp_close(void *handle);
 void    __ry_tcp_listener_close(void *listener);
 void    __ry_tcp_listener_shutdown(void *listener);

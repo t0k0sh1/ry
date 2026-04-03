@@ -4,15 +4,56 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
+    EnumVariantRegistry reg;
+    for (auto &[name, info] : enum_types_) {
+        std::unordered_set<std::string> vars;
+        for (auto &[vname, _] : info.variants)
+            vars.insert(vname);
+        reg[name] = std::move(vars);
+    }
+    return reg;
+}
+
 void CodeGen::registerResourceByTypeName(const std::string &typeName, llvm::Value *val) {
     static const std::pair<const char*, ResourceKind> table[] = {
         {"TcpListener", RK_TcpListener}, {"TcpStream", RK_TcpStream},
         {"TlsStream", RK_TlsStream}, {"HttpRequest", RK_HttpRequest},
         {"HttpResponse", RK_HttpResponse}, {"HttpClientResponse", RK_HttpClientResponse},
         {"JsonValue", RK_JsonValue},
+        {"Thread", RK_Thread}, {"Lock", RK_Lock}, {"RWLock", RK_RWLock},
+        {"Semaphore", RK_Semaphore}, {"Barrier", RK_Barrier},
+        {"AtomicInt", RK_AtomicInt}, {"AtomicBool", RK_AtomicBool},
     };
     for (auto &[name, rk] : table)
         if (typeName == name) { resource_sets_[rk].insert(val); return; }
+}
+
+void CodeGen::applyParamTypeMeta(const std::string &ptype,
+                                  llvm::AllocaInst *alloca,
+                                  llvm::Type *paramLLVMType,
+                                  const std::string &paramName) {
+    propagateTypeMeta(ptype, alloca);
+    if (enum_types_.count(ptype))
+        enum_value_types_[alloca] = ptype;
+    registerResourceByTypeName(ptype, alloca);
+    if (isCollectionTypeName(ptype))
+        markArcManaged(alloca);
+    {
+        std::string resolvedPtype = resolveTypeAlias(ptype);
+        if (resolvedPtype.size() > 9 && resolvedPtype.compare(0, 9, "function(") == 0)
+            fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
+        auto constraint = parseTypeConstraint(resolvedPtype);
+        if (constraint) {
+            type_constraints_[alloca] = *constraint;
+            llvm::Value *argVal = builder_.CreateLoad(
+                paramLLVMType, alloca, paramName + ".load");
+            emitConstraintCheck(argVal, *constraint, paramName);
+        } else {
+            if (isUnionType(ptype))
+                union_value_types_[alloca] = normalizeUnionType(ptype);
+        }
+    }
 }
 
 void CodeGen::emitStmt(AwaitStmt &s) {
@@ -30,69 +71,90 @@ void CodeGen::emitStmt(AwaitStmt &s) {
 void CodeGen::emitStmt(ReturnStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
+    emitTraceReturn(s.loc);
     if (!s.value) {
         if (isAnyType(fn_->getReturnType())) {
             llvm::Value *unitAny = buildUnitAny();
             emitEnsureChecks(unitAny);
+            emitScopeCleanupToDepth(0);
+            emitTraceFunctionExit(current_function_name_, s.loc);
             builder_.CreateRet(unitAny);
         } else if (!fn_->getReturnType()->isVoidTy()) {
             codegenError("return without value in non-Unit function");
         } else {
+            emitScopeCleanupToDepth(0);
+            emitTraceFunctionExit(current_function_name_, s.loc);
             builder_.CreateRetVoid();
         }
     } else {
-        llvm::Value *val = emitExpr(*s.value);
+        // Build None with correct Option type from fn return type instead of
+        // the default Option<int> that emitExpr(NoneExpr) would produce.
+        llvm::Value *val;
+        if (isNoneLiteral(*s.value) && isOptionType(fn_->getReturnType())) {
+            val = buildNoneValue(fn_->getReturnType());
+        } else {
+            val = emitExpr(*s.value);
 
-        // Tail call optimization: self-recursive tail call → musttail
-        if (!current_postconditions_) {
-            if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
-                if (ci->getCalledFunction() == fn_) {
-                    ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
-                    builder_.CreateRet(val);
-                    llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
-                    builder_.SetInsertPoint(dead);
-                    return;
+            // Propagate fn_type_info for function-type return values
+            {
+                auto fnIt = lookupFnTypeInfo(val);
+                if (fnIt != fn_type_info_.end())
+                    return_fn_type_info_[fn_] = fnIt->second;
+            }
+
+            // Tail call optimization: self-recursive tail call → musttail
+            if (!current_postconditions_) {
+                if (auto *ci = llvm::dyn_cast<llvm::CallInst>(val)) {
+                    if (ci->getCalledFunction() == fn_) {
+                        ci->setTailCallKind(llvm::CallInst::TCK_MustTail);
+                        // Note: Do not emit function-exit tracing here; LLVM requires
+                        // a musttail call to be immediately followed by the ret.
+                        builder_.CreateRet(val);
+                        llvm::BasicBlock *dead = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
+                        builder_.SetInsertPoint(dead);
+                        return;
+                    }
                 }
             }
-        }
 
-        llvm::Type *retTy = fn_->getReturnType();
-        if (retTy->isVoidTy())
-            codegenError("cannot return a value from Unit function '" +
-                                     std::string(fn_->getName()) + "'");
-        if (val->getType() != retTy) {
-            if (isAnyType(retTy)) {
-                val = wrapInAny(val);
-            } else if (isUnionType(current_fn_return_type_)) {
-                val = wrapInUnion(val, current_fn_return_type_);
-            } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
-                val = sliced;
-            } else {
-                // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
-                auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
-                auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
-                if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
-                    codegenError("return type mismatch");
+            llvm::Type *retTy = fn_->getReturnType();
+            if (retTy->isVoidTy())
+                codegenError("cannot return a value from Unit function '" +
+                                         std::string(fn_->getName()) + "'");
+            if (val->getType() != retTy) {
+                if (isAnyType(retTy)) {
+                    val = wrapInAny(val);
+                } else if (isUnionType(current_fn_return_type_)) {
+                    val = wrapInUnion(val, current_fn_return_type_);
+                } else if (auto *sliced = tryEmitSubtypeCoerce(val, retTy)) {
+                    val = sliced;
+                } else {
+                    // Try tuple element coercion (e.g., Option<int> none → Option<Error>)
+                    auto *retST = llvm::dyn_cast<llvm::StructType>(retTy);
+                    auto *valST = llvm::dyn_cast<llvm::StructType>(val->getType());
+                    if (!retST || !valST || retST->getNumElements() != valST->getNumElements())
+                        codegenError("return type mismatch");
 
-                // Find which elements need coercion
-                bool needsCoercion = false;
-                for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                    if (valST->getElementType(i) != retST->getElementType(i)) {
-                        if (!(isOptionType(valST->getElementType(i)) &&
-                              isOptionType(retST->getElementType(i))))
-                            codegenError("return type mismatch");
-                        needsCoercion = true;
-                    }
-                }
-                if (needsCoercion) {
-                    llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                    // Find which elements need coercion
+                    bool needsCoercion = false;
                     for (unsigned i = 0; i < retST->getNumElements(); ++i) {
-                        llvm::Value *elem = builder_.CreateExtractValue(val, i);
-                        if (valST->getElementType(i) != retST->getElementType(i))
-                            elem = buildNoneValue(retST->getElementType(i));
-                        coerced = builder_.CreateInsertValue(coerced, elem, i);
+                        if (valST->getElementType(i) != retST->getElementType(i)) {
+                            if (!(isOptionType(valST->getElementType(i)) &&
+                                  isOptionType(retST->getElementType(i))))
+                                codegenError("return type mismatch");
+                            needsCoercion = true;
+                        }
                     }
-                    val = coerced;
+                    if (needsCoercion) {
+                        llvm::Value *coerced = llvm::UndefValue::get(retTy);
+                        for (unsigned i = 0; i < retST->getNumElements(); ++i) {
+                            llvm::Value *elem = builder_.CreateExtractValue(val, i);
+                            if (valST->getElementType(i) != retST->getElementType(i))
+                                elem = buildNoneValue(retST->getElementType(i));
+                            coerced = builder_.CreateInsertValue(coerced, elem, i);
+                        }
+                        val = coerced;
+                    }
                 }
             }
         }
@@ -100,10 +162,171 @@ void CodeGen::emitStmt(ReturnStmt &s) {
         // Emit ensure checks (postconditions) before return
         emitEnsureChecks(val);
 
+        // Retain return value before scope cleanup to prevent dangling pointer
+        // when returning a value loaded from an ARC-managed local/parameter
+        tryRetainArcSource(val);
+        emitScopeCleanupToDepth(0);
+
+        emitTraceFunctionExit(current_function_name_, s.loc);
         builder_.CreateRet(val);
     }
     llvm::BasicBlock *deadBB = llvm::BasicBlock::Create(*ctx_, "dead", fn_);
     builder_.SetInsertPoint(deadBB);
+}
+
+// ===== Shared function declaration helpers =====
+
+llvm::Type *CodeGen::tryResolveType(const std::string &typeName) {
+    try {
+        return resolveType(typeName);
+    } catch (const DiagnosticError &) {
+        return nullptr;
+    }
+}
+
+llvm::Function *CodeGen::declareFunction(
+    const std::string &name,
+    std::vector<llvm::Type*> &paramTypes,
+    std::vector<FnParam> &params,
+    llvm::Type *exposedRetTy,
+    const std::string &exposedReturnTypeName,
+    const std::vector<Directive> &directives,
+    const std::vector<ExprPtr> *preconditions,
+    const std::vector<ExprPtr> *postconditions,
+    const std::vector<std::string> *ensureBindings) {
+
+    // Compute minArity and collect default values
+    size_t newMinArity = 0;
+    std::vector<ExprPtr> defaults;
+    defaults.reserve(params.size());
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (!params[i].default_value) newMinArity = i + 1;
+        defaults.push_back(std::move(params[i].default_value));
+    }
+    size_t newMaxArity = paramTypes.size();
+
+    // Check for duplicate/conflicting signatures
+    auto &overloads = functions_[name];
+    for (auto &entry : overloads) {
+        if (entry.paramTypes == paramTypes) {
+            if (entry.func->getReturnType() == exposedRetTy)
+                codegenError("function '" + name +
+                    "' is already defined with the same signature");
+            else
+                codegenError("function '" + name +
+                    "': overloads with same parameter types but different return types");
+        }
+        size_t overlapMin = std::max(newMinArity, entry.minArity);
+        size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
+        for (size_t n = overlapMin; n <= overlapMax; ++n) {
+            bool typesMatch = true;
+            for (size_t i = 0; i < n; ++i) {
+                if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
+            }
+            if (typesMatch)
+                codegenError("function '" + name +
+                    "' with default arguments creates ambiguous overload");
+        }
+    }
+
+    // LLVM IR function name: first overload uses original name, subsequent use name.N
+    std::string irName = name;
+    if (!overloads.empty())
+        irName = name + "." + std::to_string(overloads.size());
+
+    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
+    llvm::Function *func = llvm::Function::Create(
+        ft, llvm::Function::ExternalLinkage, irName, *mod_);
+
+    std::vector<std::string> paramNames;
+    paramNames.reserve(params.size());
+    for (auto &p : params)
+        paramNames.push_back(p.name);
+    std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(params.size());
+    for (auto &p : params)
+        paramTypeNames.push_back(p.type->toString());
+    overloads.push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
+                         newMinArity, std::move(defaults),
+                         preconditions, postconditions, ensureBindings});
+
+    if (hasDirective(directives, "deprecated"))
+        deprecated_functions_.insert(name);
+
+    return func;
+}
+
+void CodeGen::applyInlineDirective(llvm::Function *func, const std::vector<Directive> &directives) {
+    if (!hasDirective(directives, "inline")) return;
+    std::string mode = "always";
+    for (auto &d : directives) {
+        if (d.name == "inline") {
+            for (auto &p : d.params) {
+                if (p.key == "mode") mode = p.value;
+            }
+        }
+    }
+    if (mode == "always")
+        func->addFnAttr(llvm::Attribute::AlwaysInline);
+    else if (mode == "never")
+        func->addFnAttr(llvm::Attribute::NoInline);
+    else if (mode == "hint")
+        func->addFnAttr(llvm::Attribute::InlineHint);
+    else
+        codegenError("unknown @inline mode: '" + mode +
+                     "' (expected 'always', 'never', or 'hint')");
+}
+
+// ===== Forward declaration pre-pass for mutual recursion =====
+
+void CodeGen::forwardDeclareFunctions(Program &prog) {
+    for (auto &stmt : prog) {
+        auto *fnPtr = std::get_if<std::unique_ptr<FnStmt>>(&stmt);
+        if (!fnPtr) continue;
+        auto &s = *fnPtr;
+        if (s->loc.isValid()) current_loc_ = s->loc;
+
+        // Skip generic functions (already lazily instantiated)
+        if (!s->type_params.empty()) continue;
+        // Skip @native functions (only need arg count registration)
+        if (hasDirective(s->directives, "native")) continue;
+        // Skip functions without explicit return type (need body for inference)
+        if (!s->return_type) continue;
+
+        // Try to resolve all types; skip if any type is not yet known
+        // (e.g., record types defined later in the file)
+        std::vector<llvm::Type*> paramTypes;
+        paramTypes.reserve(s->params.size());
+        bool typesFailed = false;
+        for (auto &p : s->params) {
+            if (auto *ty = tryResolveType(p.type->toString()))
+                paramTypes.push_back(ty);
+            else { typesFailed = true; break; }
+        }
+        if (typesFailed) continue;
+        llvm::Type *bodyRetTy = tryResolveType(s->return_type->toString());
+        if (!bodyRetTy) continue;
+
+        std::string returnTypeStr = s->return_type->toString();
+        std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
+        llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
+
+        // Validate return type for comparison/logical operators
+        if (s->is_operator && isBoolConstrainedOperator(s->name)) {
+            if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
+                codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
+                             returnTypeStr + "'");
+            }
+        }
+
+        llvm::Function *func = declareFunction(
+            s->name, paramTypes, s->params, exposedRetTy,
+            exposedReturnTypeName, s->directives,
+            &s->preconditions, &s->postconditions, &s->ensure_bindings);
+        applyInlineDirective(func, s->directives);
+
+        forward_declared_fns_.insert(func);
+    }
 }
 
 // ===== B5: FnStmt using FnScope RAII =====
@@ -111,6 +334,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     if (s->loc.isValid()) current_loc_ = s->loc;
     emitCoverage(s->loc);
+    emitTraceSymbolDefine("function", s->name, s->loc);
 
     // Generic function: save as template, don't instantiate yet
     if (!s->type_params.empty()) {
@@ -148,8 +372,23 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     }
 
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypes.push_back(resolveType(p.type->toString()));
+
+    // Check if this function was already forward-declared
+    llvm::Function *func = nullptr;
+    auto fwdIt = functions_.find(s->name);
+    if (fwdIt != functions_.end()) {
+        for (auto &entry : fwdIt->second) {
+            if (forward_declared_fns_.count(entry.func) &&
+                paramTypes == entry.paramTypes) {
+                func = entry.func;
+                forward_declared_fns_.erase(func);
+                break;
+            }
+        }
+    }
 
     llvm::Type *bodyRetTy;
     if (!s->return_type) {
@@ -180,8 +419,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
     std::string returnTypeStr = s->return_type->toString();
 
-    // Validate return type for comparison/logical operators
-    if (s->is_operator && isBoolConstrainedOperator(s->name)) {
+    // Validate return type for comparison/logical operators (skip if already done in forward declaration)
+    if (!func && s->is_operator && isBoolConstrainedOperator(s->name)) {
         if (bodyRetTy != llvm::Type::getInt1Ty(*ctx_)) {
             codegenError("operator '" + operatorSymbol(s->name) + "' must return 'bool', but returns '" +
                          returnTypeStr + "'");
@@ -191,94 +430,38 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
     // Check that non-Unit, non-any functions return on all paths
     if (!isAnyType(bodyRetTy) && !bodyRetTy->isVoidTy()
         && !hasDirective(s->directives, "native")) {
-        if (!allPathsReturn(s->body))
+        if (!allPathsReturn(s->body, buildEnumVariantRegistry()))
             codegenError("function '" + s->name + "' with return type '" +
                          returnTypeStr + "' does not return a value on all code paths");
     }
     std::string exposedReturnTypeName = s->is_async ? "Task<" + returnTypeStr + ">" : returnTypeStr;
     llvm::Type *exposedRetTy = s->is_async ? resolveType(exposedReturnTypeName) : bodyRetTy;
 
-    // Compute minArity and collect default values
-    size_t newMinArity = 0;
-    std::vector<ExprPtr> defaults;
-    for (size_t i = 0; i < s->params.size(); ++i) {
-        if (!s->params[i].default_value) newMinArity = i + 1;
-        defaults.push_back(std::move(s->params[i].default_value));
+    // If not forward-declared, do the full declaration now
+    if (!func) {
+        func = declareFunction(
+            s->name, paramTypes, s->params, exposedRetTy,
+            exposedReturnTypeName, s->directives,
+            &s->preconditions, &s->postconditions, &s->ensure_bindings);
+        applyInlineDirective(func, s->directives);
     }
-    size_t newMaxArity = paramTypes.size();
-
-    // Check for duplicate/conflicting signatures
-    auto &overloads = functions_[s->name];
-    for (auto &entry : overloads) {
-        if (entry.paramTypes == paramTypes) {
-            if (entry.func->getReturnType() == exposedRetTy)
-                codegenError("function '" + s->name +
-                    "' is already defined with the same signature");
-            else
-                codegenError("function '" + s->name +
-                    "': overloads with same parameter types but different return types");
-        }
-        // Check arity range overlap for default argument conflicts
-        size_t overlapMin = std::max(newMinArity, entry.minArity);
-        size_t overlapMax = std::min(newMaxArity, entry.paramTypes.size());
-        for (size_t n = overlapMin; n <= overlapMax; ++n) {
-            bool typesMatch = true;
-            for (size_t i = 0; i < n; ++i) {
-                if (paramTypes[i] != entry.paramTypes[i]) { typesMatch = false; break; }
-            }
-            if (typesMatch)
-                codegenError("function '" + s->name +
-                    "' with default arguments creates ambiguous overload");
-        }
-    }
-
-    // LLVM IR function name: first overload uses original name, subsequent use name.N
-    std::string irName = s->name;
-    if (!overloads.empty())
-        irName = s->name + "." + std::to_string(overloads.size());
-
-    llvm::FunctionType *ft = llvm::FunctionType::get(exposedRetTy, paramTypes, false);
-    llvm::Function *func = llvm::Function::Create(
-        ft, llvm::Function::ExternalLinkage, irName, *mod_);
 
     std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(s->params.size());
     for (auto &p : s->params)
         paramTypeNames.push_back(p.type->toString());
-    overloads.push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName,
-                         newMinArity, std::move(defaults)});
-
-    if (hasDirective(s->directives, "deprecated"))
-        deprecated_functions_.insert(s->name);
-
-    if (hasDirective(s->directives, "inline")) {
-        std::string mode = "always";
-        for (auto &d : s->directives) {
-            if (d.name == "inline") {
-                for (auto &p : d.params) {
-                    if (p.key == "mode") mode = p.value;
-                }
-            }
-        }
-        if (mode == "always")
-            func->addFnAttr(llvm::Attribute::AlwaysInline);
-        else if (mode == "never")
-            func->addFnAttr(llvm::Attribute::NoInline);
-        else if (mode == "hint")
-            func->addFnAttr(llvm::Attribute::InlineHint);
-        else
-            codegenError("unknown @inline mode: '" + mode +
-                         "' (expected 'always', 'never', or 'hint')");
-    }
 
     auto emitFunctionBody = [&](llvm::Function *targetFunc, llvm::Type *retTy,
                                 const std::string &returnTypeName, const std::string &fnNameForErrors) {
         FnScope guard(*this);
         fn_ = targetFunc;
         current_fn_return_type_ = returnTypeName;
+        current_function_name_ = s->name;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", targetFunc);
         builder_.SetInsertPoint(entry);
+        emitTraceFunctionEnter(s->name, s->loc);
 
         unsigned idx = 0;
         for (auto &arg : targetFunc->args()) {
@@ -287,53 +470,8 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 paramTypes[idx], nullptr, s->params[idx].name);
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s->params[idx].name] = alloca;
-            // Track list element type for list parameters
             const std::string &ptype = paramTypeNames[idx];
-            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_ListElem][alloca] = resolveType(inner);
-            }
-            // Track set element type for set parameters
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                type_meta_[TM_SetElem][alloca] = resolveType(inner);
-            }
-            // Track enum type for enum parameters
-            if (enum_types_.count(ptype)) {
-                enum_value_types_[alloca] = ptype;
-            }
-            // Track map key/value types for map parameters
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
-                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
-                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
-            }
-            if (ptype.size() > 5 && ptype.compare(0, 5, "Task<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_TaskResult][alloca] = resolveType(inner);
-            }
-            registerResourceByTypeName(ptype, alloca);
-            // Track low-level type metadata for parameters
-            if (isLowLevelTypeName(ptype))
-                low_level_type_names_[alloca] = ptype;
-            // Track fn type info and constraint check (shared alias resolution)
-            {
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0) {
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                }
-                auto constraint = parseTypeConstraint(resolvedPtype);
-                if (constraint) {
-                    type_constraints_[alloca] = *constraint;
-                    llvm::Value *argVal = builder_.CreateLoad(
-                        paramTypes[idx], alloca, s->params[idx].name + ".load");
-                    emitConstraintCheck(argVal, *constraint, s->params[idx].name);
-                } else {
-                    // Track union type only for non-literal unions
-                    if (isUnionType(ptype))
-                        union_value_types_[alloca] = normalizeUnionType(ptype);
-                }
-            }
+            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s->params[idx].name);
             ++idx;
         }
 
@@ -372,12 +510,16 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             if (defaultRet)
                 emitEnsureChecks(defaultRet);
 
-            if (retTy->isVoidTy())
+            if (retTy->isVoidTy()) {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRetVoid();
-            else if (defaultRet)
+            } else if (defaultRet) {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRet(defaultRet);
-            else
+            } else {
+                emitTraceFunctionExit(s->name, s->loc);
                 builder_.CreateRet(llvm::UndefValue::get(retTy));
+            }
         }
 
         std::string err;
@@ -391,9 +533,10 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         return;
     }
 
+    std::string funcIrName = func->getName().str();
     llvm::FunctionType *bodyFt = llvm::FunctionType::get(bodyRetTy, paramTypes, false);
     llvm::Function *bodyFunc = llvm::Function::Create(
-        bodyFt, llvm::Function::InternalLinkage, irName + ".__async_body", *mod_);
+        bodyFt, llvm::Function::InternalLinkage, funcIrName + ".__async_body", *mod_);
     emitFunctionBody(bodyFunc, bodyRetTy, returnTypeStr, s->name);
 
     std::vector<llvm::Type*> envFields = paramTypes;
@@ -424,6 +567,7 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         llvm::Value *typedEnv = builder_.CreateBitCast(envRaw, ptrTy_, "async_env_typed");
         std::vector<llvm::Value*> thunkArgs;
+        thunkArgs.reserve(paramTypes.size());
         for (size_t i = 0; i < paramTypes.size(); ++i) {
             llvm::Value *argField = builder_.CreateStructGEP(
                 envTy, typedEnv, i, "async_arg_field." + std::to_string(i));
@@ -512,6 +656,7 @@ void CodeGen::emitInvariantCheck(const std::string &typeName, const StructInfo &
     if (info.invariants.empty() && info.parent_name.empty()) return;
 
     std::vector<std::pair<std::string, const ExprPtr*>> allInvariants;
+    allInvariants.reserve(8);
     for (auto &inv : info.invariants)
         allInvariants.push_back({typeName, &inv});
     const std::string *parent = &info.parent_name;
@@ -613,6 +758,7 @@ void CodeGen::instantiateGenericEnum(const std::string &fullName, const std::str
 
     bool hasADT = false;
     std::vector<llvm::Constant*> nameStrings;
+    nameStrings.reserve(tmpl.variants.size());
     for (size_t i = 0; i < tmpl.variants.size(); ++i) {
         auto &v = tmpl.variants[i];
         info.variants[v.name] = static_cast<int64_t>(i);
@@ -699,7 +845,7 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
         if (fit == fn_type_info_.end())
             fit = fn_type_info_.find(val);
         if (fit != fn_type_info_.end()) {
-            std::string result = "fn(";
+            std::string result = "function(";
             for (size_t i = 0; i < fit->second.paramTypeNames.size(); ++i) {
                 if (i > 0) result += ",";
                 result += fit->second.paramTypeNames[i];
@@ -714,8 +860,8 @@ std::string CodeGen::reverseResolveType(llvm::Value *val) {
     }
 
     if (auto *st = llvm::dyn_cast<llvm::StructType>(ty)) {
-        for (auto &[name, info] : struct_types_)
-            if (info.llvmType == st) return name;
+        std::string n = findStructTypeName(st);
+        if (!n.empty()) return n;
     }
 
     return "any";
@@ -753,8 +899,10 @@ std::vector<std::string> CodeGen::inferTypeArgs(
                 std::string sname = st->getName().str();
                 if (struct_types_.count(sname))
                     resolved = sname;
-                else
-                    resolved = "any";
+                else {
+                    std::string n = findAdtEnumName(st);
+                    resolved = n.empty() ? "any" : n;
+                }
             }
             else resolved = "any";
 
@@ -814,6 +962,7 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
 
     // Resolve parameter types and return type using type_param_scope_
     std::vector<llvm::Type*> paramTypes;
+    paramTypes.reserve(s.params.size());
     for (auto &p : s.params)
         paramTypes.push_back(resolveType(p.type->toString()));
     std::string sReturnType = s.return_type ? s.return_type->toString() : "";
@@ -822,8 +971,14 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     // Substitute type params in return type name
     std::string exposedReturnTypeName = sReturnType;
     auto retTpit = type_param_scope_.find(sReturnType);
-    if (retTpit != type_param_scope_.end())
+    if (retTpit != type_param_scope_.end()) {
         exposedReturnTypeName = retTpit->second;
+    } else if (!sReturnType.empty() && sReturnType.back() == '?') {
+        std::string inner = sReturnType.substr(0, sReturnType.size() - 1);
+        auto innerIt = type_param_scope_.find(inner);
+        if (innerIt != type_param_scope_.end())
+            exposedReturnTypeName = innerIt->second + "?";
+    }
     llvm::Type *exposedRetTy = bodyRetTy;
 
     // Register in functions_ before body emission (enables recursion)
@@ -832,7 +987,12 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
     llvm::Function *func = llvm::Function::Create(
         ft, llvm::Function::InternalLinkage, irName, *mod_);
 
+    std::vector<std::string> paramNames;
+    paramNames.reserve(s.params.size());
+    for (auto &p : s.params)
+        paramNames.push_back(p.name);
     std::vector<std::string> paramTypeNames;
+    paramTypeNames.reserve(s.params.size());
     for (auto &p : s.params) {
         // Substitute type params in param type names for FnTypeInfo
         std::string pTypeStr = p.type->toString();
@@ -842,14 +1002,15 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             resolvedName = tpit->second;
         paramTypeNames.push_back(resolvedName);
     }
-    functions_[fullName].push_back({func, paramTypes, paramTypeNames, exposedReturnTypeName});
+    functions_[fullName].push_back({func, paramTypes, paramNames, paramTypeNames, exposedReturnTypeName,
+                                    0, {}, &s.preconditions, &s.postconditions, &s.ensure_bindings});
     generic_fn_instantiated_.insert(fullName);
 
     // Emit function body
     {
         FnScope guard(*this);
         fn_ = func;
-        current_fn_return_type_ = sReturnType;
+        current_fn_return_type_ = exposedReturnTypeName;
         pushScope();
 
         llvm::BasicBlock *entry = llvm::BasicBlock::Create(*ctx_, "entry", func);
@@ -863,36 +1024,8 @@ void CodeGen::instantiateGenericFn(const std::string &baseName,
             builder_.CreateStore(&arg, alloca);
             scope_stack_.back()[s.params[idx].name] = alloca;
 
-            // Resolve the actual param type name (with substitution)
             std::string ptype = paramTypeNames[idx];
-
-            // Track collection element types
-            if (ptype.size() > 5 && ptype.compare(0, 5, "List<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(5, ptype.size() - 6);
-                type_meta_[TM_ListElem][alloca] = resolveType(inner);
-            }
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Set<") == 0 && ptype.back() == '>') {
-                std::string inner = ptype.substr(4, ptype.size() - 5);
-                type_meta_[TM_SetElem][alloca] = resolveType(inner);
-            }
-            if (enum_types_.count(ptype))
-                enum_value_types_[alloca] = ptype;
-            if (ptype.size() > 4 && ptype.compare(0, 4, "Map<") == 0 && ptype.back() == '>') {
-                auto [kTy, vTy] = parseMapTypeAnnotation(ptype);
-                if (kTy) type_meta_[TM_MapKey][alloca] = kTy;
-                if (vTy) type_meta_[TM_MapValue][alloca] = vTy;
-            }
-            registerResourceByTypeName(ptype, alloca);
-            // Track low-level type metadata for parameters
-            if (isLowLevelTypeName(ptype))
-                low_level_type_names_[alloca] = ptype;
-            {
-                std::string resolvedPtype = resolveTypeAlias(ptype);
-                if (resolvedPtype.size() > 3 && resolvedPtype.compare(0, 3, "fn(") == 0)
-                    fn_type_info_[alloca] = parseFnTypeAnnotation(resolvedPtype);
-                if (isUnionType(ptype))
-                    union_value_types_[alloca] = normalizeUnionType(ptype);
-            }
+            applyParamTypeMeta(ptype, alloca, paramTypes[idx], s.params[idx].name);
             ++idx;
         }
 

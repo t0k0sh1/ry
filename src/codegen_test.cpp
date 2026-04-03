@@ -4,6 +4,18 @@
 #include <llvm/Support/raw_ostream.h>
 #include <stdexcept>
 
+// ===== Outline helper =====
+
+void CodeGen::emitOutlinePrintf(const std::string &label, llvm::Value *nameVal) {
+    auto printfFn = getStdlibPrintf();
+    std::string indent(outline_depth_ * 2, ' ');
+    llvm::Value *fmt = cachedGlobalString(indent + label, ".outline_fmt");
+    if (nameVal)
+        builder_.CreateCall(printfFn, {fmt, nameVal});
+    else
+        builder_.CreateCall(printfFn, {fmt});
+}
+
 // ===== Test: describe/it (lambda argument) =====
 
 static LambdaExpr &extractLambdaArg(CallStmt &s, const std::string &callee) {
@@ -21,6 +33,23 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
 
     auto &lambda = extractLambdaArg(s, "describe");
 
+    llvm::Value *descName = emitExpr(*s.args[0]);
+    if (!descName->getType()->isPointerTy())
+        codegenError("describe() first argument must be a string");
+
+    if (outline_mode_) {
+        emitOutlinePrintf("describe %s\n", descName);
+        ++outline_depth_;
+        for (auto &stmt : lambda.body) {
+            if (auto *cs = std::get_if<CallStmt>(&stmt)) {
+                if (cs->callee == "describe" || cs->callee == "it")
+                    emitStmt(*cs);
+            }
+        }
+        --outline_depth_;
+        return;
+    }
+
     llvm::FunctionType *voidStrTy = llvm::FunctionType::get(
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     llvm::FunctionType *voidTy = llvm::FunctionType::get(
@@ -29,9 +58,6 @@ void CodeGen::emitDescribeCall(CallStmt &s) {
     llvm::FunctionCallee descBeginFn = mod_->getOrInsertFunction("__ry_test_describe_begin", voidStrTy);
     llvm::FunctionCallee descEndFn   = mod_->getOrInsertFunction("__ry_test_describe_end", voidTy);
 
-    llvm::Value *descName = emitExpr(*s.args[0]);
-    if (!descName->getType()->isPointerTy())
-        codegenError("describe() first argument must be a string");
     builder_.CreateCall(descBeginFn, {descName});
 
     for (auto &stmt : lambda.body)
@@ -127,6 +153,14 @@ void CodeGen::emitItCall(CallStmt &s) {
         return;
     }
 
+    if (outline_mode_) {
+        llvm::Value *itName = emitExpr(*s.args[0]);
+        if (!itName->getType()->isPointerTy())
+            codegenError("it() first argument must be a string");
+        emitOutlinePrintf("it %s\n", itName);
+        return;
+    }
+
     auto &lambda = extractLambdaArg(s, "it");
     auto [itBeginFn, itEndFn] = getTestItFunctions();
 
@@ -164,6 +198,11 @@ void CodeGen::emitEachItCall(CallStmt &s) {
     if (!descStr)
         codegenError("@each it() first argument must be a string literal");
     std::string fmtStr = descStr->value;
+
+    if (outline_mode_) {
+        emitOutlinePrintf("it " + fmtStr + " (@each)\n");
+        return;
+    }
 
     // Evaluate the list expression to get the list header
     llvm::Value *listPtr = emitExpr(*eachDir->expr);
@@ -259,6 +298,14 @@ void CodeGen::emitEachItCall(CallStmt &s) {
 // ===== Test: @property property-based test =====
 
 void CodeGen::emitPropertyItCall(CallStmt &s) {
+    if (outline_mode_) {
+        llvm::Value *itName = emitExpr(*s.args[0]);
+        if (!itName->getType()->isPointerTy())
+            codegenError("@property it() first argument must be a string");
+        emitOutlinePrintf("it %s (@property)\n", itName);
+        return;
+    }
+
     // Find @property directive and get count
     int64_t count = 100; // default
     for (auto &d : s.directives) {
@@ -438,12 +485,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
-    // Look up function type info, supporting variables (LoadInst) that hold the function
-    llvm::Value *fnInfoKey = replacement;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(replacement))
-        fnInfoKey = load->getPointerOperand();
-
-    auto fnInfoIt = fn_type_info_.find(fnInfoKey);
+    auto fnInfoIt = lookupFnTypeInfo(replacement);
     if (fnInfoIt == fn_type_info_.end())
         codegenError("mock(): second argument must be a non-capturing lambda or function reference");
 

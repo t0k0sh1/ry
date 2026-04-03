@@ -2,38 +2,38 @@
 
 static const std::string HTTP_DECLS = R"(
 @native
-fn bind(host: str, port: int) -> Result<TcpListener, Error>
+function bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
+function listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
-fn accept(listener: TcpListener) -> Result<TcpStream, Error>
+function accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
-fn connect(host: str, port: int) -> Result<TcpStream, Error>
+function connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-fn listener_port(listener: TcpListener) -> int
+function listener_port(listener: TcpListener) -> int
 @native
-fn str_to_bytes(s: str) -> List<u8>
+function to_bytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+function bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
-fn sleep(ms: int) -> Unit
+function sleep(ms: int) -> Unit
 )";
 
 // ============================================================
 // Manual server: tests HTTP response parsing via raw TCP.
 // Uses dynamic port allocation. Server binds in main scope,
-// passes listener to async fn for accept.
+// passes listener to async function for accept.
 // ============================================================
 
 TEST_F(CodeGenTest, ManualHttpServer200) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async function manual_server(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-                    match send(conn, str_to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -54,12 +54,12 @@ match bind("127.0.0.1", 0):
                 t = manual_server(server)
                 match connect("127.0.0.1", port):
                     case Ok(conn):
-                        match send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        match recv(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
                                 match bytes_to_str(resp):
                                     case Ok(msg):
@@ -88,13 +88,13 @@ match bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerEcho) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn run_server(server: TcpListener) -> str:
+async function run_server(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 14\r\n\r\nPOST:/api/data"
-                    match send(conn, str_to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -115,12 +115,12 @@ match bind("127.0.0.1", 0):
                 t = run_server(server)
                 match connect("127.0.0.1", port):
                     case Ok(conn):
-                        match send(conn, str_to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("POST /api/data HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        match recv(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
                                 match bytes_to_str(resp):
                                     case Ok(response_msg):
@@ -146,13 +146,13 @@ match bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, HttpResponse404) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async function manual_server(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-                    match send(conn, str_to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -173,12 +173,12 @@ match bind("127.0.0.1", 0):
                 t = manual_server(server)
                 match connect("127.0.0.1", port):
                     case Ok(conn):
-                        match send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                        match send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        match recv(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
                                 match bytes_to_str(resp):
                                     case Ok(response_msg):
@@ -204,13 +204,13 @@ match bind("127.0.0.1", 0):
 
 TEST_F(CodeGenTest, ManualHttpServerHeader) {
     EXPECT_EQ(runSource(HTTP_DECLS + R"(
-async fn manual_server(server: TcpListener) -> str:
+async function manual_server(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 17\r\n\r\nheader:test-value"
-                    match send(conn, str_to_bytes(response_str)):
+                    match send(conn, to_bytes(response_str)):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -231,12 +231,12 @@ match bind("127.0.0.1", 0):
                 t = manual_server(server)
                 match connect("127.0.0.1", port):
                     case Ok(conn):
-                        match send(conn, str_to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
+                        match send(conn, to_bytes("GET / HTTP/1.1\r\nHost: localhost\r\nX-Custom: test-value\r\n\r\n")):
                             case Ok(_):
                                 ...
                             case Err(e):
                                 ...
-                        match recv(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(resp):
                                 match bytes_to_str(resp):
                                     case Ok(msg):
@@ -257,30 +257,30 @@ match bind("127.0.0.1", 0):
 }
 
 // ============================================================
-// http_listen with max_requests: server exits after N requests
-// Uses async fn + port_callback + block_on to verify server lifecycle.
+// listen with max_requests: server exits after N requests
+// Uses async function + port_callback + block_on to verify server lifecycle.
 // ============================================================
 
 static const std::string HTTP_LISTEN_DECLS = HTTP_DECLS + R"(
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit
 @native
-fn http_listen(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit
+function listen(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit
 @native
-fn http_method(req: HttpRequest) -> str
+function method(req: HttpRequest) -> str
 @native
-fn http_path(req: HttpRequest) -> str
+function path(req: HttpRequest) -> str
 @native
-fn http_response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
+function response(status: int, headers: Map<str, str>, body: str) -> HttpResponse
 )";
 
 TEST_F(CodeGenTest, HttpListenMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    http_listen("127.0.0.1", 18932, fn(req: HttpRequest) -> HttpResponse:
-        return http_response(200, {"Content-Type": "text/plain"}, "ok")
+async function server() -> str:
+    listen("127.0.0.1", 18932, (req: HttpRequest) -> HttpResponse:
+        return response(200, {"Content-Type": "text/plain"}, "ok")
     , 1)
     return "done"
 
@@ -288,12 +288,12 @@ t = server()
 sleep(200)
 match connect("127.0.0.1", 18932):
     case Ok(conn):
-        match send(conn, str_to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -316,10 +316,10 @@ print(result)
 
 TEST_F(CodeGenTest, HttpListenMaxRequestsMultiple) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    http_listen("127.0.0.1", 18933, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        return http_response(200, {"Content-Type": "text/plain"}, path)
+async function server() -> str:
+    listen("127.0.0.1", 18933, (req: HttpRequest) -> HttpResponse:
+        path = path(req)
+        return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
     return "done"
 
@@ -329,12 +329,12 @@ sleep(200)
 # First request
 match connect("127.0.0.1", 18933):
     case Ok(conn):
-        match send(conn, str_to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -350,12 +350,12 @@ match connect("127.0.0.1", 18933):
 # Second request
 match connect("127.0.0.1", 18933):
     case Ok(conn):
-        match send(conn, str_to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -375,10 +375,10 @@ print(result)
 
 TEST_F(CodeGenTest, HttpKeepAlive) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    http_listen("127.0.0.1", 18934, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        return http_response(200, {"Content-Type": "text/plain"}, path)
+async function server() -> str:
+    listen("127.0.0.1", 18934, (req: HttpRequest) -> HttpResponse:
+        path = path(req)
+        return response(200, {"Content-Type": "text/plain"}, path)
     , 2)
     return "done"
 
@@ -389,12 +389,12 @@ sleep(200)
 match connect("127.0.0.1", 18934):
     case Ok(conn):
         # First request
-        match send(conn, str_to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
+        match send(conn, to_bytes("GET /first HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -408,12 +408,12 @@ match connect("127.0.0.1", 18934):
                 print("false")
 
         # Second request on same connection
-        match send(conn, str_to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        match send(conn, to_bytes("GET /second HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -439,9 +439,9 @@ print(result)
 
 TEST_F(CodeGenTest, HttpConnectionClose) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    http_listen("127.0.0.1", 18935, fn(req: HttpRequest) -> HttpResponse:
-        return http_response(200, {"Content-Type": "text/plain"}, "ok")
+async function server() -> str:
+    listen("127.0.0.1", 18935, (req: HttpRequest) -> HttpResponse:
+        return response(200, {"Content-Type": "text/plain"}, "ok")
     , 2)
     return "done"
 
@@ -451,12 +451,12 @@ sleep(200)
 # Send request with Connection: close
 match connect("127.0.0.1", 18935):
     case Ok(conn):
-        match send(conn, str_to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
+        match send(conn, to_bytes("GET /test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -476,12 +476,12 @@ match connect("127.0.0.1", 18935):
 # Second request on new connection to reach max_requests
 match connect("127.0.0.1", 18935):
     case Ok(conn):
-        match send(conn, str_to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /test2 HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -501,10 +501,10 @@ print(result)
 
 TEST_F(CodeGenTest, HttpKeepAliveWithMaxRequests) {
     EXPECT_EQ(runSource(HTTP_LISTEN_DECLS + R"(
-async fn server() -> str:
-    http_listen("127.0.0.1", 18936, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        return http_response(200, {"Content-Type": "text/plain"}, path)
+async function server() -> str:
+    listen("127.0.0.1", 18936, (req: HttpRequest) -> HttpResponse:
+        path = path(req)
+        return response(200, {"Content-Type": "text/plain"}, path)
     , 3)
     return "done"
 
@@ -515,12 +515,12 @@ sleep(200)
 match connect("127.0.0.1", 18936):
     case Ok(conn):
         # Request 1
-        match send(conn, str_to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /a HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -531,12 +531,12 @@ match connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 2
-        match send(conn, str_to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /b HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):
@@ -547,12 +547,12 @@ match connect("127.0.0.1", 18936):
                 print("false")
 
         # Request 3 (triggers shutdown)
-        match send(conn, str_to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+        match send(conn, to_bytes("GET /c HTTP/1.1\r\nHost: localhost\r\n\r\n")):
             case Ok(_):
                 ...
             case Err(e):
                 ...
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
                 match bytes_to_str(resp):
                     case Ok(msg):

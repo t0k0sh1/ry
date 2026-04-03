@@ -9,27 +9,27 @@
 
 static const std::string NET_DECLS = R"(
 @native
-fn bind(host: str, port: int) -> Result<TcpListener, Error>
+function bind(host: str, port: int) -> Result<TcpListener, Error>
 @native
-fn listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
+function listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 @native
-fn accept(listener: TcpListener) -> Result<TcpStream, Error>
+function accept(listener: TcpListener) -> Result<TcpStream, Error>
 @native
-fn connect(host: str, port: int) -> Result<TcpStream, Error>
+function connect(host: str, port: int) -> Result<TcpStream, Error>
 @native
-fn tls_connect(host: str, port: int) -> Result<TlsStream, Error>
+function tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 @native
-fn str_to_bytes(s: str) -> List<u8>
+function to_bytes(s: str) -> List<u8>
 @native
-fn bytes_to_str(bs: List<u8>) -> Result<str, Error>
+function bytes_to_str(bs: List<u8>) -> Result<str, Error>
 @native
-fn set_timeout(stream: TcpStream, ms: int) -> Unit
+function set_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn set_recv_timeout(stream: TcpStream, ms: int) -> Unit
+function set_receive_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn set_send_timeout(stream: TcpStream, ms: int) -> Unit
+function set_send_timeout(stream: TcpStream, ms: int) -> Unit
 @native
-fn sleep(ms: int) -> Unit
+function sleep(ms: int) -> Unit
 )";
 
 // ============================================================
@@ -82,23 +82,23 @@ match bind("127.0.0.1", 0):
 }
 
 // ============================================================
-// Echo round-trip: server and client via async fn
-// Binds in main scope, passes listener to async fn for accept.
+// Echo round-trip: server and client via async function
+// Binds in main scope, passes listener to async function for accept.
 // ============================================================
 
 TEST_F(CodeGenTest, NetEchoRoundTrip) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-fn listener_port(listener: TcpListener) -> int
+function listener_port(listener: TcpListener) -> int
 
-async fn run_server(server: TcpListener) -> str:
+async function run_server(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
                     match bytes_to_str(data):
                         case Ok(msg):
-                            match send(conn, str_to_bytes("echo:" + msg)):
+                            match send(conn, to_bytes("echo:" + msg)):
                                 case Ok(_):
                                     ...
                                 case Err(e):
@@ -113,15 +113,15 @@ async fn run_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-fn run_client(port: int) -> str:
+function run_client(port: int) -> str:
     match connect("127.0.0.1", port):
         case Ok(conn):
-            match send(conn, str_to_bytes("hello")):
+            match send(conn, to_bytes("hello")):
                 case Ok(_):
                     ...
                 case Err(e):
                     ...
-            match recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(resp):
                     match bytes_to_str(resp):
                         case Ok(msg):
@@ -252,18 +252,18 @@ TEST(SendAll, ZeroLengthSucceeds) {
 }
 
 // ============================================================
-// __ry_tcp_recv: peer close returns empty IOListHeader
+// __ry_tcp_receive: peer close returns empty IOListHeader
 // ============================================================
 
 TEST(TcpRecv, PeerCloseReturnsEmptyList) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
-    // Close the peer end so recv() returns 0
+    // Close the peer end so receive() returns 0
     ::close(fds[1]);
 
     // TcpStreamHandle has fd as its first field
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 4096);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->len, 0);
     EXPECT_EQ(result->cap, 0);
@@ -276,17 +276,17 @@ TEST(TcpRecv, PeerCloseReturnsEmptyList) {
 TEST(TcpRecv, ErrorReturnsNull) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
-    // Close both ends so recv() gets an error (not just EOF)
+    // Close both ends so receive() gets an error (not just EOF)
     ::close(fds[1]);
     ::close(fds[0]);
 
-    // recv on closed fd returns nullptr (error)
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 4096);
+    // receive on closed fd returns nullptr (error)
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 4096);
     EXPECT_EQ(result, nullptr);
 }
 
 // ============================================================
-// set_timeout / set_recv_timeout / set_send_timeout
+// set_timeout / set_receive_timeout / set_send_timeout
 // ============================================================
 
 TEST_F(CodeGenTest, NetSetTimeoutCompiles) {
@@ -305,7 +305,7 @@ TEST_F(CodeGenTest, NetSetRecvTimeoutCompiles) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 match connect("127.0.0.1", 19996):
     case Ok(conn):
-        set_recv_timeout(conn, 500)
+        set_receive_timeout(conn, 500)
         print("ok")
         close(conn)
     case Err(e):
@@ -328,9 +328,9 @@ match connect("127.0.0.1", 19995):
 TEST_F(CodeGenTest, NetRecvTimesOutWithShortTimeout) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 @native
-fn listener_port(listener: TcpListener) -> int
+function listener_port(listener: TcpListener) -> int
 
-async fn server_task(server: TcpListener) -> str:
+async function server_task(server: TcpListener) -> str:
     match accept(server):
         case Ok(conn):
             # Don't send anything - let client timeout
@@ -349,8 +349,8 @@ match bind("127.0.0.1", 0):
                 t = server_task(server)
                 match connect("127.0.0.1", port):
                     case Ok(conn):
-                        set_recv_timeout(conn, 100)
-                        match recv(conn, 4096):
+                        set_receive_timeout(conn, 100)
+                        match receive(conn, 4096):
                             case Ok(data):
                                 print("got data")
                             case Err(e):
@@ -408,19 +408,19 @@ match tls_connect("127.0.0.1", 19993):
 }
 
 // ============================================================
-// TLS send/recv/close overloads compile for TlsStream
+// TLS send/receive/close overloads compile for TlsStream
 // ============================================================
 
 TEST_F(CodeGenTest, TlsStreamOverloadsCompile) {
     EXPECT_EQ(runSource(NET_DECLS + R"(
 match tls_connect("127.0.0.1", 19992):
     case Ok(conn):
-        match send(conn, str_to_bytes("hello")):
+        match send(conn, to_bytes("hello")):
             case Ok(n):
                 print("sent")
             case Err(e):
                 print("send err")
-        match recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(data):
                 print("recv ok")
             case Err(e):
@@ -451,7 +451,7 @@ TEST(TcpRecv, ZeroMaxBytesReturnsEmptyList) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
 
-    auto *result = (IOListHeader *)__ry_tcp_recv(&fds[0], 0);
+    auto *result = (IOListHeader *)__ry_tcp_receive(&fds[0], 0);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(result->len, 0);
     EXPECT_EQ(result->cap, 0);

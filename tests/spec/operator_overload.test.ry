@@ -1,10 +1,10 @@
-describe("operator[]", fn():
-  it("read with single index", fn():
+describe("operator[]", ():
+  it("read with single index", ():
     record Point:
       x: int
       y: int
       z: int
-    fn operator[](p: Point, i: int) -> int:
+    function operator[](p: Point, i: int) -> int:
       if i == 0:
         return p.x
       if i == 1:
@@ -16,13 +16,13 @@ describe("operator[]", fn():
     expect(p[2]).to_eq(30)
   )
 
-  it("read with multi-index", fn():
+  it("read with multi-index", ():
     record Grid:
       a: int
       b: int
       c: int
       d: int
-    fn operator[](g: Grid, row: int, col: int) -> int:
+    function operator[](g: Grid, row: int, col: int) -> int:
       if row == 0 and col == 0:
         return g.a
       if row == 0 and col == 1:
@@ -37,11 +37,11 @@ describe("operator[]", fn():
     expect(g[1, 1]).to_eq(4)
   )
 
-  it("write dispatches operator[]=", fn():
+  it("write dispatches operator[]=", ():
     record Sink:
       last_key: int
       last_val: int
-    fn operator[]=(s: Sink, key: int, value: int):
+    function operator[]=(s: Sink, key: int, value: int):
       s.last_key = key
       s.last_val = value
     s = Sink(0, 0)
@@ -49,12 +49,30 @@ describe("operator[]", fn():
   )
 )
 
-describe("operator in", fn():
-  it("custom in", fn():
+describe("operator[] returning collection", ():
+  it("subscript returning List<int> preserves type info and supports chaining", ():
+    record Matrix:
+      rows: List<List<int>>
+    function operator[](m: Matrix, i: int) -> List<int>:
+      return m.rows[i]
+    m = Matrix([[10, 20, 30], [40, 50, 60]])
+    row = m[0]
+    expect(row[0]).to_eq(10)
+    expect(row[1]).to_eq(20)
+    expect(row[2]).to_eq(30)
+    expect(m[0][0]).to_eq(10)
+    expect(m[0][2]).to_eq(30)
+    expect(m[1][0]).to_eq(40)
+    expect(m[1][2]).to_eq(60)
+  )
+)
+
+describe("operator in", ():
+  it("custom in", ():
     record Range:
       lo: int
       hi: int
-    fn operator in(v: int, r: Range) -> bool:
+    function operator in(v: int, r: Range) -> bool:
       return v >= r.lo and v < r.hi
     r = Range(1, 10)
     expect(5 in r).to_be_true()
@@ -62,18 +80,18 @@ describe("operator in", fn():
     expect(10 in r).to_be_false()
   )
 
-  it("not in", fn():
+  it("not in", ():
     record Span:
       lo: int
       hi: int
-    fn operator in(v: int, s: Span) -> bool:
+    function operator in(v: int, s: Span) -> bool:
       return v >= s.lo and v < s.hi
     s = Span(1, 10)
     expect(15 not in s).to_be_true()
     expect(5 not in s).to_be_false()
   )
 
-  it("built-in in still works", fn():
+  it("built-in in still works", ():
     xs = [1, 2, 3]
     expect(2 in xs).to_be_true()
     expect(5 in xs).to_be_false()
@@ -83,40 +101,61 @@ describe("operator in", fn():
   )
 )
 
-describe("operator()", fn():
-  it("callable record", fn():
+describe("operator()", ():
+  it("callable record", ():
     record Adder:
       base: int
-    fn operator()(a: Adder, x: int) -> int:
+    function operator()(a: Adder, x: int) -> int:
       return a.base + x
     add5 = Adder(5)
     expect(add5(10)).to_eq(15)
   )
 
-  it("multi-arg callable", fn():
+  it("multi-arg callable", ():
     record Calc:
       base: int
-    fn operator()(c: Calc, x: int, y: int) -> int:
+    function operator()(c: Calc, x: int, y: int) -> int:
       return c.base + x * y
     calc = Calc(10)
     expect(calc(3, 4)).to_eq(22)
   )
 )
 
-describe("operator as", fn():
-  it("custom cast", fn():
+describe("operator as", ():
+  it("custom cast", ():
     record Celsius:
       value: int
     record Fahrenheit:
       value: int
-    fn operator as(c: Celsius) -> Fahrenheit:
+    function operator as(c: Celsius) -> Fahrenheit:
       return Fahrenheit(c.value * 9 // 5 + 32)
     c = Celsius(100)
     f = c as Fahrenheit
     expect(f.value).to_eq(212)
   )
 
-  it("built-in cast still works", fn():
+  it("cast to generic Option type", ():
+    record Temperature:
+      value: int
+    function operator as(t: Temperature) -> int?:
+      return Some(t.value)
+    t = Temperature(42)
+    result: int? = t as int?
+    expect(result ?? -1).to_eq(42)
+  )
+
+  it("cast returning collection preserves type info", ():
+    record Row:
+      items: List<int>
+    function operator as(r: Row) -> List<int>:
+      return r.items
+    r = Row([10, 20, 30])
+    xs = r as List<int>
+    expect(xs[0]).to_eq(10)
+    expect(xs[2]).to_eq(30)
+  )
+
+  it("built-in cast still works", ():
     x: float = 42 as float
     expect(x + 0.5).to_eq(42.5)
     expect(3.14 as int).to_eq(3)

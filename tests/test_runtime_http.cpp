@@ -8,14 +8,16 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "ry/runtime_net.hpp"
+#include "ry/runtime_http_types.hpp"
+#include "ry/runtime_io.hpp"
 
 extern "C" {
-int64_t __ry_http_parse_content_length(const char *value);
 const char *__ry_http_reason_phrase(int64_t status);
 void *__ry_http_read_request(void *stream);
 const char *__ry_http_method(void *req);
 const char *__ry_http_path(void *req);
 const char *__ry_http_body(void *req);
+void *__ry_http_body_bytes(void *req);
 const char *__ry_http_query(void *req, const char *key);
 void *__ry_http_query_all(void *req);
 const char *__ry_http_cookie(void *req, const char *name);
@@ -37,6 +39,7 @@ void *__ry_http_get(const char *url);
 void *__ry_http_post(const char *url, const char *body, void *headers_map);
 int64_t __ry_http_client_status(void *resp);
 const char *__ry_http_client_body(void *resp);
+void *__ry_http_client_body_bytes(void *resp);
 const char *__ry_http_client_header(void *resp, const char *key);
 void __ry_http_client_response_free(void *resp);
 }
@@ -448,16 +451,6 @@ TEST(RuntimeHttp, QueryParamsDuplicateFirstWins) {
     free(handle);
 }
 
-// MapHeader layout must match codegen
-struct MapHeader {
-    int64_t len;
-    int64_t cap;
-    char **keys;
-    char **vals;
-    int64_t bucket_count;
-    void *buckets;
-};
-
 TEST(RuntimeHttp, QueryAllBasic) {
     int fds[2];
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
@@ -556,9 +549,6 @@ TEST(RuntimeHttp, QueryAllDuplicateFirstWins) {
     ::close(fds[0]);
     free(handle);
 }
-
-// --- ParsedUrl struct for tests (must match runtime_http.cpp layout) ---
-struct ParsedUrl { char *host; int64_t port; char *path; bool is_https; };
 
 // --- Merged URL parsing tests ---
 
@@ -1393,6 +1383,69 @@ TEST(HttpSSRF, PrivateHostLinkLocal) {
 TEST(HttpSSRF, PublicHostAllowed) {
     EXPECT_FALSE(__ry_is_private_host("8.8.8.8", 80));
 }
+
+// --- IPv4-mapped IPv6 SSRF tests ---
+
+TEST(HttpSSRF, PrivateHostIPv4MappedLoopback) {
+    EXPECT_TRUE(__ry_is_private_host("::ffff:127.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostIPv4Mapped192168) {
+    EXPECT_TRUE(__ry_is_private_host("::ffff:192.168.1.1", 80));
+}
+
+TEST(HttpSSRF, PublicHostIPv4MappedPublic) {
+    EXPECT_FALSE(__ry_is_private_host("::ffff:8.8.8.8", 80));
+}
+
+// --- DNS resolve and private addrinfo tests ---
+
+TEST(HttpSSRF, ResolveLocalhost) {
+    struct addrinfo *result = nullptr;
+    ASSERT_EQ(__ry_resolve("localhost", 80, &result), 0);
+    ASSERT_NE(result, nullptr);
+    EXPECT_TRUE(__ry_is_private_addrinfo(result));
+    ::freeaddrinfo(result);
+}
+
+TEST(HttpSSRF, ResolveInvalidHost) {
+    struct addrinfo *result = nullptr;
+    EXPECT_EQ(__ry_resolve("this-host-does-not-exist.invalid", 80, &result), -1);
+    EXPECT_EQ(result, nullptr);
+}
+
+TEST(HttpSSRF, PrivateAddrInfoSynthetic) {
+    // Build a synthetic addrinfo with loopback address
+    struct sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sin.sin_port = htons(80);
+
+    struct addrinfo ai{};
+    ai.ai_family = AF_INET;
+    ai.ai_socktype = SOCK_STREAM;
+    ai.ai_addr = (struct sockaddr *)&sin;
+    ai.ai_addrlen = sizeof(sin);
+
+    EXPECT_TRUE(__ry_is_private_addrinfo(&ai));
+}
+
+TEST(HttpSSRF, PublicAddrInfoSynthetic) {
+    // Build a synthetic addrinfo with public address 8.8.8.8
+    struct sockaddr_in sin{};
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = htonl(0x08080808);
+    sin.sin_port = htons(80);
+
+    struct addrinfo ai{};
+    ai.ai_family = AF_INET;
+    ai.ai_socktype = SOCK_STREAM;
+    ai.ai_addr = (struct sockaddr *)&sin;
+    ai.ai_addrlen = sizeof(sin);
+
+    EXPECT_FALSE(__ry_is_private_addrinfo(&ai));
+}
+
 // --- Multipart form-data tests ---
 
 TEST(RuntimeHttp, FormFieldBasic) {
@@ -1710,6 +1763,19 @@ TEST(RuntimeHttp, ReadRequestBodyWithNulByte) {
     const char *body = __ry_http_body(result);
     EXPECT_STREQ(body, "ab");
 
+    // body_bytes preserves the full binary content including NUL
+    void *bytes = __ry_http_body_bytes(result);
+    ASSERT_NE(bytes, nullptr);
+    auto *bheader = (IOListHeader *)bytes;
+    EXPECT_EQ(bheader->len, 5);
+    EXPECT_EQ(bheader->data[0], 'a');
+    EXPECT_EQ(bheader->data[1], 'b');
+    EXPECT_EQ(bheader->data[2], '\0');
+    EXPECT_EQ(bheader->data[3], 'c');
+    EXPECT_EQ(bheader->data[4], 'd');
+    free(bheader->data);
+    free(bheader);
+
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);
@@ -1850,6 +1916,55 @@ TEST_F(RuntimeHttpClientTest, ClientResponseBodyWithNulByte) {
 
     const char *body = __ry_http_client_body(resp);
     EXPECT_STREQ(body, "he");  // C-string truncation at NUL
+
+    // body_bytes preserves the full binary content including NUL
+    void *bytes = __ry_http_client_body_bytes(resp);
+    ASSERT_NE(bytes, nullptr);
+    auto *header = (IOListHeader *)bytes;
+    EXPECT_EQ(header->len, 5);
+    EXPECT_EQ(header->data[0], 'h');
+    EXPECT_EQ(header->data[1], 'e');
+    EXPECT_EQ(header->data[2], '\0');
+    EXPECT_EQ(header->data[3], 'l');
+    EXPECT_EQ(header->data[4], 'o');
+    free(header->data);
+    free(header);
+
+    __ry_http_client_response_free(resp);
+    ::close(srv);
+}
+
+TEST_F(RuntimeHttpClientTest, ClientBodyBytesEmptyBody) {
+    // Server sends response with empty body.
+    std::string response =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n";
+
+    int srv = start_mock_server();
+    if (srv < 0) GTEST_SKIP() << "could not create mock server (network unavailable)";
+    int port = get_server_port(srv);
+
+    std::thread server_thread([&]() {
+        struct sockaddr_in client_addr{};
+        socklen_t client_len = sizeof(client_addr);
+        int conn = ::accept(srv, (struct sockaddr *)&client_addr, &client_len);
+        ::write(conn, response.data(), response.size());
+        ::close(conn);
+    });
+    JoinGuard jg(server_thread);
+
+    std::string url = "http://127.0.0.1:" + std::to_string(port) + "/";
+    void *resp = __ry_http_get(url.c_str());
+    ASSERT_NE(resp, nullptr);
+
+    void *bytes = __ry_http_client_body_bytes(resp);
+    ASSERT_NE(bytes, nullptr);
+    auto *header = (IOListHeader *)bytes;
+    EXPECT_EQ(header->len, 0);
+    free(header->data);
+    free(header);
+
     __ry_http_client_response_free(resp);
     ::close(srv);
 }
@@ -1898,4 +2013,115 @@ TEST(RuntimeHttp, FormFileDefaultContentType) {
     __ry_http_request_free(result);
     ::close(fds[0]);
     free(handle);
+}
+
+// --- Response header CRLF injection tests ---
+
+// Helper to build a MapHeader for response CRLF tests
+static MapHeader *build_response_headers(
+    std::initializer_list<std::pair<const char *, const char *>> entries) {
+    auto *map = (MapHeader *)malloc(sizeof(MapHeader));
+    auto count = (int64_t)entries.size();
+    map->len = count;
+    map->cap = count;
+    map->keys = count > 0 ? (char **)malloc(sizeof(char *) * (size_t)count) : nullptr;
+    map->vals = count > 0 ? (char **)malloc(sizeof(char *) * (size_t)count) : nullptr;
+    map->bucket_count = 4;
+    map->buckets = calloc(4, sizeof(int64_t));
+    int64_t i = 0;
+    for (auto &[k, v] : entries) {
+        map->keys[i] = strdup(k);
+        map->vals[i] = strdup(v);
+        i++;
+    }
+    return map;
+}
+
+static void free_response_headers(MapHeader *map) {
+    for (int64_t i = 0; i < map->len; i++) {
+        free(map->keys[i]);
+        free(map->vals[i]);
+    }
+    free(map->keys);
+    free(map->vals);
+    free(map->buckets);
+    free(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderCRLFInKeyIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-Safe", "ok"},
+        {"X-Evil\r\nInjected: bad", "value"},
+        {"X-Also-Safe", "fine"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 2);
+    EXPECT_STREQ(resp->header_keys[0], "X-Safe");
+    EXPECT_STREQ(resp->header_values[0], "ok");
+    EXPECT_STREQ(resp->header_keys[1], "X-Also-Safe");
+    EXPECT_STREQ(resp->header_values[1], "fine");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderCRLFInValueIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-Safe", "ok"},
+        {"X-Inject", "val\r\nEvil-Header: injected"},
+        {"X-Also-Safe", "fine"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 2);
+    EXPECT_STREQ(resp->header_keys[0], "X-Safe");
+    EXPECT_STREQ(resp->header_keys[1], "X-Also-Safe");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderLFOnlyIsSkipped) {
+    auto *map = build_response_headers({
+        {"X-LF-Key\n", "val"},
+        {"X-Normal", "good\ninjection"},
+        {"X-Clean", "safe"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 1);
+    EXPECT_STREQ(resp->header_keys[0], "X-Clean");
+    EXPECT_STREQ(resp->header_values[0], "safe");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
+}
+
+TEST(RuntimeHttp, ResponseHeaderSafeHeadersUnaffected) {
+    auto *map = build_response_headers({
+        {"Content-Type", "text/html"},
+        {"X-Custom", "value123"},
+        {"Cache-Control", "no-cache"},
+    });
+
+    void *resp_ptr = __ry_http_response_create(200, map, "body");
+    auto *resp = (HttpResponseHandle *)resp_ptr;
+
+    ASSERT_EQ(resp->header_count, 3);
+    EXPECT_STREQ(resp->header_keys[0], "Content-Type");
+    EXPECT_STREQ(resp->header_values[0], "text/html");
+    EXPECT_STREQ(resp->header_keys[1], "X-Custom");
+    EXPECT_STREQ(resp->header_values[1], "value123");
+    EXPECT_STREQ(resp->header_keys[2], "Cache-Control");
+    EXPECT_STREQ(resp->header_values[2], "no-cache");
+
+    __ry_http_response_free(resp_ptr);
+    free_response_headers(map);
 }

@@ -45,15 +45,8 @@ jobs:
         run: brew install openssl@3 ninja googletest
 
       # --- LLVM 21: Linux (APT) ---
-      - name: Cache LLVM 21 (apt)
-        if: matrix.llvm_install == 'apt'
-        id: cache-llvm-apt
-        uses: actions/cache@v4
-        with:
-          path: /usr/lib/llvm-21
-          key: llvm-21-${{ matrix.target }}
       - name: Install LLVM 21 (apt)
-        if: matrix.llvm_install == 'apt' && steps.cache-llvm-apt.outputs.cache-hit != 'true'
+        if: matrix.llvm_install == 'apt'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
@@ -142,6 +135,14 @@ jobs:
           cd artifacts
           shasum -a 256 ry-*.tar.gz > checksums.txt
 
+      - name: Sign checksums
+        if: env.SKIP != 'true' && env.RY_SIGNING_PRIVATE_KEY != ''
+        uses: ./.github/actions/sign-checksums
+        with:
+          checksums_dir: artifacts
+        env:
+          RY_SIGNING_PRIVATE_KEY: ${{ secrets.RY_SIGNING_PRIVATE_KEY }}
+
       - name: Extract changelog
         if: env.SKIP != 'true'
         run: |
@@ -157,8 +158,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ASSETS="artifacts/ry-*.tar.gz artifacts/checksums.txt"
+          if [ -f artifacts/checksums.txt.sig ]; then
+            ASSETS="$ASSETS artifacts/checksums.txt.sig"
+          fi
           gh release create "${{ steps.version.outputs.version }}" \
             --title "${{ steps.version.outputs.version }}" \
             --notes-file release_notes.txt \
             --latest \
-            artifacts/ry-*.tar.gz artifacts/checksums.txt
+            $ASSETS

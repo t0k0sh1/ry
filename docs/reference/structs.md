@@ -1,6 +1,6 @@
 [English](structs.md) | [日本語](../ja/reference/structs.md) | [繁體中文](../zh/reference/structs.md)
 
-# Struct Reference
+# Record Reference
 
 ## Overview
 
@@ -76,10 +76,10 @@ q.x = 100    # Error: fields of @const variables cannot be modified
 ## Usage as Function Parameters and Return Values
 
 ```python
-fn distance(p: Point) -> float:
+function distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-fn make_point(x: int, y: int) -> Point:
+function make_point(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -162,7 +162,7 @@ print(err.status)   # 404 (own field)
 A child value can be passed where the parent type is expected. The child is automatically sliced to extract the parent-prefix fields (value-type slicing).
 
 ```python
-fn handle(e: Error) -> str:
+function handle(e: Error) -> str:
     return e.message
 
 err = HttpError("fail", 500, 500, "/api")
@@ -203,17 +203,12 @@ handle(derr)  # OK — coerced to Error (grandparent)
 |------|------|
 | Duplicate field names | Compile error |
 | Field assignment on `@const` variables | Compile error |
-| Passing a struct directly to `print` | Compile error (not supported by print) |
 
 ```python
 # Error example: Duplicate field names
 record Bad:
     x: int
     x: int   # Error
-
-# Error example: Passing a struct to print
-p = Point(1, 2)
-print(p)   # Error
 ```
 
 ---
@@ -264,12 +259,13 @@ print(Color::Red != Color::Green)  # true
 
 ```python
 c = Color::Green
-if c == Color::Red:
-    print("red")
-elif c == Color::Green:
-    print("green")
-else:
-    print("blue")
+when:
+    c == Color::Red:
+        print("red")
+    c == Color::Green:
+        print("green")
+    else:
+        print("blue")
 ```
 
 ### Function Parameters
@@ -277,7 +273,7 @@ else:
 Use the enum name as the type name.
 
 ```python
-fn is_red(c: Color) -> bool:
+function is_red(c: Color) -> bool:
     return c == Color::Red
 
 print(is_red(Color::Red))    # true

@@ -1,33 +1,71 @@
-fn identity<T>(x: T) -> T:
+function identity<T>(x: T) -> T:
     return x
 
-fn pick_first<T, U>(a: T, b: U) -> T:
+function pick_first<T, U>(a: T, b: U) -> T:
     return a
 
-describe("generic function", fn():
-  it("explicit type arg int", fn():
+describe("generic function", ():
+  it("explicit type arg int", ():
     expect(identity[int](42)).to_eq(42)
   )
-  it("explicit type arg str", fn():
+  it("explicit type arg str", ():
     expect(identity[str]("hello")).to_eq("hello")
   )
-  it("explicit type arg bool", fn():
+  it("explicit type arg bool", ():
     expect(identity[bool](true)).to_be_true()
   )
-  it("type inference int", fn():
+  it("type inference int", ():
     expect(identity(99)).to_eq(99)
   )
-  it("type inference str", fn():
+  it("type inference str", ():
     expect(identity("world")).to_eq("world")
   )
-  it("multiple type params", fn():
+  it("multiple type params", ():
     expect(pick_first(1, "x")).to_eq(1)
   )
-  it("multiple type params reversed", fn():
+  it("multiple type params reversed", ():
     expect(pick_first("hello", 42)).to_eq("hello")
   )
-  it("same instantiation reused", fn():
+  it("same instantiation reused", ():
     expect(identity(10)).to_eq(10)
     expect(identity(20)).to_eq(20)
+  )
+  it("explicit type arg float", ():
+    expect(identity[float](3.14)).to_eq(3.14)
+  )
+  it("type inference bool", ():
+    expect(identity(true)).to_be_true()
+  )
+)
+
+function maybe_none<T>(x: T, flag: bool) -> T?:
+    if flag:
+        return none
+    return Some(x)
+
+describe("generic function with optional return", ():
+  it("return none with T=int", ():
+    r = maybe_none[int](42, true)
+    expect(r).to_be_none()
+  )
+  it("return Some with T=int", ():
+    r = maybe_none[int](42, false)
+    expect(r).to_be_some()
+  )
+  it("return none with T=str", ():
+    r = maybe_none[str]("hello", true)
+    expect(r).to_be_none()
+  )
+  it("return Some with T=str", ():
+    r = maybe_none[str]("hello", false)
+    expect(r).to_be_some()
+  )
+  it("return none with T=float", ():
+    r = maybe_none[float](3.14, true)
+    expect(r).to_be_none()
+  )
+  it("return none with T=bool", ():
+    r = maybe_none[bool](true, true)
+    expect(r).to_be_none()
   )
 )

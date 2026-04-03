@@ -28,7 +28,7 @@ void Formatter::formatAssign(const AssignStmt &s) {
     if (auto *lambda_ptr = std::get_if<std::unique_ptr<LambdaExpr>>(&s.value->data)) {
         const auto &lambda = **lambda_ptr;
         if (!lambda.expr_body && !lambda.body.empty()) {
-            emit("fn(" + formatParams(lambda.params) + ")");
+            emit("(" + formatParams(lambda.params) + ")");
             if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
@@ -68,7 +68,7 @@ void Formatter::formatCall(const CallStmt &s) {
 
         if (has_trailing_lambda && i == lambda_idx) {
             const auto &lambda = *std::get<std::unique_ptr<LambdaExpr>>(s.args[i]->data);
-            emit("fn(" + formatParams(lambda.params) + ")");
+            emit("(" + formatParams(lambda.params) + ")");
             if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
             emit(":");
             emitInlineComment(s.loc.line);
@@ -84,7 +84,7 @@ void Formatter::formatCall(const CallStmt &s) {
             auto *lp = std::get_if<std::unique_ptr<LambdaExpr>>(&s.args[i]->data);
             if (lp && !(*lp)->expr_body && !(*lp)->body.empty()) {
                 const auto &lambda = **lp;
-                emit("fn(" + formatParams(lambda.params) + ")");
+                emit("(" + formatParams(lambda.params) + ")");
                 if (lambda.return_type) emit(" -> " + lambda.return_type->toString());
                 emit(":");
                 emitNewline();
@@ -103,6 +103,13 @@ void Formatter::formatCall(const CallStmt &s) {
     last_emitted_line_ = s.loc.line;
 }
 
+void Formatter::formatExprStmt(const ExprStmt &s) {
+    emit(formatExpr(*s.expr));
+    emitInlineComment(s.loc.line);
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+}
+
 void Formatter::formatReturn(const ReturnStmt &s) {
     emit("return");
     if (s.value) {
@@ -114,15 +121,29 @@ void Formatter::formatReturn(const ReturnStmt &s) {
 }
 
 void Formatter::formatImport(const ImportStmt &s) {
-    // Parser converts "std.io" to "std/io", convert back to dot notation
+    // Convert internal path back to dot notation.
+    // Relative paths: "." stays ".", "./utils/calc" becomes ".utils.calc"
+    // Absolute paths: "std/io" becomes "std.io"
     std::string path = s.module_path;
-    for (auto &c : path) {
-        if (c == '/') c = '.';
+    if (path.size() >= 2 && path[0] == '.' && path[1] == '/') {
+        // Relative: strip "./" prefix, convert '/' to '.', prepend '.'
+        std::string rest = path.substr(2);
+        for (auto &c : rest) {
+            if (c == '/') c = '.';
+        }
+        path = "." + rest;
+    } else if (path != ".") {
+        for (auto &c : path) {
+            if (c == '/') c = '.';
+        }
     }
-    emit("from " + path + " import ");
-    for (size_t i = 0; i < s.names.size(); ++i) {
-        if (i > 0) emit(", ");
-        emit(s.names[i]);
+    emit("from " + path);
+    if (!s.names.empty()) {
+        emit(" import ");
+        for (size_t i = 0; i < s.names.size(); ++i) {
+            if (i > 0) emit(", ");
+            emit(s.names[i]);
+        }
     }
     emitInlineComment(s.loc.line);
     emitNewline();
@@ -206,17 +227,9 @@ void Formatter::formatTypeAlias(const TypeAliasStmt &s) {
 }
 
 void Formatter::formatIf(const IfStmt &s) {
-    for (size_t i = 0; i < s.branches.size(); ++i) {
-        if (i == 0) {
-            emit("if ");
-        } else {
-            emitIndent();
-            emit("elif ");
-        }
-        emit(formatExpr(*s.branches[i].condition) + ":");
-        emitNewline();
-        formatBlock(s.branches[i].body);
-    }
+    emit("if " + formatExpr(*s.branch.condition) + ":");
+    emitNewline();
+    formatBlock(s.branch.body);
     if (!s.else_body.empty()) {
         emitIndent();
         emit("else:");
@@ -224,6 +237,26 @@ void Formatter::formatIf(const IfStmt &s) {
         formatBlock(s.else_body);
     }
     last_emitted_line_ = s.loc.line;
+}
+
+void Formatter::formatWhenCond(const WhenCondStmt &s) {
+    emit("when:");
+    emitNewline();
+    last_emitted_line_ = s.loc.line;
+    indent();
+    for (const auto &arm : s.arms) {
+        emitIndent();
+        emit(formatExpr(*arm.condition) + ":");
+        emitNewline();
+        formatBlock(arm.body);
+    }
+    if (!s.else_body.empty()) {
+        emitIndent();
+        emit("else:");
+        emitNewline();
+        formatBlock(s.else_body);
+    }
+    dedent();
 }
 
 void Formatter::formatWhile(const WhileStmt &s) {
@@ -253,7 +286,7 @@ void Formatter::formatFn(const FnStmt &s) {
     if (!s.directives.empty()) emitIndent();
 
     if (s.is_async) emit("async ");
-    emit("fn " + s.name);
+    emit("function " + s.name);
     emitTypeParams(s.type_params);
     emit("(" + formatParams(s.params) + ")");
     if (s.return_type) {

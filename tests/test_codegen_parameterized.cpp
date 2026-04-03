@@ -6,9 +6,9 @@
 
 TEST_F(CodeGenTest, EachBasicInt) {
     auto output = runTestSource(
-        "describe(\"each\", fn():\n"
+        "describe(\"each\", ():\n"
         "    @each([(1, 2, 3), (0, 0, 0)])\n"
-        "    it(\"adds {0} + {1} = {2}\", fn(a: int, b: int, expected: int):\n"
+        "    it(\"adds {0} + {1} = {2}\", (a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
         "    )\n"
         ")\n"
@@ -24,9 +24,9 @@ TEST_F(CodeGenTest, EachBasicInt) {
 
 TEST_F(CodeGenTest, EachStringParam) {
     auto output = runTestSource(
-        "describe(\"each str\", fn():\n"
+        "describe(\"each str\", ():\n"
         "    @each([(\"hi\", 2), (\"\", 0)])\n"
-        "    it(\"len of {0} is {1}\", fn(s: str, expected: int):\n"
+        "    it(\"len of {0} is {1}\", (s: str, expected: int):\n"
         "        expect(length(s)).to_eq(expected)\n"
         "    )\n"
         ")\n"
@@ -40,9 +40,9 @@ TEST_F(CodeGenTest, EachStringParam) {
 
 TEST_F(CodeGenTest, EachFailingTest) {
     auto output = runTestSource(
-        "describe(\"each fail\", fn():\n"
+        "describe(\"each fail\", ():\n"
         "    @each([(1, 2, 4)])\n"
-        "    it(\"{0}+{1}={2}\", fn(a: int, b: int, expected: int):\n"
+        "    it(\"{0}+{1}={2}\", (a: int, b: int, expected: int):\n"
         "        expect(a + b).to_eq(expected)\n"
         "    )\n"
         ")\n"
@@ -56,9 +56,9 @@ TEST_F(CodeGenTest, EachFailingTest) {
 
 TEST_F(CodeGenTest, PropertyCommutative) {
     auto output = runTestSource(
-        "describe(\"prop\", fn():\n"
+        "describe(\"prop\", ():\n"
         "    @property(count=50)\n"
-        "    it(\"a+b == b+a\", fn(a: int, b: int):\n"
+        "    it(\"a+b == b+a\", (a: int, b: int):\n"
         "        expect(a + b).to_eq(b + a)\n"
         "    )\n"
         ")\n"
@@ -72,9 +72,9 @@ TEST_F(CodeGenTest, PropertyCommutative) {
 
 TEST_F(CodeGenTest, PropertyBoolParam) {
     auto output = runTestSource(
-        "describe(\"prop bool\", fn():\n"
+        "describe(\"prop bool\", ():\n"
         "    @property(count=10)\n"
-        "    it(\"x==x\", fn(x: bool):\n"
+        "    it(\"x==x\", (x: bool):\n"
         "        expect(x == x).to_be_true()\n"
         "    )\n"
         ")\n"

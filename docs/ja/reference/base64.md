@@ -53,13 +53,13 @@ match decode_url_safe(encoded):
 
 ### バイトデータの操作
 
-バイトデータのエンコード・デコードには `io` の `str_to_bytes` / `bytes_to_str` と組み合わせます。
+バイトデータのエンコード・デコードには `io` の `to_bytes` / `bytes_to_str` と組み合わせます。
 
 ```python
 from base64 import encode, decode
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-bytes = str_to_bytes("binary data")
+bytes = to_bytes("binary data")
 encoded = encode(bytes_to_str(bytes)?)
 ```
 
@@ -78,7 +78,7 @@ match decode("!!!not-valid!!!"):
 `?` 演算子との組み合わせ:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

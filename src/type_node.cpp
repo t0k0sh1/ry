@@ -14,17 +14,18 @@ std::string TypeNode::toString() const {
             result += ">";
             return result;
         } else if constexpr (std::is_same_v<T, ArrayType>) {
-            return "[" + v.element_type->toString() + "; " + std::to_string(v.size) + "]";
+            return v.element_type->toString() + "[" + std::to_string(v.size) + "]";
         } else if constexpr (std::is_same_v<T, TupleType>) {
             std::string result = "(";
             for (size_t i = 0; i < v.elements.size(); ++i) {
                 if (i > 0) result += ", ";
                 result += v.elements[i]->toString();
             }
+            if (v.elements.size() == 1) result += ",";
             result += ")";
             return result;
         } else if constexpr (std::is_same_v<T, FnType>) {
-            std::string result = "fn(";
+            std::string result = "function(";
             for (size_t i = 0; i < v.param_types.size(); ++i) {
                 if (i > 0) result += ", ";
                 result += v.param_types[i]->toString();
@@ -42,6 +43,8 @@ std::string TypeNode::toString() const {
             return result;
         } else if constexpr (std::is_same_v<T, OptionalType>) {
             return v.inner->toString() + "?";
+        } else if constexpr (std::is_same_v<T, WeakType>) {
+            return "weak " + v.inner->toString();
         } else if constexpr (std::is_same_v<T, RangeType>) {
             return v.start + ".." + v.end;
         }
@@ -90,6 +93,12 @@ TypeNodePtr TypeNode::makeOptional(TypeNodePtr inner) {
     return node;
 }
 
+TypeNodePtr TypeNode::makeWeak(TypeNodePtr inner) {
+    auto node = std::make_unique<TypeNode>();
+    node->data = WeakType{std::move(inner)};
+    return node;
+}
+
 TypeNodePtr TypeNode::makeRange(std::string start, std::string end) {
     auto node = std::make_unique<TypeNode>();
     node->data = RangeType{std::move(start), std::move(end)};
@@ -122,6 +131,8 @@ TypeNodePtr TypeNode::clone(const TypeNodePtr &src) {
             return makeUnion(std::move(comps));
         } else if constexpr (std::is_same_v<T, OptionalType>) {
             return makeOptional(clone(v.inner));
+        } else if constexpr (std::is_same_v<T, WeakType>) {
+            return makeWeak(clone(v.inner));
         } else if constexpr (std::is_same_v<T, RangeType>) {
             return makeRange(v.start, v.end);
         }

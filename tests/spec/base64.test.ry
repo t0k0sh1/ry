@@ -1,47 +1,47 @@
 from base64 import encode, decode, encode_url_safe, decode_url_safe
 
-describe("base64", fn():
-  describe("encode", fn():
-    it("basic string", fn():
+describe("base64", ():
+  describe("encode", ():
+    it("basic string", ():
       expect(encode("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ==")
     )
-    it("empty string", fn():
+    it("empty string", ():
       expect(encode("")).to_eq("")
     )
-    it("single character", fn():
+    it("single character", ():
       expect(encode("A")).to_eq("QQ==")
     )
-    it("two characters", fn():
+    it("two characters", ():
       expect(encode("AB")).to_eq("QUI=")
     )
-    it("three characters", fn():
+    it("three characters", ():
       expect(encode("ABC")).to_eq("QUJD")
     )
   )
 
-  describe("decode", fn():
-    it("basic string", fn():
+  describe("decode", ():
+    it("basic string", ():
       match decode("SGVsbG8sIFdvcmxkIQ=="):
         case Ok(s):
           expect(s).to_eq("Hello, World!")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("empty string", fn():
+    it("empty string", ():
       match decode(""):
         case Ok(s):
           expect(s).to_eq("")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("no padding", fn():
+    it("no padding", ():
       match decode("QUJD"):
         case Ok(s):
           expect(s).to_eq("ABC")
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("invalid base64", fn():
+    it("invalid base64", ():
       match decode("!!!invalid!!!"):
         case Ok(s):
           fail("expected error but got Ok")
@@ -50,11 +50,11 @@ describe("base64", fn():
     )
   )
 
-  describe("encode_url_safe", fn():
-    it("basic string", fn():
+  describe("encode_url_safe", ():
+    it("basic string", ():
       expect(encode_url_safe("Hello, World!")).to_eq("SGVsbG8sIFdvcmxkIQ")
     )
-    it("uses - and _ instead of + and /", fn():
+    it("uses - and _ instead of + and /", ():
       # "?>>" encodes to "Pz4+" in standard, "Pz4-" in URL-safe
       std_encoded = encode("?>>")
       url_encoded = encode_url_safe("?>>")
@@ -64,8 +64,8 @@ describe("base64", fn():
     )
   )
 
-  describe("decode_url_safe", fn():
-    it("roundtrip", fn():
+  describe("decode_url_safe", ():
+    it("roundtrip", ():
       original = "Hello, World! subjects?_d>>"
       encoded = encode_url_safe(original)
       match decode_url_safe(encoded):
@@ -74,7 +74,7 @@ describe("base64", fn():
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("invalid input", fn():
+    it("invalid input", ():
       match decode_url_safe("!!!"):
         case Ok(s):
           fail("expected error but got Ok")
@@ -83,8 +83,8 @@ describe("base64", fn():
     )
   )
 
-  describe("roundtrip", fn():
-    it("standard base64", fn():
+  describe("roundtrip", ():
+    it("standard base64", ():
       original = "The quick brown fox jumps over the lazy dog"
       match decode(encode(original)):
         case Ok(s):
@@ -92,7 +92,7 @@ describe("base64", fn():
         case Err(e):
           fail("unexpected error: " + e.message)
     )
-    it("longer string", fn():
+    it("longer string", ():
       original = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
       match decode(encode(original)):
         case Ok(s):

@@ -5,7 +5,7 @@
 Standard I/O and file operations. All functions require explicit import from `io`.
 
 ```python
-from io import read_text, write_text, file_exists
+from io import read_text, write_text, exists
 ```
 
 ## Function List
@@ -24,7 +24,7 @@ from io import read_text, write_text, file_exists
 | `read_text` | `(str) -> Result<str, Error>` | Reads entire file as a string |
 | `write_text` | `(str, str) -> Result<Unit, Error>` | Writes a string to a file (overwrites) |
 | `append_text` | `(str, str) -> Result<Unit, Error>` | Appends a string to the end of a file |
-| `file_exists` | `(str) -> bool` | Checks if a file exists |
+| `exists` | `(str) -> bool` | Checks if a file exists |
 | `delete_file` | `(str) -> Result<Unit, Error>` | Deletes a file |
 | `read_bytes` | `(str) -> Result<List<u8>, Error>` | Reads a file as a byte list |
 | `write_bytes` | `(str, List<u8>) -> Result<Unit, Error>` | Writes a byte list to a file |
@@ -33,7 +33,7 @@ from io import read_text, write_text, file_exists
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `str_to_bytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
+| `to_bytes` | `(str) -> List<u8>` | Converts a string to UTF-8 bytes |
 | `bytes_to_str` | `(List<u8>) -> Result<str, Error>` | Converts a byte list to a string |
 
 ## Examples
@@ -41,7 +41,7 @@ from io import read_text, write_text, file_exists
 ### Reading and Writing Files
 
 ```python
-from io import read_text, write_text, append_text, file_exists, delete_file
+from io import read_text, write_text, append_text, exists, delete_file
 
 match write_text("hello.txt", "Hello, World!"):
     case Ok(_):
@@ -53,11 +53,11 @@ match write_text("hello.txt", "Hello, World!"):
     case Err(e):
         print(e.message)
 
-print(file_exists("hello.txt"))   # true
+print(exists("hello.txt"))   # true
 
 match delete_file("hello.txt"):
     case Ok(_):
-        print(file_exists("hello.txt"))   # false
+        print(exists("hello.txt"))   # false
     case Err(e):
         print(e.message)
 ```
@@ -65,9 +65,9 @@ match delete_file("hello.txt"):
 ### Byte Operations
 
 ```python
-from io import str_to_bytes, bytes_to_str, write_bytes, read_bytes
+from io import to_bytes, bytes_to_str, write_bytes, read_bytes
 
-bs = str_to_bytes("ABC")
+bs = to_bytes("ABC")
 print(length(bs))    # 3
 
 match write_bytes("data.bin", bs):

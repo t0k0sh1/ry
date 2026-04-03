@@ -2,7 +2,7 @@
 
 # Design by Contract (DbC)
 
-Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and struct invariants (`invariant`). Contract violations terminate the process with `exit(1)`.
+Ry supports Eiffel-style Design by Contract with preconditions (`require`), postconditions (`ensure`), and record invariants (`invariant`). Contract violations terminate the process with `exit(1)`.
 
 ---
 
@@ -11,7 +11,7 @@ Ry supports Eiffel-style Design by Contract with preconditions (`require`), post
 Preconditions are checked at function entry. They specify what must be true for the function to be called correctly.
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -35,7 +35,7 @@ Postconditions are checked before every `return`. They specify what the function
 `ensure` requires a variable name that binds the return value. This variable can be used in the postcondition expressions.
 
 ```python
-fn abs(x: int) -> int:
+function abs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:
@@ -46,7 +46,7 @@ fn abs(x: int) -> int:
 Since function arguments are immutable in Ry, you can reference them directly in `ensure` blocks to compare with entry values:
 
 ```python
-fn increment(x: int) -> int:
+function increment(x: int) -> int:
     ensure v:
         v == x + 1
     return x + 1
@@ -57,7 +57,7 @@ fn increment(x: int) -> int:
 For functions that return tuples, multiple variable names can be specified, separated by commas:
 
 ```python
-fn divide(a: int, b: int) -> (int, int):
+function divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
         r >= 0
@@ -71,7 +71,7 @@ The number of binding variables must match the number of tuple elements.
 ## Combined Example
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -84,9 +84,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## Struct Invariants (`invariant`)
+## Record Invariants (`invariant`)
 
-Invariants are conditions that must always hold for a struct instance. They are checked:
+Invariants are conditions that must always hold for a record instance. They are checked:
 - After construction
 - After every field assignment
 

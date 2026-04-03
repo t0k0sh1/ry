@@ -72,11 +72,32 @@ llvm::Value *CodeGen::emitExprVariant(const StringExpr &e) {
     return cachedGlobalString(e.value, ".str");
 }
 
+llvm::Value *CodeGen::emitExprVariant(const RegexExpr &e) {
+    // Separate cache prevents collision with string literals of the same
+    // content — otherwise marking the pointer as RK_Regex would poison a
+    // later string literal, causing isStringValue() to return false.
+    auto *gs = buildArcGlobal(e.pattern, ".regex", regex_global_cache_);
+    resource_sets_[RK_Regex].insert(gs);
+    return gs;
+}
+
 llvm::Value *CodeGen::emitExprVariant(const VariableExpr &e) {
     llvm::AllocaInst *alloca = findVar(e.name);
     if (alloca) {
         if (deprecated_variables_.count(e.name))
             emitDeprecationWarning(e.name);
+        // Weak reference auto-upgrade: access returns Option<T>
+        if (isWeakManaged(alloca)) {
+            auto *headerPtr = builder_.CreateLoad(ptrTy_, alloca, e.name + ".weak_hdr");
+            auto it = weak_inner_type_names_.find(alloca);
+            if (it == weak_inner_type_names_.end())
+                codegenError("internal: weak variable missing inner type name: " + e.name);
+            auto *result = emitWeakUpgrade(headerPtr, it->second);
+            // Propagate collection metadata from the original weak alloca to the
+            // upgrade result so that match bindings inherit element types
+            propagateAllMetadata(alloca, result);
+            return result;
+        }
         llvm::Type *ty = alloca->getAllocatedType();
         // Fixed-length arrays: return alloca pointer for GEP-based indexing
         if (llvm::isa<llvm::ArrayType>(ty))
@@ -131,7 +152,24 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         if (isUnsignedLowLevel(val))
             codegenError("cannot negate unsigned type '" + getLowLevelTypeName(val) + "'");
         val = promoteToInt(val);
-        return builder_.CreateNeg(val, "neg");
+        // Overflow check only for high-level int; low-level i64 wraps
+        bool isLowLevel = isLowLevelTy(val);
+        if (!isLowLevel) {
+            if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
+                isLowLevel = isLowLevelTypeName(ne->suffix);
+        }
+        if (val->getType() == i64Ty_ && !isLowLevel)
+            return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow,
+                                         llvm::ConstantInt::get(i64Ty_, 0), val, "neg");
+        llvm::Value *neg = builder_.CreateNeg(val, "neg");
+        // Propagate low-level metadata through unary negation (#595)
+        std::string llName = getLowLevelTypeName(val);
+        if (llName.empty()) {
+            if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
+                if (isLowLevelTypeName(ne->suffix)) llName = ne->suffix;
+        }
+        if (!llName.empty()) low_level_type_names_[neg] = llName;
+        return neg;
     }
     if (e->op == "not") {
         llvm::Value *boolVal = toBool(val);
@@ -165,7 +203,10 @@ llvm::Value *CodeGen::findAndCallOverload(const std::string &opFnName,
         if (!match) continue;
         if (entry.func->getReturnType()->isVoidTy())
             return builder_.CreateCall(entry.func, args);
-        return builder_.CreateCall(entry.func, args, callName);
+        llvm::Value *result = builder_.CreateCall(entry.func, args, callName);
+        propagateReturnTypeMeta(&entry, result);
+        propagateReturnFnTypeMeta(&entry, entry.func, result);
+        return result;
     }
     return nullptr;
 }
@@ -214,7 +255,8 @@ llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                        const std::string &llNameHint) {
+                                        const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     // Option type comparison with none: check has_value flag only
     // Only allowed when at least one side is Option and both sides are Option
     // (none is also an Option value with has_value=false)
@@ -238,11 +280,33 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
             auto it = struct_types_.find(typeName);
             if (it != struct_types_.end())
                 return emitStructComparison(op, lhs, rhs, it->second);
+            // Tuple (anonymous struct) comparison: field-by-field
+            if (isTupleStructType(lhsST)) {
+                StructInfo synth;
+                synth.llvmType = lhsST;
+                synth.fields.reserve(lhsST->getNumElements());
+                for (unsigned i = 0; i < lhsST->getNumElements(); ++i) {
+                    FieldDef fd;
+                    fd.name = std::to_string(i);
+                    synth.fields.push_back(std::move(fd));
+                }
+                return emitStructComparison(op, lhs, rhs, synth);
+            }
+            // ADT enum: compare by tag
+            if (!findAdtEnumName(lhsST).empty()) {
+                llvm::Value *lhsTag = builder_.CreateExtractValue(lhs, 0, "lhs.tag");
+                llvm::Value *rhsTag = builder_.CreateExtractValue(rhs, 0, "rhs.tag");
+                if (op == "==") return builder_.CreateICmpEQ(lhsTag, rhsTag, "enum_eq");
+                return builder_.CreateICmpNE(lhsTag, rhsTag, "enum_ne");
+            }
         }
     }
 
+    bool lhsIsStr = isStringValue(lhs);
+    bool rhsIsStr = isStringValue(rhs);
+
     // String comparison via strcmp
-    if (lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+    if (lhsIsStr && rhsIsStr) {
         auto strcmpFn = getStdlibStrcmp();
         llvm::Value *cmp = builder_.CreateCall(strcmpFn, {lhs, rhs}, "strcmp");
         llvm::Value *zero = llvm::ConstantInt::get(i32Ty_, 0);
@@ -255,11 +319,19 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         codegenError("unsupported string comparison: " + op);
     }
 
+    // Reject str with non-str operands
+    if (lhsIsStr || rhsIsStr)
+        codegenError("type error: operator '" + op + "' not supported between str and non-str types");
+
     // Low-level type mix check
-    checkLowLevelTypeMix(lhs, rhs, op);
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
     // Low-level type native-width comparison
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Enter when metadata or matching AST hints identify a low-level pair (#595)
+    bool cmpLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (cmpLowLevel) {
         if (isLowLevelFloatTy(lhs->getType())) {
             llvm::CmpInst::Predicate pred;
             if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
@@ -322,14 +394,21 @@ llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *l
 }
 
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                     const std::string &llNameHint) {
+                                     const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy() ||
         isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
             "bitwise operator '" + op + "' requires integer operands, got float");
-    checkLowLevelTypeMix(lhs, rhs, op);
-    // Low-level integer bitwise at native width
-    if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Reject str operands
+    if (isStringValue(lhs) || isStringValue(rhs))
+        codegenError("type error: bitwise operator '" + op + "' not supported for str type");
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
+    // Low-level integer bitwise at native width (#595)
+    bool bwLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelIntTy(lhs) || isLowLevelIntTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint) && lhsHint != "f32"));
+    if (bwLowLevel) {
         std::string llName = getLowLevelTypeName(lhs);
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
         if (llName.empty()) llName = llNameHint;
@@ -361,12 +440,16 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
 }
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                        const std::string &llNameHint) {
+                                        const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     // Low-level type mix check (must come first)
-    checkLowLevelTypeMix(lhs, rhs, op);
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
-    // Low-level type native-width arithmetic
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Low-level type native-width arithmetic (#595)
+    bool arithLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (arithLowLevel) {
         llvm::Type *ty = lhs->getType();
         if (op == "**")
             codegenError("operator '**' is not supported for low-level numeric types");
@@ -406,6 +489,8 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
 
     // ** 累乗: 常にf64、libmのpow()を呼ぶ
     if (op == "**") {
+        ensureNumericType(lhs, "operator '**'");
+        ensureNumericType(rhs, "operator '**'");
         if (lhs->getType() == i8Ty_)
             lhs = builder_.CreateUIToFP(lhs, f64Ty_, "lhs_f");
         else if (lhs->getType()->isIntegerTy())
@@ -419,8 +504,22 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         return builder_.CreateCall(powFn, {lhs, rhs}, "pow");
     }
 
+    // Auto-convert non-str to str for + operator (#393)
+    bool lhsIsStr = isStringValue(lhs);
+    bool rhsIsStr = isStringValue(rhs);
+    auto isScalarTy = [&](llvm::Value *v) {
+        return v->getType()->isIntegerTy() || v->getType()->isDoubleTy();
+    };
+    if (op == "+" && lhsIsStr && isScalarTy(rhs)) {
+        rhs = valueToString(rhs);
+        rhsIsStr = true;
+    } else if (op == "+" && rhsIsStr && isScalarTy(lhs)) {
+        lhs = valueToString(lhs);
+        lhsIsStr = true;
+    }
+
     // String concatenation
-    if (op == "+" && lhs->getType() == ptrTy_ && rhs->getType() == ptrTy_) {
+    if (op == "+" && lhsIsStr && rhsIsStr) {
         auto strlenFn = getStdlibStrlen();
         auto mallocFn = getStdlibMalloc();
         auto strcpyFn = getStdlibStrcpy();
@@ -440,9 +539,9 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     if (op == "*") {
         llvm::Value *strVal = nullptr;
         llvm::Value *intVal = nullptr;
-        if (lhs->getType() == ptrTy_ && rhs->getType()->isIntegerTy()) {
+        if (lhsIsStr && rhs->getType()->isIntegerTy()) {
             strVal = lhs; intVal = rhs;
-        } else if (rhs->getType() == ptrTy_ && lhs->getType()->isIntegerTy()) {
+        } else if (rhsIsStr && lhs->getType()->isIntegerTy()) {
             strVal = rhs; intVal = lhs;
         }
         if (strVal) {
@@ -454,6 +553,21 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         }
     }
 
+    // List concatenation: [1,2] + [3,4] → [1,2,3,4]
+    if (op == "+") {
+        llvm::Type *lhsElemTy = getListElementType(lhs);
+        llvm::Type *rhsElemTy = getListElementType(rhs);
+        if (lhsElemTy && rhsElemTy) {
+            if (lhsElemTy != rhsElemTy)
+                codegenError("type error: list concatenation requires matching element types");
+            return emitListConcat(lhs, rhs, lhsElemTy);
+        }
+    }
+
+    // Reject str with non-str operands (must come after string concat/repeat checks)
+    if (lhsIsStr || rhsIsStr)
+        codegenError("type error: operator '" + op + "' not supported between str and non-str types");
+
     // // floor division (toward -∞)
     if (op == "//") {
         lhs = promoteToInt(lhs);
@@ -464,7 +578,7 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
             // float: floor(fdiv)
             std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
             llvm::Value *div = builder_.CreateFDiv(lhs, rhs, "fdiv");
-            llvm::Function *floorFn = llvm::Intrinsic::getDeclaration(
+            llvm::Function *floorFn = llvm::Intrinsic::getOrInsertDeclaration(
                 mod_.get(), llvm::Intrinsic::floor, {f64Ty_});
             return builder_.CreateCall(floorFn, {div}, "floordiv");
         }
@@ -508,7 +622,17 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         bool rf = rhs->getType()->isDoubleTy();
         if (lf || rf) {
             std::tie(lhs, rhs) = promoteToFloat(lhs, rhs);
-            return builder_.CreateFRem(lhs, rhs, "frem");
+            // Floor modulo for float: r = frem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
+            llvm::Value *frem = builder_.CreateFRem(lhs, rhs, "frem");
+            llvm::Value *zero = llvm::ConstantFP::get(f64Ty_, 0.0);
+            llvm::Value *remNonZero = builder_.CreateFCmpONE(frem, zero, "frem_nz");
+            // XOR the sign bits: if frem and rhs have different signs, adjust
+            llvm::Value *fremNeg = builder_.CreateFCmpOLT(frem, zero, "frem_neg");
+            llvm::Value *rhsNeg  = builder_.CreateFCmpOLT(rhs, zero, "rhs_neg");
+            llvm::Value *signsDiffer = builder_.CreateXor(fremNeg, rhsNeg, "fsigns_differ");
+            llvm::Value *needsAdj = builder_.CreateAnd(remNonZero, signsDiffer, "fmod_adj");
+            llvm::Value *adjusted = builder_.CreateFAdd(frem, rhs, "fmod_adjusted");
+            return builder_.CreateSelect(needsAdj, adjusted, frem, "ffloormod");
         }
         // int: zero-division guard
         {
@@ -522,7 +646,16 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
                               ".mod_zero_err_" + std::to_string(arith_zero_err_counter_++));
             builder_.SetInsertPoint(okBB);
         }
-        return builder_.CreateSRem(lhs, rhs, "srem");
+        // Floor modulo: r = srem(a,b); if (r != 0 && sign(r) != sign(b)) r += b
+        llvm::Value *rem = builder_.CreateSRem(lhs, rhs, "srem");
+        llvm::Value *remNonZero = builder_.CreateICmpNE(
+            rem, llvm::ConstantInt::get(i64Ty_, 0), "rem_nz");
+        llvm::Value *xorV = builder_.CreateXor(rem, rhs, "rem_xor_rhs");
+        llvm::Value *signsDiffer = builder_.CreateICmpSLT(
+            xorV, llvm::ConstantInt::get(i64Ty_, 0), "signs_differ");
+        llvm::Value *needsAdj = builder_.CreateAnd(remNonZero, signsDiffer, "mod_adj");
+        llvm::Value *adjusted = builder_.CreateAdd(rem, rhs, "mod_adjusted");
+        return builder_.CreateSelect(needsAdj, adjusted, rem, "floormod");
     }
 
     // +/-/*: 片方f64なら浮動小数点命令
@@ -537,9 +670,23 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
         if (op == "*") return builder_.CreateFMul(lhs, rhs, "fmul");
         codegenError("unknown operator: " + op);
     }
-    if (op == "+") return builder_.CreateAdd(lhs, rhs, "add");
-    if (op == "-") return builder_.CreateSub(lhs, rhs, "sub");
-    if (op == "*") return builder_.CreateMul(lhs, rhs, "mul");
+    // Overflow check only for high-level int; low-level i64/u64 wraps
+    if (llNameHint.empty()) {
+        if (op == "+") return emitIntOverflowCheck(llvm::Intrinsic::sadd_with_overflow, lhs, rhs, "add");
+        if (op == "-") return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow, lhs, rhs, "sub");
+        if (op == "*") return emitIntOverflowCheck(llvm::Intrinsic::smul_with_overflow, lhs, rhs, "mul");
+    }
+    // Low-level i64/u64 fallthrough: wrap and propagate metadata
+    // Note: This may tag ConstantInt values (#311), but the risk is limited because
+    // propagateHint only fires when an explicit i64/u64 suffix is in the AST.
+    // A proper fix (recursive getExprLowLevelSuffix) is tracked in #595.
+    auto propagateHint = [&](llvm::Value *result) -> llvm::Value* {
+        if (!llNameHint.empty()) low_level_type_names_[result] = llNameHint;
+        return result;
+    };
+    if (op == "+") return propagateHint(builder_.CreateAdd(lhs, rhs, "add"));
+    if (op == "-") return propagateHint(builder_.CreateSub(lhs, rhs, "sub"));
+    if (op == "*") return propagateHint(builder_.CreateMul(lhs, rhs, "mul"));
     codegenError("unknown operator: " + op);
 }
 
@@ -690,15 +837,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
 
-    // Compute low-level type name hint from AST suffixes for constant operands (#311).
-    std::string llHint = getExprLowLevelSuffix(*e->lhs);
-    if (llHint.empty()) llHint = getExprLowLevelSuffix(*e->rhs);
+    // Per-operand low-level type hints from AST suffixes (#311, #595).
+    std::string lhsHint = getExprLowLevelSuffix(*e->lhs);
+    std::string rhsHint = getExprLowLevelSuffix(*e->rhs);
 
-    return emitBinaryOp(op, lhs, rhs, llHint);
+    return emitBinaryOp(op, lhs, rhs, lhsHint, rhsHint);
 }
 
 llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                    const std::string &llNameHint) {
+                                    const std::string &lhsHint, const std::string &rhsHint) {
     // Try user-defined binary operator first
     std::string opFnName = "operator" + op;
     if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
@@ -713,69 +860,53 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
-        return emitComparisonOp(op, lhs, rhs, llNameHint);
+        return emitComparisonOp(op, lhs, rhs, lhsHint, rhsHint);
 
     if (op == "&" || op == "|" || op == "^" ||
         op == "<<" || op == ">>" || op == ">>>")
-        return emitBitwiseOp(op, lhs, rhs, llNameHint);
+        return emitBitwiseOp(op, lhs, rhs, lhsHint, rhsHint);
 
-    return emitArithmeticOp(op, lhs, rhs, llNameHint);
+    return emitArithmeticOp(op, lhs, rhs, lhsHint, rhsHint);
 }
 
-llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TernaryExpr> &e) {
-    llvm::Value *cond = emitExpr(*e->condition);
-    cond = toBool(cond);
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.expr.merge", fn_);
+    std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> incoming;
 
-    llvm::BasicBlock *trueBB = llvm::BasicBlock::Create(*ctx_, "ternary.true", fn_);
-    llvm::BasicBlock *falseBB = llvm::BasicBlock::Create(*ctx_, "ternary.false", fn_);
-    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ternary.merge", fn_);
+    llvm::Value *firstVal = nullptr;
 
-    builder_.CreateCondBr(cond, trueBB, falseBB);
+    for (size_t i = 0; i < e->arms.size(); ++i) {
+        auto &arm = e->arms[i];
+        llvm::Value *cond = emitExpr(*arm.condition);
+        cond = toBool(cond);
 
-    builder_.SetInsertPoint(trueBB);
-    llvm::Value *trueVal = emitExpr(*e->true_expr);
-    llvm::BasicBlock *trueEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.expr.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.expr.next", fn_);
+        builder_.CreateCondBr(cond, thenBB, nextBB);
 
-    builder_.SetInsertPoint(falseBB);
-    llvm::Value *falseVal = emitExpr(*e->false_expr);
-    llvm::BasicBlock *falseEndBB = builder_.GetInsertBlock();
-    builder_.CreateBr(mergeBB);
+        builder_.SetInsertPoint(thenBB);
+        llvm::Value *armVal = emitExpr(*arm.value);
+        if (!firstVal) firstVal = armVal;
+        else validateBranchTypes(firstVal, armVal, "when expression");
+        llvm::BasicBlock *armEndBB = builder_.GetInsertBlock();
+        builder_.CreateBr(mergeBB);
+        incoming.push_back({armVal, armEndBB});
 
-    if (trueVal->getType() != falseVal->getType())
-        codegenError("ternary expression: both branches must have the same type");
-
-    // Semantic type check for pointer types (str, List, Map, Set are all ptrTy_)
-    if (trueVal->getType() == ptrTy_) {
-        enum class SemanticKind { Str, List, Map, Set, Other };
-        auto classify = [&](llvm::Value *v) -> SemanticKind {
-            if (type_meta_[TM_ListElem].count(v)) return SemanticKind::List;
-            if (type_meta_[TM_MapKey].count(v)) return SemanticKind::Map;
-            if (type_meta_[TM_SetElem].count(v)) return SemanticKind::Set;
-            if (type_meta_[TM_TaskResult].count(v)) return SemanticKind::Other;
-            return SemanticKind::Str;
-        };
-        SemanticKind trueKind = classify(trueVal);
-        SemanticKind falseKind = classify(falseVal);
-        if (trueKind != falseKind)
-            codegenError("ternary expression: both branches must have the same type");
-
-        // For List, check element types match
-        if (trueKind == SemanticKind::List) {
-            llvm::Type *trueElem = type_meta_[TM_ListElem][trueVal];
-            llvm::Type *falseElem = type_meta_[TM_ListElem][falseVal];
-            if (trueElem != falseElem)
-                codegenError("ternary expression: both branches must have the same type");
-        }
+        builder_.SetInsertPoint(nextBB);
     }
 
+    llvm::Value *elseVal = emitExpr(*e->else_expr);
+    if (!firstVal) firstVal = elseVal;
+    else validateBranchTypes(firstVal, elseVal, "when expression");
+    llvm::BasicBlock *elseEndBB = builder_.GetInsertBlock();
+    builder_.CreateBr(mergeBB);
+    incoming.push_back({elseVal, elseEndBB});
+
     builder_.SetInsertPoint(mergeBB);
-    llvm::PHINode *phi = builder_.CreatePHI(trueVal->getType(), 2, "ternary");
-    phi->addIncoming(trueVal, trueEndBB);
-    phi->addIncoming(falseVal, falseEndBB);
-
-    propagateAllMetadata(trueVal, phi);
-
+    llvm::PHINode *phi = builder_.CreatePHI(firstVal->getType(), incoming.size(), "when.expr");
+    for (auto &[val, bb] : incoming)
+        phi->addIncoming(val, bb);
+    propagateAllMetadata(firstVal, phi);
     return phi;
 }
 
@@ -822,6 +953,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ErrorPropagateExpr> 
     }
     llvm::Value *retErr = buildErrValue(errVal, retResultTy);
     emitEnsureChecks(retErr);
+    tryRetainArcSource(errVal);
+    emitScopeCleanupToDepth(0);
     builder_.CreateRet(retErr);
 
     // Ok path: extract ok value, continue
@@ -852,4 +985,50 @@ llvm::Value *CodeGen::emitTaskWait(llvm::Value *taskVal, const char *runtimeFn, 
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<AwaitExpr> &e) {
     return emitTaskWait(emitExpr(*e->operand), "__ry_task_join", "await");
+}
+
+llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
+    llvm::Value *val = emitExpr(*e->operand);
+    if (val->getType() != ptrTy_)
+        codegenError("weak can only be applied to ARC-managed reference values (str, List, Map, Set)");
+    return emitArcGetHeaderFromData(val);
+}
+
+llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
+    auto lf = loadListHeader(lhs, "catl");
+    auto rf = loadListHeader(rhs, "catr");
+
+    llvm::Value *newLen = builder_.CreateAdd(lf.len, rf.len, "cat_len");
+
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
+
+    llvm::Value *dataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ds");
+    llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "cat_data");
+
+    llvm::Value *lhsSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ls");
+    builder_.CreateCall(memcpyFn, {newData, lf.data, lhsSize});
+
+    llvm::Value *rhsDst = builder_.CreateGEP(elemTy, newData, lf.len, "cat_rhs_dst");
+    llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
+    builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
+
+    storeListHeaderFields(newHeader, newLen, newLen, newData);
+
+    type_meta_[TM_ListElem][newHeader] = elemTy;
+
+    // Propagate nested-list metadata so flatten() works on concatenated results
+    if (elemTy == ptrTy_) {
+        auto &nestedMap = type_meta_[TM_NestedListElem];
+        auto itL = nestedMap.find(lhs);
+        auto itR = nestedMap.find(rhs);
+        if (itL != nestedMap.end() && itR != nestedMap.end() && itL->second == itR->second)
+            nestedMap[newHeader] = itL->second;
+    }
+
+    return newHeader;
 }

@@ -17,9 +17,12 @@ llvm::Value *CodeGen::emitIsWhitespace(llvm::Value *ch) {
 llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
-        {"contains",    &CodeGen::emitStrOp_contains},
-        {"starts_with", &CodeGen::emitStrOp_starts_with},
-        {"ends_with",   &CodeGen::emitStrOp_ends_with},
+        {"contains",     &CodeGen::emitStrOp_contains},
+        {"_contains",    &CodeGen::emitStrOp_contains},
+        {"starts_with",  &CodeGen::emitStrOp_starts_with},
+        {"_starts_with", &CodeGen::emitStrOp_starts_with},
+        {"ends_with",    &CodeGen::emitStrOp_ends_with},
+        {"_ends_with",   &CodeGen::emitStrOp_ends_with},
         {"find",        &CodeGen::emitStrOp_find},
         {"substring",   &CodeGen::emitStrOp_substring},
         {"char_at",     &CodeGen::emitStrOp_char_at},
@@ -42,42 +45,98 @@ llvm::Value *CodeGen::emitBuiltinString(const CallExpr &e) {
 
 // ===== String operation handlers =====
 
-// contains(s, sub) → bool
+// contains(s, sub[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_contains(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("contains() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *sub = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || sub->getType() != ptrTy_)
         codegenError("contains() requires str arguments");
+
     auto strstrFn = getStdlibStrstr();
-    llvm::Value *result = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
+    auto strcasestrFn = getStdlibStrcasestr();
     llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
-    return builder_.CreateICmpNE(result, null, "contains");
+
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ct.ic_false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "ct.merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *resIC = builder_.CreateCall(strcasestrFn, {s, sub}, "strcasestr");
+    llvm::Value *containsIC = builder_.CreateICmpNE(resIC, null, "contains_ic");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *resCS = builder_.CreateCall(strstrFn, {s, sub}, "strstr");
+    llvm::Value *containsCS = builder_.CreateICmpNE(resCS, null, "contains_cs");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "contains");
+    phi->addIncoming(containsIC, icTrueBB);
+    phi->addIncoming(containsCS, icFalseBB);
+    return phi;
 }
 
-// starts_with(s, prefix) → bool
+// starts_with(s, prefix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_starts_with(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("starts_with() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *prefix = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || prefix->getType() != ptrTy_)
         codegenError("starts_with() requires str arguments");
     auto strlenFn = getStdlibStrlen();
     auto strncmpFn = getStdlibStrncmp();
+    auto strncasecmpFn = getStdlibStrncasecmp();
     llvm::Value *prefixLen = builder_.CreateCall(strlenFn, {prefix}, "prefix_len");
-    llvm::Value *cmp = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
-    return builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "starts_with");
+
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "sw.ic_false", fn_);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "sw.merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {s, prefix, prefixLen}, "strncasecmp");
+    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "sw_ic");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {s, prefix, prefixLen}, "strncmp");
+    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "sw_cs");
+    builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+    llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "starts_with");
+    phi->addIncoming(matchIC, icTrueBB);
+    phi->addIncoming(matchCS, icFalseBB);
+    return phi;
 }
 
-// ends_with(s, suffix) → bool
+// ends_with(s, suffix[, ignore_case]) → bool
 llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
-    requireArgs(e, 2);
+    if (e.args.size() < 2 || e.args.size() > 3)
+        codegenError("ends_with() takes 2 or 3 arguments");
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *suffix = emitExpr(*e.args[1]);
+    llvm::Value *ignoreCase = (e.args.size() == 3)
+        ? emitExpr(*e.args[2])
+        : llvm::ConstantInt::get(i1Ty_, 0);
     if (s->getType() != ptrTy_ || suffix->getType() != ptrTy_)
         codegenError("ends_with() requires str arguments");
     auto strlenFn = getStdlibStrlen();
     auto strncmpFn = getStdlibStrncmp();
+    auto strncasecmpFn = getStdlibStrncasecmp();
     llvm::Value *sLen = builder_.CreateCall(strlenFn, {s}, "s_len");
     llvm::Value *suffixLen = builder_.CreateCall(strlenFn, {suffix}, "suffix_len");
 
@@ -92,14 +151,34 @@ llvm::Value *CodeGen::emitStrOp_ends_with(const CallExpr &e) {
     builder_.SetInsertPoint(checkBB);
     llvm::Value *offset = builder_.CreateSub(sLen, suffixLen, "offset");
     llvm::Value *tailPtr = builder_.CreateGEP(builder_.getInt8Ty(), s, offset, "tail_ptr");
-    llvm::Value *cmp = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
-    llvm::Value *match = builder_.CreateICmpEQ(cmp, llvm::ConstantInt::get(i32Ty_, 0), "match");
+
+    // Branch on ignore_case
+    llvm::BasicBlock *icTrueBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_true", fn_);
+    llvm::BasicBlock *icFalseBB = llvm::BasicBlock::Create(*ctx_, "ew.ic_false", fn_);
+    llvm::BasicBlock *cmpMergeBB = llvm::BasicBlock::Create(*ctx_, "ew.cmp_merge", fn_);
+
+    builder_.CreateCondBr(ignoreCase, icTrueBB, icFalseBB);
+
+    builder_.SetInsertPoint(icTrueBB);
+    llvm::Value *cmpIC = builder_.CreateCall(strncasecmpFn, {tailPtr, suffix, suffixLen}, "strncasecmp");
+    llvm::Value *matchIC = builder_.CreateICmpEQ(cmpIC, llvm::ConstantInt::get(i32Ty_, 0), "ew_ic");
+    builder_.CreateBr(cmpMergeBB);
+
+    builder_.SetInsertPoint(icFalseBB);
+    llvm::Value *cmpCS = builder_.CreateCall(strncmpFn, {tailPtr, suffix, suffixLen}, "strncmp");
+    llvm::Value *matchCS = builder_.CreateICmpEQ(cmpCS, llvm::ConstantInt::get(i32Ty_, 0), "ew_cs");
+    builder_.CreateBr(cmpMergeBB);
+
+    builder_.SetInsertPoint(cmpMergeBB);
+    llvm::PHINode *matchPhi = builder_.CreatePHI(i1Ty_, 2, "ew_match");
+    matchPhi->addIncoming(matchIC, icTrueBB);
+    matchPhi->addIncoming(matchCS, icFalseBB);
     builder_.CreateBr(mergeBB);
 
     builder_.SetInsertPoint(mergeBB);
     llvm::PHINode *phi = builder_.CreatePHI(i1Ty_, 2, "ends_with");
     phi->addIncoming(llvm::ConstantInt::get(i1Ty_, 0), curBB);
-    phi->addIncoming(match, checkBB);
+    phi->addIncoming(matchPhi, cmpMergeBB);
     return phi;
 }
 
@@ -145,7 +224,7 @@ llvm::Value *CodeGen::emitStrOp_find(const CallExpr &e) {
     return phi;
 }
 
-// substring(s, start, end) → str (UTF-8 character indices)
+// substring(s, start, end) → str (UTF-8 character indices, clamped)
 llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     requireArgs(e, 3);
     llvm::Value *s = emitExpr(*e.args[0]);
@@ -154,8 +233,35 @@ llvm::Value *CodeGen::emitStrOp_substring(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("substring() requires str as first argument");
 
+    // Fast path: both indices are compile-time constants satisfying sv >= 0, ev >= 0, ev >= sv.
+    // All three clamping selects are provably no-ops, so skip them and call the runtime directly.
+    if (auto *ciStart = llvm::dyn_cast<llvm::ConstantInt>(start)) {
+        if (auto *ciEnd = llvm::dyn_cast<llvm::ConstantInt>(end)) {
+            int64_t sv = ciStart->getSExtValue();
+            int64_t ev = ciEnd->getSExtValue();
+            if (sv >= 0 && ev >= 0 && ev >= sv) {
+                auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_,
+                                             {ptrTy_, i64Ty_, i64Ty_});
+                return builder_.CreateCall(substrFn, {s, start, end}, "substring");
+            }
+        }
+    }
+
+    // Clamp start and end to be non-negative; let the runtime clamp to string length.
+    llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
+
+    llvm::Value *clampedStart = builder_.CreateSelect(
+        builder_.CreateICmpSLT(start, zero), zero, start, "substr_cstart");
+
+    llvm::Value *clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(end, zero), zero, end, "substr_cend");
+
+    // Ensure end >= start
+    clampedEnd = builder_.CreateSelect(
+        builder_.CreateICmpSLT(clampedEnd, clampedStart), clampedStart, clampedEnd, "substr_cend2");
+
     auto substrFn = getRuntimeFn("__ry_utf8_substring", ptrTy_, {ptrTy_, i64Ty_, i64Ty_});
-    return builder_.CreateCall(substrFn, {s, start, end}, "substring");
+    return builder_.CreateCall(substrFn, {s, clampedStart, clampedEnd}, "substring");
 }
 
 // char_at(s, i) → str (single UTF-8 character as string)
@@ -166,8 +272,11 @@ llvm::Value *CodeGen::emitStrOp_char_at(const CallExpr &e) {
     if (s->getType() != ptrTy_)
         codegenError("char_at() requires str as first argument");
 
-    auto charAtFn = getRuntimeFn("__ry_utf8_char_at", ptrTy_, {ptrTy_, i64Ty_});
-    return builder_.CreateCall(charAtFn, {s, idx}, "char_at");
+    if (idx->getType()->isIntegerTy(1))
+        idx = builder_.CreateZExt(idx, i64Ty_, "char_at_idx");
+
+    auto fn = getRuntimeFn("__ry_utf8_char_at_checked", ptrTy_, {ptrTy_, i64Ty_});
+    return builder_.CreateCall(fn, {s, idx}, "char_at");
 }
 
 // replace(s, old, new) → str
@@ -176,6 +285,11 @@ llvm::Value *CodeGen::emitStrOp_replace(const CallExpr &e) {
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *oldStr = emitExpr(*e.args[1]);
     llvm::Value *newStr = emitExpr(*e.args[2]);
+    // Regex overload: replace(text, /pattern/, replacement) → delegate to regex runtime
+    if (isRegex(oldStr) && isStringValue(s)) {
+        auto fn = mod_->getOrInsertFunction("__ry_regex_replace", fnTy_ptr_ptr_ptr_to_ptr_);
+        return builder_.CreateCall(fn, {oldStr, s, newStr}, "regex_replace");
+    }
     if (s->getType() != ptrTy_ || oldStr->getType() != ptrTy_ || newStr->getType() != ptrTy_)
         codegenError("replace() requires str arguments");
     auto strlenFn = getStdlibStrlen();
@@ -553,14 +667,13 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     if (elemTy) {
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
         auto lf = loadListHeader(arg, "rev");
         llvm::Value *len = lf.len;
         llvm::Value *srcData = lf.data;
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "rev_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, elemSize), "rev_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "rev_data");
 
@@ -609,9 +722,11 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
 // reverse!(list) → in-place reverse
 llvm::Value *CodeGen::emitStrOp_reverse_mut(const CallExpr &e) {
     requireArgs(e, 1);
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (!elemTy) codegenError("reverse!() requires a list");
+    listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
 
     auto lf = loadListHeader(listPtr, "revm");
     llvm::Value *len = lf.len;
@@ -652,14 +767,40 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     requireArgs(e, 2);
     llvm::Value *s = emitExpr(*e.args[0]);
     llvm::Value *delim = emitExpr(*e.args[1]);
+    // Regex overload: split(text, /pattern/) → delegate to regex runtime
+    if (isRegex(delim) && isStringValue(s)) {
+        auto fn = mod_->getOrInsertFunction("__ry_regex_split", fnTy_ptr_ptr_to_ptr_);
+        llvm::Value *r = builder_.CreateCall(fn, {delim, s}, "regex_split");
+        type_meta_[TM_ListElem][r] = ptrTy_;
+        return r;
+    }
     if (s->getType() != ptrTy_ || delim->getType() != ptrTy_)
         codegenError("split() requires str arguments");
+
+    // Empty delimiter: split into individual characters (UTF-8 aware)
     auto strlenFn = getStdlibStrlen();
+    llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
+    llvm::Value *isEmptyDelim = builder_.CreateICmpEQ(
+        delimLen, llvm::ConstantInt::get(i64Ty_, 0), "split_empty_delim");
+
+    llvm::BasicBlock *emptyDelimBB = llvm::BasicBlock::Create(*ctx_, "split.empty_delim", fn_);
+    llvm::BasicBlock *normalBB = llvm::BasicBlock::Create(*ctx_, "split.normal", fn_);
+    llvm::BasicBlock *doneBB = llvm::BasicBlock::Create(*ctx_, "split.done", fn_);
+
+    builder_.CreateCondBr(isEmptyDelim, emptyDelimBB, normalBB);
+
+    // --- Empty delimiter path: call __ry_split_chars runtime ---
+    builder_.SetInsertPoint(emptyDelimBB);
+    auto splitCharsFn = mod_->getOrInsertFunction("__ry_split_chars", fnTy_ptr_to_ptr_);
+    llvm::Value *charsResult = builder_.CreateCall(splitCharsFn, {s}, "split_chars");
+    builder_.CreateBr(doneBB);
+
+    // --- Normal delimiter path ---
+    builder_.SetInsertPoint(normalBB);
     auto strstrFn = getStdlibStrstr();
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
 
-    llvm::Value *delimLen = builder_.CreateCall(strlenFn, {delim}, "split_dlen");
     llvm::Value *null = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
 
     llvm::AllocaInst *countVar = builder_.CreateAlloca(i64Ty_, nullptr, "split_count");
@@ -688,9 +829,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *elemCount = builder_.CreateAdd(delimCount, llvm::ConstantInt::get(i64Ty_, 1), "split_elem_count");
 
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "split_header");
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
     uint64_t ptrSize = dl.getTypeAllocSize(ptrTy_);
     llvm::Value *dataSize = builder_.CreateMul(elemCount, llvm::ConstantInt::get(i64Ty_, ptrSize), "split_data_size");
@@ -746,21 +885,35 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "split_data_field");
     builder_.CreateStore(dataPtr, dataPtrField);
 
-    type_meta_[TM_ListElem][headerPtr] = ptrTy_;
-    return headerPtr;
+    builder_.CreateBr(doneBB);
+
+    // --- Merge point ---
+    builder_.SetInsertPoint(doneBB);
+    llvm::PHINode *result = builder_.CreatePHI(ptrTy_, 2, "split_result");
+    result->addIncoming(charsResult, emptyDelimBB);
+    result->addIncoming(headerPtr, buildEndBB);
+
+    type_meta_[TM_ListElem][result] = ptrTy_;
+    return result;
 }
 
 // join(list, sep) → str
 llvm::Value *CodeGen::emitStrOp_join(const CallExpr &e) {
-    if (e.args.size() != 2) {
-        codegenError("join() expects 2 arguments (List<str>, str)");
-        return nullptr;
-    }
+    if (e.args.size() != 2)
+        return nullptr; // Not the builtin join(List<str>, str); fall through
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Value *sep = emitExpr(*e.args[1]);
     if (listPtr->getType() != ptrTy_ || sep->getType() != ptrTy_)
         codegenError("join() requires List<str> and str arguments");
-    if (getListElementType(listPtr) != ptrTy_)
+    llvm::Type *elemTy = getListElementType(listPtr);
+    if (!elemTy) {
+        // Support sep.join(list) — UFCS places the receiver first
+        elemTy = getListElementType(sep);
+        if (!elemTy)
+            return nullptr;
+        std::swap(listPtr, sep);
+    }
+    if (elemTy != ptrTy_)
         codegenError("join() requires List<str> as first argument");
     auto strlenFn = getStdlibStrlen();
     auto mallocFn = getStdlibMalloc();

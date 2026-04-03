@@ -17,10 +17,12 @@
 - **F-String** — 使用 `f"Hello {name}"` 进行字符串插值
 - **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（结构体不变量）、`old()`、`result`
 - **指令** — `@deprecated` 编译时元数据注解
-- **函数** — `fn` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
-- **控制流** — `if`/`elif`/`else`、`while`、`for...in`、`break`/`continue`
+- **函数** — `function` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
+- **控制流** — `if`/`else`、`when`、`while`、`for...in`、`break`/`continue`
 - **文件 I/O** — 文件读写、字节操作、标准输入（`std.io`）
+- **文件系统** — 目录列表、递归遍历、glob、复制、移动、删除、权限管理（`std.filesystem`）
 - **包管理** — 基于目录的包、自动导入的 `std` 标准库、`from ... import ...`
+- **并发** — `async`/`await` 与 work-stealing 调度器、`@parallel` for 循环、原生线程 API（`std.thread`）
 - **类型安全** — 类型推断、类型注解、不可变类型绑定、`@const` 指令
 
 ## 示例代码
@@ -32,7 +34,7 @@ name: str = "hello"
 pi = 3.14159
 
 # 函数定义
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -41,15 +43,15 @@ print(factorial(5))    # 120
 
 # Lambda 与闭包
 offset = 10
-add_offset = (x: int): int => x + offset
+add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
 # 结构体
-type Point:
+record Point:
     x: int
     y: int
 
-fn operator+(a: Point, b: Point) -> Point:
+function operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
 p = Point(1, 2) + Point(3, 4)
@@ -67,7 +69,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # 流式操作 (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 枚举类型
@@ -118,18 +120,21 @@ cmake --build build
 
 ```bash
 ry <file.ry>              # 运行 Ry 脚本
-echo '<code>' | ry         # 从标准输入运行代码
+echo '<code>' | ry -c      # 从标准输入运行代码
 ry test [options] [path]   # 运行测试 (*.test.ry)
 ry init                    # 在当前目录初始化项目
 ry new <name>              # 创建新项目
+ry run [<script-name>]     # 运行项目脚本
 ry fmt [options] [path]    # 格式化源文件
 ry self-update             # 更新 ry 本身
 ```
 
+`self-update` 命令使用 Ed25519 签名验证和 SHA-256 校验和来验证发布工件。签名验证默认为必需。如果签名文件不可用，更新将中止。设置 `RY_SKIP_SIGNATURE=1` 可在签名文件缺失时允许继续（不推荐）。无效签名始终会中止更新，无论此设置如何。
+
 标准输入也支持 here-document：
 
 ```bash
-ry <<'RY'
+ry -c <<'RY'
 a = 1
 b = 2
 print(a + b)
@@ -137,6 +142,16 @@ RY
 ```
 
 运行 `ry <command> --help` 查看详细选项。
+
+为了进行内部执行分析，Ry 还支持结构化跟踪模式：
+
+```bash
+ry --trace app/main.ry
+ry --trace-out=/tmp/ry-trace.jsonl app/main.ry
+ry test --trace tests/spec
+```
+
+`--trace` 默认将 JSON Lines 输出到 stderr。使用 `--trace-out` 可将跟踪流重定向到文件，同时保持程序的 stdout 不变。
 
 ## 开发
 

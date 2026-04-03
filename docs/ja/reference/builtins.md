@@ -8,25 +8,52 @@
 
 | 関数 | 説明 |
 |------|------|
-| `print(expr)` | 値を標準出力に表示 |
+| `print()` / `print(expr1, expr2, ...)` | 値を標準出力に表示（スペース区切り） |
 | `length(value)` | リスト・マップ・セットの要素数、文字列の UTF-8 文字数を返す |
 | `range(n)` / `range(start, end)` / `range(start, end, step)` | 整数のリストを生成 |
 | `exit(code)` | 指定した終了コードでプロセスを終了 |
-| `args()` | コマンドライン引数を `List<str>` として返す |
+| `arguments()` | コマンドライン引数を `List<str>` として返す |
 | `available_parallelism()` | ランタイムの worker 数を `int` で返す |
 | `sleep(duration_ms)` | 指定ミリ秒間、実行を一時停止する |
 | `env(key)` | 環境変数を `Option<str>` で返す |
 | `env(key, default)` | 環境変数を返す。未設定なら `default` を返す |
-| `send(stream, data)` | `TcpStream` を通じて `List<u8>` を送信し、送信バイト数を返す |
-| `recv(stream, max)` | `TcpStream` から最大 `max` バイトを `List<u8>` として受信 |
-| `close(handle)` | `TcpStream` または `TcpListener` を閉じる |
+| `send(stream, data)` | `TcpStream` または `TlsStream` を通じて `List<u8>` を送信し、`Result<int, Error>` を返す |
+| `receive(stream, max)` | `TcpStream` または `TlsStream` から最大 `max` バイトを `Result<List<u8>, Error>` として受信 |
+| `close(handle)` | `TcpStream`、`TlsStream`、または `TcpListener` を閉じる |
 | `block_on(task)` | 現在のスレッドを `Task<T>` の完了までブロックし、結果を返す |
+| `to_str(value)` | 値を文字列表現に変換する（`int`、`float`、`bool`、`str`、record、enum、タプル、`List`、`Map`、`Set`、`Result`、`Option`） |
+| `fail()` / `fail(message)` | 現在のテストを失敗としてマークする（`ry test` モードでのみ使用可能） |
 
 ### Option
 
 | 関数 | 説明 |
 |------|------|
-| `Some(expr)` | Option型の値ありバリアントを構築 |
+| `Some(expr)` | Option 型の値ありバリアントを構築 |
+
+### Result / Error
+
+| 関数 | 説明 |
+|------|------|
+| `Ok(value)` | `Result<T, Error>` の成功バリアントを構築 |
+| `Err(error)` | `Result<T, Error>` のエラーバリアントを構築 |
+| `Error(message)` | メッセージ付きの `Error` 値を作成 |
+| `Error(message, code)` | メッセージとエラーコード付きの `Error` 値を作成 |
+| `result.and_then(closure)` | `Ok` の場合、`closure`（`Result<U, E>` を返す）を呼び出す。`Err` の場合はエラーをそのまま伝播 |
+| `result.map(closure)` | `Ok` の場合、`closure` を値に適用し結果を `Ok` でラップ。`Err` の場合はエラーをそのまま伝播 |
+
+### チェック付き演算
+
+| 関数 | 説明 |
+|------|------|
+| `checked_add(a, b)` | オーバーフローなしなら `Ok(a + b)`、そうでなければ `Err(Error("arithmetic overflow"))` |
+| `checked_sub(a, b)` | オーバーフローなしなら `Ok(a - b)`、そうでなければ `Err(Error("arithmetic overflow"))` |
+| `checked_mul(a, b)` | オーバーフローなしなら `Ok(a * b)`、そうでなければ `Err(Error("arithmetic overflow"))` |
+| `saturating_add(a, b)` | `a + b` を返す。オーバーフロー時は `int` 範囲にクランプ |
+| `saturating_sub(a, b)` | `a - b` を返す。オーバーフロー時は `int` 範囲にクランプ |
+| `saturating_mul(a, b)` | `a * b` を返す。オーバーフロー時は `int` 範囲にクランプ |
+| `wrapping_add(a, b)` | オーバーフロー時にラッピングする `a + b` を返す |
+| `wrapping_sub(a, b)` | オーバーフロー時にラッピングする `a - b` を返す |
+| `wrapping_mul(a, b)` | オーバーフロー時にラッピングする `a * b` を返す |
 
 ### コレクション操作
 
@@ -41,10 +68,10 @@
 | `reverse(list)` | 逆順の新しいリストを返す（文字列にも対応） |
 | `reverse!(list)` | リストをその場で逆順にする（ミューテーション操作） |
 | `slice(list, start, end)` | start から end までの新しい部分リストを返す |
-| `take(list, n)` | 先頭 n 要素の新しいリストを返す |
-| `tap(list, fn)` | 各要素に fn を呼び出し、元のリストを返す |
+| `take(list, count)` | 先頭 count 要素の新しいリストを返す |
+| `tap(list, function)` | 各要素に function を呼び出し副作用を実行し、元のリストを返す |
 | `filter(list, pred)` | 述語を満たす要素だけの新しいリストを返す |
-| `map(list, fn)` | 各要素を変換した新しいリストを返す |
+| `map(list, function)` | 各要素を変換した新しいリストを返す |
 | `sort(list)` / `sort(list, comp)` | ソート済みの新しいリストを返す（デフォルト昇順） |
 | `sort!(list)` / `sort!(list, comp)` | リストをその場でソートする（ミューテーション操作） |
 | `insert(list, i, val)` | インデックス i に要素を挿入 |
@@ -59,6 +86,24 @@
 | `symmetric_difference(set, set)` | 2つのセットの対称差を返す |
 | `is_subset(set, set)` | 最初のセットが2番目の部分集合かを返す |
 | `is_superset(set, set)` | 最初のセットが2番目の上位集合かを返す |
+| `first(list)` | 最初の要素を `Option<T>` として返す。空なら `None` |
+| `last(list)` | 最後の要素を `Option<T>` として返す。空なら `None` |
+| `remove(list, value)` | リストから値の最初の出現を削除 |
+| `is_empty(list)` | リストが空かを返す |
+| `distinct(list)` | 重複を排除した新しいリストを返す |
+| `flatten(list)` | ネストされたリストをフラット化した新しいリストを返す |
+| `reduce(list, fn)` | リデューサ関数を使ってリストを単一の値に畳み込む |
+| `fold(list, init, fn)` | 初期アキュムレータ値を使ってリストを畳み込む |
+| `any(list, pred)` | 述語にマッチする要素が1つでもあれば `true` を返す |
+| `all(list, pred)` | すべての要素が述語にマッチすれば `true` を返す |
+| `sum(list)` | 全要素の合計を返す |
+| `min(list)` | 最小の要素を返す |
+| `max(list)` | 最大の要素を返す |
+| `enumerate(list)` | `(インデックス, 値)` タプルのリストを返す |
+| `zip(list1, list2)` | 2つのリストの要素をペアにした `(a, b)` タプルのリストを返す |
+| `keys(map)` | すべてのキーを `List<K>` として返す |
+| `values(map)` | すべての値を `List<V>` として返す |
+| `merge(map1, map2)` | 両方のマップのエントリを含む新しいマップを返す |
 
 ### イテレータ
 
@@ -68,8 +113,8 @@
 | `next(iter)` | 次の要素を `Option<T>` として返す。使い切った場合は `None` |
 | `to_list(iter)` | イテレータの残りの要素をすべて `List<T>` に収集 |
 | `filter(iter, pred)` | 述語にマッチする要素のみを返す遅延イテレータを返す |
-| `map(iter, fn)` | 各要素を変換する遅延イテレータを返す |
-| `take(iter, n)` | 最大 n 要素を返す遅延イテレータを返す |
+| `map(iter, function)` | 各要素を変換する遅延イテレータを返す |
+| `take(iter, count)` | 最大 count 要素を返す遅延イテレータを返す |
 
 ### [文字列操作](builtins-string.md)
 
@@ -89,7 +134,7 @@
 | `reverse(string)` | 文字列を逆順にする |
 | `split(string, delimiter)` | 文字列を分割してリストを返す |
 | `join(list, sep)` | リストの文字列をセパレータで結合 |
-| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換 |
+| `to_int(s)` / `to_float(s)` / `to_str(v)` | 型変換（`to_int` は `Result<int, Error>` を返す） |
 
 -> 詳細は **[文字列操作関数リファレンス](builtins-string.md)** を参照
 
@@ -97,9 +142,9 @@
 
 ## print
 
-**シグネチャ:** `print(expr)`
+**シグネチャ:** `print()` / `print(expr1, expr2, ...)`
 
-値を標準出力に表示します。末尾に改行が付きます。
+1つ以上の値をスペース区切りで標準出力に表示します。末尾に改行が付きます。引数なしで呼び出すと改行のみを出力します。
 
 | 型 | 出力形式 |
 |----|---------|
@@ -107,26 +152,37 @@
 | `float` | `%g` |
 | `bool` | `true` / `false` |
 | `str` | `%s` |
+| `Result` (Ok) | `Ok(value)` |
+| `Result` (Err) | `Err(value)` |
 | `Option` (Some) | `Some(値)` |
 | `Option` (None) | `None` |
 | `list` | `[要素1, 要素2, ...]` |
 | `map` | `{キー1: 値1, キー2: 値2, ...}` |
 | `set` | `{要素1, 要素2, ...}` |
+| `tuple` | `(要素1, 要素2, ...)` |
 | `enum` | バリアント名（例: `Red`） |
+| `record` | `RecordName(field: val, ...)` |
 
 ```python
 print(42)          # 42
 print(3.14)        # 3.14
 print(true)        # true
 print("hello")     # hello
+print(Ok(42))      # Ok(42)
+print(Err(Error("fail")))  # Err(Error: fail (code: 0))
 print(Some(1))     # Some(1)
 print(None)        # None
 print([1, 2, 3])   # [1, 2, 3]
 print({"a": 1})    # {a: 1}
 print({1, 2, 3})   # {1, 2, 3}
-```
+print((1, "hello"))  # (1, hello)
 
-**エラー条件:** 構造体・タプルを直接渡すとコンパイルエラー。
+# 複数引数（スペース区切り）
+print(1, 2, 3)             # 1 2 3
+print("hello", "world")   # hello world
+print(1, "hello", true)   # 1 hello true
+print()                    # （空行）
+```
 
 ---
 
@@ -134,7 +190,7 @@ print({1, 2, 3})   # {1, 2, 3}
 
 **シグネチャ:** `Some(expr) -> Option<T>`
 
-Option型の値ありバリアントを構築します。
+Option 型の値ありバリアントを構築します。
 
 ```python
 x: Option<int> = Some(42)
@@ -163,7 +219,7 @@ print(length("あいう"))           # 3 (UTF-8 文字数)
 
 **シグネチャ:** `has_key(m: Map<K, V>, key: K) -> bool`
 
-マップに指定したキーが存在するかを返します。UFCS記法も使用可能です。
+マップに指定したキーが存在するかを返します。UFCS 記法も使用可能です。
 
 ```python
 m = {"a": 1, "b": 2}
@@ -177,7 +233,7 @@ print(m.has_key("z"))     # false (UFCS)
 
 **シグネチャ:** `add(s: Set<T>, value: T)`
 
-セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS記法も使用可能です。
+セットに要素を追加します。既に存在する要素を追加した場合は何もしません。UFCS 記法も使用可能です。
 
 ```python
 s = {1, 2, 3}
@@ -193,7 +249,7 @@ print(length(s))     # 5
 
 **シグネチャ:** `remove(s: Set<T>, value: T)`
 
-セットから要素を削除します。UFCS記法も使用可能です。
+セットから要素を削除します。UFCS 記法も使用可能です。
 
 ```python
 s = {1, 2, 3}
@@ -248,20 +304,20 @@ exit(1)        # エラー終了
 
 ---
 
-## args
+## arguments
 
-**シグネチャ:** `args() -> List<str>`
+**シグネチャ:** `arguments() -> List<str>`
 
 スクリプトに渡されたコマンドライン引数を文字列のリストとして返します。インタープリター名やスクリプトファイル名は含まれません -- スクリプトパスの後の引数のみです。
 
 ```python
 # 実行: ry script.ry hello world
-a = args()
+a = arguments()
 print(length(a))    # 2
 print(a[0])      # hello
 print(a[1])      # world
 
-for x in args():
+for x in arguments():
     print(x)
 ```
 
@@ -331,7 +387,7 @@ QUOTED='single quoted'
 
 **シグネチャ:** `append(list: List<T>, value: T)`
 
-リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。UFCS記法も使用可能です。
+リストの末尾に要素を追加します。これはミューテーション操作で、リストがその場で変更されます。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2]
@@ -345,7 +401,7 @@ print(xs)   # [1, 2, 3]
 
 **シグネチャ:** `pop(list: List<T>) -> Option<T>`
 
-リストの末尾の要素を削除して `Option<T>` として返します。リストが空の場合は `None` を返します。UFCS記法も使用可能です。
+リストの末尾の要素を削除して `Option<T>` として返します。リストが空の場合は `None` を返します。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3]
@@ -360,7 +416,7 @@ print(xs)   # [1, 2]
 
 **シグネチャ:** `reverse(list: List<T>) -> List<T>`
 
-要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます（[文字列操作関数リファレンス](builtins-string.md)を参照）。UFCS記法も使用可能です。
+要素を逆順にした新しいリストを返します。元のリストは変更されません。文字列に対しても使用できます（[文字列操作関数リファレンス](builtins-string.md)を参照）。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3]
@@ -375,7 +431,7 @@ print(xs)   # [1, 2, 3]（変更なし）
 
 **シグネチャ:** `slice(list: List<T>, start: int, end: int) -> List<T>`
 
-`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `length(list)` まで）にクランプされます。UFCS記法も使用可能です。
+`start`（含む）から `end`（含まない）までの新しい部分リストを返します。インデックスは有効範囲（`0` から `length(list)` まで）にクランプされます。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -387,9 +443,9 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5]（クランプされる）
 
 ## take
 
-**シグネチャ:** `take(list: List<T>, n: int) -> List<T>`
+**シグネチャ:** `take(list: List<T>, count: int) -> List<T>`
 
-先頭 `n` 要素の新しいリストを返します。`n` がリストの長さを超える場合はリスト全体のコピーを返します。`n <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+先頭 `count` 要素の新しいリストを返します。`count` がリストの長さを超える場合はリスト全体のコピーを返します。`count <= 0` の場合は空リストを返します。元のリストは変更されません。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -403,13 +459,13 @@ print(xs.take(0))    # []
 
 ## tap
 
-**シグネチャ:** `tap(list: List<T>, fn: fn(T) -> R) -> List<T>`
+**シグネチャ:** `tap(list: List<T>, function: function(T) -> R) -> List<T>`
 
-各要素に対して関数を呼び出し（戻り値は無視）、元のリストをそのまま返します。メソッドチェーン中のデバッグや副作用の挿入に有用です。UFCS記法も使用可能です。
+各要素に対して関数を呼び出し（戻り値は無視）、元のリストをそのまま返します。メソッドチェーン中のデバッグや副作用の挿入に有用です。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # 1, 2, 3 を出力し、ys = [2, 4, 6]
 ```
 
@@ -417,13 +473,13 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ## filter
 
-**シグネチャ:** `filter(list: List<T>, pred: fn(T) -> bool) -> List<T>`
+**シグネチャ:** `filter(list: List<T>, pred: function(T) -> bool) -> List<T>`
 
-述語が `true` を返す要素のみを含む新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+述語が `true` を返す要素のみを含む新しいリストを返します。元のリストは変更されません。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 ```
@@ -432,13 +488,13 @@ print(xs)   # [1, 2, 3, 4, 5]  （変更なし）
 
 ## map
 
-**シグネチャ:** `map(list: List<T>, fn: fn(T) -> U) -> List<U>`
+**シグネチャ:** `map(list: List<T>, function: function(T) -> U) -> List<U>`
 
-各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。UFCS記法も使用可能です。
+各要素を関数で変換した新しいリストを返します。出力の要素型は入力と異なっても構いません。元のリストは変更されません。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -446,16 +502,16 @@ print(ys)   # [2, 4, 6]
 
 ## sort
 
-**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: fn(T, T) -> bool) -> List<T>`
+**シグネチャ:** `sort(list: List<T>) -> List<T>` / `sort(list: List<T>, comp: function(T, T) -> bool) -> List<T>`
 
-ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。UFCS記法も使用可能です。
+ソート済みの新しいリストを返します。デフォルトは昇順です。カスタム比較関数を指定できます（第一引数が第二引数の前に来るべき場合に `true` を返す）。元のリストは変更されません。ソートは**安定**です（等しい要素の元の順序が保持されます）。UFCS 記法も使用可能です。
 
 ```python
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
 # 降順ソート
-desc = xs.sort(fn(a: int, b: int) => a > b)
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -463,9 +519,9 @@ print(desc)   # [3, 2, 1]
 
 ## sort!
 
-**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: fn(T, T) -> bool)`
+**シグネチャ:** `sort!(list: List<T>)` / `sort!(list: List<T>, comp: function(T, T) -> bool)`
 
-リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS記法も使用可能です。
+リストをその場でソートします。ソートアルゴリズムは `sort()` と同じですが、新しいリストを作成する代わりに元のリストを変更します。UFCS 記法も使用可能です。
 
 ```python
 xs = [3, 1, 2]
@@ -479,7 +535,7 @@ print(xs)   # [1, 2, 3]
 
 **シグネチャ:** `reverse!(list: List<T>)`
 
-リストをその場で逆順にします。UFCS記法も使用可能です。
+リストをその場で逆順にします。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3]
@@ -493,7 +549,7 @@ print(xs)   # [3, 2, 1]
 
 **シグネチャ:** `appended(list: List<T>, value: T) -> List<T>`
 
-要素を末尾に追加した新しいリストを返します。元のリストは変更されません。UFCS記法も使用可能です。
+要素を末尾に追加した新しいリストを返します。元のリストは変更されません。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2]
@@ -555,7 +611,7 @@ print(get(m, "z", 0))   # 0
 
 **シグネチャ:** `iter(collection: List<T> | Set<T>) -> Iterator<T>` / `iter(collection: Map<K, V>) -> Iterator<(K, V)>`
 
-コレクションから遅延イテレータを作成します。イテレータはデータをコピーせず、元のコレクションを参照します。UFCS記法も使用可能です。
+コレクションから遅延イテレータを作成します。イテレータはデータをコピーせず、元のコレクションを参照します。UFCS 記法も使用可能です。
 
 - `List<T>` と `Set<T>` の場合、要素型は `T`。
 - `Map<K, V>` の場合、要素型はタプル `(K, V)`。
@@ -576,7 +632,7 @@ for k, v in m.iter():        # Iterator<(str, int)>
 
 **シグネチャ:** `next(iter: Iterator<T>) -> Option<T>`
 
-イテレータから次の要素を `Option<T>` として返します。イテレータが使い切られた場合は `None` を返します。呼び出しごとにイテレータの内部状態が進みます。UFCS記法も使用可能です。
+イテレータから次の要素を `Option<T>` として返します。イテレータが使い切られた場合は `None` を返します。呼び出しごとにイテレータの内部状態が進みます。UFCS 記法も使用可能です。
 
 ```python
 it = [10, 20].iter()
@@ -591,10 +647,10 @@ print(it.next())   # None
 
 **シグネチャ:** `to_list(iter: Iterator<T>) -> List<T>`
 
-イテレータの残りの要素をすべて新しいリストに収集します。UFCS記法も使用可能です。
+イテレータの残りの要素をすべて新しいリストに収集します。UFCS 記法も使用可能です。
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.iter().filter(fn(x: int) => x > 2).to_list()
+ys = xs.iter().filter((x: int) => x > 2).to_list()
 print(ys)   # [3, 4, 5]
 ```

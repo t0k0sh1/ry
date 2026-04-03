@@ -1,39 +1,39 @@
 @inline
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
   return a + b
 
 @inline(mode="always")
-fn mul(a: int, b: int) -> int:
+function mul(a: int, b: int) -> int:
   return a * b
 
 @inline(mode="hint")
-fn sub(a: int, b: int) -> int:
+function sub(a: int, b: int) -> int:
   return a - b
 
 @inline(mode="never")
-fn negate(a: int) -> int:
+function negate(a: int) -> int:
   return -a
 
 @inline
-fn fact(n: int) -> int:
+function fact(n: int) -> int:
   if n <= 1:
     return 1
   return n * fact(n - 1)
 
-describe("@inline directive", fn():
-  it("default (always)", fn():
+describe("@inline directive", ():
+  it("default (always)", ():
     expect(add(3, 4)).to_eq(7)
   )
-  it("mode=always", fn():
+  it("mode=always", ():
     expect(mul(5, 6)).to_eq(30)
   )
-  it("mode=hint", fn():
+  it("mode=hint", ():
     expect(sub(10, 3)).to_eq(7)
   )
-  it("mode=never", fn():
+  it("mode=never", ():
     expect(negate(-5)).to_eq(5)
   )
-  it("recursive", fn():
+  it("recursive", ():
     expect(fact(5)).to_eq(120)
   )
 )

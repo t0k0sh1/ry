@@ -1,15 +1,31 @@
 # Regular expression operations
 @native
-fn regex_match(pattern: str, text: str) -> bool
+function regex_match(text: str, pattern: str) -> bool
 
 @native
-fn regex_search(pattern: str, text: str) -> int
+function regex_search(text: str, pattern: str) -> int
 
 @native
-fn regex_replace(pattern: str, text: str, replacement: str) -> str
+function regex_replace(text: str, pattern: str, replacement: str) -> str
 
 @native
-fn regex_split(pattern: str, text: str) -> List<str>
+function regex_split(text: str, pattern: str) -> List<str>
 
 @native
-fn regex_find_all(pattern: str, text: str) -> List<str>
+function regex_find_all(text: str, pattern: str) -> List<str>
+
+# Regex literal overloads (text-first for UFCS)
+@native
+function is_match(text: str, pattern: Regex) -> bool
+
+@native
+function search(text: str, pattern: Regex) -> int
+
+@native
+function replace(text: str, pattern: Regex, replacement: str) -> str
+
+@native
+function split(text: str, pattern: Regex) -> List<str>
+
+@native
+function find_all(text: str, pattern: Regex) -> List<str>

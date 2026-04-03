@@ -1,0 +1,50 @@
+function show(x: int | str) -> str:
+  return to_str(x)
+
+function show_with_float(x: int | float) -> str:
+  return to_str(x)
+
+function show_with_bool(x: bool | str) -> str:
+  return to_str(x)
+
+describe("to_str union", ():
+  it("converts int variant", ():
+    x: int | str = 42
+    expect(to_str(x)).to_eq("42")
+  )
+
+  it("converts str variant", ():
+    x: int | str = "hello"
+    expect(to_str(x)).to_eq("hello")
+  )
+
+  it("converts float variant", ():
+    x: int | float = 3.14
+    expect(to_str(x)).to_eq("3.14")
+  )
+
+  it("converts bool variant", ():
+    x: bool | str = true
+    expect(to_str(x)).to_eq("true")
+  )
+
+  it("works via function return", ():
+    expect(show(42)).to_eq("42")
+    expect(show("hello")).to_eq("hello")
+  )
+
+  it("works with float via function return", ():
+    expect(show_with_float(100)).to_eq("100")
+    expect(show_with_float(2.5)).to_eq("2.5")
+  )
+
+  it("works with bool via function return", ():
+    expect(show_with_bool(false)).to_eq("false")
+    expect(show_with_bool("world")).to_eq("world")
+  )
+
+  it("preserves low-level type signedness", ():
+    x: u8 | str = 200 as u8
+    expect(to_str(x)).to_eq("200")
+  )
+)

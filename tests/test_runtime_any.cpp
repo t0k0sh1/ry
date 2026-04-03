@@ -449,13 +449,38 @@ TEST(RuntimeAnyCmp, NaNComparisons) {
 
 // ===== Death tests: arithmetic errors =====
 
-TEST_F(RuntimeAnyDeathTest, AddIntPlusStrError) {
-    RyAny a = mkInt(1), b = mkStr("x");
-    EXPECT_EXIT(
-        { RyAny r; __ry_any_add(&r, &a, &b); },
-        ::testing::ExitedWithCode(1),
-        "operator \\+ not supported for int and str"
-    );
+// ===== String auto-concatenation (#393) =====
+
+TEST(RuntimeAnyArith, AddIntPlusStr) {
+    RyAny a = mkInt(1), b = mkStr("x"), r;
+    __ry_any_add(&r, &a, &b);
+    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_STREQ(getStr(&r), "1x");
+    free(const_cast<char *>(getStr(&r)));
+}
+
+TEST(RuntimeAnyArith, AddStrPlusInt) {
+    RyAny a = mkStr("abc"), b = mkInt(2), r;
+    __ry_any_add(&r, &a, &b);
+    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_STREQ(getStr(&r), "abc2");
+    free(const_cast<char *>(getStr(&r)));
+}
+
+TEST(RuntimeAnyArith, AddFloatPlusStr) {
+    RyAny a = mkFloat(3.14), b = mkStr(" pi"), r;
+    __ry_any_add(&r, &a, &b);
+    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_STREQ(getStr(&r), "3.14 pi");
+    free(const_cast<char *>(getStr(&r)));
+}
+
+TEST(RuntimeAnyArith, AddBoolPlusStr) {
+    RyAny a = mkBool(true), b = mkStr("!"), r;
+    __ry_any_add(&r, &a, &b);
+    EXPECT_EQ(r.tag, TAG_STR);
+    EXPECT_STREQ(getStr(&r), "true!");
+    free(const_cast<char *>(getStr(&r)));
 }
 
 TEST_F(RuntimeAnyDeathTest, ArithDivisionAndModByZero) {

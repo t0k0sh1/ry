@@ -53,13 +53,13 @@ match decode_url_safe(encoded):
 
 ### 处理字节数据
 
-要编码/解码字节数据，请结合 `io` 中的 `str_to_bytes` / `bytes_to_str` 使用。
+要编码/解码字节数据，请结合 `io` 中的 `to_bytes` / `bytes_to_str` 使用。
 
 ```python
 from base64 import encode, decode
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-bytes = str_to_bytes("binary data")
+bytes = to_bytes("binary data")
 encoded = encode(bytes_to_str(bytes)?)
 ```
 
@@ -78,7 +78,7 @@ match decode("!!!not-valid!!!"):
 使用 `?` 运算符:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

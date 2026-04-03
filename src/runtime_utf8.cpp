@@ -1,37 +1,40 @@
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-// UTF-8 lead byte → validated byte count (clamps to remaining bytes)
+#include "ry/runtime_list.hpp"
+
 static inline bool is_cont(unsigned char c) { return (c & 0xC0) == 0x80; }
 
-static int utf8_char_len_safe(const char *s, size_t remaining) {
-    if (remaining == 0) return 0;
+// UTF-8 lead byte → byte count using null-terminator detection.
+// Safe because is_cont('\0') is false: (0x00 & 0xC0) == 0x00 != 0x80,
+// so truncated sequences at string end are naturally rejected.
+static int utf8_char_len_nul(const char *s) {
     unsigned char c = static_cast<unsigned char>(s[0]);
+    if (c == 0) return 0;
     if (c < 0x80) return 1;
-    if ((c & 0xE0) == 0xC0 && remaining >= 2 && is_cont(s[1])) return 2;
-    if ((c & 0xF0) == 0xE0 && remaining >= 3 && is_cont(s[1]) && is_cont(s[2])) return 3;
-    if ((c & 0xF8) == 0xF0 && remaining >= 4 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
+    if ((c & 0xE0) == 0xC0 && is_cont(s[1])) return 2;
+    if ((c & 0xF0) == 0xE0 && is_cont(s[1]) && is_cont(s[2])) return 3;
+    if ((c & 0xF8) == 0xF0 && is_cont(s[1]) && is_cont(s[2]) && is_cont(s[3])) return 4;
     return 1; // invalid/truncated byte treated as 1
 }
 
 extern "C" {
 
 int64_t __ry_utf8_len(const char *s) {
-    const char *end = s + strlen(s);
     int64_t count = 0;
     while (*s) {
-        s += utf8_char_len_safe(s, (size_t)(end - s));
+        s += utf8_char_len_nul(s);
         ++count;
     }
     return count;
 }
 
 char *__ry_utf8_char_at(const char *s, int64_t i) {
-    const char *end = s + strlen(s);
     const char *p = s;
     for (int64_t idx = 0; *p; ++idx) {
-        int len = utf8_char_len_safe(p, (size_t)(end - p));
+        int len = utf8_char_len_nul(p);
         if (idx == i) {
             char *buf = static_cast<char *>(malloc(len + 1));
             memcpy(buf, p, len);
@@ -40,14 +43,63 @@ char *__ry_utf8_char_at(const char *s, int64_t i) {
         }
         p += len;
     }
-    // Out of bounds: return empty string
-    char *buf = static_cast<char *>(malloc(1));
-    buf[0] = '\0';
+    // Safety net: codegen should have caught this via emitBoundsCheck
+    fprintf(stderr, "runtime error: char_at() index out of bounds\n");
+    exit(1);
+}
+
+char *__ry_utf8_char_at_checked(const char *s, int64_t i) {
+    const char *p = s;
+
+    if (i >= 0) {
+        // Positive index: single forward scan, stop at target — O(i).
+        int64_t idx = 0;
+        while (*p) {
+            int len = utf8_char_len_nul(p);
+            if (idx == i) {
+                char *buf = static_cast<char *>(malloc(len + 1));
+                memcpy(buf, p, len);
+                buf[len] = '\0';
+                return buf;
+            }
+            p += len;
+            ++idx;
+        }
+        // Fell through: index out of bounds. idx == string length.
+        fprintf(stderr,
+                "runtime error: index %lld out of bounds for string of length %lld\n",
+                (long long)i, (long long)idx);
+        exit(1);
+    }
+
+    // Negative index: count all codepoints to resolve wrap.
+    int64_t count = 0;
+    while (*p) {
+        p += utf8_char_len_nul(p);
+        ++count;
+    }
+
+    if (i < -count) {
+        fprintf(stderr,
+                "runtime error: index %lld out of bounds for string of length %lld\n",
+                (long long)i, (long long)count);
+        exit(1);
+    }
+    int64_t resolved = i + count;
+
+    // Second pass: scan to the resolved position — O(resolved).
+    p = s;
+    for (int64_t idx = 0; idx < resolved; ++idx)
+        p += utf8_char_len_nul(p);
+
+    int len = utf8_char_len_nul(p);
+    char *buf = static_cast<char *>(malloc(len + 1));
+    memcpy(buf, p, len);
+    buf[len] = '\0';
     return buf;
 }
 
 char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
-    const char *strEnd = s + strlen(s);
     const char *p = s;
     const char *startPtr = nullptr;
     const char *endPtr = nullptr;
@@ -56,7 +108,7 @@ char *__ry_utf8_substring(const char *s, int64_t start, int64_t endIdx) {
     while (*p) {
         if (idx == start) startPtr = p;
         if (idx == endIdx) { endPtr = p; break; }
-        p += utf8_char_len_safe(p, (size_t)(strEnd - p));
+        p += utf8_char_len_nul(p);
         ++idx;
     }
     if (idx == start) startPtr = p;
@@ -81,14 +133,13 @@ char *__ry_utf8_reverse(const char *s) {
     size_t count = 0;
     CPInfo *cps = static_cast<CPInfo *>(malloc(capacity * sizeof(CPInfo)));
 
-    const char *end = s + totalBytes;
     const char *p = s;
     while (*p) {
         if (count == capacity) {
             capacity *= 2;
             cps = static_cast<CPInfo *>(realloc(cps, capacity * sizeof(CPInfo)));
         }
-        int len = utf8_char_len_safe(p, (size_t)(end - p));
+        int len = utf8_char_len_nul(p);
         cps[count++] = {p, len};
         p += len;
     }
@@ -106,16 +157,48 @@ char *__ry_utf8_reverse(const char *s) {
 }
 
 int64_t __ry_utf8_char_index(const char *s, int64_t byte_offset) {
-    const char *end = s + strlen(s);
     const char *p = s;
     int64_t charIdx = 0;
     int64_t byteIdx = 0;
     while (*p && byteIdx < byte_offset) {
-        p += utf8_char_len_safe(p, (size_t)(end - p));
+        p += utf8_char_len_nul(p);
         byteIdx = p - s;
         ++charIdx;
     }
     return charIdx;
+}
+
+void *__ry_split_chars(const char *s) {
+    // First pass: count UTF-8 characters
+    int64_t count = 0;
+    for (const char *p = s; *p; p += utf8_char_len_nul(p))
+        ++count;
+
+    // Build ListHeader directly (avoids intermediate vector + double-copy)
+    auto *header = (ListHeader *)malloc(sizeof(ListHeader));
+    if (!header) return nullptr;
+    header->len = count;
+    header->cap = count;
+    header->data = (char **)malloc(sizeof(char *) * (count ? count : 1));
+    if (!header->data) {
+        free(header);
+        return nullptr;
+    }
+
+    // Second pass: populate string array
+    const char *p = s;
+    for (int64_t i = 0; i < count; ++i) {
+        int len = utf8_char_len_nul(p);
+        header->data[i] = dupString(p, len);
+        if (!header->data[i]) {
+            for (int64_t j = 0; j < i; ++j) free(header->data[j]);
+            free(header->data);
+            free(header);
+            return nullptr;
+        }
+        p += len;
+    }
+    return header;
 }
 
 } // extern "C"

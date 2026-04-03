@@ -4,7 +4,11 @@
 
 // ===== Builtin Collection =====
 
-llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinCollection(const CallExpr &e,
+                                              llvm::Value *preEmittedArg0) {
+    if (preEmittedArg0 && e.callee == "take")
+        return emitCollOp_take_impl(e, preEmittedArg0);
+
     using Handler = llvm::Value *(CodeGen::*)(const CallExpr &);
     static const std::unordered_map<std::string, Handler> dispatch = {
         {"add",       &CodeGen::emitCollOp_add},
@@ -34,9 +38,11 @@ llvm::Value *CodeGen::emitCollOp_add(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // add(set, val) -> add element to set (no-op if already present)
     // Only intercept if first arg is a set (fall through to user function otherwise)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *setPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getSetElementType(setPtr);
     if (elemTy) {
+        setPtr = emitCowCheck(setPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
         if (elem->getType() != elemTy)
             codegenError("add() element type mismatch");
@@ -309,15 +315,18 @@ llvm::Value *CodeGen::emitMapRemove(llvm::Value *containerPtr, llvm::Value *key,
 
 llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *containerPtr = emitExpr(*e.args[0]);
 
     if (llvm::Type *elemTy = getSetElementType(containerPtr)) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Set);
         llvm::Value *elem = emitExpr(*e.args[1]);
         if (elem->getType() != elemTy)
             codegenError("remove() element type mismatch");
         return emitSetRemove(containerPtr, elem, elemTy);
     }
     if (llvm::Type *listElemTy = getListElementType(containerPtr)) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
         if (val->getType() != listElemTy)
             codegenError("remove() value type mismatch with list element type");
@@ -326,6 +335,7 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
     llvm::Type *keyTy = getMapKeyType(containerPtr);
     llvm::Type *valTy = getMapValueType(containerPtr);
     if (keyTy && valTy) {
+        containerPtr = emitCowCheck(containerPtr, receiverAlloca, CollectionKind::Map);
         llvm::Value *key = emitExpr(*e.args[1]);
         if (key->getType() != keyTy)
             codegenError("remove() key type mismatch");
@@ -337,9 +347,11 @@ llvm::Value *CodeGen::emitCollOp_remove(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_append(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // append(list, val) -> mutating append
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *val = emitExpr(*e.args[1]);
         if (val->getType() != elemTy)
             codegenError("append() element type mismatch");
@@ -399,7 +411,6 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
             codegenError("appended() element type mismatch");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -407,7 +418,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         auto lf = loadListHeader(listPtr, "apd");
         llvm::Value *newLen = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "apd_new_len");
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "apd_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *newDataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {newDataSize}, "apd_nd");
 
@@ -417,9 +428,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, lf.len, "apd_new_ep");
         builder_.CreateStore(val, newElemPtr);
 
-        builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, newLen, newLen, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -430,9 +439,11 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_pop(const CallExpr &e) {
     if (e.args.size() != 1) return nullptr;
     // pop(list) -> Option<T>: remove and return last element
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::StructType *optTy = getOptionType(elemTy);
         auto lf = loadListHeader(listPtr, "pop");
 
@@ -475,7 +486,6 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
         llvm::Value *endVal = emitExpr(*e.args[2]);
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -499,7 +509,7 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
             builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
 
         // Allocate new list
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sl_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
 
@@ -508,12 +518,7 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
         // Set header fields
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "sl_new_len");
-        builder_.CreateStore(count, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sl_new_cap");
-        builder_.CreateStore(count, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sl_new_data");
-        builder_.CreateStore(newData, newDataField);
+        storeListHeaderFields(newHeader, count, count, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -523,14 +528,16 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
 
 llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
-    // take(list, n) -> new list with first n elements
-    llvm::Value *listPtr = emitExpr(*e.args[0]);
+    return emitCollOp_take_impl(e, emitExpr(*e.args[0]));
+}
+
+llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
+                                            llvm::Value *listPtr) {
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
         llvm::Value *nVal = emitExpr(*e.args[1]);
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -545,7 +552,7 @@ llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
             builder_.CreateICmpSGT(clampedN, lf.len), lf.len, clampedN, "tk_cn2");
 
         // Allocate new list
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tk_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
 
@@ -553,12 +560,7 @@ llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, lf.data, dataSize});
 
         // Set header fields
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "tk_new_len");
-        builder_.CreateStore(clampedN, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "tk_new_cap");
-        builder_.CreateStore(clampedN, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "tk_new_data");
-        builder_.CreateStore(newData, newDataField);
+        storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -569,9 +571,11 @@ llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
     if (e.args.size() != 3) return nullptr;
     // insert(list, index, value)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (idx->getType() != i64Ty_)
             codegenError("insert() index must be int");
@@ -589,15 +593,21 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 
         auto lf = loadListHeader(listPtr, "ins");
 
-        // Bounds check
+        // insert() valid range is [0, len], so negative index -k maps to len+1-k.
+        // This differs from remove_at() which wraps against len (valid range [0, len-1]).
+        llvm::Value *origIdx = idx;
+        llvm::Value *wrapBase = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "ins_wrap_base");
+        idx = emitNegativeIndexWrap(idx, wrapBase, "ins");
+
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0)),
+            builder_.CreateICmpSLT(idx, zero),
             builder_.CreateICmpSGT(idx, lf.len), "ins_oob");
         llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "ins.err", fn_);
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "ins.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitRuntimeError("runtime error: insert() index out of bounds\n", ".ins_oob_err");
+        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for insert() on list of length %lld\n", ".ins_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Check if realloc needed
@@ -644,9 +654,11 @@ llvm::Value *CodeGen::emitCollOp_insert(const CallExpr &e) {
 llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
     if (e.args.size() != 2) return nullptr;
     // remove_at(list, index)
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*e.args[0]);
     llvm::Value *listPtr = emitExpr(*e.args[0]);
     llvm::Type *elemTy = getListElementType(listPtr);
     if (elemTy) {
+        listPtr = emitCowCheck(listPtr, receiverAlloca, CollectionKind::List);
         llvm::Value *idx = emitExpr(*e.args[1]);
         if (idx->getType() != i64Ty_)
             codegenError("remove_at() index must be int");
@@ -658,15 +670,18 @@ llvm::Value *CodeGen::emitCollOp_remove_at(const CallExpr &e) {
 
         auto lf = loadListHeader(listPtr, "rmat");
 
-        // Bounds check
+        llvm::Value *origIdx = idx;
+        idx = emitNegativeIndexWrap(idx, lf.len, "rmat");
+
+        llvm::Value *zero = llvm::ConstantInt::get(i64Ty_, 0);
         llvm::Value *outOfBounds = builder_.CreateOr(
-            builder_.CreateICmpSLT(idx, llvm::ConstantInt::get(i64Ty_, 0)),
+            builder_.CreateICmpSLT(idx, zero),
             builder_.CreateICmpSGE(idx, lf.len), "rmat_oob");
         llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "rmat.err", fn_);
         llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, "rmat.ok", fn_);
         builder_.CreateCondBr(outOfBounds, errBB, okBB);
         builder_.SetInsertPoint(errBB);
-        emitRuntimeError("runtime error: remove_at() index out of bounds\n", ".rmat_oob_err");
+        emitBoundsError(origIdx, lf.len, "runtime error: index %lld out of bounds for remove_at() on list of length %lld\n", ".rmat_oob_err");
 
         builder_.SetInsertPoint(okBB);
         // Save element to return
@@ -705,10 +720,9 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     // Allocate new list (capacity = source length)
     auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-    llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "dist_header");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "dist_data_size");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "dist_data");
 
@@ -827,7 +841,6 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
         codegenError("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
 
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
 
     auto mallocFn = getStdlibMalloc();
@@ -864,14 +877,12 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
 
     // Allocate new list
     llvm::Value *total = builder_.CreateLoad(i64Ty_, totalLen, "flat_total_len");
-    llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "flat_hdr");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(total, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_ds");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "flat_data");
 
     // Set header
-    builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-    builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-    builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+    storeListHeaderFields(newHeader, total, total, newData);
 
     // Pass 2: copy each inner list's data
     llvm::AllocaInst *offset = builder_.CreateAlloca(i64Ty_, nullptr, "flat_off");
@@ -919,12 +930,11 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
 
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "items_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(mf.len, llvm::ConstantInt::get(i64Ty_, tupleSize), "items_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "items_data");
 
@@ -952,9 +962,7 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(mf.len, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mf.len, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mf.len, mf.len, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -1061,7 +1069,6 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
             codegenError("merge() requires two maps with the same key and value types");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
         uint64_t keySize = dl.getTypeAllocSize(keyTy);
         uint64_t valSize = dl.getTypeAllocSize(valTy);
 
@@ -1073,7 +1080,7 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
 
         // Allocate new map with capacity = len1 + len2
         llvm::Value *maxCap = builder_.CreateAdd(mf1.len, mf2.len, "mg_max_cap");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "mg_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(mapHeaderTy_);
         llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
         llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
         llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
@@ -1086,11 +1093,8 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
 
         // Set up header
+        storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
-        builder_.CreateStore(mf1.len, lenPtr);
-        builder_.CreateStore(maxCap, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newKeys, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2));
-        builder_.CreateStore(newVals, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3));
 
         // Init hash buckets
         emitBucketInit(newHeader, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 16);

@@ -1,8 +1,8 @@
 #include "ry/parser.hpp"
 #include "ry/diagnostic.hpp"
-#include <regex>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 
 TypeParam Parser::parseOneTypeParam() {
     Token tp = lex_.peek();
@@ -21,39 +21,13 @@ TypeParam Parser::parseOneTypeParam() {
     }
     return param;
 }
-#include <unordered_set>
-
-static bool isSnakeCase(const std::string &name) {
-    if (name.empty()) return false;
-    if (name == "_") return true;
-    static const std::regex pattern("[a-z_][a-z0-9_]*");
-    return std::regex_match(name, pattern);
-}
-
-// snake_case with optional trailing '!' for mutating function names (sort!, reverse!)
-static bool isMutationFnName(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[a-z_][a-z0-9_]*!?");
-    return std::regex_match(name, pattern);
-}
-
-static bool isScreamingSnakeCase(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[A-Z][A-Z0-9_]*");
-    return std::regex_match(name, pattern);
-}
-
-static bool isPascalCase(const std::string &name) {
-    if (name.empty()) return false;
-    static const std::regex pattern("[A-Z][a-zA-Z0-9]*");
-    return std::regex_match(name, pattern);
-}
 
 
 StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool is_async) {
-    Token fnTok = lex_.next(); // consume 'fn'
+    Token fnTok = lex_.next(); // consume 'function'
 
     auto fnStmt = std::make_unique<FnStmt>();
+    fnStmt->params.reserve(4);
     fnStmt->loc = locFromToken(fnTok);
     fnStmt->is_async = is_async;
 
@@ -125,7 +99,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
     } else {
         Token nameTok = lex_.peek();
         if (nameTok.kind != TokenKind::Ident)
-            parseError(nameTok.line, "expected function name after 'fn'");
+            parseError(nameTok.line, "expected function name after 'function'");
         bool validName = isMutationFnName(nameTok.value) ||
                          (hasDirective(directives, "native") && isScreamingSnakeCase(nameTok.value));
         if (!validName)
@@ -133,9 +107,10 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         lex_.next(); // consume name
         fnStmt->name = nameTok.value;
 
-        // Parse optional type parameters: fn name<T, U>(...) or fn name<T: Bound>(...)
+        // Parse optional type parameters: function name<T, U>(...) or function name<T: Bound>(...)
         if (lex_.peek().kind == TokenKind::Less) {
             lex_.next(); // consume '<'
+            fnStmt->type_params.reserve(2);
             for (;;) {
                 fnStmt->type_params.push_back(parseOneTypeParam());
                 if (lex_.peek().kind != TokenKind::Comma)
@@ -177,7 +152,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
                     parseError(paramName.line,
                         "parameter '" + paramName.value + "' with default value must have an explicit type annotation");
                 lex_.next(); // consume '='
-                default_value = parseTernary();
+                default_value = parseConditional();
                 seen_default = true;
             } else if (seen_default) {
                 parseError(paramName.line,
@@ -246,7 +221,7 @@ StmtNode Parser::parseFnStatement(const std::vector<Directive> &directives, bool
         }
     }
 
-    // @native fn: body-less declaration
+    // @native function: body-less declaration
     if (hasDirective(directives, "native")) {
         if (lex_.peek().kind == TokenKind::Colon)
             parseError("@native function must not have a body");
@@ -314,7 +289,7 @@ StmtNode Parser::parseReturnStatement() {
     if (next == TokenKind::Newline || next == TokenKind::Dedent || next == TokenKind::Eof) {
         s.value = nullptr;
     } else {
-        s.value = parseTernary();
+        s.value = parseConditional();
     }
     return s;
 }
@@ -332,7 +307,7 @@ void Parser::parseContractClause(const std::string &clauseName, std::vector<Expr
     lex_.next(); // consume Indent
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
-        out.push_back(parseTernary());
+        out.push_back(parseConditional());
         if (lex_.peek().kind == TokenKind::Newline)
             lex_.next();
         skipNewlines();
@@ -370,6 +345,7 @@ StmtNode Parser::parseRecordStatement() {
     RecordStmt ts;
     ts.name = nameTok.value;
     ts.loc = locFromToken(recordTok);
+    ts.fields.reserve(8);
 
     // Optional parent type: record Child < Parent:
     if (lex_.peek().kind == TokenKind::Less) {
@@ -507,6 +483,7 @@ StmtNode Parser::parseEnumStatement() {
     es.name = nameTok.value;
     es.type_params = std::move(typeParams);
     es.loc = locFromToken(enumTok);
+    es.variants.reserve(4);
     std::unordered_set<std::string> seenVariants;
 
     while (lex_.peek().kind != TokenKind::Dedent &&
@@ -632,6 +609,7 @@ TypeNodePtr Parser::parseTypeName() {
         return node;
     // Union type
     std::vector<TypeNodePtr> components;
+    components.reserve(4);
     components.push_back(std::move(node));
     while (lex_.peek().kind == TokenKind::Pipe) {
         lex_.next(); // consume '|'
@@ -641,30 +619,16 @@ TypeNodePtr Parser::parseTypeName() {
 }
 
 TypeNodePtr Parser::parseTypeNameSingle() {
-    // Fixed-length array type: [T; N]
-    if (lex_.peek().kind == TokenKind::LBracket) {
-        lex_.next(); // consume '['
-        auto elemType = parseTypeNameSingle();
-        if (lex_.peek().kind != TokenKind::Semi)
-            parseError("expected ';' in array type [T; N]");
-        lex_.next(); // consume ';'
-        if (lex_.peek().kind != TokenKind::Number)
-            parseError("expected integer size in array type [T; N]");
-        uint64_t size = std::stoull(lex_.peek().value);
-        lex_.next(); // consume number
-        if (lex_.peek().kind != TokenKind::RBracket)
-            parseError("expected ']' in array type");
-        lex_.next(); // consume ']'
-        return TypeNode::makeArray(std::move(elemType), size);
-    }
-
     // Tuple type: (int, float)
     if (lex_.peek().kind == TokenKind::LParen) {
         lex_.next(); // consume '('
         std::vector<TypeNodePtr> elements;
+        elements.reserve(4);
         elements.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
             lex_.next(); // consume ','
+            if (lex_.peek().kind == TokenKind::RParen)
+                break; // trailing comma
             elements.push_back(parseTypeName());
         }
         if (lex_.peek().kind != TokenKind::RParen)
@@ -673,9 +637,9 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeTuple(std::move(elements));
     }
 
-    // fn(int, int) -> int  function type
+    // function(int, int) -> int  function type
     if (lex_.peek().kind == TokenKind::Fn) {
-        lex_.next(); // consume 'fn'
+        lex_.next(); // consume 'function'
         return parseFnType();
     }
 
@@ -722,6 +686,13 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         return TypeNode::makeBasic(name);
     }
 
+    // weak T  — weak reference type
+    if (lex_.peek().kind == TokenKind::Ident && lex_.peek().value == "weak") {
+        lex_.next(); // consume 'weak'
+        auto inner = parseTypeNameSingle();
+        return TypeNode::makeWeak(std::move(inner));
+    }
+
     Token t = lex_.peek();
     if (t.kind == TokenKind::ErrorKw) {
         lex_.next(); // consume 'Error'
@@ -736,15 +707,11 @@ TypeNodePtr Parser::parseTypeNameSingle() {
     std::string name = t.value;
     lex_.next(); // consume type name
 
-    // fn(int, int) -> int  function type (when fn comes as an ident)
-    if (name == "fn" && lex_.peek().kind == TokenKind::LParen) {
-        return parseFnType();
-    }
-
     TypeNodePtr result;
     if (lex_.peek().kind == TokenKind::Less) {
         lex_.next(); // consume '<'
         std::vector<TypeNodePtr> typeArgs;
+        typeArgs.reserve(2);
         typeArgs.push_back(parseTypeName());
         if ((name == "Map" || name == "Result") && lex_.peek().kind == TokenKind::Comma) {
             // Two-parameter generic: Map<K, V> or Result<V, E>
@@ -761,6 +728,19 @@ TypeNodePtr Parser::parseTypeNameSingle() {
         result = TypeNode::makeBasic(name);
     }
 
+    // Postfix array type: T[N]
+    if (lex_.peek().kind == TokenKind::LBracket) {
+        lex_.next(); // consume '['
+        if (lex_.peek().kind != TokenKind::Number)
+            parseError("expected integer size in array type T[N]");
+        uint64_t size = std::stoull(lex_.peek().value);
+        lex_.next(); // consume number
+        if (lex_.peek().kind != TokenKind::RBracket)
+            parseError("expected ']' in array type T[N]");
+        lex_.next(); // consume ']'
+        result = TypeNode::makeArray(std::move(result), size);
+    }
+
     // Optional type suffix: int? => wraps in Option<T>
     if (lex_.peek().kind == TokenKind::Question) {
         lex_.next(); // consume '?'
@@ -772,9 +752,10 @@ TypeNodePtr Parser::parseTypeNameSingle() {
 
 TypeNodePtr Parser::parseFnType() {
     if (lex_.peek().kind != TokenKind::LParen)
-        parseError("expected '(' after 'fn' in function type");
+        parseError("expected '(' after 'function' in function type");
     lex_.next(); // consume '('
     std::vector<TypeNodePtr> paramTypes;
+    paramTypes.reserve(4);
     if (lex_.peek().kind != TokenKind::RParen) {
         paramTypes.push_back(parseTypeName());
         while (lex_.peek().kind == TokenKind::Comma) {
@@ -791,6 +772,39 @@ TypeNodePtr Parser::parseFnType() {
         retType = parseTypeName();
     }
     return TypeNode::makeFn(std::move(paramTypes), std::move(retType));
+}
+
+bool Parser::patternHasBinding(const Pattern &p) {
+    if (std::holds_alternative<VariablePattern>(p))
+        return true;
+    if (std::holds_alternative<SomePattern>(p))
+        return std::get<SomePattern>(p).binding != "_";
+    if (std::holds_alternative<OkPattern>(p))
+        return std::get<OkPattern>(p).binding != "_";
+    if (std::holds_alternative<ErrPattern>(p))
+        return std::get<ErrPattern>(p).binding != "_";
+    if (std::holds_alternative<EnumConstructorPattern>(p)) {
+        const auto &ec = std::get<EnumConstructorPattern>(p);
+        return std::any_of(ec.bindings.begin(), ec.bindings.end(),
+                           [](const std::string &b) { return b != "_"; });
+    }
+    return false;
+}
+
+void Parser::parseOrPattern(Pattern &pat) {
+    if (lex_.peek().kind != TokenKind::Pipe) return;
+    auto orPat = std::make_unique<OrPattern>();
+    if (patternHasBinding(pat))
+        parseError("OR pattern cannot contain variable bindings");
+    orPat->alternatives.push_back(std::move(pat));
+    while (lex_.peek().kind == TokenKind::Pipe) {
+        lex_.next();
+        Pattern alt = parsePattern();
+        if (patternHasBinding(alt))
+            parseError("OR pattern cannot contain variable bindings");
+        orPat->alternatives.push_back(std::move(alt));
+    }
+    pat = std::move(orPat);
 }
 
 Pattern Parser::parsePattern() {
@@ -837,7 +851,7 @@ Pattern Parser::parsePattern() {
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
         if (suffix == "f32" || suffix == "f64")
-            node->data = FloatExpr{std::stod(numStr), suffix};
+            node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         else
             node->data = NumberExpr{parseIntLiteral(numStr), suffix};
         return LiteralPattern{std::move(node)};
@@ -846,7 +860,7 @@ Pattern Parser::parsePattern() {
         lex_.next();
         auto [numStr, suffix] = splitNumericSuffix(t.value);
         auto node = std::make_unique<ExprNode>();
-        node->data = FloatExpr{std::stod(numStr), suffix};
+        node->data = FloatExpr{parseFloatLiteral(numStr), suffix};
         return LiteralPattern{std::move(node)};
     }
     if (t.kind == TokenKind::String) {
@@ -871,7 +885,7 @@ Pattern Parser::parsePattern() {
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
             if (suffix == "f32" || suffix == "f64")
-                node->data = FloatExpr{-std::stod(numStr), suffix};
+                node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
             else
                 node->data = NumberExpr{-parseIntLiteral(numStr), suffix};
             return LiteralPattern{std::move(node)};
@@ -880,7 +894,7 @@ Pattern Parser::parsePattern() {
             lex_.next();
             auto [numStr, suffix] = splitNumericSuffix(num.value);
             auto node = std::make_unique<ExprNode>();
-            node->data = FloatExpr{-std::stod(numStr), suffix};
+            node->data = FloatExpr{-parseFloatLiteral(numStr), suffix};
             return LiteralPattern{std::move(node)};
         }
         parseError(num.line, "expected number after '-' in pattern");
@@ -899,6 +913,7 @@ Pattern Parser::parsePattern() {
             if (lex_.peek().kind == TokenKind::LParen) {
                 lex_.next(); // consume '('
                 std::vector<std::string> bindings;
+                bindings.reserve(4);
                 if (lex_.peek().kind != TokenKind::RParen) {
                     for (;;) {
                         Token binding = lex_.peek();
@@ -924,9 +939,65 @@ Pattern Parser::parsePattern() {
     parseError(t.line, "expected pattern");
 }
 
+StmtNode Parser::parseWhenStatement() {
+    Token whenTok = lex_.next(); // consume 'when'
+
+    if (lex_.peek().kind == TokenKind::Colon) {
+        lex_.next(); // consume ':'
+
+        if (lex_.peek().kind != TokenKind::Newline)
+            parseError("expected newline after ':'");
+        lex_.next();
+        skipNewlines();
+
+        if (lex_.peek().kind != TokenKind::Indent)
+            parseError("expected indented block");
+        lex_.next();
+
+        auto whenStmt = std::make_unique<WhenCondStmt>();
+        whenStmt->loc = locFromToken(whenTok);
+        whenStmt->arms.reserve(4);
+
+        bool seenElse = false;
+        while (lex_.peek().kind != TokenKind::Dedent &&
+               lex_.peek().kind != TokenKind::Eof) {
+            if (lex_.peek().kind == TokenKind::Else) {
+                if (seenElse)
+                    parseError("duplicate 'else' arm in when block");
+                lex_.next();
+                if (lex_.peek().kind != TokenKind::Colon)
+                    parseError("expected ':' after else");
+                lex_.next();
+                whenStmt->else_body = parseBlockOrInline();
+                seenElse = true;
+            } else {
+                if (seenElse)
+                    parseError("condition arms must appear before 'else:'");
+                WhenCondArm arm;
+                arm.condition = parseConditional();
+                if (lex_.peek().kind != TokenKind::Colon)
+                    parseError("expected ':' after when condition");
+                lex_.next();
+                arm.body = parseBlockOrInline();
+                whenStmt->arms.push_back(std::move(arm));
+            }
+            skipNewlines();
+        }
+
+        if (whenStmt->arms.empty())
+            parseError("when block must have at least one condition");
+        if (lex_.peek().kind == TokenKind::Dedent)
+            lex_.next();
+        return whenStmt;
+    }
+
+    parseError("expected ':' after 'when'; use 'match value:' for pattern matching");
+}
+
 StmtNode Parser::parseMatchStatement() {
     Token matchTok = lex_.next(); // consume 'match'
-    ExprPtr subject = parseTernary();
+
+    ExprPtr subject = parseConditional();
 
     if (lex_.peek().kind != TokenKind::Colon)
         parseError("expected ':' after match subject");
@@ -941,9 +1012,13 @@ StmtNode Parser::parseMatchStatement() {
         parseError("expected indented block");
     lex_.next(); // consume Indent
 
+    if (lex_.peek().kind != TokenKind::Case)
+        parseError("'match' blocks must start with 'case'");
+
     auto matchStmt = std::make_unique<MatchStmt>();
     matchStmt->subject = std::move(subject);
     matchStmt->loc = locFromToken(matchTok);
+    matchStmt->arms.reserve(4);
 
     while (lex_.peek().kind != TokenKind::Dedent &&
            lex_.peek().kind != TokenKind::Eof) {
@@ -953,52 +1028,19 @@ StmtNode Parser::parseMatchStatement() {
 
         MatchArm arm;
         arm.pattern = parsePattern();
+        parseOrPattern(arm.pattern);
 
-        // Check for OR pattern: case A | B | C:
-        if (lex_.peek().kind == TokenKind::Pipe) {
-            auto hasBinding = [](const Pattern &p) {
-                if (std::holds_alternative<VariablePattern>(p))
-                    return true;
-                if (std::holds_alternative<SomePattern>(p))
-                    return std::get<SomePattern>(p).binding != "_";
-                if (std::holds_alternative<OkPattern>(p))
-                    return std::get<OkPattern>(p).binding != "_";
-                if (std::holds_alternative<ErrPattern>(p))
-                    return std::get<ErrPattern>(p).binding != "_";
-                if (std::holds_alternative<EnumConstructorPattern>(p)) {
-                    const auto &ec = std::get<EnumConstructorPattern>(p);
-                    return std::any_of(ec.bindings.begin(), ec.bindings.end(),
-                                       [](const std::string &b) { return b != "_"; });
-                }
-                return false;
-            };
-            auto orPat = std::make_unique<OrPattern>();
-            if (hasBinding(arm.pattern))
-                parseError("OR pattern cannot contain variable bindings");
-            orPat->alternatives.push_back(std::move(arm.pattern));
-            while (lex_.peek().kind == TokenKind::Pipe) {
-                lex_.next(); // consume '|'
-                Pattern alt = parsePattern();
-                if (hasBinding(alt))
-                    parseError("OR pattern cannot contain variable bindings");
-                orPat->alternatives.push_back(std::move(alt));
-            }
-            arm.pattern = std::move(orPat);
-        }
-
-        // Optional guard: if <expr>
         if (lex_.peek().kind == TokenKind::If) {
-            lex_.next(); // consume 'if'
-            arm.guard = parseTernary();
+            lex_.next();
+            arm.guard = parseConditional();
         }
 
         if (lex_.peek().kind != TokenKind::Colon)
             parseError("expected ':' after case pattern");
-        lex_.next(); // consume ':'
+        lex_.next();
 
-        arm.body = parseBlock();
+        arm.body = parseBlockOrInline();
         matchStmt->arms.push_back(std::move(arm));
-
         skipNewlines();
     }
 
@@ -1006,8 +1048,7 @@ StmtNode Parser::parseMatchStatement() {
         parseError("match block must have at least one case");
 
     if (lex_.peek().kind == TokenKind::Dedent)
-        lex_.next(); // consume Dedent
+        lex_.next();
 
     return matchStmt;
 }
-

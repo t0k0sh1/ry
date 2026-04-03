@@ -2,6 +2,7 @@
 #include "ry/diagnostic.hpp"
 
 void CodeGen::emitStmt(RecordStmt &s) {
+    emitTraceSymbolDefine("record", s.name, s.loc);
     if (struct_types_.count(s.name))
         codegenError("redefined type: " + s.name);
 
@@ -109,7 +110,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
             std::string qualifiedField = typeName + "." + e->field;
             if (deprecated_fields_.count(qualifiedField))
                 emitDeprecationWarning(qualifiedField);
-            return builder_.CreateExtractValue(obj, i, e->field);
+            llvm::Value *fieldVal = builder_.CreateExtractValue(obj, i, e->field);
+            if (info.fields[i].type)
+                propagateTypeMeta(info.fields[i].type->toString(), fieldVal);
+            return fieldVal;
         }
     }
 
@@ -118,7 +122,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<FieldAccessExpr> &e)
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<TupleExpr> &e) {
     std::vector<llvm::Type*> types;
+    types.reserve(e->elements.size());
     std::vector<llvm::Value*> vals;
+    vals.reserve(e->elements.size());
     for (auto &el : e->elements) {
         llvm::Value *v = emitExpr(*el);
         types.push_back(v->getType());
@@ -150,16 +156,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
 
     int64_t count = static_cast<int64_t>(vals.size());
 
-    // Allocate list header: { i64 length, i64 capacity, ptr data }
-    auto mallocFn = getStdlibMalloc();
+    // Allocate list header with ARC: [ArcHeader][ListHeader]
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
-    // Allocate header
+    // Allocate data buffer (separate allocation, freed by destructor)
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "list_header");
-
-    // Allocate data
+    auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * count);
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "list_data");
@@ -172,14 +174,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     }
 
     // Store length, capacity, data pointer into header
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "data_ptr");
-    builder_.CreateStore(dataPtr, dataPtrField);
+    storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
+                          llvm::ConstantInt::get(i64Ty_, count), dataPtr);
 
     // Track element type
     type_meta_[TM_ListElem][headerPtr] = elemTy;
@@ -232,20 +228,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
 
     int64_t count = static_cast<int64_t>(keyVals.size());
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
-    // Allocate MapHeader
-    uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
+    // Allocate MapHeader with ARC: [ArcHeader][MapHeader]
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
-    // Allocate keys array
+    // Allocate keys and values arrays (separate allocations, freed by destructor)
+    auto mallocFn = getStdlibMalloc();
     uint64_t keySize = dl.getTypeAllocSize(keyTy);
     llvm::Value *keysPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, keySize * count)}, "map_keys");
 
-    // Allocate values array
     uint64_t valSize = dl.getTypeAllocSize(valTy);
     llvm::Value *valsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * count)}, "map_vals");
@@ -261,17 +254,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     }
 
     // Store header fields: length, capacity, keys_ptr, values_ptr
-    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0, "map_len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1, "map_cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2, "map_keys_field");
-    builder_.CreateStore(keysPtr, keysPtrField);
-
-    llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3, "map_vals_field");
-    builder_.CreateStore(valsPtr, valsPtrField);
+    storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
+                         llvm::ConstantInt::get(i64Ty_, count), keysPtr, valsPtr);
 
     // Initialize hash table buckets via rehash
     int64_t initBucketCount = 8;
@@ -304,6 +288,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     type_meta_[TM_MapKey][headerPtr] = keyTy;
     type_meta_[TM_MapValue][headerPtr] = valTy;
 
+    if (valTy == ptrTy_ && !valVals.empty()) {
+        std::string valTypeName = inferCollectionTypeName(valVals[0]);
+        if (!valTypeName.empty())
+            map_value_type_names_[headerPtr] = valTypeName;
+    }
+
     return headerPtr;
 }
 
@@ -329,28 +319,22 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
 
     int64_t count = static_cast<int64_t>(vals.size());
 
-    auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
-    // Allocate SetHeader
-    uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "set_header");
+    // Allocate SetHeader with ARC: [ArcHeader][SetHeader]
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
-    // Allocate elements array (capacity = total element count)
+    // Allocate elements array (separate allocation, freed by destructor)
+    auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *elemsPtr = builder_.CreateCall(
         mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
 
     // Initialize header: length=0, capacity=count, elements pointer
+    storeSetHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                         llvm::ConstantInt::get(i64Ty_, count), elemsPtr);
     llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0, "set_len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1, "set_cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
-    builder_.CreateStore(elemsPtr, elemsPtrField);
 
     // Initialize empty hash table buckets
     int64_t initBucketCount = 8;
@@ -395,20 +379,7 @@ llvm::Value *CodeGen::emitExprVariant(const EnumAccessExpr &e) {
         if (ltPos != std::string::npos && e.enum_name.back() == '>') {
             std::string baseName = e.enum_name.substr(0, ltPos);
             std::string argsStr = e.enum_name.substr(ltPos + 1, e.enum_name.size() - ltPos - 2);
-            std::vector<std::string> typeArgs;
-            std::string curr;
-            int depth = 0;
-            for (char c : argsStr) {
-                if (c == '<') depth++;
-                else if (c == '>') depth--;
-                else if (c == ',' && depth == 0) {
-                    typeArgs.push_back(curr);
-                    curr.clear();
-                    continue;
-                }
-                curr += c;
-            }
-            if (!curr.empty()) typeArgs.push_back(curr);
+            auto typeArgs = splitTypeArgs(argsStr);
             instantiateGenericEnum(e.enum_name, baseName, typeArgs);
         }
     }
@@ -460,7 +431,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
             uint64_t arrSize = arrTy->getNumElements();
 
             emitBoundsCheck(index, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: array index out of range\n", ".arr_idx_err", "arr");
+                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_idx_err", "arr");
 
             llvm::Value *elemPtr = builder_.CreateGEP(
                 arrTy, ai, {llvm::ConstantInt::get(i64Ty_, 0), index}, "arr_elem_ptr");
@@ -508,7 +479,17 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
         llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, objPtr, 3, "map_vals_ptr");
         llvm::Value *valsPtr = builder_.CreateLoad(ptrTy_, valsPtrField, "map_vals");
         llvm::Value *valElemPtr = builder_.CreateGEP(mapValTy, valsPtr, {idx}, "val_elem_ptr");
-        return builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
+        llvm::Value *mapVal = builder_.CreateLoad(mapValTy, valElemPtr, "map_val");
+
+        auto mvtn = map_value_type_names_.find(objPtr);
+        if (mvtn == map_value_type_names_.end()) {
+            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(objPtr))
+                mvtn = map_value_type_names_.find(load->getPointerOperand());
+        }
+        if (mvtn != map_value_type_names_.end())
+            propagateTypeMeta(mvtn->second, mapVal);
+
+        return mapVal;
     }
 
     // List index access
@@ -520,11 +501,18 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<IndexExpr> &e) {
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
     emitBoundsCheck(index, length,
-                    "runtime error: list index out of range\n", ".idx_err", "index");
+                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_err", "index");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {index}, "elem_ptr");
-    return builder_.CreateLoad(elemTy, elemPtr, "elem");
+    llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "elem");
+
+    // Without this, chained indexing like matrix[i][j] loses element type metadata.
+    llvm::Type *nestedElemTy = getNestedListElementType(objPtr);
+    if (nestedElemTy)
+        type_meta_[TM_ListElem][elem] = nestedElemTy;
+
+    return elem;
 }
 
 llvm::Value *CodeGen::valueToString(llvm::Value *val) {
@@ -582,18 +570,77 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
     }
 
     if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
+        for (auto &[uname, uinfo] : union_type_info_) {
+            if (uinfo.llvmType != structTy) continue;
+
+            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.union.tag");
+            llvm::Value *dataBytes = builder_.CreateExtractValue(val, 1, "vts.union.data");
+            auto *dataTy = uinfo.llvmType->getElementType(1);
+            llvm::AllocaInst *dataTmp = builder_.CreateAlloca(dataTy, nullptr, "vts.union.data.tmp");
+            dataTmp->setAlignment(mod_->getDataLayout().getABITypeAlign(uinfo.llvmType));
+            builder_.CreateStore(dataBytes, dataTmp);
+
+            llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "vts.union.merge", fn_);
+            llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.union.default", fn_);
+            llvm::SwitchInst *sw = builder_.CreateSwitch(tag, defaultBB, uinfo.componentTypes.size());
+
+            builder_.SetInsertPoint(defaultBB);
+            llvm::Constant *unknownStr = cachedGlobalString("?", ".vts_union_unknown");
+            builder_.CreateBr(mergeBB);
+
+            builder_.SetInsertPoint(mergeBB);
+            auto *phi = builder_.CreatePHI(ptrTy_, uinfo.componentTypes.size() + 1, "vts.union.str");
+            phi->addIncoming(unknownStr, defaultBB);
+
+            for (size_t i = 0; i < uinfo.componentTypes.size(); ++i) {
+                llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(
+                    *ctx_, "vts.union.case" + std::to_string(i), fn_);
+                sw->addCase(llvm::ConstantInt::get(
+                    llvm::cast<llvm::IntegerType>(i64Ty_), i), caseBB);
+                builder_.SetInsertPoint(caseBB);
+
+                const auto &compName = uinfo.componentNames[i];
+
+                // Reject non-stringifiable pointer-backed variants
+                if (uinfo.componentTypes[i]->isPointerTy() && compName != "str") {
+                    codegenError("cannot convert " + compName +
+                                 " variant of union to string");
+                }
+
+                llvm::Value *innerVal = builder_.CreateLoad(
+                    uinfo.componentTypes[i], dataTmp, "vts.union.inner");
+
+                // Propagate low-level type metadata for correct signedness formatting
+                if (isLowLevelTypeName(compName))
+                    low_level_type_names_[innerVal] = compName;
+
+                llvm::Value *innerStr = valueToString(innerVal);
+
+                phi->addIncoming(innerStr, builder_.GetInsertBlock());
+                builder_.CreateBr(mergeBB);
+            }
+
+            builder_.SetInsertPoint(mergeBB);
+            return phi;
+        }
+
+        if (isOptionType(ty) || isResultType(ty))
+            return collectionToString(val);
+
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
             return structToString(val);
+        if (isTupleStructType(structTy))
+            return tupleToString(val, structTy);
     }
 
     if (ty->isPointerTy()) {
-        // Reject non-string pointer types (collections, function pointers)
+        // Convert collections to string via sprint buffer
         if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
             llvm::Value *src = load->getPointerOperand();
             if (type_meta_[TM_ListElem].count(src) || type_meta_[TM_MapKey].count(src) ||
                 type_meta_[TM_SetElem].count(src))
-                codegenError("cannot convert collection to string");
+                return collectionToString(val);
         }
         if (fn_type_info_.count(val))
             codegenError("cannot convert function to string");
@@ -698,12 +745,9 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
 
     // Auto-generate: "TypeName(field1: val1, field2: val2)"
     auto strlenFn = getStdlibStrlen();
-    auto mallocFn = getStdlibMalloc();
-    auto memcpyFn = getStdlibMemcpy();
 
-    // Build string parts with lengths (use constants for literals, strlen for dynamic values)
-    struct StringPart { llvm::Value *str; llvm::Value *len; };
-    std::vector<StringPart> parts;
+    using SP = std::pair<llvm::Value*, llvm::Value*>;
+    std::vector<SP> parts;
 
     auto addLiteral = [&](const std::string &s, const char *label) {
         parts.push_back({cachedGlobalString(s, label),
@@ -723,24 +767,72 @@ llvm::Value *CodeGen::structToString(llvm::Value *val) {
 
     addLiteral(")", ".sts_suffix");
 
-    // Compute total length
+    return concatStringParts(parts, "sts");
+}
+
+llvm::Value *CodeGen::tupleToString(llvm::Value *val, llvm::StructType *st) {
+    auto strlenFn = getStdlibStrlen();
+
+    using SP = std::pair<llvm::Value*, llvm::Value*>;
+    std::vector<SP> parts;
+
+    auto addLiteral = [&](const std::string &s, const char *label) {
+        parts.push_back({cachedGlobalString(s, label),
+                         llvm::ConstantInt::get(i64Ty_, s.size())});
+    };
+
+    unsigned n = st->getNumElements();
+    addLiteral("(", ".tts_prefix");
+    for (unsigned i = 0; i < n; ++i) {
+        if (i > 0)
+            addLiteral(", ", ".tts_sep");
+        llvm::Value *elem = builder_.CreateExtractValue(val, i, "tts_elem");
+        llvm::Value *elemStr = valueToString(elem);
+        parts.push_back({elemStr, builder_.CreateCall(strlenFn, {elemStr}, "tts_len")});
+    }
+    if (n == 1)
+        addLiteral(",", ".tts_trail");
+    addLiteral(")", ".tts_suffix");
+
+    return concatStringParts(parts, "tts");
+}
+
+llvm::Value *CodeGen::concatStringParts(
+    const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
+    const std::string &prefix) {
+    auto mallocFn = getStdlibMalloc();
+    auto memcpyFn = getStdlibMemcpy();
+
     llvm::Value *totalLen = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts)
-        totalLen = builder_.CreateAdd(totalLen, p.len, "sts_total");
+        totalLen = builder_.CreateAdd(totalLen, p.second, prefix + "_total");
 
-    // Allocate and concatenate
-    llvm::Value *bufSize = builder_.CreateAdd(totalLen, llvm::ConstantInt::get(i64Ty_, 1), "sts_bufsize");
-    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, "sts_buf");
-    llvm::Value *offset = llvm::ConstantInt::get(i64Ty_, 0);
+    llvm::Value *bufSize = builder_.CreateAdd(
+        totalLen, llvm::ConstantInt::get(i64Ty_, 1), prefix + "_bufsize");
+    llvm::Value *buf = builder_.CreateCall(mallocFn, {bufSize}, prefix + "_buf");
+    llvm::Value *off = llvm::ConstantInt::get(i64Ty_, 0);
     for (auto &p : parts) {
-        llvm::Value *dst = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_dst");
-        builder_.CreateCall(memcpyFn, {dst, p.str, p.len});
-        offset = builder_.CreateAdd(offset, p.len, "sts_off");
+        llvm::Value *dst = builder_.CreateGEP(
+            builder_.getInt8Ty(), buf, {off}, prefix + "_dst");
+        builder_.CreateCall(memcpyFn, {dst, p.first, p.second});
+        off = builder_.CreateAdd(off, p.second, prefix + "_off");
     }
 
-    // Null-terminate
-    llvm::Value *endPtr = builder_.CreateGEP(builder_.getInt8Ty(), buf, {offset}, "sts_end");
-    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), endPtr);
-
+    llvm::Value *ep = builder_.CreateGEP(
+        builder_.getInt8Ty(), buf, {off}, prefix + "_end");
+    builder_.CreateStore(llvm::ConstantInt::get(builder_.getInt8Ty(), 0), ep);
     return buf;
+}
+
+llvm::Value *CodeGen::collectionToString(llvm::Value *val) {
+    // Use sprint buffer: begin → print collection → end (returns char*)
+    builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
+        llvm::Type::getVoidTy(*ctx_), {}));
+
+    auto sprintfFn = getSprintPrintf();
+    emitPrintSingle(val, sprintfFn);
+
+    return builder_.CreateCall(
+        getRuntimeFn("__ry_sprint_end", ptrTy_, {}),
+        {}, "col_str");
 }

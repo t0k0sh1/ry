@@ -1,0 +1,80 @@
+function safe_divide(a: int, b: int) -> Result<int, Error>:
+  if b == 0:
+    return Err(Error("division by zero"))
+  return Ok(a // b)
+
+describe("Result and_then", ():
+  it("chains Ok values", ():
+    res = safe_divide(10, 2).and_then((v: int) => safe_divide(v, 1))
+    match res:
+      case Ok(v): expect(v).to_eq(5)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("short-circuits on first Err", ():
+    res = safe_divide(10, 0).and_then((v: int) => safe_divide(v, 1))
+    match res:
+      case Ok(v): fail("expected Err but got Ok")
+      case Err(e): expect(e.message).to_eq("division by zero")
+  )
+
+  it("short-circuits on second Err", ():
+    res = safe_divide(10, 2).and_then((v: int) => safe_divide(v, 0))
+    match res:
+      case Ok(v): fail("expected Err but got Ok")
+      case Err(e): expect(e.message).to_eq("division by zero")
+  )
+
+  it("chains multiple and_then", ():
+    res = safe_divide(100, 2).and_then((v: int) => safe_divide(v, 5)).and_then((v: int) => safe_divide(v, 2))
+    match res:
+      case Ok(v): expect(v).to_eq(5)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+)
+
+describe("Result map", ():
+  it("maps Ok value", ():
+    res = safe_divide(10, 2).map((v: int) => v * 10)
+    match res:
+      case Ok(v): expect(v).to_eq(50)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("preserves Err on map", ():
+    res = safe_divide(10, 0).map((v: int) => v * 10)
+    match res:
+      case Ok(v): fail("expected Err but got Ok")
+      case Err(e): expect(e.message).to_eq("division by zero")
+  )
+
+  it("map with arithmetic", ():
+    res = safe_divide(10, 2).map((v: int) => v + 1)
+    match res:
+      case Ok(v): expect(v).to_eq(6)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+)
+
+describe("Result chaining (mixed)", ():
+  it("and_then followed by map", ():
+    res = safe_divide(100, 10).and_then((v: int) => safe_divide(v, 2)).map((v: int) => v + 100)
+    match res:
+      case Ok(v): expect(v).to_eq(105)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("map followed by and_then", ():
+    res = safe_divide(10, 2).map((v: int) => v * 4).and_then((v: int) => safe_divide(v, 5))
+    match res:
+      case Ok(v): expect(v).to_eq(4)
+      case Err(e): fail("unexpected error: " + e.message)
+  )
+
+  it("error propagates through mixed chain", ():
+    res = safe_divide(10, 0).map((v: int) => v * 10).and_then((v: int) => safe_divide(v, 2))
+    match res:
+      case Ok(v): fail("expected Err but got Ok")
+      case Err(e): expect(e.message).to_eq("division by zero")
+  )
+)

@@ -12,9 +12,9 @@
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `contains` | `(str, str) -> bool` | 部分文字列が含まれるかを返す |
-| `starts_with` | `(str, str) -> bool` | 接頭辞で始まるかを返す |
-| `ends_with` | `(str, str) -> bool` | 接尾辞で終わるかを返す |
+| `contains` | `(str, str, bool = false) -> bool` | 部分文字列が含まれるかを返す |
+| `starts_with` | `(str, str, bool = false) -> bool` | 接頭辞で始まるかを返す |
+| `ends_with` | `(str, str, bool = false) -> bool` | 接尾辞で終わるかを返す |
 | `find` | `(str, str) -> Option<int>` | 部分文字列の文字位置を返す（未発見は `None`） |
 
 ### 抽出・変換
@@ -59,47 +59,50 @@
 
 | 関数 | シグネチャ | 説明 |
 |------|-----------|------|
-| `to_int` | `str -> int` | 文字列を整数に変換 |
+| `to_int` | `str -> Result<int, Error>` | 文字列を整数に変換 |
 | `to_float` | `str -> float` | 文字列を浮動小数点数に変換 |
-| `to_str` | `int/float/bool/str/record -> str` | 値を文字列に変換 |
+| `to_str` | `int/float/bool/str/enum/record -> str` | 値を文字列に変換 |
 
 ---
 
 ## contains
 
-**シグネチャ:** `contains(string: str, substring: str) -> bool`
+**シグネチャ:** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
 
-文字列 `string` に部分文字列 `substring` が含まれるかを返します。
+文字列 `string` に部分文字列 `substring` が含まれるかを返します。`ignore_case` が `true` の場合、比較は大文字小文字を区別しません（ASCII のみ）。
 
 ```python
-print(contains("hello", "ell"))   # true
-print("hello".contains("xyz"))    # false (UFCS)
+print(contains("hello", "ell"))              # true
+print("hello".contains("xyz"))               # false (UFCS)
+print(contains("Hello World", "hello", true))  # true（大文字小文字区別なし）
 ```
 
 ---
 
 ## starts_with
 
-**シグネチャ:** `starts_with(string: str, prefix: str) -> bool`
+**シグネチャ:** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
-文字列 `string` が `prefix` で始まるかを返します。
+文字列 `string` が `prefix` で始まるかを返します。`ignore_case` が `true` の場合、比較は大文字小文字を区別しません（ASCII のみ）。
 
 ```python
-print(starts_with("hello", "hel"))   # true
-print("hello".starts_with("world"))  # false (UFCS)
+print(starts_with("hello", "hel"))              # true
+print("hello".starts_with("world"))              # false (UFCS)
+print(starts_with("Hello", "hello", true))  # true（大文字小文字区別なし）
 ```
 
 ---
 
 ## ends_with
 
-**シグネチャ:** `ends_with(string: str, suffix: str) -> bool`
+**シグネチャ:** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
-文字列 `string` が `suffix` で終わるかを返します。
+文字列 `string` が `suffix` で終わるかを返します。`ignore_case` が `true` の場合、比較は大文字小文字を区別しません（ASCII のみ）。
 
 ```python
-print(ends_with("hello", "llo"))   # true
-print("hello".ends_with("world"))  # false (UFCS)
+print(ends_with("hello", "llo"))              # true
+print("hello".ends_with("world"))              # false (UFCS)
+print(ends_with("Hello World", "WORLD", true))  # true（大文字小文字区別なし）
 ```
 
 ---
@@ -124,10 +127,13 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 文字列 `string` の `start` から `end`（排他）までの部分文字列を返します。インデックスは文字位置（UTF-8 対応）です。
 
+範囲外のインデックスは `[0, length]` にクランプされます。クランプ後に `end < start` の場合は空文字列を返します。
+
 ```python
 print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
+print(substring("hello", -1, 100))      # hello（クランプされる）
 ```
 
 ---
@@ -136,10 +142,13 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **シグネチャ:** `char_at(string: str, i: int) -> str`
 
-文字列 `string` の `i` 番目の UTF-8 文字を文字列として返します。
+文字列 `string` の `i` 番目の UTF-8 文字を文字列として返します。インデックスが範囲外の場合はランタイムエラーになります。
+
+負のインデックスは末尾から数えます（Python スタイル）: `-1` は最後の文字、`-2` は最後から2番目の文字を指します。
 
 ```python
-print(char_at("hello", 0))   # h
+print(char_at("hello", 0))    # h
+print(char_at("hello", -1))   # o（最後の文字）
 print("abc".char_at(2))       # c (UFCS)
 ```
 
@@ -270,6 +279,8 @@ print(length("あいう"))        # 3 (文字数)
 
 文字列 `string` をデリミタ `delimiter` で分割し、`List<str>` を返します。
 
+デリミタが空文字列 `""` の場合、文字列は個別の文字に分割されます（UTF-8 対応）。
+
 ```python
 parts = split("a,b,c", ",")
 print(parts[0])   # a
@@ -280,6 +291,14 @@ for word in "hello world".split(" "):
     print(word)
 # hello
 # world
+
+# 文字ごとに分割
+chars = split("hello", "")
+print(chars)   # [h, e, l, l, o]
+
+# UTF-8 文字
+chars = split("あいう", "")
+print(chars)   # [あ, い, う]
 ```
 
 ---
@@ -294,20 +313,33 @@ for word in "hello world".split(" "):
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
+print(",".join(parts))         # a,b,c (UFCS, Python スタイル)
 ```
 
 ---
 
 ## to_int
 
-**シグネチャ:** `to_int(string: str) -> int`
+**シグネチャ:** `to_int(string: str) -> Result<int, Error>`
 
-文字列を整数に変換します。
+文字列を整数に変換します。先頭の空白は許容されます。文字列が空の場合、無効な文字を含む場合、またはオーバーフローする場合は `Err` を返します。
 
 ```python
-print(to_int("42"))       # 42
-print(to_int("-7"))       # -7
-print("123".to_int())     # 123 (UFCS)
+match to_int("42"):
+    case Ok(v):
+        print(v)              # 42
+    case Err(e):
+        print(e.message)
+
+match "123".to_int():          # UFCS
+    case Ok(v):
+        print(v)              # 123
+    case Err(e):
+        print(e.message)
+
+# 無効な入力は Err を返す
+print(to_int("abc"))          # Err(Error("to_int: invalid character in 'abc'"))
+print(to_int(""))             # Err(Error("to_int: empty string"))
 ```
 
 ---
@@ -327,7 +359,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**シグネチャ:** `to_str(v: int | float | bool | str | record) -> str`
+**シグネチャ:** `to_str(v: int | float | bool | str | enum | record) -> str`
 
 値を文字列に変換します。
 
@@ -337,15 +369,22 @@ print("2.5".to_float())   # 2.5 (UFCS)
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | そのまま返す |
+| enum | バリアント名（例: `"Red"`） |
 | record | `TypeName(field1: val1, field2: val2)` |
 
-record 型は `to_str` 表現を自動生成します。ユーザー定義の `fn to_str(v: MyRecord) -> str` が提供されている場合、自動生成バージョンより優先されます。これは `print()` や f-string 補間でも同様に機能します。
+record 型は `to_str` 表現を自動生成します。ユーザー定義の `function to_str(v: MyRecord) -> str` が提供されている場合、自動生成バージョンより優先されます。これは `print()` や f-string 補間でも同様に機能します。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+enum Color:
+    Red
+    Green
+
+print(to_str(Color::Red))   # Red
 
 record Point:
     x: int

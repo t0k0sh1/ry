@@ -19,6 +19,7 @@ enum class TokenKind {
     And,         // and
     Or,          // or
     Not,         // not
+    NotIn,       // not in
     True,        // true
     False,       // false
     // --- ビット演算子 ---
@@ -36,8 +37,9 @@ enum class TokenKind {
     Dedent,         // インデントレベル減少
     // --- 制御構文 ---
     If,             // if
-    Elif,           // elif
     Else,           // else
+    When,           // when
+    Match,          // match
     While,          // while
     // --- 関数定義 ---
     Fn,             // fn
@@ -89,8 +91,6 @@ enum class TokenKind {
     // --- enum ---
     Enum,           // enum
     ColonColon,     // ::
-    // --- match ---
-    Match,          // match
     Case,           // case
     // --- test ---
     Expect,         // expect
@@ -112,6 +112,8 @@ enum class TokenKind {
     Question,       // ?
     Async,          // async
     Await,          // await
+    // --- regex literal ---
+    RegexLiteral,   // /pattern/
 };
 
 struct Token {
@@ -141,6 +143,7 @@ public:
         std::queue<Token> pending;
         Token current;
         int fstring_brace_depth;
+        TokenKind prev_kind;
     };
     State saveState() const;
     void restoreState(State s);
@@ -156,6 +159,7 @@ private:
     std::vector<int> indent_stack_ = {0};
     std::queue<Token> pending_;
     int fstring_brace_depth_ = 0;
+    TokenKind prev_kind_ = TokenKind::Newline;
 
     Token readToken();
     Token readFStringSegment(bool isStart);

@@ -1,0 +1,55 @@
+from thread import lock_new, lock_acquire, lock_release, lock_free, rwlock_new, rwlock_read_lock, rwlock_unlock, rwlock_free, atomic_int_new, atomic_int_load, atomic_int_free
+
+describe("ARC resource alias — explicit free should decrement refcount (#427)", ():
+  it("lock alias: free original, alias still usable", ():
+    a = lock_new()
+    b = a
+    lock_free(a)
+    result = lock_acquire(b)
+    expect(result).to_be_ok()
+    lock_release(b)
+  )
+
+  it("lock alias: free alias, original still usable", ():
+    a = lock_new()
+    b = a
+    lock_free(b)
+    result = lock_acquire(a)
+    expect(result).to_be_ok()
+    lock_release(a)
+  )
+
+  it("rwlock alias: free original, alias still usable", ():
+    a = rwlock_new()
+    b = a
+    rwlock_free(a)
+    rwlock_read_lock(b)
+    rwlock_unlock(b)
+    expect(true).to_be_true()
+  )
+
+  it("atomic_int alias: free original, alias still usable", ():
+    a = atomic_int_new(42)
+    b = a
+    atomic_int_free(a)
+    expect(atomic_int_load(b)).to_eq(42)
+  )
+
+  it("lock multiple aliases: free first two, third still usable", ():
+    a = lock_new()
+    b = a
+    c = a
+    lock_free(a)
+    lock_free(b)
+    result = lock_acquire(c)
+    expect(result).to_be_ok()
+    lock_release(c)
+  )
+
+  it("lock: double free same variable is safe (no-op after null)", ():
+    a = lock_new()
+    lock_free(a)
+    lock_free(a)
+    expect(true).to_be_true()
+  )
+)

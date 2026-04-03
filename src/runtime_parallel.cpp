@@ -238,7 +238,10 @@ void waitWithWorkerHelp(std::unique_lock<std::mutex> &lock,
             lock.unlock();
             const bool ran = scheduler().tryRunOne();
             lock.lock();
-            if (ran)
+            // Re-check predicate after reacquiring lock: the task may have
+            // completed and notified while the lock was released, so going
+            // straight to cv.wait() would miss the already-sent notification.
+            if (ran || pred())
                 continue;
         }
         cv.wait(lock);

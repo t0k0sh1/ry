@@ -26,49 +26,44 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (auto *se = std::get_if<std::unique_ptr<SetExpr>>(&value.data); se && (*se)->elements.empty()) {
         if (!annot)
             codegenError("empty {} literal requires type annotation");
-        if (annot->size() > 4 && annot->substr(0, 4) == "Set<") {
+        if (isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             llvm::Type *elemTy = resolveType(inner);
 
-            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
-            uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-            llvm::Value *headerPtr = builder_.CreateCall(
-                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_set");
+            // Allocate SetHeader with ARC
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
             // Initial capacity = 4
+            auto mallocFn = getStdlibMalloc();
             uint64_t elemSize = dl.getTypeAllocSize(elemTy);
             llvm::Value *elemsPtr = builder_.CreateCall(
                 mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_set_elems");
 
-            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-            llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
-            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2);
-            builder_.CreateStore(elemsPtr, elemsPtrField);
+            storeSetHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                                 llvm::ConstantInt::get(i64Ty_, 4), elemsPtr);
             emitBucketInit(headerPtr, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             type_meta_[TM_SetElem][ptr] = elemTy;
+            markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
         }
-        if (annot->size() > 4 && annot->substr(0, 4) == "Map<") {
+        if (isMapTypeName(*annot)) {
             auto [keyTy, valTy] = parseMapTypeAnnotation(*annot);
             if (!keyTy || !valTy)
                 codegenError("invalid map type annotation: " + *annot);
 
-            auto mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
-            uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-            llvm::Value *headerPtr = builder_.CreateCall(
-                mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "empty_map");
+            // Allocate MapHeader with ARC
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
+            auto mallocFn = getStdlibMalloc();
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
             uint64_t valSize = dl.getTypeAllocSize(valTy);
             llvm::Value *keysPtr = builder_.CreateCall(
@@ -76,20 +71,19 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::Value *valsPtr = builder_.CreateCall(
                 mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * 4)}, "empty_map_vals");
 
-            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-            llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
-            llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2);
-            builder_.CreateStore(keysPtr, keysPtrField);
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3);
-            builder_.CreateStore(valsPtr, valsPtrField);
+            storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                                 llvm::ConstantInt::get(i64Ty_, 4), keysPtr, valsPtr);
             emitBucketInit(headerPtr, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
             builder_.CreateStore(headerPtr, ptr);
             type_meta_[TM_MapKey][ptr] = keyTy;
             type_meta_[TM_MapValue][ptr] = valTy;
+            {
+                std::string vtn = extractMapValueTypeName(*annot);
+                if (!vtn.empty()) map_value_type_names_[ptr] = vtn;
+            }
+            markArcManaged(ptr);
             if (is_immutable)
                 immutable_scope_stack_.back().insert(name);
             return;
@@ -97,11 +91,48 @@ void CodeGen::emitVarDecl(const std::string &name,
         codegenError("empty {} requires Set<T> or Map<K, V> type annotation");
     }
 
-    // Handle None literal (VariableExpr("None") or NoneExpr)
-    bool isNone = std::holds_alternative<NoneExpr>(value.data) ||
-                  (std::holds_alternative<VariableExpr>(value.data) &&
-                   std::get<VariableExpr>(value.data).name == "None");
-    if (isNone) {
+    // Handle empty list literal: xs: List<int> = []
+    if (auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data); le && (*le)->elements.empty()) {
+        if (!annot)
+            codegenError("empty list literal requires a List<T> type annotation");
+        std::string resolvedAnnot = resolveTypeAlias(*annot);
+        if (!isListTypeName(resolvedAnnot) || resolvedAnnot.size() < 7 || resolvedAnnot.back() != '>')
+            codegenError("empty list literal requires a List<T> type annotation");
+        std::string inner = resolvedAnnot.substr(5, resolvedAnnot.size() - 6);
+        llvm::Type *elemTy = resolveType(inner);
+
+        const llvm::DataLayout &dl = mod_->getDataLayout();
+
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
+
+        auto mallocFn = getStdlibMalloc();
+        uint64_t elemSize = dl.getTypeAllocSize(elemTy);
+        llvm::Value *elemsPtr = builder_.CreateCall(
+            mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_list_elems");
+
+        storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                              llvm::ConstantInt::get(i64Ty_, 4), elemsPtr);
+
+        llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
+        builder_.CreateStore(headerPtr, ptr);
+        type_meta_[TM_ListElem][ptr] = elemTy;
+        markArcManaged(ptr);
+        arc_backed_vars_.insert(ptr);
+
+        // Set nested-list metadata for List<List<T>> annotations
+        if (isListTypeName(inner) && inner.back() == '>') {
+            std::string nestedInner = inner.substr(5, inner.size() - 6);
+            llvm::Type *nestedElemTy = resolveType(nestedInner);
+            if (nestedElemTy)
+                type_meta_[TM_NestedListElem][ptr] = nestedElemTy;
+        }
+
+        if (is_immutable)
+            immutable_scope_stack_.back().insert(name);
+        return;
+    }
+
+    if (isNoneLiteral(value)) {
         if (!annot)
             codegenError("type annotation required for None");
         llvm::Type *annotTy = resolveType(*annot);
@@ -143,51 +174,50 @@ void CodeGen::emitVarDecl(const std::string &name,
         }
     }
 
-    // Fixed-length array declaration: [T; N] = [elem, ...]
-    if (annot && !annot->empty() && annot->front() == '[' &&
-        annot->back() == ']' && annot->find(';') != std::string::npos) {
-        llvm::Type *annotTy = resolveType(*annot);
-        auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
-        if (!arrTy) codegenError("invalid array type: " + *annot);
+    // Fixed-length array declaration: T[N] = [elem, ...]
+    if (annot && !annot->empty() && annot->back() == ']') {
+        size_t bracketPos = annot->find('[');
+        if (bracketPos != std::string::npos && bracketPos > 0) {
+            llvm::Type *annotTy = resolveType(*annot);
+            auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(annotTy);
+            if (!arrTy) codegenError("invalid array type: " + *annot);
 
-        llvm::Type *elemTy = arrTy->getElementType();
-        uint64_t arrSize = arrTy->getNumElements();
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
 
-        // Parse element type name from annotation "[elemType; N]"
-        size_t semiPos = annot->find(';');
-        std::string elemTypeName = annot->substr(1, semiPos - 1);
-        while (!elemTypeName.empty() && elemTypeName.back() == ' ') elemTypeName.pop_back();
+            std::string elemTypeName = annot->substr(0, bracketPos);
 
-        auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
-        if (!le)
-            codegenError("array type requires list literal initializer");
-        if ((*le)->elements.size() != arrSize)
-            codegenError("array size mismatch: expected " + std::to_string(arrSize) +
-                         " elements, got " + std::to_string((*le)->elements.size()));
+            auto *le = std::get_if<std::unique_ptr<ListExpr>>(&value.data);
+            if (!le)
+                codegenError("array type requires list literal initializer");
+            if ((*le)->elements.size() != arrSize)
+                codegenError("array size mismatch: expected " + std::to_string(arrSize) +
+                             " elements, got " + std::to_string((*le)->elements.size()));
 
-        llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
+            llvm::AllocaInst *ptr = getOrCreateVar(name, arrTy);
 
-        for (uint64_t i = 0; i < arrSize; ++i) {
-            llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
-            if (elemVal->getType() != elemTy) {
-                llvm::Value *coerced = coerceToLowLevelType(
-                    elemVal, elemTy, elemTypeName,
-                    " at index " + std::to_string(i), "arr_trunc");
-                if (coerced) {
-                    elemVal = coerced;
-                } else {
-                    codegenError("array element type mismatch at index " + std::to_string(i));
+            for (uint64_t i = 0; i < arrSize; ++i) {
+                llvm::Value *elemVal = emitExpr(*(*le)->elements[i]);
+                if (elemVal->getType() != elemTy) {
+                    llvm::Value *coerced = coerceToLowLevelType(
+                        elemVal, elemTy, elemTypeName,
+                        " at index " + std::to_string(i), "arr_trunc");
+                    if (coerced) {
+                        elemVal = coerced;
+                    } else {
+                        codegenError("array element type mismatch at index " + std::to_string(i));
+                    }
                 }
+                llvm::Value *elemPtr = builder_.CreateGEP(
+                    arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
+                builder_.CreateStore(elemVal, elemPtr);
             }
-            llvm::Value *elemPtr = builder_.CreateGEP(
-                arrTy, ptr, {llvm::ConstantInt::get(i64Ty_, 0), llvm::ConstantInt::get(i64Ty_, i)}, "arr_init");
-            builder_.CreateStore(elemVal, elemPtr);
-        }
 
-        array_elem_type_names_[ptr] = elemTypeName;
-        if (is_immutable)
-            immutable_scope_stack_.back().insert(name);
-        return;
+            array_elem_type_names_[ptr] = elemTypeName;
+            if (is_immutable)
+                immutable_scope_stack_.back().insert(name);
+            return;
+        }
     }
 
     llvm::Value *val = emitExpr(value);
@@ -274,8 +304,12 @@ void CodeGen::emitVarDecl(const std::string &name,
     // (e.g., Option<Map<str, str>>, Result<List<int>, Error>)
     if (isOptionType(newTy) || isResultType(newTy)) {
         propagateCollectionMetadata(val, ptr);
-        // Extract inner collection type from Option<Map<K,V>> or Result<Map<K,V>, E>
-        if (annot && type_meta_[TM_MapKey].find(ptr) == type_meta_[TM_MapKey].end()) {
+        // Extract inner collection type from Option/Result wrapping a collection
+        if (annot &&
+            !type_meta_[TM_MapKey].count(ptr) &&
+            !type_meta_[TM_ListElem].count(ptr) &&
+            !type_meta_[TM_SetElem].count(ptr) &&
+            !type_meta_[TM_TaskResult].count(ptr)) {
             std::string ann = *annot;
             std::string inner;
             if (ann.size() > 7 && ann.substr(0, 7) == "Option<" && ann.back() == '>')
@@ -293,21 +327,8 @@ void CodeGen::emitVarDecl(const std::string &name,
                     }
                 }
             }
-            if (inner.size() > 4 && inner.substr(0, 4) == "Map<") {
-                auto [k, v] = parseMapTypeAnnotation(inner);
-                if (k) type_meta_[TM_MapKey][ptr] = k;
-                if (v) type_meta_[TM_MapValue][ptr] = v;
-            } else if (inner.size() > 5 && inner.substr(0, 5) == "List<") {
-                std::string elemName = inner.substr(5, inner.size() - 6);
-                llvm::Type *elemTy = resolveType(elemName);
-                if (elemTy)
-                    type_meta_[TM_ListElem][ptr] = elemTy;
-            } else if (inner.size() > 4 && inner.substr(0, 4) == "Set<") {
-                std::string elemName = inner.substr(4, inner.size() - 5);
-                llvm::Type *elemTy = resolveType(elemName);
-                if (elemTy)
-                    type_meta_[TM_SetElem][ptr] = elemTy;
-            }
+            if (!inner.empty())
+                propagateTypeMeta(inner, ptr);
         }
     }
 
@@ -315,8 +336,7 @@ void CodeGen::emitVarDecl(const std::string &name,
     if (newTy == ptrTy_) {
         // --- List tracking ---
         llvm::Type *elemTy = getListElementType(val);
-        if (!elemTy && annot && annot->size() > 5 &&
-            annot->substr(0, 5) == "List<") {
+        if (!elemTy && annot && isListTypeName(*annot)) {
             std::string inner = annot->substr(5, annot->size() - 6);
             elemTy = resolveType(inner);
         }
@@ -353,12 +373,20 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
         }
         // From type annotation: Map<K, V>
-        if (!keyTy && annot && annot->size() > 4 &&
-            annot->substr(0, 4) == "Map<") {
+        if (!keyTy && annot && isMapTypeName(*annot)) {
             std::tie(keyTy, valTy) = parseMapTypeAnnotation(*annot);
         }
         if (keyTy) type_meta_[TM_MapKey][ptr] = keyTy;
         if (valTy) type_meta_[TM_MapValue][ptr] = valTy;
+        {
+            auto mvtn = map_value_type_names_.find(val);
+            if (mvtn == map_value_type_names_.end()) {
+                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+                    mvtn = map_value_type_names_.find(load->getPointerOperand());
+            }
+            if (mvtn != map_value_type_names_.end())
+                map_value_type_names_[ptr] = mvtn->second;
+        }
 
         // --- Set tracking ---
         llvm::Type *setElemTy = getSetElementType(val);
@@ -367,8 +395,7 @@ void CodeGen::emitVarDecl(const std::string &name,
                 setElemTy = getSetElementType(load->getPointerOperand());
             }
         }
-        if (!setElemTy && annot && annot->size() > 4 &&
-            annot->substr(0, 4) == "Set<") {
+        if (!setElemTy && annot && isSetTypeName(*annot)) {
             std::string inner = annot->substr(4, annot->size() - 5);
             setElemTy = resolveType(inner);
         }
@@ -390,7 +417,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         if (fnIt != fn_type_info_.end()) {
             fn_type_info_[ptr] = fnIt->second;
         } else if (annot) {
-            if (resolvedAnnot.size() > 3 && resolvedAnnot.substr(0, 3) == "fn(") {
+            if (resolvedAnnot.size() > 9 && resolvedAnnot.substr(0, 9) == "function(") {
                 fn_type_info_[ptr] = parseFnTypeAnnotation(resolvedAnnot);
             }
         }
@@ -404,6 +431,47 @@ void CodeGen::emitVarDecl(const std::string &name,
             }
             if (iterElemTy)
                 type_meta_[TM_IteratorElem][ptr] = iterElemTy;
+        }
+
+        // --- Weak reference tracking ---
+        if (annot && isWeakTypeName(*annot)) {
+            if (!std::get_if<std::unique_ptr<WeakExpr>>(&value.data))
+                codegenError("weak-typed variable must be initialized with a 'weak' expression");
+            emitWeakRetain(val);
+            markWeakManaged(ptr);
+            std::string innerName = weakInnerTypeName(*annot);
+            weak_inner_type_names_[ptr] = innerName;
+            // Set collection metadata on weak alloca so it propagates through upgrade
+            propagateTypeMeta(innerName, ptr);
+        }
+        // --- ARC tracking ---
+        else {
+        bool isCollection = type_meta_[TM_ListElem].count(ptr) ||
+                            type_meta_[TM_MapKey].count(ptr) ||
+                            type_meta_[TM_SetElem].count(ptr);
+        bool isArcOwned = arc_owned_values_.count(val) > 0;
+        auto detectedRK = detectResourceKind(val);
+        bool isResource = (detectedRK != RK_COUNT);
+        bool isRetainedArc = tryRetainArcSource(val);
+        // Detect closures with captures (ARC-managed closure structs)
+        bool isClosure = false;
+        {
+            auto fnIt = lookupFnTypeInfo(val);
+            if (fnIt != fn_type_info_.end() && !fnIt->second.capturedVars.empty()) {
+                isClosure = true;
+                fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca
+            }
+        }
+        if (isCollection || isArcOwned || isResource || isRetainedArc || isClosure) {
+            markArcManaged(ptr);
+            if (isResource)
+                resource_managed_vars_[ptr] = detectedRK;
+            if (isClosure)
+                closure_managed_vars_.insert(ptr);
+        }
+        // Track allocas that are truly ARC-backed (have ARC header prepended)
+        if (isArcOwned || isRetainedArc)
+            arc_backed_vars_.insert(ptr);
         }
     }
 
@@ -425,6 +493,28 @@ void CodeGen::emitVarDecl(const std::string &name,
 
     if (is_immutable)
         immutable_scope_stack_.back().insert(name);
+}
+
+void CodeGen::emitStmt(ExprStmt &s) {
+    if (s.loc.isValid()) current_loc_ = s.loc;
+    emitCoverage(s.loc);
+    llvm::Value *val = emitExpr(*s.expr);
+
+    // Release ARC-owned temporaries that are not stored into a variable.
+    // Without this, collection operation results (appended, slice, etc.)
+    // and other ARC-owned values would leak when used as bare statements.
+    if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        llvm::FunctionCallee dtor = {};
+        if (type_meta_[TM_ListElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::List);
+        else if (type_meta_[TM_MapKey].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+        else if (type_meta_[TM_SetElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        emitArcRelease(hdr, false, dtor);
+        arc_owned_values_.erase(val);
+    }
 }
 
 void CodeGen::emitStmt(AssignStmt &s) {
@@ -449,6 +539,7 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
     llvm::AllocaInst *ptr = findVar(s.name);
     if (!ptr) {
+        emitTraceSymbolDefine("variable", s.name, s.loc);
         emitVarDecl(s.name, s.type_annotation, *s.value, is_const);
         if (hasDirective(s.directives, "deprecated"))
             deprecated_variables_.insert(s.name);
@@ -473,7 +564,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
 
         if (!result) {
             // Priority 2: user-defined binary operator or built-in (e.g., operator+)
-            result = emitBinaryOp(*s.compound_op, currentVal, rhs);
+            std::string rhsHint = getExprLowLevelSuffix(*s.value);
+            result = emitBinaryOp(*s.compound_op, currentVal, rhs, "", rhsHint);
         }
 
         // Type compatibility check (same as plain assignment path)
@@ -533,6 +625,42 @@ void CodeGen::emitStmt(AssignStmt &s) {
     auto tcIt = type_constraints_.find(ptr);
     if (tcIt != type_constraints_.end()) {
         emitConstraintCheck(val, tcIt->second, s.name);
+    }
+
+    // Weak ref reassignment: retain new, release old
+    if (isWeakManaged(ptr)) {
+        if (!std::get_if<std::unique_ptr<WeakExpr>>(&s.value->data))
+            codegenError("weak variable must be reassigned with a 'weak' expression");
+        emitWeakRetain(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".weak_old");
+        emitWeakRelease(oldVal);
+    }
+    // ARC: retain new value before releasing old to avoid use-after-free on self-assignment
+    else if (isArcManaged(ptr)) {
+        tryRetainArcSource(val);
+        auto *oldVal = builder_.CreateLoad(ptrTy_, ptr, s.name + ".arc_old");
+        // Null check: old value may have been nullified by explicit free/close
+        auto *isOldNull = builder_.CreateICmpEQ(
+            oldVal,
+            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_)),
+            s.name + ".arc_old_null");
+        auto *parentFn = builder_.GetInsertBlock()->getParent();
+        auto *releaseBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_release", parentFn);
+        auto *storeBB = llvm::BasicBlock::Create(*ctx_, s.name + ".arc_store", parentFn);
+        builder_.CreateCondBr(isOldNull, storeBB, releaseBB);
+
+        builder_.SetInsertPoint(releaseBB);
+        auto *oldHdr = emitArcGetHeaderFromData(oldVal);
+        // Look up GC visit function for potentially cyclic types on reassignment.
+        llvm::Function *gcVisitFn = nullptr;
+        auto evIt = enum_value_types_.find(ptr);
+        if (evIt != enum_value_types_.end() && isPotentiallyCyclic(evIt->second)) {
+            gcVisitFn = getOrCreateVisitFunction(evIt->second);
+        }
+        emitArcRelease(oldHdr, isArcAtomic(oldVal), resolveDestructor(ptr), gcVisitFn);
+        builder_.CreateBr(storeBB);
+
+        builder_.SetInsertPoint(storeBB);
     }
 
     builder_.CreateStore(val, ptr);
@@ -605,6 +733,7 @@ void CodeGen::emitStmt(FieldAssignStmt &s) {
 }
 
 void CodeGen::emitStmt(EnumStmt &s) {
+    emitTraceSymbolDefine("enum", s.name, s.loc);
     // Generic enum: save as template, don't instantiate yet
     if (!s.type_params.empty()) {
         GenericEnumTemplate tmpl;
@@ -638,6 +767,8 @@ void CodeGen::emitStmt(EnumStmt &s) {
 
     // Create global string array for variant names (for printing)
     std::vector<llvm::Constant*> nameStrings;
+    nameStrings.reserve(s.variants.size());
+    info.variantOrder.reserve(s.variants.size());
     std::unordered_set<int64_t> seenValues;
     for (size_t i = 0; i < s.variants.size(); ++i) {
         int64_t val = s.variants[i].explicit_value.value_or(static_cast<int64_t>(i));
@@ -720,28 +851,64 @@ void CodeGen::emitStmt(TupleDestructStmt &s) {
 void CodeGen::emitStmt(std::unique_ptr<IfStmt> &s) {
     emitCoverage(s->loc);
     llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "if.end", fn_);
+    llvm::Value *cond = emitExpr(*s->branch.condition);
+    cond = toBool(cond);
+    emitTraceIfBranch(cond, s->loc);
 
-    for (auto &branch : s->branches) {
-        llvm::Value *cond = emitExpr(*branch.condition);
+    llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
+    llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
+    builder_.CreateCondBr(cond, thenBB, elseBB);
+
+    builder_.SetInsertPoint(thenBB);
+    pushScope();
+    for (auto &stmt : s->branch.body)
+        std::visit([this](auto &st) { emitStmt(st); }, stmt);
+    popScope();
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(elseBB);
+
+    if (!s->else_body.empty()) {
+        pushScope();
+        for (auto &stmt : s->else_body)
+            std::visit([this](auto &st) { emitStmt(st); }, stmt);
+        popScope();
+    }
+    if (!builder_.GetInsertBlock()->getTerminator())
+        builder_.CreateBr(mergeBB);
+
+    builder_.SetInsertPoint(mergeBB);
+}
+
+void CodeGen::emitStmt(std::unique_ptr<WhenCondStmt> &s) {
+    emitCoverage(s->loc);
+    llvm::BasicBlock *mergeBB = llvm::BasicBlock::Create(*ctx_, "when.end", fn_);
+    int armIndex = 0;
+
+    for (auto &arm : s->arms) {
+        llvm::Value *cond = emitExpr(*arm.condition);
         cond = toBool(cond);
 
-        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "if.then", fn_);
-        llvm::BasicBlock *elseBB = llvm::BasicBlock::Create(*ctx_, "if.else", fn_);
-        builder_.CreateCondBr(cond, thenBB, elseBB);
+        llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(*ctx_, "when.then", fn_);
+        llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(*ctx_, "when.next", fn_);
+        builder_.CreateCondBr(cond, thenBB, nextBB);
 
         builder_.SetInsertPoint(thenBB);
+        emitTraceWhenBranch(armIndex++, s->loc);
         pushScope();
-        for (auto &stmt : branch.body)
+        for (auto &stmt : arm.body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
         if (!builder_.GetInsertBlock()->getTerminator())
             builder_.CreateBr(mergeBB);
 
-        builder_.SetInsertPoint(elseBB);
+        builder_.SetInsertPoint(nextBB);
     }
 
     if (!s->else_body.empty()) {
         pushScope();
+        emitTraceWhenBranch(-1, s->loc);
         for (auto &stmt : s->else_body)
             std::visit([this](auto &st) { emitStmt(st); }, stmt);
         popScope();
@@ -762,6 +929,7 @@ void CodeGen::emitStmt(ImportStmt &s) {
 void CodeGen::emitStmt(IndexAssignStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
+    llvm::AllocaInst *receiverAlloca = tryGetReceiverAlloca(*s.object);
     llvm::Value *objPtr = emitExpr(*s.object);
 
     llvm::SmallVector<llvm::Value*, 2> indexValues;
@@ -783,7 +951,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
             uint64_t arrSize = arrTy->getNumElements();
 
             emitBoundsCheck(key, llvm::ConstantInt::get(i64Ty_, arrSize),
-                            "runtime error: array index out of range\n", ".arr_assign_err", "arr_assign");
+                            "runtime error: index %lld out of bounds for array of length %lld\n", ".arr_assign_err", "arr_assign");
 
             if (val->getType() != elemTy) {
                 auto nit = array_elem_type_names_.find(ai);
@@ -809,6 +977,9 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
 
     llvm::Type *mapKeyTy = getMapKeyType(objPtr);
     if (mapKeyTy) {
+        // CoW check for map index assignment
+        objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::Map);
+
         // Map index assignment
         llvm::Type *mapValTy = getMapValueType(objPtr);
         if (!mapValTy)
@@ -919,6 +1090,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     }
 
     // List index assignment
+    objPtr = emitCowCheck(objPtr, receiverAlloca, CollectionKind::List);
     llvm::Type *elemTy = getListElementType(objPtr);
     if (!elemTy)
         codegenError("cannot determine list element type for index assignment");
@@ -927,7 +1099,7 @@ void CodeGen::emitStmt(IndexAssignStmt &s) {
     llvm::Value *length = builder_.CreateLoad(i64Ty_, lenPtr, "length");
 
     emitBoundsCheck(key, length,
-                    "runtime error: list index out of range\n", ".idx_assign_err", "idx_assign");
+                    "runtime error: index %lld out of bounds for list of length %lld\n", ".idx_assign_err", "idx_assign");
     llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, objPtr, 2, "data_ptr");
     llvm::Value *dataPtr = builder_.CreateLoad(ptrTy_, dataPtrField, "data");
     llvm::Value *elemPtr = builder_.CreateGEP(elemTy, dataPtr, {key}, "elem_ptr");

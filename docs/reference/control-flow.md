@@ -2,15 +2,13 @@
 
 # Control Flow Reference
 
-## if / elif / else
+## if / else
 
 ### Syntax
 
 ```python
 if condition:
     # then block
-elif condition:
-    # elif block (can have multiple)
 else:
     # else block (optional)
 ```
@@ -31,15 +29,13 @@ x = 10
 
 if x > 5:
     print("big")
-elif x == 5:
-    print("five")
 else:
-    print("small")
+    print("small or equal")
 ```
 
 ### Scope Rules
 
-- Each `if` / `elif` / `else` block has its own independent block scope.
+- Each `if` / `else` block has its own independent block scope.
 - Variables declared inside a block are not accessible outside the block.
 
 ```python
@@ -183,10 +179,10 @@ for i in 1 .. 3:
 
 ## async / await
 
-`async fn` declares a function that runs concurrently. Calling an `async fn` returns `Task<T>`. Use `await` inside another `async fn` or `block_on()` from synchronous context to wait for the result.
+`async function` declares a function that runs concurrently. Calling an `async function` returns `Task<T>`. Use `await` inside another `async function` or `block_on()` from synchronous context to wait for the result.
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 
 # From synchronous context, use block_on()
@@ -194,22 +190,22 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 print(block_on(add(1, 2)))          # 3
 
-# Inside async fn, use await
-async fn double_add(a: int, b: int) -> int:
+# Inside async function, use await
+async function double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
 
 ### Rules
 
-- `async fn name(...) -> T:` is declared with the awaited result type `T`.
-- Calling an `async fn` immediately returns `Task<T>`.
+- `async function name(...) -> T:` is declared with the awaited result type `T`.
+- Calling an `async function` immediately returns `Task<T>`.
 - `await expr` requires `expr` to be `Task<T>` and produces `T`.
-- `await` can only be used inside an `async fn`. Use `block_on(task)` from synchronous context.
+- `await` can only be used inside an `async function`. Use `block_on(task)` from synchronous context.
 - `block_on(task)` blocks the current thread until the task completes and returns the result.
-- `async fn ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
+- `async function ... -> Unit` is supported; `block_on(task)` is the primary way to wait when no value is produced.
 - Tasks run on the runtime worker pool; they are not implemented as one OS thread per task.
-- `async` lambdas and `async @native fn` are not supported in v1.
+- `async` lambdas and `async @native function` are not supported in v1.
 
 ---
 
@@ -273,10 +269,10 @@ for i in range(5):
 ## `...` (Ellipsis)
 
 - A no-op statement that does nothing. Used as a placeholder for empty blocks.
-- Can be used in any block: function body, `if`/`elif`/`else`, `while`, `for`, `match case`, etc.
+- Can be used in any block: function body, `if`/`else`, `while`, `for`, `match` arm, etc.
 
 ```python
-fn not_yet():
+function not_yet():
     ...
 
 if true:
@@ -284,6 +280,42 @@ if true:
 else:
     ...
 ```
+
+---
+
+## when
+
+`when:` provides multi-branch conditional flow without a subject value.
+
+### Syntax
+
+```python
+when:
+    condition:
+        # body
+    condition:
+        # body
+    else:
+        # fallback body
+```
+
+### Example
+
+```python
+x = 0
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+The conditional `when:` statement evaluates arms from top to bottom and executes only the first arm whose condition is truthy. The `else:` arm is optional for statements.
+
+For the expression form of `when:`, see [Operator Reference](operators.md#when-conditional-expression).
 
 ---
 
@@ -350,7 +382,7 @@ match color:
 ### Example
 
 ```python
-# enum match
+# enum pattern match
 enum Color:
     Red
     Green
@@ -364,7 +396,7 @@ match color:
     case Color::Blue:
         print("blue")
 
-# Option match
+# Option pattern match
 x: Option<int> = Some(42)
 match x:
     case Some(v):
@@ -372,8 +404,8 @@ match x:
     case None:
         print("nothing")
 
-# Result match
-fn divide(a: int, b: int) -> Result<int, Error>:
+# Result pattern match
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
@@ -384,7 +416,7 @@ match divide(10, 2):
     case Err(e):
         print(e.message)
 
-# Literal match
+# Literal pattern match
 match x:
     case 0:
         print("zero")
@@ -403,7 +435,7 @@ match x:
         print("zero")
 ```
 
-### ADT Enum Match
+### ADT Enum Pattern Matching
 
 When an enum variant carries associated data, use a binding pattern to extract the value(s).
 
@@ -426,6 +458,56 @@ match s:
 
 Multi-field variants bind each field to a separate name in declaration order.
 
+### Match Expressions
+
+`match` can be used as an expression by replacing `:` with `=>` in each arm. Each arm provides a single expression whose value becomes the result.
+
+#### Syntax
+
+```python
+result = match expression:
+    case pattern => value_expression
+    case pattern if guard => value_expression
+    case _ => default_value
+```
+
+All patterns supported in match statements are also supported in match expressions: literals, variable bindings, enums, ADT enums, `Some`/`None`, `Ok`/`Err`, OR patterns, guards, and wildcards.
+
+Match expressions must be exhaustive (same rules as match statements).
+
+#### Examples
+
+```python
+# Option
+value = match opt:
+    case Some(v) => v
+    case None    => 0
+
+# Enum
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+# Guard
+grade = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+
+# OR pattern
+kind = match x:
+    case 1 | 2 | 3 => "small"
+    case _          => "large"
+
+# ADT enum
+area = match shape:
+    case Shape::Circle(r)  => 3.14 * r * r
+    case Shape::Rect(w, h) => w * h
+    case Shape::Point      => 0.0
+```
+
 ### Scope Rules
 
 - Each `case` arm has its own block scope.
@@ -437,7 +519,7 @@ Multi-field variants bind each field to a separate name in declaration order.
 
 ### Block Scope
 
-- Each block of `if` / `elif` / `else` / `while` / `for` / `match` has a block scope.
+- Each block of `if` / `else` / `while` / `for` / `when` has a block scope.
 - Variables declared inside a block go out of scope when the block ends.
 
 ```python

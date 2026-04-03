@@ -1,15 +1,15 @@
 from net import bind, listen, accept, connect, listener_port
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-describe("HTTP Server API", fn():
-  it("responds with 200 OK for matching path", fn():
-    async fn server_200(server: TcpListener) -> str:
+describe("HTTP Server API", ():
+  it("responds with 200 OK for matching path", ():
+    async function server_200(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
-          match recv(conn, 4096):
+          match receive(conn, 4096):
             case Ok(data):
               response_str = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nHello!"
-              match send(conn, str_to_bytes(response_str)):
+              match send(conn, to_bytes(response_str)):
                 case Ok(_):
                   ...
                 case Err(e):
@@ -29,12 +29,12 @@ describe("HTTP Server API", fn():
             t = server_200(server)
             match connect("127.0.0.1", port):
               case Ok(conn):
-                match send(conn, str_to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                match send(conn, to_bytes("GET /hello HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                   case Ok(_):
                     ...
                   case Err(e):
                     ...
-                match recv(conn, 4096):
+                match receive(conn, 4096):
                   case Ok(resp):
                     match bytes_to_str(resp):
                       case Ok(msg):
@@ -53,14 +53,14 @@ describe("HTTP Server API", fn():
       case Err(e):
         fail("unexpected error")
   )
-  it("responds with 404 Not Found", fn():
-    async fn server_404(server: TcpListener) -> str:
+  it("responds with 404 Not Found", ():
+    async function server_404(server: TcpListener) -> str:
       match accept(server):
         case Ok(conn):
-          match recv(conn, 4096):
+          match receive(conn, 4096):
             case Ok(data):
               response_str = "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 9\r\n\r\nNot Found"
-              match send(conn, str_to_bytes(response_str)):
+              match send(conn, to_bytes(response_str)):
                 case Ok(_):
                   ...
                 case Err(e):
@@ -80,12 +80,12 @@ describe("HTTP Server API", fn():
             t = server_404(server)
             match connect("127.0.0.1", port):
               case Ok(conn):
-                match send(conn, str_to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
+                match send(conn, to_bytes("GET /missing HTTP/1.1\r\nHost: localhost\r\n\r\n")):
                   case Ok(_):
                     ...
                   case Err(e):
                     ...
-                match recv(conn, 4096):
+                match receive(conn, 4096):
                   case Ok(resp):
                     match bytes_to_str(resp):
                       case Ok(msg):

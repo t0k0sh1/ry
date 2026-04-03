@@ -5,7 +5,7 @@
 JSON 解析与序列化。所有函数需要从 `json` 明确导入。
 
 ```python
-from json import parse, stringify, json_type, json_get, json_at, json_str, json_int, json_float, json_bool, json_len, json_keys, json_free
+from json import parse, stringify, kind, get, at, to_str, to_int, to_float, to_bool, length, keys, json_free
 ```
 
 ## 概述
@@ -26,30 +26,30 @@ from json import parse, stringify, json_type, json_get, json_at, json_str, json_
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `json_type` | `(JsonValue) -> str` | 返回 JSON 类型: `"object"`, `"array"`, `"string"`, `"number"`, `"boolean"`, `"null"` |
+| `kind` | `(JsonValue) -> str` | 返回 JSON 类型: `"object"`, `"array"`, `"string"`, `"number"`, `"boolean"`, `"null"` |
 
 ### 对象 / 数组访问
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `json_get` | `(JsonValue, str) -> Result<JsonValue, Error>` | 以键从对象获取字段 |
-| `json_at` | `(JsonValue, int) -> Result<JsonValue, Error>` | 以索引从数组获取元素 |
+| `get` | `(JsonValue, str) -> Result<JsonValue, Error>` | 以键从对象获取字段 |
+| `at` | `(JsonValue, int) -> Result<JsonValue, Error>` | 以索引从数组获取元素 |
 
 ### 值提取
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `json_str` | `(JsonValue) -> Result<str, Error>` | 提取字符串值 |
-| `json_int` | `(JsonValue) -> Result<int, Error>` | 提取整数值 |
-| `json_float` | `(JsonValue) -> Result<float, Error>` | 提取浮点数值 |
-| `json_bool` | `(JsonValue) -> Result<bool, Error>` | 提取布尔值 |
+| `to_str` | `(JsonValue) -> Result<str, Error>` | 提取字符串值 |
+| `to_int` | `(JsonValue) -> Result<int, Error>` | 提取整数值 |
+| `to_float` | `(JsonValue) -> Result<float, Error>` | 提取浮点数值 |
+| `to_bool` | `(JsonValue) -> Result<bool, Error>` | 提取布尔值 |
 
 ### 集合信息
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `json_len` | `(JsonValue) -> int` | 返回数组长度或对象键数 |
-| `json_keys` | `(JsonValue) -> List<str>` | 返回对象的键列表 |
+| `length` | `(JsonValue) -> int` | 返回数组长度或对象键数 |
+| `keys` | `(JsonValue) -> Result<List<str>, Error>` | 返回对象的键列表，若值不是对象则返回错误 |
 
 ### 内存管理
 
@@ -62,13 +62,13 @@ from json import parse, stringify, json_type, json_get, json_at, json_str, json_
 ### 解析与访问字段
 
 ```python
-from json import parse, json_get, json_str, json_int, json_free
+from json import parse, get, to_str, to_int, json_free
 
 match parse("{\"name\": \"Alice\", \"age\": 30}"):
   case Ok(data):
-    match json_get(data, "name"):
+    match get(data, "name"):
       case Ok(val):
-        match json_str(val):
+        match to_str(val):
           case Ok(name):
             print(name)   # "Alice"
           case Err(e):
@@ -83,14 +83,14 @@ match parse("{\"name\": \"Alice\", \"age\": 30}"):
 ### 处理数组
 
 ```python
-from json import parse, json_at, json_int, json_len, json_free
+from json import parse, at, to_int, length, json_free
 
 match parse("[10, 20, 30]"):
   case Ok(data):
-    print(to_str(json_len(data)))   # 3
-    match json_at(data, 0):
+    print(to_str(length(data)))   # 3
+    match at(data, 0):
       case Ok(elem):
-        match json_int(elem):
+        match to_int(elem):
           case Ok(n):
             print(to_str(n))   # 10
           case Err(e):
@@ -121,7 +121,7 @@ match parse("{\"key\":\"value\",\"count\":42}"):
 
 ## 注意事项
 
-- `json_int` 接受整数和整数值的浮点数（例如 `42.0` → `42`）
-- `json_float` 接受浮点数和整数（例如 `42` → `42.0`）
-- `json_get` 和 `json_at` 返回解析树中子元素的引用——不要对子元素调用 `json_free`，只对 `parse` 返回的根值调用
-- `json_type` 对整数和浮点数都返回 `"number"`
+- `to_int` 接受整数和整数值的浮点数（例如 `42.0` -> `42`）
+- `to_float` 接受浮点数和整数（例如 `42` -> `42.0`）
+- `get` 和 `at` 返回解析树中子元素的引用——不要对子元素调用 `json_free`，只对 `parse` 返回的根值调用
+- `kind` 对整数和浮点数都返回 `"number"`

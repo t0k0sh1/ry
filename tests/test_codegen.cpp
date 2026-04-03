@@ -14,6 +14,21 @@ TEST_F(CodeGenTest, PrintLiterals) {
     EXPECT_EQ(runSource("print(\"\")"), "\n");
 }
 
+// ===== Print variadic =====
+
+TEST_F(CodeGenTest, PrintVariadic) {
+    // Multiple arguments (space-separated)
+    EXPECT_EQ(runSource("print(1, 2, 3)"), "1 2 3\n");
+    EXPECT_EQ(runSource("print(\"hello\", \"world\")"), "hello world\n");
+    EXPECT_EQ(runSource("print(1, \"hello\", true)"), "1 hello true\n");
+    // Single argument (backward compatible)
+    EXPECT_EQ(runSource("print(42)"), "42\n");
+    // No arguments (just newline)
+    EXPECT_EQ(runSource("print()"), "\n");
+    // Complex type + primitive
+    EXPECT_EQ(runSource("print([1, 2], \"x\")"), "[1, 2] x\n");
+}
+
 // ===== Arithmetic (int) =====
 
 TEST_F(CodeGenTest, ArithmeticInt) {
@@ -96,7 +111,7 @@ TEST_F(CodeGenTest, OperatorEqInferredNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator==(a: Pt, b: Pt):\n"
+        "function operator==(a: Pt, b: Pt):\n"
         "    return 42\n"), std::runtime_error);
 }
 
@@ -104,7 +119,7 @@ TEST_F(CodeGenTest, OperatorAndExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator and(a: Pt, b: Pt) -> int:\n"
+        "function operator and(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -112,7 +127,7 @@ TEST_F(CodeGenTest, OperatorOrExplicitNonBoolThrows) {
     EXPECT_THROW(runSource(
         "record Pt:\n"
         "    x: int\n"
-        "fn operator or(a: Pt, b: Pt) -> int:\n"
+        "function operator or(a: Pt, b: Pt) -> int:\n"
         "    return 1\n"), std::runtime_error);
 }
 
@@ -161,6 +176,52 @@ TEST_F(CodeGenTest, StringVariables) {
 TEST_F(CodeGenTest, StringTypeMismatch) {
     EXPECT_THROW(runSource("s: str = 42"), std::runtime_error);
     EXPECT_THROW(runSource("s: int = \"hello\""), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, StringBinaryOpTypeMismatch) {
+    // Non-+ arithmetic ops with str still error
+    EXPECT_THROW(runSource("print(\"abc\" - 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" / 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" // 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" % 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" ** 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 - \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 / \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" - 1.5)"), std::runtime_error);
+    // Comparison: str vs int
+    EXPECT_THROW(runSource("print(\"abc\" == 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" < 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(2 == \"abc\")"), std::runtime_error);
+    // Bitwise: str & int
+    EXPECT_THROW(runSource("print(\"abc\" & 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(\"abc\" | 2)"), std::runtime_error);
+    // Valid operations still work
+    EXPECT_EQ(runSource("print(\"ab\" + \"cd\")"), "abcd\n");
+    EXPECT_EQ(runSource("print(\"ab\" * 3)"), "ababab\n");
+    EXPECT_EQ(runSource("print(\"ab\" == \"ab\")"), "true\n");
+    EXPECT_EQ(runSource("print(\"ab\" < \"cd\")"), "true\n");
+}
+
+// ===== String auto-concatenation (#393) =====
+
+TEST_F(CodeGenTest, StringAutoConcat) {
+    EXPECT_EQ(runSource("print(\"abc\" + 2)"), "abc2\n");
+    EXPECT_EQ(runSource("print(\"value: \" + 42)"), "value: 42\n");
+    EXPECT_EQ(runSource("print(1 + \"abc\")"), "1abc\n");
+    EXPECT_EQ(runSource("print(\"pi=\" + 3.14)"), "pi=3.14\n");
+    EXPECT_EQ(runSource("print(\"ok=\" + true)"), "ok=true\n");
+    EXPECT_EQ(runSource("print(false + \" is false\")"), "false is false\n");
+}
+
+// ===== Non-string pointer types must not hit string paths (#397) =====
+
+TEST_F(CodeGenTest, NonStrPointerNotTreatedAsStr) {
+    // Collections share LLVM ptrTy_ with str but must not activate str-specific operator paths
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs == \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs + \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("xs = [1, 2]\nprint(xs & 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m == \"abc\")"), std::runtime_error);
+    EXPECT_THROW(runSource("m = {\"a\": 1}\nprint(m + \"abc\")"), std::runtime_error);
 }
 
 // ===== Type change throws =====
@@ -277,15 +338,15 @@ TEST_F(CodeGenTest, ExitArgumentErrors) {
     EXPECT_THROW(runSource("exit(1, 2)"), std::runtime_error);
 }
 
-// ===== args() tests =====
+// ===== arguments() tests =====
 
-TEST_F(CodeGenTest, ArgsTests) {
-    EXPECT_EQ(runSourceWithArgs("a = args()\nprint(length(a))", {}), "0\n");
+TEST_F(CodeGenTest, ArgumentsTests) {
+    EXPECT_EQ(runSourceWithArgs("a = arguments()\nprint(length(a))", {}), "0\n");
     EXPECT_EQ(runSourceWithArgs(
-        "a = args()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
+        "a = arguments()\nprint(length(a))\nprint(a[0])\nprint(a[1])",
         {"hello", "world"}), "2\nhello\nworld\n");
     EXPECT_EQ(runSourceWithArgs(
-        "for x in args():\n    print(x)",
+        "for x in arguments():\n    print(x)",
         {"foo", "bar"}), "foo\nbar\n");
 }
 
@@ -295,7 +356,7 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
     try {
         runSource(
             "@native\n"
-            "fn unhandled_native(x: str) -> str\n"
+            "function unhandled_native(x: str) -> str\n"
             "\n"
             "print(unhandled_native(\"hello\"))\n"
         );
@@ -325,6 +386,79 @@ TEST_F(CodeGenTest, FloorDivModWorks) {
     EXPECT_EQ(runSource("print(7 // 2)"), "3\n");
     EXPECT_EQ(runSource("print(-7 // 2)"), "-4\n");
     EXPECT_EQ(runSource("print(7 % 3)"), "1\n");
+    // Floor modulo: sign follows divisor (Python semantics)
+    EXPECT_EQ(runSource("print(-7 % 3)"), "2\n");
+    EXPECT_EQ(runSource("print(7 % -3)"), "-2\n");
+    EXPECT_EQ(runSource("print(-7 % -3)"), "-1\n");
+    EXPECT_EQ(runSource("print(0 % 5)"), "0\n");
+    // Identity: a == (a // b) * b + (a % b)
+    EXPECT_EQ(runSource("print((-7 // 3) * 3 + (-7 % 3))"), "-7\n");
+    EXPECT_EQ(runSource("print((7 // -3) * -3 + (7 % -3))"), "7\n");
+}
+
+// ===== Integer overflow guard tests (death tests) =====
+
+TEST_F(CodeGenTest, IntAddOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nprint(x + 1)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntSubOverflowExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\nprint(x - 1)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntMulOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nprint(x * 2)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntNegOverflowExits) {
+    EXPECT_EXIT(runSource("x = -9223372036854775807 - 1\nprint(-x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, IntOverflowConstantFolding) {
+    // Compile-time overflow detection
+    EXPECT_THROW(runSource("print(9223372036854775807 + 1)"), std::runtime_error);
+    EXPECT_THROW(runSource("print((-9223372036854775807 - 1) - 1)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(9223372036854775807 * 2)"), std::runtime_error);
+    EXPECT_THROW(runSource("print(-(-9223372036854775807 - 1))"), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, IntArithmeticNoOverflow) {
+    EXPECT_EQ(runSource("print(1000000 * 1000000)"), "1000000000000\n");
+    EXPECT_EQ(runSource("print(9223372036854775807 + 0)"), "9223372036854775807\n");
+    // INT64_MIN exactly: -9223372036854775807 - 1 = -9223372036854775808, no overflow
+    EXPECT_EQ(runSource("print(-9223372036854775807 - 1)"), "-9223372036854775808\n");
+    EXPECT_EQ(runSource("print(100 + 200)"), "300\n");
+    EXPECT_EQ(runSource("print(50 - 100)"), "-50\n");
+    EXPECT_EQ(runSource("print(12345 * 67890)"), "838102050\n");
+}
+
+TEST_F(CodeGenTest, IntCompoundAssignOverflowExits) {
+    EXPECT_EXIT(runSource("x = 9223372036854775807\nx += 1\nprint(x)"),
+                ::testing::ExitedWithCode(1),
+                "runtime error: integer overflow");
+}
+
+TEST_F(CodeGenTest, LowLevelIntStillWraps) {
+    EXPECT_EQ(runSource("x = 2147483647i32\nprint(wrapping_add(x, 1i32) as int)"), "-2147483648\n");
+}
+
+TEST_F(CodeGenTest, LowLevelI64StillWraps) {
+    // i64 constants: overflow should wrap, not panic
+    EXPECT_EQ(runSource("x = 9223372036854775807i64\ny = 1i64\nprint((x + y) as int)"),
+              "-9223372036854775808\n");
+    EXPECT_EQ(runSource("print((9223372036854775807i64 + 1i64) as int)"),
+              "-9223372036854775808\n");
+    // i64 unary negation should wrap
+    EXPECT_EQ(runSource("x = -9223372036854775807i64 - 1i64\nprint((-x) as int)"),
+              "-9223372036854775808\n");
 }
 
 // ===== any type rejection =====
@@ -334,14 +468,14 @@ TEST_F(CodeGenTest, AnyTypeRejection) {
     EXPECT_THROW(runSource("x: any = {\"a\": 1}"), std::runtime_error);
     EXPECT_THROW(runSource("x: any = {1, 2, 3}"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f(x):\n"
+        "function f(x):\n"
         "    return x\n"
         "f([1, 2, 3])"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f() -> any:\n"
+        "function f() -> any:\n"
         "    return [1, 2, 3]"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "fn f() -> int:\n"
+        "function f() -> int:\n"
         "    return 42\n"
         "x: any = f"), std::runtime_error);
 }
@@ -434,6 +568,38 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("a: i32 = 10\nb: f32 = 2.0\nc = a + b"), std::runtime_error);
     // ** on low-level types → error
     EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
+    // i64 + int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = 2\nc = a + b"), std::runtime_error);
+    // int + i64 → error (#595)
+    EXPECT_THROW(runSource("a = 1\nb: i64 = 2\nc = a + b"), std::runtime_error);
+    // u64 + int → error (#595)
+    EXPECT_THROW(runSource("a: u64 = 1\nb = 2\nc = a + b"), std::runtime_error);
+    // i64 += int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\na += 1"), std::runtime_error);
+    // int += i64 → error (#595)
+    EXPECT_THROW(runSource("a = 1\na += 1i64"), std::runtime_error);
+    // u64 += int → error (#595)
+    EXPECT_THROW(runSource("a: u64 = 1\na += 1"), std::runtime_error);
+    // i64 literal + int literal → error (#595)
+    EXPECT_THROW(runSource("c = 1i64 + 1"), std::runtime_error);
+    // int literal + i64 literal → error (#595)
+    EXPECT_THROW(runSource("c = 1 + 1i64"), std::runtime_error);
+    // i64 + u64 → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb: u64 = 1\nc = a + b"), std::runtime_error);
+    // i64 comparison with int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = a == 1"), std::runtime_error);
+    // i64 bitwise with int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = a & 1"), std::runtime_error);
+    // i64 + i64 → ok, verify value and metadata propagation (#595)
+    EXPECT_EQ(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nprint(c as int)"), "3\n");
+    EXPECT_THROW(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nd = c + 1"), std::runtime_error);
+    // int + int → ok (regression)
+    EXPECT_EQ(runSource("a = 1\nb = 2\nc = a + b\nprint(c)"), "3\n");
+    // unary minus with i64 suffix (#595)
+    EXPECT_EQ(runSource("c = 1i64 + -1i64\nprint(c as int)"), "0\n");
+    EXPECT_EQ(runSource("c = -1i64 + -1i64\nprint(c as int)"), "-2\n");
+    EXPECT_THROW(runSource("c = -1i64 + 1"), std::runtime_error);
+    EXPECT_THROW(runSource("c = 1 + -1i64"), std::runtime_error);
 }
 
 // ===== Numeric literal suffix =====
@@ -495,7 +661,7 @@ TEST_F(CodeGenTest, UnsignedVariableNegation_u64) {
 
 TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
     EXPECT_THROW(runSource(
-        "fn get_u32() -> u32:\n"
+        "function get_u32() -> u32:\n"
         "    return 42u32\n"
         "y = -get_u32()"), std::runtime_error);
 }
@@ -505,7 +671,7 @@ TEST_F(CodeGenTest, UnsignedFunctionReturnNegation) {
 TEST_F(CodeGenTest, ReturnTypeInference_Int) {
     // Omitted return type with return int → inferred as int
     EXPECT_EQ(runSource(
-        "fn get_val():\n"
+        "function get_val():\n"
         "    return 42\n"
         "x = get_val()\n"
         "print(x + 1)"), "43\n");
@@ -514,28 +680,28 @@ TEST_F(CodeGenTest, ReturnTypeInference_Int) {
 TEST_F(CodeGenTest, ReturnTypeInference_Unit) {
     // Omitted return type with no return → inferred as Unit
     EXPECT_EQ(runSource(
-        "fn side_effect():\n"
+        "function side_effect():\n"
         "    print(\"hi\")\n"
         "side_effect()"), "hi\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Float) {
     EXPECT_EQ(runSource(
-        "fn get_pi():\n"
+        "function get_pi():\n"
         "    return 3.14\n"
         "print(get_pi())"), "3.14\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Str) {
     EXPECT_EQ(runSource(
-        "fn get_name():\n"
+        "function get_name():\n"
         "    return \"hello\"\n"
         "print(get_name())"), "hello\n");
 }
 
 TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
     EXPECT_EQ(runSource(
-        "fn is_ok():\n"
+        "function is_ok():\n"
         "    return true\n"
         "print(is_ok())"), "true\n");
 }
@@ -543,7 +709,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_Bool) {
 TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
     // Multiple return types → union type
     EXPECT_EQ(runSource(
-        "fn mixed(flag: bool):\n"
+        "function mixed(flag: bool):\n"
         "    if flag:\n"
         "        return 42\n"
         "    return 3.14\n"
@@ -553,7 +719,7 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionIntFloat) {
 
 TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
     EXPECT_EQ(runSource(
-        "fn mixed(flag: bool):\n"
+        "function mixed(flag: bool):\n"
         "    if flag:\n"
         "        return \"hello\"\n"
         "    return 42\n"
@@ -564,98 +730,98 @@ TEST_F(CodeGenTest, ReturnTypeInference_UnionStrInt) {
 TEST_F(CodeGenTest, ReturnTypeInference_ExplicitAnyUnchanged) {
     // Explicit -> any still works as before
     EXPECT_EQ(runSource(
-        "fn get_val() -> any:\n"
+        "function get_val() -> any:\n"
         "    return 42\n"
         "x: any = get_val()\n"
         "print(x)"), "42\n");
 }
 
 // ============================================================
-// Fixed-length array [T; N]
+// Fixed-length array T[N]
 // ============================================================
 
 TEST_F(CodeGenTest, ArrayBasicDecl) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 4] = [1, 2, 3, 4]\n"
+        "buf: i32[4] = [1, 2, 3, 4]\n"
         "print(buf[0])\n"
         "print(buf[3])"), "1\n4\n");
 }
 
 TEST_F(CodeGenTest, ArrayIndexRead) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 4] = [10, 20, 30, 40]\n"
+        "buf: i32[4] = [10, 20, 30, 40]\n"
         "print(buf[2])"), "30\n");
 }
 
 TEST_F(CodeGenTest, ArrayIndexWrite) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 3] = [0, 0, 0]\n"
+        "buf: i32[3] = [0, 0, 0]\n"
         "buf[1] = 42\n"
         "print(buf[1])"), "42\n");
 }
 
 TEST_F(CodeGenTest, ArrayLength) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 8] = [1, 2, 3, 4, 5, 6, 7, 8]\n"
+        "buf: i32[8] = [1, 2, 3, 4, 5, 6, 7, 8]\n"
         "print(length(buf))"), "8\n");
 }
 
 TEST_F(CodeGenTest, ArrayPrint) {
     EXPECT_EQ(runSource(
-        "buf: [i32; 3] = [10, 20, 30]\n"
+        "buf: i32[3] = [10, 20, 30]\n"
         "print(buf)"), "[10, 20, 30]\n");
 }
 
 TEST_F(CodeGenTest, ArrayU8) {
     EXPECT_EQ(runSource(
-        "buf: [u8; 3] = [65, 66, 67]\n"
+        "buf: u8[3] = [65, 66, 67]\n"
         "print(buf[0])\n"
         "print(buf[2])"), "65\n67\n");
 }
 
 TEST_F(CodeGenTest, ArrayF32) {
     EXPECT_EQ(runSource(
-        "buf: [f32; 2] = [1.5, 2.5]\n"
+        "buf: f32[2] = [1.5, 2.5]\n"
         "print(buf[0])\n"
         "print(buf[1])"), "1.5\n2.5\n");
 }
 
 TEST_F(CodeGenTest, ArrayI16) {
     EXPECT_EQ(runSource(
-        "buf: [i16; 2] = [100, 200]\n"
+        "buf: i16[2] = [100, 200]\n"
         "print(buf[0])\n"
         "print(buf[1])"), "100\n200\n");
 }
 
 TEST_F(CodeGenTest, ArraySizeMismatch) {
-    EXPECT_THROW(runSource("buf: [i32; 4] = [1, 2]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: i32[4] = [1, 2]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayNonLowLevelType) {
-    EXPECT_THROW(runSource("buf: [str; 2] = [\"a\", \"b\"]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: str[2] = [\"a\", \"b\"]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayBoundsError) {
     EXPECT_THROW(runSource(
-        "buf: [i32; 2] = [1, 2]\n"
+        "buf: i32[2] = [1, 2]\n"
         "print(buf[5])"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayInitRangeCheck) {
     // i8 out of range
-    EXPECT_THROW(runSource("buf: [i8; 1] = [999]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: i8[1] = [999]"), std::runtime_error);
     // u8 out of range
-    EXPECT_THROW(runSource("buf: [u8; 1] = [256]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: u8[1] = [256]"), std::runtime_error);
     // u8 negative
-    EXPECT_THROW(runSource("buf: [u8; 1] = [-1]"), std::runtime_error);
+    EXPECT_THROW(runSource("buf: u8[1] = [-1]"), std::runtime_error);
 }
 
 TEST_F(CodeGenTest, ArrayAssignRangeCheck) {
     EXPECT_THROW(runSource(
-        "buf: [i8; 1] = [0]\n"
+        "buf: i8[1] = [0]\n"
         "buf[0] = 999"), std::runtime_error);
     EXPECT_THROW(runSource(
-        "buf: [u8; 1] = [0]\n"
+        "buf: u8[1] = [0]\n"
         "buf[0] = 256"), std::runtime_error);
 }
 

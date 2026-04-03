@@ -1,0 +1,12 @@
+language: en
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - '^v\d+\.\d+\.\d+$'
+  path_filters:
+    - '!build/**'
+    - '!build-asan/**'
+    - '!**/*.pdf'
