@@ -74,9 +74,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, keysData, dataSize});
 
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         type_meta_[TM_ListElem][newHeader] = keyTy;
         return newHeader;
     }
@@ -102,9 +100,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         auto memcpyFn = getStdlibMemcpy();
         builder_.CreateCall(memcpyFn, {newData, valsData, dataSize});
 
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mapLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mapLen, mapLen, newData);
         type_meta_[TM_ListElem][newHeader] = valTy;
         return newHeader;
     }
@@ -236,9 +232,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(srcLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, srcLen, srcLen, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -293,9 +287,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(minLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, minLen, minLen, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -371,12 +363,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "args_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "args_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "args_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = ptrTy_;
         return headerPtr;
@@ -586,12 +573,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "range_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "range_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "range_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = i64Ty_;
         return headerPtr;
@@ -785,6 +767,31 @@ CodeGen::MapFields CodeGen::loadMapHeader(llvm::Value *mapVal, const std::string
     f.valsPtr = builder_.CreateStructGEP(mapHeaderTy_, mapVal, 3, p + "_vals_ptr");
     f.vals = builder_.CreateLoad(ptrTy_, f.valsPtr, p + "_vals");
     return f;
+}
+
+// ===== Header stores =====
+
+void CodeGen::storeListHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                    llvm::Value *cap, llvm::Value *data) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(data, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+}
+
+void CodeGen::storeSetHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                   llvm::Value *cap, llvm::Value *elems) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(elems, builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2));
+}
+
+void CodeGen::storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                                   llvm::Value *cap, llvm::Value *keys,
+                                   llvm::Value *vals) {
+    builder_.CreateStore(len, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0));
+    builder_.CreateStore(cap, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1));
+    builder_.CreateStore(keys, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2));
+    builder_.CreateStore(vals, builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3));
 }
 
 // ===== Builtin Math =====

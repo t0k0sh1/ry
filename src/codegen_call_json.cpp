@@ -187,14 +187,15 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         return builder_.CreateCall(fn, {val}, "json_len");
     }
 
-    // keys(value) -> List<str> — for JsonValue
+    // keys(value) -> Result<List<str>, Error> — for JsonValue
     if (e.callee == "keys") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
         if (!isJsonValue(val)) return nullptr;
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_keys", fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {val}, "json_keys");
+        llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_keys");
+        llvm::Value *result = wrapPtrAsResult(ptr);
         type_meta_[TM_ListElem][result] = ptrTy_;
         return result;
     }

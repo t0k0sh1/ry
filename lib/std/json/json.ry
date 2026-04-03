@@ -34,7 +34,7 @@ function to_bool(value: JsonValue) -> Result<bool, Error>
 function length(value: JsonValue) -> int
 
 @native
-function keys(value: JsonValue) -> List<str>
+function keys(value: JsonValue) -> Result<List<str>, Error>
 
 @native
 function json_free(value: JsonValue) -> Unit

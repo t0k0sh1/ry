@@ -33,10 +33,10 @@ static std::pair<llvm::Value*, llvm::Value*> loadIteratorFields(
     return {nf, st};
 }
 
-llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0) {
     // iter(collection) → Iterator
     if (e.callee == "iter" && e.args.size() == 1) {
-        llvm::Value *collVal = emitExpr(*e.args[0]);
+        llvm::Value *collVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         if (collVal->getType() != ptrTy_)
             return nullptr;
 
@@ -191,7 +191,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
     // to_list() → collect Iterator into List
     if (e.callee == "to_list" && e.args.size() == 1) {
-        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 
@@ -280,7 +280,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
     // next() → call next_fn(state) on Iterator
     if (e.callee == "next" && e.args.size() == 1) {
-        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 
@@ -293,7 +293,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
     // filter(iter, predicate) → new Iterator
     if (e.callee == "filter" && e.args.size() == 2) {
-        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 
@@ -376,7 +376,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
     // map(iter, transform) → new Iterator with transformed element type
     if (e.callee == "map" && e.args.size() == 2) {
-        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 
@@ -452,7 +452,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
 
     // take(iter, n) → new Iterator that yields at most n elements
     if (e.callee == "take" && e.args.size() == 2) {
-        llvm::Value *iterVal = emitExpr(*e.args[0]);
+        llvm::Value *iterVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Type *elemTy = getIteratorElementType(iterVal);
         if (!elemTy) return nullptr;
 

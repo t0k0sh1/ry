@@ -316,9 +316,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
 
     // Store header: len, cap, data
-    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0));
-    builder_.CreateStore(length, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1));
-    builder_.CreateStore(dataPtr, builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2));
+    storeListHeaderFields(headerPtr, length, length, dataPtr);
 
     // Fill data with start..end
     llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "range.cond", fn_);

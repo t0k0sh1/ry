@@ -425,9 +425,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         llvm::Value *newElemPtr = builder_.CreateGEP(elemTy, newData, lf.len, "apd_new_ep");
         builder_.CreateStore(val, newElemPtr);
 
-        builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, newLen, newLen, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -518,12 +516,7 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, srcOffset, dataSize});
 
         // Set header fields
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "sl_new_len");
-        builder_.CreateStore(count, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "sl_new_cap");
-        builder_.CreateStore(count, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "sl_new_data");
-        builder_.CreateStore(newData, newDataField);
+        storeListHeaderFields(newHeader, count, count, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -563,12 +556,7 @@ llvm::Value *CodeGen::emitCollOp_take(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newData, lf.data, dataSize});
 
         // Set header fields
-        llvm::Value *newLenPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 0, "tk_new_len");
-        builder_.CreateStore(clampedN, newLenPtr);
-        llvm::Value *newCapPtr = builder_.CreateStructGEP(listHeaderTy_, newHeader, 1, "tk_new_cap");
-        builder_.CreateStore(clampedN, newCapPtr);
-        llvm::Value *newDataField = builder_.CreateStructGEP(listHeaderTy_, newHeader, 2, "tk_new_data");
-        builder_.CreateStore(newData, newDataField);
+        storeListHeaderFields(newHeader, clampedN, clampedN, newData);
 
         type_meta_[TM_ListElem][newHeader] = elemTy;
         return newHeader;
@@ -892,9 +880,7 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "flat_data");
 
     // Set header
-    builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-    builder_.CreateStore(total, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-    builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+    storeListHeaderFields(newHeader, total, total, newData);
 
     // Pass 2: copy each inner list's data
     llvm::AllocaInst *offset = builder_.CreateAlloca(i64Ty_, nullptr, "flat_off");
@@ -975,9 +961,7 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
         builder_.CreateBr(condBB);
         builder_.SetInsertPoint(endBB);
 
-        builder_.CreateStore(mf.len, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-        builder_.CreateStore(mf.len, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+        storeListHeaderFields(newHeader, mf.len, mf.len, newData);
         type_meta_[TM_ListElem][newHeader] = tupleTy;
         return newHeader;
     }
@@ -1109,11 +1093,8 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
         builder_.CreateCall(memcpyFn, {newVals, mf1.vals, copy1ValSize});
 
         // Set up header
+        storeMapHeaderFields(newHeader, mf1.len, maxCap, newKeys, newVals);
         llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, newHeader, 0, "mg_len_ptr");
-        builder_.CreateStore(mf1.len, lenPtr);
-        builder_.CreateStore(maxCap, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 1));
-        builder_.CreateStore(newKeys, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 2));
-        builder_.CreateStore(newVals, builder_.CreateStructGEP(mapHeaderTy_, newHeader, 3));
 
         // Init hash buckets
         emitBucketInit(newHeader, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 16);
