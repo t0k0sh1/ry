@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.7] - 2026-04-03
+
+### Fixed
+
+- Fix Linux (GCC 11) build failure caused by incomplete type in self-referential `FnTypeInfo` struct (#623)
+
 ## [0.0.6] - 2026-04-03
 
 ### Added
@@ -321,7 +327,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial release.
 
-[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.6...HEAD
+[Unreleased]: https://github.com/t0k0sh1/ry/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/t0k0sh1/ry/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/t0k0sh1/ry/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/t0k0sh1/ry/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/t0k0sh1/ry/compare/v0.0.3...v0.0.4
