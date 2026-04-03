@@ -47,7 +47,7 @@ For detailed language specifications, see the reference pages below.
 | [Math Functions](reference/math.md) | PI, E, sqrt, sin, cos, abs, floor, ceil, round, etc. |
 | [I/O Functions](reference/io.md) | read_text, write_text, exists, read_bytes, to_bytes, etc. |
 | [JSON](reference/json.md) | parse, stringify, get, at, to_str, to_int, etc. |
-| [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/recv/close for TCP sockets |
+| [Network (TCP)](reference/net.md) | bind, listen, accept, connect, send/receive/close for TCP sockets |
 | [HTTP Server](reference/http.md) | listen, method, path, header, body, response |
 | [Base64](reference/base64.md) | encode, decode, encode_url_safe, decode_url_safe |
 | [Path](reference/path.md) | join, basename, dirname, extension, resolve, is_absolute |

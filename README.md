@@ -120,7 +120,7 @@ cmake --build build
 
 ```bash
 ry <file.ry>              # Run a Ry script
-echo '<code>' | ry         # Run code from stdin
+echo '<code>' | ry -c      # Run code from stdin
 ry test [options] [path]   # Run tests (*.test.ry)
 ry init                    # Initialize a project in current directory
 ry new <name>              # Create a new project
@@ -134,7 +134,7 @@ The `self-update` command verifies release artifacts using Ed25519 signature ver
 Stdin also supports here-documents:
 
 ```bash
-ry <<'RY'
+ry -c <<'RY'
 a = 1
 b = 2
 print(a + b)
