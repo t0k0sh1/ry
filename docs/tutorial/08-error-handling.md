@@ -97,6 +97,45 @@ function compute(a: int, b: int, c: int) -> Result<int, Error>:
     return Ok(y + 1)
 ```
 
+### Method Chaining with `and_then` and `map`
+
+When you need to chain several `Result`-returning operations but cannot use `?` (for example, outside a function that returns `Result`), you can use `and_then` and `map` to avoid deeply nested `match` statements.
+
+**`and_then`** — chains operations that themselves return `Result`:
+
+```python
+# Instead of nesting match 3 levels deep:
+result = safe_divide(100, 2)
+    .and_then((v: int) => safe_divide(v, 5))
+    .and_then((v: int) => safe_divide(v, 2))
+
+match result:
+    case Ok(v):  print(v)      # 5
+    case Err(e): print(e.message)
+```
+
+**`map`** — transforms the `Ok` value without changing the `Result` wrapper:
+
+```python
+result = safe_divide(10, 2)
+    .map((v: int) => v * 10)
+
+match result:
+    case Ok(v):  print(v)      # 50
+    case Err(e): print(e.message)
+```
+
+Both methods short-circuit on `Err` — if any step in the chain fails, the error propagates through without executing the remaining closures.
+
+You can mix `and_then` and `map` in a single chain:
+
+```python
+result = safe_divide(100, 10)
+    .and_then((v: int) => safe_divide(v, 2))
+    .map((v: int) => v + 100)
+# Ok(105)
+```
+
 > **Why Result?** It makes error handling explicit without exceptions. The type signature tells you exactly which functions can fail, and the `?` operator keeps the code concise.
 
 > **Common mistake**: Using `?` in a function that does not return `Result` causes a compile error. The `?` operator can only be used in functions whose return type is `Result`.

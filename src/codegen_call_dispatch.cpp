@@ -85,6 +85,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     }
 
     // Dispatch to language-builtin helpers (Pattern B: no @native registry)
+    if (auto *v = emitBuiltinResult(*e))      return v;
     if (auto *v = emitBuiltinIterator(*e))    return v;
     if (auto *v = emitBuiltinString(*e))      return v;
     if (auto *v = emitBuiltinConversion(*e))  return v;

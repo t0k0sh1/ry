@@ -888,7 +888,18 @@ ExprPtr Parser::parsePostfix() {
         // Dot access follows below
         Token dotTok = lex_.next(); // consume '.'
         Token field = lex_.peek();
-        if (field.kind != TokenKind::Ident && field.kind != TokenKind::Number)
+        // After '.', accept identifiers, numbers, and keyword tokens.
+        // Keyword tokens (e.g., 'and' in '.and_then()') originate from the
+        // lexer's keyword_map and carry an identifier-like value string.
+        // In dot-access context the syntax is unambiguous, so all keywords
+        // are valid as field or method names.
+        bool isFieldName = field.kind == TokenKind::Ident
+                        || field.kind == TokenKind::Number
+                        || (!field.value.empty()
+                            && field.kind != TokenKind::Ident
+                            && field.kind != TokenKind::Number
+                            && std::isalpha(static_cast<unsigned char>(field.value[0])));
+        if (!isFieldName)
             parseError(field.line, "expected field name or index after '.'");
         lex_.next(); // consume field name/number
         if (lex_.peek().kind == TokenKind::LParen) {
