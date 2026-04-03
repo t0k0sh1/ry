@@ -498,7 +498,23 @@ void CodeGen::emitVarDecl(const std::string &name,
 void CodeGen::emitStmt(ExprStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    emitExpr(*s.expr);
+    llvm::Value *val = emitExpr(*s.expr);
+
+    // Release ARC-owned temporaries that are not stored into a variable.
+    // Without this, collection operation results (appended, slice, etc.)
+    // and other ARC-owned values would leak when used as bare statements.
+    if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        llvm::FunctionCallee dtor = {};
+        if (type_meta_[TM_ListElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::List);
+        else if (type_meta_[TM_MapKey].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+        else if (type_meta_[TM_SetElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        emitArcRelease(hdr, false, dtor);
+        arc_owned_values_.erase(val);
+    }
 }
 
 void CodeGen::emitStmt(AssignStmt &s) {

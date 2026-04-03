@@ -2454,3 +2454,26 @@ TEST_F(CodeGenTest, RemoveAtNegativeIndexOOB) {
         "remove_at(xs, -4)";
     EXPECT_EXIT(runSource(src), ::testing::ExitedWithCode(1), "");
 }
+
+// ===== Discarded collection operation results (ExprStmt) =====
+
+TEST_F(CodeGenTest, DiscardedCollectionResults) {
+    // Collection operation results used as bare expression statements
+    // should not crash or leak (ARC release handles cleanup).
+    EXPECT_EQ(runSource(
+        "xs = [1, 2, 3]\n"
+        "appended(xs, 4)\n"
+        "print(length(xs))"), "3\n");
+    EXPECT_EQ(runSource(
+        "xs = [1, 2, 3]\n"
+        "slice(xs, 0, 1)\n"
+        "print(length(xs))"), "3\n");
+    EXPECT_EQ(runSource(
+        "xs = [1, 2, 3]\n"
+        "take(xs, 2)\n"
+        "print(length(xs))"), "3\n");
+    EXPECT_EQ(runSource(
+        "xs = [1, 2, 3]\n"
+        "distinct(xs)\n"
+        "print(length(xs))"), "3\n");
+}
