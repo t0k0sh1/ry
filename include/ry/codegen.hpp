@@ -6,6 +6,7 @@
 #include "ry/source_manager.hpp"
 #include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -861,8 +862,8 @@ private:
                             llvm::Type *paramLLVMType, const std::string &paramName);
     // Shared Result-wrapping helpers for stdlib dispatchers
     llvm::Value *emitResultBranch(llvm::Value *isErr, llvm::StructType *resTy,
-                                   std::function<llvm::Value*()> buildOk,
-                                   std::function<llvm::Value*()> buildErr);
+                                   llvm::function_ref<llvm::Value*()> buildOk,
+                                   llvm::function_ref<llvm::Value*()> buildErr);
     llvm::Value *buildErrorFromRuntime(const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapPtrAsResult(llvm::Value *ptr, const char *errFnName = "__ry_get_last_error");
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
