@@ -190,8 +190,13 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         return 1;
     }
     struct stat dst_st;
-    if (fstat(dst_fd, &dst_st) == 0 &&
-        src_st.st_dev == dst_st.st_dev && src_st.st_ino == dst_st.st_ino) {
+    if (fstat(dst_fd, &dst_st) != 0) {
+        setLastError("copy: cannot stat destination '%s': %s", dst, strerror(errno));
+        close(src_fd);
+        close(dst_fd);
+        return 1;
+    }
+    if (src_st.st_dev == dst_st.st_dev && src_st.st_ino == dst_st.st_ino) {
         setLastError("copy: source and destination are the same file '%s'", src);
         close(src_fd);
         close(dst_fd);
