@@ -86,6 +86,7 @@ add_library(ry_lib STATIC
     src/codegen_call_higher_order.cpp
     src/codegen_call_io.cpp
     src/codegen_call_iterator.cpp
+    src/codegen_call_result.cpp
     src/codegen_lambda.cpp
     src/sema_return.cpp
     src/module_loader.cpp

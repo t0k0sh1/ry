@@ -872,6 +872,7 @@ private:
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, ResourceKind rk);
+    llvm::Value *emitBuiltinResult(const CallExpr &e);
     llvm::Value *emitBuiltinIterator(const CallExpr &e);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,

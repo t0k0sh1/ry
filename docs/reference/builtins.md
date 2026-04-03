@@ -38,6 +38,8 @@
 | `Err(error)` | Constructs the error variant of a `Result<T, Error>` |
 | `Error(message)` | Creates an `Error` value with a message |
 | `Error(message, code)` | Creates an `Error` value with a message and error code |
+| `result.and_then(closure)` | If `Ok`, calls `closure` (which returns `Result<U, E>`); if `Err`, propagates the error |
+| `result.map(closure)` | If `Ok`, applies `closure` to the value and wraps the return in `Ok`; if `Err`, propagates the error |
 
 ### Checked Arithmetic
 

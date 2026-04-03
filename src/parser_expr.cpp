@@ -888,7 +888,53 @@ ExprPtr Parser::parsePostfix() {
         // Dot access follows below
         Token dotTok = lex_.next(); // consume '.'
         Token field = lex_.peek();
-        if (field.kind != TokenKind::Ident && field.kind != TokenKind::Number)
+        // After '.', accept identifiers, numbers, and keyword tokens.
+        // Keyword tokens (e.g., 'and' in '.and_then()') originate from the
+        // lexer's keyword_map.  In dot-access context the syntax is
+        // unambiguous, so keywords are valid as field or method names.
+        auto isKeywordAfterDot = [](TokenKind k) {
+            switch (k) {
+                case TokenKind::And:
+                case TokenKind::Or:
+                case TokenKind::Not:
+                case TokenKind::True:
+                case TokenKind::False:
+                case TokenKind::If:
+                case TokenKind::Else:
+                case TokenKind::When:
+                case TokenKind::Match:
+                case TokenKind::While:
+                case TokenKind::For:
+                case TokenKind::In:
+                case TokenKind::Break:
+                case TokenKind::Continue:
+                case TokenKind::Fn:
+                case TokenKind::Return:
+                case TokenKind::From:
+                case TokenKind::Import:
+                case TokenKind::Type:
+                case TokenKind::Record:
+                case TokenKind::Operator:
+                case TokenKind::Enum:
+                case TokenKind::Case:
+                case TokenKind::Expect:
+                case TokenKind::Require:
+                case TokenKind::Ensure:
+                case TokenKind::Invariant:
+                case TokenKind::NoneKw:
+                case TokenKind::As:
+                case TokenKind::ErrorKw:
+                case TokenKind::Async:
+                case TokenKind::Await:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        bool isFieldName = field.kind == TokenKind::Ident
+                        || field.kind == TokenKind::Number
+                        || isKeywordAfterDot(field.kind);
+        if (!isFieldName)
             parseError(field.line, "expected field name or index after '.'");
         lex_.next(); // consume field name/number
         if (lex_.peek().kind == TokenKind::LParen) {
