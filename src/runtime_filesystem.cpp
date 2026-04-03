@@ -162,42 +162,51 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
     }
     return 0;
 #else
-    struct stat src_st;
-    if (stat(src, &src_st) != 0) {
-        setLastError("copy: cannot stat source '%s': %s", src, strerror(errno));
-        return 1;
-    }
-    FILE *in = fopen(src, "rb");
-    if (!in) {
+    // Open source first, then fstat on the fd to avoid TOCTOU race.
+    int src_fd = open(src, O_RDONLY | O_NOFOLLOW);
+    if (src_fd < 0) {
         setLastError("copy: cannot open source '%s': %s", src, strerror(errno));
         return 1;
     }
-    FILE *out = fopen(dst, "wb");
-    if (!out) {
+    struct stat src_st;
+    if (fstat(src_fd, &src_st) != 0) {
+        setLastError("copy: cannot stat source '%s': %s", src, strerror(errno));
+        close(src_fd);
+        return 1;
+    }
+    int dst_fd = open(dst, O_WRONLY | O_CREAT | O_TRUNC, src_st.st_mode & 07777);
+    if (dst_fd < 0) {
         setLastError("copy: cannot open destination '%s': %s", dst, strerror(errno));
-        fclose(in);
+        close(src_fd);
         return 1;
     }
     char buf[65536];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
-        if (fwrite(buf, 1, n, out) != n) {
-            setLastError("copy: write error to '%s': %s", dst, strerror(errno));
-            fclose(in);
-            fclose(out);
-            return 1;
+    ssize_t n;
+    while ((n = read(src_fd, buf, sizeof(buf))) > 0) {
+        const char *p = buf;
+        ssize_t remaining = n;
+        while (remaining > 0) {
+            ssize_t written = write(dst_fd, p, remaining);
+            if (written < 0) {
+                setLastError("copy: write error to '%s': %s", dst, strerror(errno));
+                close(src_fd);
+                close(dst_fd);
+                return 1;
+            }
+            p += written;
+            remaining -= written;
         }
     }
-    if (ferror(in)) {
+    if (n < 0) {
         setLastError("copy: read error from '%s': %s", src, strerror(errno));
-        fclose(in);
-        fclose(out);
+        close(src_fd);
+        close(dst_fd);
         return 1;
     }
-    fclose(in);
-    fclose(out);
-    // Preserve source file permissions
-    ::chmod(dst, src_st.st_mode & 07777);
+    // Preserve source file permissions via fd (no TOCTOU)
+    fchmod(dst_fd, src_st.st_mode & 07777);
+    close(src_fd);
+    close(dst_fd);
     return 0;
 #endif
 }
@@ -224,18 +233,14 @@ int64_t __ry_filesystem_remove(const char *path) {
 }
 
 int64_t __ry_filesystem_remove_all(const char *path) {
-    struct stat st;
-    if (lstat(path, &st) != 0) {
-        setLastError("remove_all: cannot access '%s': %s", path, strerror(errno));
+    // Try unlink first (handles files and symlinks without TOCTOU).
+    // If it fails because the path is a directory, fall through to nftw.
+    if (unlink(path) == 0) return 0;
+    if (errno != EISDIR && errno != EPERM) {
+        setLastError("remove_all: failed to remove '%s': %s", path, strerror(errno));
         return 1;
     }
-    if (!S_ISDIR(st.st_mode)) {
-        if (::remove(path) != 0) {
-            setLastError("remove_all: failed to remove '%s': %s", path, strerror(errno));
-            return 1;
-        }
-        return 0;
-    }
+    // Path is a directory — remove recursively
     if (nftw(path, removeCallback, 64, FTW_DEPTH | FTW_PHYS) != 0) {
         setLastError("remove_all: failed to remove directory tree '%s': %s", path, strerror(errno));
         return 1;
