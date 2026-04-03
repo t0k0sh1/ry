@@ -775,7 +775,7 @@ private:
 
     // Builtin dispatch helpers (Step 4)
     llvm::Value *emitBuiltinCore(const CallExpr &e);
-    llvm::Value *emitBuiltinCollection(const CallExpr &e);
+    llvm::Value *emitBuiltinCollection(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
 
     // Collection operation handlers
     llvm::Value *emitCollOp_add(const CallExpr &e);
@@ -788,6 +788,7 @@ private:
     llvm::Value *emitCollOp_pop(const CallExpr &e);
     llvm::Value *emitCollOp_slice(const CallExpr &e);
     llvm::Value *emitCollOp_take(const CallExpr &e);
+    llvm::Value *emitCollOp_take_impl(const CallExpr &e, llvm::Value *listPtr);
     llvm::Value *emitCollOp_insert(const CallExpr &e);
     llvm::Value *emitCollOp_remove_at(const CallExpr &e);
     llvm::Value *emitCollOp_distinct(const CallExpr &e);
