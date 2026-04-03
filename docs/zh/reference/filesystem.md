@@ -146,10 +146,10 @@ if is_symlink("/tmp/ry_link"):
 ```python
 from filesystem import chmod
 
-# chmod 755 (rwxr-xr-x) — use decimal value: 0o755 = 493
+# chmod 755 (rwxr-xr-x) —— 使用十进制值：0o755 = 493
 chmod("/tmp/script.sh", 493)
 
-# chmod 644 (rw-r--r--) — 0o644 = 420
+# chmod 644 (rw-r--r--) —— 0o644 = 420
 chmod("/tmp/data.txt", 420)
 ```
 

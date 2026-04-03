@@ -1,4 +1,4 @@
-[English](../../reference/path.md) | [日本語](path.md) | [繁體中文](../../zh/reference/path.md)
+[English](../../reference/path.md) | [日本語](path.md) | [简体中文](../../zh/reference/path.md)
 
 # パス関数リファレンス
 

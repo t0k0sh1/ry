@@ -83,7 +83,7 @@ match parse("{\"name\": \"Alice\", \"age\": 30}"):
 ### 处理数组
 
 ```python
-from json import parse, at, to_int, length, json_free
+from json import parse, at, to_int, to_str, length, json_free
 
 match parse("[10, 20, 30]"):
   case Ok(data):

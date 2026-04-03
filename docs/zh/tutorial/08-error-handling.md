@@ -163,7 +163,7 @@ function deposit(amount: int, balance: int) -> int:
 
 如果任何前置条件失败，程序将终止并显示：
 
-```
+```text
 Contract violation: require failed in deposit()
 ```
 
