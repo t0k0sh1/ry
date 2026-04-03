@@ -14,7 +14,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     std::vector<llvm::Type*> capturedTypes;
     std::vector<CapturedArcKind> capturedArcKinds;
     std::vector<ResourceKind> capturedResourceKinds;
-    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos;
+    std::unordered_map<size_t, FnTypeInfo> capturedClosureInfosLocal;
 
     // Build a set of parameter names
     std::unordered_set<std::string> paramNames;
@@ -52,7 +52,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         // Store fn_type_info for any function-typed capture (closure or plain fn pointer)
         auto fnIt = fn_type_info_.find(alloca);
         if (fnIt != fn_type_info_.end())
-            capturedClosureInfos[capturedNames.size() - 1] = fnIt->second;
+            capturedClosureInfosLocal[capturedNames.size() - 1] = fnIt->second;
     };
 
     scanExpr = [&](const ExprNode &node) {
@@ -210,8 +210,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[capturedNames[capIdx]] = alloca;
                 // Propagate fn_type_info for captured function-type variables
-                auto closureIt = capturedClosureInfos.find(capIdx);
-                if (closureIt != capturedClosureInfos.end())
+                auto closureIt = capturedClosureInfosLocal.find(capIdx);
+                if (closureIt != capturedClosureInfosLocal.end())
                     fn_type_info_[alloca] = closureIt->second;
             }
             ++idx;
@@ -262,7 +262,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
     info.capturedTypes = capturedTypes;
     info.capturedArcKinds = capturedArcKinds;
     info.capturedResourceKinds = capturedResourceKinds;
-    info.capturedClosureInfos = capturedClosureInfos;
+    if (!capturedClosureInfosLocal.empty())
+        info.capturedClosureInfos = std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(std::move(capturedClosureInfosLocal));
     fn_type_info_[func] = info;
 
     // If no captures, just return the function pointer

@@ -275,7 +275,36 @@ private:
         std::vector<llvm::Type*> capturedTypes;  // types of captured variables
         std::vector<CapturedArcKind> capturedArcKinds; // ARC kind per captured variable
         std::vector<ResourceKind> capturedResourceKinds; // per-capture ResourceKind (RK_COUNT if N/A)
-        std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for function-typed captures
+        // unique_ptr to break incomplete-type cycle (GCC 11 requires complete type for unordered_map value)
+        std::unique_ptr<std::unordered_map<size_t, FnTypeInfo>> capturedClosureInfos;
+
+        FnTypeInfo() = default;
+        ~FnTypeInfo() = default;
+        FnTypeInfo(FnTypeInfo&&) = default;
+        FnTypeInfo& operator=(FnTypeInfo&&) = default;
+        FnTypeInfo(const FnTypeInfo &o)
+            : paramTypes(o.paramTypes), paramTypeNames(o.paramTypeNames),
+              returnType(o.returnType), capturedVars(o.capturedVars),
+              capturedTypes(o.capturedTypes), capturedArcKinds(o.capturedArcKinds),
+              capturedResourceKinds(o.capturedResourceKinds),
+              capturedClosureInfos(o.capturedClosureInfos
+                  ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
+                  : nullptr) {}
+        FnTypeInfo& operator=(const FnTypeInfo &o) {
+            if (this != &o) {
+                paramTypes = o.paramTypes;
+                paramTypeNames = o.paramTypeNames;
+                returnType = o.returnType;
+                capturedVars = o.capturedVars;
+                capturedTypes = o.capturedTypes;
+                capturedArcKinds = o.capturedArcKinds;
+                capturedResourceKinds = o.capturedResourceKinds;
+                capturedClosureInfos = o.capturedClosureInfos
+                    ? std::make_unique<std::unordered_map<size_t, FnTypeInfo>>(*o.capturedClosureInfos)
+                    : nullptr;
+            }
+            return *this;
+        }
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
     std::unordered_map<llvm::Value*, FnTypeInfo>::iterator
