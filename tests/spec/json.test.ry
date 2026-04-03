@@ -296,6 +296,63 @@ describe("json stringify", ():
   )
 )
 
+describe("json child value ownership", ():
+  it("get() child does not cause double-free on scope exit", ():
+    match parse("{\"name\": \"Alice\", \"age\": 30}"):
+      case Ok(data):
+        match get(data, "name"):
+          case Ok(val):
+            match to_str(val):
+              case Ok(name):
+                expect(name).to_eq("Alice")
+              case Err(e):
+                fail("to_str failed")
+          case Err(e):
+            fail("json_get failed")
+        json_free(data)
+      case Err(e):
+        fail("parse failed")
+  )
+
+  it("at() child does not cause double-free on scope exit", ():
+    match parse("[\"hello\", \"world\"]"):
+      case Ok(data):
+        match at(data, 0):
+          case Ok(val):
+            match to_str(val):
+              case Ok(s):
+                expect(s).to_eq("hello")
+              case Err(e):
+                fail("to_str failed")
+          case Err(e):
+            fail("json_at failed")
+        json_free(data)
+      case Err(e):
+        fail("parse failed")
+  )
+
+  it("nested get() children do not cause double-free on scope exit", ():
+    match parse("{\"user\": {\"name\": \"Bob\"}}"):
+      case Ok(data):
+        match get(data, "user"):
+          case Ok(user):
+            match get(user, "name"):
+              case Ok(name_val):
+                match to_str(name_val):
+                  case Ok(name):
+                    expect(name).to_eq("Bob")
+                  case Err(e):
+                    fail("to_str failed")
+              case Err(e):
+                fail("json_get name failed")
+          case Err(e):
+            fail("json_get user failed")
+        json_free(data)
+      case Err(e):
+        fail("parse failed")
+  )
+)
+
 describe("json type checks", ():
   it("identifies string type", ():
     match parse("\"hello\""):

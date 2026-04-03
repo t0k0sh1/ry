@@ -867,6 +867,7 @@ private:
     llvm::Value *wrapStatusAsResult(llvm::Value *status, const char *errFnName = "__ry_get_last_error");
 
     std::unordered_set<llvm::Value*> resource_sets_[RK_COUNT];
+    std::unordered_set<llvm::Value*> json_type_only_;
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, ResourceKind rk);

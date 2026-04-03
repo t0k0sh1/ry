@@ -1,22 +1,32 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 
-bool CodeGen::isJsonValue(llvm::Value *val) {
-    if (resource_sets_[RK_JsonValue].count(val)) return true;
+static bool lookupJsonSet(const std::unordered_set<llvm::Value*> &set, llvm::Value *val) {
+    if (set.count(val)) return true;
     if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
         if (load->getType()->isPointerTy())
-            return resource_sets_[RK_JsonValue].count(load->getPointerOperand()) > 0;
+            return set.count(load->getPointerOperand()) > 0;
     return false;
+}
+
+bool CodeGen::isJsonValue(llvm::Value *val) {
+    return lookupJsonSet(resource_sets_[RK_JsonValue], val) ||
+           lookupJsonSet(json_type_only_, val);
 }
 
 llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
     if (!native_fn_arg_counts_.count(e.callee))
         return nullptr;
 
-    // Helper: wrap ptr as Result and optionally track as JsonValue
-    auto wrapJsonPtrResult = [&](llvm::Value *ptr, bool trackJson = false) -> llvm::Value * {
+    // Helper: wrap ptr as Result.
+    // owned=true: independently allocated (parse) → ARC cleanup on scope exit
+    // owned=false: borrowed child pointer (get/at) → type dispatch only, no cleanup
+    auto wrapJsonPtrResult = [&](llvm::Value *ptr, bool owned = false) -> llvm::Value * {
         llvm::Value *result = wrapPtrAsResult(ptr);
-        if (trackJson) resource_sets_[RK_JsonValue].insert(result);
+        if (owned)
+            resource_sets_[RK_JsonValue].insert(result);
+        else
+            json_type_only_.insert(result);
         return result;
     };
 
@@ -78,7 +88,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_get", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val, key}, "json_get");
-        return wrapJsonPtrResult(ptr, true);
+        return wrapJsonPtrResult(ptr, false);
     }
 
     // at(value, index) -> Result<JsonValue, Error>
@@ -91,7 +101,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_i64_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_at", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val, idx}, "json_at");
-        return wrapJsonPtrResult(ptr, true);
+        return wrapJsonPtrResult(ptr, false);
     }
 
     // to_str(value) -> Result<str, Error> — for JsonValue
@@ -102,7 +112,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_str", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_str");
-        return wrapJsonPtrResult(ptr);
+        return wrapPtrAsResult(ptr);
     }
 
     // to_int(value) -> Result<int, Error> — for JsonValue
@@ -185,7 +195,7 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
         auto fnTy = fnTy_ptr_to_ptr_;
         auto fn = mod_->getOrInsertFunction("__ry_json_keys", fnTy);
         llvm::Value *ptr = builder_.CreateCall(fn, {val}, "json_keys");
-        llvm::Value *result = wrapJsonPtrResult(ptr);
+        llvm::Value *result = wrapPtrAsResult(ptr);
         type_meta_[TM_ListElem][result] = ptrTy_;
         return result;
     }
@@ -194,8 +204,10 @@ llvm::Value *CodeGen::emitBuiltinJson(const CallExpr &e) {
     if (e.callee == "json_free") {
         requireArgs(e, 1);
         llvm::Value *val = emitExpr(*e.args[0]);
-        if (!isJsonValue(val))
+        if (!lookupJsonSet(resource_sets_[RK_JsonValue], val))
             codegenError("json_free() requires a JsonValue argument");
+        if (lookupJsonSet(json_type_only_, val))
+            codegenError("json_free() cannot free borrowed child values from get()/at()");
         return emitResourceFree(val, RK_JsonValue, *e.args[0]);
     }
 
