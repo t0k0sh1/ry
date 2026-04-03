@@ -32,9 +32,7 @@ bool CodeGen::isNonStrPointer(llvm::Value *val) {
     }
 
     // Function pointers
-    if (lookupFnTypeInfo(val) != fn_type_info_.end()) return true;
-
-    return false;
+    return lookupFnTypeInfo(val) != fn_type_info_.end();
 }
 
 bool CodeGen::isStringValue(llvm::Value *val) {
