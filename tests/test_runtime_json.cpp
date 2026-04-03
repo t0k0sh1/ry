@@ -214,7 +214,9 @@ TEST(RuntimeJson, ObjectKeys) {
 TEST(RuntimeJson, ObjectKeysNullInput) {
     void *keys = __ry_json_keys(nullptr);
     EXPECT_EQ(keys, nullptr);
-    EXPECT_STREQ(__ry_get_last_error(), "json_keys: value is null");
+    const char *err = __ry_get_last_error();
+    EXPECT_STREQ(err, "json_keys: value is null");
+    free((void*)err);
 }
 
 TEST(RuntimeJson, ObjectKeysNonObject) {
@@ -222,7 +224,9 @@ TEST(RuntimeJson, ObjectKeysNonObject) {
     ASSERT_NE(v.get(), nullptr);
     void *keys = __ry_json_keys(v.get());
     EXPECT_EQ(keys, nullptr);
-    EXPECT_STREQ(__ry_get_last_error(), "json_keys: value is not an object");
+    const char *err = __ry_get_last_error();
+    EXPECT_STREQ(err, "json_keys: value is not an object");
+    free((void*)err);
 }
 
 TEST(RuntimeJson, ObjectKeysEmptyObject) {

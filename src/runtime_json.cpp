@@ -771,7 +771,7 @@ void *__ry_json_keys(void *value) {
             keys.emplace_back(v->object_val.keys[i]);
         if (auto *result = makeStringList(keys))
             return result;
-    } catch (const std::bad_alloc &) {
+    } catch (const std::exception &) {
     }
     __ry_set_last_error("json_keys: out of memory");
     return nullptr;
