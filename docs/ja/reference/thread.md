@@ -1,4 +1,4 @@
-[English](../../reference/thread.md)
+[English](../../reference/thread.md) | [日本語](thread.md) | [简体中文](../../zh/reference/thread.md)
 
 # スレッドリファレンス
 

@@ -1,4 +1,4 @@
-[English](../../reference/gc.md)
+[English](../../reference/gc.md) | [日本語](gc.md) | [简体中文](../../zh/reference/gc.md)
 
 # GC リファレンス
 
