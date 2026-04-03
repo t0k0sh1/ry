@@ -594,6 +594,11 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_NO_THROW(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b"));
     // int + int → ok (regression)
     EXPECT_NO_THROW(runSource("a = 1\nb = 2\nc = a + b"));
+    // unary minus with i64 suffix (#595)
+    EXPECT_NO_THROW(runSource("c = 1i64 + -1i64"));
+    EXPECT_NO_THROW(runSource("c = -1i64 + -1i64"));
+    EXPECT_THROW(runSource("c = -1i64 + 1"), std::runtime_error);
+    EXPECT_THROW(runSource("c = 1 + -1i64"), std::runtime_error);
 }
 
 // ===== Numeric literal suffix =====

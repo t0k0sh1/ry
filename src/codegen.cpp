@@ -461,6 +461,10 @@ bool CodeGen::isLowLevelTypeName(const std::string &name) {
 }
 
 std::string CodeGen::getExprLowLevelSuffix(const ExprNode &node) {
+    if (auto *ue = std::get_if<std::unique_ptr<UnaryExpr>>(&node.data)) {
+        if ((*ue)->op == "+" || (*ue)->op == "-")
+            return getExprLowLevelSuffix(*(*ue)->operand);
+    }
     if (auto *ne = std::get_if<NumberExpr>(&node.data)) {
         if (isLowLevelTypeName(ne->suffix)) return ne->suffix;
     }
