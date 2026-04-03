@@ -231,6 +231,8 @@ describe("json keys and len", ():
         match keys(data):
           case Ok(ks):
             expect(length(ks)).to_eq(2)
+            expect(ks[0]).to_eq("a")
+            expect(ks[1]).to_eq("b")
           case Err(e):
             fail("keys failed")
         json_free(data)

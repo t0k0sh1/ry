@@ -764,16 +764,17 @@ void *__ry_json_keys(void *value) {
     }
     auto *v = (JsonValue*)value;
     int64_t len = v->object_val.len;
-    std::vector<std::string> keys;
-    keys.reserve(len);
-    for (int64_t i = 0; i < len; i++)
-        keys.emplace_back(v->object_val.keys[i]);
-    auto *result = makeStringList(keys);
-    if (!result) {
-        __ry_set_last_error("json_keys: out of memory");
-        return nullptr;
+    try {
+        std::vector<std::string> keys;
+        keys.reserve(static_cast<size_t>(len));
+        for (int64_t i = 0; i < len; i++)
+            keys.emplace_back(v->object_val.keys[i]);
+        if (auto *result = makeStringList(keys))
+            return result;
+    } catch (const std::bad_alloc &) {
     }
-    return result;
+    __ry_set_last_error("json_keys: out of memory");
+    return nullptr;
 }
 
 void __ry_json_free(void *value) {
