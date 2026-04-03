@@ -176,6 +176,11 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         close(src_fd);
         return 1;
     }
+    if (!S_ISREG(src_st.st_mode)) {
+        setLastError("copy: source '%s' is not a regular file", src);
+        close(src_fd);
+        return 1;
+    }
     // Open without O_TRUNC first, then check for same-inode to prevent
     // zeroing the source when src and dst refer to the same file.
     int dst_fd = open(dst, O_WRONLY | O_CREAT, src_st.st_mode & 07777);
