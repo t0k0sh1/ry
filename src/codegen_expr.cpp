@@ -994,10 +994,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WeakExpr> &e) {
     return emitArcGetHeaderFromData(val);
 }
 
-// Plain-malloc header (same as appended/slice/take) — caller stores into ARC-managed var.
 llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::Type *elemTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     auto mallocFn = getStdlibMalloc();
     auto memcpyFn = getStdlibMemcpy();
@@ -1007,8 +1005,7 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
 
     llvm::Value *newLen = builder_.CreateAdd(lf.len, rf.len, "cat_len");
 
-    llvm::Value *newHeader = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "cat_header");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
     llvm::Value *dataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_ds");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "cat_data");

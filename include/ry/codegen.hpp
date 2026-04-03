@@ -88,6 +88,7 @@ private:
                         llvm::Function *gcVisitFn = nullptr);
     llvm::Value *emitArcGetDataPtr(llvm::Value *headerPtr);
     llvm::Value *emitArcGetHeaderFromData(llvm::Value *dataPtr);
+    llvm::Value *emitArcAllocCollectionHeader(llvm::Type *headerTy);
     bool isArcAtomic(llvm::Value *val) const;
     void markArcAtomic(llvm::Value *val);
     void markArcManaged(llvm::AllocaInst *alloca);
@@ -728,6 +729,18 @@ private:
         llvm::Value *value, llvm::Type *valueTy,
         llvm::Value *oldIndex, llvm::Value *newIndex,
         const std::string &prefix);
+
+    // ===== Collection Header Allocation Policy =====
+    //
+    // All collection headers (List, Set, Map) are allocated with an ARC header
+    // prepended via emitArcAllocCollectionHeader(). This ensures:
+    // - Scope cleanup (emitArcReleaseVar) can safely read the ARC header
+    // - CoW checks (emitCowCheck) work correctly via arc_backed_vars_
+    // - No memory leaks when operation results are discarded
+    //
+    // Data buffers (element arrays, key/value arrays) inside collection headers
+    // are allocated with plain malloc and freed by the collection destructor
+    // (getOrCreateCollectionDestructor).
 
     // Data structure field helpers
     struct ListFields {

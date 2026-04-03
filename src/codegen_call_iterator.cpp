@@ -204,9 +204,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmi
             builder_, iteratorHeaderTy_, ptrTy_, iterVal, "tl");
 
         // Allocate list header
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *headerPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tl_header");
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Initial capacity = 8
         llvm::AllocaInst *capVar = builder_.CreateAlloca(i64Ty_, nullptr, "tl_cap");

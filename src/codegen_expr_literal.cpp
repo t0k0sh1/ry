@@ -157,12 +157,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     int64_t count = static_cast<int64_t>(vals.size());
 
     // Allocate list header with ARC: [ArcHeader][ListHeader]
-    const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
     // Allocate data buffer (separate allocation, freed by destructor)
+    const llvm::DataLayout &dl = mod_->getDataLayout();
     auto mallocFn = getStdlibMalloc();
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
     llvm::Value *dataSize = llvm::ConstantInt::get(i64Ty_, elemSize * count);
@@ -233,9 +231,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
     // Allocate MapHeader with ARC: [ArcHeader][MapHeader]
-    uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
     // Allocate keys and values arrays (separate allocations, freed by destructor)
     auto mallocFn = getStdlibMalloc();
@@ -326,9 +322,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
 
     // Allocate SetHeader with ARC: [ArcHeader][SetHeader]
-    uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
     // Allocate elements array (separate allocation, freed by destructor)
     auto mallocFn = getStdlibMalloc();

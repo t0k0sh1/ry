@@ -305,13 +305,11 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<RangeExpr> &e) {
 
     // Allocate list: header + data
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);
 
     auto mallocFn = getStdlibMalloc();
 
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_hdr");
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(length, llvm::ConstantInt::get(i64Ty_, elemSize), "data_size");
     llvm::Value *dataPtr = builder_.CreateCall(mallocFn, {dataSize}, "range_data");
 

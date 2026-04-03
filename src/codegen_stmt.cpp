@@ -33,9 +33,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             // Allocate SetHeader with ARC
-            uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
             // Initial capacity = 4
             auto mallocFn = getStdlibMalloc();
@@ -63,9 +61,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             // Allocate MapHeader with ARC
-            uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
             auto mallocFn = getStdlibMalloc();
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
@@ -107,9 +103,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-        llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         auto mallocFn = getStdlibMalloc();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);

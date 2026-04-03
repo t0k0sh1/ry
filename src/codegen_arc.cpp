@@ -23,6 +23,13 @@ llvm::Value *CodeGen::emitArcGetDataPtr(llvm::Value *headerPtr) {
     return dataPtr;
 }
 
+llvm::Value *CodeGen::emitArcAllocCollectionHeader(llvm::Type *headerTy) {
+    const llvm::DataLayout &dl = mod_->getDataLayout();
+    uint64_t size = dl.getTypeAllocSize(headerTy);
+    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, size));
+    return emitArcGetDataPtr(arcHdr);
+}
+
 llvm::Value *CodeGen::emitArcGetHeaderFromData(llvm::Value *dataPtr) {
     return builder_.CreateGEP(i8Ty_, dataPtr,
                               llvm::ConstantInt::get(i64Ty_, -static_cast<int64_t>(ARC_HEADER_SIZE)),
@@ -652,13 +659,11 @@ void CodeGen::emitCowRetainArcElements(llvm::Value *buf, llvm::Value *len,
 
 llvm::Value *CodeGen::emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *elemTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
     auto oldFields = loadListHeader(oldDataPtr, "cow_old");
 
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    auto *newDataPtr = emitArcGetDataPtr(arcHdr);
+    auto *newDataPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
     // Tight copy: allocate len (not cap) elements; cap = len
     auto *bufSize = builder_.CreateMul(oldFields.len,
@@ -683,7 +688,6 @@ llvm::Value *CodeGen::emitCowDeepCopyList(llvm::Value *oldDataPtr, llvm::Type *e
 llvm::Value *CodeGen::emitCowDeepCopyMap(llvm::Value *oldDataPtr,
                                           llvm::Type *keyTy, llvm::Type *valTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
     uint64_t keySize = dl.getTypeAllocSize(keyTy);
     uint64_t valSize = dl.getTypeAllocSize(valTy);
     uint64_t bucketElemSize = dl.getTypeAllocSize(i64Ty_);
@@ -694,8 +698,7 @@ llvm::Value *CodeGen::emitCowDeepCopyMap(llvm::Value *oldDataPtr,
     auto *bucketsFieldPtr = builder_.CreateStructGEP(mapHeaderTy_, oldDataPtr, 5, "cow_old_bk_ptr");
     auto *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsFieldPtr, "cow_old_bk");
 
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    auto *newDataPtr = emitArcGetDataPtr(arcHdr);
+    auto *newDataPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
     // Tight copy: allocate len (not cap) for keys/vals
     auto *keysBufSize = builder_.CreateMul(oldFields.len,
@@ -733,7 +736,6 @@ llvm::Value *CodeGen::emitCowDeepCopyMap(llvm::Value *oldDataPtr,
 
 llvm::Value *CodeGen::emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *elemTy) {
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
     uint64_t elemSz = dl.getTypeAllocSize(elemTy);
     uint64_t bucketElemSize = dl.getTypeAllocSize(i64Ty_);
 
@@ -743,8 +745,7 @@ llvm::Value *CodeGen::emitCowDeepCopySet(llvm::Value *oldDataPtr, llvm::Type *el
     auto *bucketsFieldPtr = builder_.CreateStructGEP(setHeaderTy_, oldDataPtr, 4, "cow_old_bk_ptr");
     auto *oldBuckets = builder_.CreateLoad(ptrTy_, bucketsFieldPtr, "cow_old_bk");
 
-    auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-    auto *newDataPtr = emitArcGetDataPtr(arcHdr);
+    auto *newDataPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
     // Tight copy: allocate len (not cap) for elems
     auto *elemsBufSize = builder_.CreateMul(oldFields.len,

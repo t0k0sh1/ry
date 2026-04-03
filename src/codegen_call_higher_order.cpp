@@ -30,9 +30,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         // Allocate new list header + data (capacity = source length)
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "filter_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "filter_data_size");
@@ -125,9 +123,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         // Allocate new list
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "map_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
         uint64_t outElemSize = dl.getTypeAllocSize(outElemTy);
         llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, outElemSize), "map_data_size");
@@ -206,10 +202,10 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *copySize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "sortm_sz");
         builder_.CreateCall(memcpyFn, {lf.data, sf.data, copySize});
 
-        // Free the temporary sorted list
+        // Free the temporary sorted list (data buffer + ARC header)
         auto freeFn = getStdlibFree();
         builder_.CreateCall(freeFn, {sf.data});
-        builder_.CreateCall(freeFn, {sorted});
+        builder_.CreateCall(freeFn, {emitArcGetHeaderFromData(sorted)});
 
         return llvm::ConstantInt::get(i64Ty_, 0);
     }
@@ -586,9 +582,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     // Allocate new list and copy data
     auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *newHeader = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sort_header");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
 
     uint64_t elemSz = dl.getTypeAllocSize(elemTy);
     llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, elemSz), "sort_data_size");
