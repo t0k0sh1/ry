@@ -47,7 +47,7 @@ add_offset = (x: int) -> int => x + offset
 print(add_offset(5))   # 15
 
 # Structs
-type Point:
+record Point:
     x: int
     y: int
 
