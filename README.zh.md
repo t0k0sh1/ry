@@ -17,7 +17,7 @@
 - **F-String** — 使用 `f"Hello {name}"` 进行字符串插值
 - **契约式设计** — `require`（前置条件）、`ensure`（后置条件）、`invariant`（结构体不变量）、`old()`、`result`
 - **指令** — `@deprecated` 编译时元数据注解
-- **函数** — `fn` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
+- **函数** — `function` 定义、递归、重载、Lambda（闭包）、高阶函数、UFCS
 - **控制流** — `if`/`else`、`when`、`while`、`for...in`、`break`/`continue`
 - **文件 I/O** — 文件读写、字节操作、标准输入（`std.io`）
 - **包管理** — 基于目录的包、自动导入的 `std` 标准库、`from ... import ...`
@@ -67,7 +67,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # 流式操作 (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 枚举类型

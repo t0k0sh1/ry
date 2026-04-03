@@ -17,7 +17,7 @@
 - **f-string** — `f"Hello {name}"` による文字列補間
 - **契約による設計** — `require`（事前条件）・`ensure`（事後条件）・`invariant`（構造体不変条件）・`old()`・`result`
 - **ディレクティブ** — `@deprecated` コンパイル時メタデータアノテーション
-- **関数** — `fn` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
+- **関数** — `function` 定義・再帰・オーバーロード・ラムダ（クロージャ）・高階関数・UFCS
 - **制御構文** — `if`/`else`, `when`, `while`, `for...in`, `break`/`continue`
 - **ファイル I/O** — ファイル読み書き・バイト操作・標準入力（`std.io`）
 - **パッケージ** — ディレクトリベースのパッケージ、自動インポートされる `std` ライブラリ、`from ... import ...`
@@ -67,7 +67,7 @@ print(2 in s)          # true
 print(m["a"])           # 1
 
 # ストリーム操作 (filter, map, sort)
-result = [5, 3, 1, 4, 2].filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = [5, 3, 1, 4, 2].filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)          # [20, 30, 40, 50]
 
 # 列挙型
