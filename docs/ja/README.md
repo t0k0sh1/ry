@@ -37,7 +37,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 |--------|------|
 | [型一覧・型規則](reference/types.md) | 全型の説明・型昇格ルール・型変換 |
 | [演算子一覧・優先順位](reference/operators.md) | 全演算子と優先順位表 |
-| [制御構文](reference/control-flow.md) | if/else・when・while・for の完全な文法 |
+| [制御構文](reference/control-flow.md) | if/else・match・when・while・for の完全な文法 |
 | [関数・ラムダ・UFCS・演算子オーバーロード](reference/functions.md) | 関数定義の全形式 |
 | [構造体・列挙型](reference/structs.md) | type 定義・enum 定義の完全な文法 |
 | [タプル・リスト・マップ・セット](reference/collections.md) | コレクション型の操作方法 |
