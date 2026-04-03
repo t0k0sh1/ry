@@ -176,10 +176,26 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         close(src_fd);
         return 1;
     }
-    int dst_fd = open(dst, O_WRONLY | O_CREAT | O_TRUNC, src_st.st_mode & 07777);
+    // Open without O_TRUNC first, then check for same-inode to prevent
+    // zeroing the source when src and dst refer to the same file.
+    int dst_fd = open(dst, O_WRONLY | O_CREAT, src_st.st_mode & 07777);
     if (dst_fd < 0) {
         setLastError("copy: cannot open destination '%s': %s", dst, strerror(errno));
         close(src_fd);
+        return 1;
+    }
+    struct stat dst_st;
+    if (fstat(dst_fd, &dst_st) == 0 &&
+        src_st.st_dev == dst_st.st_dev && src_st.st_ino == dst_st.st_ino) {
+        setLastError("copy: source and destination are the same file '%s'", src);
+        close(src_fd);
+        close(dst_fd);
+        return 1;
+    }
+    if (ftruncate(dst_fd, 0) != 0) {
+        setLastError("copy: cannot truncate destination '%s': %s", dst, strerror(errno));
+        close(src_fd);
+        close(dst_fd);
         return 1;
     }
     char buf[65536];
