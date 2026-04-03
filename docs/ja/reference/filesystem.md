@@ -1,4 +1,4 @@
-[English](../../reference/filesystem.md) | [日本語](filesystem.md) | [繁體中文](../../zh/reference/filesystem.md)
+[English](../../reference/filesystem.md) | [日本語](filesystem.md) | [简体中文](../../zh/reference/filesystem.md)
 
 # ファイルシステム関数リファレンス
 

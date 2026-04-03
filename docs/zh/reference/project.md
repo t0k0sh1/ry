@@ -6,7 +6,7 @@
 
 ```bash
 ry <file.ry> [args...]              # 运行 Ry 脚本
-echo '<code>' | ry                  # 从标准输入运行代码
+echo '<code>' | ry -c               # 从标准输入运行代码
 ry test [options] [<file> | <dir>]  # 运行测试
 ry init                             # 初始化项目
 ry new <project-name>               # 创建新项目

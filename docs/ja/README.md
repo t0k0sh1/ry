@@ -47,7 +47,7 @@ Ry を初めて使う方はこちらから順番に読み進めてください�
 | [数学関数](reference/math.md) | PI・E・sqrt・sin・cos・abs・floor・ceil・round 等 |
 | [I/O 関数](reference/io.md) | read_text・write_text・exists・read_bytes・to_bytes 等 |
 | [JSON](reference/json.md) | parse・stringify・get・at・to_str・to_int 等 |
-| [ネットワーク（TCP）](reference/net.md) | bind・listen・accept・connect・TCP ソケットの send/recv/close |
+| [ネットワーク（TCP）](reference/net.md) | bind・listen・accept・connect・TCP ソケットの send/receive/close |
 | [HTTP サーバー](reference/http.md) | listen・method・path・header・body・response |
 | [Base64](reference/base64.md) | encode・decode・encode_url_safe・decode_url_safe |
 | [Path](reference/path.md) | join・basename・dirname・extension・resolve・is_absolute |

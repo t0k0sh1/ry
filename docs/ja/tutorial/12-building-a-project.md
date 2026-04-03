@@ -1,4 +1,4 @@
-[English](../../tutorial/12-building-a-project.md) | [日本語](12-building-a-project.md) | [繁體中文](../../zh/tutorial/12-building-a-project.md)
+[English](../../tutorial/12-building-a-project.md) | [日本語](12-building-a-project.md) | [简体中文](../../zh/tutorial/12-building-a-project.md)
 
 # プロジェクトを作る
 

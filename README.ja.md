@@ -120,7 +120,7 @@ cmake --build build
 
 ```bash
 ry <file.ry>              # Ry スクリプトを実行
-echo '<code>' | ry         # 標準入力からコードを実行
+echo '<code>' | ry -c      # 標準入力からコードを実行
 ry test [options] [path]   # テストを実行 (*.test.ry)
 ry init                    # カレントディレクトリでプロジェクトを初期化
 ry new <name>              # 新しいプロジェクトを作成
@@ -134,7 +134,7 @@ ry self-update             # ry 自体を更新
 ヒアドキュメントにも対応しています:
 
 ```bash
-ry <<'RY'
+ry -c <<'RY'
 a = 1
 b = 2
 print(a + b)

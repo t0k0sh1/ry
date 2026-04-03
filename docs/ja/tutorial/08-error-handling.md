@@ -1,4 +1,4 @@
-[English](../../tutorial/08-error-handling.md) | [日本語](08-error-handling.md) | [繁體中文](../../zh/tutorial/08-error-handling.md)
+[English](../../tutorial/08-error-handling.md) | [日本語](08-error-handling.md) | [简体中文](../../zh/tutorial/08-error-handling.md)
 
 # エラーハンドリング
 

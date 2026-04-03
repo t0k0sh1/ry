@@ -47,7 +47,7 @@ Ry 是一个基于 LLVM JIT 的简洁编程语言。采用 Python 风格的缩�
 | [数学函数](reference/math.md) | PI、E、sqrt、sin、cos、abs、floor、ceil、round 等 |
 | [I/O 函数](reference/io.md) | read_text、write_text、exists、read_bytes、to_bytes 等 |
 | [JSON](reference/json.md) | parse、stringify、get、at、to_str、to_int 等 |
-| [网络（TCP）](reference/net.md) | bind、listen、accept、connect、TCP 套接字的 send/recv/close |
+| [网络（TCP）](reference/net.md) | bind、listen、accept、connect、TCP 套接字的 send/receive/close |
 | [HTTP 服务器](reference/http.md) | listen、method、path、header、body、response |
 | [Base64](reference/base64.md) | encode、decode、encode_url_safe、decode_url_safe |
 | [Path](reference/path.md) | join、basename、dirname、extension、resolve、is_absolute |

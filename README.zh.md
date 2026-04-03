@@ -120,7 +120,7 @@ cmake --build build
 
 ```bash
 ry <file.ry>              # 运行 Ry 脚本
-echo '<code>' | ry         # 从标准输入运行代码
+echo '<code>' | ry -c      # 从标准输入运行代码
 ry test [options] [path]   # 运行测试 (*.test.ry)
 ry init                    # 在当前目录初始化项目
 ry new <name>              # 创建新项目
@@ -134,7 +134,7 @@ ry self-update             # 更新 ry 本身
 标准输入也支持 here-document：
 
 ```bash
-ry <<'RY'
+ry -c <<'RY'
 a = 1
 b = 2
 print(a + b)

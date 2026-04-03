@@ -119,8 +119,8 @@ function first(xs: List<int>) -> int:
 xs = [1, 2, 3, 4, 5]
 
 # filter：保留符合条件的元素
-evens = filter(xs, (x: int) => x > 3)
-print(evens)   # [4, 5]
+greater_than_three = filter(xs, (x: int) => x > 3)
+print(greater_than_three)   # [4, 5]
 
 # map：转换每个元素
 doubled = map(xs, (x: int) => x * 2)
@@ -393,7 +393,7 @@ print(top_bonus)   # [170, 186, 134]
 
 ### 使用 next() 手动迭代
 
-`next()` 返回 `Option` —— 如果有下一个元素则为 `Some(value)`，迭代器耗尽时为 `None`。你将在[错误处理](08-error-handling.md)中了解更多关于 `Option` 的内容。
+`next()` 返回 `Option` —— 如果有下一个元素则为 `Some(value)`，迭代器耗尽时为 `None`。你将在[错误处理](08-error-handling.md)中进一步了解 `Option`。
 
 ```python
 it = iter([10, 20])

@@ -119,8 +119,8 @@ function first(xs: List<int>) -> int:
 xs = [1, 2, 3, 4, 5]
 
 # filter: 条件に一致する要素だけを残す
-evens = filter(xs, (x: int) => x > 3)
-print(evens)   # [4, 5]
+greater_than_three = filter(xs, (x: int) => x > 3)
+print(greater_than_three)   # [4, 5]
 
 # map: 各要素を変換する
 doubled = map(xs, (x: int) => x * 2)

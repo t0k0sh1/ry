@@ -6,7 +6,7 @@
 
 ```bash
 ry <file.ry> [args...]              # Ry スクリプトを実行
-echo '<code>' | ry                  # 標準入力からコードを実行
+echo '<code>' | ry -c               # 標準入力からコードを実行
 ry test [options] [<file> | <dir>]  # テストを実行
 ry init                             # プロジェクトを初期化
 ry new <project-name>               # 新規プロジェクトを作成

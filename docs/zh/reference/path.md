@@ -53,9 +53,9 @@ print(extension(p))   # .pdf
 from path import extension
 
 print(extension("archive.tar.gz"))  # .gz
-print(extension(".gitignore"))      # (empty string — hidden file with no extension)
+print(extension(".gitignore"))      # (空字符串 — 没有扩展名的隐藏文件)
 print(extension(".config.json"))    # .json
-print(extension("Makefile"))        # (empty string)
+print(extension("Makefile"))        # (空字符串)
 ```
 
 ### 检查绝对路径
