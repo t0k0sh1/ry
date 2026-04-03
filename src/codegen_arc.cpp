@@ -882,9 +882,10 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
 
     // Cache key: capturedArcKinds + capturedTypes + capturedResourceKinds + nested closure shapes
     std::vector<NestedClosureShape> nestedShapes;
-    for (auto &[idx, ci] : info.capturedClosureInfos)
-        nestedShapes.push_back({idx, ci.capturedArcKinds, ci.capturedTypes,
-                                ci.capturedResourceKinds});
+    if (info.capturedClosureInfos)
+        for (auto &[idx, ci] : *info.capturedClosureInfos)
+            nestedShapes.push_back({idx, ci.capturedArcKinds, ci.capturedTypes,
+                                    ci.capturedResourceKinds});
     std::sort(nestedShapes.begin(), nestedShapes.end());
     ClosureDtorKey cacheKey{info.capturedArcKinds, info.capturedTypes,
                             info.capturedResourceKinds, std::move(nestedShapes)};
@@ -954,10 +955,12 @@ llvm::FunctionCallee CodeGen::getOrCreateClosureDestructor(const FnTypeInfo &inf
             break;
         }
         case CAK_Closure: {
-            auto cit = info.capturedClosureInfos.find(i);
-            if (cit != info.capturedClosureInfos.end() &&
-                !cit->second.capturedArcKinds.empty())
-                subDtor = getOrCreateClosureDestructor(cit->second);
+            if (info.capturedClosureInfos) {
+                auto cit = info.capturedClosureInfos->find(i);
+                if (cit != info.capturedClosureInfos->end() &&
+                    !cit->second.capturedArcKinds.empty())
+                    subDtor = getOrCreateClosureDestructor(cit->second);
+            }
             break;
         }
         case CAK_Generic:
