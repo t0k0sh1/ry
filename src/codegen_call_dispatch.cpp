@@ -87,24 +87,26 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
     // Fast path: pre-emit args[0] once for callee names shared by multiple
     // dispatchers, then route through the same try-chain order to avoid
     // emitting dead IR from earlier dispatchers that don't match the type.
+    // The else branch ensures the normal chain is skipped when the fast path
+    // handles these names, preventing duplicate emission on fallthrough.
     if (e->args.size() >= 2 && (e->callee == "map" || e->callee == "filter")) {
         llvm::Value *arg0 = emitExpr(*e->args[0]);
         if (auto *v = emitBuiltinResult(*e, arg0))      return v;
         if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
         if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
+    } else {
+        // Dispatch to language-builtin helpers (Pattern B: no @native registry)
+        if (auto *v = emitBuiltinResult(*e))      return v;
+        if (auto *v = emitBuiltinIterator(*e))    return v;
+        if (auto *v = emitBuiltinString(*e))      return v;
+        if (auto *v = emitBuiltinConversion(*e))  return v;
+        if (auto *v = emitBuiltinQuery(*e))       return v;
+        if (auto *v = emitBuiltinCore(*e))        return v;
+        if (auto *v = emitBuiltinHigherOrder(*e)) return v;
+        if (auto *v = emitBuiltinCollection(*e))  return v;
+        if (auto *v = emitBuiltinSetOps(*e))      return v;
+        if (auto *v = emitBuiltinRegex(*e))       return v;
     }
-
-    // Dispatch to language-builtin helpers (Pattern B: no @native registry)
-    if (auto *v = emitBuiltinResult(*e))      return v;
-    if (auto *v = emitBuiltinIterator(*e))    return v;
-    if (auto *v = emitBuiltinString(*e))      return v;
-    if (auto *v = emitBuiltinConversion(*e))  return v;
-    if (auto *v = emitBuiltinQuery(*e))       return v;
-    if (auto *v = emitBuiltinCore(*e))        return v;
-    if (auto *v = emitBuiltinHigherOrder(*e)) return v;
-    if (auto *v = emitBuiltinCollection(*e))  return v;
-    if (auto *v = emitBuiltinSetOps(*e))      return v;
-    if (auto *v = emitBuiltinRegex(*e))       return v;
 
     // Dispatch to stdlib package helpers (Pattern A: @native registry guard)
     using StdlibDispatcher = llvm::Value *(CodeGen::*)(const CallExpr &);
