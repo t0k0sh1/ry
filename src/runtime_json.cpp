@@ -758,11 +758,11 @@ void *__ry_json_keys(void *value) {
         __ry_set_last_error("json_keys: value is null");
         return nullptr;
     }
-    if (((JsonValue*)value)->type != JsonType::Object) {
+    auto *v = static_cast<JsonValue*>(value);
+    if (v->type != JsonType::Object) {
         __ry_set_last_error("json_keys: value is not an object");
         return nullptr;
     }
-    auto *v = (JsonValue*)value;
     int64_t len = v->object_val.len;
     try {
         std::vector<std::string> keys;
