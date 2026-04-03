@@ -1,4 +1,4 @@
-[English](../../reference/testing.md) | [日本語](../../ja/reference/testing.md) | [繁體中文](testing.md)
+[English](../../reference/testing.md) | [日本語](../../ja/reference/testing.md) | [简体中文](testing.md)
 
 # 测试功能
 
@@ -19,6 +19,7 @@ ry test -w -p        # 监视模式 + 并行运行
 ry test -w tests/    # 监视指定目录
 ry test --coverage   # 所有测试 + 行覆盖率摘要
 ry test --cov        # --coverage 的简写
+ry test --outline    # 打印 describe/it 结构而不运行测试
 ```
 
 退出码为 0 表示所有测试通过，1 表示有测试失败。
@@ -38,29 +39,29 @@ ry test --cov        # --coverage 的简写
 ### describe / it
 
 ```
-describe("description", fn():
-    it("test case name", fn():
+describe("description", ():
+    it("test case name", ():
         # test body
         expect(actual_value).to_eq(expected_value)
     )
 )
 ```
 
-- `describe` 和 `it` 接受描述字符串和 **lambda 参数** `fn():` 作为第二个参数
+- `describe` 和 `it` 接受描述字符串和 **lambda 参数** `():` 作为第二个参数
 - `describe` 块内可以编写 `it` 块及其他语句（如变量声明等）
 - 每个 `it` 块为独立的测试用例
 - `describe` / `expect` 仅在 `ry test` 中可用（在普通的 `ry` 执行中会产生编译错误）
 
 ### 尾随块语法
 
-任何函数调用（`describe`/`it`/`mock` 除外）都可以使用尾随块语法。在 `()` 后加上 `:` 会将缩进块作为无参数 lambda 传入最后的参数位置:
+任何函数调用（`describe`/`it`/`mock` 除外）都可以使用尾随块语法。在 `()` 后加上 `:` 会将缩进块作为无参数 lambda 传入最后的参数位置：
 
 ```
-# 以下两者等价:
+# 以下两者等价：
 foo("arg"):
     bar()
 
-foo("arg", fn():
+foo("arg", ():
     bar()
 )
 ```
@@ -93,7 +94,7 @@ foo("arg", fn():
 立即将当前测试标记为失败。
 
 ```
-it("should not reach here", fn():
+it("should not reach here", ():
     fail("unexpected error")
 )
 ```
@@ -125,22 +126,22 @@ Calculator
 ## 示例
 
 ```
-describe("Arithmetic", fn():
-    it("adds integers", fn():
+describe("Arithmetic", ():
+    it("adds integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", fn():
+    it("compares strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", fn():
+    it("checks booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
-describe("Booleans", fn():
-    it("false check", fn():
+describe("Booleans", ():
+    it("false check", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -155,16 +156,16 @@ describe("Booleans", fn():
 在当前 `it` 块中将函数替换为模拟实现。`it` 块结束时模拟会自动清除。
 
 ```
-fn fetch_data() -> str:
+function fetch_data() -> str:
     return "real data"
 
-describe("mocking", fn():
-    it("replaces function", fn():
-        mock(fetch_data, fn() => "fake")
+describe("mocking", ():
+    it("replaces function", ():
+        mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", fn():
+    it("auto-restores", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -173,6 +174,7 @@ describe("mocking", fn():
 - 第一个参数为函数名称（标识符，非字符串）
 - 第二个参数为替换用 lambda
 - 替换函数必须与原始函数具有相同的参数类型和返回类型
+- 原始函数上的 `require` 和 `ensure` 契约在调用模拟时仍然生效
 - `it` 块结束时模拟会自动恢复
 
 ### verify(fn_name)
@@ -180,9 +182,9 @@ describe("mocking", fn():
 返回模拟函数被调用的次数（`int`）。
 
 ```
-describe("verify", fn():
-    it("counts calls", fn():
-        mock(fetch_data, fn() => "fake")
+describe("verify", ():
+    it("counts calls", ():
+        mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -194,13 +196,13 @@ describe("verify", fn():
 
 - 不支持重载函数的模拟
 - 不支持使用捕获闭包进行模拟（仅支持纯 lambda）
-- 不支持 `@native fn` 的模拟
+- 不支持 `@native function` 的模拟
 
 ---
 
-## 参数化测试 (@each)
+## 参数化测试（@each）
 
-`@each` 可以用多组参数运行同一个测试。将元组列表附加到 `it` 块:
+`@each` 可以用多组参数运行同一个测试。将元组列表附加到 `it` 块：
 
 ```
 @each([
@@ -208,39 +210,39 @@ describe("verify", fn():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
 
-- 列表必须包含与 lambda 参数数量相同的元组
-- 描述中的 `{0}`, `{1}`, ... 会被替换为参数值
+- 列表必须包含与 lambda 参数数量匹配的元组
+- 描述中的 `{0}`、`{1}`、... 会被替换为参数值
 - 每个元组生成一个独立的测试用例
-- 支持的参数类型: `int`, `float`, `bool`, `str`
+- 支持的参数类型：`int`、`float`、`bool`、`str`
 
 ---
 
-## 基于属性的测试 (@property)
+## 基于属性的测试（@property）
 
-`@property` 生成随机输入并多次运行测试:
+`@property` 生成随机输入并多次运行测试：
 
 ```
 @property(count=100)
-it("addition is commutative", fn(a: int, b: int):
+it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
 
-- `count=N` 指定随机试验次数（默认: 100）
+- `count=N` 指定随机试验次数（默认：100）
 - 失败时会显示反例（导致失败的输入值）
 - 在第一次失败时停止测试
-- 支持的参数类型: `int` ([-1000, 1000])、`float` ([-1000.0, 1000.0])、`bool`、`str` (随机 ASCII、0-20 字符)
+- 支持的参数类型：`int`（[-1000, 1000]）、`float`（[-1000.0, 1000.0]）、`bool`、`str`（随机 ASCII、0-20 字符）
 
 ---
 
 ## 测试覆盖率
 
-使用 `--coverage`（或 `--cov`）标志来测量行覆盖率:
+使用 `--coverage`（或 `--cov`）标志来测量行覆盖率：
 
 ```bash
 ry test --coverage                    # 所有测试 + 覆盖率摘要
@@ -260,6 +262,32 @@ Test Coverage Summary:
 
 - 仅报告用户代码；标准库文件会被排除
 - `--coverage` 与 `--parallel` 同时指定时，会退回为顺序执行
+
+---
+
+## 测试大纲
+
+使用 `--outline` 可以显示测试文件的 `describe`/`it` 结构而不执行任何测试体：
+
+```bash
+ry test --outline tests/spec/mock.test.ry
+```
+
+输出：
+
+```
+describe mock
+  it replaces function
+  it auto-restores after it block
+  it with arguments
+describe verify
+  it counts calls
+  it zero calls
+```
+
+- 适用于单个文件、目录和 `-p`（所有测试文件）
+- `@each` 参数化测试显示格式模板并带有 `(@each)` 后缀
+- `@property` 测试显示标签并带有 `(@property)` 后缀
 
 ---
 

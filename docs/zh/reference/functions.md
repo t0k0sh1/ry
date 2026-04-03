@@ -5,7 +5,7 @@
 ## 函数定义语法
 
 ```python
-fn function_name(param_name: type, ...) -> return_type:
+function function_name(param_name: type, ...) -> return_type:
     # body
     return value
 ```
@@ -19,10 +19,10 @@ fn function_name(param_name: type, ...) -> return_type:
 > **命名约定**：函数名称和参数名称必须使用 snake_case（如 `add`、`get_value`、`map_list`）。编译器会强制执行此约定。
 
 ```python
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn greet(name: str) -> Unit:
+function greet(name: str) -> Unit:
     print("Hello, " + name)   # 返回类型为 Unit（显式）
 ```
 
@@ -39,13 +39,13 @@ fn greet(name: str) -> Unit:
 > **注意**：函数参数是**不可变的**。不能在函数体内对参数重新赋值。这确保了入口时的参数值始终可用于后置条件检查（参阅 [契约式设计](contracts.md)）。
 
 ```python
-fn no_return(x: int) -> Unit:  # 返回类型 Unit（显式）
+function no_return(x: int) -> Unit:  # 返回类型 Unit（显式）
     print(x)
 
-fn get_value() -> int:     # 返回类型 int
+function get_value() -> int:     # 返回类型 int
     return 42
 
-fn identity(x) -> any:    # 参数类型 any（省略）
+function identity(x) -> any:    # 参数类型 any（省略）
     return x
 ```
 
@@ -55,7 +55,7 @@ fn identity(x) -> any:    # 参数类型 any（省略）
 
 ```python
 # 所有参数默认为 any
-fn add(a, b):
+function add(a, b):
     return a + b
 
 add(1, 2)              # 3（int + int）
@@ -66,7 +66,7 @@ add(1, 2.0)            # 3.0（int + float）
 也可以在类型标注中显式使用 `any`：
 
 ```python
-fn identity(x: any) -> any:
+function identity(x: any) -> any:
     return x
 ```
 
@@ -75,17 +75,17 @@ fn identity(x: any) -> any:
 当返回类型省略时，会从函数体中的 `return` 语句推断：
 
 ```python
-fn double(x: int):     # 返回类型推断为 int
+function double(x: int):     # 返回类型推断为 int
     return x * 2
 
-fn greet(name: str):   # 返回类型推断为 Unit（无 return）
+function greet(name: str):   # 返回类型推断为 Unit（无 return）
     print("Hello, " + name)
 ```
 
 若要显式允许任意返回类型，请使用 `-> any`：
 
 ```python
-fn flexible(x: any) -> any:
+function flexible(x: any) -> any:
     return x    # 可以返回 int、float、str 等
 ```
 
@@ -96,18 +96,40 @@ fn flexible(x: any) -> any:
 函数可以调用自身。
 
 ```python
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
 ```
+
+### 互递归
+
+函数可以相互调用，无论定义顺序如何。编译器在处理函数体之前会预先声明具有显式返回类型的顶层函数，前提是所有引用的类型已知（基本类型始终可用；record/enum 类型必须在文件中先定义）。
+
+```python
+function is_even(n: int) -> bool:
+    if n == 0:
+        return true
+    return is_odd(n - 1)       # 调用下方定义的 is_odd
+
+function is_odd(n: int) -> bool:
+    if n == 0:
+        return false
+    return is_even(n - 1)      # 调用上方定义的 is_even
+```
+
+**前向引用的要求：**
+
+- 函数必须具有**显式返回类型**标注（`-> type`）。返回类型推断的函数不能被前向引用。
+- 函数必须在**顶层**定义（不在另一个函数内部嵌套）。
+- 所有参数和返回类型必须在前向声明点可解析（例如，record 类型必须在使用它们的函数之前定义）。
 
 ### 尾调用优化
 
 编译器会自动检测自递归尾调用——即函数的最后一个操作是调用自身——并应用 LLVM 的 `musttail` 优化。这保证了尾递归函数使用常量栈空间，防止深度递归时的栈溢出。
 
 ```python
-fn sum_to(n: int, acc: int) -> int:
+function sum_to(n: int, acc: int) -> int:
     if n <= 0:
         return acc
     return sum_to(n - 1, acc + n)    # 尾调用 → 被优化
@@ -121,7 +143,7 @@ sum_to(1000000, 0)    # 不会栈溢出
 - 调用结果不经过任何进一步计算直接返回（`return n * f(n-1)` 不是尾调用）
 - 函数没有 `ensure`（后置条件）子句
 
-互递归（A 调用 B，B 调用 A）目前不会被优化。
+互递归（A 调用 B，B 调用 A）目前不会被优化为尾调用。
 
 ---
 
@@ -136,10 +158,10 @@ sum_to(1000000, 0)    # 不会栈溢出
 - 仅返回类型不同的重载是不允许的。
 
 ```python
-fn area(side: int) -> int:
+function area(side: int) -> int:
     return side * side
 
-fn area(w: int, h: int) -> int:
+function area(w: int, h: int) -> int:
     return w * h
 
 a = area(5)       # 25
@@ -160,10 +182,10 @@ b = area(3, 4)    # 12
 低级数值类型（`i8`、`i16`、`i32`、`i64`、`u8`–`u64`、`f32`）**不**参与隐式拓宽——需要显式 `as` 转换。
 
 ```python
-fn process(x: int) -> str:
+function process(x: int) -> str:
     return "int"
 
-fn process(x) -> str:          # x: any
+function process(x) -> str:          # x: any
     return "any"
 
 process(42)       # "int" — 精确匹配（int）优于 any
@@ -171,7 +193,7 @@ process("hello")  # "any" — str 没有精确匹配，回退到 any
 ```
 
 ```python
-fn double(x: float) -> float:
+function double(x: float) -> float:
     return x * 2.0
 
 double(5)         # OK — int 隐式拓宽为 float，返回 10.0
@@ -186,7 +208,7 @@ double(5)         # OK — int 隐式拓宽为 float，返回 10.0
 ### 语法
 
 ```python
-fn connect(host: str, port: int = 8080, timeout: int = 30):
+function connect(host: str, port: int = 8080, timeout: int = 30):
     # ...
 
 connect("localhost")                    # port=8080, timeout=30
@@ -203,9 +225,9 @@ connect("localhost", 3000, 10000)       # port=3000, timeout=10000
 
 ```python
 # 错误：模糊的重载
-fn calc(x: int, y: int = 0) -> int:
+function calc(x: int, y: int = 0) -> int:
     return x + y
-fn calc(x: int) -> int:      # 与上面的 calc(int) 冲突
+function calc(x: int) -> int:      # 与上面的 calc(int) 冲突
     return x * 2
 ```
 
@@ -220,7 +242,7 @@ fn calc(x: int) -> int:      # 与上面的 calc(int) 冲突
 不返回值的函数会返回 `Unit`。返回类型可以省略（推断为 `Unit`）或用 `-> Unit` 显式指定。
 
 ```python
-fn log(msg: str) -> Unit:
+function log(msg: str) -> Unit:
     print(msg)
 ```
 
@@ -228,10 +250,10 @@ fn log(msg: str) -> Unit:
 
 ## Task 与异步函数
 
-`Task<T>` 是用于并发工作的内置句柄类型。`async fn` 返回 `Task<T>`，`await` 在另一个 `async fn` 内部提取 `T`，`block_on(task)` 从同步上下文中阻塞直到任务完成。
+`Task<T>` 是用于并发工作的内置句柄类型。`async function` 返回 `Task<T>`，`await` 在另一个 `async function` 内部提取 `T`，`block_on(task)` 从同步上下文中阻塞直到任务完成。
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 
 # 从同步上下文中，使用 block_on()
@@ -239,21 +261,21 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 block_on(add(1, 2))                 # 等待并丢弃结果
 
-# 在 async fn 内部，使用 await
-async fn double_add(a: int, b: int) -> int:
+# 在 async function 内部，使用 await
+async function double_add(a: int, b: int) -> int:
     return (await add(a, b)) * 2
 ```
 
 ### 规则
 
-- `async fn name(...) -> T:` 使用等待结果类型 `T` 声明。
-- 调用 `async fn` 会立即返回 `Task<T>`。
+- `async function name(...) -> T:` 使用等待结果类型 `T` 声明。
+- 调用 `async function` 会立即返回 `Task<T>`。
 - `await expr` 要求 `expr` 为 `Task<T>` 并产生 `T`。
-- `await` 只能在 `async fn` 内部使用。从同步上下文中使用 `block_on(task)`。
+- `await` 只能在 `async function` 内部使用。从同步上下文中使用 `block_on(task)`。
 - `block_on(task)` 阻塞当前线程直到任务完成并返回结果。
-- 支持 `async fn ... -> Unit`；当不产生值时，`block_on(task)` 是等待的主要方式。
+- 支持 `async function ... -> Unit`；当不产生值时，`block_on(task)` 是等待的主要方式。
 - 任务在运行时工作线程池上运行；不是每个任务一个操作系统线程。
-- v1 不支持 `async` lambda 和 `async @native fn`。
+- v1 不支持 `async` lambda 和 `async @native function`。
 
 ---
 
@@ -265,31 +287,31 @@ async fn double_add(a: int, b: int) -> int:
 
 ```python
 # 单一表达式（返回类型从表达式推断）
-fn(param_name: type, ...) => expression
+ (param_name: type, ...) => expression
 
 # 参数类型可省略（默认为 any）
-fn(param_name, ...) => expression
+ (param_name, ...) => expression
 
 # 多行代码块
-fn(param_name: type, ...):
+(param_name: type, ...):
     # 多个语句
     return value
 
 # 带显式返回类型（可选）
-fn(param_name: type, ...) -> return_type => expression
+ (param_name: type, ...) -> return_type => expression
 ```
 
 ### 示例
 
 ```python
-double = fn(x: int) => x * 2
+double = (x: int) => x * 2
 result = double(5)   # 10
 
-add = fn(a: int, b: int) => a + b
+add = (a: int, b: int) => a + b
 sum = add(3, 4)      # 7
 
 # 多行 lambda
-abs = fn(x: int):
+abs = (x: int):
     if x < 0:
         return -x
     return x
@@ -299,14 +321,28 @@ abs = fn(x: int):
 
 ## 闭包
 
-Lambda 函数会以**值捕获**定义时外层作用域的变量。
+Lambda 函数会以**值捕获**定义时外层作用域的变量。这意味着闭包使用自己的独立副本——任何方向的更改（外层 → 闭包或闭包 → 外层）对另一方都不可见。
+
+### 外层更改不影响闭包
 
 ```python
 base = 10
-add_base = fn(x: int) => x + base   # 以值捕获 base
+add_base = (x: int) => x + base   # 以值捕获 base
 
 base = 99          # 不影响已捕获的值
 r = add_base(5)   # 15（使用捕获时的 base = 10）
+```
+
+### 闭包中的修改不影响外层作用域
+
+```python
+counter = 0
+items = [1, 2, 3, 4, 5]
+items.map((x: int):
+    counter += x    # 只修改闭包内的本地副本
+    return x
+)
+print(counter)      # 0（外层变量未变）
 ```
 
 ### 捕获规则
@@ -315,7 +351,10 @@ r = add_base(5)   # 15（使用捕获时的 base = 10）
 |---|---|
 | 捕获方式 | 值捕获（复制） |
 | 捕获时机 | Lambda 定义时 |
-| 外层变量修改的影响 | 无（因为是复制） |
+| 外层变量修改的影响 | 无（闭包持有自己的副本） |
+| 闭包内修改的影响 | 无（不会传播到外层作用域） |
+
+> **Python/JavaScript 用户注意**：在 JavaScript 中，闭包以引用捕获变量，因此对捕获变量的更改会反映在闭包外部。在 Python 中，闭包可以访问外层变量，对捕获对象的修改（例如向列表追加元素）在外部可见，但重新绑定外层名称（如 `counter += x`）需要声明 `nonlocal`。在 Ry 中，闭包始终以值捕获。这是有意为之——确保安全性和可预测性，尤其在并发或高阶上下文中。
 
 ---
 
@@ -326,16 +365,16 @@ r = add_base(5)   # 15（使用捕获时的 base = 10）
 ### 语法
 
 ```python
-fn(param_type1, param_type2, ...) -> return_type
+function(param_type1, param_type2, ...) -> return_type
 ```
 
 ### 示例
 
 ```python
-f: fn(int) -> int = fn(x: int) => x * 2
-g: fn(int, int) -> int = fn(a: int, b: int) => a + b
+f: function(int) -> int = (x: int) => x * 2
+g: function(int, int) -> int = (a: int, b: int) => a + b
 
-fn apply(func: fn(int) -> int, x: int) -> int:
+function apply(func: function(int) -> int, x: int) -> int:
     return func(x)
 
 result = apply(f, 5)   # 10
@@ -348,13 +387,13 @@ result = apply(f, 5)   # 10
 可以接收函数作为参数，或将函数作为返回值返回。
 
 ```python
-fn map_list(xs: List<int>, f: fn(int) -> int) -> List<int>:
+function map_list(xs: List<int>, f: function(int) -> int) -> List<int>:
     result: List<int> = []
     for x in xs:
         result += [f(x)]
     return result
 
-doubled = map_list([1, 2, 3], fn(x: int) => x * 2)
+doubled = map_list([1, 2, 3], (x: int) => x * 2)
 # [2, 4, 6]
 ```
 
@@ -367,14 +406,14 @@ doubled = map_list([1, 2, 3], fn(x: int) => x * 2)
 ### 语法
 
 ```python
-fn name<T, U>(param1: T, param2: U) -> T:
+function name<T, U>(param1: T, param2: U) -> T:
     # 使用 T、U 作为类型的函数体
 ```
 
 ### 示例
 
 ```python
-fn identity<T>(x: T) -> T:
+function identity<T>(x: T) -> T:
     return x
 
 # 显式类型参数
@@ -389,7 +428,7 @@ result = identity("hello")     # T = str, result = "hello"
 ### 多个类型参数
 
 ```python
-fn pick_first<T, U>(a: T, b: U) -> T:
+function pick_first<T, U>(a: T, b: U) -> T:
     return a
 
 result = pick_first(1, "x")       # T = int, U = str, result = 1
@@ -408,7 +447,7 @@ record Animal:
 record Dog < Animal:
     breed: str
 
-fn get_name<T: Animal>(a: T) -> str:
+function get_name<T: Animal>(a: T) -> str:
     return a.name
 
 get_name(Dog("Rex", 4, "Lab"))  # OK — Dog 是 Animal 的子类型
@@ -418,7 +457,7 @@ get_name(Animal("Cat", 4))      # OK — 精确类型匹配
 有约束和无约束的类型参数可以混合使用：
 
 ```python
-fn pair_name<T: Animal, U>(a: T, x: U) -> str:
+function pair_name<T: Animal, U>(a: T, x: U) -> str:
     return a.name
 ```
 
@@ -445,10 +484,10 @@ a.f(b)
 ### 链接
 
 ```python
-fn double(x: int) -> int:
+function double(x: int) -> int:
     return x * 2
 
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 result = 5.double().add_one()   # double(5) -> 10, add_one(10) -> 11
@@ -473,11 +512,11 @@ length = p.x.to_float()   # 字段访问 + UFCS
 
 ```python
 # 二元运算符（2 个参数）
-fn operator<op>(a: type, b: type) -> return_type:
+function operator<op>(a: type, b: type) -> return_type:
     ...
 
 # 一元运算符（1 个参数）
-fn operator<op>(a: type) -> return_type:
+function operator<op>(a: type) -> return_type:
     ...
 ```
 
@@ -508,11 +547,11 @@ fn operator<op>(a: type) -> return_type:
 
 ```python
 # OK
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-fn operator==(a: Vec2, b: Vec2) -> int:
+function operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -528,15 +567,15 @@ record Vec2:
     y: float
 
 # 二元 +
-fn operator+(a: Vec2, b: Vec2) -> Vec2:
+function operator+(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 # 一元 -
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 
 # 比较
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 v1 = Vec2(1.0, 2.0)
@@ -564,9 +603,9 @@ v4 = -v1        # Vec2(-1.0, -2.0)
 | `wrapping_mul(a, b)` | `T` | 显式回绕（与 `*` 相同） |
 
 ```python
-# Checked：返回 Result，使用 when 或 ? 处理
+# Checked：返回 Result，使用 match 或 ? 处理
 r = checked_add(2147483647i32, 1i32)
-when r:
+match r:
   case Ok(v):
     print(v)
   case Err(e):

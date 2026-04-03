@@ -10,6 +10,7 @@ echo '<code>' | ry                  # 从标准输入运行代码
 ry test [options] [<file> | <dir>]  # 运行测试
 ry init                             # 初始化项目
 ry new <project-name>               # 创建新项目
+ry run [<script-name>]              # 运行项目脚本
 ry fmt [options] [<file> | <dir>]   # 格式化源文件
 ry self-update [options]            # 更新 ry 本身
 ```
@@ -18,16 +19,28 @@ ry self-update [options]            # 更新 ry 本身
 
 | 选项 | 说明 |
 |---|---|
+| `-c` | 从标准输入读取并执行代码 |
 | `-h`, `--help` | 显示帮助 |
 | `-v`, `--version` | 显示版本 |
 | `--env=<env>` | 设置环境（`production`\|`development`\|`internal`）。覆盖 `RY_ENV` 环境变量。 |
 
-### 标准输入执行
+### 入口点执行
 
-当没有给出文件参数且标准输入不是终端时，`ry` 从标准输入读取源代码并执行：
+当没有给出文件参数时，`ry` 在当前目录（或父目录）中查找 `package.toml`，并运行 `entry` 字段指定的文件：
 
 ```bash
-echo 'print("hello")' | ry
+ry                        # 运行入口文件（例如 src/main.ry）
+ry -- arg1 arg2           # 运行入口文件并传入参数
+```
+
+如果未找到 `package.toml` 或未设置 `entry` 字段，`ry` 会打印帮助信息并退出。
+
+### 标准输入执行
+
+使用 `-c` 标志从标准输入读取并执行代码：
+
+```bash
+echo 'print("hello")' | ry -c
 ```
 
 ---
@@ -83,6 +96,32 @@ my-project/
 4. 在其中创建 `src/` 目录
 5. 生成 `package.toml`（`name` 为指定的项目名称）
 6. 生成 `src/main.ry`
+
+---
+
+## `ry run` - 运行项目脚本
+
+执行 `package.toml` 的 `[scripts]` 部分中定义的脚本。
+
+```bash
+ry run              # 列出所有可用脚本
+ry run build        # 运行 "build" 脚本
+ry run test         # 运行 "test" 脚本
+```
+
+### 行为
+
+1. 从当前目录向上搜索 `package.toml`
+2. 不带参数时，列出所有可用脚本及其命令
+3. 带脚本名称时，通过 `/bin/sh -c` 执行对应的 shell 命令
+4. 所执行命令的退出码会被传播
+5. 如果脚本名称未找到，显示错误并列出可用脚本
+
+### 注意事项
+
+- 不需要 LLVM 初始化（快速启动）
+- 命令在当前工作目录中执行
+- 由于命令通过 shell 运行，因此支持 shell 功能（管道、重定向等）
 
 ---
 
@@ -202,6 +241,11 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
+
+[scripts]
+build = "cmake --preset default && cmake --build build"
+test = "./build/ry_tests"
+clean = "rm -rf build"
 ```
 
 ### `[project]` 部分
@@ -217,6 +261,14 @@ src = "src"
 | 键 | 说明 |
 |------|------|
 | `src` | 源代码目录 |
+
+### `[scripts]` 部分
+
+定义可通过 `ry run <name>` 执行的具名脚本。每个键是脚本名称，值是 shell 命令字符串。
+
+| 键 | 说明 |
+|------|------|
+| `<name>` | 要执行的 shell 命令（通过 `ry run <name>` 运行） |
 
 ### TOML 子集规范
 

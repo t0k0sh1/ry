@@ -29,7 +29,7 @@
 
 | 演算子 | 説明 | 例 |
 |---|---|---|
-| `+` | 加算 / 文字列結合 | `1 + 2` -> `3`、`"a" + "b"` -> `"ab"` |
+| `+` | 加算 / 文字列結合 | `1 + 2` -> `3`、`"a" + "b"` -> `"ab"`、`"x" + 1` -> `"x1"` |
 | `-` | 減算 | `5 - 3` -> `2` |
 | `*` | 乗算 / 文字列繰り返し | `4 * 3` -> `12`、`"ab" * 3` -> `"ababab"` |
 | `/` | 除算（常に float） | `7 / 2` -> `3.5` |
@@ -44,7 +44,11 @@ a = 10 // 3    # 3 (int)
 b = 10 / 3     # 3.3333... (float)
 c = 2 ** 8     # 256.0 (float)
 s = "foo" + "bar"  # "foobar"
+t = "val=" + 42    # "val=42"
+u = 3.14 + "!"    # "3.14!"
 ```
+
+`+` の一方のオペランドが `str` で他方が `int`、`float`、`bool` の場合、非 `str` オペランドは自動的にその文字列表現に変換されて結合されます。
 
 ## 比較演算子
 
@@ -121,24 +125,24 @@ shifted = 1 << 8          # 256
 外側の関数は `Result` 型を返す必要があります。
 
 ```python
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # b == 0 の場合は Err を早期リターン
     y = safe_divide(x, c)!!
     return Ok(y + 1)
 ```
 
-これは以下の `when` パターンと等価ですが、はるかに簡潔です:
+これは以下の `match` パターンと等価ですが、はるかに簡潔です:
 
 ```python
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    when safe_divide(a, b):
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
         case Ok(x):
-            when safe_divide(x, c):
+            match safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):
@@ -157,7 +161,7 @@ x = when:
     else => false_value
 ```
 
-上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`else =>` は必須です。
+上から順に条件を評価し、最初に真になったアームの式を返します。すべての結果式は同じ型でなければなりません。`else =>` は必須なので、式は常に値を生成します。
 
 ```python
 x = when:
@@ -168,10 +172,11 @@ s = when:
     false => "yes"
     else => "no"  # "no"
 
+# ネストされた三項演算は複数のアームにフラット化される
 y = when:
-    flag1 => 1
-    flag2 => 2
-    else => 3
+    true => 2
+    false => 1
+    else => 3     # 2
 ```
 
 ---
@@ -275,6 +280,8 @@ f++           # f = 2.5（int 1 が float に型昇格）
 | `%` | int | int | int |
 | `%` | float または int（片方 float） | -- | float |
 | `+` | str | str | str |
+| `+` | str | int / float / bool | str |
+| `+` | int / float / bool | str | str |
 | `== != < <= > >=` | 数値 / bool / str | 同型 | bool |
 | `*` | str | int | str |
 | `in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
@@ -290,11 +297,11 @@ f++           # f = 2.5（int 1 が float に型昇格）
 
 ```python
 # 二項演算子（引数2個）
-fn operator+(a: MyType, b: MyType) -> MyType:
+function operator+(a: MyType, b: MyType) -> MyType:
     ...
 
 # 単項演算子（引数1個）
-fn operator-(a: MyType) -> MyType:
+function operator-(a: MyType) -> MyType:
     ...
 ```
 
@@ -326,11 +333,11 @@ fn operator-(a: MyType) -> MyType:
 
 ```python
 # OK
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # エラー: comparison operator '==' must return 'bool', but returns 'int'
-fn operator==(a: Vec2, b: Vec2) -> int:
+function operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -342,11 +349,11 @@ fn operator==(a: Vec2, b: Vec2) -> int:
 
 ```python
 # 二項 -
-fn operator-(a: Vec2, b: Vec2) -> Vec2:
+function operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
 
 # 単項 -
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
@@ -360,7 +367,7 @@ record Matrix:
     rows: int
     cols: int
 
-fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+function operator+=(a: Matrix, b: Matrix) -> Matrix:
     for i in range(len(a.data)):
         a.data[i] = a.data[i] + b.data[i]
     return a
@@ -379,7 +386,7 @@ record Vec2:
     x: float
     y: float
 
-fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+function operator+=(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 v = Vec2(1.0, 2.0)
@@ -401,7 +408,7 @@ record Grid:
     d: int
 
 # 読み取り: 2個以上のパラメータ（オブジェクト + インデックス）が必要
-fn operator[](g: Grid, row: int, col: int) -> int:
+function operator[](g: Grid, row: int, col: int) -> int:
     if row == 0 and col == 0:
         return g.a
     if row == 0 and col == 1:
@@ -411,7 +418,7 @@ fn operator[](g: Grid, row: int, col: int) -> int:
     return g.d
 
 # 書き込み: 3個以上のパラメータ（オブジェクト + インデックス + 値）が必要
-fn operator[]=(g: Grid, row: int, col: int, value: int):
+function operator[]=(g: Grid, row: int, col: int, value: int):
     ...
 
 g = Grid(1, 2, 3, 4)
@@ -430,7 +437,7 @@ record Range:
     lo: int
     hi: int
 
-fn operator in(value: int, r: Range) -> bool:
+function operator in(value: int, r: Range) -> bool:
     return value >= r.lo and value < r.hi
 
 r = Range(1, 10)
@@ -448,7 +455,7 @@ print(15 not in r)  # true
 record Adder:
     base: int
 
-fn operator()(a: Adder, x: int) -> int:
+function operator()(a: Adder, x: int) -> int:
     return a.base + x
 
 add5 = Adder(5)
@@ -468,11 +475,24 @@ record Celsius:
 record Fahrenheit:
     value: int
 
-fn operator as(c: Celsius) -> Fahrenheit:
+function operator as(c: Celsius) -> Fahrenheit:
     return Fahrenheit(c.value * 9 // 5 + 32)
 
 c = Celsius(100)
 f = c as Fahrenheit   # Fahrenheit(212)
+```
+
+ターゲット型はコンパイラが解決できる任意の型で、ジェネリック型を含みます:
+
+```python
+record Temperature:
+    value: int
+
+function operator as(t: Temperature) -> int?:
+    return Some(t.value)
+
+t = Temperature(42)
+result: int? = t as int?   # Some(42)
 ```
 
 ユーザー定義の `as` 演算子が最初に試行され、一致しない場合は組み込みのキャスト（int、float、bool、str 等）がフォールバックとして使用されます。

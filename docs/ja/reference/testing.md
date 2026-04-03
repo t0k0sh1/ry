@@ -19,6 +19,7 @@ ry test -w -p        # ウォッチモード + 並列実行
 ry test -w tests/    # 特定ディレクトリをウォッチ
 ry test --coverage   # 全テストをラインカバレッジ付きで実行
 ry test --cov        # --coverage の短縮形
+ry test --outline    # テストを実行せずに describe/it 構造を表示
 ```
 
 終了コードは全テスト成功時に 0、失敗がある場合は 1 です。
@@ -38,15 +39,15 @@ ry test --cov        # --coverage の短縮形
 ### describe / it
 
 ```
-describe("説明文", fn():
-    it("テストケース名", fn():
+describe("説明文", ():
+    it("テストケース名", ():
         # テスト本体
         expect(実際の値).to_eq(期待値)
     )
 )
 ```
 
-- `describe` と `it` は説明文字列と**ラムダ引数** `fn():` を第二引数に取る
+- `describe` と `it` は説明文字列と**ラムダ引数** `():` を第二引数に取る
 - `describe` ブロック内には `it` ブロックやその他の文（変数宣言など）を記述可能
 - 各 `it` ブロックは独立したテストケース
 - `describe` / `expect` は `ry test` でのみ使用可能（通常の `ry` 実行ではコンパイルエラー）
@@ -60,7 +61,7 @@ describe("説明文", fn():
 foo("arg"):
     bar()
 
-foo("arg", fn():
+foo("arg", ():
     bar()
 )
 ```
@@ -93,7 +94,7 @@ foo("arg", fn():
 現在のテストを即座に失敗としてマークします。
 
 ```
-it("should not reach here", fn():
+it("should not reach here", ():
     fail("unexpected error")
 )
 ```
@@ -125,22 +126,22 @@ Calculator
 ## 例
 
 ```
-describe("Arithmetic", fn():
-    it("adds integers", fn():
+describe("Arithmetic", ():
+    it("adds integers", ():
         expect(1 + 2).to_eq(3)
 
     )
-    it("compares strings", fn():
+    it("compares strings", ():
         expect("hello").to_eq("hello")
 
     )
-    it("checks booleans", fn():
+    it("checks booleans", ():
         expect(3 > 1).to_be_true()
 
     )
 )
-describe("Booleans", fn():
-    it("false check", fn():
+describe("Booleans", ():
+    it("false check", ():
         expect(1 > 2).to_be_false()
     )
 )
@@ -155,16 +156,16 @@ describe("Booleans", fn():
 現在の `it` ブロック内で関数をモック実装に差し替えます。`it` ブロック終了時にモックは自動的にクリアされます。
 
 ```
-fn fetch_data() -> str:
+function fetch_data() -> str:
     return "real data"
 
-describe("mocking", fn():
-    it("replaces function", fn():
-        mock(fetch_data, fn() => "fake")
+describe("mocking", ():
+    it("replaces function", ():
+        mock(fetch_data, () => "fake")
         expect(fetch_data()).to_eq("fake")
 
     )
-    it("auto-restores", fn():
+    it("auto-restores", ():
         expect(fetch_data()).to_eq("real data")
     )
 )
@@ -173,6 +174,7 @@ describe("mocking", fn():
 - 第1引数は関数名（識別子、文字列ではない）
 - 第2引数は差し替え用ラムダ
 - 差し替え関数は元の関数と同じ引数型・戻り値型である必要がある
+- 元の関数の `require` と `ensure` 契約はモック呼び出し時にも強制される
 - `it` ブロック終了時にモックは自動復元される
 
 ### verify(fn_name)
@@ -180,9 +182,9 @@ describe("mocking", fn():
 モック済み関数の呼び出し回数を `int` で返します。
 
 ```
-describe("verify", fn():
-    it("counts calls", fn():
-        mock(fetch_data, fn() => "fake")
+describe("verify", ():
+    it("counts calls", ():
+        mock(fetch_data, () => "fake")
         fetch_data()
         fetch_data()
         expect(verify(fetch_data)).to_eq(2)
@@ -194,7 +196,7 @@ describe("verify", fn():
 
 - オーバーロードされた関数のモックは非対応
 - キャプチャ付きクロージャでのモックは非対応（プレーンラムダのみ）
-- `@native fn` のモックは非対応
+- `@native function` のモックは非対応
 
 ---
 
@@ -208,7 +210,7 @@ describe("verify", fn():
     (0, 0, 0),
     (-1, 1, 0)
 ])
-it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
+it("adds {0} + {1} = {2}", (a: int, b: int, expected: int):
     expect(a + b).to_eq(expected)
 )
 ```
@@ -226,7 +228,7 @@ it("adds {0} + {1} = {2}", fn(a: int, b: int, expected: int):
 
 ```
 @property(count=100)
-it("addition is commutative", fn(a: int, b: int):
+it("addition is commutative", (a: int, b: int):
     expect(a + b).to_eq(b + a)
 )
 ```
@@ -260,6 +262,32 @@ Test Coverage Summary:
 
 - 標準ライブラリのファイルは除外され、ユーザーコードのみが対象
 - `--coverage` と `--parallel` を同時に指定した場合、逐次実行にフォールバック
+
+---
+
+## テストアウトライン
+
+`--outline` を使用すると、テスト本体を実行せずにテストファイルの `describe`/`it` 構造を表示できます:
+
+```bash
+ry test --outline tests/spec/mock.test.ry
+```
+
+出力:
+
+```
+describe mock
+  it replaces function
+  it auto-restores after it block
+  it with arguments
+describe verify
+  it counts calls
+  it zero calls
+```
+
+- 個別ファイル、ディレクトリ、`-p`（全テストファイル）で使用可能
+- `@each` パラメタライズドテストはフォーマットテンプレートに `(@each)` サフィックスを付けて表示
+- `@property` テストはラベルに `(@property)` サフィックスを付けて表示
 
 ---
 

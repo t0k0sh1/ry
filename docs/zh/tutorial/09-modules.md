@@ -2,7 +2,7 @@
 
 # 包
 
-[<- 上一篇：高级特性](08-advanced.md) | [下一篇：契约式设计 ->](10-contracts.md)
+[<- 上一篇：错误处理](08-error-handling.md) | [下一篇：并发 ->](10-concurrency.md)
 
 Ry 使用包系统来管理跨文件和目录的代码。详细规格请参阅[包参考手册](../reference/packages.md)。
 
@@ -39,8 +39,8 @@ from utils.calc import add   # 从 utils/calc.ry 导入
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -49,6 +49,29 @@ from mypackage import add   # 仅导入 add
 ```
 
 不需要特殊的入口文件（如 `__init__.py`）。以 `_` 开头的文件会被排除。
+
+---
+
+## 相对导入
+
+使用前导 `.` 相对于当前文件所在目录进行导入。这对需要从同级模块导入的测试文件特别有用。
+
+```python
+from .helper import greet       # 从同目录的 helper.ry 导入
+from .utils import add          # 从 utils/ 子目录导入
+from .utils.calc import mul     # 从 utils/calc/ 嵌套子目录导入
+from . import add, sub          # 从当前目录包导入符号
+```
+
+相对导入**仅**相对于当前文件所在目录解析 —— 不会搜索标准库和其他搜索路径。这可以防止当你的项目中存在与标准库包同名的模块时发生名称冲突。
+
+```python
+# 如果你的项目有 src/math/stats.ry：
+from .math import mean    # 始终解析为你的本地 math 包
+from math import sqrt     # 解析为标准库的 math 包
+```
+
+> **注意：** 不支持父目录导入（`from ..`）。
 
 ---
 
@@ -116,4 +139,4 @@ export RY_PATH=/home/user/ry-libs:/usr/local/ry-libs
 
 ---
 
-[<- 上一篇：高级特性](08-advanced.md) | [下一篇：契约式设计 ->](10-contracts.md)
+[<- 上一篇：错误处理](08-error-handling.md) | [下一篇：并发 ->](10-concurrency.md)

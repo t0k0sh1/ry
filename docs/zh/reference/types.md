@@ -6,9 +6,9 @@
 
 | 类型 | 内部表示 | 字面值示例 | 说明 |
 |---|---|---|---|
-| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64 位有符号整数 |
+| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64 位有符号整数 |
 | `u8` | i8 | （无专用字面值） | 无符号 8 位整数（0-255）。通过类型标注 `b: u8 = 42` 使用 |
-| `float` | f64 | `3.14`, `0.5` | 64 位浮点数 |
+| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64 位浮点数 |
 | `bool` | i1 | `true`, `false` | 布尔值 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 字符串（堆上的不可变字节序列） |
 | `Unit` | void | （无返回值） | 无返回值函数的返回类型。必须用 `-> Unit` 显式指定 |
@@ -17,7 +17,7 @@
 | `List<T>` | ptr（堆） | `[1, 2, 3]` | 动态数组 |
 | `Map<K, V>` | ptr（堆） | `{"a": 1}` | 哈希映射 |
 | `Set<T>` | ptr（堆） | `{1, 2, 3}` | 不重复的集合 |
-| `fn(T1, T2) -> R` | ptr（函数指针） | `fn(x: int) => x * 2` | 函数类型 |
+| `function(T1, T2) -> R` | ptr（函数指针） | `(x: int) => x * 2` | 函数类型 |
 | 用户定义类型 | LLVM StructType (named) | `record Point: ...` | 以 `record` 关键字定义的结构体 |
 | `enum` | i64 / 标签联合 | `Color::Red`, `Shape::Circle(3.14)` | 以 `enum` 关键字定义的枚举类型（支持关联数据） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 内置错误类型 |
@@ -35,6 +35,11 @@
 | `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32 位无符号整数（低级，无隐式转换） |
 | `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64 位无符号整数（低级，无隐式转换） |
 | `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32 位浮点数（低级，无隐式转换） |
+| `weak T` | ptr (header) | `weak s` | ARC 管理值的弱引用（不阻止释放） |
+| `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | 正则表达式模式（通过正则字面量语法创建） |
+| `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | 表示成功（`Ok`）或失败（`Err`）的类型 |
+| `Task<T>` | ptr | （由 async 函数返回） | 异步任务句柄（与 `await` 和 `block_on` 配合使用） |
+| `Iterator<T>` | ptr | （由 `iter()` 创建） | 用于顺序元素访问的惰性迭代器 |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | 固定长度连续数组。低级类型 T 的 N 个元素（栈分配） |
 
 ## 类型标注语法
@@ -52,7 +57,8 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int) => x * 2
+fn_val: function(int) -> int = (x: int) => x * 2
+rx: Regex = /[0-9]+/
 u: int | str = 42
 a: any = 42
 ```
@@ -72,7 +78,7 @@ a: any = 42
 | `List<T>` | 泛型动态数组类型 |
 | `Map<K, V>` | 泛型哈希映射类型 |
 | `Set<T>` | 泛型集合类型 |
-| `fn(T1, ...) -> R` | 函数类型 |
+| `function(T1, ...) -> R` | 函数类型 |
 | `Error` | 内置错误类型（`message: str`、`code: int`） |
 | `any` | 可持有任意基本值（`int`, `float`, `bool`, `str`）或 `Unit` 的内置类型。支持隐式转换：具体值赋值给 `any` 时自动包装，`any` 值赋值给具体类型时自动解包（带运行时类型检查）。支持 `any(int)` → `float` 的自动提升。详见 [any 类型](#any-类型) |
 | `T1 \| T2 \| ...` | union 类型（以 `\|` 分隔的多个类型之一） |
@@ -105,9 +111,9 @@ names: StringList = ["Alice", "Bob"]
 类型别名也可以用于函数类型、字面量类型和范围类型：
 
 ```python
-type Callback = fn(int, int) -> int
+type Callback = function(int, int) -> int
 
-add: Callback = fn(a: int, b: int) => a + b
+add: Callback = function(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -146,8 +152,8 @@ dir: "N" | "S" | "E" | "W" = "N"
 
 ### 约束检查
 
-- **编译时**：当赋值为常量（`ConstantInt` 或字符串字面量）时，在编译时检查，违反时产生编译错误
-- **运行时**：当值为动态（如函数返回值）时，在运行时检查，违反时程序以错误退出
+- **编译时**：当赋值为常量（`ConstantInt` 或字符串字面量）时，在编译时检查，违反时产生编译错误。
+- **运行时**：当值为动态（如函数返回值）时，在运行时检查，违反时程序以错误退出。
 
 ---
 
@@ -174,7 +180,7 @@ x = 12                      # OK
 ### 在函数参数中使用
 
 ```python
-fn set_month(m: 1..12) -> int:
+function set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
@@ -193,12 +199,74 @@ set_month(6)                # OK
 x: int? = 42       # 等同于 Option<int>
 y: int? = none      # 等同于 None
 
-fn find(xs: List<int>, val: int) -> int?:
+function find(xs: List<int>, val: int) -> int?:
     for x in xs:
         if x == val:
             return Some(x)
     return none
 ```
+
+---
+
+## 弱引用（`weak T`）
+
+`weak` 引用是对 ARC 管理值的非持有引用。与强引用不同，弱引用不会递增强引用计数。当最后一个强引用被释放时，被引用的对象会被释放——所有存活的弱引用会自动变为 `None`。
+
+弱引用是用户层面打破引用循环的机制。
+
+### 创建弱引用
+
+在类型标注和表达式位置都使用 `weak` 关键字：
+
+```python
+s = "hello"
+w: weak str = weak s
+```
+
+类型 `weak T` 是一个新的类型构造器，其中 `T` 必须是 ARC 管理的类型（目前为 `str`、`List<T>`、`Map<K, V>`、`Set<T>`）。
+
+### 访问弱引用（升级）
+
+访问弱变量会自动执行**升级**——对强引用计数进行原子检查和递增。结果始终为 `Option<T>`：
+
+- 如果被引用的对象仍然存活（strong count > 0），则为 `Some(value)`
+- 如果被引用的对象已被释放（strong count == 0），则为 `None`
+
+```python
+s = "alive"
+w: weak str = weak s
+match w:
+  case Some(v):
+    print(v)           # "alive"
+  case None:
+    print("deallocated")
+```
+
+合并运算符（`??`）也可以与弱引用配合使用：
+
+```python
+w: weak str = weak s
+val = w ?? "default"
+```
+
+### 重新赋值
+
+弱引用可以重新赋值。旧的弱引用被释放，新的被保留：
+
+```python
+a = "first"
+b = "second"
+w: weak str = weak a
+w = weak b
+```
+
+### 线程安全
+
+升级操作在内部使用比较并交换（CAS）循环，因此跨线程使用是安全的。这是必要的，因为强引用可能被并发释放。
+
+### 作用域清理
+
+弱引用在超出作用域时自动释放。如果强引用计数和弱引用计数都达到零，则 ARC 头部会被释放。
 
 ---
 
@@ -217,7 +285,15 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 ### 插值中支持的类型
 
-`{}` 内可使用求值结果为 `int`、`float`、`bool` 或 `str` 的任意表达式。
+`{}` 内可使用求值结果为 `int`、`float`、`bool`、`str`、record 类型、元组或集合类型（`List`、`Map`、`Set`）的任意表达式。
+
+```python
+xs = [1, 2, 3]
+print(f"items: {xs}")     # items: [1, 2, 3]
+
+t = (1, "hello")
+print(f"tuple: {t}")      # tuple: (1, hello)
+```
 
 ### 转义序列
 
@@ -249,8 +325,8 @@ b = 255 as u8         # u8 值 255
 |---|---|---|
 | `int` | `float` | `SIToFP` |
 | `float` | `int` | 截断（`FPToSI`） |
-| `int` | `bool` | `0` → `false`、非零 → `true` |
-| `bool` | `int` | `false` → `0`、`true` → `1` |
+| `int` | `bool` | `0` -> `false`、非零 -> `true` |
+| `bool` | `int` | `false` -> `0`、`true` -> `1` |
 | `int` / `float` / `bool` | `str` | 字符串表示 |
 | `int` | `u8` | 截断（低 8 位） |
 | `u8` | `int` | 零扩展 |
@@ -271,7 +347,14 @@ b = 255 as u8         # u8 值 255
 | 无符号整数 | `f32` | `UIToFP` |
 | `f32` | 有符号 / 无符号整数 | `FPToSI` / `FPToUI` |
 
-不支持的转换（例如 `str as int`）会产生编译错误。字符串转数值请使用 `to_int()` / `to_float()`。
+`as` 转换的目标类型支持完整的类型语法，包括泛型类型：
+
+```python
+x = value as Option<int>
+y = data as Map<str, int>
+```
+
+任何 `as` 转换（包括泛型）必须是内置转换或具有匹配的用户定义 `operator as`，否则为编译错误。字符串转数值请使用 `to_int()` / `to_float()`。
 
 ## 带关联数据的 enum（ADT）
 
@@ -315,7 +398,7 @@ p = Shape::Point
 使用 `case EnumName::Variant(binding):` 形式取出关联数据。绑定使用用户选择的变量名，而非字段名。
 
 ```python
-when c:
+match c:
     case Shape::Circle(r):
         print(r)            # 3.14
     case Shape::Rectangle(w, h):
@@ -349,7 +432,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-when a:
+match a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -376,12 +459,12 @@ print(e2)          # Error: not found (code: 404)
 可能失败的函数返回 `Result<V, E>`：
 
 ```python
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-when divide(10, 2):
+match divide(10, 2):
     case Ok(v):
         print(v)            # 5
     case Err(e):
@@ -391,10 +474,10 @@ when divide(10, 2):
 当返回值没有意义时，使用 `Result<Unit, Error>`：
 
 ```python
-fn save(path: str, data: str) -> Result<Unit, Error>:
+function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit 占位符
 
-when save("/tmp/test.txt", "hello"):
+match save("/tmp/test.txt", "hello"):
     case Ok(_):
         print("saved")
     case Err(e):
@@ -408,7 +491,7 @@ when save("/tmp/test.txt", "hello"):
 - `Ok(value)` — 成功变体
 - `Err(error)` — 错误变体
 
-与 `when` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
+与 `match` 配合使用进行穷举的错误处理。`Ok` 和 `Err` 两种情况都必须覆盖（或使用 `_` 通配符）。
 
 **测试匹配器：**
 - `expect(x).to_be_ok()` — 断言结果为 `Ok`
@@ -432,11 +515,11 @@ print(x)        # hello
 ### 在函数参数与返回值中的使用
 
 ```python
-fn show(x: int | str) -> int:
+function show(x: int | str) -> int:
     print(x)
     return 0
 
-fn get_val(flag: bool) -> int | str:
+function get_val(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -490,7 +573,7 @@ x: any = 42          # int 被包装成 any
 x = "hello"          # 可以重新赋值为不同类型
 
 # 解包：any → 具体类型
-fn get_value() -> any:
+function get_value() -> any:
     return 42
 n: int = get_value()  # any(int) 被解包为 int
 
@@ -573,7 +656,7 @@ print(f"value: {x}")  # value: 42
 `any` 值可以传递给具有具体参数类型的函数。值会通过运行时类型检查自动解包：
 
 ```python
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 v: any = 42
@@ -630,7 +713,9 @@ result = add_one(v)   # any(int) 被解包为 int；结果是 43
 - **变量类型在声明时固定** — 一旦以 `int` 声明的变量，就无法重新赋值为 `float`。
 - **位运算仅限 `int`** — 对 `float` 或 `bool` 使用位运算会产生编译错误。
 - **非 `bool` 类型也可用于条件式** — `if` 的条件式可使用 `int`（0 = false、非 0 = true）等 `bool` 以外的类型。
-- **数值字面量后缀** — 低级类型可通过字面量后缀指定：`42i32`、`255u8`、`3.14f32`、`0xFFu8`、`0b1010u8`。带有 float 后缀的整数字面量（`42f32`）会产生浮点值。带有整数后缀的浮点字面量（`3.14i32`）是编译错误。超出范围的值（例如 `256u8`、`129i8`）也是编译错误。
+- **数值字面量分隔符** — 下划线可作为数值字面量中的视觉分隔符：`100_000`、`0xFF_FF`、`0b1010_0101`、`3.14_159`。下划线必须出现在数字之间（不允许前导、尾随或连续的下划线）。
+- **数值字面量后缀** — 低级类型可通过字面量后缀指定：`42i32`、`255u8`、`3.14f32`、`.5f32`、`0xFFu8`、`0b1010u8`。带有 float 后缀的整数字面量（`42f32`）会产生浮点值。带有整数后缀的浮点字面量（`3.14i32`）是编译错误。超出范围的值（例如 `256u8`、`129i8`）也是编译错误。
 - **低级数值类型（`i8`、`i16`、`i32`、`i64`、`u8`、`u16`、`u32`、`u64`、`f32`）无隐式转换** — 混合低级类型之间或低级与高级类型（`int`、`float`）之间会产生编译错误。请使用显式 `as` 转换。低级整数的 `/` 运算符执行整数除法（类似 Rust），而非浮点除法。有符号类型使用 `SDiv`/`SRem`，无符号类型使用 `UDiv`/`URem`。
 - **有符号与无符号** — 有符号类型（`i8`、`i16`、`i32`、`i64`）使用有符号比较（`ICMP_SLT` 等）和算术右移（`AShr`）。无符号类型（`u8`、`u16`、`u32`、`u64`）使用无符号比较（`ICMP_ULT` 等）和逻辑右移（`LShr`）。`>>>` 运算符无论符号性如何，始终执行逻辑移位。
-- **低级整数溢出会回绕** — 低级整数类型的算术运算在溢出时使用补码回绕（有符号）或模运算（无符号）。例如，`i32` 最大值 `2147483647 + 1` 会回绕为 `-2147483648`。这与 C 的行为一致。如果溢出是问题所在，请使用高级 `int` 类型（64 位）。如需显式溢出控制，请使用 `checked_add/sub/mul`（返回 `Result<T, Error>`）、`saturating_add/sub/mul`（钳制到类型边界）或 `wrapping_add/sub/mul`（自文档化的回绕行为）。参见[函数参考](functions.md#checkedsaturating-arithmetic)。
+- **`int` 算术溢出是运行时错误** — 高级 `int` 类型的算术运算（`+`、`-`、`*`、一元 `-`）在溢出时产生运行时错误，类似 Swift 的默认行为。这防止了补码回绕导致的静默数据损坏。溢出的常量表达式在编译时被捕获。
+- **低级整数溢出会回绕** — 低级整数类型的算术运算在溢出时使用 Ry 定义的补码回绕（有符号）或模运算（无符号）。例如，`2147483647i32 + 1i32` 会回绕为 `-2147483648`。如需显式溢出控制，请使用 `checked_add/sub/mul`（返回 `Result<T, Error>`）、`saturating_add/sub/mul`（钳制到类型边界）或 `wrapping_add/sub/mul`（自文档化的回绕行为）。参见[函数参考](functions.md#checkedsaturating-arithmetic)。

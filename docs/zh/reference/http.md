@@ -1,6 +1,6 @@
-[English](../../reference/http.md)
+[English](../../reference/http.md) | [简体中文](http.md)
 
-# HTTP 参考手册
+# HTTP 参考
 
 ## 类型
 
@@ -10,76 +10,77 @@
 | `HttpResponse` | 传出 HTTP 响应的不透明句柄 |
 | `HttpClientResponse` | HTTP 客户端响应的不透明句柄 |
 
-`HttpRequest` 由服务器框架提供。`HttpResponse` 通过 `http_response()` 创建。`HttpClientResponse` 由客户端函数（`http_get`、`http_post`、`http_request`）返回。
+`HttpRequest` 由服务器框架提供。`HttpResponse` 通过 `response()` 创建。`HttpClientResponse` 由客户端函数（`http_get`、`http_post`、`http_request`）返回。
 
 ## 函数（来自 `http`）
 
 这些函数需要显式导入：
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_query, http_query_all, http_cookie, http_cookies, http_form_field, http_form_file, http_form_fields, http_response
+from http import listen, method, path, header, body, body_bytes, query, query_all, cookie, cookies, form_field, form_file, form_fields, response
 ```
 
 ### 服务器
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse) -> Unit` | 在指定地址启动 HTTP 服务器。在接受循环中阻塞，对每个请求调用 `handler`。 |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | 启动一个在处理 `max_requests` 个请求后停止的 HTTP 服务器。支持 `async fn` + `block_on()` 的生命周期管理。 |
-| `http_listen` | `(host: str, port: int, handler: fn(HttpRequest) -> HttpResponse, max_requests: int, port_callback: fn(int) -> Unit) -> Unit` | 与上述相同，但在 `bind` + `listen` 成功后调用 `port_callback` 并传入实际绑定的端口。可与端口 `0` 配合使用以获取操作系统分配的临时端口。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse) -> Unit` | 在指定地址启动 HTTP 服务器。在接受循环中阻塞，对每个请求调用 `handler`。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int) -> Unit` | 启动一个在处理 `max_requests` 个请求后停止的 HTTP 服务器。支持 `async function` + `block_on()` 的生命周期管理。 |
+| `listen` | `(host: str, port: int, handler: function(HttpRequest) -> HttpResponse, max_requests: int, port_callback: function(int) -> Unit) -> Unit` | 与上述相同，但在 `bind` + `listen` 成功后调用 `port_callback` 并传入实际绑定的端口。可与端口 `0` 配合使用以获取操作系统分配的临时端口。 |
 
 ### 请求访问器
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `http_method` | `(req: HttpRequest) -> str` | 返回 HTTP 方法（例如 `"GET"`、`"POST"`）。 |
-| `http_path` | `(req: HttpRequest) -> str` | 返回不含查询字符串的请求路径（例如对于 `"/search?q=hello"` 返回 `"/search"`）。 |
-| `http_header` | `(req: HttpRequest, key: str) -> Option<str>` | 返回请求头的值（不区分大小写查找）。未找到时返回 `None`。 |
-| `http_body` | `(req: HttpRequest) -> str` | 以字符串形式返回请求体。 |
-| `http_query` | `(req: HttpRequest, key: str) -> Option<str>` | 返回查询参数的值。未找到时返回 `None`。值会自动进行 URL 解码。 |
-| `http_query_all` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有查询参数。键和值会自动进行 URL 解码。 |
-| `http_cookie` | `(req: HttpRequest, name: str) -> Option<str>` | 按名称返回 cookie 的值。未找到时返回 `None`。 |
-| `http_cookies` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有 cookie。 |
-| `http_form_field` | `(req: HttpRequest, name: str) -> Option<str>` | 返回 multipart 表单文本字段的值。未找到时返回 `None`。 |
-| `http_form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | 以 `Option` 形式返回文件上传信息。`Some(map)` 包含 `"filename"`、`"content_type"`、`"data"` 键。未找到时返回 `None`。 |
-| `http_form_fields` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有 multipart 表单文本字段。 |
+| `method` | `(req: HttpRequest) -> str` | 返回 HTTP 方法（例如 `"GET"`、`"POST"`）。 |
+| `path` | `(req: HttpRequest) -> str` | 返回不含查询字符串的请求路径（例如对于 `"/search?q=hello"` 返回 `"/search"`）。 |
+| `header` | `(req: HttpRequest, key: str) -> Option<str>` | 返回请求头的值（不区分大小写查找）。未找到时返回 `None`。 |
+| `body` | `(req: HttpRequest) -> str` | 以字符串形式返回请求体。在第一个 NUL 字节处截断；对于二进制数据请使用 `body_bytes`。 |
+| `body_bytes` | `(req: HttpRequest) -> List<u8>` | 以字节列表形式返回请求体。二进制安全——保留所有字节包括 NUL。 |
+| `query` | `(req: HttpRequest, key: str) -> Option<str>` | 返回查询参数的值。未找到时返回 `None`。值会自动进行 URL 解码。 |
+| `query_all` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有查询参数。键和值会自动进行 URL 解码。 |
+| `cookie` | `(req: HttpRequest, name: str) -> Option<str>` | 按名称返回 cookie 的值。未找到时返回 `None`。 |
+| `cookies` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有 cookie。 |
+| `form_field` | `(req: HttpRequest, name: str) -> Option<str>` | 返回 multipart 表单文本字段的值。未找到时返回 `None`。 |
+| `form_file` | `(req: HttpRequest, name: str) -> Option<Map<str, str>>` | 以 `Option` 形式返回文件上传信息。`Some(map)` 包含 `"filename"`、`"content_type"`、`"data"` 键。未找到时返回 `None`。 |
+| `form_fields` | `(req: HttpRequest) -> Map<str, str>` | 以映射形式返回所有 multipart 表单文本字段。 |
 
 ### 响应构建器
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `http_response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | 使用给定的状态码、响应头和响应体创建 HTTP 响应。 |
+| `response` | `(status: int, headers: Map<str, str>, body: str) -> HttpResponse` | 使用给定的状态码、响应头和响应体创建 HTTP 响应。 |
 
 ## 使用示例
 
 ### 基本 HTTP 服务器
 
 ```python
-from http import http_listen, http_method, http_path, http_header, http_body, http_response
+from http import listen, method, path, header, body, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    method = http_method(req)
-    path = http_path(req)
-    if path == "/hello":
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello, World!")
-    if path == "/echo":
-        body = http_body(req)
-        return http_response(200, {"Content-Type": "text/plain"}, body)
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    m = method(req)
+    p = path(req)
+    if p == "/hello":
+        return response(200, {"Content-Type": "text/plain"}, "Hello, World!")
+    if p == "/echo":
+        b = body(req)
+        return response(200, {"Content-Type": "text/plain"}, b)
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
-### 使用 `async fn` 的非阻塞服务器
+### 使用 `async function` 的非阻塞服务器
 
 ```python
-from http import http_listen, http_path, http_response
+from http import listen, path, response
 
-async fn start_server(port: int) -> str:
-    http_listen("127.0.0.1", port, fn(req: HttpRequest) -> HttpResponse:
-        path = http_path(req)
-        if path == "/api/health":
-            return http_response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
-        return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+async function start_server(port: int) -> str:
+    listen("127.0.0.1", port, (req: HttpRequest) -> HttpResponse:
+        p = path(req)
+        if p == "/api/health":
+            return response(200, {"Content-Type": "application/json"}, "{\"status\": \"ok\"}")
+        return response(404, {"Content-Type": "text/plain"}, "Not Found")
     )
     return "done"
 
@@ -90,15 +91,15 @@ t = start_server(8080)
 ### 带请求限制的服务器（`max_requests`）
 
 ```python
-from http import http_listen, http_path, http_response, http_get, http_client_status, http_client_body
+from http import listen, path, response, http_get, status, body
 
 port_holder = [0]
-fn on_port(p: int) -> Unit:
+function on_port(p: int) -> Unit:
     port_holder[0] = p
 
-async fn start_server() -> str:
-    http_listen("127.0.0.1", 0, fn(req: HttpRequest) -> HttpResponse:
-        return http_response(200, {"Content-Type": "text/plain"}, "Hello!")
+async function start_server() -> str:
+    listen("127.0.0.1", 0, (req: HttpRequest) -> HttpResponse:
+        return response(200, {"Content-Type": "text/plain"}, "Hello!")
     , 1, on_port)  # 处理 1 个请求后停止；调用 on_port 传入绑定的端口
     return "done"
 
@@ -106,9 +107,9 @@ t = start_server()
 sleep(100)  # 等待服务器启动
 port = port_holder[0]
 
-when http_get("http://127.0.0.1:" + to_str(port) + "/"):
+match http_get("http://127.0.0.1:" + to_str(port) + "/"):
     case Ok(resp):
-        print(http_client_body(resp))  # "Hello!"
+        print(body(resp))  # "Hello!"
     case Err(e):
         print("error")
 
@@ -118,92 +119,92 @@ result = block_on(t)  # 服务器在处理 1 个请求后退出；block_on 完�
 ### 读取查询参数
 
 ```python
-from http import http_listen, http_path, http_query, http_query_all, http_response
+from http import listen, path, query, query_all, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    path = http_path(req)
-    if path == "/search":
-        when http_query(req, "q"):
-            case Some(query):
-                return http_response(200, {"Content-Type": "text/plain"}, "Search: " + query)
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    p = path(req)
+    if p == "/search":
+        match query(req, "q"):
+            case Some(q):
+                return response(200, {"Content-Type": "text/plain"}, "Search: " + q)
             case None:
-                return http_response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
-    return http_response(404, {"Content-Type": "text/plain"}, "Not Found")
+                return response(400, {"Content-Type": "text/plain"}, "Missing query parameter: q")
+    return response(404, {"Content-Type": "text/plain"}, "Not Found")
 )
 ```
 
 ### 读取请求头
 
 ```python
-from http import http_listen, http_header, http_response
+from http import listen, header, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_header(req, "Authorization"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match header(req, "Authorization"):
         case Some(token):
-            return http_response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
+            return response(200, {"Content-Type": "text/plain"}, "Authenticated: " + token)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "Unauthorized")
+            return response(401, {"Content-Type": "text/plain"}, "Unauthorized")
 )
 ```
 
 ### 处理表单提交
 
 ```python
-from http import http_listen, http_form_field, http_form_file, http_response
+from http import listen, form_field, form_file, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_form_field(req, "username"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match form_field(req, "username"):
         case Some(name):
-            when http_form_file(req, "avatar"):
+            match form_file(req, "avatar"):
                 case Some(file_info):
                     filename = file_info["filename"]
-                    return http_response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
+                    return response(200, {"Content-Type": "text/plain"}, "Hello " + name + ", file: " + filename)
                 case None:
-                    return http_response(400, {"Content-Type": "text/plain"}, "No file uploaded")
+                    return response(400, {"Content-Type": "text/plain"}, "No file uploaded")
         case None:
-            return http_response(400, {"Content-Type": "text/plain"}, "Missing username")
+            return response(400, {"Content-Type": "text/plain"}, "Missing username")
 )
 ```
 
 ### 读取 Cookie
 
 ```python
-from http import http_listen, http_cookie, http_cookies, http_response
+from http import listen, cookie, cookies, response
 
-http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
-    when http_cookie(req, "session_id"):
+listen("127.0.0.1", 8080, (req: HttpRequest) -> HttpResponse:
+    match cookie(req, "session_id"):
         case Some(sid):
-            return http_response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
+            return response(200, {"Content-Type": "text/plain"}, "Session: " + sid)
         case None:
-            return http_response(401, {"Content-Type": "text/plain"}, "No session")
+            return response(401, {"Content-Type": "text/plain"}, "No session")
 )
 ```
 
 ## 行为
 
-- `http_listen()` 绑定到地址，开始监听，并进入接受循环。
+- `listen()` 绑定到地址，开始监听，并进入接受循环。
 - 使用 3 个参数调用时，接受循环无限运行。
-- 使用 4 个参数调用时（`max_requests`），服务器在处理指定数量的请求后停止。`max_requests` 必须是正整数。这支持 `async fn` + `block_on()` 的生命周期管理。格式错误的请求（静默跳过）不计入限制。
+- 使用 4 个参数调用时（`max_requests`），服务器在处理指定数量的请求后停止。`max_requests` 必须是正整数。这支持 `async function` + `block_on()` 的生命周期管理。格式错误的请求（静默跳过）不计入限制。
 - 使用 5 个参数调用时（`max_requests`、`port_callback`），在 `bind` + `listen` 成功后同步调用 `port_callback` 并传入实际绑定的端口。这允许安全使用端口 `0`（操作系统分配的临时端口）以避免并行测试中的端口冲突。
 - 服务器默认支持 HTTP/1.1 keep-alive。单个连接上可以处理多个请求。服务器在每个请求上检查 `Connection` 头：如果发送了 `Connection: close`，则在响应后关闭连接；否则连接保持打开以处理后续请求。空闲连接在 5 秒超时后关闭。
 - 如果响应头映射中未提供 `Content-Length`，则会自动添加。
 - 服务器支持基于 `Content-Length` 的请求体读取和 `Transfer-Encoding: chunked` 解码的 HTTP/1.1。
-- 当请求中存在 `Transfer-Encoding: chunked` 时，请求体会自动解码并拼接 - Ry 代码透明地接收完整的请求体。
+- 当请求中存在 `Transfer-Encoding: chunked` 时，请求体会自动解码并拼接——Ry 代码透明地接收完整的请求体。
 - 如果同时存在 `Transfer-Encoding: chunked` 和 `Content-Length`，请求将被视为格式错误而拒绝（依据 RFC 9112）。
-- 要发送分块响应，请在传给 `http_response()` 的响应头映射中包含 `"Transfer-Encoding": "chunked"`。响应体将自动以分块格式编码。
-- 通过 `http_header()` 的头部查找不区分大小写。
-- `http_path()` 返回不含查询字符串的路径。查询参数通过 `http_query()` 或 `http_query_all()` 单独访问。
-- 查询参数值会自动进行 URL 解码（`%20` -> 空格，`+` -> 空格）。
+- 要发送分块响应，请在传给 `response()` 的响应头映射中包含 `"Transfer-Encoding": "chunked"`。响应体将自动以分块格式编码。
+- 通过 `header()` 的头部查找不区分大小写。
+- `path()` 返回不含查询字符串的路径。查询参数通过 `query()` 或 `query_all()` 单独访问。
+- 查询参数值会自动进行 URL 解码（`%20` → 空格，`+` → 空格）。
 - 对于重复的查询参数键，返回第一个值。
-- `http_cookie()` 和 `http_cookies()` 通过按 `;` 分割来解析 `Cookie` 头，然后按第一个 `=` 分割每个键值对。名称和值的前后空白会被去除。
+- `cookie()` 和 `cookies()` 通过按 `;` 分割来解析 `Cookie` 头，然后按第一个 `=` 分割每个键值对。名称和值的前后空白会被去除。
 - 对于重复的 cookie 名称，返回第一个值。
 - Cookie 值可以包含 `=` 字符（只有第一个 `=` 用于分隔名称和值）。
-- `http_form_field()`、`http_form_file()` 和 `http_form_fields()` 解析 `multipart/form-data` 请求体。解析是惰性的 - 在第一次调用时解析请求体并缓存。
+- `form_field()`、`form_file()` 和 `form_fields()` 解析 `multipart/form-data` 请求体。解析是惰性的——在第一次调用时解析请求体并缓存。
 - `boundary` 参数从 `Content-Type` 头中提取，支持带引号和不带引号的值。
 - `Content-Disposition` 中带有 `filename` 的部分被视为文件上传；没有的则被视为文本字段。
 - 对于重复的字段/文件名称，返回第一个值。
-- `http_form_file()` 返回 `Some(map)`，包含 `"filename"`、`"content_type"` 和 `"data"` 键；如果未找到字段则返回 `None`。如果部分未指定 `Content-Type`，默认为 `"application/octet-stream"`。
-- 对于非 multipart 请求，表单函数返回 `None`（对于 `http_form_field`、`http_form_file`）或空映射（对于 `http_form_fields`）。
+- `form_file()` 返回 `Some(map)`，包含 `"filename"`、`"content_type"` 和 `"data"` 键；如果未找到字段则返回 `None`。如果部分未指定 `Content-Type`，默认为 `"application/octet-stream"`。
+- 对于非 multipart 请求，表单函数返回 `None`（对于 `form_field`、`form_file`）或空映射（对于 `form_fields`）。
 
 ## 支持的状态码
 
@@ -268,30 +269,31 @@ http_listen("127.0.0.1", 8080, fn(req: HttpRequest) -> HttpResponse:
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `http_client_status` | `(resp: HttpClientResponse) -> int` | 返回 HTTP 状态码。 |
-| `http_client_body` | `(resp: HttpClientResponse) -> str` | 以字符串形式返回响应体。 |
-| `http_client_header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | 返回响应头的值（不区分大小写）。未找到时返回 `None`。 |
+| `status` | `(resp: HttpClientResponse) -> int` | 返回 HTTP 状态码。 |
+| `body` | `(resp: HttpClientResponse) -> str` | 以字符串形式返回响应体。在第一个 NUL 字节处截断；对于二进制数据请使用 `body_bytes`。 |
+| `body_bytes` | `(resp: HttpClientResponse) -> List<u8>` | 以字节列表形式返回响应体。二进制安全——保留所有字节包括 NUL。 |
+| `header` | `(resp: HttpClientResponse, key: str) -> Option<str>` | 返回响应头的值（不区分大小写）。未找到时返回 `None`。 |
 | `http_client_response_free` | `(resp: HttpClientResponse) -> Unit` | 释放响应及其关联的内存。使用完响应后调用。 |
 
 ### 客户端使用示例
 
 ```python
-from http import http_get, http_post, http_client_status, http_client_body, http_client_header
+from http import http_get, http_post, status, body, header
 
 # 简单的 GET 请求
-when http_get("http://example.com/api/data"):
+match http_get("http://example.com/api/data"):
     case Ok(resp):
-        status = http_client_status(resp)
-        body = http_client_body(resp)
-        print(to_str(status) + ": " + body)
+        s = status(resp)
+        b = body(resp)
+        print(to_str(s) + ": " + b)
     case Err(e):
         print("Request failed")
 
 # 带请求体和请求头的 POST 请求
 headers: Map<str, str> = {"Content-Type": "application/json"}
-when http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
+match http_post("http://example.com/api/data", "{\"key\": \"value\"}", headers):
     case Ok(resp):
-        print(http_client_body(resp))
+        print(body(resp))
     case Err(e):
         print("Request failed")
 ```
@@ -325,7 +327,7 @@ HTTP 客户端函数会自动跟随重定向响应（带有 `Location` 头的 3x
 
 ## 错误处理
 
-- 如果 `bind()` 失败（例如端口已被占用），`http_listen()` 会引发运行时错误。
+- 如果 `bind()` 失败（例如端口已被占用），`listen()` 会引发运行时错误。
 - 格式错误的请求或 keep-alive 连接上的空闲超时会导致连接关闭。服务器随后继续接受新连接。
-- 处理函数必须始终返回 `HttpResponse` - 没有默认响应。
-- 客户端函数返回 `Result<HttpClientResponse, Error>` - 使用 `when` 处理成功和失败情况。
+- 处理函数必须始终返回 `HttpResponse`——没有默认响应。
+- 客户端函数返回 `Result<HttpClientResponse, Error>`——使用 `match` 处理成功和失败情况。

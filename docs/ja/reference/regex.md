@@ -1,20 +1,88 @@
 [English](../../reference/regex.md) | [日本語](regex.md) | [繁體中文](../../zh/reference/regex.md)
 
-# 正規表現関数リファレンス
+# 正規表現リファレンス
 
-正規表現関数の一覧です。すべての関数は UFCS 記法をサポートしています。パターン文字列は標準的な正規表現構文を使用します。
+## 正規表現リテラル構文
 
-> **注意:** Phase 1 ではパターンは通常の文字列として渡します。専用の正規表現リテラル構文は将来追加される可能性があります。
+正規表現リテラルは `/pattern/` 構文を使用し、`Regex` 型の値を生成します:
+
+```ry
+from regex import is_match, split, replace
+
+# 正規表現リテラルにより型ベースのオーバーロードが有効になる
+"hello".is_match(/[a-z]+/)        # true
+"a1b2c".split(/[0-9]/)         # ["a", "b", "c"]
+"abc123".replace(/[0-9]+/, "X") # "abcX"
+```
+
+正規表現リテラルは変数に格納できます:
+
+```ry
+pat = /[a-z]+/
+"hello".is_match(pat)  # true
+```
+
+正規表現リテラル内の `/` は `\/` でエスケープできます:
+
+```ry
+"a/b".is_match(/a\/b/)  # true
+```
+
+### 除算と正規表現の区別
+
+レクサーはコンテキストを使用して正規表現リテラルと除算を区別します:
+
+- 値を生成するトークン（識別子、数値、文字列リテラル、`)` または `]`）の後では、`/` は除算として解析される
+- 演算子、キーワード、または式を期待する区切り文字（`(`、`[`、`,`、`=`）の後では、`/` は正規表現リテラルの開始として扱われる
+
+```ry
+x = 10 / 2         # 除算: 5
+y = is_match("a", /a/) # 正規表現リテラル
+```
 
 ## 関数一覧
 
+### 正規表現リテラル関数（テキスト優先、UFCS 互換）
+
+これらの関数は `Regex` 型のパターンを取り、UFCS 用にテキスト優先の引数順序を使用します:
+
 | 関数 | シグネチャ | 説明 |
-|------|-----------|------|
-| `regex_match` | `(str, str) -> bool` | テキスト全体がパターンにマッチするか |
-| `regex_search` | `(str, str) -> int` | 最初のマッチの開始位置を返す（見つからない場合 -1） |
-| `regex_replace` | `(str, str, str) -> str` | マッチした部分を置換文字列で置換 |
-| `regex_split` | `(str, str) -> List<str>` | パターンマッチで分割 |
-| `regex_find_all` | `(str, str) -> List<str>` | 重複しないすべてのマッチを返す |
+|----------|-----------|------|
+| `is_match` | `(str, Regex) -> bool` | テキスト全体がパターンにマッチするかを返す |
+| `search` | `(str, Regex) -> int` | 最初のマッチの開始位置を返す（見つからない場合 -1） |
+| `replace` | `(str, Regex, str) -> str` | マッチした部分を置換文字列で置換 |
+| `split` | `(str, Regex) -> List<str>` | パターンマッチでテキストを分割 |
+| `find_all` | `(str, Regex) -> List<str>` | 重複しないすべてのマッチを返す |
+
+```ry
+from regex import is_match, search, replace, split, find_all
+
+# 直接呼び出し
+print(is_match("hello", /[a-z]+/))       # true
+
+# UFCS（text.function(pattern)）
+print("abc123".search(/[0-9]+/))          # 3
+print("abc123".replace(/[0-9]+/, "X"))    # abcX
+parts = "hello world".split(/\s+/)
+nums = "a1b2c3".find_all(/[0-9]/)
+```
+
+### レガシー関数（テキスト優先）
+
+元の `regex_*` 関数は後方互換性のために引き続き利用可能です。正規表現リテラルではなくパターン文字列を受け取り、正規表現リテラル API と一貫したテキスト優先の引数順序を使用します:
+
+| 関数 | シグネチャ | 説明 |
+|----------|-----------|------|
+| `regex_match` | `(text: str, pattern: str) -> bool` | テキスト全体がパターンにマッチするかを返す |
+| `regex_search` | `(text: str, pattern: str) -> int` | 最初のマッチの開始位置を返す（見つからない場合 -1） |
+| `regex_replace` | `(text: str, pattern: str, replacement: str) -> str` | マッチした部分を置換文字列で置換 |
+| `regex_split` | `(text: str, pattern: str) -> List<str>` | パターンマッチでテキストを分割 |
+| `regex_find_all` | `(text: str, pattern: str) -> List<str>` | 重複しないすべてのマッチを返す |
+
+```ry
+print(regex_match("hello", "[a-z]+"))   # true
+pos = regex_search("abc123", "[0-9]+")  # 3
+```
 
 ## サポートするパターン構文
 
@@ -52,108 +120,50 @@
 
 ## 使用例
 
-### regex_match
-
-```ry
-print(regex_match("[a-z]+", "hello"))   # true
-print(regex_match("[0-9]+", "hello"))   # false
-print(regex_match("[a-zA-Z_]\\w*", "my_var"))  # true
-```
-
-### regex_search
-
-```ry
-pos = regex_search("[0-9]+", "abc123def")
-print(pos)  # 3
-```
-
-### regex_replace
-
-```ry
-s = regex_replace("[0-9]+", "a1b2c3", "X")
-print(s)  # aXbXcX
-```
-
-### regex_split
-
-```ry
-parts = regex_split("\\s+", "hello  world  foo")
-print(length(parts))  # 3
-print(parts[0])    # hello
-```
-
-### regex_find_all
-
-```ry
-matches = regex_find_all("[0-9]+", "a1b23c456")
-print(length(matches))  # 3
-print(matches[0])    # 1
-print(matches[1])    # 23
-```
-
 ### 範囲量指定子
 
 ```ry
-print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
-print(regex_match("a{2,4}", "aaa"))               # true
-print(regex_match("(ab){2,}", "ababab"))           # true
+print(regex_match("123-4567", "\\d{3}-\\d{4}"))  # true
+print(regex_match("aaa", "a{2,4}"))               # true
+print(regex_match("ababab", "(ab){2,}"))           # true
 ```
 
 ### 非貪欲（最短）マッチ
 
 ```ry
 # 貪欲: 最長マッチ
-g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+g = regex_replace("\"a\" and \"b\"", "\".*\"", "X")
 print(g)  # X
 
 # 非貪欲: 最短マッチ
-l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+l = regex_replace("\"a\" and \"b\"", "\".*?\"", "X")
 print(l)  # X and X
 
-# 個別のHTMLタグを取得
-tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+# 個別の HTML タグを取得
+tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
 print(length(tags))  # 3
 ```
 
-> **注意:** 非貪欲マッチはマッチ全体の長さを制御します。グループ（括弧で囲んだ部分式）がない場合、greedy/lazy の混在パターンは PCRE エンジンと異なる動作をする場合があります。
+> **注意:** 非貪欲マッチはマッチ全体の長さを制御します。括弧で囲んだグループの抽出がサポートされていないため、greedy/lazy の混在パターンは PCRE エンジンと異なる動作をする場合があります。
 
 ### 単語境界
 
 ```ry
 # 単語全体にマッチ
-pos = regex_search("\\bworld\\b", "hello world")
+pos = regex_search("hello world", "\\bworld\\b")
 print(pos)  # 6
 
 # すべての単語を取得
-words = regex_find_all("\\b\\w+\\b", "hello world foo")
+words = regex_find_all("hello world foo", "\\b\\w+\\b")
 print(length(words))  # 3
-
-# \B は非境界（単語の内部）にマッチ
-pos2 = regex_search("\\Bworld", "helloworld")
-print(pos2)  # 5
 ```
 
 ### 大文字小文字を無視したマッチ
 
 ```ry
 # (?i) をパターンの先頭に置くと大文字小文字を無視
-print(regex_match("(?i)hello", "HELLO"))  # true
-print(regex_match("(?i)hello", "Hello"))  # true
-
-# 文字クラスでも動作
-print(regex_match("(?i)[a-z]+", "ABC"))  # true
-
-# replace や find_all でも使用可能
-s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
-print(s)  # X X X
+print(regex_match("HELLO", "(?i)hello"))  # true
+print(regex_match("Hello", "(?i)hello"))  # true
 ```
 
 > **注意:** `(?i)` はパターンの先頭に記述する必要があり、パターン全体に適用されます。部分的な大文字小文字無視（例: `(?i:sub)pattern`）はサポートされていません。
-
-### UFCS 記法
-
-```ry
-# pattern.function(text, ...)
-m = "[a-z]+".regex_match("hello")
-print(m)  # true
-```

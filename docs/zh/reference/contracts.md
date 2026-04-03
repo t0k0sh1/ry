@@ -11,7 +11,7 @@ Ry 支持 Eiffel 风格的契约式设计，包含前置条件（`require`）、
 前置条件在函数入口处检查。它们指定函数被正确调用所需满足的条件。
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -35,7 +35,7 @@ Contract violation: require failed in deposit()
 `ensure` 需要一个变量名来绑定返回值。此变量可在后置条件表达式中使用。
 
 ```python
-fn abs(x: int) -> int:
+function abs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:
@@ -46,7 +46,7 @@ fn abs(x: int) -> int:
 由于 Ry 的函数参数是不可变的，可以在 `ensure` 块中直接引用参数来与入口值比较：
 
 ```python
-fn increment(x: int) -> int:
+function increment(x: int) -> int:
     ensure v:
         v == x + 1
     return x + 1
@@ -57,7 +57,7 @@ fn increment(x: int) -> int:
 对于返回元组的函数，可以用逗号分隔指定多个变量名：
 
 ```python
-fn divide(a: int, b: int) -> (int, int):
+function divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
         r >= 0
@@ -71,7 +71,7 @@ fn divide(a: int, b: int) -> (int, int):
 ## 组合示例
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0

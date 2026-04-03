@@ -1,4 +1,4 @@
-[English](../../reference/packages.md) | [日本語](../../ja/reference/packages.md) | [繁體中文](packages.md)
+[English](../../reference/packages.md) | [日本語](../../ja/reference/packages.md) | [简体中文](packages.md)
 
 # 包参考
 
@@ -36,6 +36,31 @@ from math import sqrt, PI
 
 以逗号分隔选择性导入多个定义。
 
+### 相对导入
+
+```python
+from .helper import greet
+```
+
+从当前文件目录的相对位置导入模块。`.` 前缀将解析限制为仅当前目录（不搜索标准库和其他搜索路径）。
+
+### 从子目录相对导入
+
+```python
+from .utils import helper_fn
+from .utils.calc import add
+```
+
+从当前文件目录的子目录导入。
+
+### 从当前目录相对导入全部
+
+```python
+from . import add, sub
+```
+
+从当前目录包中导入指定符号（目录中的所有 `.ry` 文件，排除 `_` 前缀和 `.test.ry` 文件）。
+
 ---
 
 ## 包解析
@@ -59,6 +84,7 @@ from math import sqrt, PI
 当包解析为目录时：
 - 目录内的所有 `.ry` 文件会自动加载
 - 以 `_` 开头的文件会被排除
+- 测试文件（`.test.ry`）会被排除
 - 不需要特殊的入口文件（如 `__init__.py`）
 - 目录内文件中定义的所有函数与类型都会被导出
 
@@ -71,16 +97,16 @@ from math import sqrt, PI
 
 ```python
 # mylib/internal.ry
-fn _helper() -> int:     # 私有 — 无法导入
+function _helper() -> int:     # 私有 — 无法导入
     return 42
-fn public_api() -> int:  # 公开 — 可导入
+function public_api() -> int:  # 公开 — 可导入
     return _helper()
 ```
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -90,13 +116,13 @@ from mypackage import add   # 仅导入 add
 
 ---
 
-## 标准库 (`std`)
+## 标准库（`std`）
 
 `std` 包会自动导入到每个程序中。提供的功能：
-- 内建函数（`print`, `length`, `range` 等）
-- 字符串函数（`contains`, `find`, `replace` 等）
-- 类型转换函数（`to_int`, `to_float`, `to_str`）
-- 集合函数（`map`, `filter`, `sort` 等）
+- 内建函数（`print`、`length`、`range` 等）
+- 字符串函数（`contains`、`find`、`replace` 等）
+- 类型转换函数（`to_int`、`to_float`、`to_str`）
+- 集合函数（`map`、`filter`、`sort` 等）
 
 ### 子包
 
@@ -106,6 +132,7 @@ from mypackage import add   # 仅导入 add
 |------|------|
 | [`math`](math.md) | 数学常量与函数 |
 | [`io`](io.md) | 文件 I/O、标准输入、字节转换 |
+| [`path`](path.md) | 文件路径操作（join、basename、dirname 等） |
 
 ```python
 from math import sqrt, PI, sin
@@ -192,10 +219,13 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 | 可使用的位置 | 仅限顶层（函数或块内不可） |
 | 重复导入 | 自动跳过（不会产生错误） |
 | 循环导入 | 编译错误 |
+| 相对导入 | `from .` 和 `from .pkg` 仅在当前文件目录中解析 |
+| 父目录导入 | 不支持 `from ..` |
+| 包名称 | 仅允许字母、数字和下划线（不允许连字符） |
 
 ```python
 # 错误示例：在块内导入
-fn main():
+function main():
     from math   # Error: imports only allowed at top level
 
 # OK：多次导入相同包不会产生错误
@@ -211,10 +241,10 @@ from math   # Skipped
 
 ```python
 # calc.ry
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn sub(a: int, b: int) -> int:
+function sub(a: int, b: int) -> int:
     return a - b
 ```
 

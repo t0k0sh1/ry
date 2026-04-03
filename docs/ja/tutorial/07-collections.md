@@ -1,8 +1,8 @@
 [English](../../tutorial/07-collections.md) | [日本語](07-collections.md) | [繁體中文](../../zh/tutorial/07-collections.md)
 
-# コレクション
+# コレクションとイテレータ
 
-[← 前: Record](06-records.md) | [次: 高度な機能 →](08-advanced.md)
+[<- 前: Record と列挙型](06-records.md) | [次: エラーハンドリング ->](08-error-handling.md)
 
 Ry には4種類のコレクション型があります: **タプル**、**リスト**、**マップ**、**セット**。
 
@@ -39,7 +39,7 @@ print(t.1)   # 3.14
 複数の値を返したいときにタプルが便利です。
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -107,7 +107,7 @@ for x in xs:
 ### 関数引数
 
 ```python
-fn first(xs: List<int>) -> int:
+function first(xs: List<int>) -> int:
     return xs[0]
 ```
 
@@ -119,19 +119,20 @@ fn first(xs: List<int>) -> int:
 xs = [1, 2, 3, 4, 5]
 
 # filter: 条件に一致する要素だけを残す
-evens = xs.filter(fn(x: int) => x > 3)
+evens = filter(xs, (x: int) => x > 3)
 print(evens)   # [4, 5]
 
 # map: 各要素を変換する
-doubled = xs.map(fn(x: int) => x * 2)
+doubled = map(xs, (x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
 # sort: 昇順ソート（デフォルト）
-sorted = [3, 1, 2].sort()
+sorted = sort([3, 1, 2])
 print(sorted)   # [1, 2, 3]
 
-# チェーン
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+# UFCS（統一関数呼び出し構文）によるチェーン
+# x.f(args) は f(x, args) と等価
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -143,11 +144,11 @@ print(result)   # [20, 30, 40, 50]
 xs = [1, 2, 3, 4, 5]
 
 # reduce: 最初の要素から開始
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 
 # fold: 明示的な初期値を指定
-total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
+total2 = fold(xs, 0, (a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +159,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum, min, max
@@ -178,8 +179,8 @@ print(max(xs))   # 5
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))      # 10
-print(last(xs))       # 30
+print(first(xs))      # Some(10)
+print(last(xs))       # Some(30)
 print(is_empty(xs))   # false
 ```
 
@@ -257,7 +258,7 @@ print(m)   # {a: 99, b: 2, c: 3}
 キーが存在するか確認します。
 
 ```python
-print(m.has_key("a"))   # true
+print(has_key(m, "a"))   # true
 ```
 
 ### keys, values
@@ -273,7 +274,7 @@ print(values(m))   # [1, 2, 3]
 ### 関数引数
 
 ```python
-fn get_val(m: Map<str, int>, k: str) -> int:
+function get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
@@ -313,9 +314,9 @@ print(5 in s)   # false
 ### add / remove
 
 ```python
-s.add(4)       # 要素追加
-s.remove(1)    # 要素削除
-s.add(2)       # 既に存在するため無視
+add(s, 4)       # 要素追加
+remove(s, 1)    # 要素削除
+add(s, 2)       # 既に存在するため無視
 ```
 
 ### length / print
@@ -351,34 +352,54 @@ empty: Set<int> = {}
 
 イテレータはコレクションを**遅延的に**処理する方法を提供します。各ステップで中間リストを作成する代わりに、パイプラインを通じて要素を1つずつ処理します。
 
+> **なぜ遅延イテレータなのか?** リストに対して直接 `filter` と `map` をチェーンすると、各ステップで新しい中間リストが生成されます。イテレータを使うと、要素はパイプライン全体を1つずつ通過します -- 中間的なメモリ割り当てがありません。大きなコレクションを処理する場合や、最初の数件の結果だけが必要な場合（`take` を使用）に重要です。
+
 ### 生成と消費
+
+コレクションに対して `iter()` を呼んでイテレータを取得し、`to_list()` で結果をリストに実体化します:
 
 ```python
 xs = [1, 2, 3]
-ys = xs.iter().to_list()   # [1, 2, 3]
+ys = to_list(iter(xs))   # [1, 2, 3]
 ```
 
 ### 操作のチェーン
 
-`filter`、`map`、`take` をチェーンしてパイプラインを構築できます:
+`filter`、`map`、`take` をチェーンしてパイプラインを構築できます。これは[関数](05-functions.md)で学んだ UFCS チェーンスタイルを使います:
 
 ```python
+result = to_list(take(map(filter(iter([1, 2, 3, 4, 5]), (x: int) => x > 2), (x: int) => x * 2), 2))
+print(result)   # [6, 8]
+
+# UFCS チェーンスタイル（等価）:
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()
 print(result)   # [6, 8]
 ```
 
-### next() による手動イテレーション
+より実践的な例 -- スコアのリストを処理:
 
 ```python
-it = [10, 20].iter()
-print(it.next())   # Some(10)
-print(it.next())   # Some(20)
-print(it.next())   # None
+scores = [85, 42, 93, 67, 78, 55, 91]
+
+# 合格スコア（>= 60）のうち上位3つを取得し、ボーナスとして2倍にする
+top_bonus = to_list(take(map(filter(iter(scores), (s: int) => s >= 60), (s: int) => s * 2), 3))
+print(top_bonus)   # [170, 186, 134]
+```
+
+### next() による手動イテレーション
+
+`next()` は `Option` を返します -- 次の要素がある場合は `Some(value)`、イテレータが使い尽くされた場合は `None`。`Option` については[エラーハンドリング](08-error-handling.md)で詳しく学びます。
+
+```python
+it = iter([10, 20])
+print(next(it))   # Some(10)
+print(next(it))   # Some(20)
+print(next(it))   # None
 ```
 
 ### for ループ
@@ -386,17 +407,35 @@ print(it.next())   # None
 イテレータは `for` ループで直接使えます:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in filter(iter([1, 2, 3]), (x: int) => x > 1):
     print(x)   # 2, 3
 ```
 
-マップはタプル要素を生成します:
+### マップとセットのイテレーション
+
+マップはキーと値のタプルを生成します。セットは個々の要素を生成します:
 
 ```python
-for k, v in {"a": 1, "b": 2}.iter():
-    print(k)
+for k, v in iter({"a": 1, "b": 2}):
+    print(f"{k} = {v}")
+
+for x in iter({10, 20, 30}):
+    print(x)
 ```
+
+### よくあるミス
+
+- **`to_list()` を忘れる**: イテレータパイプラインだけでは何も実行されません -- 遅延的です。`to_list()`、`for` ループ、または `next()` で消費する必要があります。
+- **`to_list()` を早すぎる位置で呼ぶ**: `filter()` の前に `to_list()` を置くと、すべての要素を先に実体化してしまうため、遅延評価の目的が損なわれます。
 
 ---
 
-[← 前: Record](06-records.md) | [次: 高度な機能 →](08-advanced.md)
+## 演習
+
+1. **イテレータパイプライン**: `xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` が与えられたとき、イテレータパイプラインを使って偶数の合計を計算してください。（ヒント: `.filter()` の後に `.to_list()` と `sum()` を使います。）
+
+2. **手動イテレーション**: `[100, 200, 300]` のイテレータを作成し、`when` ブロック内で `next()` を使って `Some` と `None` のケースを処理してください。
+
+---
+
+[<- 前: Record と列挙型](06-records.md) | [次: エラーハンドリング ->](08-error-handling.md)

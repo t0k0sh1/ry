@@ -27,7 +27,7 @@ from base64 import encode, decode
 encoded = encode("Hello, World!")
 print(encoded)  # SGVsbG8sIFdvcmxkIQ==
 
-when decode(encoded):
+match decode(encoded):
     case Ok(s):
         print(s)  # Hello, World!
     case Err(e):
@@ -44,7 +44,7 @@ from base64 import encode_url_safe, decode_url_safe
 encoded = encode_url_safe("data with special chars: ?&=")
 # No + / or = in the output
 
-when decode_url_safe(encoded):
+match decode_url_safe(encoded):
     case Ok(s):
         print(s)
     case Err(e):
@@ -53,13 +53,13 @@ when decode_url_safe(encoded):
 
 ### 处理字节数据
 
-要编码/解码字节数据，请结合 `io` 中的 `str_to_bytes` / `bytes_to_str` 使用。
+要编码/解码字节数据，请结合 `io` 中的 `to_bytes` / `bytes_to_str` 使用。
 
 ```python
 from base64 import encode, decode
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-bytes = str_to_bytes("binary data")
+bytes = to_bytes("binary data")
 encoded = encode(bytes_to_str(bytes)?)
 ```
 
@@ -68,7 +68,7 @@ encoded = encode(bytes_to_str(bytes)?)
 `decode` 和 `decode_url_safe` 返回 `Result<str, Error>`。当输入包含无效的 base64 字符时，解码会失败。
 
 ```python
-when decode("!!!not-valid!!!"):
+match decode("!!!not-valid!!!"):
     case Ok(s):
         print(s)
     case Err(e):
@@ -78,7 +78,7 @@ when decode("!!!not-valid!!!"):
 使用 `?` 运算符:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

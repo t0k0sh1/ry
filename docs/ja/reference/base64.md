@@ -27,7 +27,7 @@ from base64 import encode, decode
 encoded = encode("Hello, World!")
 print(encoded)  # SGVsbG8sIFdvcmxkIQ==
 
-when decode(encoded):
+match decode(encoded):
     case Ok(s):
         print(s)  # Hello, World!
     case Err(e):
@@ -44,7 +44,7 @@ from base64 import encode_url_safe, decode_url_safe
 encoded = encode_url_safe("data with special chars: ?&=")
 # 出力に + / = は含まれない
 
-when decode_url_safe(encoded):
+match decode_url_safe(encoded):
     case Ok(s):
         print(s)
     case Err(e):
@@ -53,13 +53,13 @@ when decode_url_safe(encoded):
 
 ### バイトデータの操作
 
-バイトデータのエンコード・デコードには `io` の `str_to_bytes` / `bytes_to_str` と組み合わせます。
+バイトデータのエンコード・デコードには `io` の `to_bytes` / `bytes_to_str` と組み合わせます。
 
 ```python
 from base64 import encode, decode
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-bytes = str_to_bytes("binary data")
+bytes = to_bytes("binary data")
 encoded = encode(bytes_to_str(bytes)?)
 ```
 
@@ -68,7 +68,7 @@ encoded = encode(bytes_to_str(bytes)?)
 `decode` と `decode_url_safe` は `Result<str, Error>` を返します。無効な base64 文字が含まれている場合、デコードは失敗します。
 
 ```python
-when decode("!!!not-valid!!!"):
+match decode("!!!not-valid!!!"):
     case Ok(s):
         print(s)
     case Err(e):
@@ -78,7 +78,7 @@ when decode("!!!not-valid!!!"):
 `?` 演算子との組み合わせ:
 
 ```python
-fn process(input: str) -> Result<str, Error>:
+function process(input: str) -> Result<str, Error>:
     decoded = decode(input)?
     return Ok(decoded)
 ```

@@ -72,12 +72,12 @@ ry hello.ry
 Hello, World!
 ```
 
-也可以通过管道或 Here-document 从标准输入执行代码：
+也可以通过管道或 Here-document 使用 `-c` 标志从标准输入运行代码：
 
 ```bash
-echo 'print("Hello, World!")' | ry
+echo 'print("Hello, World!")' | ry -c
 
-ry <<'RY'
+ry -c <<'RY'
 print("Hello, World!")
 RY
 ```

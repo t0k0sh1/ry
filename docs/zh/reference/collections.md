@@ -1,4 +1,4 @@
-[English](../../reference/collections.md) | [日本語](../../ja/reference/collections.md) | [繁體中文](collections.md)
+[English](../../reference/collections.md) | [日本語](../../ja/reference/collections.md) | [简体中文](collections.md)
 
 # 集合参考（元组、列表、映射、集合）
 
@@ -11,6 +11,7 @@
 ### 语法
 
 ```python
+t = (42,)                      # 单元素元组（需要尾随逗号）
 t = (1, 3.14)
 t: (int, float) = (1, 3.14)
 ```
@@ -18,8 +19,19 @@ t: (int, float) = (1, 3.14)
 ### 类型注解
 
 ```python
+single: (int,) = (42,)                     # 单元素需要尾随逗号
 pair: (int, str) = (42, "hello")
 triple: (int, float, bool) = (1, 2.0, true)
+```
+
+### 比较
+
+元组通过逐元素比较支持 `==` 和 `!=`。
+
+```python
+print((1, 2) == (1, 2))    # true
+print((1, 2) != (3, 4))    # true
+print(("a", 1) == ("b", 1))  # false
 ```
 
 ### 元素访问
@@ -35,7 +47,7 @@ print(t.1)   # 3.14
 ### 函数返回值
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -48,7 +60,7 @@ print(result.1)   # 1
 | 约束 | 详细 |
 |------|------|
 | 超出范围的索引 | 编译错误 |
-| 直接将元组传给 `print` | 编译错误（print 不支持） |
+| 比较运算符 | 仅支持 `==` 和 `!=`；不支持 `<`、`<=`、`>`、`>=` |
 
 ---
 
@@ -65,6 +77,28 @@ xs = [1, 2, 3]
 xs: List<int> = [1, 2, 3]
 ```
 
+### 空列表
+
+空列表需要类型注解以确定元素类型：
+
+```python
+xs: List<int> = []
+xs: List<str> = []
+```
+
+### 连接
+
+列表可以使用 `+` 和 `+=` 进行连接：
+
+```python
+a = [1, 2, 3]
+b = [4, 5, 6]
+c = a + b       # [1, 2, 3, 4, 5, 6]
+a += [7, 8]     # a 现在是 [1, 2, 3, 7, 8]
+```
+
+两个操作数必须具有相同的元素类型。
+
 ### 支持的元素类型
 
 `int`, `float`, `bool`, `str`
@@ -77,12 +111,25 @@ print(xs[0])   # 1
 print(xs[2])   # 3
 ```
 
+负数索引从末尾开始计算（Python 风格）：
+
+```python
+xs = [10, 20, 30]
+print(xs[-1])   # 30（最后一个元素）
+print(xs[-2])   # 20
+print(xs[-3])   # 10
+```
+
+超出范围的访问（包括超出列表长度的负数索引）会产生运行时错误。
+
 ### 索引赋值
 
 ```python
 xs = [1, 2, 3]
 xs[0] = 99
 print(xs[0])   # 99
+xs[-1] = 42    # 赋值给最后一个元素
+print(xs[2])   # 42
 ```
 
 ### length
@@ -122,12 +169,12 @@ print(xs)   # [1, 2, 3]
 
 ### pop
 
-移除并返回列表的最后一个元素。对空列表调用会产生运行时错误。
+移除并返回列表的最后一个元素。列表为空时返回 `None`。
 
 ```python
 xs = [1, 2, 3]
 v = xs.pop()
-print(v)    # 3
+print(v)    # Some(3)
 print(xs)   # [1, 2]
 ```
 
@@ -153,7 +200,7 @@ print(slice(xs, 0, 100))   # [1, 2, 3, 4, 5] (clamped)
 
 ### take
 
-返回包含前 `n` 个元素的新列表。若 `n` 超过列表长度，返回整个列表的副本。若 `n <= 0`，返回空列表。原始列表不会被修改。
+返回包含前 `count` 个元素的新列表。若 `count` 超过列表长度，返回整个列表的副本。若 `count <= 0`，返回空列表。原始列表不会被修改。
 
 ```python
 xs = [1, 2, 3, 4, 5]
@@ -169,7 +216,7 @@ print(xs.take(0))    # []
 
 ```python
 xs = [1, 2, 3]
-ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
+ys = xs.tap((x: int) => print(x)).map((x: int) => x * 2)
 # prints 1, 2, 3, then ys = [2, 4, 6]
 ```
 
@@ -179,7 +226,7 @@ ys = xs.tap(fn(x: int) => print(x)).map(fn(x: int) => x * 2)
 
 ```python
 xs = [1, 2, 3, 4, 5]
-ys = xs.filter(fn(x: int) => x > 3)
+ys = xs.filter((x: int) => x > 3)
 print(ys)   # [4, 5]
 ```
 
@@ -189,7 +236,7 @@ print(ys)   # [4, 5]
 
 ```python
 xs = [1, 2, 3]
-ys = xs.map(fn(x: int) => x * 2)
+ys = xs.map((x: int) => x * 2)
 print(ys)   # [2, 4, 6]
 ```
 
@@ -201,8 +248,8 @@ print(ys)   # [2, 4, 6]
 xs = [3, 1, 2]
 print(xs.sort())   # [1, 2, 3]
 
-# Descending order with comparator
-desc = xs.sort(fn(a: int, b: int) => a > b)
+# 使用比较函数降序排序
+desc = xs.sort((a: int, b: int) => a > b)
 print(desc)   # [3, 2, 1]
 ```
 
@@ -212,7 +259,7 @@ print(desc)   # [3, 2, 1]
 
 ```python
 xs = [5, 3, 1, 4, 2]
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -222,7 +269,7 @@ print(result)   # [20, 30, 40, 50]
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = reduce(xs, fn(a: int, b: int) => a + b)
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -232,7 +279,7 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-total = fold(xs, 0, fn(a: int, b: int) => a + b)
+total = fold(xs, 0, (a: int, b: int) => a + b)
 print(total)   # 15
 ```
 
@@ -242,8 +289,8 @@ print(total)   # 15
 
 ```python
 xs = [1, 2, 3, 4, 5]
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 ```
 
 ### all
@@ -252,8 +299,8 @@ print(any(xs, fn(x: int) => x > 9))   # false
 
 ```python
 xs = [2, 4, 6]
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum
@@ -285,20 +332,20 @@ print(max(xs))   # 5
 
 ### first
 
-返回第一个元素。对空列表调用会产生运行时错误。
+返回第一个元素。列表为空时返回 `None`。
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))   # 10
+print(first(xs))   # Some(10)
 ```
 
 ### last
 
-返回最后一个元素。对空列表调用会产生运行时错误。
+返回最后一个元素。列表为空时返回 `None`。
 
 ```python
 xs = [10, 20, 30]
-print(last(xs))   # 30
+print(last(xs))   # Some(30)
 ```
 
 ### is_empty
@@ -413,8 +460,39 @@ print(xs)            # [[1, 2], [3, 4]] (unchanged)
 | 约束 | 详细 |
 |------|------|
 | 所有元素必须为相同类型 | 混合不同类型会产生编译错误 |
-| 空列表 `[]` | 无法进行类型推断，会产生编译错误 |
+| 空列表 `[]` | 需要类型注解（例如 `xs: List<int> = []`） |
 | 超出范围的访问 | 运行时错误（exit(1)） |
+
+---
+
+## Copy-on-Write (CoW) 语义
+
+所有集合类型（List、Map、Set）在 ARC 管理下使用 **Copy-on-Write** 语义。这意味着：
+
+- **赋值共享数据**：`b = a` 不会复制集合——两个变量引用相同的数据。引用计数递增。
+- **修改触发复制**：当共享的集合被修改（如 `append`、`remove`、索引赋值）时，在修改前会自动创建深拷贝。只有修改方承担复制成本。
+- **唯一所有者就地修改**：当集合只有一个引用（`strong_count == 1`）时，修改操作就地执行，零复制开销。
+
+```python
+a = [1, 2, 3]       # strong_count = 1
+b = a                # strong_count = 2（共享）
+append(b, 4)         # strong_count > 1 → 深拷贝 b，然后修改
+                     # a = [1, 2, 3]  (strong_count = 1)
+                     # b = [1, 2, 3, 4]  (strong_count = 1, 新分配)
+
+c = [10, 20]         # strong_count = 1
+append(c, 30)        # strong_count == 1 → 就地修改（无复制）
+```
+
+### 触发 CoW 的操作
+
+| 类型 | 可变操作 |
+|------|-------------------|
+| **List** | `append()`、`pop()`、`insert()`、`remove()`、`remove_at()`、`sort!()`、`reverse!()`、索引赋值（`xs[i] = val`） |
+| **Map** | `remove()`、索引赋值（`m[key] = val`） |
+| **Set** | `add()`、`remove()` |
+
+非可变操作（`appended`、`slice`、`take`、`filter`、`map`、`sort`、`reverse`、`get`、`items` 等）创建新集合，不触发 CoW。
 
 ---
 
@@ -442,8 +520,8 @@ print(m["a"])   # 1
 
 ```python
 m = {"a": 1}
-m["b"] = 2     # Insert new entry
-m["a"] = 99    # Update existing entry
+m["b"] = 2     # 插入新条目
+m["a"] = 99    # 更新已有条目
 ```
 
 ### length
@@ -535,7 +613,7 @@ print(m3["c"])   # 3
 |------|------|
 | 所有键必须为相同类型 | 混合不同类型的键会产生编译错误 |
 | 所有值必须为相同类型 | 混合不同类型的值会产生编译错误 |
-| 空映射 | 需要类型注解（如 `m: Map<str, int> = {"a": 1}`） |
+| 空映射 | 需要类型注解（例如 `m: Map<str, int> = {"a": 1}`） |
 | 访问不存在的键 | 运行时错误（exit(1)） |
 | 键查找 | 哈希表（平均 O(1)） |
 | 容量溢出 | 自动扩展为 2 倍 |
@@ -587,8 +665,8 @@ print(s)   # {1, 2, 3}
 
 ```python
 s = {1, 2, 3}
-s.add(4)         # Add
-s.add(1)         # Ignored because it already exists
+s.add(4)         # 添加
+s.add(1)         # 已存在，因此忽略
 print(length(s))    # 4
 ```
 
@@ -619,7 +697,7 @@ s: Set<int> = {}
 ### 函数参数
 
 ```python
-fn has_value(s: Set<int>, v: int) -> bool:
+function has_value(s: Set<int>, v: int) -> bool:
     return v in s
 ```
 
@@ -723,15 +801,15 @@ mit = m.iter()           # Iterator<(str, int)>
 
 | 方法 | 说明 |
 |--------|-------------|
-| `.filter(fn)` | 仅产出谓词返回 `true` 的元素 |
-| `.map(fn)` | 使用给定函数转换每个元素 |
-| `.take(n)` | 最多产出 `n` 个元素 |
+| `.filter(function)` | 仅产出谓词返回 `true` 的元素 |
+| `.map(function)` | 使用给定函数转换每个元素 |
+| `.take(count)` | 最多产出 `count` 个元素 |
 
 ```python
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()   # [6, 8]
 ```
@@ -755,7 +833,7 @@ print(it.next())   # None
 迭代器可以直接在 `for` 循环中使用:
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in [1, 2, 3].iter().filter((x: int) => x > 1):
     print(x)
 # 2
 # 3

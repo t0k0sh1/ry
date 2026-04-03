@@ -36,6 +36,31 @@ from math import sqrt, PI
 
 カンマ区切りで複数の定義を選択インポートします。
 
+### 相対インポート
+
+```python
+from .helper import greet
+```
+
+現在のファイルのディレクトリからの相対パスでモジュールをインポートします。`.` プレフィックスにより、解決は現在のディレクトリのみに制限されます（標準ライブラリやその他の検索パスは検索されません）。
+
+### サブディレクトリからの相対インポート
+
+```python
+from .utils import helper_fn
+from .utils.calc import add
+```
+
+現在のファイルのディレクトリからの相対パスでサブディレクトリからインポートします。
+
+### カレントディレクトリからの全相対インポート
+
+```python
+from . import add, sub
+```
+
+カレントディレクトリパッケージ（ディレクトリ内のすべての `.ry` ファイル、`_` プレフィックスと `.test.ry` ファイルを除く）から特定のシンボルをインポートします。
+
 ---
 
 ## パッケージ解決
@@ -59,6 +84,7 @@ from math import sqrt, PI
 パッケージがディレクトリに解決された場合:
 - ディレクトリ内のすべての `.ry` ファイルが自動的に読み込まれる
 - `_` で始まるファイルは除外される
+- テストファイル（`.test.ry`）は除外される
 - 特別なエントリファイル（`__init__.py` のようなもの）は不要
 - ディレクトリ内のファイルで定義されたすべての関数・型がエクスポートされる
 
@@ -71,16 +97,16 @@ from math import sqrt, PI
 
 ```python
 # mylib/internal.ry
-fn _helper() -> int:     # プライベート — インポート不可
+function _helper() -> int:     # プライベート — インポート不可
     return 42
-fn public_api() -> int:  # パブリック — インポート可能
+function public_api() -> int:  # パブリック — インポート可能
     return _helper()
 ```
 
 ```
 mypackage/
-  calc.ry      # fn add(), fn sub()
-  string.ry    # fn concat()
+  calc.ry      # function add(), function sub()
+  string.ry    # function concat()
 ```
 
 ```python
@@ -106,6 +132,7 @@ from mypackage import add   # add のみインポート
 |-----------|------|
 | [`math`](math.md) | 数学定数・関数 |
 | [`io`](io.md) | ファイル I/O・標準入力・バイト変換 |
+| [`path`](path.md) | ファイルパス操作（join、basename、dirname 等） |
 
 ```python
 from math import sqrt, PI, sin
@@ -192,10 +219,13 @@ export RY_PATH="/usr/local/ry/lib:/home/user/ry-packages"
 | 使用可能な位置 | トップレベルのみ（関数・ブロック内は不可） |
 | 二重インポート | 自動でスキップ（エラーにならない） |
 | 循環インポート | コンパイルエラー |
+| 相対インポート | `from .` と `from .pkg` は現在のファイルのディレクトリのみに対して解決される |
+| 親ディレクトリインポート | `from ..` は未対応 |
+| パッケージ名 | アルファベット、数字、アンダースコアのみ使用可能（ハイフンは不可） |
 
 ```python
 # エラー例: ブロック内でのインポート
-fn main():
+function main():
     from math   # エラー: トップレベル以外ではインポート不可
 
 # OK: 同じパッケージを複数回インポートしてもエラーにならない
@@ -211,10 +241,10 @@ from math   # スキップされる
 
 ```python
 # calc.ry
-fn add(a: int, b: int) -> int:
+function add(a: int, b: int) -> int:
     return a + b
 
-fn sub(a: int, b: int) -> int:
+function sub(a: int, b: int) -> int:
     return a - b
 ```
 

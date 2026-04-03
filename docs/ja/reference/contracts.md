@@ -2,7 +2,7 @@
 
 # 契約による設計 (Design by Contract)
 
-Ry は Eiffel スタイルの契約による設計をサポートしています。事前条件（`require`）、事後条件（`ensure`）、構造体の不変条件（`invariant`）を使用できます。契約違反時はプロセスが `exit(1)` で終了します。
+Ry は Eiffel スタイルの契約による設計をサポートしています。事前条件（`require`）、事後条件（`ensure`）、レコードの不変条件（`invariant`）を使用できます。契約違反時はプロセスが `exit(1)` で終了します。
 
 ---
 
@@ -11,7 +11,7 @@ Ry は Eiffel スタイルの契約による設計をサポートしています
 事前条件は関数の入口でチェックされます。関数が正しく呼び出されるために満たすべき条件を指定します。
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -35,7 +35,7 @@ Contract violation: require failed in deposit()
 `ensure` には戻り値をバインドする変数名が必要です。この変数を事後条件の式で使用できます。
 
 ```python
-fn abs(x: int) -> int:
+function abs(x: int) -> int:
     ensure v:
         v >= 0
     if x < 0:
@@ -46,7 +46,7 @@ fn abs(x: int) -> int:
 Ry の関数引数はイミュータブルなので、`ensure` ブロック内で引数を直接参照して入口時の値と比較できます:
 
 ```python
-fn increment(x: int) -> int:
+function increment(x: int) -> int:
     ensure v:
         v == x + 1
     return x + 1
@@ -57,7 +57,7 @@ fn increment(x: int) -> int:
 タプルを返す関数では、カンマ区切りで複数の変数名を指定できます:
 
 ```python
-fn divide(a: int, b: int) -> (int, int):
+function divide(a: int, b: int) -> (int, int):
     ensure q, r:
         q >= 0
         r >= 0
@@ -71,7 +71,7 @@ fn divide(a: int, b: int) -> (int, int):
 ## 組み合わせ例
 
 ```python
-fn deposit(amount: int, balance: int) -> int:
+function deposit(amount: int, balance: int) -> int:
     require:
         amount > 0
         balance >= 0
@@ -84,9 +84,9 @@ fn deposit(amount: int, balance: int) -> int:
 
 ---
 
-## 構造体の不変条件 (`invariant`)
+## レコードの不変条件 (`invariant`)
 
-不変条件は構造体のインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます:
+不変条件はレコードのインスタンスが常に満たすべき条件です。以下のタイミングでチェックされます:
 - 構築時
 - フィールド代入後
 
