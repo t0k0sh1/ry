@@ -762,6 +762,14 @@ private:
     };
     MapFields loadMapHeader(llvm::Value *mapVal, const std::string &prefix);
 
+    void storeListHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                               llvm::Value *cap, llvm::Value *data);
+    void storeSetHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                              llvm::Value *cap, llvm::Value *elems);
+    void storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
+                              llvm::Value *cap, llvm::Value *keys,
+                              llvm::Value *vals);
+
     llvm::Value *wrapPtrAsOption(llvm::Value *ptr, const std::string &hint);
 
     // Builtin dispatch helpers (Step 4)

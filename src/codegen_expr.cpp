@@ -1020,9 +1020,7 @@ llvm::Value *CodeGen::emitListConcat(llvm::Value *lhs, llvm::Value *rhs, llvm::T
     llvm::Value *rhsSize = builder_.CreateMul(rf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "cat_rs");
     builder_.CreateCall(memcpyFn, {rhsDst, rf.data, rhsSize});
 
-    builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 0));
-    builder_.CreateStore(newLen, builder_.CreateStructGEP(listHeaderTy_, newHeader, 1));
-    builder_.CreateStore(newData, builder_.CreateStructGEP(listHeaderTy_, newHeader, 2));
+    storeListHeaderFields(newHeader, newLen, newLen, newData);
 
     type_meta_[TM_ListElem][newHeader] = elemTy;
 

@@ -43,12 +43,8 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::Value *elemsPtr = builder_.CreateCall(
                 mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_set_elems");
 
-            llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-            llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
-            llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2);
-            builder_.CreateStore(elemsPtr, elemsPtrField);
+            storeSetHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                                 llvm::ConstantInt::get(i64Ty_, 4), elemsPtr);
             emitBucketInit(headerPtr, setHeaderTy_, kSetLayout.bucketCountIdx, kSetLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
@@ -79,14 +75,8 @@ void CodeGen::emitVarDecl(const std::string &name,
             llvm::Value *valsPtr = builder_.CreateCall(
                 mallocFn, {llvm::ConstantInt::get(i64Ty_, valSize * 4)}, "empty_map_vals");
 
-            llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-            llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1);
-            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
-            llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2);
-            builder_.CreateStore(keysPtr, keysPtrField);
-            llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3);
-            builder_.CreateStore(valsPtr, valsPtrField);
+            storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                                 llvm::ConstantInt::get(i64Ty_, 4), keysPtr, valsPtr);
             emitBucketInit(headerPtr, mapHeaderTy_, kMapLayout.bucketCountIdx, kMapLayout.bucketsPtrIdx, 8);
 
             llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
@@ -126,12 +116,8 @@ void CodeGen::emitVarDecl(const std::string &name,
         llvm::Value *elemsPtr = builder_.CreateCall(
             mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * 4)}, "empty_list_elems");
 
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0);
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1);
-        builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 4), capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2);
-        builder_.CreateStore(elemsPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                              llvm::ConstantInt::get(i64Ty_, 4), elemsPtr);
 
         llvm::AllocaInst *ptr = getOrCreateVar(name, ptrTy_);
         builder_.CreateStore(headerPtr, ptr);
