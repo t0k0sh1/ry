@@ -162,42 +162,91 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
     }
     return 0;
 #else
-    struct stat src_st;
-    if (stat(src, &src_st) != 0) {
-        setLastError("copy: cannot stat source '%s': %s", src, strerror(errno));
-        return 1;
-    }
-    FILE *in = fopen(src, "rb");
-    if (!in) {
+    // Open source first, then fstat on the fd to avoid TOCTOU race.
+    // O_NOFOLLOW is intentionally omitted so that symlinks are dereferenced
+    // (copying the target content), matching the behavior of cp(1).
+    int src_fd = open(src, O_RDONLY);
+    if (src_fd < 0) {
         setLastError("copy: cannot open source '%s': %s", src, strerror(errno));
         return 1;
     }
-    FILE *out = fopen(dst, "wb");
-    if (!out) {
+    struct stat src_st;
+    if (fstat(src_fd, &src_st) != 0) {
+        setLastError("copy: cannot stat source '%s': %s", src, strerror(errno));
+        close(src_fd);
+        return 1;
+    }
+    if (!S_ISREG(src_st.st_mode)) {
+        setLastError("copy: source '%s' is not a regular file", src);
+        close(src_fd);
+        return 1;
+    }
+    // Open without O_TRUNC first, then check for same-inode to prevent
+    // zeroing the source when src and dst refer to the same file.
+    int dst_fd = open(dst, O_WRONLY | O_CREAT, src_st.st_mode & 07777);
+    if (dst_fd < 0) {
         setLastError("copy: cannot open destination '%s': %s", dst, strerror(errno));
-        fclose(in);
+        close(src_fd);
+        return 1;
+    }
+    struct stat dst_st;
+    if (fstat(dst_fd, &dst_st) != 0) {
+        setLastError("copy: cannot stat destination '%s': %s", dst, strerror(errno));
+        close(src_fd);
+        close(dst_fd);
+        return 1;
+    }
+    if (src_st.st_dev == dst_st.st_dev && src_st.st_ino == dst_st.st_ino) {
+        setLastError("copy: source and destination are the same file '%s'", src);
+        close(src_fd);
+        close(dst_fd);
+        return 1;
+    }
+    if (ftruncate(dst_fd, 0) != 0) {
+        setLastError("copy: cannot truncate destination '%s': %s", dst, strerror(errno));
+        close(src_fd);
+        close(dst_fd);
         return 1;
     }
     char buf[65536];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
-        if (fwrite(buf, 1, n, out) != n) {
-            setLastError("copy: write error to '%s': %s", dst, strerror(errno));
-            fclose(in);
-            fclose(out);
+    ssize_t n;
+    for (;;) {
+        n = read(src_fd, buf, sizeof(buf));
+        if (n == 0) break;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            setLastError("copy: read error from '%s': %s", src, strerror(errno));
+            close(src_fd);
+            close(dst_fd);
             return 1;
         }
+        const char *p = buf;
+        ssize_t remaining = n;
+        while (remaining > 0) {
+            ssize_t written = write(dst_fd, p, remaining);
+            if (written <= 0) {
+                if (written < 0 && errno == EINTR) continue;
+                setLastError("copy: write error to '%s': %s", dst,
+                             written == 0 ? "write returned 0" : strerror(errno));
+                close(src_fd);
+                close(dst_fd);
+                return 1;
+            }
+            p += written;
+            remaining -= written;
+        }
     }
-    if (ferror(in)) {
-        setLastError("copy: read error from '%s': %s", src, strerror(errno));
-        fclose(in);
-        fclose(out);
+    // Preserve source file permissions via fd (no TOCTOU).
+    // Failure is non-fatal (best-effort permission preservation).
+    if (fchmod(dst_fd, src_st.st_mode & 07777) != 0) {
+        // Silently ignore — permissions may not be preserved on some filesystems
+    }
+    close(src_fd);
+    // Check close(dst_fd) to detect deferred write errors (e.g. NFS flush).
+    if (close(dst_fd) != 0) {
+        setLastError("copy: failed to close destination '%s': %s", dst, strerror(errno));
         return 1;
     }
-    fclose(in);
-    fclose(out);
-    // Preserve source file permissions
-    ::chmod(dst, src_st.st_mode & 07777);
     return 0;
 #endif
 }
@@ -224,18 +273,25 @@ int64_t __ry_filesystem_remove(const char *path) {
 }
 
 int64_t __ry_filesystem_remove_all(const char *path) {
-    struct stat st;
-    if (lstat(path, &st) != 0) {
-        setLastError("remove_all: cannot access '%s': %s", path, strerror(errno));
-        return 1;
-    }
-    if (!S_ISDIR(st.st_mode)) {
-        if (::remove(path) != 0) {
-            setLastError("remove_all: failed to remove '%s': %s", path, strerror(errno));
+    // Try unlink first (handles files and symlinks without TOCTOU).
+    // If it fails because the path is a directory, fall through to nftw.
+    if (unlink(path) == 0) return 0;
+    int unlinkErr = errno;
+    if (unlinkErr == EISDIR) {
+        // Definitely a directory — remove recursively
+    } else if (unlinkErr == EPERM) {
+        // EPERM can mean directory (Linux) or permission denied (sticky bit).
+        // Disambiguate with lstat.
+        struct stat st;
+        if (lstat(path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            setLastError("remove_all: failed to remove '%s': %s", path, strerror(unlinkErr));
             return 1;
         }
-        return 0;
+    } else {
+        setLastError("remove_all: failed to remove '%s': %s", path, strerror(unlinkErr));
+        return 1;
     }
+    // Path is a directory — remove recursively
     if (nftw(path, removeCallback, 64, FTW_DEPTH | FTW_PHYS) != 0) {
         setLastError("remove_all: failed to remove directory tree '%s': %s", path, strerror(errno));
         return 1;
