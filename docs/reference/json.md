@@ -49,7 +49,7 @@ The `json` package provides functions to parse JSON text into an opaque `JsonVal
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `length` | `(JsonValue) -> int` | Returns the length of an array or number of keys in an object |
-| `keys` | `(JsonValue) -> List<str>` | Returns the keys of an object |
+| `keys` | `(JsonValue) -> Result<List<str>, Error>` | Returns the keys of an object, or an error if the value is not an object |
 
 ### Memory Management
 

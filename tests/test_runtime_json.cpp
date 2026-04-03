@@ -1,4 +1,5 @@
 #include "ry/runtime_json.hpp"
+#include "ry/runtime_list.hpp"
 #include <gtest/gtest.h>
 #include <cstdlib>
 #include <cstring>
@@ -195,22 +196,41 @@ TEST(RuntimeJson, NestedObject) {
 // ===== Keys =====
 
 TEST(RuntimeJson, ObjectKeys) {
-    void *v = __ry_json_parse("{\"a\": 1, \"b\": 2}");
-    ASSERT_NE(v, nullptr);
-    void *keys = __ry_json_keys(v);
+    JsonPtr v(__ry_json_parse("{\"a\": 1, \"b\": 2}"));
+    ASSERT_NE(v.get(), nullptr);
+    void *keys = __ry_json_keys(v.get());
     ASSERT_NE(keys, nullptr);
-    // ListHeader: {len, cap, data}
-    struct LH { int64_t len; int64_t cap; void *data; };
-    auto *lh = (LH*)keys;
+    auto *lh = (ListHeader*)keys;
     EXPECT_EQ(lh->len, 2);
     const char **data = (const char**)lh->data;
     EXPECT_STREQ(data[0], "a");
     EXPECT_STREQ(data[1], "b");
-    // Cleanup
     for (int64_t i = 0; i < lh->len; i++) free((void*)data[i]);
     free(data);
     free(keys);
-    __ry_json_free(v);
+}
+
+TEST(RuntimeJson, ObjectKeysNullInput) {
+    void *keys = __ry_json_keys(nullptr);
+    EXPECT_EQ(keys, nullptr);
+}
+
+TEST(RuntimeJson, ObjectKeysNonObject) {
+    JsonPtr v(__ry_json_parse("[1, 2, 3]"));
+    ASSERT_NE(v.get(), nullptr);
+    void *keys = __ry_json_keys(v.get());
+    EXPECT_EQ(keys, nullptr);
+}
+
+TEST(RuntimeJson, ObjectKeysEmptyObject) {
+    JsonPtr v(__ry_json_parse("{}"));
+    ASSERT_NE(v.get(), nullptr);
+    void *keys = __ry_json_keys(v.get());
+    ASSERT_NE(keys, nullptr);
+    auto *lh = (ListHeader*)keys;
+    EXPECT_EQ(lh->len, 0);
+    free(lh->data);
+    free(keys);
 }
 
 // ===== Merged stringify tests =====

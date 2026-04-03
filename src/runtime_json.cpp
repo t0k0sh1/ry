@@ -754,22 +754,26 @@ int64_t __ry_json_len(void *value) {
 }
 
 void *__ry_json_keys(void *value) {
-    auto *header = (ListHeader*)malloc(sizeof(ListHeader));
-    if (!value || ((JsonValue*)value)->type != JsonType::Object) {
-        header->len = 0;
-        header->cap = 1;
-        header->data = (char **)malloc(sizeof(const char*));
-        return header;
+    if (!value) {
+        __ry_set_last_error("json_keys: value is null");
+        return nullptr;
+    }
+    if (((JsonValue*)value)->type != JsonType::Object) {
+        __ry_set_last_error("json_keys: value is not an object");
+        return nullptr;
     }
     auto *v = (JsonValue*)value;
     int64_t len = v->object_val.len;
-    header->len = len;
-    header->cap = len > 0 ? len : 1;
-    auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
+    std::vector<std::string> keys;
+    keys.reserve(len);
     for (int64_t i = 0; i < len; i++)
-        data[i] = strdup(v->object_val.keys[i]);
-    header->data = (char **)data;
-    return header;
+        keys.emplace_back(v->object_val.keys[i]);
+    auto *result = makeStringList(keys);
+    if (!result) {
+        __ry_set_last_error("json_keys: out of memory");
+        return nullptr;
+    }
+    return result;
 }
 
 void __ry_json_free(void *value) {
