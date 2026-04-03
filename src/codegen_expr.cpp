@@ -161,7 +161,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         if (val->getType() == i64Ty_ && !isLowLevel)
             return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow,
                                          llvm::ConstantInt::get(i64Ty_, 0), val, "neg");
-        return builder_.CreateNeg(val, "neg");
+        llvm::Value *neg = builder_.CreateNeg(val, "neg");
+        // Propagate low-level metadata through unary negation (#595)
+        std::string llName = getLowLevelTypeName(val);
+        if (llName.empty()) {
+            if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
+                if (isLowLevelTypeName(ne->suffix)) llName = ne->suffix;
+        }
+        if (!llName.empty()) low_level_type_names_[neg] = llName;
+        return neg;
     }
     if (e->op == "not") {
         llvm::Value *boolVal = toBool(val);
