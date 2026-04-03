@@ -7,7 +7,7 @@
 ### 構文
 
 ```python
-if 条件式:
+if condition:
     # then ブロック
 else:
     # else ブロック（省略可）
@@ -51,7 +51,7 @@ if true:
 ### 構文
 
 ```python
-while 条件式:
+while condition:
     # ループ本体
 ```
 
@@ -179,10 +179,10 @@ for i in 1 .. 3:
 
 ## async / await
 
-`async fn` は並行実行される関数を宣言します。`async fn` を呼び出すと `Task<T>` が返ります。別の `async fn` 内では `await` を使い、同期コンテキストからは `block_on()` を使って結果を待ちます。
+`async function` は並行実行される関数を宣言します。`async function` を呼び出すと `Task<T>` が返ります。別の `async function` 内では `await` を使い、同期コンテキストからは `block_on()` を使って結果を待ちます。
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 
 # 同期コンテキストからは block_on() を使用
@@ -190,22 +190,22 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 print(block_on(add(1, 2)))          # 3
 
-# async fn 内では await を使用
-async fn double_add(a: int, b: int) -> int:
+# async function 内では await を使用
+async function double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
 
 ### ルール
 
-- `async fn name(...) -> T:` の `T` は await 後の値型です。
-- `async fn` の呼び出し結果は常に `Task<T>` です。
+- `async function name(...) -> T:` の `T` は await 後の値型です。
+- `async function` の呼び出し結果は常に `Task<T>` です。
 - `await expr` は `Task<T>` にのみ使用でき、結果は `T` です。
-- `await` は `async fn` 内でのみ使用可能。同期コンテキストからは `block_on(task)` を使用します。
+- `await` は `async function` 内でのみ使用可能。同期コンテキストからは `block_on(task)` を使用します。
 - `block_on(task)` は現在のスレッドをタスク完了までブロックし、結果を返します。
-- `async fn ... -> Unit` をサポートします。値を返さない task の待機には `block_on(task)` を使うのが基本です。
+- `async function ... -> Unit` をサポートします。値を返さない task の待機には `block_on(task)` を使うのが基本です。
 - task はランタイムの worker pool 上で実行され、task ごとに OS スレッドを作る実装ではありません。
-- `async` ラムダと `async @native fn` は v1 では未対応です。
+- `async` ラムダと `async @native function` は v1 では未対応です。
 
 ---
 
@@ -269,10 +269,10 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 何もしない文（no-op）。空ブロックのプレースホルダーとして使用する。
-- 関数ボディ、`if`/`else`、`while`、`for`、`when` アームなど任意のブロック内で使用可能。
+- 関数ボディ、`if`/`else`、`while`、`for`、`match` アームなど任意のブロック内で使用可能。
 
 ```python
-fn not_yet():
+function not_yet():
     ...
 
 if true:
@@ -285,22 +285,21 @@ else:
 
 ## when
 
-`when` には 2 つの文形式があります。
+`when:` は対象値なしの多分岐条件フローを提供します。
 
-- `when:` 多分岐の条件分岐
-- `when value:` 値に対するパターン分岐
-
-### 条件分岐 `when:`
+### 構文
 
 ```python
 when:
-    条件式:
+    condition:
         # 本体
-    条件式:
+    condition:
         # 本体
     else:
         # フォールバック
 ```
+
+### 例
 
 ```python
 x = 0
@@ -314,15 +313,21 @@ when:
         print("zero")
 ```
 
-`when:` は上から順に条件を評価し、最初に真になったアームだけを実行します。式形式は [演算子リファレンス](operators.md#when-条件式) を参照してください。
+条件付き `when:` 文は上から順にアームを評価し、最初に条件が真になったアームだけを実行します。`else:` アームは文の場合は省略可能です。
 
-### パターン分岐 `when value:`
+式形式の `when:` については [演算子リファレンス](operators.md#when-条件式) を参照してください。
+
+---
+
+## match
+
+### 構文
 
 ```python
-when 式:
-    case パターン:
+match expression:
+    case pattern:
         # 本体
-    case パターン if ガード条件:
+    case pattern if guard_condition:
         # ガード付き本体
     case _:
         # ワイルドカード（何にでもマッチ）
@@ -345,21 +350,21 @@ when 式:
 
 ### guard 節
 
-`case パターン if 条件式:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
+`case pattern if condition:` の形式でガード条件を指定できる。パターンがマッチし、かつガード条件が真の場合にのみアームが実行される。
 
 ### OR パターン
 
 複数のパターンを `|` で結合し、いずれかにマッチさせることができます。変数束縛（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）は OR パターン内では使用できません。
 
 ```python
-when x:
+match x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # enum の OR パターン
-when color:
+match color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
@@ -377,13 +382,13 @@ when color:
 ### 例
 
 ```python
-# enum のパターン分岐
+# enum のパターンマッチ
 enum Color:
     Red
     Green
     Blue
 
-when color:
+match color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -391,28 +396,28 @@ when color:
     case Color::Blue:
         print("blue")
 
-# Option のパターン分岐
+# Option のパターンマッチ
 x: Option<int> = Some(42)
-when x:
+match x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
-# Result のパターン分岐
-fn divide(a: int, b: int) -> Result<int, Error>:
+# Result のパターンマッチ
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-when divide(10, 2):
+match divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
-# リテラルのパターン分岐
-when x:
+# リテラルのパターンマッチ
+match x:
     case 0:
         print("zero")
     case 1:
@@ -421,7 +426,7 @@ when x:
         print("other")
 
 # guard 節
-when x:
+match x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -430,7 +435,7 @@ when x:
         print("zero")
 ```
 
-### ADT enum のパターン分岐
+### ADT enum のパターンマッチ
 
 enum バリアントが関連データを持つ場合、バインディングパターンを使って値を取り出します。
 
@@ -441,7 +446,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-when s:
+match s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):
@@ -452,6 +457,56 @@ when s:
 ```
 
 複数フィールドを持つバリアントは、宣言順に各フィールドを別々の名前に束縛します。
+
+### match 式
+
+`match` は各アームの `:` を `=>` に置き換えることで式としても使用できます。各アームは単一の式を提供し、その値が結果になります。
+
+#### 構文
+
+```python
+result = match expression:
+    case pattern => value_expression
+    case pattern if guard => value_expression
+    case _ => default_value
+```
+
+match 文でサポートされるすべてのパターンは match 式でもサポートされます: リテラル、変数束縛、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR パターン、guard、ワイルドカード。
+
+match 式は網羅的でなければなりません（match 文と同じルール）。
+
+#### 例
+
+```python
+# Option
+value = match opt:
+    case Some(v) => v
+    case None    => 0
+
+# Enum
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+# Guard
+grade = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+
+# OR パターン
+kind = match x:
+    case 1 | 2 | 3 => "small"
+    case _          => "large"
+
+# ADT enum
+area = match shape:
+    case Shape::Circle(r)  => 3.14 * r * r
+    case Shape::Rect(w, h) => w * h
+    case Shape::Point      => 0.0
+```
 
 ### スコープルール
 

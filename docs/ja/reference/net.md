@@ -10,14 +10,14 @@
 | `TcpStream` | TCP 接続の不透明ハンドル |
 | `TlsStream` | TLS 暗号化された TCP 接続の不透明ハンドル |
 
-両方の型は不透明ポインタです。直接構築することはできません。`TcpListener`/`TcpStream` を取得するには `bind()` または `connect()` を使用し、`TlsStream` には `tls_connect()` を使用します。
+すべての型は ARC（自動参照カウント）で管理される不透明ポインタです。直接構築することはできません。`TcpListener`/`TcpStream` を取得するには `bind()` または `connect()` を使用し、`TlsStream` には `tls_connect()` を使用します。参照がなくなるとリソースは自動的に閉じられます。即座にクリーンアップしたい場合は明示的な `close()` 呼び出しも可能ですが、オプションです。
 
 ## 関数（`net` パッケージ）
 
 これらの関数は明示的なインポートが必要です:
 
 ```python
-from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_recv_timeout, set_send_timeout, tls_connect
+from net import bind, listen, accept, connect, listener_port, shutdown, set_timeout, set_receive_timeout, set_send_timeout, tls_connect
 ```
 
 | 関数 | シグネチャ | 説明 |
@@ -30,7 +30,7 @@ from net import bind, listen, accept, connect, listener_port, shutdown, set_time
 | `shutdown` | `(listener: TcpListener) -> Unit` | リスナーに接続受け入れの停止を通知します。保留中の `accept()` は最大 1 秒以内に返されます。 |
 | `tls_connect` | `(host: str, port: int) -> Result<TlsStream, Error>` | TLS 暗号化でリモートサーバーに接続します。サーバー証明書をシステム CA バンドルに対して検証します。接続またはハンドシェイク失敗時は `Err` を返します。 |
 | `set_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | 受信と送信の両方のタイムアウトをミリ秒単位で設定します。 |
-| `set_recv_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | 受信タイムアウトをミリ秒単位で設定します。この時間内にデータが届かない場合、`recv()` は `Err` を返します。 |
+| `set_receive_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | 受信タイムアウトをミリ秒単位で設定します。この時間内にデータが届かない場合、`receive()` は `Err` を返します。 |
 | `set_send_timeout` | `(stream: TcpStream\|TlsStream, ms: int) -> Unit` | 送信タイムアウトをミリ秒単位で設定します。 |
 
 ## 組み込みオーバーロード関数
@@ -40,7 +40,7 @@ from net import bind, listen, accept, connect, listener_port, shutdown, set_time
 | 関数 | シグネチャ | 説明 |
 |----------|-----------|-------------|
 | `send` | `(stream: TcpStream\|TlsStream, data: List<u8>) -> Result<int, Error>` | TCP または TLS 接続を通じてバイトを送信します。成功時は送信バイト数を含む `Ok` を返し、失敗時は `Err` を返します。 |
-| `recv` | `(stream: TcpStream\|TlsStream, max: int) -> Result<List<u8>, Error>` | 最大 `max` バイトを受信します。接続クローズ時は空のリストを含む `Ok` を返し、エラー時は `Err` を返します。 |
+| `receive` | `(stream: TcpStream\|TlsStream, max: int) -> Result<List<u8>, Error>` | 最大 `max` バイトを受信します。接続クローズ時は空のリストを含む `Ok` を返し、エラー時は `Err` を返します。 |
 | `close` | `(handle: TcpStream\|TlsStream) -> Unit` | TCP または TLS ストリームを閉じます。 |
 | `close` | `(handle: TcpListener) -> Unit` | TCP リスナーを閉じます。 |
 
@@ -50,18 +50,18 @@ from net import bind, listen, accept, connect, listener_port, shutdown, set_time
 
 ```python
 from net import bind, listen, accept, connect
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
 # サーバー
-when bind("127.0.0.1", 8080):
+match bind("127.0.0.1", 8080):
     case Ok(server):
-        when listen(server, 128):
+        match listen(server, 128):
             case Ok(_):
-                when accept(server):
+                match accept(server):
                     case Ok(conn):
-                        when recv(conn, 4096):
+                        match receive(conn, 4096):
                             case Ok(data):
-                                when send(conn, data):
+                                match send(conn, data):
                                     case Ok(_):
                                         ...
                                     case Err(e):
@@ -81,16 +81,16 @@ when bind("127.0.0.1", 8080):
 ### クライアント
 
 ```python
-when connect("127.0.0.1", 8080):
+match connect("127.0.0.1", 8080):
     case Ok(conn):
-        when send(conn, str_to_bytes("hello")):
+        match send(conn, to_bytes("hello")):
             case Ok(_):
                 ...
             case Err(e):
                 print(e.message)
-        when recv(conn, 4096):
+        match receive(conn, 4096):
             case Ok(resp):
-                when bytes_to_str(resp):
+                match bytes_to_str(resp):
                     case Ok(s):
                         print(s)
                     case Err(e):
@@ -102,18 +102,18 @@ when connect("127.0.0.1", 8080):
         print("connect failed")
 ```
 
-### `async fn` による並行エコーサーバー
+### `async function` による並行エコーサーバー
 
 ```python
 from net import bind, listen, accept, connect, listener_port
-from io import str_to_bytes, bytes_to_str
+from io import to_bytes, bytes_to_str
 
-async fn echo_server(server: TcpListener) -> str:
-    when accept(server):
+async function echo_server(server: TcpListener) -> str:
+    match accept(server):
         case Ok(conn):
-            when recv(conn, 4096):
+            match receive(conn, 4096):
                 case Ok(data):
-                    when send(conn, data):
+                    match send(conn, data):
                         case Ok(_):
                             ...
                         case Err(e):
@@ -126,9 +126,9 @@ async fn echo_server(server: TcpListener) -> str:
     close(server)
     return "done"
 
-when bind("127.0.0.1", 0):
+match bind("127.0.0.1", 0):
     case Ok(server):
-        when listen(server, 1):
+        match listen(server, 1):
             case Ok(_):
                 port = listener_port(server)
                 t = echo_server(server)
@@ -142,15 +142,15 @@ when bind("127.0.0.1", 0):
 
 ## タイムアウト設定
 
-デフォルトでは、カスタムタイムアウトが設定されていない場合、`recv()` は 30 秒のタイムアウトを使用します。デフォルトを上書きするには `set_timeout()`、`set_recv_timeout()`、または `set_send_timeout()` を使用します:
+デフォルトでは、カスタムタイムアウトが設定されていない場合、`receive()` は 30 秒のタイムアウトを使用します。デフォルトを上書きするには `set_timeout()`、`set_receive_timeout()`、または `set_send_timeout()` を使用します:
 
 ```python
-from net import connect, set_recv_timeout
+from net import connect, set_receive_timeout
 
-when connect("127.0.0.1", 8080):
+match connect("127.0.0.1", 8080):
     case Ok(conn):
-        set_recv_timeout(conn, 5000)  # 5 秒のタイムアウト
-        when recv(conn, 4096):
+        set_receive_timeout(conn, 5000)  # 5 秒のタイムアウト
+        match receive(conn, 4096):
             case Ok(data):
                 ...
             case Err(e):
@@ -164,10 +164,10 @@ when connect("127.0.0.1", 8080):
 
 ## エラー処理
 
-- `close()` を除くすべての TCP 関数は `Result<T, Error>` を返します。失敗を処理するには `Ok`/`Err` で `when` を使用してください。
-- `recv()` はピアによって接続が閉じられた場合は空の `List<u8>` を含む `Ok` を返し、実際のエラー（タイムアウト、ソケットエラー）の場合は `Err` を返します。
+- `close()` を除くすべての TCP 関数は `Result<T, Error>` を返します。失敗を処理するには `Ok`/`Err` で `match` を使用してください。
+- `receive()` はピアによって接続が閉じられた場合は空の `List<u8>` を含む `Ok` を返し、実際のエラー（タイムアウト、ソケットエラー）の場合は `Err` を返します。
 - `close()` はソケットを閉じてハンドルを解放します。閉じた後のハンドルの使用は未定義動作です。
 
 ## バイト変換
 
-TCP 操作は `List<u8>` を使用します。文字列とバイトリストの変換には `io` パッケージの `str_to_bytes()` と `bytes_to_str()` を使用してください。
+TCP 操作は `List<u8>` を使用します。文字列とバイトリストの変換には `io` パッケージの `to_bytes()` と `bytes_to_str()` を使用してください。

@@ -29,7 +29,7 @@
 
 | 运算符 | 说明 | 示例 |
 |---|---|---|
-| `+` | 加法 / 字符串拼接 | `1 + 2` -> `3`、`"a" + "b"` -> `"ab"` |
+| `+` | 加法 / 字符串拼接 | `1 + 2` -> `3`、`"a" + "b"` -> `"ab"`、`"x" + 1` -> `"x1"` |
 | `-` | 减法 | `5 - 3` -> `2` |
 | `*` | 乘法 / 字符串重复 | `4 * 3` -> `12`、`"ab" * 3` -> `"ababab"` |
 | `/` | 除法（始终为 float） | `7 / 2` -> `3.5` |
@@ -44,7 +44,11 @@ a = 10 // 3    # 3 (int)
 b = 10 / 3     # 3.3333... (float)
 c = 2 ** 8     # 256.0 (float)
 s = "foo" + "bar"  # "foobar"
+t = "val=" + 42    # "val=42"
+u = 3.14 + "!"    # "3.14!"
 ```
+
+当 `+` 的一个操作数为 `str`、另一个为 `int`、`float` 或 `bool` 时，非 `str` 操作数会自动转换为字符串表示并拼接。
 
 ## 比较运算符
 
@@ -121,24 +125,24 @@ shifted = 1 << 8          # 256
 外层函数必须具有 `Result` 返回类型。
 
 ```python
-fn safe_divide(a: int, b: int) -> Result<int, Error>:
+function safe_divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
     x = safe_divide(a, b)?    # 若 b == 0 则提前返回 Err
     y = safe_divide(x, c)!!
     return Ok(y + 1)
 ```
 
-这等同于以下 `when` 模式，但更加简洁：
+这等同于以下 `match` 模式，但更加简洁：
 
 ```python
-fn compute(a: int, b: int, c: int) -> Result<int, Error>:
-    when safe_divide(a, b):
+function compute(a: int, b: int, c: int) -> Result<int, Error>:
+    match safe_divide(a, b):
         case Ok(x):
-            when safe_divide(x, c):
+            match safe_divide(x, c):
                 case Ok(y):
                     return Ok(y + 1)
                 case Err(e):
@@ -168,10 +172,12 @@ s = when:
     false => "yes"
     else => "no"  # "no"
 
+# 嵌套三元运算可展平为多个分支
+score = 85
 y = when:
-    flag1 => 1
-    flag2 => 2
-    else => 3
+    score >= 90 => 3
+    score >= 80 => 2
+    else => 1         # 2
 ```
 
 ---
@@ -275,6 +281,8 @@ f++           # f = 2.5（int 1 会提升为 float）
 | `%` | int | int | int |
 | `%` | float 或 int（其中一方为 float） | -- | float |
 | `+` | str | str | str |
+| `+` | str | int / float / bool | str |
+| `+` | int / float / bool | str | str |
 | `== != < <= > >=` | 数值 / bool / str | 同类型 | bool |
 | `*` | str | int | str |
 | `in` | 任意 | Set<T> / List<T> / Map<K, V> | bool |
@@ -290,11 +298,11 @@ f++           # f = 2.5（int 1 会提升为 float）
 
 ```python
 # 二元运算符（2 个参数）
-fn operator+(a: MyType, b: MyType) -> MyType:
+function operator+(a: MyType, b: MyType) -> MyType:
     ...
 
 # 一元运算符（1 个参数）
-fn operator-(a: MyType) -> MyType:
+function operator-(a: MyType) -> MyType:
     ...
 ```
 
@@ -326,11 +334,11 @@ fn operator-(a: MyType) -> MyType:
 
 ```python
 # OK
-fn operator==(a: Vec2, b: Vec2) -> bool:
+function operator==(a: Vec2, b: Vec2) -> bool:
     return a.x == b.x and a.y == b.y
 
 # Error: comparison operator '==' must return 'bool', but returns 'int'
-fn operator==(a: Vec2, b: Vec2) -> int:
+function operator==(a: Vec2, b: Vec2) -> int:
     return 42
 ```
 
@@ -342,11 +350,11 @@ fn operator==(a: Vec2, b: Vec2) -> int:
 
 ```python
 # 二元 -
-fn operator-(a: Vec2, b: Vec2) -> Vec2:
+function operator-(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x - b.x, a.y - b.y)
 
 # 一元 -
-fn operator-(v: Vec2) -> Vec2:
+function operator-(v: Vec2) -> Vec2:
     return Vec2(-v.x, -v.y)
 ```
 
@@ -360,7 +368,7 @@ record Matrix:
     rows: int
     cols: int
 
-fn operator+=(a: Matrix, b: Matrix) -> Matrix:
+function operator+=(a: Matrix, b: Matrix) -> Matrix:
     for i in range(len(a.data)):
         a.data[i] = a.data[i] + b.data[i]
     return a
@@ -379,7 +387,7 @@ record Vec2:
     x: float
     y: float
 
-fn operator+=(a: Vec2, b: Vec2) -> Vec2:
+function operator+=(a: Vec2, b: Vec2) -> Vec2:
     return Vec2(a.x + b.x, a.y + b.y)
 
 v = Vec2(1.0, 2.0)
@@ -401,7 +409,7 @@ record Grid:
     d: int
 
 # 读取：需要 2+ 个参数（对象 + 索引）
-fn operator[](g: Grid, row: int, col: int) -> int:
+function operator[](g: Grid, row: int, col: int) -> int:
     if row == 0 and col == 0:
         return g.a
     if row == 0 and col == 1:
@@ -411,7 +419,7 @@ fn operator[](g: Grid, row: int, col: int) -> int:
     return g.d
 
 # 写入：需要 3+ 个参数（对象 + 索引 + 值）
-fn operator[]=(g: Grid, row: int, col: int, value: int):
+function operator[]=(g: Grid, row: int, col: int, value: int):
     ...
 
 g = Grid(1, 2, 3, 4)
@@ -430,7 +438,7 @@ record Range:
     lo: int
     hi: int
 
-fn operator in(value: int, r: Range) -> bool:
+function operator in(value: int, r: Range) -> bool:
     return value >= r.lo and value < r.hi
 
 r = Range(1, 10)
@@ -448,7 +456,7 @@ print(15 not in r)  # true
 record Adder:
     base: int
 
-fn operator()(a: Adder, x: int) -> int:
+function operator()(a: Adder, x: int) -> int:
     return a.base + x
 
 add5 = Adder(5)
@@ -468,11 +476,24 @@ record Celsius:
 record Fahrenheit:
     value: int
 
-fn operator as(c: Celsius) -> Fahrenheit:
+function operator as(c: Celsius) -> Fahrenheit:
     return Fahrenheit(c.value * 9 // 5 + 32)
 
 c = Celsius(100)
 f = c as Fahrenheit   # Fahrenheit(212)
+```
+
+目标类型可以是编译器能解析的任何类型，包括泛型类型：
+
+```python
+record Temperature:
+    value: int
+
+function operator as(t: Temperature) -> int?:
+    return Some(t.value)
+
+t = Temperature(42)
+result: int? = t as int?   # Some(42)
 ```
 
 优先尝试用户定义的 `as` 运算符；如果没有匹配，则回退到内置转换（int、float、bool、str 等）。

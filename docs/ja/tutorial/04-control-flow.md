@@ -2,7 +2,7 @@
 
 # 制御構文
 
-[← 前: 演算子](03-operators.md) | [次: 関数 →](05-functions.md)
+[<- 前: 演算子](03-operators.md) | [次: 関数 ->](05-functions.md)
 
 ---
 
@@ -31,6 +31,84 @@ if a > 0:
     if b > 0:
         print(a + b)   # 8
 ```
+
+---
+
+## when
+
+`when:` は多分岐の条件分岐に、`match value:` は値のパターンマッチングに使います。
+
+### 条件分岐 `when:`
+
+```python
+x = -2
+
+when:
+    x > 0:
+        print("positive")
+    x < 0:
+        print("negative")
+    else:
+        print("zero")
+```
+
+複数の分岐をチェーンする場合に推奨される形式です。
+
+### パターン分岐 `match value:`
+
+```python
+enum Color:
+    Red
+    Green
+    Blue
+
+c = Color::Green
+match c:
+    case Color::Red:
+        print("red")
+    case Color::Green:
+        print("green")
+    case Color::Blue:
+        print("blue")
+```
+
+enum、`Option`、`Result`、リテラルパターンを安全に分解するにはこの形式を使います。
+
+### `when:` 式
+
+`when:` は式としても使えます。`else =>` アームが必須です。
+
+```python
+label = when:
+    score >= 90 => "A"
+    score >= 80 => "B"
+    else => "C"
+```
+
+ネストされた三項式を置き換え、多分岐の値選択を読みやすく保ちます。
+
+### `match` 式
+
+`match` も `=>` を使って各アームから値を返す式として使えます。
+
+```python
+res = match x:
+    case Some(v) => v
+    case None    => 0
+
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+category = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+```
+
+match 式は match 文と同じすべてのパターンをサポートします: リテラル、変数、enum、`Option`、`Result`、OR パターン（`|`）、ガード（`if`）、ワイルドカード（`_`）。match は網羅的でなければなりません。
 
 ---
 
@@ -84,7 +162,7 @@ for i in range(2, 5):
 # 4
 ```
 
-`..` 範囲演算子は両端を含む範囲を生成します。`1 .. 3` は `[1, 2, 3]` を生成します。
+`..` 範囲演算子は両端を含む範囲を生成します: `1 .. 3` は `[1, 2, 3]` を生成します。
 
 ```python
 for i in 1 .. 3:
@@ -94,7 +172,7 @@ for i in 1 .. 3:
 # 3
 ```
 
-`for k, v in map` でマップのキーと値を走査できます。
+`for k, v in map` でマップのキーと値のペアを走査できます:
 
 ```python
 m = {"x": 10, "y": 20}
@@ -200,25 +278,9 @@ print(x)       # 99
 
 ---
 
-## when
+## パターンマッチング
 
-`when:` は多分岐の条件分岐に、`when value:` は enum や Option などのパターン分岐に使います。
-
-### 条件分岐 `when:`
-
-```python
-x = -2
-
-when:
-    x > 0:
-        print("positive")
-    x < 0:
-        print("negative")
-    else:
-        print("zero")
-```
-
-### パターン分岐 `when value:`
+`match value:` は enum、`Option`、`Result`、リテラルに対して安全に分岐します。
 
 ```python
 enum Color:
@@ -227,7 +289,7 @@ enum Color:
     Blue
 
 c = Color::Green
-when c:
+match c:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -237,13 +299,13 @@ when c:
 # green
 ```
 
-### Option のパターン分岐
+### Option のマッチング
 
-`when` を使うことで、`None` の場合も安全に処理できます。
+`match value:` を使って `Some` と `None` の両方のケースを安全に処理します。
 
 ```python
 x: Option<int> = Some(42)
-when x:
+match x:
     case Some(v):
         print(v)
     case None:
@@ -257,7 +319,7 @@ when x:
 
 ```python
 n = 5
-when n:
+match n:
     case 0:
         print("zero")
     case 1:
@@ -272,7 +334,7 @@ when n:
 `if` でガード条件を追加できます。
 
 ```python
-when n:
+match n:
     case x if x > 0:
         print("positive")
     case x if x < 0:
@@ -281,17 +343,8 @@ when n:
         print("zero")
 ```
 
-### `when:` 式
-
-```python
-label = when:
-    score >= 90 => "A"
-    score >= 80 => "B"
-    else => "C"
-```
-
-> **注意**: `when value:` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` が必要です。
+> **注意**: `match value:` はすべてのパターンを網羅する必要があります。enum はすべてのバリアント、Option は `Some` と `None` の両方、リテラルは `_` ワイルドカードが必要です。
 
 ---
 
-[← 前: 演算子](03-operators.md) | [次: 関数 →](05-functions.md)
+[<- 前: 演算子](03-operators.md) | [次: 関数 ->](05-functions.md)

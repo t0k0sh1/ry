@@ -13,9 +13,9 @@
 ## 定義構文
 
 ```python
-record 型名:
-    フィールド名: 型
-    フィールド名: 型
+record TypeName:
+    field_name: type
+    field_name: type
 ```
 
 ### 例
@@ -76,10 +76,10 @@ q.x = 100    # エラー: @const変数のフィールドは変更不可
 ## 関数引数・戻り値としての使用
 
 ```python
-fn distance(p: Point) -> float:
+function distance(p: Point) -> float:
     return (p.x * p.x + p.y * p.y) as float
 
-fn make_point(x: int, y: int) -> Point:
+function make_point(x: int, y: int) -> Point:
     return Point(x, y)
 ```
 
@@ -134,8 +134,8 @@ print(p1 != p3)  # true
 ### 構文
 
 ```python
-record 子の名前 < 親の名前:
-    子固有のフィールド: 型
+record ChildName < ParentName:
+    child_field: type
 ```
 
 ### 例
@@ -162,7 +162,7 @@ print(err.status)   # 404（固有フィールド）
 子の値は親の型が期待される場所に渡すことができます。子は自動的にスライスされ、親のプレフィックスフィールドが抽出されます（値型スライシング）。
 
 ```python
-fn handle(e: Error) -> str:
+function handle(e: Error) -> str:
     return e.message
 
 err = HttpError("fail", 500, 500, "/api")
@@ -203,17 +203,12 @@ handle(derr)  # OK — Error（祖父母）に型強制される
 |------|------|
 | 同一フィールド名の重複 | コンパイルエラー |
 | `@const` 変数のフィールド代入 | コンパイルエラー |
-| `print` に構造体を直接渡す | コンパイルエラー（print非対応） |
 
 ```python
 # エラー例: 同一フィールド名の重複
 record Bad:
     x: int
     x: int   # エラー
-
-# エラー例: printに構造体を渡す
-p = Point(1, 2)
-print(p)   # エラー
 ```
 
 ---
@@ -227,9 +222,9 @@ print(p)   # エラー
 ### 定義構文
 
 ```python
-enum 型名:
-    バリアント名
-    バリアント名
+enum TypeName:
+    VariantName
+    VariantName
     ...
 ```
 
@@ -278,7 +273,7 @@ when:
 型名として enum 名を使用します。
 
 ```python
-fn is_red(c: Color) -> bool:
+function is_red(c: Color) -> bool:
     return c == Color::Red
 
 print(is_red(Color::Red))    # true

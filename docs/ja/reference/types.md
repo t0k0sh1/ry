@@ -6,9 +6,9 @@
 
 | 型 | 内部表現 | リテラル例 | 説明 |
 |---|---|---|---|
-| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010` | 64ビット符号付き整数 |
+| `int` | i64 | `42`, `-7`, `0xFF`, `0b1010`, `100_000` | 64ビット符号付き整数 |
 | `u8` | i8 | （専用リテラルなし） | 符号なし8ビット整数（0-255）。型アノテーション `b: u8 = 42` で使用 |
-| `float` | f64 | `3.14`, `0.5` | 64ビット浮動小数点数 |
+| `float` | f64 | `3.14`, `0.5`, `.5`, `3.14_159` | 64ビット浮動小数点数 |
 | `bool` | i1 | `true`, `false` | 真偽値 |
 | `str` | ptr | `"hello"`, `""`, `"a\nb"` | 文字列（ヒープ上の不変バイト列） |
 | `Unit` | void | （戻り値なし） | 戻り値のない関数の戻り値型。`-> Unit` で明示的に指定する必要がある |
@@ -17,7 +17,7 @@
 | `List<T>` | ptr（ヒープ） | `[1, 2, 3]` | 動的配列 |
 | `Map<K, V>` | ptr（ヒープ） | `{"a": 1}` | ハッシュマップ |
 | `Set<T>` | ptr（ヒープ） | `{1, 2, 3}` | 重複なしの集合 |
-| `fn(T1, T2) -> R` | ptr（関数ポインタ） | `fn(x: int) => x * 2` | 関数型 |
+| `function(T1, T2) -> R` | ptr（関数ポインタ） | `(x: int) => x * 2` | 関数型 |
 | ユーザー定義型 | LLVM StructType (named) | `record Point: ...` | `record` キーワードで定義する構造体 |
 | `enum` | i64 / タグ付きユニオン | `Color::Red`, `Shape::Circle(3.14)` | `enum` キーワードで定義する列挙型（関連データをサポート） |
 | `Error` | `{ ptr, i64 }` | `Error("msg")`, `Error("msg", 404)` | 組み込みエラー型 |
@@ -35,6 +35,11 @@
 | `u32` | i32 | `x: u32 = 3000000000`, `x = 100u32` | 32ビット符号なし整数（低レベル、暗黙の変換なし） |
 | `u64` | i64 | `x: u64 = 100`, `x = 100u64` | 64ビット符号なし整数（低レベル、暗黙の変換なし） |
 | `f32` | float | `x: f32 = 3.14`, `x = 3.14f32` | 32ビット浮動小数点数（低レベル、暗黙の変換なし） |
+| `weak T` | ptr (header) | `weak s` | ARC 管理された値への弱参照（解放を妨げない） |
+| `Regex` | ptr | `/[a-z]+/`, `/\d{3}/` | 正規表現パターン（正規表現リテラル構文で作成） |
+| `Result<T, E>` | `{ i1, T/E }` | `Ok(42)`, `Err(Error("fail"))` | 成功（`Ok`）または失敗（`Err`）を表す型 |
+| `Task<T>` | ptr | （async 関数が返す） | 非同期タスクハンドル（`await` と `block_on` で使用） |
+| `Iterator<T>` | ptr | （`iter()` で作成） | 逐次要素アクセス用の遅延イテレータ |
 | `T[N]` | `[N x T]` | `buf: i32[8]` | 固定長配列。低レベル型 T の N 要素（スタック割り当て、連続メモリ） |
 
 ## 型アノテーション構文
@@ -52,7 +57,8 @@ t: (int, float) = (1, 3.14)
 xs: List<int> = [1, 2, 3]
 m: Map<str, int> = {"a": 1}
 s: Set<int> = {1, 2, 3}
-fn_val: fn(int) -> int = fn(x: int) => x * 2
+fn_val: function(int) -> int = (x: int) => x * 2
+rx: Regex = /[0-9]+/
 u: int | str = 42
 a: any = 42
 ```
@@ -72,7 +78,7 @@ a: any = 42
 | `List<T>` | ジェネリック動的配列型 |
 | `Map<K, V>` | ジェネリックハッシュマップ型 |
 | `Set<T>` | ジェネリック集合型 |
-| `fn(T1, ...) -> R` | 関数型 |
+| `function(T1, ...) -> R` | 関数型 |
 | `Error` | 組み込みエラー型（`message: str`、`code: int`） |
 | `any` | 任意のプリミティブ値（`int`, `float`, `bool`, `str`）または `Unit` を保持できる組み込み型。暗黙の変換をサポート: 具体型の値は `any` への代入時に自動的にラップされ、`any` の値は具体型への代入時にランタイム型チェック付きで自動アンラップされる。`any(int)` → `float` の自動昇格に対応。詳細は [any 型](#any-型) を参照 |
 | `T1 \| T2 \| ...` | union 型（`\|` で区切った複数の型のいずれか） |
@@ -105,9 +111,9 @@ names: StringList = ["Alice", "Bob"]
 型エイリアスは関数型、リテラル型、範囲型にも使用できます:
 
 ```python
-type Callback = fn(int, int) -> int
+type Callback = function(int, int) -> int
 
-add: Callback = fn(a: int, b: int) => a + b
+add: Callback = function(a: int, b: int) => a + b
 print(add(3, 4))    # 7
 ```
 
@@ -174,7 +180,7 @@ x = 12                      # OK
 ### 関数パラメータでの使用
 
 ```python
-fn set_month(m: 1..12) -> int:
+function set_month(m: 1..12) -> int:
     return m
 
 set_month(6)                # OK
@@ -193,12 +199,74 @@ set_month(6)                # OK
 x: int? = 42       # Option<int> と同等
 y: int? = none      # None と同等
 
-fn find(xs: List<int>, val: int) -> int?:
+function find(xs: List<int>, val: int) -> int?:
     for x in xs:
         if x == val:
             return Some(x)
     return none
 ```
+
+---
+
+## 弱参照（`weak T`）
+
+`weak` 参照は、ARC 管理された値への非所有参照です。強参照とは異なり、弱参照は強参照カウントをインクリメントしません。最後の強参照が解放されると、参照先オブジェクトは解放され、残存する弱参照は自動的に `None` になります。
+
+弱参照は参照サイクルを解消するためのユーザー向けメカニズムです。
+
+### 弱参照の作成
+
+型アノテーションと式の両方で `weak` キーワードを使用します:
+
+```python
+s = "hello"
+w: weak str = weak s
+```
+
+`weak T` 型は新しい型コンストラクタで、`T` は ARC 管理された型（現在は `str`、`List<T>`、`Map<K, V>`、`Set<T>`）でなければなりません。
+
+### 弱参照のアクセス（アップグレード）
+
+弱変数のアクセスは自動的に**アップグレード**を行います。これは強参照カウントのアトミックなチェックとインクリメントです。結果は常に `Option<T>` です:
+
+- 参照先がまだ存在する場合（強参照カウント > 0）は `Some(value)`
+- 参照先が解放済みの場合（強参照カウント == 0）は `None`
+
+```python
+s = "alive"
+w: weak str = weak s
+match w:
+  case Some(v):
+    print(v)           # "alive"
+  case None:
+    print("deallocated")
+```
+
+合体演算子（`??`）も弱参照で使用できます:
+
+```python
+w: weak str = weak s
+val = w ?? "default"
+```
+
+### 再代入
+
+弱参照は再代入可能です。古い弱参照は解放され、新しいものが保持されます:
+
+```python
+a = "first"
+b = "second"
+w: weak str = weak a
+w = weak b
+```
+
+### スレッドセーフティ
+
+アップグレード操作は内部的に compare-and-swap (CAS) ループを使用するため、スレッド間で安全に使用できます。これは強参照が並行して解放される可能性があるため重要です。
+
+### スコープのクリーンアップ
+
+弱参照はスコープから外れると自動的に解放されます。強参照カウントと弱参照カウントの両方がゼロになると、ARC ヘッダーが解放されます。
 
 ---
 
@@ -217,7 +285,15 @@ print(f"{a} + {b} = {a + b}")   # 1 + 2 = 3
 
 ### 補間で使用可能な型
 
-`{}` 内には `int`、`float`、`bool`、`str` に評価される任意の式を使用できます。
+`{}` 内には `int`、`float`、`bool`、`str`、record 型、タプル、またはコレクション型（`List`、`Map`、`Set`）に評価される任意の式を使用できます。
+
+```python
+xs = [1, 2, 3]
+print(f"items: {xs}")     # items: [1, 2, 3]
+
+t = (1, "hello")
+print(f"tuple: {t}")      # tuple: (1, hello)
+```
 
 ### エスケープシーケンス
 
@@ -271,7 +347,14 @@ b = 255 as u8         # u8 値 255
 | 符号なし整数 | `f32` | `UIToFP` |
 | `f32` | 符号付き / 符号なし整数 | `FPToSI` / `FPToUI` |
 
-サポートされないキャスト（例: `str as int`）はコンパイルエラーになります。文字列から数値への変換には `to_int()` / `to_float()` を使用してください。
+`as` のターゲット型はジェネリック型を含む完全な型構文をサポートします:
+
+```python
+x = value as Option<int>
+y = data as Map<str, int>
+```
+
+`as` キャスト（ジェネリクスを含む）は、組み込みキャストまたは対応するユーザー定義の `operator as` が必要です。それ以外はコンパイルエラーになります。文字列から数値への変換には `to_int()` / `to_float()` を使用してください。
 
 ## 関連データを持つ enum（ADT）
 
@@ -315,7 +398,7 @@ p = Shape::Point
 `case EnumName::Variant(binding):` の形式で関連データを取り出せます。バインディングにはフィールド名ではなくユーザーが選択した変数名を使用します。
 
 ```python
-when c:
+match c:
     case Shape::Circle(r):
         print(r)            # 3.14
     case Shape::Rectangle(w, h):
@@ -349,7 +432,7 @@ enum MyOption<T>:
 a = MyOption<int>::MySome(42)
 b = MyOption<int>::MyNone
 
-when a:
+match a:
     case MyOption::MySome(v):
         print(v)      # 42
     case MyOption::MyNone:
@@ -376,12 +459,12 @@ print(e2)          # Error: not found (code: 404)
 失敗する可能性のある関数は `Result<V, E>` を返します:
 
 ```python
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-when divide(10, 2):
+match divide(10, 2):
     case Ok(v):
         print(v)            # 5
     case Err(e):
@@ -391,10 +474,10 @@ when divide(10, 2):
 戻り値が意味を持たない場合は `Result<Unit, Error>` を使用します:
 
 ```python
-fn save(path: str, data: str) -> Result<Unit, Error>:
+function save(path: str, data: str) -> Result<Unit, Error>:
     return Ok(0 as u8)   # Unit プレースホルダー
 
-when save("/tmp/test.txt", "hello"):
+match save("/tmp/test.txt", "hello"):
     case Ok(_):
         print("saved")
     case Err(e):
@@ -408,7 +491,7 @@ when save("/tmp/test.txt", "hello"):
 - `Ok(value)` -- 成功バリアント
 - `Err(error)` -- エラーバリアント
 
-`when` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
+`match` を使った網羅的なエラーハンドリングに使用します。`Ok` と `Err` の両方のケースをカバーするか、`_` ワイルドカードを使用する必要があります。
 
 **テストマッチャー:**
 - `expect(x).to_be_ok()` -- 結果が `Ok` であることをアサート
@@ -432,11 +515,11 @@ print(x)        # hello
 ### 関数引数・戻り値での使用
 
 ```python
-fn show(x: int | str) -> int:
+function show(x: int | str) -> int:
     print(x)
     return 0
 
-fn get_val(flag: bool) -> int | str:
+function get_val(flag: bool) -> int | str:
     if flag:
         return 42
     return "hello"
@@ -458,8 +541,10 @@ union 型は `{ i64 tag, [N x i8] data }` として表現されます。`tag` �
 
 ### 保持可能な型
 
+`any` は以下の型を保持できます:
+
 | 型 | タグ | 説明 |
-|---|-----|------|
+|------|-----|------|
 | `int` | 0 | 64ビット符号付き整数 |
 | `float` | 1 | 64ビット浮動小数点数 |
 | `bool` | 2 | 真偽値 |
@@ -488,7 +573,7 @@ x: any = 42          # int が any にラップされる
 x = "hello"          # 異なる型への再代入が可能
 
 # アンラッピング: any → 具体型
-fn get_value() -> any:
+function get_value() -> any:
     return 42
 n: int = get_value()  # any(int) が int にアンラップされる
 
@@ -571,7 +656,7 @@ print(f"value: {x}")  # value: 42
 `any` の値を具体的な引数型を持つ関数に渡せます。値は実行時の型チェック付きで自動的にアンラップされます:
 
 ```python
-fn add_one(x: int) -> int:
+function add_one(x: int) -> int:
     return x + 1
 
 v: any = 42
@@ -628,7 +713,9 @@ result = add_one(v)   # any(int) が int にアンラップされる; 結果は 
 - **変数の型は宣言時に固定される** -- 一度 `int` として宣言した変数に `float` を再代入することはできない。
 - **ビット演算は `int` のみ** -- `float` や `bool` に対してビット演算を適用するとコンパイルエラー。
 - **`bool` 以外の型も条件式に使える** -- `if` の条件式には `int`（0 = false、非0 = true）など `bool` 以外も使用可能。
-- **数値リテラルサフィックス** -- 低レベル型はリテラルサフィックスで指定可能: `42i32`、`255u8`、`3.14f32`、`0xFFu8`、`0b1010u8`。float サフィックスを付けた整数リテラル（`42f32`）は float 値を生成します。整数サフィックスを付けた浮動小数点リテラル（`3.14i32`）はコンパイルエラーです。範囲外の値（例: `256u8`、`129i8`）もコンパイルエラーです。
+- **数値リテラルセパレータ** -- アンダースコアは数値リテラルの視覚的な区切りとして使用可能: `100_000`、`0xFF_FF`、`0b1010_0101`、`3.14_159`。アンダースコアは桁の間に配置する必要があります（先頭、末尾、連続は不可）。
+- **数値リテラルサフィックス** -- 低レベル型はリテラルサフィックスで指定可能: `42i32`、`255u8`、`3.14f32`、`.5f32`、`0xFFu8`、`0b1010u8`。float サフィックスを付けた整数リテラル（`42f32`）は float 値を生成します。整数サフィックスを付けた浮動小数点リテラル（`3.14i32`）はコンパイルエラーです。範囲外の値（例: `256u8`、`129i8`）もコンパイルエラーです。
 - **低レベル数値型（`i8`、`i16`、`i32`、`i64`、`u8`、`u16`、`u32`、`u64`、`f32`）は暗黙の変換なし** -- 低レベル型同士または高レベル型（`int`、`float`）との混合はコンパイルエラーです。明示的な `as` キャストを使用してください。低レベル整数の `/` 演算子は（Rust と同様に）float 除算ではなく整数除算を行います。符号付き型は `SDiv`/`SRem`、符号なし型は `UDiv`/`URem` を使用します。
 - **符号付き vs 符号なし** -- 符号付き型（`i8`、`i16`、`i32`、`i64`）は符号付き比較（`ICMP_SLT` 等）と算術右シフト（`AShr`）を使用します。符号なし型（`u8`、`u16`、`u32`、`u64`）は符号なし比較（`ICMP_ULT` 等）と論理右シフト（`LShr`）を使用します。`>>>` 演算子は符号に関わらず常に論理シフトを行います。
-- **低レベル整数のオーバーフローはラップアラウンド** -- 低レベル整数型の算術演算はオーバーフロー時に2の補数ラップ（符号付き）またはモジュラー演算（符号なし）を使用します。例えば、`i32` の最大値 `2147483647 + 1` は `-2147483648` にラップします。これは C の動作と一致します。オーバーフローが問題になる場合は高レベルの `int` 型（64ビット）を使用してください。明示的なオーバーフロー制御には `checked_add/sub/mul`（`Result<T, Error>` を返す）、`saturating_add/sub/mul`（型の境界値にクランプ）、`wrapping_add/sub/mul`（自己文書化的なラッピング）を使用できます。[関数リファレンス](functions.md#checkedsaturating-arithmetic) を参照。
+- **`int` 算術オーバーフローはランタイムエラー** -- 高レベル `int` 型の算術演算（`+`、`-`、`*`、単項 `-`）はオーバーフロー時にランタイムエラーを発生させます。Swift のデフォルト動作と同様です。これにより、2の補数ラッピングによるサイレントなデータ破損を防ぎます。オーバーフローする定数式はコンパイル時に検出されます。
+- **低レベル整数のオーバーフローはラップアラウンド** -- 低レベル整数型の算術演算はオーバーフロー時に Ry 定義の2の補数ラップ（符号付き）またはモジュラー演算（符号なし）を使用します。例えば、`2147483647i32 + 1i32` は `-2147483648` にラップします。明示的なオーバーフロー制御には `checked_add/sub/mul`（`Result<T, Error>` を返す）、`saturating_add/sub/mul`（型の境界値にクランプ）、`wrapping_add/sub/mul`（自己文書化的なラッピング）を使用できます。[関数リファレンス](functions.md#checkedsaturating-arithmetic) を参照。

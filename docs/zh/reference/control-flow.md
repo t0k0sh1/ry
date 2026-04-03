@@ -179,10 +179,10 @@ for i in 1 .. 3:
 
 ## async / await
 
-`async fn` 声明一个并发运行的函数。调用 `async fn` 返回 `Task<T>`。在另一个 `async fn` 内部使用 `await`，或从同步上下文中使用 `block_on()` 等待结果。
+`async function` 声明一个并发运行的函数。调用 `async function` 返回 `Task<T>`。在另一个 `async function` 内部使用 `await`，或从同步上下文中使用 `block_on()` 等待结果。
 
 ```python
-async fn add(a: int, b: int) -> int:
+async function add(a: int, b: int) -> int:
     return a + b
 
 # 从同步上下文中，使用 block_on()
@@ -190,22 +190,22 @@ t: Task<int> = add(20, 22)
 print(block_on(t))                  # 42
 print(block_on(add(1, 2)))          # 3
 
-# 在 async fn 内部，使用 await
-async fn double_add(a: int, b: int) -> int:
+# 在 async function 内部，使用 await
+async function double_add(a: int, b: int) -> int:
     result = await add(a, b)
     return result * 2
 ```
 
 ### 规则
 
-- `async fn name(...) -> T:` 使用等待结果类型 `T` 声明。
-- 调用 `async fn` 会立即返回 `Task<T>`。
+- `async function name(...) -> T:` 使用等待结果类型 `T` 声明。
+- 调用 `async function` 会立即返回 `Task<T>`。
 - `await expr` 要求 `expr` 为 `Task<T>` 并产生 `T`。
-- `await` 只能在 `async fn` 内部使用。从同步上下文中使用 `block_on(task)`。
+- `await` 只能在 `async function` 内部使用。从同步上下文中使用 `block_on(task)`。
 - `block_on(task)` 阻塞当前线程直到任务完成并返回结果。
-- 支持 `async fn ... -> Unit`；当不产生值时，`block_on(task)` 是等待的主要方式。
+- 支持 `async function ... -> Unit`；当不产生值时，`block_on(task)` 是等待的主要方式。
 - 任务在运行时工作线程池上运行；不是每个任务一个操作系统线程。
-- v1 不支持 `async` lambda 和 `async @native fn`。
+- v1 不支持 `async` lambda 和 `async @native function`。
 
 ---
 
@@ -269,10 +269,10 @@ for i in range(5):
 ## `...`（Ellipsis）
 
 - 不执行任何操作的语句（no-op）。用作空代码块的占位符。
-- 可在任何代码块中使用：函数体、`if`/`else`、`while`、`for`、`when` 分支等。
+- 可在任何代码块中使用：函数体、`if`/`else`、`while`、`for`、`match` 分支等。
 
 ```python
-fn not_yet():
+function not_yet():
     ...
 
 if true:
@@ -285,12 +285,9 @@ else:
 
 ## when
 
-`when` 有两种语句形式：
+`when:` 提供无需主题值的多分支条件流程。
 
-- `when:` 用于多分支条件判断
-- `when value:` 用于对某个值做模式匹配
-
-### 条件分支 `when:`
+### 语法
 
 ```python
 when:
@@ -299,8 +296,10 @@ when:
     condition:
         # 主体
     else:
-        # 兜底分支
+        # 兜底主体
 ```
+
+### 示例
 
 ```python
 x = 0
@@ -314,12 +313,18 @@ when:
         print("zero")
 ```
 
-`when:` 会自上而下求值，只执行第一个条件为真的分支。表达式形式请参见[运算符参考](operators.md#when-条件表达式)。
+条件 `when:` 语句自上而下求值各分支，仅执行第一个条件为真的分支。`else:` 分支对于语句形式是可选的。
 
-### 模式匹配 `when value:`
+表达式形式的 `when:` 请参见[运算符参考](operators.md#when-条件表达式)。
+
+---
+
+## match
+
+### 语法
 
 ```python
-when expression:
+match expression:
     case pattern:
         # 主体
     case pattern if guard_condition:
@@ -352,14 +357,14 @@ when expression:
 可以使用 `|` 组合多个模式，任一模式匹配时即匹配。OR 模式中不允许使用变量绑定（`n`、`Some(x)`、`Ok(v)`、`Err(e)`）。
 
 ```python
-when x:
+match x:
     case 1 | 2 | 3:
         print("small")
     case _:
         print("other")
 
 # enum OR 模式
-when color:
+match color:
     case Color::Red | Color::Blue:
         print("warm or cool")
     case Color::Green:
@@ -383,7 +388,7 @@ enum Color:
     Green
     Blue
 
-when color:
+match color:
     case Color::Red:
         print("red")
     case Color::Green:
@@ -393,26 +398,26 @@ when color:
 
 # Option 模式匹配
 x: Option<int> = Some(42)
-when x:
+match x:
     case Some(v):
         print(v)
     case None:
         print("nothing")
 
 # Result 模式匹配
-fn divide(a: int, b: int) -> Result<int, Error>:
+function divide(a: int, b: int) -> Result<int, Error>:
     if b == 0:
         return Err(Error("division by zero"))
     return Ok(a // b)
 
-when divide(10, 2):
+match divide(10, 2):
     case Ok(v):
         print(v)         # 5
     case Err(e):
         print(e.message)
 
 # 字面值模式匹配
-when x:
+match x:
     case 0:
         print("zero")
     case 1:
@@ -421,7 +426,7 @@ when x:
         print("other")
 
 # guard 子句
-when x:
+match x:
     case n if n > 0:
         print("positive")
     case n if n < 0:
@@ -441,7 +446,7 @@ enum Shape:
     Point
 
 s = Shape::Circle(3.14)
-when s:
+match s:
     case Shape::Circle(r):
         print(r)        # 3.14
     case Shape::Rectangle(w, h):
@@ -452,6 +457,56 @@ when s:
 ```
 
 多字段变体会按声明顺序将各字段绑定到不同的名称。
+
+### match 表达式
+
+`match` 可以作为表达式使用，将各分支中的 `:` 替换为 `=>`。每个分支提供一个单一表达式，其值成为结果。
+
+#### 语法
+
+```python
+result = match expression:
+    case pattern => value_expression
+    case pattern if guard => value_expression
+    case _ => default_value
+```
+
+match 语句中支持的所有模式在 match 表达式中同样支持：字面值、变量绑定、enum、ADT enum、`Some`/`None`、`Ok`/`Err`、OR 模式、守卫和通配符。
+
+match 表达式必须是穷举的（与 match 语句的规则相同）。
+
+#### 示例
+
+```python
+# Option
+value = match opt:
+    case Some(v) => v
+    case None    => 0
+
+# Enum
+label = match direction:
+    case Direction::North => "N"
+    case Direction::South => "S"
+    case Direction::East  => "E"
+    case Direction::West  => "W"
+
+# Guard
+grade = match score:
+    case n if n >= 90 => "A"
+    case n if n >= 80 => "B"
+    case _            => "F"
+
+# OR 模式
+kind = match x:
+    case 1 | 2 | 3 => "small"
+    case _          => "large"
+
+# ADT enum
+area = match shape:
+    case Shape::Circle(r)  => 3.14 * r * r
+    case Shape::Rect(w, h) => w * h
+    case Shape::Point      => 0.0
+```
 
 ### 作用域规则
 

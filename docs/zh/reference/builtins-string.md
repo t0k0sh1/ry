@@ -1,4 +1,4 @@
-[English](../../reference/builtins-string.md) | [日本語](../../ja/reference/builtins-string.md) | [繁體中文](builtins-string.md)
+[English](../../reference/builtins-string.md) | [日本語](../../ja/reference/builtins-string.md) | [简体中文](builtins-string.md)
 
 # 字符串操作函数参考
 
@@ -12,9 +12,9 @@
 
 | 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `contains` | `(str, str) -> bool` | 返回是否包含子字符串 |
-| `starts_with` | `(str, str) -> bool` | 返回是否以前缀开头 |
-| `ends_with` | `(str, str) -> bool` | 返回是否以后缀结尾 |
+| `contains` | `(str, str, bool = false) -> bool` | 返回是否包含子字符串 |
+| `starts_with` | `(str, str, bool = false) -> bool` | 返回是否以前缀开头 |
+| `ends_with` | `(str, str, bool = false) -> bool` | 返回是否以后缀结尾 |
 | `find` | `(str, str) -> Option<int>` | 返回子字符串的字符位置（未找到为 `None`） |
 
 ### 提取与转换
@@ -59,47 +59,50 @@
 
 | 函数 | 签名 | 说明 |
 |------|-----------|------|
-| `to_int` | `str -> int` | 将字符串转换为整数 |
+| `to_int` | `str -> Result<int, Error>` | 将字符串转换为整数 |
 | `to_float` | `str -> float` | 将字符串转换为浮点数 |
-| `to_str` | `int/float/bool/str/record -> str` | 将值转换为字符串 |
+| `to_str` | `int/float/bool/str/enum/record -> str` | 将值转换为字符串 |
 
 ---
 
 ## contains
 
-**签名：** `contains(string: str, substring: str) -> bool`
+**签名：** `contains(string: str, substring: str, ignore_case: bool = false) -> bool`
 
-返回字符串 `string` 中是否包含子字符串 `substring`。
+返回字符串 `string` 中是否包含子字符串 `substring`。当 `ignore_case` 为 `true` 时，比较不区分大小写（仅 ASCII）。
 
 ```python
-print(contains("hello", "ell"))   # true
-print("hello".contains("xyz"))    # false (UFCS)
+print(contains("hello", "ell"))              # true
+print("hello".contains("xyz"))               # false (UFCS)
+print(contains("Hello World", "hello", true))  # true（不区分大小写）
 ```
 
 ---
 
 ## starts_with
 
-**签名：** `starts_with(string: str, prefix: str) -> bool`
+**签名：** `starts_with(string: str, prefix: str, ignore_case: bool = false) -> bool`
 
-返回字符串 `string` 是否以 `prefix` 开头。
+返回字符串 `string` 是否以 `prefix` 开头。当 `ignore_case` 为 `true` 时，比较不区分大小写（仅 ASCII）。
 
 ```python
-print(starts_with("hello", "hel"))   # true
-print("hello".starts_with("world"))  # false (UFCS)
+print(starts_with("hello", "hel"))              # true
+print("hello".starts_with("world"))              # false (UFCS)
+print(starts_with("Hello", "hello", true))  # true（不区分大小写）
 ```
 
 ---
 
 ## ends_with
 
-**签名：** `ends_with(string: str, suffix: str) -> bool`
+**签名：** `ends_with(string: str, suffix: str, ignore_case: bool = false) -> bool`
 
-返回字符串 `string` 是否以 `suffix` 结尾。
+返回字符串 `string` 是否以 `suffix` 结尾。当 `ignore_case` 为 `true` 时，比较不区分大小写（仅 ASCII）。
 
 ```python
-print(ends_with("hello", "llo"))   # true
-print("hello".ends_with("world"))  # false (UFCS)
+print(ends_with("hello", "llo"))              # true
+print("hello".ends_with("world"))              # false (UFCS)
+print(ends_with("Hello World", "WORLD", true))  # true（不区分大小写）
 ```
 
 ---
@@ -124,10 +127,13 @@ print("abcdef".find("cd"))            # Some(2) (UFCS)
 
 返回字符串 `string` 从 `start` 到 `end`（不含）的子字符串。索引为字符位置（UTF-8 感知）。
 
+超出范围的索引会被钳制到 `[0, length]`。钳制后若 `end < start`，返回空字符串。
+
 ```python
 print(substring("hello world", 0, 5))   # hello
 print(substring("hello world", 6, 11))  # world
 print("abcdef".substring(1, 4))         # bcd (UFCS)
+print(substring("hello", -1, 100))      # hello（钳制）
 ```
 
 ---
@@ -136,10 +142,13 @@ print("abcdef".substring(1, 4))         # bcd (UFCS)
 
 **签名：** `char_at(string: str, i: int) -> str`
 
-返回字符串 `string` 第 `i` 个位置的 UTF-8 字符作为字符串。
+返回字符串 `string` 第 `i` 个位置的 UTF-8 字符作为字符串。索引超出范围时产生运行时错误。
+
+负数索引从末尾开始计算（Python 风格）：`-1` 指最后一个字符，`-2` 指倒数第二个，以此类推。
 
 ```python
-print(char_at("hello", 0))   # h
+print(char_at("hello", 0))    # h
+print(char_at("hello", -1))   # o（最后一个字符）
 print("abc".char_at(2))       # c (UFCS)
 ```
 
@@ -270,6 +279,8 @@ print(length("あいう"))        # 3 (characters)
 
 以分隔符 `delimiter` 分割字符串 `string`，返回 `List<str>`。
 
+当分隔符为空字符串 `""` 时，字符串会被分割为单个字符（UTF-8 感知）。
+
 ```python
 parts = split("a,b,c", ",")
 print(parts[0])   # a
@@ -280,6 +291,14 @@ for word in "hello world".split(" "):
     print(word)
 # hello
 # world
+
+# 分割为单个字符
+chars = split("hello", "")
+print(chars)   # [h, e, l, l, o]
+
+# UTF-8 字符
+chars = split("あいう", "")
+print(chars)   # [あ, い, う]
 ```
 
 ---
@@ -294,20 +313,33 @@ for word in "hello world".split(" "):
 parts = ["a", "b", "c"]
 print(join(parts, ","))        # a,b,c
 print(parts.join("-"))         # a-b-c (UFCS)
+print(",".join(parts))         # a,b,c (UFCS, Python 风格)
 ```
 
 ---
 
 ## to_int
 
-**签名：** `to_int(string: str) -> int`
+**签名：** `to_int(string: str) -> Result<int, Error>`
 
-将字符串转换为整数。
+将字符串转换为整数。允许前导空白。字符串为空、包含无效字符或溢出时返回 `Err`。
 
 ```python
-print(to_int("42"))       # 42
-print(to_int("-7"))       # -7
-print("123".to_int())     # 123 (UFCS)
+match to_int("42"):
+    case Ok(v):
+        print(v)              # 42
+    case Err(e):
+        print(e.message)
+
+match "123".to_int():          # UFCS
+    case Ok(v):
+        print(v)              # 123
+    case Err(e):
+        print(e.message)
+
+# 无效输入返回 Err
+print(to_int("abc"))          # Err(Error("to_int: invalid character in 'abc'"))
+print(to_int(""))             # Err(Error("to_int: empty string"))
 ```
 
 ---
@@ -327,7 +359,7 @@ print("2.5".to_float())   # 2.5 (UFCS)
 
 ## to_str
 
-**签名：** `to_str(v: int | float | bool | str | record) -> str`
+**签名：** `to_str(v: int | float | bool | str | enum | record) -> str`
 
 将值转换为字符串。
 
@@ -337,15 +369,22 @@ print("2.5".to_float())   # 2.5 (UFCS)
 | `float` | `%g` |
 | `bool` | `"true"` / `"false"` |
 | `str` | 直接返回 |
+| enum | 变体名称（例如 `"Red"`） |
 | record | `TypeName(field1: val1, field2: val2)` |
 
-Record 类型自动生成 `to_str` 表示。如果提供了用户定义的 `fn to_str(v: MyRecord) -> str`，则优先使用用户定义的版本。这也适用于 `print()` 和 f-string 插值。
+Record 类型自动生成 `to_str` 表示。如果提供了用户定义的 `function to_str(v: MyRecord) -> str`，则优先使用用户定义的版本。这也适用于 `print()` 和 f-string 插值。
 
 ```python
 print(to_str(42))         # 42
 print(to_str(3.14))       # 3.14
 print(to_str(true))       # true
 print(99.to_str())        # 99 (UFCS)
+
+enum Color:
+    Red
+    Green
+
+print(to_str(Color::Red))   # Red
 
 record Point:
     x: int

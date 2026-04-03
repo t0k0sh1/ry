@@ -1,159 +1,169 @@
-[English](../../reference/regex.md) | [日本語](../../ja/reference/regex.md) | [繁體中文](regex.md)
+[English](../../reference/regex.md) | [日本語](../../ja/reference/regex.md) | [简体中文](regex.md)
 
-# 正規表達式函式參考手冊
+# 正则表达式参考
 
-正規表達式函式的一覽表。所有函式皆支援 UFCS 記法。模式字串使用標準的正規表達式語法。
+## 正则表达式字面量语法
 
-> **注意：** Phase 1 中模式以普通字串傳遞。專用的正規表達式字面量語法可能在未來版本中加入。
+正则表达式字面量使用 `/pattern/` 语法，产生 `Regex` 类型的值：
 
-## 函式一覽
+```ry
+from regex import is_match, split, replace
 
-| 函式 | 簽名 | 說明 |
+# 正则表达式字面量支持基于类型的重载
+"hello".is_match(/[a-z]+/)        # true
+"a1b2c".split(/[0-9]/)         # ["a", "b", "c"]
+"abc123".replace(/[0-9]+/, "X") # "abcX"
+```
+
+正则表达式字面量可以存储在变量中：
+
+```ry
+pat = /[a-z]+/
+"hello".is_match(pat)  # true
+```
+
+正则表达式字面量中的 `/` 可以用 `\/` 转义：
+
+```ry
+"a/b".is_match(/a\/b/)  # true
+```
+
+### 除法与正则表达式的区分
+
+词法分析器使用上下文来区分正则表达式字面量和除法运算：
+
+- 在产生值的标记（标识符、数字、字符串字面量、`)` 或 `]`）之后，`/` 被解析为除法
+- 在运算符、关键字或期望表达式的定界符（`(`、`[`、`,`、`=`）之后，`/` 开始一个正则表达式字面量
+
+```ry
+x = 10 / 2         # 除法：5
+y = is_match("a", /a/) # 正则表达式字面量
+```
+
+## 函数一览
+
+### 正则表达式字面量函数（文本在前，兼容 UFCS）
+
+这些函数接受 `Regex` 类型的模式，使用文本在前的参数顺序以支持 UFCS：
+
+| 函数 | 签名 | 说明 |
 |------|------|------|
-| `regex_match` | `(str, str) -> bool` | 文字全體是否匹配模式 |
-| `regex_search` | `(str, str) -> int` | 傳回第一個匹配的起始位置（找不到時傳回 -1） |
-| `regex_replace` | `(str, str, str) -> str` | 將匹配的部分替換為替換字串 |
-| `regex_split` | `(str, str) -> List<str>` | 以模式匹配進行分割 |
-| `regex_find_all` | `(str, str) -> List<str>` | 傳回所有不重疊的匹配結果 |
+| `is_match` | `(str, Regex) -> bool` | 返回整个文本是否匹配模式 |
+| `search` | `(str, Regex) -> int` | 返回第一个匹配的起始位置（未找到时返回 -1） |
+| `replace` | `(str, Regex, str) -> str` | 将所有匹配替换为替换字符串 |
+| `split` | `(str, Regex) -> List<str>` | 按模式匹配进行分割 |
+| `find_all` | `(str, Regex) -> List<str>` | 返回所有不重叠的匹配结果 |
 
-## 支援的模式語法
+```ry
+from regex import is_match, search, replace, split, find_all
 
-| 語法 | 說明 | 範例 |
+# 直接调用
+print(is_match("hello", /[a-z]+/))       # true
+
+# UFCS（text.function(pattern)）
+print("abc123".search(/[0-9]+/))          # 3
+print("abc123".replace(/[0-9]+/, "X"))    # abcX
+parts = "hello world".split(/\s+/)
+nums = "a1b2c3".find_all(/[0-9]/)
+```
+
+### 遗留函数（文本在前）
+
+原始的 `regex_*` 函数仍然可用以保持向后兼容。它们接受模式字符串（非正则表达式字面量），使用文本在前的参数顺序，与正则表达式字面量 API 一致：
+
+| 函数 | 签名 | 说明 |
 |------|------|------|
-| `abc` | 字面字元 | `"hello"` |
-| `.` | 任意一個字元（換行除外） | `"a.c"` 匹配 `"abc"`、`"aXc"` |
-| <code>&#124;</code> | 選擇 | <code>"cat&#124;dog"</code> 匹配 `"cat"` 或 `"dog"` |
-| `*` | 零次或多次重複 | `"a*"` 匹配 `""`、`"a"`、`"aaa"` |
-| `+` | 一次或多次重複 | `"a+"` 匹配 `"a"`、`"aaa"` |
+| `regex_match` | `(text: str, pattern: str) -> bool` | 返回整个文本是否匹配模式 |
+| `regex_search` | `(text: str, pattern: str) -> int` | 返回第一个匹配的起始位置（未找到时返回 -1） |
+| `regex_replace` | `(text: str, pattern: str, replacement: str) -> str` | 将所有匹配替换为替换字符串 |
+| `regex_split` | `(text: str, pattern: str) -> List<str>` | 按模式匹配进行分割 |
+| `regex_find_all` | `(text: str, pattern: str) -> List<str>` | 返回所有不重叠的匹配结果 |
+
+```ry
+print(regex_match("hello", "[a-z]+"))   # true
+pos = regex_search("abc123", "[0-9]+")  # 3
+```
+
+## 支持的模式语法
+
+| 语法 | 说明 | 示例 |
+|------|------|------|
+| `abc` | 字面字符 | `"hello"` |
+| `.` | 任意一个字符（换行除外） | `"a.c"` 匹配 `"abc"`、`"aXc"` |
+| <code>&#124;</code> | 选择 | <code>"cat&#124;dog"</code> 匹配 `"cat"` 或 `"dog"` |
+| `*` | 零次或多次 | `"a*"` 匹配 `""`、`"a"`、`"aaa"` |
+| `+` | 一次或多次 | `"a+"` 匹配 `"a"`、`"aaa"` |
 | `?` | 零次或一次 | `"a?"` 匹配 `""` 或 `"a"` |
 | `{n}` | 恰好 n 次 | `"a{3}"` 匹配 `"aaa"` |
 | `{n,m}` | n 到 m 次 | `"a{2,4}"` 匹配 `"aa"` 到 `"aaaa"` |
 | `{n,}` | 至少 n 次 | `"a{2,}"` 匹配 `"aa"`、`"aaa"`、... |
-| `*?` | 零次或多次（非貪婪） | `".*?"` 匹配最短 |
-| `+?` | 一次或多次（非貪婪） | `".+?"` 匹配最短 |
-| `??` | 零次或一次（非貪婪） | `"a??"` 優先零次 |
-| `{n,m}?` | 範圍（非貪婪） | `"a{2,4}?"` 優先 n 次 |
-| `(...)` | 群組 | `"(ab)+"` 匹配 `"abab"` |
-| `[abc]` | 字元類別 | `"[aeiou]"` 匹配母音 |
-| `[a-z]` | 字元範圍 | `"[a-z]+"` 匹配小寫單字 |
-| `[^...]` | 否定字元類別 | `"[^0-9]"` 匹配非數字 |
-| `^` | 字串開頭錨點 | `"^hello"` |
-| `$` | 字串結尾錨點 | `"world$"` |
-| `\d` | 數字 `[0-9]` | `"\d+"` 匹配數字 |
-| `\D` | 非數字 `[^0-9]` | |
-| `\w` | 單字字元 `[a-zA-Z0-9_]` | `"\w+"` 匹配識別符 |
-| `\W` | 非單字字元 | |
-| `\s` | 空白字元 | `"\s+"` 匹配空格與 Tab |
-| `\S` | 非空白字元 | |
-| `\b` | 單字邊界 | `"\bword\b"` 匹配完整單字 |
-| `\B` | 非單字邊界 | `"\Bword"` 匹配單字內部 |
-| `(?i)` | 忽略大小寫旗標 | `"(?i)hello"` 匹配 `"HELLO"` |
-| `\.` | 跳脫特殊字元 | `"\."` 匹配字面的 `.` |
+| `*?` | 零次或多次（非贪婪） | `".*?"` 匹配最短 |
+| `+?` | 一次或多次（非贪婪） | `".+?"` 匹配最短 |
+| `??` | 零次或一次（非贪婪） | `"a??"` 优先零次 |
+| `{n,m}?` | 范围（非贪婪） | `"a{2,4}?"` 优先 n 次 |
+| `(...)` | 分组 | `"(ab)+"` 匹配 `"abab"` |
+| `[abc]` | 字符类 | `"[aeiou]"` 匹配元音字母 |
+| `[a-z]` | 字符范围 | `"[a-z]+"` 匹配小写单词 |
+| `[^...]` | 否定字符类 | `"[^0-9]"` 匹配非数字 |
+| `^` | 字符串开头锚点 | `"^hello"` |
+| `$` | 字符串结尾锚点 | `"world$"` |
+| `\d` | 数字 `[0-9]` | `"\d+"` 匹配数字 |
+| `\D` | 非数字 `[^0-9]` | |
+| `\w` | 单词字符 `[a-zA-Z0-9_]` | `"\w+"` 匹配标识符 |
+| `\W` | 非单词字符 | |
+| `\s` | 空白字符 | `"\s+"` 匹配空格与 Tab |
+| `\S` | 非空白字符 | |
+| `\b` | 单词边界 | `"\bword\b"` 匹配完整单词 |
+| `\B` | 非单词边界 | `"\Bword"` 匹配单词内部 |
+| `(?i)` | 忽略大小写标志 | `"(?i)hello"` 匹配 `"HELLO"` |
+| `\.` | 转义特殊字符 | `"\."` 匹配字面的 `.` |
 
-## 使用範例
+## 使用示例
 
-### regex_match
+### 范围量词
 
 ```ry
-print(regex_match("[a-z]+", "hello"))   # true
-print(regex_match("[0-9]+", "hello"))   # false
-print(regex_match("[a-zA-Z_]\\w*", "my_var"))  # true
+print(regex_match("123-4567", "\\d{3}-\\d{4}"))  # true
+print(regex_match("aaa", "a{2,4}"))               # true
+print(regex_match("ababab", "(ab){2,}"))           # true
 ```
 
-### regex_search
+### 非贪婪（最短）匹配
 
 ```ry
-pos = regex_search("[0-9]+", "abc123def")
-print(pos)  # 3
-```
-
-### regex_replace
-
-```ry
-s = regex_replace("[0-9]+", "a1b2c3", "X")
-print(s)  # aXbXcX
-```
-
-### regex_split
-
-```ry
-parts = regex_split("\\s+", "hello  world  foo")
-print(length(parts))  # 3
-print(parts[0])    # hello
-```
-
-### regex_find_all
-
-```ry
-matches = regex_find_all("[0-9]+", "a1b23c456")
-print(length(matches))  # 3
-print(matches[0])    # 1
-print(matches[1])    # 23
-```
-
-### 範圍量詞
-
-```ry
-print(regex_match("\\d{3}-\\d{4}", "123-4567"))  # true
-print(regex_match("a{2,4}", "aaa"))               # true
-print(regex_match("(ab){2,}", "ababab"))           # true
-```
-
-### 非貪婪（最短）匹配
-
-```ry
-# 貪婪: 匹配最長
-g = regex_replace("\".*\"", "\"a\" and \"b\"", "X")
+# 贪婪：匹配最长
+g = regex_replace("\"a\" and \"b\"", "\".*\"", "X")
 print(g)  # X
 
-# 非貪婪: 匹配最短
-l = regex_replace("\".*?\"", "\"a\" and \"b\"", "X")
+# 非贪婪：匹配最短
+l = regex_replace("\"a\" and \"b\"", "\".*?\"", "X")
 print(l)  # X and X
 
-# 取得個別 HTML 標籤
-tags = regex_find_all("<.*?>", "<a> <bb> <ccc>")
+# 查找各个 HTML 标签
+tags = regex_find_all("<a> <bb> <ccc>", "<.*?>")
 print(length(tags))  # 3
 ```
 
-> **注意：** 非貪婪匹配控制整體匹配長度。沒有使用括號分組時，greedy/lazy 混合模式可能與 PCRE 引擎行為不同。
+> **注意：** 非贪婪匹配控制整体匹配长度。在不支持提取括号分组的情况下，greedy/lazy 混合模式可能与 PCRE 引擎的行为不同。
 
-### 單字邊界
+### 单词边界
 
 ```ry
-# 匹配完整單字
-pos = regex_search("\\bworld\\b", "hello world")
+# 匹配完整单词
+pos = regex_search("hello world", "\\bworld\\b")
 print(pos)  # 6
 
-# 取得所有單字
-words = regex_find_all("\\b\\w+\\b", "hello world foo")
+# 查找所有单词
+words = regex_find_all("hello world foo", "\\b\\w+\\b")
 print(length(words))  # 3
-
-# \B 匹配非邊界（單字內部）
-pos2 = regex_search("\\Bworld", "helloworld")
-print(pos2)  # 5
 ```
 
-### 忽略大小寫匹配
+### 忽略大小写匹配
 
 ```ry
-# (?i) 放在模式開頭即可忽略大小寫
-print(regex_match("(?i)hello", "HELLO"))  # true
-print(regex_match("(?i)hello", "Hello"))  # true
-
-# 字元類別也適用
-print(regex_match("(?i)[a-z]+", "ABC"))  # true
-
-# replace 和 find_all 也可使用
-s = regex_replace("(?i)hello", "Hello HELLO hello", "X")
-print(s)  # X X X
+# (?i) 放在模式开头即可忽略大小写
+print(regex_match("HELLO", "(?i)hello"))  # true
+print(regex_match("Hello", "(?i)hello"))  # true
 ```
 
-> **注意：** `(?i)` 必須出現在模式的開頭，並適用於整個模式。不支援部分忽略大小寫（例如 `(?i:sub)pattern`）。
-
-### UFCS 記法
-
-```ry
-# pattern.function(text, ...)
-m = "[a-z]+".regex_match("hello")
-print(m)  # true
-```
+> **注意：** `(?i)` 必须出现在模式的开头，并适用于整个模式。不支持部分忽略大小写匹配（例如 `(?i:sub)pattern`）。

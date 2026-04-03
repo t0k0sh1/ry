@@ -1,8 +1,8 @@
 [English](../../tutorial/07-collections.md) | [日本語](../../ja/tutorial/07-collections.md) | [简体中文](07-collections.md)
 
-# 集合
+# 集合与迭代器
 
-[<- 上一篇：Record](06-records.md) | [下一篇：高级特性 ->](08-advanced.md)
+[<- 上一篇：Record 与枚举](06-records.md) | [下一篇：错误处理 ->](08-error-handling.md)
 
 Ry 有四种集合类型：**元组**、**列表**、**映射**、**集合**。
 
@@ -39,7 +39,7 @@ print(t.1)   # 3.14
 想要返回多个值时，元组很方便。
 
 ```python
-fn swap(a: int, b: int) -> (int, int):
+function swap(a: int, b: int) -> (int, int):
     return (b, a)
 
 result = swap(1, 2)
@@ -107,7 +107,7 @@ for x in xs:
 ### 函数参数
 
 ```python
-fn first(xs: List<int>) -> int:
+function first(xs: List<int>) -> int:
     return xs[0]
 ```
 
@@ -118,20 +118,21 @@ fn first(xs: List<int>) -> int:
 ```python
 xs = [1, 2, 3, 4, 5]
 
-# filter: 保留符合条件的元素
-evens = xs.filter(fn(x: int) => x > 3)
-print(evens)   # [4, 5]
+# filter：保留符合条件的元素
+greater_than_three = filter(xs, (x: int) => x > 3)
+print(greater_than_three)   # [4, 5]
 
-# map: 转换每个元素
-doubled = xs.map(fn(x: int) => x * 2)
+# map：转换每个元素
+doubled = map(xs, (x: int) => x * 2)
 print(doubled)   # [2, 4, 6, 8, 10]
 
-# sort: 升序排序（默认）
-sorted = [3, 1, 2].sort()
+# sort：升序排序（默认）
+sorted = sort([3, 1, 2])
 print(sorted)   # [1, 2, 3]
 
-# 链式调用
-result = xs.filter(fn(x: int) => x > 1).map(fn(x: int) => x * 10).sort()
+# 使用 UFCS（统一函数调用语法）链式调用
+# x.f(args) 等价于 f(x, args)
+result = xs.filter((x: int) => x > 1).map((x: int) => x * 10).sort()
 print(result)   # [20, 30, 40, 50]
 ```
 
@@ -142,12 +143,12 @@ print(result)   # [20, 30, 40, 50]
 ```python
 xs = [1, 2, 3, 4, 5]
 
-# reduce: 从第一个元素开始
-total = reduce(xs, fn(a: int, b: int) => a + b)
+# reduce：从第一个元素开始
+total = reduce(xs, (a: int, b: int) => a + b)
 print(total)   # 15
 
-# fold: 提供明确的初始值
-total2 = fold(xs, 0, fn(a: int, b: int) => a + b)
+# fold：提供明确的初始值
+total2 = fold(xs, 0, (a: int, b: int) => a + b)
 print(total2)   # 15
 ```
 
@@ -158,11 +159,11 @@ print(total2)   # 15
 ```python
 xs = [1, 2, 3, 4, 5]
 
-print(any(xs, fn(x: int) => x > 4))   # true
-print(any(xs, fn(x: int) => x > 9))   # false
+print(any(xs, (x: int) => x > 4))   # true
+print(any(xs, (x: int) => x > 9))   # false
 
-print(all(xs, fn(x: int) => x > 0))   # true
-print(all(xs, fn(x: int) => x > 3))   # false
+print(all(xs, (x: int) => x > 0))   # true
+print(all(xs, (x: int) => x > 3))   # false
 ```
 
 ### sum、min、max
@@ -178,8 +179,8 @@ print(max(xs))   # 5
 
 ```python
 xs = [10, 20, 30]
-print(first(xs))      # 10
-print(last(xs))       # 30
+print(first(xs))      # Some(10)
+print(last(xs))       # Some(30)
 print(is_empty(xs))   # false
 ```
 
@@ -257,7 +258,7 @@ print(m)   # {a: 99, b: 2, c: 3}
 检查键是否存在。
 
 ```python
-print(m.has_key("a"))   # true
+print(has_key(m, "a"))   # true
 ```
 
 ### keys、values
@@ -273,7 +274,7 @@ print(values(m))   # [1, 2, 3]
 ### 函数参数
 
 ```python
-fn get_val(m: Map<str, int>, k: str) -> int:
+function get_val(m: Map<str, int>, k: str) -> int:
     return m[k]
 ```
 
@@ -313,9 +314,9 @@ print(5 in s)   # false
 ### add / remove
 
 ```python
-s.add(4)       # 添加元素
-s.remove(1)    # 移除元素
-s.add(2)       # 已存在，因此忽略
+add(s, 4)       # 添加元素
+remove(s, 1)    # 移除元素
+add(s, 2)       # 已存在，因此忽略
 ```
 
 ### length / print
@@ -351,34 +352,54 @@ empty: Set<int> = {}
 
 迭代器提供一种**惰性**的方式来处理集合。迭代器不会在每个步骤中创建中间列表，而是通过管道逐个处理元素。
 
+> **为什么使用惰性迭代器？** 当你直接在列表上链式调用 `filter` 和 `map` 时，每个步骤都会创建新的中间列表。使用迭代器，元素逐个流经整个管道 —— 无需中间分配。当处理大型集合或只需要前几个结果（使用 `take`）时，这一点很重要。
+
 ### 创建和消费
+
+对集合调用 `iter()` 获取迭代器，调用 `to_list()` 将结果物化为列表：
 
 ```python
 xs = [1, 2, 3]
-ys = xs.iter().to_list()   # [1, 2, 3]
+ys = to_list(iter(xs))   # [1, 2, 3]
 ```
 
 ### 链式操作
 
-可以链式调用 `filter`、`map` 和 `take` 来构建管道：
+可以链式调用 `filter`、`map` 和 `take` 来构建管道。这使用了你在[函数](05-functions.md)中学到的 UFCS 链式调用风格：
 
 ```python
+result = to_list(take(map(filter(iter([1, 2, 3, 4, 5]), (x: int) => x > 2), (x: int) => x * 2), 2))
+print(result)   # [6, 8]
+
+# UFCS 链式调用风格（等价）：
 result = [1, 2, 3, 4, 5]
     .iter()
-    .filter(fn(x: int) => x > 2)
-    .map(fn(x: int) => x * 2)
+    .filter((x: int) => x > 2)
+    .map((x: int) => x * 2)
     .take(2)
     .to_list()
 print(result)   # [6, 8]
 ```
 
-### 使用 next() 手动迭代
+以下是一个更实际的例子 —— 处理成绩列表：
 
 ```python
-it = [10, 20].iter()
-print(it.next())   # Some(10)
-print(it.next())   # Some(20)
-print(it.next())   # None
+scores = [85, 42, 93, 67, 78, 55, 91]
+
+# 获取前 3 个及格分数（>= 60），翻倍作为奖励
+top_bonus = to_list(take(map(filter(iter(scores), (s: int) => s >= 60), (s: int) => s * 2), 3))
+print(top_bonus)   # [170, 186, 134]
+```
+
+### 使用 next() 手动迭代
+
+`next()` 返回 `Option` —— 如果有下一个元素则为 `Some(value)`，迭代器耗尽时为 `None`。你将在[错误处理](08-error-handling.md)中进一步了解 `Option`。
+
+```python
+it = iter([10, 20])
+print(next(it))   # Some(10)
+print(next(it))   # Some(20)
+print(next(it))   # None
 ```
 
 ### For 循环
@@ -386,17 +407,35 @@ print(it.next())   # None
 迭代器可以直接在 `for` 循环中使用：
 
 ```python
-for x in [1, 2, 3].iter().filter(fn(x: int) => x > 1):
+for x in filter(iter([1, 2, 3]), (x: int) => x > 1):
     print(x)   # 2, 3
 ```
 
-映射产生元组元素：
+### 遍历映射和集合
+
+映射产生键值元组。集合产生单独的元素：
 
 ```python
-for k, v in {"a": 1, "b": 2}.iter():
-    print(k)
+for k, v in iter({"a": 1, "b": 2}):
+    print(f"{k} = {v}")
+
+for x in iter({10, 20, 30}):
+    print(x)
 ```
+
+### 常见错误
+
+- **忘记 `to_list()`**：迭代器管道本身不做任何事 —— 它是惰性的。你必须用 `to_list()`、`for` 循环或 `next()` 来消费它。
+- **过早调用 `to_list()`**：在 `filter()` 之前放置 `to_list()` 会违背惰性求值的目的，因为它会先物化所有元素。
 
 ---
 
-[<- 上一篇：Record](06-records.md) | [下一篇：高级特性 ->](08-advanced.md)
+## 练习
+
+1. **迭代器管道**：给定 `xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`，使用迭代器管道计算偶数之和。（提示：使用 `.filter()` 然后 `.to_list()` 和 `sum()`。）
+
+2. **手动迭代**：对 `[100, 200, 300]` 创建迭代器，使用 `match` 处理 `next()` 返回的 `Some` 和 `None` 情况。
+
+---
+
+[<- 上一篇：Record 与枚举](06-records.md) | [下一篇：错误处理 ->](08-error-handling.md)

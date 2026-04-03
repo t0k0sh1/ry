@@ -2,7 +2,7 @@
 
 # 01 - はじめに
 
-次のチュートリアル → [02 - 変数と型](02-variables-and-types.md)
+次のチュートリアル -> [02 - 変数と型](02-variables-and-types.md)
 
 ---
 
@@ -28,19 +28,19 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## プロジェクトの初期化
 
-`ry new` コマンドで新しいプロジェクトを作成できます。
+`ry new` コマンドで新しいプロジェクトを作成できます:
 
 ```bash
 ry new my-project
 cd my-project
 ```
 
-これにより以下のファイルとディレクトリが生成されます。
+これにより以下のファイルとディレクトリが生成されます:
 
-- `package.toml` — プロジェクト設定ファイル
-- `src/main.ry` — エントリポイント（サンプルコード付き）
+- `package.toml` -- プロジェクト設定ファイル
+- `src/main.ry` -- エントリポイント（サンプルコード付き）
 
-カレントディレクトリをプロジェクトとして初期化する場合は `ry init` を使います。
+カレントディレクトリをプロジェクトとして初期化する場合は `ry init` を使います:
 
 ```bash
 mkdir my-project
@@ -48,19 +48,19 @@ cd my-project
 ry init
 ```
 
-詳細は [プロジェクト管理](../reference/project.md) を参照してください。
+詳細は[プロジェクト管理](../reference/project.md)を参照してください。
 
 ---
 
 ## 最初のプログラム
 
-以下の内容を `hello.ry` というファイルに保存してください。
+以下の内容を `hello.ry` というファイルに保存してください:
 
 ```python
 print("Hello, World!")
 ```
 
-次のコマンドで実行します。
+次のコマンドで実行します:
 
 ```bash
 ry hello.ry
@@ -72,12 +72,12 @@ ry hello.ry
 Hello, World!
 ```
 
-パイプや Here-document を使って、標準入力からコードを実行することもできます。
+パイプや Here-document を使って、`-c` フラグで標準入力からコードを実行することもできます:
 
 ```bash
-echo 'print("Hello, World!")' | ry
+echo 'print("Hello, World!")' | ry -c
 
-ry <<'RY'
+ry -c <<'RY'
 print("Hello, World!")
 RY
 ```
@@ -97,4 +97,4 @@ print("Hello")  # 行末コメントも使えます
 
 ---
 
-次のチュートリアル → [02 - 変数と型](02-variables-and-types.md)
+次のチュートリアル -> [02 - 変数と型](02-variables-and-types.md)
