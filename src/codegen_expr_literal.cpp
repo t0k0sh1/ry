@@ -176,14 +176,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<ListExpr> &e) {
     }
 
     // Store length, capacity, data pointer into header
-    llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
-    llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "data_ptr");
-    builder_.CreateStore(dataPtr, dataPtrField);
+    storeListHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
+                          llvm::ConstantInt::get(i64Ty_, count), dataPtr);
 
     // Track element type
     type_meta_[TM_ListElem][headerPtr] = elemTy;
@@ -264,17 +258,8 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<MapExpr> &e) {
     }
 
     // Store header fields: length, capacity, keys_ptr, values_ptr
-    llvm::Value *lenPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 0, "map_len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 1, "map_cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
-    llvm::Value *keysPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 2, "map_keys_field");
-    builder_.CreateStore(keysPtr, keysPtrField);
-
-    llvm::Value *valsPtrField = builder_.CreateStructGEP(mapHeaderTy_, headerPtr, 3, "map_vals_field");
-    builder_.CreateStore(valsPtr, valsPtrField);
+    storeMapHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, count),
+                         llvm::ConstantInt::get(i64Ty_, count), keysPtr, valsPtr);
 
     // Initialize hash table buckets via rehash
     int64_t initBucketCount = 8;
@@ -352,14 +337,10 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<SetExpr> &e) {
         mallocFn, {llvm::ConstantInt::get(i64Ty_, elemSize * count)}, "set_elems");
 
     // Initialize header: length=0, capacity=count, elements pointer
+    storeSetHeaderFields(headerPtr, llvm::ConstantInt::get(i64Ty_, 0),
+                         llvm::ConstantInt::get(i64Ty_, count), elemsPtr);
     llvm::Value *lenPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 0, "set_len_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), lenPtr);
-
-    llvm::Value *capPtr = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 1, "set_cap_ptr");
-    builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, count), capPtr);
-
     llvm::Value *elemsPtrField = builder_.CreateStructGEP(setHeaderTy_, headerPtr, 2, "set_elems_field");
-    builder_.CreateStore(elemsPtr, elemsPtrField);
 
     // Initialize empty hash table buckets
     int64_t initBucketCount = 8;
