@@ -32,7 +32,7 @@ name: str = "hello"
 pi = 3.14159
 
 # 函数定义
-fn factorial(n: int) -> int:
+function factorial(n: int) -> int:
     if n <= 1:
         return 1
     return n * factorial(n - 1)
@@ -45,11 +45,11 @@ add_offset = (x: int): int => x + offset
 print(add_offset(5))   # 15
 
 # 结构体
-type Point:
+record Point:
     x: int
     y: int
 
-fn operator+(a: Point, b: Point) -> Point:
+function operator+(a: Point, b: Point) -> Point:
     return Point(a.x + b.x, a.y + b.y)
 
 p = Point(1, 2) + Point(3, 4)
