@@ -754,33 +754,27 @@ int64_t __ry_json_len(void *value) {
 }
 
 void *__ry_json_keys(void *value) {
-    auto *header = (ListHeader*)malloc(sizeof(ListHeader));
-    if (!header) return nullptr;
-    if (!value || ((JsonValue*)value)->type != JsonType::Object) {
-        header->len = 0;
-        header->cap = 1;
-        header->data = (char **)malloc(sizeof(const char*));
-        if (!header->data) { free(header); return nullptr; }
-        return header;
+    if (!value) {
+        __ry_set_last_error("json_keys: value is null");
+        return nullptr;
     }
-    auto *v = (JsonValue*)value;
+    auto *v = static_cast<JsonValue*>(value);
+    if (v->type != JsonType::Object) {
+        __ry_set_last_error("json_keys: value is not an object");
+        return nullptr;
+    }
     int64_t len = v->object_val.len;
-    header->len = len;
-    header->cap = len > 0 ? len : 1;
-    auto **data = (const char**)malloc(sizeof(const char*) * header->cap);
-    if (!data) { free(header); return nullptr; }
-    for (int64_t i = 0; i < len; i++) {
-        data[i] = strdup(v->object_val.keys[i]);
-        if (!data[i]) {
-            for (int64_t j = 0; j < i; j++)
-                free((void*)data[j]);
-            free((void*)data);
-            free(header);
-            return nullptr;
-        }
+    try {
+        std::vector<std::string> keys;
+        keys.reserve(static_cast<size_t>(len));
+        for (int64_t i = 0; i < len; i++)
+            keys.emplace_back(v->object_val.keys[i]);
+        if (auto *result = makeStringList(keys))
+            return result;
+    } catch (const std::exception &) {
     }
-    header->data = (char **)data;
-    return header;
+    __ry_set_last_error("json_keys: out of memory");
+    return nullptr;
 }
 
 void __ry_json_free(void *value) {

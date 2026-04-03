@@ -228,8 +228,26 @@ describe("json keys and len", ():
   it("gets object keys", ():
     match parse("{\"a\": 1, \"b\": 2}"):
       case Ok(data):
-        ks = keys(data)
-        expect(length(ks)).to_eq(2)
+        match keys(data):
+          case Ok(ks):
+            expect(length(ks)).to_eq(2)
+            expect(ks[0]).to_eq("a")
+            expect(ks[1]).to_eq("b")
+          case Err(e):
+            fail("keys failed")
+        json_free(data)
+      case Err(e):
+        fail("parse failed")
+  )
+
+  it("returns Err for non-object keys", ():
+    match parse("[1, 2, 3]"):
+      case Ok(data):
+        match keys(data):
+          case Ok(ks):
+            fail("expected Err for non-object")
+          case Err(e):
+            expect(e.message).to_eq("json_keys: value is not an object")
         json_free(data)
       case Err(e):
         fail("parse failed")
