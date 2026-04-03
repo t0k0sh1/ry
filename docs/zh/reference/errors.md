@@ -1,4 +1,4 @@
-[English](../../reference/errors.md) | [日本語](../../ja/reference/errors.md) | [繁體中文](errors.md)
+[English](../../reference/errors.md) | [日本語](../../ja/reference/errors.md) | [简体中文](errors.md)
 
 # 错误参考
 

@@ -31,7 +31,7 @@ from path import join
 p = join("/tmp", "data", "file.txt")
 print(p)  # /tmp/data/file.txt
 
-# Absolute second argument replaces the first
+# 绝对路径的第二参数会替换第一参数
 print(join("/tmp", "/usr"))  # /usr
 ```
 

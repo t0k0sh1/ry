@@ -1,4 +1,4 @@
-[English](../README.md) | [日本語](../ja/README.md) | [繁體中文](README.md)
+[English](../README.md) | [日本語](../ja/README.md) | [简体中文](README.md)
 
 # Ry 语言文档
 

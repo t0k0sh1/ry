@@ -40,17 +40,17 @@ from filesystem import chmod, symlink, read_link
 ```python
 from filesystem import make_dir, make_dir_all, list_dir, remove_all
 
-# Create a single directory
+# 创建单个目录
 match make_dir("/tmp/myapp"):
   case Ok(_):
     print("created")
   case Err(e):
     print("error: " + e.message)
 
-# Create nested directories (like mkdir -p)
+# 创建嵌套目录（类似 mkdir -p）
 make_dir_all("/tmp/myapp/data/logs")
 
-# List directory contents
+# 列出目录内容
 match list_dir("/tmp/myapp"):
   case Ok(entries):
     for entry in entries:
@@ -58,7 +58,7 @@ match list_dir("/tmp/myapp"):
   case Err(e):
     print("error: " + e.message)
 
-# Remove a directory tree (like rm -rf)
+# 删除目录树（类似 rm -rf）
 remove_all("/tmp/myapp")
 ```
 
@@ -70,20 +70,20 @@ from io import write_text
 
 write_text("/tmp/hello.txt", "Hello, World!")
 
-# Copy a file
+# 复制文件
 copy("/tmp/hello.txt", "/tmp/hello_copy.txt")
 
-# Get file size
+# 获取文件大小
 match file_size("/tmp/hello.txt"):
   case Ok(sz):
     print("size: " + to_str(sz))
   case Err(e):
     print("error: " + e.message)
 
-# Move / rename a file
+# 移动/重命名文件
 move("/tmp/hello_copy.txt", "/tmp/renamed.txt")
 
-# Remove a file
+# 删除文件
 remove("/tmp/renamed.txt")
 ```
 
@@ -92,7 +92,7 @@ remove("/tmp/renamed.txt")
 ```python
 from filesystem import walk, glob_files
 
-# Walk a directory tree (like find)
+# 递归遍历目录树（类似 find）
 match walk("/var/log"):
   case Ok(files):
     for f in files:
@@ -100,7 +100,7 @@ match walk("/var/log"):
   case Err(e):
     print("error: " + e.message)
 
-# Glob pattern matching
+# Glob 模式匹配
 match glob_files("/var/log/*.log"):
   case Ok(matches):
     for m in matches:
@@ -129,10 +129,10 @@ if is_symlink("/usr/local/bin/python"):
 ```python
 from filesystem import symlink, read_link, is_symlink
 
-# Create a symlink
+# 创建符号链接
 symlink("/usr/local/bin/ry", "/tmp/ry_link")
 
-# Check and read symlink
+# 检查并读取符号链接
 if is_symlink("/tmp/ry_link"):
   match read_link("/tmp/ry_link"):
     case Ok(target):

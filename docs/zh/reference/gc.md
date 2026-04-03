@@ -41,12 +41,12 @@ from gc import collect, enable, disable, set_threshold
 ```python
 from gc import collect, disable, enable
 
-# Disable automatic collection for a performance-critical section
+# 在性能关键区段禁用自动回收
 disable()
 
-# ... performance-critical code ...
+# ... 性能关键代码 ...
 
-# Re-enable and force a collection
+# 重新启用并强制执行一次回收
 enable()
 collected = collect()
 print(f"Collected {collected} cyclic objects")

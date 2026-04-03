@@ -1,4 +1,4 @@
-[English](../../reference/structs.md) | [日本語](../../ja/reference/structs.md) | [繁體中文](structs.md)
+[English](../../reference/structs.md) | [日本語](../../ja/reference/structs.md) | [简体中文](structs.md)
 
 # 结构体参考
 

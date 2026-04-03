@@ -142,7 +142,7 @@ from model import create_task, add_task, complete_task, pending_tasks, print_tas
 
 tasks: List<Task> = []
 
-# Add some tasks
+# 添加一些任务
 tasks = add_task(tasks, "Buy groceries")
 tasks = add_task(tasks, "Write documentation")
 tasks = add_task(tasks, "Review pull request")
@@ -150,7 +150,7 @@ tasks = add_task(tasks, "Review pull request")
 print("All tasks:")
 print_tasks(tasks)
 
-# Complete a task
+# 完成一个任务
 match complete_task(tasks, 1):
     case Ok(updated):
         tasks = updated

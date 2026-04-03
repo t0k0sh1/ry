@@ -173,10 +173,11 @@ s = when:
     else => "no"  # "no"
 
 # ネストされた三項演算は複数のアームにフラット化される
+score = 85
 y = when:
-    true => 2
-    false => 1
-    else => 3     # 2
+    score >= 90 => 3
+    score >= 80 => 2
+    else => 1         # 2
 ```
 
 ---
