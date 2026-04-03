@@ -327,7 +327,11 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
     checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
     // Low-level type native-width comparison
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Enter when metadata or matching AST hints identify a low-level pair (#595)
+    bool cmpLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (cmpLowLevel) {
         if (isLowLevelFloatTy(lhs->getType())) {
             llvm::CmpInst::Predicate pred;
             if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
@@ -400,8 +404,11 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     if (isStringValue(lhs) || isStringValue(rhs))
         codegenError("type error: bitwise operator '" + op + "' not supported for str type");
     checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
-    // Low-level integer bitwise at native width
-    if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Low-level integer bitwise at native width (#595)
+    bool bwLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelIntTy(lhs) || isLowLevelIntTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint) && lhsHint != "f32"));
+    if (bwLowLevel) {
         std::string llName = getLowLevelTypeName(lhs);
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
         if (llName.empty()) llName = llNameHint;
@@ -438,8 +445,11 @@ llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, 
     // Low-level type mix check (must come first)
     checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
-    // Low-level type native-width arithmetic
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Low-level type native-width arithmetic (#595)
+    bool arithLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (arithLowLevel) {
         llvm::Type *ty = lhs->getType();
         if (op == "**")
             codegenError("operator '**' is not supported for low-level numeric types");
