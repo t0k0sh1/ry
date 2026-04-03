@@ -590,13 +590,14 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("a: i64 = 1\nb = a == 1"), std::runtime_error);
     // i64 bitwise with int → error (#595)
     EXPECT_THROW(runSource("a: i64 = 1\nb = a & 1"), std::runtime_error);
-    // i64 + i64 → ok (#595)
-    EXPECT_NO_THROW(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b"));
+    // i64 + i64 → ok, verify value and metadata propagation (#595)
+    EXPECT_EQ(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nprint(c as int)"), "3\n");
+    EXPECT_THROW(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nd = c + 1"), std::runtime_error);
     // int + int → ok (regression)
-    EXPECT_NO_THROW(runSource("a = 1\nb = 2\nc = a + b"));
+    EXPECT_EQ(runSource("a = 1\nb = 2\nc = a + b\nprint(c)"), "3\n");
     // unary minus with i64 suffix (#595)
-    EXPECT_NO_THROW(runSource("c = 1i64 + -1i64"));
-    EXPECT_NO_THROW(runSource("c = -1i64 + -1i64"));
+    EXPECT_EQ(runSource("c = 1i64 + -1i64\nprint(c as int)"), "0\n");
+    EXPECT_EQ(runSource("c = -1i64 + -1i64\nprint(c as int)"), "-2\n");
     EXPECT_THROW(runSource("c = -1i64 + 1"), std::runtime_error);
     EXPECT_THROW(runSource("c = 1 + -1i64"), std::runtime_error);
 }

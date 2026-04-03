@@ -510,7 +510,7 @@ private:
     bool isLowLevelTy(llvm::Type *ty) const;
     bool isLowLevelTy(llvm::Value *val) const;
     void checkLowLevelTypeMix(llvm::Value *lhs, llvm::Value *rhs, const std::string &op,
-                              const std::string &lhsHint = "", const std::string &rhsHint = "");
+                              const std::string &lhsHint, const std::string &rhsHint);
     llvm::Value *coerceToLowLevelType(llvm::Value *val, llvm::Type *targetTy,
                                        const std::string &typeName,
                                        const std::string &context,
