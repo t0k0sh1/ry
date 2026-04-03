@@ -19,6 +19,16 @@ describe("print Result", ():
     print(Err(Error("fail")))
     # expect-output: Err(Error: fail (code: 0))
   )
+
+  it("prints Ok(list)", ():
+    print(Ok([1, 2, 3]))
+    # expect-output: Ok([1, 2, 3])
+  )
+
+  it("prints Ok(map)", ():
+    print(Ok({"a": 1}))
+    # expect-output: Ok({a: 1})
+  )
 )
 
 describe("print Option", ():
@@ -36,6 +46,11 @@ describe("print Option", ():
     x: int? = none
     print(x)
     # expect-output: None
+  )
+
+  it("prints Some(list)", ():
+    print(Some([1, 2, 3]))
+    # expect-output: Some([1, 2, 3])
   )
 )
 
@@ -55,6 +70,10 @@ describe("to_str Result", ():
   it("works in f-string", ():
     r = Ok(99)
     expect(f"result: {r}").to_eq("result: Ok(99)")
+  )
+
+  it("converts Ok(list) to string", ():
+    expect(to_str(Ok([1, 2, 3]))).to_eq("Ok([1, 2, 3])")
   )
 )
 

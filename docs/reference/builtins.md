@@ -153,7 +153,7 @@ Prints one or more values to standard output, separated by spaces. A newline is 
 | `bool` | `true` / `false` |
 | `str` | `%s` |
 | `Result` (Ok) | `Ok(value)` |
-| `Result` (Err) | `Err(Error: msg (code: N))` |
+| `Result` (Err) | `Err(value)` |
 | `Option` (Some) | `Some(value)` |
 | `Option` (None) | `None` |
 | `list` | `[elem1, elem2, ...]` |
