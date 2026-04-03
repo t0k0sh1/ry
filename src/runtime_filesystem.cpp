@@ -198,9 +198,10 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         ssize_t remaining = n;
         while (remaining > 0) {
             ssize_t written = write(dst_fd, p, remaining);
-            if (written < 0) {
-                if (errno == EINTR) continue;
-                setLastError("copy: write error to '%s': %s", dst, strerror(errno));
+            if (written <= 0) {
+                if (written < 0 && errno == EINTR) continue;
+                setLastError("copy: write error to '%s': %s", dst,
+                             written == 0 ? "write returned 0" : strerror(errno));
                 close(src_fd);
                 close(dst_fd);
                 return 1;
