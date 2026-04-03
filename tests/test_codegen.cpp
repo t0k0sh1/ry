@@ -568,6 +568,38 @@ TEST_F(CodeGenTest, LowLevelMixedTypeError) {
     EXPECT_THROW(runSource("a: i32 = 10\nb: f32 = 2.0\nc = a + b"), std::runtime_error);
     // ** on low-level types → error
     EXPECT_THROW(runSource("a: i32 = 2\nb: i32 = 3\nc = a ** b"), std::runtime_error);
+    // i64 + int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = 2\nc = a + b"), std::runtime_error);
+    // int + i64 → error (#595)
+    EXPECT_THROW(runSource("a = 1\nb: i64 = 2\nc = a + b"), std::runtime_error);
+    // u64 + int → error (#595)
+    EXPECT_THROW(runSource("a: u64 = 1\nb = 2\nc = a + b"), std::runtime_error);
+    // i64 += int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\na += 1"), std::runtime_error);
+    // int += i64 → error (#595)
+    EXPECT_THROW(runSource("a = 1\na += 1i64"), std::runtime_error);
+    // u64 += int → error (#595)
+    EXPECT_THROW(runSource("a: u64 = 1\na += 1"), std::runtime_error);
+    // i64 literal + int literal → error (#595)
+    EXPECT_THROW(runSource("c = 1i64 + 1"), std::runtime_error);
+    // int literal + i64 literal → error (#595)
+    EXPECT_THROW(runSource("c = 1 + 1i64"), std::runtime_error);
+    // i64 + u64 → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb: u64 = 1\nc = a + b"), std::runtime_error);
+    // i64 comparison with int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = a == 1"), std::runtime_error);
+    // i64 bitwise with int → error (#595)
+    EXPECT_THROW(runSource("a: i64 = 1\nb = a & 1"), std::runtime_error);
+    // i64 + i64 → ok, verify value and metadata propagation (#595)
+    EXPECT_EQ(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nprint(c as int)"), "3\n");
+    EXPECT_THROW(runSource("a: i64 = 1\nb: i64 = 2\nc = a + b\nd = c + 1"), std::runtime_error);
+    // int + int → ok (regression)
+    EXPECT_EQ(runSource("a = 1\nb = 2\nc = a + b\nprint(c)"), "3\n");
+    // unary minus with i64 suffix (#595)
+    EXPECT_EQ(runSource("c = 1i64 + -1i64\nprint(c as int)"), "0\n");
+    EXPECT_EQ(runSource("c = -1i64 + -1i64\nprint(c as int)"), "-2\n");
+    EXPECT_THROW(runSource("c = -1i64 + 1"), std::runtime_error);
+    EXPECT_THROW(runSource("c = 1 + -1i64"), std::runtime_error);
 }
 
 // ===== Numeric literal suffix =====
