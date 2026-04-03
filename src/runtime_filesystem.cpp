@@ -163,7 +163,9 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
     return 0;
 #else
     // Open source first, then fstat on the fd to avoid TOCTOU race.
-    int src_fd = open(src, O_RDONLY | O_NOFOLLOW);
+    // O_NOFOLLOW is intentionally omitted so that symlinks are dereferenced
+    // (copying the target content), matching the behavior of cp(1).
+    int src_fd = open(src, O_RDONLY);
     if (src_fd < 0) {
         setLastError("copy: cannot open source '%s': %s", src, strerror(errno));
         return 1;
@@ -182,12 +184,22 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
     }
     char buf[65536];
     ssize_t n;
-    while ((n = read(src_fd, buf, sizeof(buf))) > 0) {
+    for (;;) {
+        n = read(src_fd, buf, sizeof(buf));
+        if (n == 0) break;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            setLastError("copy: read error from '%s': %s", src, strerror(errno));
+            close(src_fd);
+            close(dst_fd);
+            return 1;
+        }
         const char *p = buf;
         ssize_t remaining = n;
         while (remaining > 0) {
             ssize_t written = write(dst_fd, p, remaining);
             if (written < 0) {
+                if (errno == EINTR) continue;
                 setLastError("copy: write error to '%s': %s", dst, strerror(errno));
                 close(src_fd);
                 close(dst_fd);
@@ -197,14 +209,11 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
             remaining -= written;
         }
     }
-    if (n < 0) {
-        setLastError("copy: read error from '%s': %s", src, strerror(errno));
-        close(src_fd);
-        close(dst_fd);
-        return 1;
+    // Preserve source file permissions via fd (no TOCTOU).
+    // Failure is non-fatal (best-effort permission preservation).
+    if (fchmod(dst_fd, src_st.st_mode & 07777) != 0) {
+        // Silently ignore — permissions may not be preserved on some filesystems
     }
-    // Preserve source file permissions via fd (no TOCTOU)
-    fchmod(dst_fd, src_st.st_mode & 07777);
     close(src_fd);
     close(dst_fd);
     return 0;
@@ -236,8 +245,19 @@ int64_t __ry_filesystem_remove_all(const char *path) {
     // Try unlink first (handles files and symlinks without TOCTOU).
     // If it fails because the path is a directory, fall through to nftw.
     if (unlink(path) == 0) return 0;
-    if (errno != EISDIR && errno != EPERM) {
-        setLastError("remove_all: failed to remove '%s': %s", path, strerror(errno));
+    int unlinkErr = errno;
+    if (unlinkErr == EISDIR) {
+        // Definitely a directory — remove recursively
+    } else if (unlinkErr == EPERM) {
+        // EPERM can mean directory (Linux) or permission denied (sticky bit).
+        // Disambiguate with lstat.
+        struct stat st;
+        if (lstat(path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+            setLastError("remove_all: failed to remove '%s': %s", path, strerror(unlinkErr));
+            return 1;
+        }
+    } else {
+        setLastError("remove_all: failed to remove '%s': %s", path, strerror(unlinkErr));
         return 1;
     }
     // Path is a directory — remove recursively
