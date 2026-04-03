@@ -30,6 +30,11 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e) {
         if (!isResultType(info.returnType))
             codegenError("and_then() closure must return a Result type");
         outResTy = llvm::cast<llvm::StructType>(info.returnType);
+        // Verify error type compatibility (source Err must match closure Result Err)
+        llvm::Type *srcErrTy = srcResTy->getElementType(2);
+        llvm::Type *outErrTy = outResTy->getElementType(2);
+        if (srcErrTy != outErrTy)
+            codegenError("and_then() error type mismatch: source and closure Result must have the same error type");
     } else {
         llvm::Type *errTy = srcResTy->getElementType(2);
         outResTy = getResultType(info.returnType, errTy);
@@ -38,15 +43,23 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e) {
     llvm::Value *isOk = builder_.CreateExtractValue(resultVal, 0, "is_ok");
     llvm::Value *isErr = builder_.CreateNot(isOk, "is_err");
 
-    return emitResultBranch(isErr, outResTy,
+    llvm::Value *okIncoming = nullptr;
+    llvm::Value *mergedResult = emitResultBranch(isErr, outResTy,
         [&]() {
             llvm::Value *okVal = builder_.CreateExtractValue(resultVal, 1, "ok_val");
             llvm::Value *result = emitLambdaCall(lambdaVal, info, {okVal},
                                                   isAndThen ? "and_then" : "mapped");
-            return isAndThen ? result : buildOkValue(result, outResTy);
+            okIncoming = isAndThen ? result : buildOkValue(result, outResTy);
+            return okIncoming;
         },
         [&]() {
             llvm::Value *errVal = builder_.CreateExtractValue(resultVal, 2, "err_val");
             return buildErrValue(errVal, outResTy);
         });
+
+    // Propagate collection/resource metadata through the branch PHI node
+    if (okIncoming)
+        propagateAllMetadata(okIncoming, mergedResult);
+
+    return mergedResult;
 }
