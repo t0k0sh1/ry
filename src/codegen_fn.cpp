@@ -97,11 +97,7 @@ void CodeGen::emitStmt(ReturnStmt &s) {
 
             // Propagate fn_type_info for function-type return values
             {
-                auto fnIt = fn_type_info_.find(val);
-                if (fnIt == fn_type_info_.end()) {
-                    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                        fnIt = fn_type_info_.find(load->getPointerOperand());
-                }
+                auto fnIt = lookupFnTypeInfo(val);
                 if (fnIt != fn_type_info_.end())
                     return_fn_type_info_[fn_] = fnIt->second;
             }

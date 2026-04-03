@@ -276,6 +276,8 @@ private:
         std::unordered_map<size_t, FnTypeInfo> capturedClosureInfos; // sparse: index → FnTypeInfo for function-typed captures
     };
     std::unordered_map<llvm::Value*, FnTypeInfo> fn_type_info_;
+    std::unordered_map<llvm::Value*, FnTypeInfo>::iterator
+    lookupFnTypeInfo(llvm::Value *val);
     std::unordered_map<llvm::Function*, FnTypeInfo> return_fn_type_info_;
     llvm::FunctionCallee getOrCreateClosureDestructor(const FnTypeInfo &info);
     // Nested closure shape for cache key differentiation

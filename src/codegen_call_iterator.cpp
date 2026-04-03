@@ -298,11 +298,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         if (!elemTy) return nullptr;
 
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("filter() on iterator requires a predicate function");
         auto &info = fnIt->second;
@@ -381,11 +377,7 @@ llvm::Value *CodeGen::emitBuiltinIterator(const CallExpr &e) {
         if (!elemTy) return nullptr;
 
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("map() on iterator requires a transform function");
         auto &info = fnIt->second;

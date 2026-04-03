@@ -198,12 +198,7 @@ llvm::Value *CodeGen::emitBuiltinThread(const CallExpr &e) {
             llvm::FunctionCallee mallocFn = getStdlibMalloc();
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
-            // fn_type_info_ may be keyed on the alloca, not the loaded value
-            auto fnInfoIt = fn_type_info_.find(fnVal);
-            if (fnInfoIt == fn_type_info_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(fnVal))
-                    fnInfoIt = fn_type_info_.find(load->getPointerOperand());
-            }
+            auto fnInfoIt = lookupFnTypeInfo(fnVal);
             bool hasCaps = fnInfoIt != fn_type_info_.end() && !fnInfoIt->second.capturedVars.empty();
 
             llvm::FunctionType *thunkTy = llvm::FunctionType::get(

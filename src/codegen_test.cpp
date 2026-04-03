@@ -485,12 +485,7 @@ void CodeGen::emitMockCall(CallStmt &s) {
     // Emit the replacement lambda
     llvm::Value *replacement = emitExpr(*s.args[1]);
 
-    // Look up function type info, supporting variables (LoadInst) that hold the function
-    llvm::Value *fnInfoKey = replacement;
-    if (auto *load = llvm::dyn_cast<llvm::LoadInst>(replacement))
-        fnInfoKey = load->getPointerOperand();
-
-    auto fnInfoIt = fn_type_info_.find(fnInfoKey);
+    auto fnInfoIt = lookupFnTypeInfo(replacement);
     if (fnInfoIt == fn_type_info_.end())
         codegenError("mock(): second argument must be a non-capturing lambda or function reference");
 

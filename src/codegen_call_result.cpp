@@ -14,11 +14,7 @@ llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e) {
         return nullptr;
 
     llvm::Value *lambdaVal = emitExpr(*e.args[1]);
-    auto fnIt = fn_type_info_.find(lambdaVal);
-    if (fnIt == fn_type_info_.end()) {
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-            fnIt = fn_type_info_.find(load->getPointerOperand());
-    }
+    auto fnIt = lookupFnTypeInfo(lambdaVal);
     if (fnIt == fn_type_info_.end())
         codegenError(e.callee + "() on Result requires a function as second argument");
     auto &info = fnIt->second;
