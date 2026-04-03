@@ -161,7 +161,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<UnaryExpr> &e) {
         if (val->getType() == i64Ty_ && !isLowLevel)
             return emitIntOverflowCheck(llvm::Intrinsic::ssub_with_overflow,
                                          llvm::ConstantInt::get(i64Ty_, 0), val, "neg");
-        return builder_.CreateNeg(val, "neg");
+        llvm::Value *neg = builder_.CreateNeg(val, "neg");
+        // Propagate low-level metadata through unary negation (#595)
+        std::string llName = getLowLevelTypeName(val);
+        if (llName.empty()) {
+            if (auto *ne = std::get_if<NumberExpr>(&e->operand->data))
+                if (isLowLevelTypeName(ne->suffix)) llName = ne->suffix;
+        }
+        if (!llName.empty()) low_level_type_names_[neg] = llName;
+        return neg;
     }
     if (e->op == "not") {
         llvm::Value *boolVal = toBool(val);
@@ -247,7 +255,8 @@ llvm::Value *CodeGen::tryCallOperator(const std::string &callee,
 // ===== B2: BinaryExpr sub-dispatchers =====
 
 llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                        const std::string &llNameHint) {
+                                        const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     // Option type comparison with none: check has_value flag only
     // Only allowed when at least one side is Option and both sides are Option
     // (none is also an Option value with has_value=false)
@@ -315,10 +324,14 @@ llvm::Value *CodeGen::emitComparisonOp(const std::string &op, llvm::Value *lhs, 
         codegenError("type error: operator '" + op + "' not supported between str and non-str types");
 
     // Low-level type mix check
-    checkLowLevelTypeMix(lhs, rhs, op);
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
     // Low-level type native-width comparison
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Enter when metadata or matching AST hints identify a low-level pair (#595)
+    bool cmpLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (cmpLowLevel) {
         if (isLowLevelFloatTy(lhs->getType())) {
             llvm::CmpInst::Predicate pred;
             if      (op == "==") pred = llvm::CmpInst::FCMP_OEQ;
@@ -381,7 +394,8 @@ llvm::Value *CodeGen::emitStructComparison(const std::string &op, llvm::Value *l
 }
 
 llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                     const std::string &llNameHint) {
+                                     const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     if (lhs->getType()->isDoubleTy() || rhs->getType()->isDoubleTy() ||
         isLowLevelFloatTy(lhs->getType()) || isLowLevelFloatTy(rhs->getType()))
         codegenError(
@@ -389,9 +403,12 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
     // Reject str operands
     if (isStringValue(lhs) || isStringValue(rhs))
         codegenError("type error: bitwise operator '" + op + "' not supported for str type");
-    checkLowLevelTypeMix(lhs, rhs, op);
-    // Low-level integer bitwise at native width
-    if (isLowLevelIntTy(lhs) && lhs->getType() == rhs->getType()) {
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
+    // Low-level integer bitwise at native width (#595)
+    bool bwLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelIntTy(lhs) || isLowLevelIntTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint) && lhsHint != "f32"));
+    if (bwLowLevel) {
         std::string llName = getLowLevelTypeName(lhs);
         if (llName.empty()) llName = getLowLevelTypeName(rhs);
         if (llName.empty()) llName = llNameHint;
@@ -423,12 +440,16 @@ llvm::Value *CodeGen::emitBitwiseOp(const std::string &op, llvm::Value *lhs, llv
 }
 
 llvm::Value *CodeGen::emitArithmeticOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                        const std::string &llNameHint) {
+                                        const std::string &lhsHint, const std::string &rhsHint) {
+    const std::string &llNameHint = !lhsHint.empty() ? lhsHint : rhsHint;
     // Low-level type mix check (must come first)
-    checkLowLevelTypeMix(lhs, rhs, op);
+    checkLowLevelTypeMix(lhs, rhs, op, lhsHint, rhsHint);
 
-    // Low-level type native-width arithmetic
-    if (isLowLevelTy(lhs) && lhs->getType() == rhs->getType()) {
+    // Low-level type native-width arithmetic (#595)
+    bool arithLowLevel = lhs->getType() == rhs->getType() &&
+        ((isLowLevelTy(lhs) || isLowLevelTy(rhs)) ||
+         (!lhsHint.empty() && lhsHint == rhsHint && isLowLevelTypeName(lhsHint)));
+    if (arithLowLevel) {
         llvm::Type *ty = lhs->getType();
         if (op == "**")
             codegenError("operator '**' is not supported for low-level numeric types");
@@ -816,15 +837,15 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<BinaryExpr> &e) {
     llvm::Value *rhs = emitExpr(*e->rhs);
     const std::string &op = e->op;
 
-    // Compute low-level type name hint from AST suffixes for constant operands (#311).
-    std::string llHint = getExprLowLevelSuffix(*e->lhs);
-    if (llHint.empty()) llHint = getExprLowLevelSuffix(*e->rhs);
+    // Per-operand low-level type hints from AST suffixes (#311, #595).
+    std::string lhsHint = getExprLowLevelSuffix(*e->lhs);
+    std::string rhsHint = getExprLowLevelSuffix(*e->rhs);
 
-    return emitBinaryOp(op, lhs, rhs, llHint);
+    return emitBinaryOp(op, lhs, rhs, lhsHint, rhsHint);
 }
 
 llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm::Value *rhs,
-                                    const std::string &llNameHint) {
+                                    const std::string &lhsHint, const std::string &rhsHint) {
     // Try user-defined binary operator first
     std::string opFnName = "operator" + op;
     if (auto *result = tryOperatorCall(opFnName, lhs, rhs))
@@ -839,13 +860,13 @@ llvm::Value *CodeGen::emitBinaryOp(const std::string &op, llvm::Value *lhs, llvm
 
     if (op == "==" || op == "!=" || op == "<" ||
         op == "<=" || op == ">"  || op == ">=")
-        return emitComparisonOp(op, lhs, rhs, llNameHint);
+        return emitComparisonOp(op, lhs, rhs, lhsHint, rhsHint);
 
     if (op == "&" || op == "|" || op == "^" ||
         op == "<<" || op == ">>" || op == ">>>")
-        return emitBitwiseOp(op, lhs, rhs, llNameHint);
+        return emitBitwiseOp(op, lhs, rhs, lhsHint, rhsHint);
 
-    return emitArithmeticOp(op, lhs, rhs, llNameHint);
+    return emitArithmeticOp(op, lhs, rhs, lhsHint, rhsHint);
 }
 
 llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<WhenCondExpr> &e) {
