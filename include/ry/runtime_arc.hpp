@@ -5,6 +5,8 @@
 
 // ARC header layout: { int64_t strong_count, int64_t weak_count }
 // This must match the layout in codegen (ARC_HEADER_SIZE = 16).
+// ARC is used for: strings, collection headers (List/Set/Map), closures,
+// resources (TCP, HTTP, JSON, etc.), and enum/record payloads.
 static constexpr size_t ARC_HEADER_SIZE = 16;
 static constexpr int64_t ARC_IMMORTAL = INT64_MAX;
 

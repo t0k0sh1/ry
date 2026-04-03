@@ -33,9 +33,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             // Allocate SetHeader with ARC
-            uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
-            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(setHeaderTy_);
 
             // Initial capacity = 4
             auto mallocFn = getStdlibMalloc();
@@ -63,9 +61,7 @@ void CodeGen::emitVarDecl(const std::string &name,
             const llvm::DataLayout &dl = mod_->getDataLayout();
 
             // Allocate MapHeader with ARC
-            uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
-            auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-            llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+            llvm::Value *headerPtr = emitArcAllocCollectionHeader(mapHeaderTy_);
 
             auto mallocFn = getStdlibMalloc();
             uint64_t keySize = dl.getTypeAllocSize(keyTy);
@@ -107,9 +103,7 @@ void CodeGen::emitVarDecl(const std::string &name,
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
 
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        auto *arcHdr = emitArcAlloc(llvm::ConstantInt::get(i64Ty_, headerSize));
-        llvm::Value *headerPtr = emitArcGetDataPtr(arcHdr);
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         auto mallocFn = getStdlibMalloc();
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
@@ -504,7 +498,23 @@ void CodeGen::emitVarDecl(const std::string &name,
 void CodeGen::emitStmt(ExprStmt &s) {
     if (s.loc.isValid()) current_loc_ = s.loc;
     emitCoverage(s.loc);
-    emitExpr(*s.expr);
+    llvm::Value *val = emitExpr(*s.expr);
+
+    // Release ARC-owned temporaries that are not stored into a variable.
+    // Without this, collection operation results (appended, slice, etc.)
+    // and other ARC-owned values would leak when used as bare statements.
+    if (val && val->getType() == ptrTy_ && arc_owned_values_.count(val)) {
+        auto *hdr = emitArcGetHeaderFromData(val);
+        llvm::FunctionCallee dtor = {};
+        if (type_meta_[TM_ListElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::List);
+        else if (type_meta_[TM_MapKey].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Map);
+        else if (type_meta_[TM_SetElem].count(val))
+            dtor = getOrCreateCollectionDestructor(CollectionKind::Set);
+        emitArcRelease(hdr, false, dtor);
+        arc_owned_values_.erase(val);
+    }
 }
 
 void CodeGen::emitStmt(AssignStmt &s) {

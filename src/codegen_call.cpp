@@ -66,8 +66,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "keys_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(keyTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "keys_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "keys_nd");
@@ -92,8 +91,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
 
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "vals_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(valTy);
         llvm::Value *dataSize = builder_.CreateMul(mapLen, llvm::ConstantInt::get(i64Ty_, elemSize), "vals_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "vals_nd");
@@ -205,8 +203,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {i64Ty_, elemTy});
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "enum_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
         llvm::Value *dataSize = builder_.CreateMul(srcLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "enum_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "enum_nd");
@@ -258,8 +255,7 @@ llvm::Value *CodeGen::emitBuiltinQuery(const CallExpr &e) {
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {elemTy1, elemTy2});
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "zip_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
         llvm::Value *dataSize = builder_.CreateMul(minLen, llvm::ConstantInt::get(i64Ty_, tupleSize), "zip_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "zip_nd");
@@ -320,9 +316,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Allocate list header
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *headerPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "args_header");
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array (ptr per element)
         uint64_t elemSize = dl.getTypeAllocSize(ptrTy_);
@@ -536,9 +530,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         // Allocate list header
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-        llvm::Value *headerPtr = builder_.CreateCall(
-            mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "range_header");
+        llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
         // Allocate data array
         uint64_t elemSize = dl.getTypeAllocSize(i64Ty_);

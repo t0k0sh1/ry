@@ -667,14 +667,13 @@ llvm::Value *CodeGen::emitStrOp_reverse(const CallExpr &e) {
     if (elemTy) {
         auto mallocFn = getStdlibMalloc();
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
         auto lf = loadListHeader(arg, "rev");
         llvm::Value *len = lf.len;
         llvm::Value *srcData = lf.data;
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "rev_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(len, llvm::ConstantInt::get(i64Ty_, elemSize), "rev_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "rev_data");
 
@@ -830,9 +829,7 @@ llvm::Value *CodeGen::emitStrOp_split(const CallExpr &e) {
     llvm::Value *elemCount = builder_.CreateAdd(delimCount, llvm::ConstantInt::get(i64Ty_, 1), "split_elem_count");
 
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
-    llvm::Value *headerPtr = builder_.CreateCall(
-        mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "split_header");
+    llvm::Value *headerPtr = emitArcAllocCollectionHeader(listHeaderTy_);
 
     uint64_t ptrSize = dl.getTypeAllocSize(ptrTy_);
     llvm::Value *dataSize = builder_.CreateMul(elemCount, llvm::ConstantInt::get(i64Ty_, ptrSize), "split_data_size");

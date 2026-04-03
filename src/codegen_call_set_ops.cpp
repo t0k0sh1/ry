@@ -76,13 +76,12 @@ llvm::Value *CodeGen::emitSetOp_union(const CallExpr &e) {
         auto sf2 = loadSetHeader(set2, "u2");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
         // Allocate max possible size (len1 + len2)
         llvm::Value *maxLen = builder_.CreateAdd(sf1.len, sf2.len, "u_max_len");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "u_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(maxLen, llvm::ConstantInt::get(i64Ty_, elemSize), "u_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "u_data");
 
@@ -173,11 +172,10 @@ llvm::Value *CodeGen::emitSetOp_intersection(const CallExpr &e) {
         auto sf = loadSetHeader(set1, "is");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "is_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(sf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "is_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "is_data");
 
@@ -236,11 +234,10 @@ llvm::Value *CodeGen::emitSetOp_difference(const CallExpr &e) {
         auto sf = loadSetHeader(set1, "df");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "df_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(sf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "df_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "df_data");
 
@@ -300,12 +297,11 @@ llvm::Value *CodeGen::emitSetOp_symmetric_difference(const CallExpr &e) {
         auto sf2 = loadSetHeader(set2, "sd2");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(setHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
 
         llvm::Value *maxLen = builder_.CreateAdd(sf1.len, sf2.len, "sd_max_len");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sd_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(setHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(maxLen, llvm::ConstantInt::get(i64Ty_, elemSize), "sd_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sd_data");
 

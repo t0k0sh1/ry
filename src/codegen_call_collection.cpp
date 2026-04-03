@@ -411,7 +411,6 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
             codegenError("appended() element type mismatch");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -419,7 +418,7 @@ llvm::Value *CodeGen::emitCollOp_appended(const CallExpr &e) {
         auto lf = loadListHeader(listPtr, "apd");
         llvm::Value *newLen = builder_.CreateAdd(lf.len, llvm::ConstantInt::get(i64Ty_, 1), "apd_new_len");
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "apd_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *newDataSize = builder_.CreateMul(newLen, llvm::ConstantInt::get(i64Ty_, elemSize), "apd_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {newDataSize}, "apd_nd");
 
@@ -487,7 +486,6 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
         llvm::Value *endVal = emitExpr(*e.args[2]);
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -511,7 +509,7 @@ llvm::Value *CodeGen::emitCollOp_slice(const CallExpr &e) {
             builder_.CreateICmpSGT(diff, zero), diff, zero, "sl_count");
 
         // Allocate new list
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "sl_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(count, llvm::ConstantInt::get(i64Ty_, elemSize), "sl_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "sl_data");
 
@@ -540,7 +538,6 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
         llvm::Value *nVal = emitExpr(*e.args[1]);
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t elemSize = dl.getTypeAllocSize(elemTy);
         auto mallocFn = getStdlibMalloc();
         auto memcpyFn = getStdlibMemcpy();
@@ -555,7 +552,7 @@ llvm::Value *CodeGen::emitCollOp_take_impl(const CallExpr &e,
             builder_.CreateICmpSGT(clampedN, lf.len), lf.len, clampedN, "tk_cn2");
 
         // Allocate new list
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "tk_header");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(clampedN, llvm::ConstantInt::get(i64Ty_, elemSize), "tk_dsize");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "tk_data");
 
@@ -723,10 +720,9 @@ llvm::Value *CodeGen::emitCollOp_distinct(const CallExpr &e) {
     // Allocate new list (capacity = source length)
     auto mallocFn = getStdlibMalloc();
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t elemSize = dl.getTypeAllocSize(elemTy);
 
-    llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "dist_header");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(lf.len, llvm::ConstantInt::get(i64Ty_, elemSize), "dist_data_size");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "dist_data");
 
@@ -845,7 +841,6 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
         codegenError("flatten() cannot determine inner list element type; use a list literal (e.g. [[1, 2], [3, 4]])");
 
     const llvm::DataLayout &dl = mod_->getDataLayout();
-    uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
     uint64_t innerElemSize = dl.getTypeAllocSize(innerElemTy);
 
     auto mallocFn = getStdlibMalloc();
@@ -882,7 +877,7 @@ llvm::Value *CodeGen::emitCollOp_flatten(const CallExpr &e) {
 
     // Allocate new list
     llvm::Value *total = builder_.CreateLoad(i64Ty_, totalLen, "flat_total_len");
-    llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "flat_hdr");
+    llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
     llvm::Value *dataSize = builder_.CreateMul(total, llvm::ConstantInt::get(i64Ty_, innerElemSize), "flat_ds");
     llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "flat_data");
 
@@ -935,12 +930,11 @@ llvm::Value *CodeGen::emitCollOp_items(const CallExpr &e) {
 
         llvm::StructType *tupleTy = llvm::StructType::get(*ctx_, {keyTy, valTy});
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(listHeaderTy_);
         uint64_t tupleSize = dl.getTypeAllocSize(tupleTy);
 
         auto mallocFn = getStdlibMalloc();
 
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "items_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(listHeaderTy_);
         llvm::Value *dataSize = builder_.CreateMul(mf.len, llvm::ConstantInt::get(i64Ty_, tupleSize), "items_ds");
         llvm::Value *newData = builder_.CreateCall(mallocFn, {dataSize}, "items_data");
 
@@ -1075,7 +1069,6 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
             codegenError("merge() requires two maps with the same key and value types");
 
         const llvm::DataLayout &dl = mod_->getDataLayout();
-        uint64_t headerSize = dl.getTypeAllocSize(mapHeaderTy_);
         uint64_t keySize = dl.getTypeAllocSize(keyTy);
         uint64_t valSize = dl.getTypeAllocSize(valTy);
 
@@ -1087,7 +1080,7 @@ llvm::Value *CodeGen::emitCollOp_merge(const CallExpr &e) {
 
         // Allocate new map with capacity = len1 + len2
         llvm::Value *maxCap = builder_.CreateAdd(mf1.len, mf2.len, "mg_max_cap");
-        llvm::Value *newHeader = builder_.CreateCall(mallocFn, {llvm::ConstantInt::get(i64Ty_, headerSize)}, "mg_hdr");
+        llvm::Value *newHeader = emitArcAllocCollectionHeader(mapHeaderTy_);
         llvm::Value *newKeysSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, keySize), "mg_ks");
         llvm::Value *newKeys = builder_.CreateCall(mallocFn, {newKeysSize}, "mg_keys");
         llvm::Value *newValsSize = builder_.CreateMul(maxCap, llvm::ConstantInt::get(i64Ty_, valSize), "mg_vs");
