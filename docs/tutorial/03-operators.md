@@ -14,7 +14,7 @@
 | `-` | Subtraction | `3 - 2` | `1` |
 | `*` | Multiplication / string repetition | `3 * 2` | `6` |
 | `/` | Division (always float) | `7 / 2` | `3.5` |
-| `//` | Floor division (always int) | `7 // 2` | `3` |
+| `//` | Floor division (int if both int, float if either is float) | `7 // 2` | `3` |
 | `%` | Modulo | `7 % 3` | `1` |
 | `**` | Exponentiation (always float) | `2 ** 10` | `1024` |
 
@@ -28,7 +28,7 @@ print(a * b)    # 30
 print(a / b)    # 3.3333... (float)
 print(a // b)   # 3 (int)
 print(a % b)    # 1
-print(2 ** 8)   # 256
+print(2 ** 8)   # 256 (float)
 ```
 
 > **Overflow safety:** Arithmetic on `int` (`+`, `-`, `*`, unary `-`) raises a runtime error if the result overflows the 64-bit signed range. Constant expressions that overflow are caught at compile time. Low-level types (`i32`, `u8`, etc.) wrap silently — use `checked_add`/`saturating_add`/`wrapping_add` for explicit overflow control.
@@ -180,12 +180,12 @@ print(1.0 + 2)    # 3 (float)
 # / always produces float
 print(4 / 2)      # 2 (float)
 
-# // always produces int
+# // produces int if both int, float if either is float
 print(7 // 2)     # 3 (int)
-print(7.0 // 2)   # 3 (int)
+print(7.0 // 2)   # 3 (float)
 
-# ** produces int for int operands
-print(2 ** 3)     # 8
+# ** always produces float
+print(2 ** 3)     # 8 (float)
 
 # % produces int if both operands are int, float if either is float
 print(7 % 3)      # 1 (int)
