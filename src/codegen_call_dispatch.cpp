@@ -84,6 +84,16 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         return builder_.CreateCall(getCountFn, {nameStr}, "call_count");
     }
 
+    // Fast path: pre-emit args[0] once for callee names shared by multiple
+    // dispatchers, then route through the same try-chain order to avoid
+    // emitting dead IR from earlier dispatchers that don't match the type.
+    if (e->args.size() >= 2 && (e->callee == "map" || e->callee == "filter")) {
+        llvm::Value *arg0 = emitExpr(*e->args[0]);
+        if (auto *v = emitBuiltinResult(*e, arg0))      return v;
+        if (auto *v = emitBuiltinIterator(*e, arg0))    return v;
+        if (auto *v = emitBuiltinHigherOrder(*e, arg0)) return v;
+    }
+
     // Dispatch to language-builtin helpers (Pattern B: no @native registry)
     if (auto *v = emitBuiltinResult(*e))      return v;
     if (auto *v = emitBuiltinIterator(*e))    return v;

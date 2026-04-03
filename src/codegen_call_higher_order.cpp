@@ -4,12 +4,12 @@
 
 // ===== Builtin Higher-Order =====
 
-llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0) {
     // filter(list, predicate) → new list with elements matching predicate
     if (e.callee == "filter") {
         requireArgs(e, 2);
 
-        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *listVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);
@@ -107,7 +107,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e) {
     if (e.callee == "map") {
         requireArgs(e, 2);
 
-        llvm::Value *listVal = emitExpr(*e.args[0]);
+        llvm::Value *listVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
 
         llvm::Type *elemTy = getListElementType(listVal);

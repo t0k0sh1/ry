@@ -3,13 +3,13 @@
 
 // ===== Builtin Result Methods (and_then, map) =====
 
-llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e) {
+llvm::Value *CodeGen::emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0) {
     if (e.args.size() != 2) return nullptr;
     bool isAndThen = (e.callee == "and_then");
     bool isMap     = (e.callee == "map");
     if (!isAndThen && !isMap) return nullptr;
 
-    llvm::Value *resultVal = emitExpr(*e.args[0]);
+    llvm::Value *resultVal = preEmittedArg0 ? preEmittedArg0 : emitExpr(*e.args[0]);
     if (!isResultType(resultVal->getType()))
         return nullptr;
 

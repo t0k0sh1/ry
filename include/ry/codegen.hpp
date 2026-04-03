@@ -816,7 +816,7 @@ private:
     llvm::Value *emitStrOp_split(const CallExpr &e);
     llvm::Value *emitStrOp_join(const CallExpr &e);
 
-    llvm::Value *emitBuiltinHigherOrder(const CallExpr &e);
+    llvm::Value *emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Value *emitSortCore(llvm::Value *listVal, const std::vector<ExprPtr> &args, const std::string &callee);
     llvm::Value *emitBuiltinQuery(const CallExpr &e);
     llvm::Value *emitBuiltinSetOps(const CallExpr &e);
@@ -880,8 +880,8 @@ private:
 
     llvm::Value *emitPtrToResult(llvm::Value *ptr, const std::string &name,
                                  const std::string &errMsg, ResourceKind rk);
-    llvm::Value *emitBuiltinResult(const CallExpr &e);
-    llvm::Value *emitBuiltinIterator(const CallExpr &e);
+    llvm::Value *emitBuiltinResult(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
+    llvm::Value *emitBuiltinIterator(const CallExpr &e, llvm::Value *preEmittedArg0 = nullptr);
     llvm::Type *getIteratorElementType(llvm::Value *iterVal);
     void emitBucketInit(llvm::Value *headerPtr, llvm::StructType *headerTy,
                         unsigned bucketCountIdx, unsigned bucketsPtrIdx,
