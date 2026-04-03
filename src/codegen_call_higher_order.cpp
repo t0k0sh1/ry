@@ -16,12 +16,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("filter() requires a list as first argument");
 
-        // Get lambda type info (handle LoadInst for variable-passed functions)
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("filter() requires a function as second argument");
         auto &info = fnIt->second;
@@ -114,11 +109,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("map() requires a list as first argument");
 
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("map() requires a function as second argument");
         auto &info = fnIt->second;
@@ -230,10 +221,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("reduce() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("reduce() requires a function");
         auto &info = fnIt->second;
@@ -285,10 +273,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[2]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("fold() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("fold() requires a function");
         auto &info = fnIt->second;
@@ -332,10 +317,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("any() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("any() requires a function");
         auto &info = fnIt->second;
@@ -381,10 +363,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         llvm::Value *lambdaVal = emitExpr(*e.args[1]);
         llvm::Type *elemTy = getListElementType(listVal);
         if (!elemTy) codegenError("all() requires a list");
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end())
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("all() requires a function");
         auto &info = fnIt->second;
@@ -539,11 +518,7 @@ llvm::Value *CodeGen::emitBuiltinHigherOrder(const CallExpr &e, llvm::Value *pre
         if (!elemTy)
             codegenError("tap() requires a list as first argument");
 
-        auto fnIt = fn_type_info_.find(lambdaVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(lambdaVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(lambdaVal);
         if (fnIt == fn_type_info_.end())
             codegenError("tap() requires a function as second argument");
         auto &info = fnIt->second;
@@ -595,11 +570,7 @@ llvm::Value *CodeGen::emitSortCore(llvm::Value *listVal, const std::vector<ExprP
     FnTypeInfo compInfo;
     if (hasComparator) {
         compVal = emitExpr(*args[1]);
-        auto fnIt = fn_type_info_.find(compVal);
-        if (fnIt == fn_type_info_.end()) {
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(compVal))
-                fnIt = fn_type_info_.find(load->getPointerOperand());
-        }
+        auto fnIt = lookupFnTypeInfo(compVal);
         if (fnIt == fn_type_info_.end())
             codegenError(callee + "() comparator must be a function");
         compInfo = fnIt->second;

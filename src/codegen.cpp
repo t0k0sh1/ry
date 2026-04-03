@@ -1362,3 +1362,13 @@ void CodeGen::emitPrintValue(llvm::Value *val, llvm::Type *ty,
         }
     }
 }
+
+auto CodeGen::lookupFnTypeInfo(llvm::Value *val)
+    -> std::unordered_map<llvm::Value*, FnTypeInfo>::iterator {
+    auto it = fn_type_info_.find(val);
+    if (it == fn_type_info_.end()) {
+        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
+            it = fn_type_info_.find(load->getPointerOperand());
+    }
+    return it;
+}

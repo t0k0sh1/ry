@@ -462,12 +462,7 @@ void CodeGen::emitVarDecl(const std::string &name,
         // Detect closures with captures (ARC-managed closure structs)
         bool isClosure = false;
         {
-            auto fnIt = fn_type_info_.find(val);
-            // Also check LoadInst source (e.g., g = f where f is a closure variable)
-            if (fnIt == fn_type_info_.end()) {
-                if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val))
-                    fnIt = fn_type_info_.find(load->getPointerOperand());
-            }
+            auto fnIt = lookupFnTypeInfo(val);
             if (fnIt != fn_type_info_.end() && !fnIt->second.capturedVars.empty()) {
                 isClosure = true;
                 fn_type_info_[ptr] = fnIt->second; // propagate FnTypeInfo to alloca

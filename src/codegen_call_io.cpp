@@ -477,27 +477,10 @@ llvm::Value *CodeGen::emitBuiltinHttp(const CallExpr &e) {
         if (port->getType() != i64Ty_)
             codegenError("listen() port must be int");
 
-        // Get handler FnTypeInfo
-        FnTypeInfo handlerInfo;
-        bool foundInfo = false;
-        // Try fn_type_info_ lookup on handler value directly
-        auto fnIt = fn_type_info_.find(handler);
-        if (fnIt != fn_type_info_.end()) {
-            handlerInfo = fnIt->second;
-            foundInfo = true;
-        }
-        if (!foundInfo) {
-            // Check if handler is a LoadInst, look up the alloca
-            if (auto *load = llvm::dyn_cast<llvm::LoadInst>(handler)) {
-                auto fnIt2 = fn_type_info_.find(load->getPointerOperand());
-                if (fnIt2 != fn_type_info_.end()) {
-                    handlerInfo = fnIt2->second;
-                    foundInfo = true;
-                }
-            }
-        }
-        if (!foundInfo)
+        auto fnIt = lookupFnTypeInfo(handler);
+        if (fnIt == fn_type_info_.end())
             codegenError("listen() handler must be a function fn(HttpRequest) -> HttpResponse");
+        FnTypeInfo handlerInfo = fnIt->second;
 
         // Validate handler signature: one ptr param, ptr return
         if (handlerInfo.paramTypes.size() != 1 ||
