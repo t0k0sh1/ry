@@ -363,12 +363,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "args_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "args_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "args_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = ptrTy_;
         return headerPtr;
@@ -578,12 +573,7 @@ llvm::Value *CodeGen::emitBuiltinCore(const CallExpr &e) {
         builder_.SetInsertPoint(endBB);
 
         // Store header fields
-        llvm::Value *lenPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 0, "range_len_ptr");
-        builder_.CreateStore(count, lenPtr);
-        llvm::Value *capPtr = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 1, "range_cap_ptr");
-        builder_.CreateStore(count, capPtr);
-        llvm::Value *dataPtrField = builder_.CreateStructGEP(listHeaderTy_, headerPtr, 2, "range_data_field");
-        builder_.CreateStore(dataPtr, dataPtrField);
+        storeListHeaderFields(headerPtr, count, count, dataPtr);
 
         type_meta_[TM_ListElem][headerPtr] = i64Ty_;
         return headerPtr;
