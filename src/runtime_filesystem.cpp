@@ -215,7 +215,11 @@ int64_t __ry_filesystem_copy(const char *src, const char *dst) {
         // Silently ignore — permissions may not be preserved on some filesystems
     }
     close(src_fd);
-    close(dst_fd);
+    // Check close(dst_fd) to detect deferred write errors (e.g. NFS flush).
+    if (close(dst_fd) != 0) {
+        setLastError("copy: failed to close destination '%s': %s", dst, strerror(errno));
+        return 1;
+    }
     return 0;
 #endif
 }
