@@ -75,16 +75,21 @@ After all fixes are applied, display a summary including:
 **Gate**: Check the PR for unresolved review threads using the GraphQL API:
 
 ```bash
-gh api graphql -f query='
-query($owner:String!,$repo:String!,$pr:Int!) {
+gh api graphql --paginate -f query='
+query($owner:String!,$repo:String!,$pr:Int!,$cursor:String) {
   repository(owner:$owner,name:$repo) {
     pullRequest(number:$pr) {
-      reviewThreads(first:100) { nodes { isResolved } }
+      reviewThreads(first:100,after:$cursor) {
+        nodes { isResolved }
+        pageInfo { hasNextPage endCursor }
+      }
     }
   }
 }' -f owner='{owner}' -f repo='{repo}' -F pr='{number}' \
   --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
 ```
+
+If the result spans multiple pages, sum all page counts.
 
 - If the count is **greater than 0**, display the count and stop:
   > <N> unresolved review thread(s) remain. Commit and push skipped — resolve all threads first.
