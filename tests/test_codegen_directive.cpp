@@ -2,6 +2,114 @@
 
 class DirectiveTest : public CodeGenTest {};
 
+// --- deriveRuntimeFnName tests ---
+
+TEST(NativeFnNaming, PackageFunction) {
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "encode"), "__ry_base64_encode");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "decode"), "__ry_base64_decode");
+}
+
+TEST(NativeFnNaming, MathFunctions) {
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "sin"), "__ry_math_sin");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "cos"), "__ry_math_cos");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("math", "floor"), "__ry_math_floor");
+}
+
+TEST(NativeFnNaming, EmptyPackage) {
+    // Empty package still produces a name, but callers should not use it
+    // for builtins since they use varied naming (libc, inline IR, etc.)
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("", "print"), "__ry_print");
+}
+
+TEST(NativeFnNaming, MultiWordFunctionName) {
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("filesystem", "list_dir"), "__ry_filesystem_list_dir");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("path", "get_extension"), "__ry_path_get_extension");
+}
+
+TEST(NativeFnNaming, ErrorGetter) {
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("base64", "get_last_error"), "__ry_base64_get_last_error");
+    EXPECT_EQ(CodeGen::deriveRuntimeFnName("io", "get_last_error"), "__ry_io_get_last_error");
+}
+
+// --- NativeFnSignature registry tests ---
+
+TEST(NativeFnSigs, RegistryPopulatedAndKeyed) {
+    // Compile source with @native declarations and verify the registry
+    std::string src =
+        "@native\n"
+        "function print(value: str) -> Unit\n"
+        "@native\n"
+        "function contains(s: str, sub: str) -> bool\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &sigs = cg.getNativeFnSigs();
+
+    // Builtins (no package) are keyed by bare name
+    ASSERT_TRUE(sigs.count("print"));
+    ASSERT_EQ(sigs.at("print").size(), 1u);
+    EXPECT_EQ(sigs.at("print")[0].name, "print");
+    EXPECT_EQ(sigs.at("print")[0].package, "");
+    EXPECT_EQ(sigs.at("print")[0].return_type_name, "Unit");
+    ASSERT_EQ(sigs.at("print")[0].params.size(), 1u);
+    EXPECT_EQ(sigs.at("print")[0].params[0].name, "value");
+    EXPECT_EQ(sigs.at("print")[0].params[0].type_name, "str");
+
+    ASSERT_TRUE(sigs.count("contains"));
+    ASSERT_EQ(sigs.at("contains").size(), 1u);
+    EXPECT_EQ(sigs.at("contains")[0].name, "contains");
+    EXPECT_EQ(sigs.at("contains")[0].return_type_name, "bool");
+    ASSERT_EQ(sigs.at("contains")[0].params.size(), 2u);
+}
+
+TEST(NativeFnSigs, OverloadsGrouped) {
+    std::string src =
+        "@native\n"
+        "function range(n: int) -> List<int>\n"
+        "@native\n"
+        "function range(start: int, end_val: int) -> List<int>\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &sigs = cg.getNativeFnSigs();
+    ASSERT_TRUE(sigs.count("range"));
+    ASSERT_EQ(sigs.at("range").size(), 2u);
+    EXPECT_EQ(sigs.at("range")[0].params.size(), 1u);
+    EXPECT_EQ(sigs.at("range")[1].params.size(), 2u);
+}
+
+TEST(NativeFnSigs, DirectivesRecorded) {
+    std::string src =
+        "@native\n"
+        "@deprecated\n"
+        "function old_fn(x: int) -> int\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &sigs = cg.getNativeFnSigs();
+    ASSERT_TRUE(sigs.count("old_fn"));
+    auto &directives = sigs.at("old_fn")[0].directive_names;
+    EXPECT_NE(std::find(directives.begin(), directives.end(), "native"),
+              directives.end());
+    EXPECT_NE(std::find(directives.begin(), directives.end(), "deprecated"),
+              directives.end());
+}
+
 // 1. @deprecated function called -> warning, execution normal
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
     auto [output, warnings] = runSourceWithWarnings(
