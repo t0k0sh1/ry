@@ -302,8 +302,9 @@ TEST_F(CodeGenTest, CapturedRecordFieldAssignOK) {
         "    c.value = c.value + 1\n"
         "    print(c.value)\n"
         "\n"
-        "inc()";
-    EXPECT_EQ(runSource(src), "1\n");
+        "inc()\n"
+        "print(c.value)";
+    EXPECT_EQ(runSource(src), "1\n0\n");
 }
 
 TEST_F(CodeGenTest, CapturedVarShadowedByForLoopOK) {
