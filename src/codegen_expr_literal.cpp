@@ -566,7 +566,104 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                     "enum_name_ptr");
                 return builder_.CreateLoad(ptrTy_, namePtr, "enum_name");
             }
+
+            // ADT enum: sprint buffer + recursive valueToString
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            llvm::Value *tag = builder_.CreateExtractValue(val, 0, "vts.adt.tag");
+            llvm::Value *namePtr = builder_.CreateGEP(
+                llvm::ArrayType::get(ptrTy_, einfo.variantCount),
+                einfo.nameArray,
+                {llvm::ConstantInt::get(i64Ty_, 0), tag},
+                "vts.adt.name_ptr");
+            llvm::Value *nameStr = builder_.CreateLoad(ptrTy_, namePtr, "vts.adt.name");
+
+            llvm::AllocaInst *adtAlloca = builder_.CreateAlloca(einfo.adtType, nullptr, "vts.adt.tmp");
+            builder_.CreateStore(val, adtAlloca);
+            llvm::Value *payloadPtr = builder_.CreateStructGEP(einfo.adtType, adtAlloca, 1, "vts.adt.payload");
+
+            bool anyFields = false;
+            for (auto &[vn, vf] : einfo.variantFields)
+                if (!vf.fieldTypes.empty()) { anyFields = true; break; }
+
+            if (anyFields) {
+                llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.end", fn_);
+                llvm::BasicBlock *defaultBB = llvm::BasicBlock::Create(*ctx_, "vts.adt.default", fn_);
+                auto *switchInst = builder_.CreateSwitch(tag, defaultBB, einfo.variantCount);
+
+                for (auto &[vname, vtag] : einfo.variants) {
+                    llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*ctx_, "vts.adt." + vname, fn_);
+                    switchInst->addCase(
+                        llvm::cast<llvm::ConstantInt>(llvm::ConstantInt::get(i64Ty_, vtag)), caseBB);
+                    builder_.SetInsertPoint(caseBB);
+
+                    auto fit = einfo.variantFields.find(vname);
+                    if (fit != einfo.variantFields.end() && !fit->second.fieldTypes.empty()) {
+                        llvm::Constant *openFmt = cachedGlobalString("%s(", ".vts_adt_open");
+                        builder_.CreateCall(spf, {openFmt, nameStr});
+
+                        const llvm::DataLayout &dl = mod_->getDataLayout();
+                        size_t offset = 0;
+                        for (size_t fi = 0; fi < fit->second.fieldTypes.size(); ++fi) {
+                            llvm::Type *fieldTy = fit->second.fieldTypes[fi];
+                            uint64_t align = dl.getABITypeAlign(fieldTy).value();
+                            offset = (offset + align - 1) / align * align;
+                            llvm::Value *fieldPtr = builder_.CreateGEP(
+                                llvm::Type::getInt8Ty(*ctx_), payloadPtr,
+                                {llvm::ConstantInt::get(i64Ty_, offset)},
+                                "vts.adt.field." + std::to_string(fi));
+                            llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "vts.adt.fval");
+
+                            // Propagate low-level type metadata for correct signedness
+                            if (fi < fit->second.fieldTypeNames.size()) {
+                                const auto &ftName = fit->second.fieldTypeNames[fi];
+                                if (isLowLevelTypeName(ftName))
+                                    low_level_type_names_[fieldVal] = ftName;
+                            }
+
+                            if (fi > 0) {
+                                llvm::Constant *commaFmt = cachedGlobalString(", ", ".vts_adt_comma");
+                                builder_.CreateCall(spf, {commaFmt});
+                            }
+
+                            llvm::Value *fieldStr = valueToString(fieldVal);
+                            llvm::Constant *sfmt = cachedGlobalString("%s", ".vts_adt_s");
+                            builder_.CreateCall(spf, {sfmt, fieldStr});
+
+                            offset += dl.getTypeAllocSize(fieldTy);
+                        }
+
+                        llvm::Constant *closeFmt = cachedGlobalString(")", ".vts_adt_close");
+                        builder_.CreateCall(spf, {closeFmt});
+                    } else {
+                        llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_nodata");
+                        builder_.CreateCall(spf, {fmt, nameStr});
+                    }
+                    builder_.CreateBr(endBB);
+                }
+
+                builder_.SetInsertPoint(defaultBB);
+                builder_.CreateBr(endBB);
+                builder_.SetInsertPoint(endBB);
+            } else {
+                llvm::Constant *fmt = cachedGlobalString("%s", ".vts_adt_simple");
+                builder_.CreateCall(spf, {fmt, nameStr});
+            }
+
+            return emitSprintEnd("vts.adt.str");
         }
+    }
+
+    if (ty == errorTy_) {
+        auto spf = getSprintPrintf();
+        builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
+            llvm::Type::getVoidTy(*ctx_), {}));
+        llvm::Value *msg = builder_.CreateExtractValue(val, 0, "vts_err_msg");
+        llvm::Value *code = builder_.CreateExtractValue(val, 1, "vts_err_code");
+        llvm::Constant *fmt = cachedGlobalString("Error: %s (code: %ld)", ".vts_err_fmt");
+        builder_.CreateCall(spf, {fmt, msg, code});
+        return emitSprintEnd("vts_err_str");
     }
 
     if (auto *structTy = llvm::dyn_cast<llvm::StructType>(ty)) {
@@ -624,24 +721,285 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
             return phi;
         }
 
-        if (isOptionType(ty) || isResultType(ty))
-            return collectionToString(val);
+        if (isOptionType(ty)) {
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            llvm::Value *hasValue = builder_.CreateExtractValue(val, 0, "vts.opt.has");
+            llvm::BasicBlock *someBB = llvm::BasicBlock::Create(*ctx_, "vts.opt.some", fn_);
+            llvm::BasicBlock *noneBB = llvm::BasicBlock::Create(*ctx_, "vts.opt.none", fn_);
+            llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "vts.opt.end", fn_);
+
+            builder_.CreateCondBr(hasValue, someBB, noneBB);
+
+            builder_.SetInsertPoint(noneBB);
+            builder_.CreateCall(spf, {cachedGlobalString("None", ".vts_none")});
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(someBB);
+            llvm::Value *innerVal = builder_.CreateExtractValue(val, 1, "vts.opt.val");
+            propagateCollectionMetadata(val, innerVal);
+            builder_.CreateCall(spf, {cachedGlobalString("Some(", ".vts_some_pre")});
+            llvm::Value *innerStr = valueToString(innerVal);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_opt_s"), innerStr});
+            builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_some_post")});
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(endBB);
+            return emitSprintEnd("vts.opt.str");
+        }
+
+        if (isResultType(ty)) {
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            llvm::Value *isOk = builder_.CreateExtractValue(val, 0, "vts.res.is_ok");
+            llvm::BasicBlock *okBB  = llvm::BasicBlock::Create(*ctx_, "vts.res.ok", fn_);
+            llvm::BasicBlock *errBB = llvm::BasicBlock::Create(*ctx_, "vts.res.err", fn_);
+            llvm::BasicBlock *endBB = llvm::BasicBlock::Create(*ctx_, "vts.res.end", fn_);
+
+            builder_.CreateCondBr(isOk, okBB, errBB);
+
+            builder_.SetInsertPoint(okBB);
+            llvm::Value *okVal = builder_.CreateExtractValue(val, 1, "vts.res.ok_val");
+            propagateCollectionMetadata(val, okVal);
+            builder_.CreateCall(spf, {cachedGlobalString("Ok(", ".vts_ok_pre")});
+            llvm::Value *okStr = valueToString(okVal);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_s"), okStr});
+            builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_ok_post")});
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(errBB);
+            llvm::Value *errVal = builder_.CreateExtractValue(val, 2, "vts.res.err_val");
+            propagateCollectionMetadata(val, errVal);
+            builder_.CreateCall(spf, {cachedGlobalString("Err(", ".vts_err_pre")});
+            llvm::Value *errStr = valueToString(errVal);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_res_e"), errStr});
+            builder_.CreateCall(spf, {cachedGlobalString(")", ".vts_err_post")});
+            builder_.CreateBr(endBB);
+
+            builder_.SetInsertPoint(endBB);
+            return emitSprintEnd("vts.res.str");
+        }
 
         std::string name = structTy->getName().str();
         if (struct_types_.count(name))
             return structToString(val);
         if (isTupleStructType(structTy))
             return tupleToString(val, structTy);
+        codegenError("cannot convert this struct type to string: " + name);
+    }
+
+    // Fixed-length array: sprint buffer + IR loop
+    if (auto *ai = llvm::dyn_cast<llvm::AllocaInst>(val)) {
+        if (auto *arrTy = llvm::dyn_cast<llvm::ArrayType>(ai->getAllocatedType())) {
+            llvm::Type *elemTy = arrTy->getElementType();
+            uint64_t arrSize = arrTy->getNumElements();
+            auto spf = getSprintPrintf();
+
+            emitSprintBegin();
+            builder_.CreateCall(spf, {cachedGlobalString("[", ".vts_arr_lb")});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "vts_arr.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "vts_arr.body", fn_);
+            llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "vts_arr.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_arr_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            builder_.CreateCondBr(
+                builder_.CreateICmpSLT(iVal, llvm::ConstantInt::get(i64Ty_, arrSize)),
+                bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+
+            // Comma separator if not first element
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "vts_arr.comma", fn_);
+            llvm::BasicBlock *elemBB  = llvm::BasicBlock::Create(*ctx_, "vts_arr.elem", fn_);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
+                commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_arr_comma")});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *elemPtr = builder_.CreateGEP(
+                arrTy, ai,
+                {llvm::ConstantInt::get(i64Ty_, 0), iCur},
+                "vts_arr_ptr");
+            llvm::Value *elem = builder_.CreateLoad(elemTy, elemPtr, "vts_arr_elem");
+            llvm::Value *elemStr = valueToString(elem);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_arr_s"), elemStr});
+
+            builder_.CreateStore(
+                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)),
+                iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(spf, {cachedGlobalString("]", ".vts_arr_rb")});
+            return emitSprintEnd("vts_arr_str");
+        }
     }
 
     if (ty->isPointerTy()) {
-        // Convert collections to string via sprint buffer
-        if (auto *load = llvm::dyn_cast<llvm::LoadInst>(val)) {
-            llvm::Value *src = load->getPointerOperand();
-            if (type_meta_[TM_ListElem].count(src) || type_meta_[TM_MapKey].count(src) ||
-                type_meta_[TM_SetElem].count(src))
-                return collectionToString(val);
+        // Set: sprint buffer + IR loop → {elem, elem, ...}
+        if (llvm::Type *setElemTy = getSetElementType(val)) {
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            auto sf = loadSetHeader(val, "vts_set");
+
+            builder_.CreateCall(spf, {cachedGlobalString("{", ".vts_set_lb")});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "vts_set.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "vts_set.body", fn_);
+            llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "vts_set.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_set_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(iVal, sf.len), bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "vts_set.comma", fn_);
+            llvm::BasicBlock *elemBB  = llvm::BasicBlock::Create(*ctx_, "vts_set.elem", fn_);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
+                commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_set_comma")});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *elemPtr = builder_.CreateGEP(setElemTy, sf.elems, {iCur}, "vts_set_elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(setElemTy, elemPtr, "vts_set_elem");
+            llvm::Value *elemStr = valueToString(elem);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_set_s"), elemStr});
+
+            builder_.CreateStore(
+                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(spf, {cachedGlobalString("}", ".vts_set_rb")});
+            return emitSprintEnd("vts_set_str");
         }
+
+        // Map: sprint buffer + IR loop → {key: val, key: val, ...}
+        llvm::Type *mapKeyTy = getMapKeyType(val);
+        llvm::Type *mapValTy = getMapValueType(val);
+        if (mapKeyTy && mapValTy) {
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            auto mf = loadMapHeader(val, "vts_map");
+
+            builder_.CreateCall(spf, {cachedGlobalString("{", ".vts_map_lb")});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "vts_map.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "vts_map.body", fn_);
+            llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "vts_map.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_map_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(iVal, mf.len), bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "vts_map.comma", fn_);
+            llvm::BasicBlock *kvBB    = llvm::BasicBlock::Create(*ctx_, "vts_map.kv", fn_);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
+                commaBB, kvBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_map_comma")});
+            builder_.CreateBr(kvBB);
+
+            builder_.SetInsertPoint(kvBB);
+            llvm::Value *keyPtr = builder_.CreateGEP(mapKeyTy, mf.keys, {iCur}, "vts_map_key_ptr");
+            llvm::Value *keyVal = builder_.CreateLoad(mapKeyTy, keyPtr, "vts_map_key");
+            llvm::Value *keyStr = valueToString(keyVal);
+            builder_.CreateCall(spf, {cachedGlobalString("%s: ", ".vts_map_kv_fmt"), keyStr});
+
+            llvm::Value *valPtr = builder_.CreateGEP(mapValTy, mf.vals, {iCur}, "vts_map_val_ptr");
+            llvm::Value *valVal = builder_.CreateLoad(mapValTy, valPtr, "vts_map_val");
+            llvm::Value *valStr = valueToString(valVal);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_map_v_s"), valStr});
+
+            builder_.CreateStore(
+                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(spf, {cachedGlobalString("}", ".vts_map_rb")});
+            return emitSprintEnd("vts_map_str");
+        }
+
+        // List: sprint buffer + IR loop → [elem, elem, ...]
+        if (llvm::Type *listElemTy = getListElementType(val)) {
+            auto spf = getSprintPrintf();
+            emitSprintBegin();
+
+            auto lf = loadListHeader(val, "vts_list");
+
+            builder_.CreateCall(spf, {cachedGlobalString("[", ".vts_list_lb")});
+
+            llvm::BasicBlock *condBB = llvm::BasicBlock::Create(*ctx_, "vts_list.cond", fn_);
+            llvm::BasicBlock *bodyBB = llvm::BasicBlock::Create(*ctx_, "vts_list.body", fn_);
+            llvm::BasicBlock *endBB  = llvm::BasicBlock::Create(*ctx_, "vts_list.end", fn_);
+
+            llvm::AllocaInst *iVar = builder_.CreateAlloca(i64Ty_, nullptr, "vts_list_i");
+            builder_.CreateStore(llvm::ConstantInt::get(i64Ty_, 0), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(condBB);
+            llvm::Value *iVal = builder_.CreateLoad(i64Ty_, iVar, "i");
+            builder_.CreateCondBr(builder_.CreateICmpSLT(iVal, lf.len), bodyBB, endBB);
+
+            builder_.SetInsertPoint(bodyBB);
+            llvm::Value *iCur = builder_.CreateLoad(i64Ty_, iVar, "i_cur");
+            llvm::BasicBlock *commaBB = llvm::BasicBlock::Create(*ctx_, "vts_list.comma", fn_);
+            llvm::BasicBlock *elemBB  = llvm::BasicBlock::Create(*ctx_, "vts_list.elem", fn_);
+            builder_.CreateCondBr(
+                builder_.CreateICmpSGT(iCur, llvm::ConstantInt::get(i64Ty_, 0)),
+                commaBB, elemBB);
+
+            builder_.SetInsertPoint(commaBB);
+            builder_.CreateCall(spf, {cachedGlobalString(", ", ".vts_list_comma")});
+            builder_.CreateBr(elemBB);
+
+            builder_.SetInsertPoint(elemBB);
+            llvm::Value *elemPtr = builder_.CreateGEP(listElemTy, lf.data, {iCur}, "vts_list_elem_ptr");
+            llvm::Value *elem = builder_.CreateLoad(listElemTy, elemPtr, "vts_list_elem");
+            llvm::Value *elemStr = valueToString(elem);
+            builder_.CreateCall(spf, {cachedGlobalString("%s", ".vts_list_s"), elemStr});
+
+            builder_.CreateStore(
+                builder_.CreateAdd(iCur, llvm::ConstantInt::get(i64Ty_, 1)), iVar);
+            builder_.CreateBr(condBB);
+
+            builder_.SetInsertPoint(endBB);
+            builder_.CreateCall(spf, {cachedGlobalString("]", ".vts_list_rb")});
+            return emitSprintEnd("vts_list_str");
+        }
+
         if (fn_type_info_.count(val))
             codegenError("cannot convert function to string");
         return val; // string pointer
@@ -797,6 +1155,16 @@ llvm::Value *CodeGen::tupleToString(llvm::Value *val, llvm::StructType *st) {
     return concatStringParts(parts, "tts");
 }
 
+void CodeGen::emitSprintBegin() {
+    builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
+        llvm::Type::getVoidTy(*ctx_), {}));
+}
+
+llvm::Value *CodeGen::emitSprintEnd(const llvm::Twine &name) {
+    return builder_.CreateCall(
+        getRuntimeFn("__ry_sprint_end", ptrTy_, {}), {}, name);
+}
+
 llvm::Value *CodeGen::concatStringParts(
     const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
     const std::string &prefix) {
@@ -824,15 +1192,4 @@ llvm::Value *CodeGen::concatStringParts(
     return buf;
 }
 
-llvm::Value *CodeGen::collectionToString(llvm::Value *val) {
-    // Use sprint buffer: begin → print collection → end (returns char*)
-    builder_.CreateCall(getRuntimeFn("__ry_sprint_begin",
-        llvm::Type::getVoidTy(*ctx_), {}));
 
-    auto sprintfFn = getSprintPrintf();
-    emitPrintSingle(val, sprintfFn);
-
-    return builder_.CreateCall(
-        getRuntimeFn("__ry_sprint_end", ptrTy_, {}),
-        {}, "col_str");
-}

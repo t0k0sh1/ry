@@ -1,0 +1,194 @@
+enum Color:
+  Red
+  Green
+  Blue
+
+enum Shape:
+  Circle(float)
+  Rectangle(int, int)
+  Point
+
+enum Packet:
+  Data(u8)
+  Empty
+
+describe("print and to_str consistency", ():
+  it("int", ():
+    expect(to_str(42)).to_eq("42")
+    print(42)
+    # expect-output: 42
+  )
+
+  it("float", ():
+    expect(to_str(3.14)).to_eq("3.14")
+    print(3.14)
+    # expect-output: 3.14
+  )
+
+  it("bool", ():
+    expect(to_str(true)).to_eq("true")
+    expect(to_str(false)).to_eq("false")
+    print(true)
+    # expect-output: true
+  )
+
+  it("string", ():
+    expect(to_str("hello")).to_eq("hello")
+    print("hello")
+    # expect-output: hello
+  )
+
+  it("list of ints", ():
+    xs = [10, 20, 30]
+    expect(to_str(xs)).to_eq("[10, 20, 30]")
+    print(xs)
+    # expect-output: [10, 20, 30]
+  )
+
+  it("map", ():
+    m = {"x": 1}
+    expect(to_str(m)).to_eq("{x: 1}")
+    print(m)
+    # expect-output: {x: 1}
+  )
+
+  it("set", ():
+    s = {5}
+    expect(to_str(s)).to_eq("{5}")
+    print(s)
+    # expect-output: {5}
+  )
+
+  it("tuple", ():
+    t = (1, "a")
+    expect(to_str(t)).to_eq("(1, a)")
+    print(t)
+    # expect-output: (1, a)
+  )
+
+  it("Option Some", ():
+    x = Some(99)
+    expect(to_str(x)).to_eq("Some(99)")
+    print(x)
+    # expect-output: Some(99)
+  )
+
+  it("Option None", ():
+    x: int? = none
+    expect(to_str(x)).to_eq("None")
+    print(x)
+    # expect-output: None
+  )
+
+  it("Result Ok", ():
+    r = Ok(7)
+    expect(to_str(r)).to_eq("Ok(7)")
+    print(r)
+    # expect-output: Ok(7)
+  )
+
+  it("Result Err", ():
+    r = Err(Error("oops"))
+    expect(to_str(r)).to_eq("Err(Error: oops (code: 0))")
+    print(r)
+    # expect-output: Err(Error: oops (code: 0))
+  )
+
+  it("Option wrapping list (recursive non-scalar)", ():
+    x = Some([10, 20])
+    expect(to_str(x)).to_eq("Some([10, 20])")
+    print(x)
+    # expect-output: Some([10, 20])
+  )
+
+  it("Result wrapping tuple (recursive non-scalar)", ():
+    r = Ok((1, "a"))
+    expect(to_str(r)).to_eq("Ok((1, a))")
+    print(r)
+    # expect-output: Ok((1, a))
+  )
+
+  it("record with user-defined to_str", ():
+    record Person:
+      name: str
+      age: int
+    function to_str(p: Person) -> str:
+      return f"{p.name} (age {p.age})"
+    p = Person("Alice", 30)
+    expect(to_str(p)).to_eq("Alice (age 30)")
+    print(p)
+    # expect-output: Alice (age 30)
+  )
+
+  it("sequential enum", ():
+    expect(to_str(Color::Red)).to_eq("Red")
+    print(Color::Green)
+    # expect-output: Green
+  )
+)
+
+describe("to_str on ADT enum", ():
+  it("variant with single field", ():
+    expect(to_str(Shape::Circle(3.14))).to_eq("Circle(3.14)")
+  )
+
+  it("variant with multiple fields", ():
+    expect(to_str(Shape::Rectangle(10, 20))).to_eq("Rectangle(10, 20)")
+  )
+
+  it("variant without fields", ():
+    expect(to_str(Shape::Point)).to_eq("Point")
+  )
+
+  it("print ADT enum with fields", ():
+    print(Shape::Circle(2.5))
+    # expect-output: Circle(2.5)
+  )
+
+  it("f-string with ADT enum", ():
+    s = Shape::Rectangle(3, 4)
+    expect(f"shape: {s}").to_eq("shape: Rectangle(3, 4)")
+  )
+
+  it("ADT enum field preserves unsigned type metadata", ():
+    p = Packet::Data(200 as u8)
+    expect(to_str(p)).to_eq("Data(200)")
+    print(p)
+    # expect-output: Data(200)
+  )
+)
+
+describe("to_str on Error", ():
+  it("basic error", ():
+    e = Error("something went wrong")
+    expect(to_str(e)).to_eq("Error: something went wrong (code: 0)")
+  )
+
+  it("error with code", ():
+    e = Error("not found", 404)
+    expect(to_str(e)).to_eq("Error: not found (code: 404)")
+  )
+
+  it("f-string with error", ():
+    e = Error("fail")
+    expect(f"got: {e}").to_eq("got: Error: fail (code: 0)")
+  )
+)
+
+describe("to_str on fixed-length array", ():
+  it("i32 array", ():
+    arr: i32[3] = [1, 2, 3]
+    expect(to_str(arr)).to_eq("[1, 2, 3]")
+  )
+
+  it("print fixed-length array", ():
+    arr: i32[2] = [10, 20]
+    print(arr)
+    # expect-output: [10, 20]
+  )
+
+  it("f-string with fixed-length array", ():
+    arr: i32[3] = [7, 8, 9]
+    expect(f"arr: {arr}").to_eq("arr: [7, 8, 9]")
+  )
+)
