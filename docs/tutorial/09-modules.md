@@ -94,7 +94,7 @@ from str import contains
 
 ### RY_HOME
 
-The standard library is installed at `$RY_HOME/lib/std/`. The default value of `RY_HOME` is `~/.ry`.
+The standard library is installed at `$RY_HOME/share/std/`. The default value of `RY_HOME` is `~/.ry`.
 
 ```bash
 export RY_HOME="$HOME/.ry"   # default

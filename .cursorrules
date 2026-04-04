@@ -16,7 +16,7 @@ cmake --preset default && cmake --build build    # Build
 ./build/ry test tests/spec/<file>.test.ry        # Individual test file
 ```
 
-The `./build/ry` binary uses project-local `lib/std/` via `package.toml`'s `[paths]._dev_stdlib`. Do not reference `~/.ry/`.
+The `./build/ry` binary uses project-local `share/std/` via `package.toml`'s `[paths]._dev_stdlib`. Do not reference `~/.ry/`.
 
 ## ASan (AddressSanitizer)
 
@@ -32,13 +32,13 @@ ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
 
 - `src/` — C++ source (runtime_*.cpp, codegen_call_*.cpp, codegen_*.cpp, parser_*.cpp)
 - `include/ry/` — C++ headers
-- `lib/std/` — Ry standard library declarations (.ry files)
+- `share/std/` — Ry standard library declarations (.ry files)
 - `tests/spec/` — Ry test files (*.test.ry)
 - `tests/` — C++ test files
 
 ## Stdlib Package Addition (6 Steps)
 
-1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` declarations
+1. `share/std/<pkg>/<pkg>.ry` — `@native fn` declarations
 2. `src/runtime_<pkg>.cpp` — C++ implementation (`__ry_<pkg>_*` function naming)
 3. `src/codegen_call_<pkg>.cpp` — codegen dispatcher + add declaration to `include/ry/codegen.hpp`
 4. `include/ry/builtin_stdlib_registry.hpp` — register package (1 line)

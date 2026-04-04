@@ -28,12 +28,29 @@ tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
 # Install standard library (clean replace)
-STD_DIR="$RY_HOME/lib/std"
-if [ -d "$TMPDIR/lib/std" ]; then
+# Detect archive layout and install to the matching destination so the
+# corresponding binary can find stdlib at the path it expects.
+STD_DIR=""
+SRC_STD=""
+NEW_LAYOUT=0
+if [ -d "$TMPDIR/share/std" ]; then
+    STD_DIR="$RY_HOME/share/std"
+    SRC_STD="$TMPDIR/share/std"
+    NEW_LAYOUT=1
+elif [ -d "$TMPDIR/lib/std" ]; then
+    STD_DIR="$RY_HOME/lib/std"
+    SRC_STD="$TMPDIR/lib/std"
+fi
+if [ -n "$SRC_STD" ] && [ -d "$SRC_STD" ]; then
     rm -rf "$STD_DIR"
     mkdir -p "$STD_DIR"
-    cp -r "$TMPDIR/lib/std/." "$STD_DIR/"
+    cp -r "$SRC_STD/." "$STD_DIR/"
     echo "Standard library installed to $STD_DIR"
+    # Clean up old lib/std layout only after successful copy (migration)
+    if [ "$NEW_LAYOUT" = 1 ]; then
+        rm -rf "$RY_HOME/lib/std"
+        rmdir "$RY_HOME/lib" 2>/dev/null || true
+    fi
 fi
 
 echo "ry installed to ${INSTALL_DIR}/ry"

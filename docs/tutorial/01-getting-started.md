@@ -14,7 +14,7 @@ Next tutorial -> [02 - Variables and Types](02-variables-and-types.md)
 curl -fsSL https://raw.githubusercontent.com/t0k0sh1/ry/main/install.sh | sh
 ```
 
-This installs the `ry` binary to `~/.local/bin` and the standard library to `~/.ry/lib/std/`.
+This installs the `ry` binary to `~/.local/bin` and the standard library to `~/.ry/share/std/`.
 
 Make sure `~/.local/bin` is in your `PATH`:
 

@@ -145,13 +145,13 @@ static int runRySource(const std::string &src, const std::string &source_name,
         }
     }
 
-    // Set up search paths with lib/ for stdlib
+    // Set up search paths with share/ for stdlib
     std::vector<std::string> search_paths;
-    std::string lib_dir = ry::find_lib_dir(argv0, project_root, g_skip_global_lib).string();
-    if (!lib_dir.empty()) {
-        search_paths.push_back(lib_dir);
-        // Enable flattened imports: "from math" resolves to lib/std/math/
-        search_paths.push_back((fs::path(lib_dir) / "std").string());
+    std::string share_dir = ry::find_share_dir(argv0, project_root, g_skip_global_lib).string();
+    if (!share_dir.empty()) {
+        search_paths.push_back(share_dir);
+        // Enable flattened imports: "from math" resolves to share/std/math/
+        search_paths.push_back((fs::path(share_dir) / "std").string());
     }
 
     ModuleLoader loader(search_paths, &sm);
@@ -327,7 +327,7 @@ static int runRySource(const std::string &src, const std::string &source_name,
                             ry::TraceField("exit_code", result)});
 
     // Record filenames for coverage reporting (accumulates across calls).
-    // Exclude stdlib files (those under lib_dir) from the report.
+    // Exclude stdlib files (those under share_dir) from the report.
     if (coverage_mode) {
         int fc = sm.getFileCount();
         int new_total = g_coverage_file_id_offset + fc;
@@ -337,10 +337,10 @@ static int runRySource(const std::string &src, const std::string &source_name,
                 int gid = g_coverage_file_id_offset + i;
                 const std::string &fname = sm.getFilename(i);
                 bool is_stdlib = false;
-                if (!lib_dir.empty()) {
+                if (!share_dir.empty()) {
                     auto canonical = fs::weakly_canonical(fname).string();
-                    auto canonical_lib = fs::weakly_canonical(lib_dir).string();
-                    is_stdlib = canonical.find(canonical_lib) == 0;
+                    auto canonical_share = fs::weakly_canonical(share_dir).string();
+                    is_stdlib = canonical.find(canonical_share) == 0;
                 }
                 g_coverage_filenames[gid] = is_stdlib ? "" : fname;
             }

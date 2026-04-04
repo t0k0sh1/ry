@@ -5,4 +5,4 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-_dev_stdlib = "lib"
+_dev_stdlib = "share"

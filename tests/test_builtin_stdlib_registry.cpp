@@ -32,7 +32,7 @@ TEST(BuiltinStdlibRegistry, DeclarationFilesExist) {
 TEST(BuiltinStdlibRegistry, NativeConstantsAreDeclaredInStdlib) {
 #define RY_EXPECT_CONST_DECL(pkg, name, kind, value)                                      \
     do {                                                                                  \
-        const fs::path decl_path = repo_root() / "lib/std/" #pkg "/" #pkg ".ry";         \
+        const fs::path decl_path = repo_root() / "share/std/" #pkg "/" #pkg ".ry";       \
         const std::string content = read_text(decl_path);                                 \
         EXPECT_NE(content.find("@const\n" #name ":"), std::string::npos) << decl_path;   \
     } while (false);

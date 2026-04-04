@@ -665,12 +665,23 @@ bool replace_binary(const std::string &tmp_dir_str, const std::string &binary_pa
 bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_version) {
     namespace fs = std::filesystem;
 
-    fs::path src_std = fs::path(tmp_dir_str) / "lib" / "std";
+    // Detect archive layout: new archives use share/std, old ones use lib/std.
+    // Install destination matches the archive layout so the corresponding binary
+    // can find stdlib at the path it expects.
+    bool new_layout = true;
+    fs::path src_std = fs::path(tmp_dir_str) / "share" / "std";
     if (!fs::is_directory(src_std)) {
-        return false;  // No stdlib in archive
+        src_std = fs::path(tmp_dir_str) / "lib" / "std";
+        new_layout = false;
+        if (!fs::is_directory(src_std)) {
+            return false;  // No stdlib in archive
+        }
     }
 
-    fs::path dest_std = ry::get_ry_home() / "lib" / "std";
+    const fs::path ry_home = ry::get_ry_home();
+    fs::path dest_std = new_layout
+        ? ry_home / "share" / "std"
+        : ry_home / "lib" / "std";
 
     // Read old manifest for cleanup
     auto old_manifest = ry::read_manifest(dest_std);
@@ -683,12 +694,14 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
         return false;
     }
 
-    // Copy new files (recursive)
+    // Copy new files (recursive), tracking source count for integrity check
     std::vector<std::string> new_files;
+    size_t src_file_count = 0;
     for (const auto &entry : fs::recursive_directory_iterator(src_std)) {
         if (!entry.is_regular_file()) continue;
         auto rel_path = fs::relative(entry.path(), src_std).string();
         if (rel_path == "manifest.json") continue;
+        ++src_file_count;
 
         auto dest_path = dest_std / rel_path;
         fs::create_directories(dest_path.parent_path(), ec);
@@ -721,6 +734,17 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
 
     // Write new manifest
     ry::write_manifest(dest_std, new_version, new_files);
+
+    // Clean up old lib/std only when ALL files were copied successfully.
+    // On partial failure, keep old lib/std so the user retains a working stdlib.
+    if (new_layout && new_files.size() == src_file_count && src_file_count > 0) {
+        fs::path old_std = ry_home / "lib" / "std";
+        if (fs::is_directory(old_std)) {
+            fs::remove_all(old_std, ec);
+            // Remove lib/ if now empty; fs::remove is a no-op on non-empty dirs
+            fs::remove(ry_home / "lib", ec);
+        }
+    }
 
     return true;
 }
