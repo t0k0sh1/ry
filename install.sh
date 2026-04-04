@@ -20,7 +20,8 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+STD_STAGING=""
+trap 'rm -rf "$TMPDIR" ${STD_STAGING:+"$STD_STAGING"}' EXIT
 
 echo "Downloading ry..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
