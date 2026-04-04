@@ -14,7 +14,7 @@ Execute Ry language snippets via heredoc to verify behavior. This is for ad-hoc 
 1. **No file creation** — never create `.ry` files or temp files anywhere (project or external). No `Write` tool, no `echo > file`, no `cat > file`, no `tee`, no redirection to disk
 2. **Heredoc only** — all Ry code MUST be passed via heredoc to `./build/ry -c`
 3. **Project-local execution** — always run `./build/ry` from the project root. Never use a system-installed `ry`
-4. **No `~/.ry` reference** — any operation that touches `~/.ry/` stdlib is incorrect. `./build/ry` resolves to the project-local `lib/std/` automatically via `package.toml`
+4. **No `~/.ry` reference** — any operation that touches `~/.ry/` stdlib is incorrect. `./build/ry` resolves to the project-local `share/std/` automatically via `package.toml`
 5. **Not for self-tests** — do not use this as a substitute for `./build/ry test`
 
 ## Execution Pattern

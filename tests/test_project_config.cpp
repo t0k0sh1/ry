@@ -53,7 +53,7 @@ TEST(ProjectConfigParser, SerializeRoundTrip) {
     original.version = "2.0.0";
     original.entry = "src/main.ry";
     original.src_dir = "src";
-    original.dev_stdlib_dir = "lib";
+    original.dev_stdlib_dir = "share";
 
     std::string toml = ProjectConfigParser::serialize(original);
     auto loaded = ProjectConfigParser::load(toml);
@@ -74,11 +74,11 @@ entry = "src/main.ry"
 
 [paths]
 src = "src"
-_dev_stdlib = "lib"
+_dev_stdlib = "share"
 )";
     auto config = ProjectConfigParser::load(toml);
     ASSERT_TRUE(config.dev_stdlib_dir.has_value());
-    EXPECT_EQ(*config.dev_stdlib_dir, "lib");
+    EXPECT_EQ(*config.dev_stdlib_dir, "share");
 }
 
 TEST(ProjectConfigParser, LoadInvalidLine) {

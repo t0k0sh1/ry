@@ -146,7 +146,7 @@ from str import contains
 
 ### RY_HOME
 
-The standard library is installed at `$RY_HOME/lib/std/`. The default value of `RY_HOME` is `~/.ry`.
+The standard library is installed at `$RY_HOME/share/std/`. The default value of `RY_HOME` is `~/.ry`.
 
 ```bash
 export RY_HOME="$HOME/.ry"   # default
@@ -158,11 +158,11 @@ The `RY_ENV` environment variable controls the runtime environment mode. You can
 
 | Value | Alias | `.env` loading | Lib search |
 |-------|-------|---------------|------------|
-| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/lib` → `exe/../lib` → `exe/lib` |
+| `prod` | `production` | Disabled | Project override for repo builds → `$RY_HOME/share` (fallback: `lib`) → `exe/../share` (fallback: `lib`) → `exe/share` (fallback: `lib`) |
 | `dev` | `development` | `.env.dev` → `.env` | Same as `prod` |
 | `test` | — | `.env.test` → `.env` | Same as `prod` |
 | `staging` | — | `.env.staging` → `.env` | Same as `prod` |
-| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../lib` → `exe/lib` (`$RY_HOME` skipped) |
+| `internal` | — | `.env.internal` → `.env` | Project override for repo builds → `exe/../share` (fallback: `lib`) → `exe/share` (fallback: `lib`) (`$RY_HOME` skipped) |
 | (unset) (default) | — | `.env` only | Same as `prod` |
 
 Aliases are automatically resolved to their canonical form. For example, `RY_ENV=production` is normalized to `prod`.
@@ -188,7 +188,7 @@ RY_ENV=prod ./build/ry app.ry
 RY_ENV=internal ./build/ry test
 ```
 
-When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `lib/std` even if `~/.ry/lib/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/lib/std`.
+When a `ry` executable is built inside the Ry source tree, it can use a repo-local stdlib override from the project's `package.toml`. This keeps repo builds aligned with the checked-out `share/std` even if `~/.ry/share/std` is older. Installed `ry` binaries ignore that override and continue to use `$RY_HOME/share/std`.
 
 ---
 
@@ -196,8 +196,8 @@ When a `ry` executable is built inside the Ry source tree, it can use a repo-loc
 
 1. The directory of the importing file
 2. Repo-local stdlib override from the current Ry checkout, when using a repo-built `ry`
-3. `$RY_HOME/lib` (standard library location)
-4. Executable-relative `lib/` directories
+3. `$RY_HOME/share` (standard library location, falls back to `$RY_HOME/lib` for legacy installs)
+4. Executable-relative `share/` directories (falls back to `lib/` for legacy layouts)
 5. Paths specified in the `RY_PATH` environment variable (colon-separated)
 
 ---

@@ -10,7 +10,7 @@ cmake --build build                                     # Ninja が自動並列�
 ./build/ry test tests/spec/<file>.test.ry               # 個別ファイル実行
 ```
 
-> repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `lib/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
+> repo 内でビルドした `./build/ry` は `package.toml` の hidden 設定 `[paths]._dev_stdlib` に従ってプロジェクトローカルの `share/std/` を優先する。`RY_ENV=internal` は追加の isolation が必要な場合だけ使う。
 
 ## ASan（AddressSanitizer）
 
@@ -79,7 +79,7 @@ ASan が検出した問題（メモリリーク、バッファオーバーフロ
 
 ### 1. Ry 宣言ファイル作成
 
-`lib/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
+`share/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
 
 ```ry
 @native
@@ -120,7 +120,7 @@ llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
 `include/ry/builtin_stdlib_registry.hpp` に package を 1 行追加する。dispatcher 配列と native constant registry はここから導出される。
 
 ```cpp
-X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
+X(crypto, "share/std/crypto/crypto.ry", emitBuiltinCrypto)
 ```
 
 ### 5. ビルド設定
@@ -135,21 +135,21 @@ X(crypto, "lib/std/crypto/crypto.ry", emitBuiltinCrypto)
 
 ### 定数の追加
 
-`lib/std/<pkg>/<pkg>.ry` に `@native @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@native @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
 既存パッケージに関数を追加する場合は、以下の 4 箇所を確認する:
 
-1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
+1. `share/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
 2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
 3. `src/codegen_call_<pkg>.cpp` — dispatch case を追加
 4. テスト — selective import と実行ケースを追加
 
 ## repo build と stdlib 解決
 
-- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `lib/std` を参照する
-- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/lib/std` を参照する
+- repo 内でビルドした `./build/ry` / `./build-current/ry` は、この project の `package.toml` にある hidden 設定 `[paths]._dev_stdlib` を使って project local の `share/std` を参照する
+- OS にインストールされた `ry` はこの hidden 設定を無視し、`~/.ry/share/std` を参照する
 - `RY_ENV=internal` は追加の isolation 用であり、repo 開発時の通常動作に必須ではない
 
 ## 内部挙動の解析に trace を使う

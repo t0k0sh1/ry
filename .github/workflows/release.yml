@@ -89,11 +89,11 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p dist/lib
+          mkdir -p dist/share
           cp build/ry dist/ry
-          cp -r lib/std dist/lib/std
+          cp -r share/std dist/share/std
           cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz ry lib/
+          tar czf ry-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz ry share/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
