@@ -321,29 +321,45 @@ abs = (x: int):
 
 ## Closures
 
-Lambda functions **capture by value** the variables from the outer scope at the time of definition. This means the closure works with its own independent copy — changes in either direction (outer → closure or closure → outer) are not visible to the other side.
+Lambda functions **capture by value** the variables from the outer scope at the time of definition. The closure receives its own independent copy at capture time, and the captured variable cannot be reassigned inside the closure.
 
 ### Outer changes do not affect the closure
 
+Because the closure holds a copy, reassigning the original variable after the closure is defined has no effect on the captured value:
+
 ```python
 base = 10
-add_base = (x: int) => x + base   # Captures base by value
+add_base = (x: int) => x + base   # Captures base by value (copy of 10)
 
 base = 99          # Does not affect the captured value
 r = add_base(5)   # 15 (uses base = 10 from capture time)
 ```
 
-### Closure mutations do not affect the outer scope
+### Captured variables are effectively final
+
+Captured variables **cannot be reassigned** inside the closure. Attempting to do so produces a compile error:
 
 ```python
 counter = 0
-items = [1, 2, 3, 4, 5]
-items.map((x: int):
-    counter += x    # Modifies the closure's local copy only
-    return x
-)
-print(counter)      # 0 (outer variable unchanged)
+inc = ():
+    counter += 1    # Compile error: cannot modify captured variable 'counter' inside closure
+
+inc()
 ```
+
+**Field assignment on captured records is allowed**, since it modifies the copy's internal state rather than reassigning the variable itself:
+
+```python
+record Point:
+    x: int
+    y: int
+
+p = Point(0, 0)
+move = ():
+    p.x = p.x + 1    # OK — modifies the captured copy's field
+```
+
+> **Note**: Field modifications apply to the closure's copy only — the outer variable is unaffected.
 
 ### Capture Rules
 
@@ -351,10 +367,11 @@ print(counter)      # 0 (outer variable unchanged)
 |---|---|
 | Capture method | Capture by value (copy) |
 | Capture timing | At lambda definition time |
+| Reassignment of captured variables | Not allowed (compile error) |
+| Field assignment on captured records | Allowed (modifies the copy only) |
 | Effect of outer variable changes | None (the closure holds its own copy) |
-| Effect of mutations inside the closure | None (does not propagate to the outer scope) |
 
-> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and mutations of captured objects (for example, appending to a list) are visible outside, but rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
+> **Note for Python/JavaScript users**: In JavaScript, closures capture variables by reference, so changes to a captured variable are reflected outside the closure. In Python, closures can access outer variables, and rebinding an outer name (such as `counter += x`) requires declaring it `nonlocal`. In Ry, closures always capture by value, and captured variables are effectively final — they cannot be reassigned inside the closure. This is intentional — it ensures safety and predictability, especially in concurrent or higher-order contexts.
 
 ---
 

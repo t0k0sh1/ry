@@ -119,6 +119,8 @@ CodeGen::FnScope::FnScope(CodeGen &cg) : cg_(cg) {
     savedInEnsureContext_ = cg_.in_ensure_context_;
     savedFnReturnType_ = std::move(cg_.current_fn_return_type_);
     savedFnName_ = std::move(cg_.current_function_name_);
+    savedCapturedVars_ = std::move(cg_.captured_vars_);
+    cg_.captured_vars_.clear();
     cg_.scope_stack_.clear();
     cg_.immutable_scope_stack_.clear();
     cg_.arc_managed_vars_.clear();
@@ -152,6 +154,7 @@ CodeGen::FnScope::~FnScope() {
     cg_.in_ensure_context_ = savedInEnsureContext_;
     cg_.current_fn_return_type_ = std::move(savedFnReturnType_);
     cg_.current_function_name_ = std::move(savedFnName_);
+    cg_.captured_vars_ = std::move(savedCapturedVars_);
 }
 
 // ===== Coverage instrumentation =====
@@ -329,6 +332,10 @@ bool CodeGen::isImmutable(const std::string &name) const {
             return true;
     }
     return false;
+}
+
+bool CodeGen::isCapturedVar(llvm::AllocaInst *ptr) const {
+    return captured_vars_.count(ptr) > 0;
 }
 
 // Forward declaration for mutual recursion.
