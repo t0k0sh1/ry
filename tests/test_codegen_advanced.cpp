@@ -308,15 +308,18 @@ TEST_F(CodeGenTest, CapturedRecordFieldAssignOK) {
 }
 
 TEST_F(CodeGenTest, CapturedVarShadowedByForLoopOK) {
-    // A for-loop variable that shadows a captured variable should be assignable
+    // A for-loop variable that shadows a captured variable should be assignable,
+    // and the captured outer binding must remain intact after the loop
     std::string src =
         "x = 10\n"
         "f = ():\n"
         "    for x in [1, 2, 3]:\n"
+        "        x += 10\n"
         "        print(x)\n"
+        "    print(x)\n"
         "\n"
         "f()";
-    EXPECT_EQ(runSource(src), "1\n2\n3\n");
+    EXPECT_EQ(runSource(src), "11\n12\n13\n10\n");
 }
 
 TEST_F(CodeGenTest, CapturedConstFieldAssignError) {
