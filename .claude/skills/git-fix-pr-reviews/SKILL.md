@@ -74,9 +74,10 @@ Display the classification results for all comments in a table:
 
 After all fixes are applied and skip replies are posted, resolve **only the threads that were handled** in Step 5. Do NOT resolve threads that were not triaged or handled.
 
-1. During Step 5, collect the **comment IDs** of every comment you handled (auto-fixed, user-approved, or replied to with a skip reason).
+1. During Step 5, collect the **comment IDs** of every handled inline/thread comment (auto-fixed, user-approved, or replied to with a skip reason).
 2. Using the comment-to-thread mapping built in Step 2, look up the corresponding **thread ID** for each handled comment ID.
-3. Resolve each thread (skip threads that are already resolved):
+3. If a handled comment ID has no mapped thread ID (e.g., review summary/general review text), skip it.
+4. Resolve each mapped thread (skip threads that are already resolved):
 
    ```shell
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{thread_id}"}) { thread { isResolved } } }'
