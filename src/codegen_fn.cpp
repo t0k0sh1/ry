@@ -1,8 +1,39 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/sema_return.hpp"
+#include <filesystem>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
+
+// --- JNI-like naming convention helpers ---
+
+std::string CodeGen::deriveRuntimeFnName(const std::string &package,
+                                         const std::string &fn_name) {
+    if (package.empty())
+        return "__ry_" + fn_name;
+    return "__ry_" + package + "_" + fn_name;
+}
+
+std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
+    if (!sm_ || loc.file_id < 0 || loc.file_id >= sm_->getFileCount())
+        return "";
+    const std::string &fname = sm_->getFilename(loc.file_id);
+
+    namespace fs = std::filesystem;
+    fs::path p(fname);
+    fs::path stem = p.stem();
+    fs::path parent = p.parent_path();
+
+    // /std/<pkg>/<pkg>.ry (directory package)
+    if (parent.filename() == stem && parent.parent_path().filename() == "std")
+        return stem.string();
+
+    // /std/<pkg>.ry (single-file package, excluding builtins.ry)
+    if (parent.filename() == "std" && stem != "builtins")
+        return stem.string();
+
+    return "";
+}
 
 EnumVariantRegistry CodeGen::buildEnumVariantRegistry() const {
     EnumVariantRegistry reg;
@@ -368,6 +399,18 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
 
         // Register argument count for native function overload
         native_fn_arg_counts_[s->name].push_back(s->params.size());
+
+        // Build rich signature
+        NativeFnSignature sig;
+        sig.name = s->name;
+        sig.package = deriveNativePackage(s->loc);
+        sig.params.reserve(s->params.size());
+        for (auto &p : s->params)
+            sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
+        sig.return_type_name = s->return_type ? s->return_type->toString() : "Unit";
+        for (auto &d : s->directives)
+            sig.directive_names.push_back(d.name);
+        native_fn_sigs_[nativeSigKey(sig.package, sig.name)].push_back(std::move(sig));
         return;
     }
 

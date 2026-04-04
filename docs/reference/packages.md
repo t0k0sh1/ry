@@ -268,3 +268,34 @@ mylib/
 # main.ry
 from mylib import add, concat
 ```
+
+---
+
+## Native Function Naming Convention
+
+Stdlib package functions that are implemented as C runtime functions follow the `__ry_<package>_<function_name>` convention.
+
+> **Note**: This convention applies to stdlib package functions (e.g., `base64`, `filesystem`, `path`). Built-in functions (e.g., `print`, `length`) and math functions use varied implementations (inline LLVM IR, libc calls) and do not follow this naming pattern.
+
+### Format
+
+```text
+__ry_<package>_<function_name>
+```
+
+### Rules
+
+1. **Prefix**: `__ry_`
+2. **Package**: The package name (e.g., `base64` from `from base64 import encode`)
+3. **Function name**: The snake_case function name as declared in Ry
+4. **Overloads**: When a function has multiple overloads with different arities, append the argument count as a suffix (e.g., `__ry_path_join2`, `__ry_path_join3`)
+5. **Error getter**: Each package that returns `Result` types provides `__ry_<pkg>_get_last_error`
+
+### Examples
+
+| Ry declaration | C runtime function name |
+|---------------|------------------------|
+| `base64::encode(data: str) -> str` | `__ry_base64_encode` |
+| `filesystem::list_dir(path: str) -> Result<List<str>, Error>` | `__ry_filesystem_list_dir` |
+| `path::join(a: str, b: str) -> str` | `__ry_path_join2` |
+| `path::join(a: str, b: str, c: str) -> str` | `__ry_path_join3` |

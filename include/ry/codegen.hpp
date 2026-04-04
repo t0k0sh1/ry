@@ -18,6 +18,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 class CodeGen {
 public:
@@ -26,6 +27,40 @@ public:
                      bool outline_mode = false);
     llvm::orc::ThreadSafeModule compile(Program &prog);
     const std::vector<std::string>& getWarnings() const { return warnings_; }
+
+    // --- @native function signature types ---
+
+    struct NativeFnParam {
+        std::string name;
+        std::string type_name;   // Ry type name ("str", "int", "List<int>", etc.)
+    };
+
+    struct NativeFnSignature {
+        std::string name;              // function name ("encode", "sin", etc.)
+        std::string package;           // package name ("base64", "math", etc.; empty for builtins)
+        std::vector<NativeFnParam> params;
+        std::string return_type_name;  // Ry return type name
+        std::vector<std::string> directive_names; // e.g. {"native", "deprecated"}
+    };
+
+    // Access the @native function signature registry.
+    // Keyed by "package::name" for package functions, bare name for builtins.
+    const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
+    getNativeFnSigs() const { return native_fn_sigs_; }
+
+    // Derive the base runtime function name for a stdlib package function.
+    // e.g. ("base64", "encode") → "__ry_base64_encode"
+    // For overloaded functions, callers must append an arity suffix
+    // (e.g. "__ry_path_join2", "__ry_path_join3") as needed.
+    // Only meaningful for package functions; builtins use varied naming.
+    static std::string deriveRuntimeFnName(const std::string &package,
+                                           const std::string &fn_name);
+
+    // Build the registry key for native_fn_sigs_.
+    static std::string nativeSigKey(const std::string &package,
+                                    const std::string &name) {
+        return package.empty() ? name : package + "::" + name;
+    }
 
 private:
     std::unique_ptr<llvm::LLVMContext> ctx_;
@@ -151,6 +186,7 @@ private:
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
     llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
+
     struct OverloadEntry {
         llvm::Function *func;
         std::vector<llvm::Type*> paramTypes;
@@ -393,6 +429,13 @@ private:
 
     // @native fn signature registry (argument count per overload)
     std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
+
+    // @native fn rich signature registry (coexists with native_fn_arg_counts_)
+    std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
+
+    // Derive package name from the source file path of a native function declaration.
+    // e.g. "share/std/base64/base64.ry" → "base64", "share/std/builtins.ry" → ""
+    std::string deriveNativePackage(const SourceLocation &loc) const;
 
     // Literal/range type constraints
     struct TypeConstraint {
