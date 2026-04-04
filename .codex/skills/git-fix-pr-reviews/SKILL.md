@@ -72,10 +72,18 @@ After all fixes are applied, display a summary including:
 
 ### Step 7: Commit and push (only when all reviews are resolved)
 
-**Gate**: Check the PR for unresolved review threads:
+**Gate**: Check the PR for unresolved review threads using the GraphQL API:
 
 ```bash
-gh pr view <number> --json reviewThreads --jq '[.reviewThreads[] | select(.isResolved | not)] | length'
+gh api graphql -f query='
+query($owner:String!,$repo:String!,$pr:Int!) {
+  repository(owner:$owner,name:$repo) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100) { nodes { isResolved } }
+    }
+  }
+}' -f owner='{owner}' -f repo='{repo}' -F pr='{number}' \
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
 ```
 
 - If the count is **greater than 0**, display the count and stop:
