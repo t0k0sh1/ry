@@ -12,7 +12,7 @@ Mark a draft pull request as ready for review.
 ## Context
 
 - Current branch: !`git branch --show-current`
-- PR info: !`gh pr view --json number,title,url,isDraft 2>/dev/null || echo "No PR found"`
+- PR info: !`gh pr view --json number,title,url,isDraft,state 2>/dev/null || echo "No PR found"`
 
 ## Inputs
 
