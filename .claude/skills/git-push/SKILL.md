@@ -1,6 +1,6 @@
 ---
 name: git-push
-description: Merge base branch and push with smart base branch detection for vx.x.x workflow.
+description: Merge base branch and push with smart base branch detection for v*.*.* release branch workflow.
 allowed-tools: Bash(git push:*), Bash(git fetch:*), Bash(git merge:*), Bash(gh pr view:*), Bash(git add:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
 metadata:
   short-description: Push git commits

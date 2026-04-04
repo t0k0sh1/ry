@@ -22,7 +22,7 @@ Create a branch (if needed), commit, merge the base branch, push, and open a PR.
 
 If the current branch is `main` or matches `v*.*.*` (e.g. `v0.0.8`), you **MUST** create a new feature branch before committing.
 - Use the `<type>/<short-description>` naming convention
-- Never commit directly to `main` or `vx.x.x` branches
+- Never commit directly to `main` or release (`v*.*.*`) branches
 
 ### 2. Commit
 

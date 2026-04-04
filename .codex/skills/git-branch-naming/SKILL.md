@@ -41,8 +41,8 @@ Create a new git branch following the `<type>/<short-description>` naming conven
 
 ## Repository Rules
 
-- Always branch from the current release branch (`vx.x.x`) or `main`
-- Never commit directly on `main` or `vx.x.x` branches
+- Always branch from the current release branch (`v*.*.*`) or `main`
+- Never commit directly on `main` or release (`v*.*.*`) branches
 - The feature branch will be PR'd back to its parent branch
 
 ## Steps

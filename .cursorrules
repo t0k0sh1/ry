@@ -50,8 +50,8 @@ ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
 ### Git
 
 - **Branch naming**: `<type>/<short-description>` (feat, fix, docs, refactor, test, chore)
-- **Never commit on `main` or `vx.x.x` branches** — always create a feature branch
-- **PR base**: the branch you forked from (often `vx.x.x`, not always `main`)
+- **Never commit on `main` or release (`v*.*.*`) branches** — always create a feature branch
+- **PR base**: the branch you forked from (often a `v*.*.*` release branch, not always `main`)
 - **Commit messages**: conventional commits (feat:, fix:, docs:, refactor:, test:, chore:)
 - Non-default branch merges don't auto-close issues — close manually
 

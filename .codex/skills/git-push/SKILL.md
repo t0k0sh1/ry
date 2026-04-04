@@ -1,6 +1,6 @@
 ---
 name: git-push
-description: Merge base branch and push with smart base branch detection for vx.x.x workflow.
+description: Merge base branch and push with smart base branch detection for v*.*.* release branch workflow.
 metadata:
   short-description: Push git commits
 ---

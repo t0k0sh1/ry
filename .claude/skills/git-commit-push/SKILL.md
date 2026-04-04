@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: Commit, merge base branch, and push with branch safety check and smart base branch detection for vx.x.x workflow.
+description: Commit, merge base branch, and push with branch safety check and smart base branch detection for v*.*.* release branch workflow.
 allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git push:*), Bash(git commit:*), Bash(git fetch:*), Bash(git merge:*), Bash(gh pr view:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Read, Edit
 metadata:
   short-description: Commit and push

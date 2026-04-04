@@ -1,14 +1,14 @@
 ---
 name: git-fix-pr-reviews
-description: Fetch PR review comments, triage them, apply fixes, and automatically commit and push the changes.
-allowed-tools: Bash(gh:*), Bash(git:*), Read, Edit
+description: Fetch PR review comments, triage them, and apply fixes. Does not commit or push.
+allowed-tools: Bash(gh:*), Bash(git branch:*), Read, Edit
 metadata:
   short-description: Triage and fix PR review comments
 ---
 
 # Git Fix PR Reviews
 
-Fetch PR review feedback, classify it, apply fixes, and push.
+Fetch PR review feedback, classify it, and apply fixes.
 
 ## Context
 
@@ -32,8 +32,8 @@ User input: $ARGUMENTS
 
 Get repository info with `gh repo view --json owner,name --jq '.owner.login + "/" + .name'` and call the following two APIs **in parallel**:
 
-1. `gh api repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (attached to specific files/lines)
-2. `gh api repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments)
+1. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (each has an `id` field needed for replies)
+2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments)
 
 If there are no review comments at all, display the following and stop:
 > No review comments found.
@@ -60,7 +60,8 @@ Display the classification results for all comments in a table:
 
 - **Auto-fix**: Read the target file with `Read` and apply the fix immediately with `Edit`
 - **Needs confirmation**: Ask the user which ones to apply, and only fix those that are approved
-- **Skip**: Do nothing
+- **Skip (inline comment)**: Reply using `gh api repos/{owner}/{repo}/pulls/{number}/comments/{comment_id}/replies -f body='<reason>'` with a brief reason (e.g. "Intentional design", "Already fixed", "Nitpick — not applicable"). Use the comment `id` from Step 2.
+- **Skip (review summary)**: No reply needed — review summaries are general text (LGTM, etc.) and don't support inline replies.
 
 ### Step 6: Report
 
@@ -71,33 +72,4 @@ After all fixes are applied, display a summary including:
 - Number of skipped items
 - List of modified files
 
-### Step 7: Commit and push (only when all reviews are resolved)
-
-**Gate**: Check the PR for unresolved review threads using the GraphQL API:
-
-```bash
-gh api graphql --paginate -f query='
-query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String) {
-  repository(owner:$owner,name:$repo) {
-    pullRequest(number:$pr) {
-      reviewThreads(first:100,after:$endCursor) {
-        nodes { isResolved }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}' -f owner='{owner}' -f repo='{repo}' -F pr='{number}' \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length' \
-  | awk '{s+=$1} END {print s+0}'
-```
-
-- If the count is **greater than 0**, display the count and stop:
-  > <N> unresolved review thread(s) remain. Commit and push skipped — resolve all threads first.
-- If **0**, proceed with commit and push.
-
-Before committing, verify the current branch is not `main` or `v*.*.*`. If it is, stop and report the issue.
-
-1. Stage all modified files with `git add`
-2. Check if there are any staged changes (e.g. `git diff --cached --quiet`). If no changes, display "No changes to commit; skipping commit and push" and stop
-3. Create a single commit with message: `fix: address PR review feedback`
-4. Push to origin
+**Important**: Do NOT commit or push. The user will do so explicitly.

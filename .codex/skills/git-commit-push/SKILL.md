@@ -1,6 +1,6 @@
 ---
 name: git-commit-push
-description: Commit, merge base branch, and push with branch safety check and smart base branch detection for vx.x.x workflow.
+description: Commit, merge base branch, and push with branch safety check and smart base branch detection for v*.*.* release branch workflow.
 metadata:
   short-description: Commit and push
 ---
