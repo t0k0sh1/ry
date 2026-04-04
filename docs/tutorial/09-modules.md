@@ -107,8 +107,8 @@ export RY_HOME="$HOME/.ry"   # default
 Package files are searched in the following order:
 
 1. **Directory of the importing file** — The directory containing the file with the import statement is searched first.
-2. **`$RY_HOME/lib`** — Standard library location.
-3. **Executable-relative `lib/`** — Directories relative to the `ry` executable.
+2. **`$RY_HOME/share`** — Standard library location. Falls back to **`$RY_HOME/lib`** for legacy installations.
+3. **Executable-relative `share/`** — Directories relative to the `ry` executable. Falls back to executable-relative **`lib/`** for legacy layouts.
 4. **`RY_PATH` environment variable** — If not found, directories specified in `RY_PATH` are searched in order.
 
 ---

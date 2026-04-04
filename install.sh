@@ -42,11 +42,15 @@ elif [ -d "$TMPDIR/lib/std" ]; then
     SRC_STD="$TMPDIR/lib/std"
 fi
 if [ -n "$SRC_STD" ] && [ -d "$SRC_STD" ]; then
+    # Copy to a staging directory first, then atomically swap into place.
+    # On copy failure the previous stdlib remains intact.
+    mkdir -p "$(dirname "$STD_DIR")"
+    STD_STAGING="$(mktemp -d "${STD_DIR}.XXXXXX")"
+    cp -r "$SRC_STD/." "$STD_STAGING/"
     rm -rf "$STD_DIR"
-    mkdir -p "$STD_DIR"
-    cp -r "$SRC_STD/." "$STD_DIR/"
+    mv "$STD_STAGING" "$STD_DIR"
     echo "Standard library installed to $STD_DIR"
-    # Clean up old lib/std layout only after successful copy (migration)
+    # Clean up old lib/std layout only after successful install (migration)
     if [ "$NEW_LAYOUT" = 1 ]; then
         rm -rf "$RY_HOME/lib/std"
         rmdir "$RY_HOME/lib" 2>/dev/null || true

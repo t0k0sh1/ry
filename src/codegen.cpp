@@ -183,8 +183,10 @@ void CodeGen::emitTraceSymbolDefine(const std::string &kind, const std::string &
     // Skip stdlib symbols to reduce noise — users care about their own definitions
     if (sm_ && loc.file_id >= 0 && loc.file_id < sm_->getFileCount()) {
         const auto &fname = sm_->getFilename(loc.file_id);
-        if (fname.find("/share/std/") != std::string::npos)
+        if (fname.find("/share/std/") != std::string::npos ||
+            fname.find("/lib/std/") != std::string::npos) {
             return;
+        }
     }
     ry::emitTraceEvent("symbol.define", "compile", &loc,
                        {ry::TraceField("kind", kind),
