@@ -75,5 +75,6 @@ After all fixes are applied, display a summary including:
 Before committing, verify the current branch is not `main` or `v*.*.*`. If it is, stop and report the issue.
 
 1. Stage all modified files with `git add`
-2. Create a single commit with message: `fix: address PR review feedback`
-3. Push to origin
+2. Check if there are any staged changes (e.g. `git diff --cached --quiet`). If no changes, display "No changes to commit; skipping commit and push" and stop
+3. Create a single commit with message: `fix: address PR review feedback`
+4. Push to origin

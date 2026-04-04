@@ -27,8 +27,11 @@ User input: $ARGUMENTS
 - If no PR is found, display the following and stop:
   > No PR found. Run this command on a branch with an associated PR, or specify a PR number.
 
-### Step 2: Check draft status
+### Step 2: Check PR state
 
+- If the user specified a different PR number, fetch its details with `gh pr view <number> --json number,title,url,isDraft,state`
+- If the PR state is not `OPEN`, display the following and stop:
+  > PR #<number> is not open (state: <state>).
 - If the PR is not a draft, display the following and stop:
   > PR #<number> is already open (not a draft).
 

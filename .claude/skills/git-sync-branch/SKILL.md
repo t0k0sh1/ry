@@ -27,5 +27,9 @@ User input: $ARGUMENTS
 2. **Safety check**: If the current branch is the same as the target branch, report "Already on the target branch — no sync needed" and stop.
 3. Run `git fetch origin` to get the latest remote state.
 4. Run `git merge origin/<target>` to merge the target branch changes into the current branch.
-5. **On conflict**: Report the conflict to the user and let them decide how to proceed. Do NOT auto-abort the merge.
+5. **On conflict**: Report the conflict to the user with the list of conflicting files and suggest available options:
+   - `git status` to inspect conflicts
+   - Edit files to resolve, then `git add <file>` and `git commit` to complete
+   - `git merge --abort` to cancel the merge
+   Do NOT auto-abort the merge.
 6. **On success**: Report the merge result and a summary including the number of commits merged.

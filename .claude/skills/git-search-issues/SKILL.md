@@ -60,7 +60,7 @@ Call `list_issues`:
 ### Keyword search (e.g. `HTTP`, `lambda`)
 
 Call `search_issues`:
-- query: `"is:open keyword"`
+- query: `"is:open <keyword>"` (substitute the user's keyword into the query)
 - owner: `"t0k0sh1"`, repo: `"ry"`
 - sort: `"created"`, order: `"desc"`
 - perPage: `20`

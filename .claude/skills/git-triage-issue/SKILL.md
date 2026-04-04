@@ -8,7 +8,7 @@ metadata:
 
 # Git Triage Issue
 
-When you encounter a problem, bug, review comment, or improvement opportunity that may be outside the current task scope, **always** ask the user how to handle it. Never silently skip or auto-decide.
+When you encounter a problem, bug, review comment, or improvement opportunity that may be outside the current task scope, classify it and act according to the Decision Logic below. For clear-cut cases (Case 1 and Case 2), act autonomously. Only ask the user when the classification is genuinely ambiguous (Case 3).
 
 ## When to use
 
@@ -23,7 +23,7 @@ Classify the issue and act **autonomously** (do not ask the user for permission)
 
 ### Case 1: Caused by the current change
 
-If the issue is caused by the current change (even indirectly — it did not exist before the change):
+If the issue is caused by the current change (including indirect causes), or if it did not exist prior to this change:
 - Fix it in the current feature branch immediately
 - Report what was fixed
 

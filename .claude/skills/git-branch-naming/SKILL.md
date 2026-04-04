@@ -12,7 +12,7 @@ Create a new git branch following the `<type>/<short-description>` naming conven
 
 ## Branch Name Format
 
-```
+```text
 <type>/<short-description>
 ```
 
