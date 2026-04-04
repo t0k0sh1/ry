@@ -608,7 +608,8 @@ private:
     llvm::Value *structToString(llvm::Value *val);
     bool isTupleStructType(llvm::StructType *st);
     llvm::Value *tupleToString(llvm::Value *val, llvm::StructType *st);
-    llvm::Value *collectionToString(llvm::Value *val);
+    void emitSprintBegin();
+    llvm::Value *emitSprintEnd(const llvm::Twine &name = "");
     llvm::Value *concatStringParts(
         const std::vector<std::pair<llvm::Value*, llvm::Value*>> &parts,
         const std::string &prefix);
@@ -679,8 +680,6 @@ private:
     void emitEnsureChecks(llvm::Value *retVal);
     void emitInvariantCheck(const std::string &typeName, const StructInfo &info,
                             llvm::Value *structVal);
-    void emitPrintValue(llvm::Value *val, llvm::Type *ty,
-                        llvm::FunctionCallee printfFn, const std::string &suffix);
     llvm::Type *getListElementType(llvm::Value *listAlloca);
     llvm::Type *getMapKeyType(llvm::Value *mapVal);
     llvm::Type *getMapValueType(llvm::Value *mapVal);
@@ -941,7 +940,6 @@ private:
                                          unsigned lenIdx, unsigned bucketCountIdx, unsigned bucketsPtrIdx,
                                          llvm::Value *key, llvm::Type *keyTy, llvm::Value *denseIndex);
     void emitPrint(const std::vector<ExprPtr> &args);
-    void emitPrintSingle(llvm::Value *val, llvm::FunctionCallee printfFn);
     void emitExit(const std::vector<ExprPtr> &args);
 
     // Lambda call helper: invoke a lambda/closure value with given args
