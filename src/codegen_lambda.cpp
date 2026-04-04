@@ -89,6 +89,7 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         std::visit([&](const auto &s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, AssignStmt>) {
+                tryCaptureVar(s.name);
                 if (s.value) scanExpr(*s.value);
             } else if constexpr (std::is_same_v<T, CallStmt>) {
                 tryCaptureVar(s.callee);
@@ -138,6 +139,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
         for (auto &stmt : e->body)
             scanStmt(stmt);
     }
+
+    // Snapshot @const status before FnScope clears immutable_scope_stack_
+    llvm::SmallVector<bool, 8> capturedIsConst;
+    capturedIsConst.reserve(capturedNames.size());
+    for (auto &name : capturedNames)
+        capturedIsConst.push_back(isImmutable(name));
 
     // Build parameter types (user params + captured vars)
     std::vector<llvm::Type*> paramTypes;
@@ -209,6 +216,9 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<LambdaExpr> &e) {
                     capturedTypes[capIdx], nullptr, capturedNames[capIdx]);
                 builder_.CreateStore(&arg, alloca);
                 scope_stack_.back()[capturedNames[capIdx]] = alloca;
+                captured_vars_.insert(alloca);
+                if (capturedIsConst[capIdx])
+                    immutable_scope_stack_.back().insert(capturedNames[capIdx]);
                 // Propagate fn_type_info for captured function-type variables
                 auto closureIt = capturedClosureInfosLocal.find(capIdx);
                 if (closureIt != capturedClosureInfosLocal.end())

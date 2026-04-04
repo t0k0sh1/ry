@@ -6,6 +6,7 @@
 #include "ry/source_manager.hpp"
 #include "ry/trace.hpp"
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/STLFunctionalExtras.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -148,6 +149,7 @@ private:
     static constexpr int64_t TAG_UNIT  = 4; // reserved for future use
     std::vector<std::unordered_map<std::string, llvm::AllocaInst*>> scope_stack_;
     std::vector<std::unordered_set<std::string>> immutable_scope_stack_;
+    llvm::SmallPtrSet<llvm::AllocaInst*, 8> captured_vars_; // reject reassignment of captured vars inside closure body
     std::vector<std::vector<llvm::Value*>> iterator_malloc_stack_; // per-scope iterator malloc tracking
     struct OverloadEntry {
         llvm::Function *func;
@@ -454,6 +456,7 @@ private:
         bool savedInEnsureContext_;
         std::string savedFnReturnType_;
         std::string savedFnName_;
+        llvm::SmallPtrSet<llvm::AllocaInst*, 8> savedCapturedVars_;
     };
 
     [[noreturn]] void codegenError(const SourceLocation &loc, const std::string &msg);
@@ -466,6 +469,7 @@ private:
     void popScope();
     llvm::AllocaInst *findVar(const std::string &name);
     bool isImmutable(const std::string &name) const;
+    bool isCapturedVar(llvm::AllocaInst *ptr) const;
     llvm::AllocaInst *getOrCreateVar(const std::string &name, llvm::Type *ty);
 
     // Variable declaration (B3)

@@ -251,6 +251,87 @@ TEST_F(CodeGenTest, LambdaArgTypeError) {
     EXPECT_THROW(runSource(src), std::runtime_error);
 }
 
+// ===== Effectively final capture tests =====
+
+TEST_F(CodeGenTest, CapturedVarReassignError) {
+    std::string src =
+        "x = 10\n"
+        "f = ():\n"
+        "    x = 20\n"
+        "\n"
+        "f()";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, CapturedVarCompoundAssignError) {
+    std::string src =
+        "x = 10\n"
+        "f = ():\n"
+        "    x += 1\n"
+        "\n"
+        "f()";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
+TEST_F(CodeGenTest, CapturedVarReadOK) {
+    std::string src =
+        "x = 10\n"
+        "f = () => x + 5\n"
+        "print(f())";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, OuterReassignAfterCaptureOK) {
+    std::string src =
+        "base = 10\n"
+        "add_base = (x: int) => x + base\n"
+        "base = 99\n"
+        "print(add_base(5))";
+    EXPECT_EQ(runSource(src), "15\n");
+}
+
+TEST_F(CodeGenTest, CapturedRecordFieldAssignOK) {
+    // Field assignment on captured record should be allowed (not blocked by effectively-final)
+    // The outer value is 0 because records are captured by value (copy)
+    std::string src =
+        "record Counter:\n"
+        "    value: int\n"
+        "\n"
+        "c = Counter(0)\n"
+        "inc = ():\n"
+        "    c.value = c.value + 1\n"
+        "    print(c.value)\n"
+        "\n"
+        "inc()";
+    EXPECT_EQ(runSource(src), "1\n");
+}
+
+TEST_F(CodeGenTest, CapturedVarShadowedByForLoopOK) {
+    // A for-loop variable that shadows a captured variable should be assignable
+    std::string src =
+        "x = 10\n"
+        "f = ():\n"
+        "    for x in [1, 2, 3]:\n"
+        "        print(x)\n"
+        "\n"
+        "f()";
+    EXPECT_EQ(runSource(src), "1\n2\n3\n");
+}
+
+TEST_F(CodeGenTest, CapturedConstFieldAssignError) {
+    // @const variable captured by closure must still block field assignment
+    std::string src =
+        "record Point:\n"
+        "    x: int\n"
+        "\n"
+        "@const p = Point(1)\n"
+        "f = ():\n"
+        "    p.x = 99\n"
+        "\n"
+        "f()";
+    EXPECT_THROW(runSource(src), std::runtime_error);
+}
+
 // ===== Set テスト =====
 
 TEST_F(CodeGenTest, SetCreateAndIn) {

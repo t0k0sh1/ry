@@ -550,6 +550,8 @@ void CodeGen::emitStmt(AssignStmt &s) {
         codegenError("type annotation not allowed on reassignment: " + s.name);
     if (is_const)
         codegenError("@const not allowed on reassignment: " + s.name);
+    if (!captured_vars_.empty() && isCapturedVar(ptr))
+        codegenError("cannot modify captured variable '" + s.name + "' inside closure");
     if (isImmutable(s.name))
         codegenError("cannot reassign @const variable: " + s.name);
 
