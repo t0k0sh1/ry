@@ -206,7 +206,7 @@ echo 'print(1)' | ./build/ry --trace -c
 - git add / commit / push
 - PR 作成
 
-> **例外**: ユーザーがスキル（例: `/git-fix-pr-reviews`）を明示的に呼び出した場合、そのスキルに定義された commit / push 操作はユーザー指示とみなす。ただし、すべてのレビュー項目が解決済みであることを条件とする。
+> **例外**: ユーザーがスキル（例: `/git-fix-pr-reviews`）を明示的に呼び出した場合、そのスキルに定義された commit / push 操作はユーザー指示とみなす。ただし、PR 上の未解決レビュースレッド（`reviewThreads.isResolved == false`）が 0 件であることを条件とする。
 
 ## 作業完了前チェックリスト
 
