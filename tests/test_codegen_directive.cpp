@@ -130,6 +130,7 @@ TEST(NativeFnSigs, LibraryFieldParsed) {
     ASSERT_EQ(d.params.size(), 1u);
     EXPECT_EQ(d.params[0].key, "");
     EXPECT_EQ(d.params[0].value, "base64");
+    EXPECT_TRUE(d.params[0].is_string);
 }
 
 TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {

@@ -106,7 +106,7 @@ Declares a function whose implementation is provided by the runtime. The functio
 
 An optional string argument specifies the shared library module name for future dynamic loading support. The library name is stored in the signature registry as metadata; it does not affect call resolution in the current version:
 
-```
+```ry
 @native              # built-in (statically linked)
 @native("base64")    # metadata-only: library name stored for future dynamic loading
 ```

@@ -89,7 +89,7 @@ inline std::string getDirectivePositionalArg(const std::vector<Directive> &direc
     for (const auto &d : directives) {
         if (d.name == name) {
             for (const auto &p : d.params)
-                if (p.key.empty()) return p.value;
+                if (p.key.empty() && p.is_string) return p.value;
             return "";
         }
     }
