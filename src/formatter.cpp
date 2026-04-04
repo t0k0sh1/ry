@@ -444,7 +444,15 @@ void Formatter::formatDirectives(const std::vector<Directive> &directives) {
             emit("(");
             for (size_t i = 0; i < d.params.size(); ++i) {
                 if (i > 0) emit(", ");
-                emit(d.params[i].key + "=" + d.params[i].value);
+                const auto &p = d.params[i];
+                if (p.key.empty()) {
+                    // Positional string argument: @native("base64")
+                    emit("\"" + escapeString(p.value) + "\"");
+                } else if (p.is_string) {
+                    emit(p.key + "=\"" + escapeString(p.value) + "\"");
+                } else {
+                    emit(p.key + "=" + p.value);
+                }
             }
             emit(")");
         }

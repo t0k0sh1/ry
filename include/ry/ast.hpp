@@ -60,6 +60,7 @@ struct TypeNode {
 struct DirectiveParam {
     std::string key;
     std::string value;
+    bool is_string = false;  // true when value was a string literal token
 };
 
 struct Directive {
@@ -79,6 +80,20 @@ inline bool hasDirective(const std::vector<Directive> &directives, std::string_v
     for (const auto &d : directives)
         if (d.name == name) return true;
     return false;
+}
+
+// Get the first positional (key-empty) string argument of a named directive.
+// Returns empty string if not found.
+inline std::string getDirectivePositionalArg(const std::vector<Directive> &directives,
+                                              std::string_view name) {
+    for (const auto &d : directives) {
+        if (d.name == name) {
+            for (const auto &p : d.params)
+                if (p.key.empty() && p.is_string) return p.value;
+            return "";
+        }
+    }
+    return "";
 }
 
 // Returns true for operator names whose return type must be bool.

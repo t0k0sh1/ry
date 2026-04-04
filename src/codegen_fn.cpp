@@ -397,14 +397,18 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
             }
         }
 
-        // Register argument count for native function overload
-        native_fn_arg_counts_[s->name].push_back(s->params.size());
-
         // Build rich signature
         NativeFnSignature sig;
         sig.name = s->name;
         sig.package = deriveNativePackage(s->loc);
+        sig.library = getDirectivePositionalArg(s->directives, "native");
         sig.params.reserve(s->params.size());
+
+        // Only register in builtin dispatch when no library is specified.
+        // @native("libname") declarations are metadata-only until dynamic
+        // loading is implemented — they do not affect call resolution.
+        if (sig.library.empty())
+            native_fn_arg_counts_[s->name].push_back(s->params.size());
         for (auto &p : s->params)
             sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
         sig.return_type_name = s->return_type ? s->return_type->toString() : "Unit";
