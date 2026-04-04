@@ -87,10 +87,9 @@ query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String) {
     }
   }
 }' -f owner='{owner}' -f repo='{repo}' -F pr='{number}' \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length' \
+  | awk '{s+=$1} END {print s+0}'
 ```
-
-If the result spans multiple pages, sum the counts from all pages.
 
 - If the count is **greater than 0**, display the count and stop:
   > <N> unresolved review thread(s) remain. Commit and push skipped — resolve all threads first.
