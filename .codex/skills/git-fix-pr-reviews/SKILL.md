@@ -76,10 +76,10 @@ After all fixes are applied, display a summary including:
 
 ```bash
 gh api graphql --paginate -f query='
-query($owner:String!,$repo:String!,$pr:Int!,$cursor:String) {
+query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String) {
   repository(owner:$owner,name:$repo) {
     pullRequest(number:$pr) {
-      reviewThreads(first:100,after:$cursor) {
+      reviewThreads(first:100,after:$endCursor) {
         nodes { isResolved }
         pageInfo { hasNextPage endCursor }
       }
@@ -89,7 +89,7 @@ query($owner:String!,$repo:String!,$pr:Int!,$cursor:String) {
   --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
 ```
 
-If the result spans multiple pages, sum all page counts.
+If the result spans multiple pages, sum the counts from all pages.
 
 - If the count is **greater than 0**, display the count and stop:
   > <N> unresolved review thread(s) remain. Commit and push skipped — resolve all threads first.
