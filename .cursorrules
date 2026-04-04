@@ -1,0 +1,85 @@
+# Ry Project — Cursor Rules
+
+This file is derived from AGENTS.md (the single source of truth). See AGENTS.md for the full workflow.
+
+## Project Overview
+
+Ry is a compiled programming language with C++ runtime and LLVM JIT codegen.
+Repository: t0k0sh1/ry
+
+## Build & Test
+
+```bash
+cmake --preset default && cmake --build build    # Build
+./build/ry_tests                                 # C++ tests (GoogleTest)
+./build/ry test -p                               # Ry self-tests (all *.test.ry)
+./build/ry test tests/spec/<file>.test.ry        # Individual test file
+```
+
+The `./build/ry` binary uses project-local `lib/std/` via `package.toml`'s `[paths]._dev_stdlib`. Do not reference `~/.ry/`.
+
+## ASan (AddressSanitizer)
+
+```bash
+cmake --preset asan && cmake --build build-asan
+ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry_tests
+ASAN_OPTIONS=detect_container_overflow=0 ./build-asan/ry test -p
+```
+
+`detect_container_overflow=0` suppresses false positives from LLVM libraries built without ASan. ASan errors must be fixed before committing.
+
+## Code Architecture
+
+- `src/` — C++ source (runtime_*.cpp, codegen_call_*.cpp, codegen_*.cpp, parser_*.cpp)
+- `include/ry/` — C++ headers
+- `lib/std/` — Ry standard library declarations (.ry files)
+- `tests/spec/` — Ry test files (*.test.ry)
+- `tests/` — C++ test files
+
+## Stdlib Package Addition (6 Steps)
+
+1. `lib/std/<pkg>/<pkg>.ry` — `@native fn` declarations
+2. `src/runtime_<pkg>.cpp` — C++ implementation (`__ry_<pkg>_*` function naming)
+3. `src/codegen_call_<pkg>.cpp` — codegen dispatcher + add declaration to `include/ry/codegen.hpp`
+4. `include/ry/builtin_stdlib_registry.hpp` — register package (1 line)
+5. `CMakeLists.txt` — add source files to `ry_lib`
+6. Tests — import tests + native function execution tests
+
+## Key Conventions
+
+### Git
+
+- **Branch naming**: `<type>/<short-description>` (feat, fix, docs, refactor, test, chore)
+- **Never commit on `main` or release (`v*.*.*`) branches** — always create a feature branch
+- **PR base**: the branch you forked from (often a `v*.*.*` release branch, not always `main`)
+- **Commit messages**: conventional commits (feat:, fix:, docs:, refactor:, test:, chore:)
+- Non-default branch merges don't auto-close issues — close manually
+
+### Development
+
+- **TDD-based**: write tests first (or verify existing tests cover the change), then implement
+- **English-only docs**: update `docs/` and `README.md` in English. Translations are done at release time
+- **CHANGELOG**: add fragments to `changelog.d/`, never edit `CHANGELOG.md` directly. Format: `changelog.d/{issue}-{slug}.md`
+
+## Trace for Debugging
+
+```bash
+./build/ry --trace app/main.ry                           # Trace to stderr
+./build/ry --trace-out=/tmp/ry-trace.jsonl app/main.ry   # Trace to file
+./build/ry test --trace tests/spec/<file>.test.ry        # Trace during test
+echo 'print(1)' | ./build/ry --trace -c                  # Trace inline code
+```
+
+Trace outputs JSON Lines. Use selectively when behavior is unclear.
+
+## Agent-Specific Limitations
+
+The following capabilities are Claude Code specific and cannot be replicated in Cursor:
+- Skills/commands infrastructure (`.claude/skills/`)
+- MCP server integration (GitHub MCP for issue/PR management)
+- Hook system for automated behaviors
+
+For these, use manual CLI equivalents:
+- Issue management: `gh issue list`, `gh issue view`, `gh issue create`
+- PR management: `gh pr create`, `gh pr view`, `gh pr merge`
+- Labels: `gh issue edit --add-label`, `gh issue edit --remove-label`
