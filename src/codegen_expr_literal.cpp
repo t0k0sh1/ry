@@ -615,6 +615,13 @@ llvm::Value *CodeGen::valueToString(llvm::Value *val) {
                                 "vts.adt.field." + std::to_string(fi));
                             llvm::Value *fieldVal = builder_.CreateLoad(fieldTy, fieldPtr, "vts.adt.fval");
 
+                            // Propagate low-level type metadata for correct signedness
+                            if (fi < fit->second.fieldTypeNames.size()) {
+                                const auto &ftName = fit->second.fieldTypeNames[fi];
+                                if (isLowLevelTypeName(ftName))
+                                    low_level_type_names_[fieldVal] = ftName;
+                            }
+
                             if (fi > 0) {
                                 llvm::Constant *commaFmt = cachedGlobalString(", ", ".vts_adt_comma");
                                 builder_.CreateCall(spf, {commaFmt});

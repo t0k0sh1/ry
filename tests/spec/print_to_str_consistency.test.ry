@@ -8,6 +8,10 @@ enum Shape:
   Rectangle(int, int)
   Point
 
+enum Packet:
+  Data(u8)
+  Empty
+
 describe("print and to_str consistency", ():
   it("int", ():
     expect(to_str(42)).to_eq("42")
@@ -90,6 +94,20 @@ describe("print and to_str consistency", ():
     # expect-output: Err(Error: oops (code: 0))
   )
 
+  it("Option wrapping list (recursive non-scalar)", ():
+    x = Some([10, 20])
+    expect(to_str(x)).to_eq("Some([10, 20])")
+    print(x)
+    # expect-output: Some([10, 20])
+  )
+
+  it("Result wrapping tuple (recursive non-scalar)", ():
+    r = Ok((1, "a"))
+    expect(to_str(r)).to_eq("Ok((1, a))")
+    print(r)
+    # expect-output: Ok((1, a))
+  )
+
   it("record with user-defined to_str", ():
     record Person:
       name: str
@@ -130,6 +148,13 @@ describe("to_str on ADT enum", ():
   it("f-string with ADT enum", ():
     s = Shape::Rectangle(3, 4)
     expect(f"shape: {s}").to_eq("shape: Rectangle(3, 4)")
+  )
+
+  it("ADT enum field preserves unsigned type metadata", ():
+    p = Packet::Data(200 as u8)
+    expect(to_str(p)).to_eq("Data(200)")
+    print(p)
+    # expect-output: Data(200)
   )
 )
 
