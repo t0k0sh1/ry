@@ -71,7 +71,10 @@ After all fixes are applied, display a summary including:
 - Number of skipped items
 - List of modified files
 
-### Step 7: Commit and push
+### Step 7: Commit and push (only when all reviews are resolved)
+
+**Condition**: Only proceed with commit and push if **all** review items have been addressed (auto-fixed, user-approved, or explicitly skipped). If any "Needs confirmation" items remain unanswered, display the following and stop:
+> Some review items are still unresolved. Commit and push skipped — resolve remaining items first.
 
 Before committing, verify the current branch is not `main` or `v*.*.*`. If it is, stop and report the issue.
 
