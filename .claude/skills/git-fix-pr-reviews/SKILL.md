@@ -35,9 +35,11 @@ Get repository info with `gh repo view --json owner,name --jq '.owner.login + "/
 1. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/comments` — inline comments (each has an `id` field needed for replies)
 2. `gh api --paginate repos/{owner}/{repo}/pulls/{number}/reviews` — review summaries (general comments)
 3. Thread-to-comment mapping via GraphQL — fetch all review threads with their comment node IDs:
-   ```
+
+   ```shell
    gh api graphql -f query='{ repository(owner: "{owner}", name: "{repo}") { pullRequest(number: {number}) { reviewThreads(first: 100) { nodes { id isResolved comments(first: 100) { nodes { databaseId } } } } } }'
    ```
+
    Build a lookup map from comment `databaseId` (matches REST API `id`) → thread `id`. This mapping is used in Step 6 to resolve only handled threads.
 
 If there are no review comments at all, display the following and stop:
@@ -75,7 +77,8 @@ After all fixes are applied and skip replies are posted, resolve **only the thre
 1. During Step 5, collect the **comment IDs** of every comment you handled (auto-fixed, user-approved, or replied to with a skip reason).
 2. Using the comment-to-thread mapping built in Step 2, look up the corresponding **thread ID** for each handled comment ID.
 3. Resolve each thread (skip threads that are already resolved):
-   ```
+
+   ```shell
    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "{thread_id}"}) { thread { isResolved } } }'
    ```
 
