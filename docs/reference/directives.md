@@ -102,7 +102,14 @@ a, b = (1, 2)
 
 ### `@native`
 
-Declares a function whose implementation is provided by the runtime (built-in). The function must not have a body.
+Declares a function whose implementation is provided by the runtime. The function must not have a body.
+
+An optional string argument specifies the shared library module name for future dynamic loading support. The library name is stored in the signature registry as metadata; it does not affect call resolution in the current version:
+
+```
+@native              # built-in (statically linked)
+@native("base64")    # metadata-only: library name stored for future dynamic loading
+```
 
 **Basic syntax:**
 
@@ -167,8 +174,8 @@ These files are automatically loaded as a prelude when the `core/` directory is 
 - Providing a body causes a parse error: `@native function must not have a body`.
 - The declared function must correspond to an existing built-in; otherwise the call will fail at compile time.
 
-**Future extensions:**
-- `@native("libfoo.so")` — FFI binding to external shared libraries.
+**Library specification (metadata-only — loading not yet implemented):**
+- `@native("libname")` specifies that the native function lives in `libry_<libname>.dylib/.so`. The library name is parsed and stored in the signature registry as metadata for future dynamic loading support. In the current version, `@native("libname")` declarations do not affect call resolution — they are not registered for argument-count validation, and same-named built-in functions continue to resolve normally.
 
 ### `@parallel`
 

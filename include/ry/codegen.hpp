@@ -38,6 +38,7 @@ public:
     struct NativeFnSignature {
         std::string name;              // function name ("encode", "sin", etc.)
         std::string package;           // package name ("base64", "math", etc.; empty for builtins)
+        std::string library;           // @native("libname") argument; empty = built-in (static link)
         std::vector<NativeFnParam> params;
         std::string return_type_name;  // Ry return type name
         std::vector<std::string> directive_names; // e.g. {"native", "deprecated"}

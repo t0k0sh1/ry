@@ -194,11 +194,23 @@ std::vector<Directive> Parser::parseDirectives() {
                 if (lex_.peek().kind != TokenKind::RParen)
                     parseError("expected ')' after @each list");
                 lex_.next(); // consume ')'
+            } else if (nameTok.value == "native") {
+                // @native("libname") — exactly one positional string argument
+                if (lex_.peek().kind != TokenKind::String)
+                    parseError("@native(...) expects a string argument, e.g. @native(\"libname\")");
+                Token strTok = lex_.next(); // consume string
+                if (strTok.value.empty())
+                    parseError(strTok.line, "@native library name must not be empty");
+                d.params.push_back({"", strTok.value, /*is_string=*/true});
+                if (lex_.peek().kind != TokenKind::RParen)
+                    parseError("@native(\"...\") accepts exactly one argument");
+                lex_.next(); // consume ')'
             } else {
+                // key=value parameters: @inline(mode="always")
                 while (lex_.peek().kind != TokenKind::RParen) {
-                    Token keyTok2 = lex_.peek();
-                    if (keyTok2.kind != TokenKind::Ident)
-                        parseError(keyTok2.line, "expected parameter name in directive");
+                    Token keyTok = lex_.peek();
+                    if (keyTok.kind != TokenKind::Ident)
+                        parseError(keyTok.line, "expected parameter name in directive");
                     lex_.next(); // consume key
 
                     if (lex_.peek().kind != TokenKind::Equals)
@@ -215,7 +227,8 @@ std::vector<Directive> Parser::parseDirectives() {
                         parseError(valTok.line, "expected value after '=' in directive parameter");
                     lex_.next(); // consume value
 
-                    d.params.push_back({keyTok2.value, valTok.value});
+                    d.params.push_back({keyTok.value, valTok.value,
+                                        /*is_string=*/valTok.kind == TokenKind::String});
 
                     if (lex_.peek().kind == TokenKind::Comma)
                         lex_.next(); // consume ','

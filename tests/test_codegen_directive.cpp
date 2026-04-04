@@ -110,6 +110,63 @@ TEST(NativeFnSigs, DirectivesRecorded) {
               directives.end());
 }
 
+TEST(NativeFnSigs, LibraryFieldParsed) {
+    // @native("base64") parses correctly at AST level
+    std::string src =
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    // Verify the directive parameter was parsed
+    ASSERT_FALSE(prog.empty());
+    auto *fn = std::get_if<std::unique_ptr<FnStmt>>(&prog[0]);
+    ASSERT_NE(fn, nullptr);
+    ASSERT_FALSE((*fn)->directives.empty());
+    auto &d = (*fn)->directives[0];
+    EXPECT_EQ(d.name, "native");
+    ASSERT_EQ(d.params.size(), 1u);
+    EXPECT_EQ(d.params[0].key, "");
+    EXPECT_EQ(d.params[0].value, "base64");
+}
+
+TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
+    // @native("base64") stores library name in registry
+    std::string src =
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &sigs = cg.getNativeFnSigs();
+    ASSERT_TRUE(sigs.count("encode"));
+    EXPECT_EQ(sigs.at("encode")[0].library, "base64");
+}
+
+TEST(NativeFnSigs, LibraryFieldEmptyForBareNative) {
+    std::string src =
+        "@native\n"
+        "function contains(s: str, sub: str) -> bool\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &sigs = cg.getNativeFnSigs();
+    ASSERT_TRUE(sigs.count("contains"));
+    EXPECT_EQ(sigs.at("contains")[0].library, "");
+}
+
 // 1. @deprecated function called -> warning, execution normal
 TEST_F(DirectiveTest, DeprecatedFunctionWarning) {
     auto [output, warnings] = runSourceWithWarnings(
@@ -238,6 +295,40 @@ TEST_F(DirectiveTest, UnknownDirectiveError) {
     }, std::runtime_error);
 }
 
+// 10b. Positional string argument on non-@native directive causes parse error
+TEST_F(DirectiveTest, PositionalArgOnNonNativeError) {
+    EXPECT_THROW({
+        runSource("@inline(\"always\")\nfunction add(a: int, b: int) -> int:\n    return a + b\n");
+    }, std::runtime_error);
+    EXPECT_THROW({
+        runSource("@deprecated(\"old\")\nfunction foo() -> int:\n    return 1\n");
+    }, std::runtime_error);
+}
+
+// 10c. @native("") with empty string causes parse error
+TEST_F(DirectiveTest, NativeEmptyLibraryNameError) {
+    EXPECT_THROW({
+        runSource("@native(\"\")\nfunction foo(x: int) -> int\n");
+    }, std::runtime_error);
+}
+
+// 10d. @native("a", "b") or @native("a", key=val) — extra arguments rejected
+TEST_F(DirectiveTest, NativeLibraryExtraArgsError) {
+    EXPECT_THROW({
+        runSource("@native(\"a\", \"b\")\nfunction foo(x: int) -> int\n");
+    }, std::runtime_error);
+    EXPECT_THROW({
+        runSource("@native(\"a\", key=val)\nfunction foo(x: int) -> int\n");
+    }, std::runtime_error);
+}
+
+// 10e. @native(key=value) — key-value params not allowed for @native
+TEST_F(DirectiveTest, NativeKeyValueParamsError) {
+    EXPECT_THROW({
+        runSource("@native(lib=base64)\nfunction foo(x: int) -> int\n");
+    }, std::runtime_error);
+}
+
 // 11. Directive on invalid target causes parse error
 TEST_F(DirectiveTest, DirectiveOnInvalidTarget) {
     EXPECT_THROW({
@@ -352,6 +443,30 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
         "print(starts_with(\"hello\", \"hel\"))\n"
     );
     EXPECT_EQ(output, "HELLO\ntrue\ntrue\n");
+}
+
+// ===== @native("libname") directive syntax tests =====
+
+TEST_F(DirectiveTest, NativeFnLibraryDeclarationOnly) {
+    // @native("libname") declaration is accepted but does not register
+    // for builtin dispatch. The function is only in the signature registry.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n"
+        "print(\"ok\")\n"
+    );
+    EXPECT_EQ(output, "ok\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryDoesNotAffectDispatch) {
+    // @native("libname") is metadata-only — it does not register for
+    // builtin arg-count validation, but same-named builtins still resolve.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "function contains(s: str, sub: str) -> bool\n"
+        "print(contains(\"hello\", \"ell\"))\n"
+    );
+    EXPECT_EQ(output, "true\n");
 }
 
 // ===== @inline tests =====
