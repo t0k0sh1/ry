@@ -77,7 +77,7 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
 // ===== Builtin IO =====
 
-static const char *IO_ERR = "__ry_get_last_error";
+static constexpr const char *IO_ERR = "__ry_get_last_error";
 
 static const CodeGen::NativeDispatchEntry io_table[] = {
     // 0-arg -> str (stdin)

@@ -64,11 +64,11 @@ public:
     enum class ListElemMeta : uint8_t { None, I8, Ptr };
 
     struct NativeDispatchEntry {
-        const char *fn_name;        // e.g. "encode", "collect"
-        const char *rt_suffix;      // runtime name suffix override (nullptr = use fn_name)
-        ReturnWrapping wrapping;
-        int arity;                  // -1 = variadic (e.g. path::join 2-4 args)
-        const char *out_param_type; // for ResultOutParam only (e.g. "int"); nullptr otherwise
+        const char *fn_name = nullptr;        // e.g. "encode", "collect"
+        const char *rt_suffix = nullptr;      // runtime name suffix override (nullptr = use fn_name)
+        ReturnWrapping wrapping = ReturnWrapping::Direct;
+        int arity = 0;                        // -1 = variadic (e.g. path::join 2-4 args)
+        const char *out_param_type = nullptr;  // for ResultOutParam only (e.g. "int"); nullptr otherwise
 
         // --- Tier 2 additions ---
         CustomEmitterFn custom_emitter = nullptr;  // escape hatch for complex logic
