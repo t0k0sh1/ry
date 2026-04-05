@@ -431,7 +431,19 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
                 libs.push_back(sig.library);
         }
 
-        native_fn_sigs_[nativeSigKey(effectivePackage, sig.name)].push_back(std::move(sig));
+        // Deduplicate: skip if a signature with the same arity already exists
+        // under this key. This prevents duplicate entries when a user declares
+        // @native("base64") fn encode(str) alongside `from base64 import encode`.
+        auto &sigVec = native_fn_sigs_[nativeSigKey(effectivePackage, sig.name)];
+        bool duplicate = false;
+        for (const auto &existing : sigVec) {
+            if (existing.params.size() == sig.params.size()) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+            sigVec.push_back(std::move(sig));
         return;
     }
 
