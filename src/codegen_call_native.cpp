@@ -21,7 +21,9 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         return nullptr;
 
     // Lazily build error function name (only for wrappings that need it)
-    auto getErrFnName = [&]() {
+    auto getErrFnName = [&]() -> std::string {
+        if (entry->err_fn_override)
+            return entry->err_fn_override;
         return deriveRuntimeFnName(package, "get_last_error");
     };
 
@@ -36,8 +38,12 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         // with a different-library function falls through instead of erroring.
         std::string sigKey = nativeSigKey(package, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
-        if (sigIt == native_fn_sigs_.end())
-            return nullptr;  // No sig for this package — fall through
+        if (sigIt == native_fn_sigs_.end()) {
+            // Fallback: try bare name for inline @native declarations without package
+            sigIt = native_fn_sigs_.find(e.callee);
+            if (sigIt == native_fn_sigs_.end())
+                return nullptr;  // No sig for this package — fall through
+        }
 
         bool hasArityMatch = false;
         for (const auto &sig : sigIt->second) {
@@ -92,7 +98,9 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (!matchedSig->library.empty())
             used_native_libraries_.insert(matchedSig->library);
 
-        std::string rtName = deriveRuntimeFnName(package, rtSuffix)
+        std::string rtName = (entry->rt_name_override
+            ? std::string(entry->rt_name_override)
+            : deriveRuntimeFnName(package, rtSuffix))
             + std::to_string(n);
         auto *fnTy = llvm::FunctionType::get(
             resolveType(matchedSig->return_type_name), argTypes, false);
@@ -107,8 +115,30 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // different-library function falls through instead of erroring.
     std::string sigKey = nativeSigKey(package, e.callee);
     auto sigIt = native_fn_sigs_.find(sigKey);
-    if (sigIt == native_fn_sigs_.end())
-        return nullptr;  // No sig for this package — fall through
+    if (sigIt == native_fn_sigs_.end()) {
+        // Fallback: try bare name for inline @native declarations without package
+        sigIt = native_fn_sigs_.find(e.callee);
+        if (sigIt == native_fn_sigs_.end())
+            return nullptr;  // No sig for this package — fall through
+    }
+
+    // Custom emitter escape hatch: runs only after sig key AND call-arity
+    // validation.  The arity check uses the CALL's actual arg count against
+    // registered signatures so that same-package overloads with different
+    // arities are not hijacked (e.g. a 2-arg overload won't be grabbed by
+    // a 1-arg custom emitter entry).
+    if (entry->custom_emitter) {
+        bool hasCallArityMatch = false;
+        for (const auto &sig : sigIt->second) {
+            if (sig.params.size() == e.args.size()) {
+                hasCallArityMatch = true;
+                break;
+            }
+        }
+        if (!hasCallArityMatch)
+            return nullptr;  // No sig with this arity — fall through
+        return (this->*(entry->custom_emitter))(e);
+    }
 
     // Check if any sig matches the arity before emitting args
     bool hasArityMatch = false;
@@ -167,7 +197,9 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         used_native_libraries_.insert(matchedSig->library);
 
     // Derive runtime function name
-    std::string rtName = deriveRuntimeFnName(package, rtSuffix);
+    std::string rtName = entry->rt_name_override
+        ? entry->rt_name_override
+        : deriveRuntimeFnName(package, rtSuffix);
 
     // Pre-compute out-param type for ResultOutParam (used in two places)
     llvm::Type *outTy = nullptr;
@@ -216,11 +248,20 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     case ReturnWrapping::Direct:
         if (cRetTy->isVoidTy())
             return llvm::ConstantInt::get(i8Ty_, 0); // Unit
+        if (entry->list_elem_meta == ListElemMeta::I8)
+            type_meta_[TM_ListElem][callResult] = i8Ty_;
+        else if (entry->list_elem_meta == ListElemMeta::Ptr)
+            type_meta_[TM_ListElem][callResult] = ptrTy_;
         return callResult;
 
     case ReturnWrapping::ResultPtr: {
         std::string errFn = getErrFnName();
-        return wrapPtrAsResult(callResult, errFn.c_str());
+        llvm::Value *result = wrapPtrAsResult(callResult, errFn.c_str());
+        if (entry->list_elem_meta == ListElemMeta::I8)
+            type_meta_[TM_ListElem][result] = i8Ty_;
+        else if (entry->list_elem_meta == ListElemMeta::Ptr)
+            type_meta_[TM_ListElem][result] = ptrTy_;
+        return result;
     }
 
     case ReturnWrapping::ResultPtrWithListMeta: {

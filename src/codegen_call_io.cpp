@@ -77,84 +77,43 @@ llvm::Value *CodeGen::emitBuiltinRegex(const CallExpr &e) {
 
 // ===== Builtin IO =====
 
+static constexpr const char *IO_ERR = "__ry_get_last_error";
+
+static const CodeGen::NativeDispatchEntry io_table[] = {
+    // 0-arg -> str (stdin)
+    {"read_line",   nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
+     nullptr, "__ry_read_line"},
+    {"read_all",    nullptr, CodeGen::ReturnWrapping::Direct,       0, nullptr,
+     nullptr, "__ry_read_all"},
+    // 1-arg -> Result<str, Error>
+    {"read_text",   nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+     nullptr, "__ry_read_text", IO_ERR},
+    {"bytes_to_str",nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+     nullptr, "__ry_bytes_to_str", IO_ERR},
+    // 2-arg -> Result<Unit, Error>
+    {"write_text",  nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+     nullptr, "__ry_write_text", IO_ERR},
+    {"append_text", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+     nullptr, "__ry_append_text", IO_ERR},
+    {"write_bytes", nullptr, CodeGen::ReturnWrapping::ResultStatus, 2, nullptr,
+     nullptr, "__ry_write_bytes", IO_ERR},
+    // 1-arg -> Result<Unit, Error>
+    {"delete_file", nullptr, CodeGen::ReturnWrapping::ResultStatus, 1, nullptr,
+     nullptr, "__ry_delete_file", IO_ERR},
+    // exists -> BoolFromI64 with name remap
+    {"exists",      nullptr, CodeGen::ReturnWrapping::BoolFromI64,  1, nullptr,
+     nullptr, "__ry_file_exists"},
+    // read_bytes -> ResultPtr + list_elem=I8
+    {"read_bytes",  nullptr, CodeGen::ReturnWrapping::ResultPtr,    1, nullptr,
+     nullptr, "__ry_read_bytes", IO_ERR, CodeGen::ListElemMeta::I8},
+    // to_bytes -> Direct + list_elem=I8
+    {"to_bytes",    nullptr, CodeGen::ReturnWrapping::Direct,       1, nullptr,
+     nullptr, "__ry_str_to_bytes", nullptr, CodeGen::ListElemMeta::I8},
+};
+
 llvm::Value *CodeGen::emitBuiltinIO(const CallExpr &e) {
-    if (!native_fn_arg_counts_.count(e.callee))
-        return nullptr;
-
-    // Helper: emit a call to __ry_<name> with ptr args, validate count and types
-    auto emitIOCall = [&](const std::string &name, size_t nargs,
-                          llvm::Type *retTy) -> llvm::Value * {
-        if (e.args.size() != nargs)
-            codegenError(name + "() takes exactly " + std::to_string(nargs) + " argument(s)");
-        std::vector<llvm::Value *> args;
-        std::vector<llvm::Type *> argTys;
-        for (size_t i = 0; i < nargs; ++i) {
-            args.push_back(emitExpr(*e.args[i]));
-            if (args.back()->getType() != ptrTy_)
-                codegenError(name + "() requires str/ptr arguments");
-            argTys.push_back(ptrTy_);
-        }
-        auto fnTy = llvm::FunctionType::get(retTy, argTys, false);
-        auto fn = mod_->getOrInsertFunction("__ry_" + name, fnTy);
-        return builder_.CreateCall(fn, args, name);
-    };
-
-    // 0-arg -> str (stdin functions: no Result wrapping)
-    if (e.callee == "read_line" || e.callee == "read_all")
-        return emitIOCall(e.callee, 0, ptrTy_);
-
-    // read_text(path) -> Result<str, Error>
-    if (e.callee == "read_text") {
-        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        return wrapPtrAsResult(ptr);
-    }
-
-    // bytes_to_str(bytes) -> Result<str, Error>
-    if (e.callee == "bytes_to_str") {
-        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        return wrapPtrAsResult(ptr);
-    }
-
-    // write_text(path, content) -> Result<Unit, Error>
-    if (e.callee == "write_text" || e.callee == "append_text") {
-        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
-        return wrapStatusAsResult(status);
-    }
-
-    // write_bytes(path, bytes) -> Result<Unit, Error>
-    if (e.callee == "write_bytes") {
-        llvm::Value *status = emitIOCall(e.callee, 2, i64Ty_);
-        return wrapStatusAsResult(status);
-    }
-
-    // delete_file(path) -> Result<Unit, Error>
-    if (e.callee == "delete_file") {
-        llvm::Value *status = emitIOCall(e.callee, 1, i64Ty_);
-        return wrapStatusAsResult(status);
-    }
-
-    // exists(path) -> bool (i64 truncated to i1) — no Result wrapping
-    if (e.callee == "exists") {
-        llvm::Value *result = emitIOCall("file_exists", 1, i64Ty_);
-        return builder_.CreateTrunc(result, i1Ty_, "exists_bool");
-    }
-
-    // read_bytes(path) -> Result<List<u8>, Error>
-    if (e.callee == "read_bytes") {
-        llvm::Value *ptr = emitIOCall(e.callee, 1, ptrTy_);
-        llvm::Value *result = wrapPtrAsResult(ptr);
-        type_meta_[TM_ListElem][result] = i8Ty_;
-        return result;
-    }
-
-    // to_bytes(str) -> List<u8> — always succeeds, no Result wrapping
-    if (e.callee == "to_bytes") {
-        llvm::Value *result = emitIOCall("str_to_bytes", 1, ptrTy_);
-        type_meta_[TM_ListElem][result] = i8Ty_;
-        return result;
-    }
-
-    return nullptr;
+    return emitTableDrivenNativeCall(e, "io", io_table,
+                                     std::size(io_table));
 }
 
 // ===== Builtin Net =====

@@ -788,115 +788,103 @@ void CodeGen::storeMapHeaderFields(llvm::Value *headerPtr, llvm::Value *len,
 
 // ===== Builtin Math =====
 
+// ===== Math custom emitters =====
+
+llvm::Value *CodeGen::emitMathAbs(const CallExpr &e) {
+    requireArgs(e, 1);
+    llvm::Value *x = emitExpr(*e.args[0]);
+    if (x->getType() == f64Ty_) {
+        auto fn = getRuntimeFn("fabs", f64Ty_, {f64Ty_});
+        return builder_.CreateCall(fn, {x}, "abs");
+    }
+    if (x->getType()->isIntegerTy(64)) {
+        llvm::Value *neg = builder_.CreateNeg(x, "neg");
+        llvm::Value *isNeg = builder_.CreateICmpSLT(x, llvm::ConstantInt::get(i64Ty_, 0), "is_neg");
+        return builder_.CreateSelect(isNeg, neg, x, "abs");
+    }
+    codegenError("abs() requires int or float argument");
+}
+
+llvm::Value *CodeGen::emitMathFloorCeilRound(const CallExpr &e) {
+    requireArgs(e, 1);
+    llvm::Value *x = emitExpr(*e.args[0]);
+    if (x->getType() != f64Ty_)
+        codegenError(e.callee + "() requires float argument");
+
+    auto fabsFn = getRuntimeFn("fabs", f64Ty_, {f64Ty_});
+
+    // Runtime check: reject NaN and values outside i64 range
+    llvm::Value *isNan = builder_.CreateFCmpUNO(x, x, "is_nan_chk");
+    llvm::Value *absVal = builder_.CreateCall(fabsFn, {x}, "abs_chk");
+    // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
+    llvm::Value *limit = llvm::ConstantFP::get(f64Ty_, 9.223372036854776e+18);
+    llvm::Value *tooBig = builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
+    llvm::Value *invalid = builder_.CreateOr(isNan, tooBig, "invalid_chk");
+
+    llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".fail", fn_);
+    llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".ok", fn_);
+    builder_.CreateCondBr(invalid, failBB, okBB);
+
+    builder_.SetInsertPoint(failBB);
+    static int mathErrCounter = 0;
+    emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
+                      ".math_err_" + std::to_string(mathErrCounter++));
+
+    builder_.SetInsertPoint(okBB);
+    auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
+    auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
+    llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
+    return builder_.CreateFPToSI(result, i64Ty_, e.callee + "_i");
+}
+
+llvm::Value *CodeGen::emitMathIsNan(const CallExpr &e) {
+    requireArgs(e, 1);
+    llvm::Value *x = emitExpr(*e.args[0]);
+    if (x->getType() != f64Ty_)
+        codegenError("is_nan() requires float argument");
+    return builder_.CreateFCmpUNO(x, x, "is_nan");
+}
+
+llvm::Value *CodeGen::emitMathIsInf(const CallExpr &e) {
+    requireArgs(e, 1);
+    llvm::Value *x = emitExpr(*e.args[0]);
+    if (x->getType() != f64Ty_)
+        codegenError("is_inf() requires float argument");
+    auto fabsFn = getRuntimeFn("fabs", f64Ty_, {f64Ty_});
+    llvm::Value *absVal = builder_.CreateCall(fabsFn, {x}, "abs_for_inf");
+    llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
+    return builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
+}
+
+// ===== Math dispatch table =====
+
+static const CodeGen::NativeDispatchEntry math_table[] = {
+    // 1-arg float->float (bare C library names)
+    {"sqrt",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sqrt"},
+    {"log",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log"},
+    {"log2",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log2"},
+    {"log10", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "log10"},
+    {"exp",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "exp"},
+    {"sin",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "sin"},
+    {"cos",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "cos"},
+    {"tan",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "tan"},
+    {"asin",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "asin"},
+    {"acos",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "acos"},
+    {"atan",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, nullptr, "atan"},
+    // 2-arg float->float
+    {"pow",   nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "pow"},
+    {"atan2", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "atan2"},
+    {"hypot", nullptr, CodeGen::ReturnWrapping::Direct, 2, nullptr, nullptr, "hypot"},
+    // Custom emitters
+    {"abs",    nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathAbs},
+    {"floor",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathFloorCeilRound},
+    {"ceil",   nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathFloorCeilRound},
+    {"round",  nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathFloorCeilRound},
+    {"is_nan", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathIsNan},
+    {"is_inf", nullptr, CodeGen::ReturnWrapping::Direct, 1, nullptr, &CodeGen::emitMathIsInf},
+};
+
 llvm::Value *CodeGen::emitBuiltinMath(const CallExpr &e) {
-    // Only dispatch if the callee was declared via @native (i.e., explicitly imported)
-    if (!native_fn_arg_counts_.count(e.callee))
-        return nullptr;
-
-    // Helper: get fabs C function
-    auto getFabs = [&]() {
-        auto ty = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-        return mod_->getOrInsertFunction("fabs", ty);
-    };
-
-    // abs(int) -> int, abs(float) -> float
-    if (e.callee == "abs") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() == f64Ty_)
-            return builder_.CreateCall(getFabs(), {x}, "abs");
-        if (x->getType()->isIntegerTy(64)) {
-            llvm::Value *neg = builder_.CreateNeg(x, "neg");
-            llvm::Value *isNeg = builder_.CreateICmpSLT(x, llvm::ConstantInt::get(i64Ty_, 0), "is_neg");
-            return builder_.CreateSelect(isNeg, neg, x, "abs");
-        }
-        codegenError("abs() requires int or float argument");
-    }
-
-    // floor/ceil/round(float) -> int
-    if (e.callee == "floor" || e.callee == "ceil" || e.callee == "round") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError(e.callee + "() requires float argument");
-
-        // Runtime check: reject NaN and values outside i64 range
-        llvm::Value *isNan = builder_.CreateFCmpUNO(x, x, "is_nan_chk");
-        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_chk");
-        // 2^63 = 9.223372036854776e+18 — values >= this overflow i64
-        llvm::Value *limit = llvm::ConstantFP::get(f64Ty_, 9.223372036854776e+18);
-        llvm::Value *tooBig = builder_.CreateFCmpOGE(absVal, limit, "too_big_chk");
-        llvm::Value *invalid = builder_.CreateOr(isNan, tooBig, "invalid_chk");
-
-        llvm::BasicBlock *failBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".fail", fn_);
-        llvm::BasicBlock *okBB = llvm::BasicBlock::Create(*ctx_, e.callee + ".ok", fn_);
-        builder_.CreateCondBr(invalid, failBB, okBB);
-
-        builder_.SetInsertPoint(failBB);
-        static int mathErrCounter = 0;
-        emitRuntimeError("runtime error: " + e.callee + "() argument out of int range\n",
-                          ".math_err_" + std::to_string(mathErrCounter++));
-
-        builder_.SetInsertPoint(okBB);
-        auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-        auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-        llvm::Value *result = builder_.CreateCall(fn, {x}, e.callee);
-        return builder_.CreateFPToSI(result, i64Ty_, e.callee + "_i");
-    }
-
-    // 1-arg float -> float: sqrt, log, log2, log10, exp, sin, cos, tan, asin, acos, atan
-    {
-        static const std::unordered_set<std::string> oneArgFloat = {
-            "sqrt", "log", "log2", "log10", "exp",
-            "sin", "cos", "tan", "asin", "acos", "atan"
-        };
-        if (oneArgFloat.count(e.callee)) {
-            requireArgs(e, 1);
-            llvm::Value *x = emitExpr(*e.args[0]);
-            if (x->getType() != f64Ty_)
-                codegenError(e.callee + "() requires float argument");
-            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_}, false);
-            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-            return builder_.CreateCall(fn, {x}, e.callee);
-        }
-    }
-
-    // 2-arg float -> float: pow, atan2, hypot
-    {
-        static const std::unordered_set<std::string> twoArgFloat = {
-            "pow", "atan2", "hypot"
-        };
-        if (twoArgFloat.count(e.callee)) {
-            requireArgs(e, 2);
-            llvm::Value *x = emitExpr(*e.args[0]);
-            llvm::Value *y = emitExpr(*e.args[1]);
-            if (x->getType() != f64Ty_ || y->getType() != f64Ty_)
-                codegenError(e.callee + "() requires float arguments");
-            auto fnTy = llvm::FunctionType::get(f64Ty_, {f64Ty_, f64Ty_}, false);
-            auto fn = mod_->getOrInsertFunction(e.callee, fnTy);
-            return builder_.CreateCall(fn, {x, y}, e.callee);
-        }
-    }
-
-    // is_nan(float) -> bool
-    if (e.callee == "is_nan") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError("is_nan() requires float argument");
-        return builder_.CreateFCmpUNO(x, x, "is_nan");
-    }
-
-    // is_inf(float) -> bool
-    if (e.callee == "is_inf") {
-        requireArgs(e, 1);
-        llvm::Value *x = emitExpr(*e.args[0]);
-        if (x->getType() != f64Ty_)
-            codegenError("is_inf() requires float argument");
-        llvm::Value *absVal = builder_.CreateCall(getFabs(), {x}, "abs_for_inf");
-        llvm::Value *posInf = llvm::ConstantFP::getInfinity(f64Ty_);
-        return builder_.CreateFCmpOEQ(absVal, posInf, "is_inf");
-    }
-
-    return nullptr;
+    return emitTableDrivenNativeCall(e, "math", math_table,
+                                     std::size(math_table));
 }
