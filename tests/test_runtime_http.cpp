@@ -1452,6 +1452,10 @@ TEST(HttpSSRF, PrivateHostCarrierGradeNAT) {
     EXPECT_TRUE(__ry_is_private_host("100.64.0.1", 80));
 }
 
+TEST(HttpSSRF, PrivateHostCarrierGradeNATLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("100.64.0.0", 80));
+}
+
 TEST(HttpSSRF, PrivateHostCarrierGradeNATUpper) {
     EXPECT_TRUE(__ry_is_private_host("100.127.255.255", 80));
 }
@@ -1482,6 +1486,10 @@ TEST(HttpSSRF, PrivateHostMulticastUpper) {
 
 TEST(HttpSSRF, PrivateHostReserved) {
     EXPECT_TRUE(__ry_is_private_host("240.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostReservedLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("240.0.0.0", 80));
 }
 
 TEST(HttpSSRF, PrivateHostBroadcast) {
