@@ -25,23 +25,16 @@ static FILE *fopen_nofollow(const char *path, const char *mode) {
     return f;
 }
 
-// Thread-local error message buffer for Result-based error reporting
-static thread_local char last_error_buf[512] = {0};
+// __ry_set_last_error / __ry_get_last_error are defined in runtime_error.cpp
+// (part of ry_lib). Native libs resolve them from the process at runtime.
 
 static void setLastError(const char *fmt, ...) {
+    char buf[512];
     va_list args;
     va_start(args, fmt);
-    vsnprintf(last_error_buf, sizeof(last_error_buf), fmt, args);
+    vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
-}
-
-extern "C" void __ry_set_last_error(const char *msg) {
-    snprintf(last_error_buf, sizeof(last_error_buf), "%s", msg);
-}
-
-extern "C" const char *__ry_get_last_error() {
-    // Return a heap copy so it can be stored as a ry str
-    return strdup(last_error_buf);
+    __ry_set_last_error(buf);
 }
 
 // IOListHeader and makeByteList are defined in runtime_io.hpp

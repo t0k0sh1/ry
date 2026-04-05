@@ -1,7 +1,7 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_io.hpp"
-#include "ry/runtime_net_types.hpp"
+#include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
 
 // =====================================================================
@@ -186,7 +186,7 @@ static bool read_response_body(HttpTransport &t, std::string &raw, size_t body_s
 }
 
 static HttpClientResponseHandle *read_http_response(HttpTransport &t) {
-    __ry_apply_default_recv_timeout(t.fd);
+    ry_net_apply_default_recv_timeout(t.fd);
 
     std::string raw = recv_all(t, kMaxHeaderSize);
     if (raw.empty()) return nullptr;
@@ -344,9 +344,9 @@ static bool establish_connection(const ParsedUrl *parsed,
         if (!tls) return false;
         __ry_tls_take_ownership(tls, &transport.fd, &transport.ssl);
     } else {
-        void *stream = __ry_connect_resolved(resolved);
+        void *stream = ry_net_connect_resolved(resolved);
         if (!stream) return false;
-        transport.fd = __ry_tcp_take_fd(stream);
+        transport.fd = ry_net_tcp_take_fd(stream);
     }
     return true;
 }
@@ -424,13 +424,13 @@ extern "C" void *__ry_http_client_request(const char *method, const char *url,
 
         // Resolve DNS once and use the result for both SSRF check and connection
         struct addrinfo *resolved = nullptr;
-        if (__ry_resolve(parsed->host, parsed->port, &resolved) != 0) {
+        if (ry_net_resolve(parsed->host, parsed->port, &resolved) != 0) {
             __ry_http_parsed_url_free(parsed);
             break;
         }
         AddrInfoGuard guard{resolved};
 
-        if (ssrf_check && __ry_is_private_addrinfo(resolved)) {
+        if (ssrf_check && ry_net_is_private_addrinfo(resolved)) {
             __ry_http_parsed_url_free(parsed);
             break;
         }

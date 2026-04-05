@@ -28,6 +28,15 @@ curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
+# Install native shared libraries
+if [ -d "$TMPDIR/lib" ]; then
+    mkdir -p "$RY_HOME/lib"
+    for f in "$TMPDIR"/lib/libry_*.*; do
+        [ -f "$f" ] && install -m 755 "$f" "$RY_HOME/lib/"
+    done
+    echo "Native libraries installed to $RY_HOME/lib"
+fi
+
 # Install standard library (clean replace)
 # Detect archive layout and install to the matching destination so the
 # corresponding binary can find stdlib at the path it expects.

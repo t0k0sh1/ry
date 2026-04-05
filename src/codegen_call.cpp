@@ -14,6 +14,7 @@ llvm::Value *CodeGen::emitBuiltinConversion(const CallExpr &e) {
         llvm::AllocaInst *outSlot = builder_.CreateAlloca(i64Ty_, nullptr, "to_int_out");
         auto fnTy = fnTy_ptr_ptr_to_i64_;
         auto fn = mod_->getOrInsertFunction("__ry_str_to_int", fnTy);
+        used_native_libraries_.insert("convert");
         llvm::Value *status = builder_.CreateCall(fn, {s, outSlot}, "to_int_status");
         llvm::Value *isErr = builder_.CreateICmpNE(status,
             llvm::ConstantInt::get(i64Ty_, 0), "to_int_err");
