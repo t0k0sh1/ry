@@ -39,30 +39,54 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         if (sigIt == native_fn_sigs_.end())
             return nullptr;  // No sig for this package — fall through
 
+        bool hasArityMatch = false;
+        for (const auto &sig : sigIt->second) {
+            if (sig.params.size() == n) { hasArityMatch = true; break; }
+        }
+        if (!hasArityMatch)
+            return nullptr;  // Arity mismatch — fall through
+
         if (n < 2 || n > 4)
             codegenError(std::string(entry->fn_name) + "() requires 2, 3, or 4 arguments");
 
-        // Match signature by arity
+        // Emit args once, then find the sig whose types match
+        std::vector<llvm::Value *> args;
+        for (size_t i = 0; i < n; i++)
+            args.push_back(emitExpr(*e.args[i]));
+
         const NativeFnSignature *matchedSig = nullptr;
+        std::vector<llvm::Type *> argTypes;
         for (const auto &sig : sigIt->second) {
-            if (sig.params.size() == n) {
+            if (sig.params.size() != n) continue;
+            bool typesMatch = true;
+            std::vector<llvm::Type *> candidateTypes;
+            for (size_t i = 0; i < n; i++) {
+                llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                if (args[i]->getType() != expectedTy) {
+                    typesMatch = false;
+                    break;
+                }
+                candidateTypes.push_back(expectedTy);
+            }
+            if (typesMatch) {
                 matchedSig = &sig;
+                argTypes = std::move(candidateTypes);
                 break;
             }
         }
-        if (!matchedSig)
-            return nullptr;  // Arity mismatch — fall through
-
-        std::vector<llvm::Value *> args;
-        std::vector<llvm::Type *> argTypes;
-        for (size_t i = 0; i < n; i++) {
-            llvm::Value *arg = emitExpr(*e.args[i]);
-            llvm::Type *expectedTy = resolveType(matchedSig->params[i].type_name);
-            if (arg->getType() != expectedTy)
-                codegenError(e.callee + "() argument " + std::to_string(i) +
-                             " requires " + matchedSig->params[i].type_name);
-            args.push_back(arg);
-            argTypes.push_back(expectedTy);
+        if (!matchedSig) {
+            for (const auto &sig : sigIt->second) {
+                if (sig.params.size() == n) {
+                    for (size_t i = 0; i < n; i++) {
+                        llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                        if (args[i]->getType() != expectedTy)
+                            codegenError(e.callee + "() argument " + std::to_string(i) +
+                                         " requires " + sig.params[i].type_name);
+                    }
+                    break;
+                }
+            }
+            codegenError(e.callee + "() argument type mismatch");
         }
 
         if (!matchedSig->library.empty())
@@ -86,30 +110,57 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     if (sigIt == native_fn_sigs_.end())
         return nullptr;  // No sig for this package — fall through
 
-    const NativeFnSignature *matchedSig = nullptr;
+    // Check if any sig matches the arity before emitting args
+    bool hasArityMatch = false;
     for (const auto &sig : sigIt->second) {
         if (static_cast<int>(sig.params.size()) == entry->arity) {
-            matchedSig = &sig;
+            hasArityMatch = true;
             break;
         }
     }
-    if (!matchedSig)
+    if (!hasArityMatch)
         return nullptr;  // Arity mismatch — fall through
 
     requireArgs(e, static_cast<size_t>(entry->arity));
 
-    // Emit and validate arguments
+    // Emit args once, then find the sig whose types match
     std::vector<llvm::Value *> args;
+    for (int i = 0; i < entry->arity; i++)
+        args.push_back(emitExpr(*e.args[i]));
+
+    const NativeFnSignature *matchedSig = nullptr;
     std::vector<llvm::Type *> paramLLVMTypes;
-    for (int i = 0; i < entry->arity; i++) {
-        llvm::Value *arg = emitExpr(*e.args[i]);
-        const std::string &expectedTN = matchedSig->params[i].type_name;
-        llvm::Type *expectedTy = resolveType(expectedTN);
-        if (arg->getType() != expectedTy)
-            codegenError(e.callee + "() argument " + std::to_string(i) +
-                         " requires " + expectedTN);
-        args.push_back(arg);
-        paramLLVMTypes.push_back(expectedTy);
+    for (const auto &sig : sigIt->second) {
+        if (static_cast<int>(sig.params.size()) != entry->arity) continue;
+        bool typesMatch = true;
+        std::vector<llvm::Type *> candidateTypes;
+        for (int i = 0; i < entry->arity; i++) {
+            llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+            if (args[i]->getType() != expectedTy) {
+                typesMatch = false;
+                break;
+            }
+            candidateTypes.push_back(expectedTy);
+        }
+        if (typesMatch) {
+            matchedSig = &sig;
+            paramLLVMTypes = std::move(candidateTypes);
+            break;
+        }
+    }
+    if (!matchedSig) {
+        for (const auto &sig : sigIt->second) {
+            if (static_cast<int>(sig.params.size()) == entry->arity) {
+                for (int i = 0; i < entry->arity; i++) {
+                    llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                    if (args[i]->getType() != expectedTy)
+                        codegenError(e.callee + "() argument " + std::to_string(i) +
+                                     " requires " + sig.params[i].type_name);
+                }
+                break;
+            }
+        }
+        codegenError(e.callee + "() argument type mismatch");
     }
 
     if (!matchedSig->library.empty())
