@@ -205,10 +205,10 @@ add_executable(ry src/main.cpp)
 if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib ${RY_NATIVE_LIBS})
 else()
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive ${RY_NATIVE_LIBS} -Wl,--no-as-needed atomic -Wl,--as-needed)
-    # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
-    # -rdynamic: プロセスシンボルを JIT に公開
-    # --no-as-needed atomic: __atomic_* シンボルを JIT 実行時に解決可能にするため強制ロード
+    # --no-as-needed: force-link native libs (JIT resolves their symbols at runtime,
+    # so the static linker sees no direct references and would drop them otherwise)
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed)
+    # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator can find them
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 
@@ -267,10 +267,9 @@ if(APPLE)
 else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
-        ${RY_NATIVE_LIBS}
+        -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed
         GTest::gtest_main
         GTest::gmock
-        -Wl,--no-as-needed atomic -Wl,--as-needed
     )
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)
