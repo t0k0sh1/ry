@@ -181,7 +181,7 @@ function(add_ry_native_lib PKG_NAME)
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
         MACOSX_RPATH TRUE
         BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
-        INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,$ORIGIN>")
+        INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,\$ORIGIN>")
 endfunction()
 
 # Self-contained packages (no cross-runtime dependencies)

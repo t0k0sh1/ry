@@ -234,8 +234,8 @@ static int runRySource(const std::string &src, const std::string &source_name,
         // Resolve the executable path for reliable exe-relative library search.
         // argv0 may be a bare name (e.g. "ry" from PATH), so resolve it first.
         std::string resolvedExe = ry::self_update::detail::get_executable_path();
-        const std::string &exeForLibSearch = resolvedExe.empty()
-            ? std::string(argv0) : resolvedExe;
+        if (resolvedExe.empty()) resolvedExe = argv0;
+        const std::string &exeForLibSearch = resolvedExe;
         auto requiredLibs = cg.getRequiredLibraries();
         for (const auto &libName : requiredLibs) {
             auto libPath = ry::find_native_library(exeForLibSearch, libName);
