@@ -55,12 +55,26 @@ public:
         ResultPtrWithListMeta // ResultPtr + type_meta_[TM_ListElem] annotation
     };
 
+    struct NativeDispatchEntry;  // forward declaration for member-fn pointer
+
+    // Member function pointer for custom emitter escape hatch.
+    using CustomEmitterFn = llvm::Value *(CodeGen::*)(const CallExpr &);
+
+    // Post-call type metadata annotation for TM_ListElem.
+    enum class ListElemMeta : uint8_t { None, I8, Ptr };
+
     struct NativeDispatchEntry {
         const char *fn_name;        // e.g. "encode", "collect"
         const char *rt_suffix;      // runtime name suffix override (nullptr = use fn_name)
         ReturnWrapping wrapping;
         int arity;                  // -1 = variadic (e.g. path::join 2-4 args)
         const char *out_param_type; // for ResultOutParam only (e.g. "int"); nullptr otherwise
+
+        // --- Tier 2 additions ---
+        CustomEmitterFn custom_emitter = nullptr;  // escape hatch for complex logic
+        const char *rt_name_override = nullptr;     // full runtime name (e.g. "sin", "__ry_file_exists")
+        const char *err_fn_override = nullptr;      // error function override (nullptr = derive from package)
+        ListElemMeta list_elem_meta = ListElemMeta::None;  // post-call TM_ListElem annotation
     };
 
     // Access the @native function signature registry.
@@ -85,6 +99,26 @@ public:
                                     const std::string &name) {
         return package.empty() ? name : package + "::" + name;
     }
+
+    // Math custom emitters (table-driven Tier 2)
+    llvm::Value *emitMathAbs(const CallExpr &e);
+    llvm::Value *emitMathFloorCeilRound(const CallExpr &e);
+    llvm::Value *emitMathIsNan(const CallExpr &e);
+    llvm::Value *emitMathIsInf(const CallExpr &e);
+
+    // JSON custom emitters (table-driven Tier 2)
+    llvm::Value *emitJsonParse(const CallExpr &e);
+    llvm::Value *emitJsonStringify(const CallExpr &e);
+    llvm::Value *emitJsonKind(const CallExpr &e);
+    llvm::Value *emitJsonGet(const CallExpr &e);
+    llvm::Value *emitJsonAt(const CallExpr &e);
+    llvm::Value *emitJsonToStr(const CallExpr &e);
+    llvm::Value *emitJsonToInt(const CallExpr &e);
+    llvm::Value *emitJsonToFloat(const CallExpr &e);
+    llvm::Value *emitJsonToBool(const CallExpr &e);
+    llvm::Value *emitJsonLength(const CallExpr &e);
+    llvm::Value *emitJsonKeys(const CallExpr &e);
+    llvm::Value *emitJsonFree(const CallExpr &e);
 
 private:
     std::unique_ptr<llvm::LLVMContext> ctx_;
@@ -962,6 +996,7 @@ private:
     llvm::Value *emitBuiltinNet(const CallExpr &e);
     llvm::Value *emitBuiltinHttp(const CallExpr &e);
     llvm::Value *emitBuiltinJson(const CallExpr &e);
+
     llvm::Value *emitBuiltinBase64(const CallExpr &e);
     llvm::Value *emitBuiltinPath(const CallExpr &e);
     llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
