@@ -192,7 +192,11 @@ add_ry_native_lib(json       src/runtime_json.cpp)
 add_ry_native_lib(net        src/runtime_net.cpp)
 
 add_ry_native_lib(thread     src/runtime_thread.cpp)
-target_link_libraries(ry_thread PRIVATE Threads::Threads)
+if(APPLE)
+    target_link_libraries(ry_thread PRIVATE Threads::Threads)
+else()
+    target_link_libraries(ry_thread PRIVATE Threads::Threads atomic)
+endif()
 
 # runtime_hash.cpp is compiled here (not in a separate shared lib) because ry_http
 # needs hash symbols at link time for HTTP header map construction.
