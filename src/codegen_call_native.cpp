@@ -6,7 +6,11 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     const NativeDispatchEntry *table,
     size_t table_size) {
 
-    if (!native_fn_arg_counts_.count(e.callee))
+    // Guard: check if this callee has any registered @native signature
+    // for this package (or as a bare name for inline declarations).
+    // The sigKey is reused later for signature lookup (variadic + normal paths).
+    std::string sigKey = nativeSigKey(package, e.callee);
+    if (!native_fn_sigs_.count(sigKey) && !native_fn_sigs_.count(e.callee))
         return nullptr;
 
     // Lookup entry in dispatch table
@@ -36,7 +40,6 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
 
         // Check sig key BEFORE arity validation so that a name collision
         // with a different-library function falls through instead of erroring.
-        std::string sigKey = nativeSigKey(package, e.callee);
         auto sigIt = native_fn_sigs_.find(sigKey);
         if (sigIt == native_fn_sigs_.end()) {
             // Fallback: try bare name for inline @native declarations without package
@@ -113,7 +116,6 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // Look up NativeFnSignature matching this call's arity.
     // Check sig key BEFORE requireArgs so that a name collision with a
     // different-library function falls through instead of erroring.
-    std::string sigKey = nativeSigKey(package, e.callee);
     auto sigIt = native_fn_sigs_.find(sigKey);
     if (sigIt == native_fn_sigs_.end()) {
         // Fallback: try bare name for inline @native declarations without package

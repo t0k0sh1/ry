@@ -106,6 +106,42 @@ public:
     llvm::Value *emitMathIsNan(const CallExpr &e);
     llvm::Value *emitMathIsInf(const CallExpr &e);
 
+    // --- Net custom emitters (Tier 3) ---
+    llvm::Value *emitNetBind(const CallExpr &e);
+    llvm::Value *emitNetTcpListen(const CallExpr &e);
+    llvm::Value *emitNetAccept(const CallExpr &e);
+    llvm::Value *emitNetListenerPort(const CallExpr &e);
+    llvm::Value *emitNetShutdown(const CallExpr &e);
+    llvm::Value *emitNetConnect(const CallExpr &e);      // connect, tls_connect
+    llvm::Value *emitNetTimeout(const CallExpr &e);      // set_timeout, set_receive_timeout, set_send_timeout
+
+    // --- Http custom emitters (Tier 3) ---
+    llvm::Value *emitHttpResponse(const CallExpr &e);
+    llvm::Value *emitHttpRequestStr(const CallExpr &e);  // method, path
+    llvm::Value *emitHttpBody(const CallExpr &e);
+    llvm::Value *emitHttpBodyBytes(const CallExpr &e);
+    llvm::Value *emitHttpHeader(const CallExpr &e);
+    llvm::Value *emitHttpOptionField(const CallExpr &e); // query, cookie, form_field
+    llvm::Value *emitHttpMapAll(const CallExpr &e);      // query_all, cookies, form_fields
+    llvm::Value *emitHttpFormFile(const CallExpr &e);
+    llvm::Value *emitHttpListen(const CallExpr &e);
+    llvm::Value *emitHttpClientCall(const CallExpr &e);  // http_get, http_post, http_request
+    llvm::Value *emitHttpStatus(const CallExpr &e);
+    llvm::Value *emitHttpClientFree(const CallExpr &e);
+
+    // --- Thread custom emitters (Tier 3) ---
+    llvm::Value *emitThreadSpawn(const CallExpr &e);
+    llvm::Value *emitThreadJoin(const CallExpr &e);
+    llvm::Value *emitThreadSyncNew(const CallExpr &e);        // lock_new, rwlock_new
+    llvm::Value *emitThreadSyncResultNew(const CallExpr &e);  // semaphore_new, barrier_new
+    llvm::Value *emitThreadSyncOp(const CallExpr &e);         // acquire, release, lock, unlock, wait
+    llvm::Value *emitThreadSyncFree(const CallExpr &e);       // all *_free
+    llvm::Value *emitThreadAtomicIntNew(const CallExpr &e);
+    llvm::Value *emitThreadAtomicIntOp(const CallExpr &e);    // load, store, add, sub
+    llvm::Value *emitThreadAtomicIntCas(const CallExpr &e);
+    llvm::Value *emitThreadAtomicBoolNew(const CallExpr &e);
+    llvm::Value *emitThreadAtomicBoolOp(const CallExpr &e);   // load, store
+
     // JSON custom emitters (table-driven Tier 2)
     llvm::Value *emitJsonParse(const CallExpr &e);
     llvm::Value *emitJsonStringify(const CallExpr &e);
@@ -485,10 +521,7 @@ private:
     static bool isNativeConstant(const std::string &name);
     llvm::Value *emitNativeConstant(const std::string &name);
 
-    // @native fn signature registry (argument count per overload)
-    std::unordered_map<std::string, std::vector<size_t>> native_fn_arg_counts_;
-
-    // @native fn rich signature registry (coexists with native_fn_arg_counts_)
+    // @native fn rich signature registry
     std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
 
     // Libraries actually used during codegen (populated by dispatch functions).
@@ -997,11 +1030,8 @@ private:
     llvm::Value *emitBuiltinHttp(const CallExpr &e);
     llvm::Value *emitBuiltinJson(const CallExpr &e);
 
-    llvm::Value *emitBuiltinBase64(const CallExpr &e);
     llvm::Value *emitBuiltinPath(const CallExpr &e);
-    llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
     llvm::Value *emitBuiltinThread(const CallExpr &e);
-    llvm::Value *emitBuiltinGc(const CallExpr &e);
     llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,
                                             const char *package,
                                             const NativeDispatchEntry *table,

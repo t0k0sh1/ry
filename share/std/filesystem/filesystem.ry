@@ -2,65 +2,65 @@
 # (io package handles file content read/write; filesystem handles the files themselves)
 
 # Directory listing (non-recursive)
-@native
+@native("filesystem")
 function list_dir(path: str) -> Result<List<str>, Error>
 
 # Recursive file/directory traversal
-@native
+@native("filesystem")
 function walk(path: str) -> Result<List<str>, Error>
 
 # Glob pattern matching
-@native
+@native("filesystem")
 function glob_files(pattern: str) -> Result<List<str>, Error>
 
 # Copy a single file
-@native
+@native("filesystem")
 function copy(src: str, dst: str) -> Result<Unit, Error>
 
 # Move / rename a file or directory
-@native
+@native("filesystem")
 function move(src: str, dst: str) -> Result<Unit, Error>
 
 # Remove a file or empty directory
-@native
+@native("filesystem")
 function remove(path: str) -> Result<Unit, Error>
 
 # Remove a file, directory, or directory tree recursively
-@native
+@native("filesystem")
 function remove_all(path: str) -> Result<Unit, Error>
 
 # Create a single directory
-@native
+@native("filesystem")
 function make_dir(path: str) -> Result<Unit, Error>
 
 # Create a directory and all missing parents
-@native
+@native("filesystem")
 function make_dir_all(path: str) -> Result<Unit, Error>
 
 # Get file size in bytes
-@native
+@native("filesystem")
 function file_size(path: str) -> Result<int, Error>
 
 # Check whether path is a regular file
-@native
+@native("filesystem")
 function is_file(path: str) -> bool
 
 # Check whether path is a directory
-@native
+@native("filesystem")
 function is_dir(path: str) -> bool
 
 # Check whether path is a symbolic link
-@native
+@native("filesystem")
 function is_symlink(path: str) -> bool
 
 # Change file permissions (POSIX mode, e.g. 0o755)
-@native
+@native("filesystem")
 function chmod(path: str, mode: int) -> Result<Unit, Error>
 
 # Create a symbolic link
-@native
+@native("filesystem")
 function symlink(target: str, link_path: str) -> Result<Unit, Error>
 
 # Read the target of a symbolic link
-@native
+@native("filesystem")
 function read_link(path: str) -> Result<str, Error>

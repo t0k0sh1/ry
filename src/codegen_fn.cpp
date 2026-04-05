@@ -409,10 +409,6 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         sig.library = getDirectivePositionalArg(s->directives, "native");
         sig.params.reserve(s->params.size());
 
-        // Register in builtin dispatch for both bare @native and @native("libname").
-        // For @native("libname"), the JIT resolves symbols from dynamically loaded
-        // shared libraries; for bare @native, symbols come from static linking.
-        native_fn_arg_counts_[s->name].push_back(s->params.size());
         for (auto &p : s->params)
             sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
         sig.return_type_name = s->return_type ? s->return_type->toString() : "Unit";

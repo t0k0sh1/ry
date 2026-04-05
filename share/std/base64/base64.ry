@@ -1,13 +1,13 @@
 # Base64 encoding and decoding
 
-@native
+@native("base64")
 function encode(input: str) -> str
 
-@native
+@native("base64")
 function decode(input: str) -> Result<str, Error>
 
-@native
+@native("base64")
 function encode_url_safe(input: str) -> str
 
-@native
+@native("base64")
 function decode_url_safe(input: str) -> Result<str, Error>

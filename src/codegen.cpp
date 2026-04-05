@@ -640,7 +640,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
                                           std::vector<llvm::Value*> &outArgVals) {
     auto fit = functions_.find(callee);
     if (fit == functions_.end()) {
-        if (native_fn_arg_counts_.count(callee)) {
+        if (native_fn_sigs_.count(callee) || native_lib_index_.count(callee)) {
             codegenError("no matching overload for @native function '" + callee + "'");
         } else {
             codegenError("undefined function: " + callee +
