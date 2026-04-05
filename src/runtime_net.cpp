@@ -138,6 +138,7 @@ bool __ry_is_private_addrinfo(const struct addrinfo *info) {
 }
 
 bool __ry_is_private_addr(const struct sockaddr *sa) {
+    if (!sa) return false;
     return ry_net_is_private_addr(sa);
 }
 

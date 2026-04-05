@@ -1499,7 +1499,6 @@ TEST(HttpSSRF, PublicHostBelowMulticast) {
 TEST(HttpSSRF, PrivateAddrIPv6Unspecified) {
     struct sockaddr_in6 sin6{};
     sin6.sin6_family = AF_INET6;
-    sin6.sin6_addr = IN6ADDR_ANY_INIT;
     EXPECT_TRUE(__ry_is_private_addr((struct sockaddr *)&sin6));
 }
 
