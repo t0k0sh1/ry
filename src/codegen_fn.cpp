@@ -14,6 +14,10 @@ std::string CodeGen::deriveRuntimeFnName(const std::string &package,
     return "__ry_" + package + "_" + fn_name;
 }
 
+const std::unordered_set<std::string>& CodeGen::getRequiredLibraries() const {
+    return used_native_libraries_;
+}
+
 std::string CodeGen::deriveNativePackage(const SourceLocation &loc) const {
     if (!sm_ || loc.file_id < 0 || loc.file_id >= sm_->getFileCount())
         return "";
@@ -404,17 +408,30 @@ void CodeGen::emitStmt(std::unique_ptr<FnStmt> &s) {
         sig.library = getDirectivePositionalArg(s->directives, "native");
         sig.params.reserve(s->params.size());
 
-        // Only register in builtin dispatch when no library is specified.
-        // @native("libname") declarations are metadata-only until dynamic
-        // loading is implemented — they do not affect call resolution.
-        if (sig.library.empty())
-            native_fn_arg_counts_[s->name].push_back(s->params.size());
+        // Register in builtin dispatch for both bare @native and @native("libname").
+        // For @native("libname"), the JIT resolves symbols from dynamically loaded
+        // shared libraries; for bare @native, symbols come from static linking.
+        native_fn_arg_counts_[s->name].push_back(s->params.size());
         for (auto &p : s->params)
             sig.params.push_back({p.name, p.type ? p.type->toString() : ""});
         sig.return_type_name = s->return_type ? s->return_type->toString() : "Unit";
         for (auto &d : s->directives)
             sig.directive_names.push_back(d.name);
-        native_fn_sigs_[nativeSigKey(sig.package, sig.name)].push_back(std::move(sig));
+
+        // For registry key: use library name as package when the source file
+        // is not under std/<pkg>/. This ensures @native("base64") fn encode(...)
+        // in user code registers under "base64::encode", matching what the
+        // table-driven dispatchers expect.
+        std::string effectivePackage = sig.package.empty() && !sig.library.empty()
+            ? sig.library : sig.package;
+        // Populate secondary index for O(1) lookup in emitGenericNativeCall
+        if (!sig.library.empty()) {
+            auto &libs = native_lib_index_[sig.name];
+            if (std::find(libs.begin(), libs.end(), sig.library) == libs.end())
+                libs.push_back(sig.library);
+        }
+
+        native_fn_sigs_[nativeSigKey(effectivePackage, sig.name)].push_back(std::move(sig));
         return;
     }
 

@@ -68,6 +68,10 @@ public:
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
     getNativeFnSigs() const { return native_fn_sigs_; }
 
+    // Libraries that must be dynamically loaded at JIT time (demand-driven:
+    // only includes libraries for functions actually called during codegen).
+    const std::unordered_set<std::string>& getRequiredLibraries() const;
+
     // Derive the base runtime function name for a stdlib package function.
     // e.g. ("base64", "encode") → "__ry_base64_encode"
     // For overloaded functions, callers must append an arity suffix
@@ -452,6 +456,15 @@ private:
 
     // @native fn rich signature registry (coexists with native_fn_arg_counts_)
     std::unordered_map<std::string, std::vector<NativeFnSignature>> native_fn_sigs_;
+
+    // Libraries actually used during codegen (populated by dispatch functions).
+    // Only these libraries need to be loaded at JIT startup.
+    std::unordered_set<std::string> used_native_libraries_;
+
+    // Secondary index: fn_name → library names, for @native("libname") functions.
+    // Enables O(1) lookup in emitGenericNativeCall instead of scanning all sigs.
+    // Multiple libraries may declare functions with the same name.
+    std::unordered_map<std::string, std::vector<std::string>> native_lib_index_;
 
     // Derive package name from the source file path of a native function declaration.
     // e.g. "share/std/base64/base64.ry" → "base64", "share/std/builtins.ry" → ""
@@ -958,6 +971,10 @@ private:
                                             const char *package,
                                             const NativeDispatchEntry *table,
                                             size_t table_size);
+    // Generic dispatch for @native("libname") functions not covered by
+    // hardcoded stdlib dispatch tables. Uses the signature registry to
+    // derive the C calling convention from Ry type annotations.
+    llvm::Value *emitGenericNativeCall(const CallExpr &e);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);

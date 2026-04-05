@@ -165,4 +165,35 @@ void write_manifest(const fs::path &dir,
     out << "]\n}\n";
 }
 
+fs::path find_native_library(const std::string &exe_path,
+                              const std::string &lib_name) {
+#ifdef __APPLE__
+    std::string filename = "libry_" + lib_name + ".dylib";
+#else
+    std::string filename = "libry_" + lib_name + ".so";
+#endif
+
+    std::error_code ec;
+    fs::path exe_dir = fs::path(exe_path).parent_path();
+    exe_dir = fs::canonical(exe_dir, ec);
+    if (!ec) {
+        // 1. exe/../lib/ (installed layout)
+        fs::path candidate = exe_dir.parent_path() / "lib" / filename;
+        if (fs::exists(candidate))
+            return candidate;
+
+        // 2. exe/lib/ (development layout — e.g. build/lib/)
+        candidate = exe_dir / "lib" / filename;
+        if (fs::exists(candidate))
+            return candidate;
+    }
+
+    // 3. $RY_HOME/lib/
+    fs::path ry_home_lib = get_ry_home() / "lib" / filename;
+    if (fs::exists(ry_home_lib))
+        return ry_home_lib;
+
+    return {};
+}
+
 } // namespace ry

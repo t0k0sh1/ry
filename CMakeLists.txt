@@ -167,6 +167,46 @@ target_include_directories(ry_lib PUBLIC
 )
 target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
 
+# ===== Native shared libraries for @native("libname") =====
+# These are loaded dynamically by the JIT when @native("libname") is used.
+# The static ry_lib remains unchanged for backward compatibility with bare @native.
+
+function(add_ry_native_lib PKG_NAME)
+    set(SOURCES ${ARGN})
+    add_library(ry_${PKG_NAME} SHARED ${SOURCES})
+    target_include_directories(ry_${PKG_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    set_target_properties(ry_${PKG_NAME} PROPERTIES
+        OUTPUT_NAME "ry_${PKG_NAME}"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+endfunction()
+
+# Self-contained packages (no cross-runtime dependencies)
+add_ry_native_lib(base64     src/runtime_base64.cpp)
+add_ry_native_lib(path       src/runtime_path.cpp)
+add_ry_native_lib(convert    src/runtime_convert.cpp)
+add_ry_native_lib(filesystem src/runtime_filesystem.cpp)
+add_ry_native_lib(gc         src/runtime_gc.cpp)
+
+# io defines __ry_set_last_error, used by several other packages
+add_ry_native_lib(io         src/runtime_io.cpp)
+
+# Packages that depend on __ry_set_last_error (via runtime_io.hpp)
+add_ry_native_lib(json       src/runtime_json.cpp)
+target_link_libraries(ry_json PRIVATE ry_io)
+
+add_ry_native_lib(net        src/runtime_net.cpp)
+target_link_libraries(ry_net PRIVATE ry_io)
+
+add_ry_native_lib(thread     src/runtime_thread.cpp)
+target_link_libraries(ry_thread PRIVATE ry_io Threads::Threads)
+
+# http depends on tls, net, hash for HTTPS client support, plus io for error API
+add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
+                             src/runtime_http_multipart.cpp src/runtime_tls.cpp
+                             src/runtime_net.cpp src/runtime_hash.cpp)
+target_link_libraries(ry_http PRIVATE ry_io OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
 if(APPLE)

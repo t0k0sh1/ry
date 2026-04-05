@@ -229,6 +229,36 @@ static int runRySource(const std::string &src, const std::string &source_name,
     }
     mainJD.addGenerator(std::move(*dlsg));
 
+    // Load dynamic libraries required by @native("libname") declarations
+    {
+        auto requiredLibs = cg.getRequiredLibraries();
+        for (const auto &libName : requiredLibs) {
+            auto libPath = ry::find_native_library(argv0, libName);
+            if (libPath.empty()) {
+                errs() << "Error: native library '" << libName
+                       << "' not found (searched exe/../lib/, exe/lib/, $RY_HOME/lib/)\n";
+                ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                                   {ry::TraceField("detail", "native library not found: " + libName)});
+                return 1;
+            }
+            if (ry::traceEnabled())
+                ry::emitTraceEvent("jit.load_library", "jit", &sourceLoc,
+                                   {ry::TraceField("library", libName),
+                                    ry::TraceField("path", libPath.string())});
+            auto libGen = DynamicLibrarySearchGenerator::Load(
+                libPath.string().c_str(),
+                jit->getDataLayout().getGlobalPrefix());
+            if (!libGen) {
+                errs() << "Failed to load native library '" << libName << "': ";
+                logAllUnhandledErrors(libGen.takeError(), errs());
+                ry::emitTraceEvent("runtime.error", "jit", &sourceLoc,
+                                   {ry::TraceField("detail", "Failed to load library: " + libName)});
+                return 1;
+            }
+            mainJD.addGenerator(std::move(*libGen));
+        }
+    }
+
     // Register test runtime symbols if in test mode
     if (test_mode) {
         auto &es = jit->getExecutionSession();

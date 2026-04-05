@@ -134,7 +134,9 @@ TEST(NativeFnSigs, LibraryFieldParsed) {
 }
 
 TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
-    // @native("base64") stores library name in registry
+    // @native("base64") stores library name in registry.
+    // The registry key uses the library name as package when the source
+    // file is not under std/<pkg>/ (i.e., deriveNativePackage returns "").
     std::string src =
         "@native(\"base64\")\n"
         "function encode(data: str) -> str\n";
@@ -147,8 +149,9 @@ TEST(NativeFnSigs, LibraryFieldStoredAtCodegen) {
     cg.compile(prog);
 
     auto &sigs = cg.getNativeFnSigs();
-    ASSERT_TRUE(sigs.count("encode"));
-    EXPECT_EQ(sigs.at("encode")[0].library, "base64");
+    // Key is "base64::encode" (library used as effective package)
+    ASSERT_TRUE(sigs.count("base64::encode"));
+    EXPECT_EQ(sigs.at("base64::encode")[0].library, "base64");
 }
 
 TEST(NativeFnSigs, LibraryFieldEmptyForBareNative) {
@@ -166,6 +169,63 @@ TEST(NativeFnSigs, LibraryFieldEmptyForBareNative) {
     auto &sigs = cg.getNativeFnSigs();
     ASSERT_TRUE(sigs.count("contains"));
     EXPECT_EQ(sigs.at("contains")[0].library, "");
+}
+
+TEST(NativeFnSigs, GetRequiredLibrariesOnlyIncludesCalledFunctions) {
+    // Declares functions from "base64" and "path" libraries, but only calls
+    // the base64 function. getRequiredLibraries() should return only "base64".
+    std::string src =
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n"
+        "@native(\"path\")\n"
+        "function basename(p: str) -> str\n"
+        "print(encode(\"Hello\"))\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &libs = cg.getRequiredLibraries();
+    ASSERT_EQ(libs.size(), 1u);
+    EXPECT_TRUE(libs.count("base64"));
+}
+
+TEST(NativeFnSigs, GetRequiredLibrariesEmptyWhenNothingCalled) {
+    // Declares @native("libname") functions but doesn't call any.
+    // getRequiredLibraries() should return empty (demand-driven loading).
+    std::string src =
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n"
+        "print(\"no native calls\")\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &libs = cg.getRequiredLibraries();
+    EXPECT_TRUE(libs.empty());
+}
+
+TEST(NativeFnSigs, GetRequiredLibrariesEmptyForBareNative) {
+    std::string src =
+        "@native\n"
+        "function contains(s: str, sub: str) -> bool\n";
+
+    Lexer lex(src);
+    Parser parser(lex);
+    Program prog = parser.parseProgram();
+
+    CodeGen cg;
+    cg.compile(prog);
+
+    auto &libs = cg.getRequiredLibraries();
+    EXPECT_TRUE(libs.empty());
 }
 
 // 1. @deprecated function called -> warning, execution normal
@@ -448,9 +508,23 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
 
 // ===== @native("libname") directive syntax tests =====
 
+TEST_F(DirectiveTest, NativeFnLibraryNameCollisionWithStdlib) {
+    // A function named "encode" declared with @native("mylib") must NOT be
+    // misrouted to the hardcoded base64 dispatcher. The stdlib dispatcher
+    // should fall through and let the generic dispatcher handle it.
+    // Here we use @native("base64") to prove it dispatches correctly via
+    // the generic path even when the function name exists in a stdlib table.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n"
+        "print(encode(\"test\"))\n"
+    );
+    EXPECT_EQ(output, "dGVzdA==\n");
+}
+
 TEST_F(DirectiveTest, NativeFnLibraryDeclarationOnly) {
-    // @native("libname") declaration is accepted but does not register
-    // for builtin dispatch. The function is only in the signature registry.
+    // @native("libname") declaration is accepted and registered for dispatch.
+    // Without calling the function, the declaration alone is valid.
     std::string output = runSource(
         "@native(\"base64\")\n"
         "function encode(data: str) -> str\n"
@@ -459,15 +533,85 @@ TEST_F(DirectiveTest, NativeFnLibraryDeclarationOnly) {
     EXPECT_EQ(output, "ok\n");
 }
 
-TEST_F(DirectiveTest, NativeFnLibraryDoesNotAffectDispatch) {
-    // @native("libname") is metadata-only — it does not register for
-    // builtin arg-count validation, but same-named builtins still resolve.
+TEST_F(DirectiveTest, NativeFnLibraryDoesNotShadowBuiltin) {
+    // @native("libname") registers for dispatch but does not shadow
+    // built-in functions with the same name.
     std::string output = runSource(
         "@native(\"base64\")\n"
         "function contains(s: str, sub: str) -> bool\n"
         "print(contains(\"hello\", \"ell\"))\n"
     );
     EXPECT_EQ(output, "true\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
+    // The generic native dispatch (for non-stdlib @native("libname")) falls
+    // through on type mismatch, letting user-defined overloads handle the call.
+    // This uses "mylib" (not a stdlib name) so it goes through the generic path.
+    std::string output = runSource(
+        "@native(\"mylib\")\n"
+        "function greet(name: str) -> str\n"
+        "function greet(x: int) -> str:\n"
+        "    return \"int:\" + to_str(x)\n"
+        "print(greet(42))\n"
+    );
+    EXPECT_EQ(output, "int:42\n");
+}
+
+// ===== @native("libname") generic dispatch tests =====
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchDirect) {
+    // @native("base64") fn encode(data: str) -> str dispatches through the
+    // generic path (not the hardcoded base64 dispatch table) because the
+    // source is not under std/base64/. The runtime symbol __ry_base64_encode
+    // is resolved from the process (statically linked).
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "function encode(data: str) -> str\n"
+        "print(encode(\"Hello\"))\n"
+    );
+    EXPECT_EQ(output, "SGVsbG8=\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultPtr) {
+    // @native("base64") fn decode(data: str) -> Result<str, Error>
+    // Tests ResultPtr wrapping in the generic dispatch path.
+    std::string output = runSource(
+        "@native(\"base64\")\n"
+        "function decode(data: str) -> Result<str, Error>\n"
+        "match decode(\"SGVsbG8=\"):\n"
+        "    case Ok(s):\n"
+        "        print(s)\n"
+        "    case Err(e):\n"
+        "        print(e.message)\n"
+    );
+    EXPECT_EQ(output, "Hello\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
+    // Tests BoolFromI64 wrapping in the generic dispatch path.
+    std::string output = runSource(
+        "@native(\"path\")\n"
+        "function is_absolute(p: str) -> bool\n"
+        "print(is_absolute(\"/usr/bin\"))\n"
+        "print(is_absolute(\"relative\"))\n"
+    );
+    EXPECT_EQ(output, "true\nfalse\n");
+}
+
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
+    // Result<bool, Error> must use ResultOutParam with i64 out-param,
+    // then truncate to i1. Verifies the codegen doesn't crash or miscompile.
+    // We compile-only since no matching C function exists in the test harness.
+    EXPECT_NO_THROW(compileSource(
+        "@native(\"mylib\")\n"
+        "function check(s: str) -> Result<bool, Error>\n"
+        "match check(\"test\"):\n"
+        "    case Ok(b):\n"
+        "        print(b)\n"
+        "    case Err(e):\n"
+        "        print(e.message)\n"
+    ));
 }
 
 // ===== @inline tests =====
