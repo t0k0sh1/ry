@@ -178,5 +178,5 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     }
     }
 
-    return nullptr; // unreachable
+    llvm_unreachable("unhandled ReturnWrapping variant");
 }
