@@ -30,11 +30,17 @@ install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
 # Install native shared libraries
 if [ -d "$TMPDIR/lib" ]; then
+    NATIVE_LIBS_INSTALLED=0
     mkdir -p "$RY_HOME/lib"
     for f in "$TMPDIR"/lib/libry_*.*; do
-        [ -f "$f" ] && install -m 755 "$f" "$RY_HOME/lib/"
+        if [ -f "$f" ]; then
+            install -m 755 "$f" "$RY_HOME/lib/"
+            NATIVE_LIBS_INSTALLED=1
+        fi
     done
-    echo "Native libraries installed to $RY_HOME/lib"
+    if [ "$NATIVE_LIBS_INSTALLED" = 1 ]; then
+        echo "Native libraries installed to $RY_HOME/lib"
+    fi
 fi
 
 # Install standard library (clean replace)

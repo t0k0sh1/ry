@@ -108,6 +108,7 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
             llvm::Type::getVoidTy(*ctx_),
             {ptrTy_, ptrTy_, ptrTy_}, false);
         auto gcTrackFn = mod_->getOrInsertFunction("__ry_gc_track", gcTrackFnTy);
+        used_native_libraries_.insert("gc");
         llvm::Value *dtorPtr = destructor
             ? llvm::cast<llvm::Value>(destructor.getCallee())
             : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
