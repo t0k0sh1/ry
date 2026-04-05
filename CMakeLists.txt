@@ -116,6 +116,7 @@ add_library(ry_lib STATIC
     src/codegen_any.cpp
     src/runtime_any.cpp
     src/codegen_arc.cpp
+    src/runtime_error.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -168,6 +169,11 @@ function(add_ry_native_lib PKG_NAME)
         MACOSX_RPATH TRUE
         BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
         INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,\$ORIGIN>")
+    # Native libs resolve infrastructure symbols (__ry_set_last_error etc.)
+    # from the main process at runtime, not via link-time dependency.
+    if(APPLE)
+        target_link_options(ry_${PKG_NAME} PRIVATE -undefined dynamic_lookup)
+    endif()
 endfunction()
 
 # Self-contained packages (no cross-runtime dependencies)
@@ -177,40 +183,45 @@ add_ry_native_lib(convert    src/runtime_convert.cpp)
 add_ry_native_lib(filesystem src/runtime_filesystem.cpp)
 add_ry_native_lib(gc         src/runtime_gc.cpp)
 
-# io defines __ry_set_last_error, used by several other packages
+# All native libs are independent — no inter-library link dependencies.
+# __ry_set_last_error / __ry_get_last_error live in ry_lib (the main executable)
+# and are resolved from the process at runtime via -undefined dynamic_lookup
+# (macOS) or -rdynamic (Linux).
 add_ry_native_lib(io         src/runtime_io.cpp)
-
-# Packages that depend on __ry_set_last_error (via runtime_io.hpp)
 add_ry_native_lib(json       src/runtime_json.cpp)
-target_link_libraries(ry_json PRIVATE ry_io)
-
 add_ry_native_lib(net        src/runtime_net.cpp)
-target_link_libraries(ry_net PRIVATE ry_io)
 
 add_ry_native_lib(thread     src/runtime_thread.cpp)
-target_link_libraries(ry_thread PRIVATE ry_io Threads::Threads)
+if(APPLE)
+    target_link_libraries(ry_thread PRIVATE Threads::Threads)
+else()
+    target_link_libraries(ry_thread PRIVATE Threads::Threads atomic)
+endif()
 
-# http depends on tls for HTTPS client support, plus io/net for error & socket APIs.
 # runtime_hash.cpp is compiled here (not in a separate shared lib) because ry_http
 # needs hash symbols at link time for HTTP header map construction.
+# Shared TCP utilities are compiled directly into ry_http via runtime_net_utils.hpp.
 add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
                              src/runtime_http_multipart.cpp src/runtime_tls.cpp
                              src/runtime_hash.cpp)
-target_link_libraries(ry_http PRIVATE ry_io ry_net OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+target_link_libraries(ry_http PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
-# All native shared libraries — linked into ry and ry_tests so the JIT can
-# resolve runtime symbols via DynamicLibrarySearchGenerator.
 set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_io ry_json ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
+# Native shared libraries are NOT linked here — the JIT loads them on-demand
+# via find_native_library() + DynamicLibrarySearchGenerator::Load() (see main.cpp).
 add_executable(ry src/main.cpp)
+add_dependencies(ry ${RY_NATIVE_LIBS})
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib ${RY_NATIVE_LIBS})
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
 else()
-    # --no-as-needed: force-link native libs (JIT resolves their symbols at runtime,
-    # so the static linker sees no direct references and would drop them otherwise)
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed)
-    # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator can find them
+    # --no-as-needed for atomic: JIT-generated code may reference __atomic_load
+    # (from LLVM atomicrmw lowering), so libatomic must stay linked even though
+    # ry_lib has no direct references to it.
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed atomic -Wl,--as-needed)
+    # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
+    # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 

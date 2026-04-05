@@ -1,7 +1,7 @@
 #include "ry/runtime_http_internal.hpp"
 #include "ry/runtime_http.hpp"
 #include "ry/runtime_io.hpp"
-#include "ry/runtime_net_types.hpp"
+#include "ry/runtime_net_utils.hpp"
 #include "ry/runtime_arc.hpp"
 
 #include <openssl/err.h>
@@ -738,7 +738,7 @@ extern "C" void __ry_http_send_response(void *stream, void *response, int64_t ke
     }
 
     // Send full response
-    __ry_send_all(handle->fd, out.c_str(), out.size());
+    ry_net_send_all(handle->fd, out.c_str(), out.size());
 }
 
 // Free internal fields of an HttpRequestHandle but NOT the handle memory itself.

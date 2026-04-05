@@ -28,6 +28,21 @@ curl -fsSL "$DOWNLOAD_URL" -o "$TMPDIR/ry.tar.gz"
 tar xzf "$TMPDIR/ry.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/ry" "$INSTALL_DIR/ry"
 
+# Install native shared libraries
+if [ -d "$TMPDIR/lib" ]; then
+    NATIVE_LIBS_INSTALLED=0
+    mkdir -p "$RY_HOME/lib"
+    for f in "$TMPDIR"/lib/libry_*.*; do
+        if [ -f "$f" ]; then
+            install -m 755 "$f" "$RY_HOME/lib/"
+            NATIVE_LIBS_INSTALLED=1
+        fi
+    done
+    if [ "$NATIVE_LIBS_INSTALLED" = 1 ]; then
+        echo "Native libraries installed to $RY_HOME/lib"
+    fi
+fi
+
 # Install standard library (clean replace)
 # Detect archive layout and install to the matching destination so the
 # corresponding binary can find stdlib at the path it expects.
@@ -54,6 +69,8 @@ if [ -n "$SRC_STD" ] && [ -d "$SRC_STD" ]; then
     # Clean up old lib/std layout only after successful install (migration)
     if [ "$NEW_LAYOUT" = 1 ]; then
         rm -rf "$RY_HOME/lib/std"
+        # rmdir only removes empty directories — safe when native libs
+        # (libry_*) are installed in $RY_HOME/lib (no-op in that case).
         rmdir "$RY_HOME/lib" 2>/dev/null || true
     fi
 fi

@@ -133,6 +133,10 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
         bool hasCallArityMatch = false;
         for (const auto &sig : sigIt->second) {
             if (sig.params.size() == e.args.size()) {
+                // Track native library for the JIT — custom emitters return
+                // before the normal matchedSig tracking below.
+                if (!sig.library.empty())
+                    used_native_libraries_.insert(sig.library);
                 hasCallArityMatch = true;
                 break;
             }

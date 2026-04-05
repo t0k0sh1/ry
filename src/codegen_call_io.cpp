@@ -190,10 +190,12 @@ llvm::Value *CodeGen::emitNetConnect(const CallExpr &e) {
     requireArgs(e, 2);
     llvm::Value *host = emitExpr(*e.args[0]);
     llvm::Value *port = emitExpr(*e.args[1]);
+    bool isTls = e.callee == "tls_connect";
     auto fn = mod_->getOrInsertFunction(
-        e.callee == "tls_connect" ? "__ry_tls_connect" : "__ry_connect", fnTy_ptr_i64_to_ptr_);
+        isTls ? "__ry_tls_connect" : "__ry_connect", fnTy_ptr_i64_to_ptr_);
+    used_native_libraries_.insert(isTls ? "http" : "net");
     llvm::Value *result = builder_.CreateCall(fn, {host, port}, e.callee + "_result");
-    if (e.callee == "tls_connect")
+    if (isTls)
         return emitPtrToResult(result, "tls_connect", "TLS connection failed", RK_TlsStream);
     return emitPtrToResult(result, "connect", "connection failed", RK_TcpStream);
 }
@@ -206,7 +208,9 @@ llvm::Value *CodeGen::emitNetTimeout(const CallExpr &e) {
         codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
     auto *voidTy = llvm::Type::getVoidTy(*ctx_);
     auto fnTy = llvm::FunctionType::get(voidTy, {ptrTy_, i64Ty_}, false);
-    std::string prefix = isTlsStream(stream) ? "__ry_tls_" : "__ry_tcp_";
+    bool isTls = isTlsStream(stream);
+    std::string prefix = isTls ? "__ry_tls_" : "__ry_tcp_";
+    used_native_libraries_.insert(isTls ? "http" : "net");
     std::string rtName = e.callee;
     if (rtName == "set_receive_timeout") rtName = "set_recv_timeout";
     auto fn = mod_->getOrInsertFunction(prefix + rtName, fnTy);

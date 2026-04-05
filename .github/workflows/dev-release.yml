@@ -99,10 +99,12 @@ jobs:
         run: ./build/ry_tests
       - name: Package
         run: |
-          mkdir -p dist
+          mkdir -p dist/lib dist/share
           cp build/ry dist/ry
+          cp build/lib/libry_*.* dist/lib/
+          cp -r share/std dist/share/std
           cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry lib/ share/
           shasum -a 256 ry-*.tar.gz > checksums.txt
       - name: Sign checksums
         if: env.RY_SIGNING_PRIVATE_KEY != ''
@@ -187,10 +189,12 @@ jobs:
         run: ./build/ry_tests
       - name: Package
         run: |
-          mkdir -p dist
+          mkdir -p dist/lib dist/share
           cp build/ry dist/ry
+          cp build/lib/libry_*.* dist/lib/
+          cp -r share/std dist/share/std
           cd dist
-          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry
+          tar czf ry-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz ry lib/ share/
           shasum -a 256 ry-*.tar.gz > checksums.txt
       - name: Sign checksums
         if: env.RY_SIGNING_PRIVATE_KEY != ''

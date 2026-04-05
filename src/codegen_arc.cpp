@@ -108,6 +108,7 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
             llvm::Type::getVoidTy(*ctx_),
             {ptrTy_, ptrTy_, ptrTy_}, false);
         auto gcTrackFn = mod_->getOrInsertFunction("__ry_gc_track", gcTrackFnTy);
+        used_native_libraries_.insert("gc");
         llvm::Value *dtorPtr = destructor
             ? llvm::cast<llvm::Value>(destructor.getCallee())
             : llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ptrTy_));
@@ -124,6 +125,7 @@ void CodeGen::emitArcRelease(llvm::Value *headerPtr, bool atomic,
         llvm::Type::getVoidTy(*ctx_), {ptrTy_}, false);
     auto gcUntrackFn = mod_->getOrInsertFunction("__ry_gc_untrack", gcUntrackFnTy);
     builder_.CreateCall(gcUntrackFn, {headerPtr});
+    used_native_libraries_.insert("gc");
     if (destructor) {
         auto *dataPtr = emitArcGetDataPtr(headerPtr);
         builder_.CreateCall(destructor, {dataPtr});
@@ -251,21 +253,22 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
         ResourceKind kind;
         const char *dtorName;
         const char *cleanupFnName;
+        const char *library;
     } table[] = {
-        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",          "__ry_tcp_listener_cleanup"},
-        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",            "__ry_tcp_cleanup"},
-        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",            "__ry_tls_cleanup"},
-        {RK_HttpRequest,         "__ry_arc_dtor_http_request",          "__ry_http_request_cleanup"},
-        {RK_HttpResponse,        "__ry_arc_dtor_http_response",         "__ry_http_response_cleanup"},
-        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response",  "__ry_http_client_response_cleanup"},
-        {RK_JsonValue,           "__ry_arc_dtor_json_value",            "__ry_json_cleanup"},
-        {RK_Thread,              "__ry_arc_dtor_thread",                "__ry_thread_cleanup"},
-        {RK_Lock,                "__ry_arc_dtor_lock",                  "__ry_lock_cleanup"},
-        {RK_RWLock,              "__ry_arc_dtor_rwlock",                "__ry_rwlock_cleanup"},
-        {RK_Semaphore,           "__ry_arc_dtor_semaphore",             "__ry_semaphore_cleanup"},
-        {RK_Barrier,             "__ry_arc_dtor_barrier",               "__ry_barrier_cleanup"},
-        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",            "__ry_atomic_int_cleanup"},
-        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",           "__ry_atomic_bool_cleanup"},
+        {RK_TcpListener,        "__ry_arc_dtor_tcp_listener",          "__ry_tcp_listener_cleanup",         "net"},
+        {RK_TcpStream,           "__ry_arc_dtor_tcp_stream",            "__ry_tcp_cleanup",                 "net"},
+        {RK_TlsStream,           "__ry_arc_dtor_tls_stream",            "__ry_tls_cleanup",                 "http"},
+        {RK_HttpRequest,         "__ry_arc_dtor_http_request",          "__ry_http_request_cleanup",        "http"},
+        {RK_HttpResponse,        "__ry_arc_dtor_http_response",         "__ry_http_response_cleanup",       "http"},
+        {RK_HttpClientResponse,  "__ry_arc_dtor_http_client_response",  "__ry_http_client_response_cleanup","http"},
+        {RK_JsonValue,           "__ry_arc_dtor_json_value",            "__ry_json_cleanup",                "json"},
+        {RK_Thread,              "__ry_arc_dtor_thread",                "__ry_thread_cleanup",              "thread"},
+        {RK_Lock,                "__ry_arc_dtor_lock",                  "__ry_lock_cleanup",                "thread"},
+        {RK_RWLock,              "__ry_arc_dtor_rwlock",                "__ry_rwlock_cleanup",              "thread"},
+        {RK_Semaphore,           "__ry_arc_dtor_semaphore",             "__ry_semaphore_cleanup",           "thread"},
+        {RK_Barrier,             "__ry_arc_dtor_barrier",               "__ry_barrier_cleanup",             "thread"},
+        {RK_AtomicInt,           "__ry_arc_dtor_atomic_int",            "__ry_atomic_int_cleanup",          "thread"},
+        {RK_AtomicBool,          "__ry_arc_dtor_atomic_bool",           "__ry_atomic_bool_cleanup",         "thread"},
     };
 
     const char *dtorName = nullptr;
@@ -274,6 +277,7 @@ llvm::FunctionCallee CodeGen::getOrCreateResourceDestructor(ResourceKind rk) {
         if (entry.kind == rk) {
             dtorName = entry.dtorName;
             cleanupFnName = entry.cleanupFnName;
+            used_native_libraries_.insert(entry.library);
             break;
         }
     }

@@ -749,6 +749,37 @@ bool install_stdlib(const std::string &tmp_dir_str, const std::string &new_versi
     return true;
 }
 
+bool install_native_libs(const std::string &tmp_dir_str) {
+    namespace fs = std::filesystem;
+    fs::path src_lib = fs::path(tmp_dir_str) / "lib";
+    if (!fs::is_directory(src_lib))
+        return false;
+
+    const fs::path dest_lib = ry::get_ry_home() / "lib";
+    std::error_code ec;
+    fs::create_directories(dest_lib, ec);
+    if (ec) {
+        std::cerr << "Warning: Failed to create lib directory: " << ec.message() << "\n";
+        return false;
+    }
+
+    bool any_installed = false;
+    for (const auto &entry : fs::directory_iterator(src_lib)) {
+        if (!entry.is_regular_file()) continue;
+        auto filename = entry.path().filename().string();
+        if (filename.find("libry_") != 0) continue;
+        auto dest_path = dest_lib / filename;
+        fs::copy_file(entry.path(), dest_path,
+                      fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            std::cerr << "Warning: Failed to copy " << filename << ": " << ec.message() << "\n";
+        } else {
+            any_installed = true;
+        }
+    }
+    return any_installed;
+}
+
 } // namespace detail
 } // namespace ry::self_update
 
@@ -817,6 +848,11 @@ int cmd_self_update(int argc, char *argv[]) {
     if (!version.empty() && version[0] == 'v') version = version.substr(1);
     if (detail::install_stdlib(tmp_dir, version)) {
         std::cerr << "Standard library updated.\n";
+    }
+
+    // Install/update native shared libraries
+    if (detail::install_native_libs(tmp_dir)) {
+        std::cerr << "Native libraries updated.\n";
     }
 
     detail::run_command({RM_PATH, "-rf", tmp_dir});
