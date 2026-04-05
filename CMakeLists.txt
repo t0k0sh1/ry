@@ -190,11 +190,13 @@ target_link_libraries(ry_net PRIVATE ry_io)
 add_ry_native_lib(thread     src/runtime_thread.cpp)
 target_link_libraries(ry_thread PRIVATE ry_io Threads::Threads)
 
-# http depends on tls, net, hash for HTTPS client support, plus io for error API
+# http depends on tls for HTTPS client support, plus io/net for error & socket APIs.
+# runtime_hash.cpp is compiled here (not in a separate shared lib) because ry_http
+# needs hash symbols at link time for HTTP header map construction.
 add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
                              src/runtime_http_multipart.cpp src/runtime_tls.cpp
-                             src/runtime_net.cpp src/runtime_hash.cpp)
-target_link_libraries(ry_http PRIVATE ry_io OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+                             src/runtime_hash.cpp)
+target_link_libraries(ry_http PRIVATE ry_io ry_net OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
 
 # All native shared libraries — linked into ry and ry_tests so the JIT can
 # resolve runtime symbols via DynamicLibrarySearchGenerator.
