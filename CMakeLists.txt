@@ -216,7 +216,10 @@ add_dependencies(ry ${RY_NATIVE_LIBS})
 if(APPLE)
     target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
 else()
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive atomic)
+    # --no-as-needed for atomic: JIT-generated code may reference __atomic_load
+    # (from LLVM atomicrmw lowering), so libatomic must stay linked even though
+    # ry_lib has no direct references to it.
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed atomic -Wl,--as-needed)
     # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator and
     # dlopen'd native libs can find __ry_set_last_error etc. from the process
     target_link_options(ry PRIVATE -rdynamic)
