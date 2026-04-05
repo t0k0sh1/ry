@@ -44,6 +44,25 @@ public:
         std::vector<std::string> directive_names; // e.g. {"native", "deprecated"}
     };
 
+    // --- Table-driven native call dispatch ---
+
+    enum class ReturnWrapping {
+        Direct,               // return as-is (ptr→ptr, void→Unit, i64→int)
+        ResultPtr,            // wrapPtrAsResult(ptr, errFn)
+        ResultStatus,         // wrapStatusAsResult(status, errFn)
+        ResultOutParam,       // alloca + out-param + emitResultBranch
+        BoolFromI64,          // i64 → trunc to i1
+        ResultPtrWithListMeta // ResultPtr + type_meta_[TM_ListElem] annotation
+    };
+
+    struct NativeDispatchEntry {
+        const char *fn_name;        // e.g. "encode", "collect"
+        const char *rt_suffix;      // runtime name suffix override (nullptr = use fn_name)
+        ReturnWrapping wrapping;
+        int arity;                  // -1 = variadic (e.g. path::join 2-4 args)
+        const char *out_param_type; // for ResultOutParam only (e.g. "int"); nullptr otherwise
+    };
+
     // Access the @native function signature registry.
     // Keyed by "package::name" for package functions, bare name for builtins.
     const std::unordered_map<std::string, std::vector<NativeFnSignature>>&
@@ -935,6 +954,10 @@ private:
     llvm::Value *emitBuiltinFilesystem(const CallExpr &e);
     llvm::Value *emitBuiltinThread(const CallExpr &e);
     llvm::Value *emitBuiltinGc(const CallExpr &e);
+    llvm::Value *emitTableDrivenNativeCall(const CallExpr &e,
+                                            const char *package,
+                                            const NativeDispatchEntry *table,
+                                            size_t table_size);
     bool isTcpListener(llvm::Value *val);
     bool isTcpStream(llvm::Value *val);
     bool isTlsStream(llvm::Value *val);
