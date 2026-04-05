@@ -172,7 +172,7 @@ These files are automatically loaded as a prelude when the `core/` directory is 
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).
 - Providing a body causes a parse error: `@native function must not have a body`.
-- The declared function must correspond to an existing built-in; otherwise the call will fail at compile time.
+- For bare `@native`, the declared function must correspond to an existing built-in; otherwise the call will fail at compile time. For `@native("libname")`, the function is compiled based on the declared signature and will fail at JIT link time if the symbol cannot be resolved from the loaded library.
 
 **Library specification:**
 - `@native("libname")` specifies that the native function lives in a shared library named `libry_<libname>.dylib` (macOS) or `libry_<libname>.so` (Linux). At JIT startup, the required shared libraries are loaded from the following search paths (in order):

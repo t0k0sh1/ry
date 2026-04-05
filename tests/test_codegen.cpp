@@ -363,7 +363,7 @@ TEST_F(CodeGenTest, NativeFunctionMissingDispatcher) {
         FAIL() << "Expected exception for unhandled @native function";
     } catch (const std::runtime_error &e) {
         std::string msg = e.what();
-        EXPECT_NE(msg.find("not handled by any builtin dispatcher"), std::string::npos)
+        EXPECT_NE(msg.find("no matching overload for @native function"), std::string::npos)
             << "Error was: " << msg;
     }
 }

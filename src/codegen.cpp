@@ -641,10 +641,7 @@ llvm::Function *CodeGen::resolveOverload(const std::string &callee,
     auto fit = functions_.find(callee);
     if (fit == functions_.end()) {
         if (native_fn_arg_counts_.count(callee)) {
-            codegenError("@native function '" + callee +
-                "' is declared but not handled by any builtin dispatcher. "
-                "Did you forget to add a case in codegen_call_*.cpp "
-                "or add emitBuiltin*() to the dispatch chain in codegen_call.cpp?");
+            codegenError("no matching overload for @native function '" + callee + "'");
         } else {
             codegenError("undefined function: " + callee +
                 " (hint: if this function is defined later in the file, "

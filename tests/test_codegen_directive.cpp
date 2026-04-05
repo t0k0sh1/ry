@@ -508,12 +508,10 @@ TEST_F(DirectiveTest, CoreStrDeclarationsWork) {
 
 // ===== @native("libname") directive syntax tests =====
 
-TEST_F(DirectiveTest, NativeFnLibraryNameCollisionWithStdlib) {
-    // A function named "encode" declared with @native("mylib") must NOT be
-    // misrouted to the hardcoded base64 dispatcher. The stdlib dispatcher
-    // should fall through and let the generic dispatcher handle it.
-    // Here we use @native("base64") to prove it dispatches correctly via
-    // the generic path even when the function name exists in a stdlib table.
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchForStdlibName) {
+    // A user-declared @native("base64") fn encode(str) → str (not imported
+    // from stdlib) is handled by the table-driven base64 dispatcher because
+    // the sig key "base64::encode" matches. Verifies the function is callable.
     std::string output = runSource(
         "@native(\"base64\")\n"
         "function encode(data: str) -> str\n"

@@ -289,13 +289,15 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
                 candidateTypes.push_back(expectedTy);
             }
             if (typesMatch) {
+                if (matchedSig)
+                    codegenError("ambiguous @native call: '" + e.callee +
+                                 "' matches both @native(\"" + matchedPackage +
+                                 "\") and @native(\"" + lib + "\")");
                 matchedSig = &sig;
                 matchedPackage = lib;
                 paramTypes = std::move(candidateTypes);
-                break;
             }
         }
-        if (matchedSig) break;
     }
 
     // No library matched both arity and types — fall through to user functions

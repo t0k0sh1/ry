@@ -178,7 +178,10 @@ function(add_ry_native_lib PKG_NAME)
         ${CMAKE_CURRENT_SOURCE_DIR}/include)
     set_target_properties(ry_${PKG_NAME} PROPERTIES
         OUTPUT_NAME "ry_${PKG_NAME}"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+        MACOSX_RPATH TRUE
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/lib"
+        INSTALL_RPATH "$<IF:$<PLATFORM_ID:Darwin>,@loader_path,$ORIGIN>")
 endfunction()
 
 # Self-contained packages (no cross-runtime dependencies)
