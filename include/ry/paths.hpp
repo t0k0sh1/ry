@@ -20,6 +20,16 @@ std::filesystem::path find_share_dir(const std::string &exe_path,
 std::filesystem::path find_share_dir(const std::string &exe_path,
                                      bool skip_global = false);
 
+// Find a native shared library by base name.
+// e.g. "base64" → searches for "libry_base64.dylib" (macOS) or "libry_base64.so" (Linux)
+// Search order:
+// 1. exe/../lib/   (installed layout)
+// 2. exe/lib/      (development layout — build/lib/)
+// 3. $RY_HOME/lib/ (user-installed environment)
+// Returns empty path if not found.
+std::filesystem::path find_native_library(const std::string &exe_path,
+                                          const std::string &lib_name);
+
 struct StdlibManifest {
     std::string version;
     std::vector<std::string> files;

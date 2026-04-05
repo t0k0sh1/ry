@@ -31,37 +31,66 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     // --- Special case: variadic arity (e.g. path::join) ---
     if (entry->arity == -1) {
         size_t n = e.args.size();
+
+        // Check sig key BEFORE arity validation so that a name collision
+        // with a different-library function falls through instead of erroring.
+        std::string sigKey = nativeSigKey(package, e.callee);
+        auto sigIt = native_fn_sigs_.find(sigKey);
+        if (sigIt == native_fn_sigs_.end())
+            return nullptr;  // No sig for this package — fall through
+
+        bool hasArityMatch = false;
+        for (const auto &sig : sigIt->second) {
+            if (sig.params.size() == n) { hasArityMatch = true; break; }
+        }
+        if (!hasArityMatch)
+            return nullptr;  // Arity mismatch — fall through
+
         if (n < 2 || n > 4)
             codegenError(std::string(entry->fn_name) + "() requires 2, 3, or 4 arguments");
 
-        // Match signature by arity (same validation as fixed-arity path)
-        std::string sigKey = nativeSigKey(package, e.callee);
-        auto sigIt = native_fn_sigs_.find(sigKey);
+        // Emit args once, then find the sig whose types match
+        std::vector<llvm::Value *> args;
+        for (size_t i = 0; i < n; i++)
+            args.push_back(emitExpr(*e.args[i]));
+
         const NativeFnSignature *matchedSig = nullptr;
-        if (sigIt != native_fn_sigs_.end()) {
+        std::vector<llvm::Type *> argTypes;
+        for (const auto &sig : sigIt->second) {
+            if (sig.params.size() != n) continue;
+            bool typesMatch = true;
+            std::vector<llvm::Type *> candidateTypes;
+            for (size_t i = 0; i < n; i++) {
+                llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                if (args[i]->getType() != expectedTy) {
+                    typesMatch = false;
+                    break;
+                }
+                candidateTypes.push_back(expectedTy);
+            }
+            if (typesMatch) {
+                matchedSig = &sig;
+                argTypes = std::move(candidateTypes);
+                break;
+            }
+        }
+        if (!matchedSig) {
             for (const auto &sig : sigIt->second) {
                 if (sig.params.size() == n) {
-                    matchedSig = &sig;
+                    for (size_t i = 0; i < n; i++) {
+                        llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                        if (args[i]->getType() != expectedTy)
+                            codegenError(e.callee + "() argument " + std::to_string(i) +
+                                         " requires " + sig.params[i].type_name);
+                    }
                     break;
                 }
             }
+            codegenError(e.callee + "() argument type mismatch");
         }
-        if (!matchedSig)
-            codegenError(std::string(package) + "::" + e.callee +
-                         " has no @native signature with arity " +
-                         std::to_string(n));
 
-        std::vector<llvm::Value *> args;
-        std::vector<llvm::Type *> argTypes;
-        for (size_t i = 0; i < n; i++) {
-            llvm::Value *arg = emitExpr(*e.args[i]);
-            llvm::Type *expectedTy = resolveType(matchedSig->params[i].type_name);
-            if (arg->getType() != expectedTy)
-                codegenError(e.callee + "() argument " + std::to_string(i) +
-                             " requires " + matchedSig->params[i].type_name);
-            args.push_back(arg);
-            argTypes.push_back(expectedTy);
-        }
+        if (!matchedSig->library.empty())
+            used_native_libraries_.insert(matchedSig->library);
 
         std::string rtName = deriveRuntimeFnName(package, rtSuffix)
             + std::to_string(n);
@@ -72,38 +101,70 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     }
 
     // --- Normal path ---
-    requireArgs(e, static_cast<size_t>(entry->arity));
 
-    // Look up NativeFnSignature matching this call's arity
+    // Look up NativeFnSignature matching this call's arity.
+    // Check sig key BEFORE requireArgs so that a name collision with a
+    // different-library function falls through instead of erroring.
     std::string sigKey = nativeSigKey(package, e.callee);
     auto sigIt = native_fn_sigs_.find(sigKey);
+    if (sigIt == native_fn_sigs_.end())
+        return nullptr;  // No sig for this package — fall through
+
+    // Check if any sig matches the arity before emitting args
+    bool hasArityMatch = false;
+    for (const auto &sig : sigIt->second) {
+        if (static_cast<int>(sig.params.size()) == entry->arity) {
+            hasArityMatch = true;
+            break;
+        }
+    }
+    if (!hasArityMatch)
+        return nullptr;  // Arity mismatch — fall through
+
+    requireArgs(e, static_cast<size_t>(entry->arity));
+
+    // Emit args once, then find the sig whose types match
+    std::vector<llvm::Value *> args;
+    for (int i = 0; i < entry->arity; i++)
+        args.push_back(emitExpr(*e.args[i]));
+
     const NativeFnSignature *matchedSig = nullptr;
-    if (sigIt != native_fn_sigs_.end()) {
+    std::vector<llvm::Type *> paramLLVMTypes;
+    for (const auto &sig : sigIt->second) {
+        if (static_cast<int>(sig.params.size()) != entry->arity) continue;
+        bool typesMatch = true;
+        std::vector<llvm::Type *> candidateTypes;
+        for (int i = 0; i < entry->arity; i++) {
+            llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+            if (args[i]->getType() != expectedTy) {
+                typesMatch = false;
+                break;
+            }
+            candidateTypes.push_back(expectedTy);
+        }
+        if (typesMatch) {
+            matchedSig = &sig;
+            paramLLVMTypes = std::move(candidateTypes);
+            break;
+        }
+    }
+    if (!matchedSig) {
         for (const auto &sig : sigIt->second) {
             if (static_cast<int>(sig.params.size()) == entry->arity) {
-                matchedSig = &sig;
+                for (int i = 0; i < entry->arity; i++) {
+                    llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                    if (args[i]->getType() != expectedTy)
+                        codegenError(e.callee + "() argument " + std::to_string(i) +
+                                     " requires " + sig.params[i].type_name);
+                }
                 break;
             }
         }
+        codegenError(e.callee + "() argument type mismatch");
     }
-    if (!matchedSig)
-        codegenError(std::string(package) + "::" + e.callee +
-                     " has no @native signature with arity " +
-                     std::to_string(entry->arity));
 
-    // Emit and validate arguments
-    std::vector<llvm::Value *> args;
-    std::vector<llvm::Type *> paramLLVMTypes;
-    for (int i = 0; i < entry->arity; i++) {
-        llvm::Value *arg = emitExpr(*e.args[i]);
-        const std::string &expectedTN = matchedSig->params[i].type_name;
-        llvm::Type *expectedTy = resolveType(expectedTN);
-        if (arg->getType() != expectedTy)
-            codegenError(e.callee + "() argument " + std::to_string(i) +
-                         " requires " + expectedTN);
-        args.push_back(arg);
-        paramLLVMTypes.push_back(expectedTy);
-    }
+    if (!matchedSig->library.empty())
+        used_native_libraries_.insert(matchedSig->library);
 
     // Derive runtime function name
     std::string rtName = deriveRuntimeFnName(package, rtSuffix);
@@ -198,4 +259,227 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     }
 
     llvm_unreachable("unhandled ReturnWrapping variant");
+}
+
+// ===== Generic dispatch for @native("libname") functions =====
+//
+// This handles calls to functions declared with @native("libname") that are
+// NOT covered by the hardcoded stdlib dispatch tables. It uses the signature
+// registry to derive the C calling convention from the Ry type annotations.
+
+namespace {
+
+// Infer the ReturnWrapping from the Ry return type name.
+// Returns {wrapping, out_param_type_name} where out_param_type_name is non-empty
+// only for ResultOutParam.
+std::pair<CodeGen::ReturnWrapping, std::string>
+inferReturnWrapping(const std::string &returnType) {
+    using RW = CodeGen::ReturnWrapping;
+
+    // Result<T, Error> patterns
+    if (returnType.size() > 7 && returnType.substr(0, 7) == "Result<") {
+        // Extract the Ok type from Result<OkType, Error>, handling nested
+        // generics like Result<Map<K, V>, Error> by counting bracket depth.
+        int depth = 0;
+        size_t commaPos = std::string::npos;
+        for (size_t i = 7; i < returnType.size(); ++i) {
+            if (returnType[i] == '<') ++depth;
+            else if (returnType[i] == '>') --depth;
+            else if (returnType[i] == ',' && depth == 0) { commaPos = i; break; }
+        }
+        if (commaPos == std::string::npos) return {RW::Direct, ""};
+        std::string okType = returnType.substr(7, commaPos - 7);
+        while (!okType.empty() && okType.back() == ' ') okType.pop_back();
+
+        if (okType == "Unit")  return {RW::ResultStatus, ""};
+        if (okType == "int")   return {RW::ResultOutParam, "int"};
+        if (okType == "float") return {RW::ResultOutParam, "float"};
+        if (okType == "bool")  return {RW::ResultOutParam, "int"};
+        // str, List<...>, Map<...>, or any pointer type → ResultPtr
+        return {RW::ResultPtr, ""};
+    }
+
+    if (returnType == "bool") return {RW::BoolFromI64, ""};
+
+    // str, int, float, Unit, or any other type → Direct
+    return {RW::Direct, ""};
+}
+
+} // namespace
+
+llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
+    // O(1) lookup via secondary index: fn_name → candidate library names
+    auto libIt = native_lib_index_.find(e.callee);
+    if (libIt == native_lib_index_.end())
+        return nullptr;
+
+    // Emit args once, then try each candidate library for a type match.
+    // This avoids committing to the first arity match when a different
+    // library's signature may match the actual argument types.
+    std::vector<llvm::Value *> args;
+    for (size_t i = 0; i < e.args.size(); i++)
+        args.push_back(emitExpr(*e.args[i]));
+
+    const NativeFnSignature *matchedSig = nullptr;
+    std::string matchedPackage;
+    std::vector<llvm::Type *> paramTypes;
+    for (const auto &lib : libIt->second) {
+        std::string sigKey = nativeSigKey(lib, e.callee);
+        auto sigIt = native_fn_sigs_.find(sigKey);
+        if (sigIt == native_fn_sigs_.end()) continue;
+        for (const auto &sig : sigIt->second) {
+            if (sig.params.size() != e.args.size()) continue;
+            bool typesMatch = true;
+            std::vector<llvm::Type *> candidateTypes;
+            for (size_t i = 0; i < args.size(); i++) {
+                llvm::Type *expectedTy = resolveType(sig.params[i].type_name);
+                if (args[i]->getType() != expectedTy) {
+                    typesMatch = false;
+                    break;
+                }
+                candidateTypes.push_back(expectedTy);
+            }
+            if (typesMatch) {
+                if (matchedSig)
+                    codegenError("ambiguous @native call: '" + e.callee +
+                                 "' matches both @native(\"" + matchedPackage +
+                                 "\") and @native(\"" + lib + "\")");
+                matchedSig = &sig;
+                matchedPackage = lib;
+                paramTypes = std::move(candidateTypes);
+            }
+        }
+    }
+
+    // No library matched both arity and types — fall through to user functions
+    if (!matchedSig) return nullptr;
+
+    used_native_libraries_.insert(matchedPackage);
+
+    // Adjust bool params to match C ABI: native functions pass bools as i64.
+    // Widen i1→i64 in both the prototype and the arg values.
+    for (size_t i = 0; i < paramTypes.size(); i++) {
+        if (paramTypes[i] == i1Ty_) {
+            args[i] = builder_.CreateZExt(args[i], i64Ty_, "bool_zext");
+            paramTypes[i] = i64Ty_;
+        }
+    }
+
+    // Derive runtime function name: __ry_<package>_<fn_name>
+    std::string rtName = deriveRuntimeFnName(matchedPackage, e.callee);
+
+    // Determine C-level calling convention from the Ry return type
+    auto [wrapping, outParamType] = inferReturnWrapping(matchedSig->return_type_name);
+
+    // Error function name for Result wrappings
+    std::string errFnName = deriveRuntimeFnName(matchedPackage, "get_last_error");
+
+    // Build C-level return type and handle out-param
+    llvm::Type *outTy = nullptr;
+    llvm::Type *cRetTy;
+
+    switch (wrapping) {
+    case ReturnWrapping::Direct:
+        cRetTy = resolveType(matchedSig->return_type_name);
+        break;
+    case ReturnWrapping::ResultPtr:
+        cRetTy = ptrTy_;
+        break;
+    case ReturnWrapping::ResultStatus:
+    case ReturnWrapping::BoolFromI64:
+        cRetTy = i64Ty_;
+        break;
+    case ReturnWrapping::ResultOutParam:
+        outTy = resolveType(outParamType);
+        paramTypes.push_back(ptrTy_);
+        cRetTy = i64Ty_;
+        break;
+    case ReturnWrapping::ResultPtrWithListMeta:
+        llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
+    }
+
+    // Create alloca for out-param
+    llvm::AllocaInst *outSlot = nullptr;
+    if (wrapping == ReturnWrapping::ResultOutParam) {
+        outSlot = builder_.CreateAlloca(outTy, nullptr, e.callee + "_out");
+        args.push_back(outSlot);
+    }
+
+    // Emit the call
+    auto *fnTy = llvm::FunctionType::get(cRetTy, paramTypes, false);
+    auto fn = mod_->getOrInsertFunction(rtName, fnTy);
+    llvm::Value *callResult;
+    if (cRetTy->isVoidTy())
+        callResult = builder_.CreateCall(fn, args);
+    else
+        callResult = builder_.CreateCall(fn, args, e.callee);
+
+    // Apply return wrapping
+    llvm::Value *result;
+    switch (wrapping) {
+    case ReturnWrapping::Direct:
+        if (cRetTy->isVoidTy())
+            return llvm::ConstantInt::get(i8Ty_, 0);
+        result = callResult;
+        break;
+
+    case ReturnWrapping::ResultPtr:
+        result = wrapPtrAsResult(callResult, errFnName.c_str());
+        break;
+
+    case ReturnWrapping::ResultStatus:
+        result = wrapStatusAsResult(callResult, errFnName.c_str());
+        break;
+
+    case ReturnWrapping::BoolFromI64:
+        return builder_.CreateTrunc(callResult, i1Ty_, e.callee + "_bool");
+
+    case ReturnWrapping::ResultOutParam: {
+        llvm::Value *isErr = builder_.CreateICmpNE(callResult,
+            llvm::ConstantInt::get(i64Ty_, 0), e.callee + "_err");
+
+        bool isBoolResult = (matchedSig->return_type_name.find("Result<bool") == 0);
+        llvm::Type *okTy = isBoolResult ? i1Ty_ : outTy;
+        llvm::StructType *resTy = getResultType(okTy, errorTy_);
+        result = emitResultBranch(isErr, resTy,
+            [&]() {
+                llvm::Value *loaded = builder_.CreateLoad(outTy, outSlot, e.callee + "_val");
+                if (isBoolResult)
+                    loaded = builder_.CreateTrunc(loaded, i1Ty_, e.callee + "_bool");
+                return buildOkValue(loaded, resTy);
+            },
+            [&]() {
+                return buildErrValue(
+                    buildErrorFromRuntime(errFnName.c_str()), resTy);
+            });
+        break;
+    }
+
+    case ReturnWrapping::ResultPtrWithListMeta:
+        llvm_unreachable("ResultPtrWithListMeta not used in generic native dispatch");
+    }
+
+    // Propagate collection type metadata from the Ry return type annotation.
+    // For Result<T, Error>, propagate the metadata of the inner Ok type T
+    // onto the Result value so downstream operations can inspect elements.
+    const std::string &retType = matchedSig->return_type_name;
+    if (retType.size() > 7 && retType.compare(0, 7, "Result<") == 0) {
+        // Extract Ok type using the same depth-aware comma finder as inferReturnWrapping
+        int depth = 0;
+        size_t commaPos = std::string::npos;
+        for (size_t i = 7; i < retType.size(); ++i) {
+            if (retType[i] == '<') ++depth;
+            else if (retType[i] == '>') --depth;
+            else if (retType[i] == ',' && depth == 0) { commaPos = i; break; }
+        }
+        if (commaPos != std::string::npos) {
+            std::string okType = retType.substr(7, commaPos - 7);
+            while (!okType.empty() && okType.back() == ' ') okType.pop_back();
+            propagateTypeMeta(okType, result);
+        }
+    } else {
+        propagateTypeMeta(retType, result);
+    }
+
+    return result;
 }

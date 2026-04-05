@@ -177,6 +177,12 @@ llvm::Value *CodeGen::emitExprVariant(const std::unique_ptr<CallExpr> &e) {
         }
     }
 
+    // Generic dispatch for @native("libname") functions not covered by
+    // hardcoded stdlib dispatch tables. Placed after struct/lambda/generic
+    // resolution but before user function fallback, and falls through on
+    // type mismatch so user-defined overloads with the same name still work.
+    if (auto *v = emitGenericNativeCall(*e)) return v;
+
     return emitUserFnCall(e->callee, e->args);
 }
 

@@ -104,11 +104,11 @@ a, b = (1, 2)
 
 Declares a function whose implementation is provided by the runtime. The function must not have a body.
 
-An optional string argument specifies the shared library module name for future dynamic loading support. The library name is stored in the signature registry as metadata; it does not affect call resolution in the current version:
+An optional string argument specifies the shared library module name. When a `@native("libname")` function is called, the JIT dynamically loads the corresponding shared library (`libry_<libname>.dylib` on macOS, `libry_<libname>.so` on Linux) and resolves the runtime symbol from it:
 
 ```ry
-@native              # built-in (statically linked)
-@native("base64")    # metadata-only: library name stored for future dynamic loading
+@native              # built-in (statically linked into the process)
+@native("base64")    # dynamically loaded from libry_base64.dylib/.so
 ```
 
 **Basic syntax:**
@@ -172,10 +172,15 @@ These files are automatically loaded as a prelude when the `core/` directory is 
 **Constraints:**
 - `@native` functions must not have a body (no `:` after the signature).
 - Providing a body causes a parse error: `@native function must not have a body`.
-- The declared function must correspond to an existing built-in; otherwise the call will fail at compile time.
+- For bare `@native`, the declared function must correspond to an existing built-in; otherwise the call will fail at compile time. For `@native("libname")`, the function is compiled based on the declared signature and will fail at JIT link time if the symbol cannot be resolved from the loaded library.
 
-**Library specification (metadata-only — loading not yet implemented):**
-- `@native("libname")` specifies that the native function lives in `libry_<libname>.dylib/.so`. The library name is parsed and stored in the signature registry as metadata for future dynamic loading support. In the current version, `@native("libname")` declarations do not affect call resolution — they are not registered for argument-count validation, and same-named built-in functions continue to resolve normally.
+**Library specification:**
+- `@native("libname")` specifies that the native function lives in a shared library named `libry_<libname>.dylib` (macOS) or `libry_<libname>.so` (Linux). At JIT startup, the required shared libraries are loaded from the following search paths (in order):
+  1. `exe/../lib/` — installed layout
+  2. `exe/lib/` — development/build layout
+  3. `$RY_HOME/lib/` — user-installed environment
+- Both `@native` (static) and `@native("libname")` (dynamic) declarations register for argument-count validation and call resolution. The difference is only in how the runtime symbol is provided to the JIT.
+- The runtime function name follows the convention `__ry_<libname>_<fn_name>` (e.g., `@native("base64") fn encode(...)` → `__ry_base64_encode`). This works for both stdlib packages and user-defined native libraries.
 
 ### `@parallel`
 

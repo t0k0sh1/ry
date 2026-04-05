@@ -268,6 +268,112 @@ TEST(Paths, ManifestReadWrite) {
     fs::remove_all(tmp);
 }
 
+// ===== find_native_library tests =====
+
+TEST(Paths, FindNativeLibraryExeParentLib) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    char tmp_dir[] = "/tmp/ry-nlib-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    // Set up exe/../lib/ layout (installed layout)
+    fs::create_directories(tmp + "/bin");
+    fs::create_directories(tmp + "/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_base64.dylib";
+#else
+    std::string filename = "libry_base64.so";
+#endif
+    std::ofstream(tmp + "/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library(tmp + "/bin/ry", "base64");
+    EXPECT_EQ(result, fs::canonical(tmp + "/lib/" + filename));
+
+    fs::remove_all(tmp);
+}
+
+TEST(Paths, FindNativeLibraryExeSiblingLib) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    char tmp_dir[] = "/tmp/ry-nlib-sibling-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    // Set up exe/lib/ layout (development build layout)
+    fs::create_directories(tmp + "/build/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_path.dylib";
+#else
+    std::string filename = "libry_path.so";
+#endif
+    std::ofstream(tmp + "/build/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library(tmp + "/build/ry", "path");
+    EXPECT_EQ(result, fs::canonical(tmp + "/build/lib/" + filename));
+
+    fs::remove_all(tmp);
+}
+
+TEST(Paths, FindNativeLibraryRyHome) {
+    char home_dir[] = "/tmp/ry-nlib-home-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+
+    ScopedEnv guard("RY_HOME", home_dir);
+
+    fs::create_directories(home + "/lib");
+#ifdef __APPLE__
+    std::string filename = "libry_json.dylib";
+#else
+    std::string filename = "libry_json.so";
+#endif
+    std::ofstream(home + "/lib/" + filename) << "fake";
+
+    auto result = ry::find_native_library("/nonexistent/bin/ry", "json");
+    EXPECT_EQ(result, fs::path(home) / "lib" / filename);
+
+    fs::remove_all(home);
+}
+
+TEST(Paths, FindNativeLibraryNotFound) {
+    ScopedEnv guard("RY_HOME", "/nonexistent-ry-home");
+
+    auto result = ry::find_native_library("/nonexistent/bin/ry", "nonexistent_pkg");
+    EXPECT_TRUE(result.empty());
+}
+
+TEST(Paths, FindNativeLibraryPrefersExeParentOverRyHome) {
+    char tmp_dir[] = "/tmp/ry-nlib-pref-XXXXXX";
+    ASSERT_NE(mkdtemp(tmp_dir), nullptr);
+    std::string tmp(tmp_dir);
+
+    char home_dir[] = "/tmp/ry-nlib-home2-XXXXXX";
+    ASSERT_NE(mkdtemp(home_dir), nullptr);
+    std::string home(home_dir);
+
+    ScopedEnv guard("RY_HOME", home_dir);
+
+#ifdef __APPLE__
+    std::string filename = "libry_io.dylib";
+#else
+    std::string filename = "libry_io.so";
+#endif
+    // Both locations have the library
+    fs::create_directories(tmp + "/bin");
+    fs::create_directories(tmp + "/lib");
+    std::ofstream(tmp + "/lib/" + filename) << "exe-relative";
+    fs::create_directories(home + "/lib");
+    std::ofstream(home + "/lib/" + filename) << "ry-home";
+
+    auto result = ry::find_native_library(tmp + "/bin/ry", "io");
+    // Should prefer exe/../lib/ over $RY_HOME/lib/
+    EXPECT_EQ(result, fs::canonical(tmp + "/lib/" + filename));
+
+    fs::remove_all(tmp);
+    fs::remove_all(home);
+}
+
 TEST(Paths, ManifestReadMissing) {
     auto manifest = ry::read_manifest("/nonexistent/path");
     EXPECT_TRUE(manifest.version.empty());
