@@ -179,18 +179,18 @@ fs::path find_native_library(const std::string &exe_path,
     if (!ec) {
         // 1. exe/../lib/ (installed layout)
         fs::path candidate = exe_dir.parent_path() / "lib" / filename;
-        if (fs::exists(candidate))
+        if (fs::is_regular_file(candidate))
             return candidate;
 
         // 2. exe/lib/ (development layout — e.g. build/lib/)
         candidate = exe_dir / "lib" / filename;
-        if (fs::exists(candidate))
+        if (fs::is_regular_file(candidate))
             return candidate;
     }
 
     // 3. $RY_HOME/lib/
     fs::path ry_home_lib = get_ry_home() / "lib" / filename;
-    if (fs::exists(ry_home_lib))
+    if (fs::is_regular_file(ry_home_lib))
         return ry_home_lib;
 
     return {};

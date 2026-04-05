@@ -356,6 +356,15 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
 
     used_native_libraries_.insert(matchedSig->library);
 
+    // Adjust bool params to match C ABI: native functions pass bools as i64.
+    // Widen i1→i64 in both the prototype and the arg values.
+    for (size_t i = 0; i < paramTypes.size(); i++) {
+        if (paramTypes[i] == i1Ty_) {
+            args[i] = builder_.CreateZExt(args[i], i64Ty_, "bool_zext");
+            paramTypes[i] = i64Ty_;
+        }
+    }
+
     // Derive runtime function name: __ry_<package>_<fn_name>
     std::string rtName = deriveRuntimeFnName(matchedPackage, e.callee);
 

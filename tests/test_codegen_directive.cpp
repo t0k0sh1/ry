@@ -1,4 +1,14 @@
 #include "test_codegen_common.hpp"
+#include <cstring>
+
+// Test-only native symbol for exercising the generic dispatch path.
+// This is NOT covered by any hardcoded stdlib dispatcher, so calls
+// to @native("testlib") fn greet(str) MUST go through emitGenericNativeCall.
+extern "C" const char *__ry_testlib_greet(const char *name) {
+    static thread_local char buf[256];
+    snprintf(buf, sizeof(buf), "hello %s", name);
+    return strdup(buf);
+}
 
 class DirectiveTest : public CodeGenTest {};
 
@@ -558,11 +568,21 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchFallsThrough) {
 
 // ===== @native("libname") generic dispatch tests =====
 
+TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchEndToEnd) {
+    // This test exercises the FULL generic dispatch path with a symbol
+    // (__ry_testlib_greet) that is NOT covered by any hardcoded stdlib
+    // dispatcher. The call MUST go through emitGenericNativeCall.
+    std::string output = runSource(
+        "@native(\"testlib\")\n"
+        "function greet(name: str) -> str\n"
+        "print(greet(\"world\"))\n"
+    );
+    EXPECT_EQ(output, "hello world\n");
+}
+
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchDirect) {
-    // @native("base64") fn encode(data: str) -> str dispatches through the
-    // generic path (not the hardcoded base64 dispatch table) because the
-    // source is not under std/base64/. The runtime symbol __ry_base64_encode
-    // is resolved from the process (statically linked).
+    // @native("base64") fn encode(data: str) -> str — the sig key
+    // "base64::encode" is found by the table-driven base64 dispatcher.
     std::string output = runSource(
         "@native(\"base64\")\n"
         "function encode(data: str) -> str\n"
