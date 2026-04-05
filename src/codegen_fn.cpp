@@ -1,6 +1,7 @@
 #include "ry/codegen.hpp"
 #include "ry/diagnostic.hpp"
 #include "ry/sema_return.hpp"
+#include <algorithm>
 #include <filesystem>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>

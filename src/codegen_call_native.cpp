@@ -354,7 +354,7 @@ llvm::Value *CodeGen::emitGenericNativeCall(const CallExpr &e) {
     // No library matched both arity and types — fall through to user functions
     if (!matchedSig) return nullptr;
 
-    used_native_libraries_.insert(matchedSig->library);
+    used_native_libraries_.insert(matchedPackage);
 
     // Adjust bool params to match C ABI: native functions pass bools as i64.
     // Widen i1→i64 in both the prototype and the arg values.
