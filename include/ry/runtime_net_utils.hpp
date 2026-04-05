@@ -46,6 +46,9 @@ static inline bool ry_net_is_private_ipv4_raw(uint32_t ip) {
     if ((ip >> 16) == 0xC0A8) return true; // 192.168.0.0/16
     if ((ip >> 16) == 0xA9FE) return true; // 169.254.0.0/16
     if ((ip >> 24) == 0) return true;      // 0.0.0.0/8
+    if ((ip >> 22) == 0x191) return true;  // 100.64.0.0/10 (CGNAT)
+    if ((ip >> 17) == 0x6309) return true; // 198.18.0.0/15 (benchmarking)
+    if ((ip >> 28) >= 0xE) return true;    // 224.0.0.0/4+ (multicast + reserved)
     return false;
 }
 
@@ -62,6 +65,8 @@ static inline bool ry_net_is_private_addr(const struct sockaddr *sa) {
             return ry_net_is_private_ipv4_raw(ntohl(ip_raw));
         }
         if (IN6_IS_ADDR_LOOPBACK(&sin6->sin6_addr)) return true;
+        if (IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr)) return true;
+        if (IN6_IS_ADDR_MULTICAST(&sin6->sin6_addr)) return true;
         if (IN6_IS_ADDR_LINKLOCAL(&sin6->sin6_addr)) return true;
         uint8_t first = sin6->sin6_addr.s6_addr[0];
         if ((first & 0xFE) == 0xFC) return true; // fc00::/7 (ULA)
@@ -119,7 +124,10 @@ static inline void *ry_net_connect_resolved(const struct addrinfo *info) {
         }
 
         // Restore blocking mode
-        ::fcntl(fd, F_SETFL, flags);
+        if (::fcntl(fd, F_SETFL, flags) < 0) {
+            ::close(fd);
+            continue;
+        }
 
         void *smem = arc_alloc(sizeof(TcpStreamHandle));
         if (!smem) {

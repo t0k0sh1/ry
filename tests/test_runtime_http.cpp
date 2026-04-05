@@ -1446,6 +1446,99 @@ TEST(HttpSSRF, PublicAddrInfoSynthetic) {
     EXPECT_FALSE(__ry_is_private_addrinfo(&ai));
 }
 
+// --- Additional SSRF range tests (IPv4) ---
+
+TEST(HttpSSRF, PrivateHostCarrierGradeNAT) {
+    EXPECT_TRUE(__ry_is_private_host("100.64.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostCarrierGradeNATLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("100.64.0.0", 80));
+}
+
+TEST(HttpSSRF, PrivateHostCarrierGradeNATUpper) {
+    EXPECT_TRUE(__ry_is_private_host("100.127.255.255", 80));
+}
+
+TEST(HttpSSRF, PrivateHostBenchmarking) {
+    EXPECT_TRUE(__ry_is_private_host("198.18.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostBenchmarkingLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("198.18.0.0", 80));
+}
+
+TEST(HttpSSRF, PrivateHostBenchmarkingUpper) {
+    EXPECT_TRUE(__ry_is_private_host("198.19.255.255", 80));
+}
+
+TEST(HttpSSRF, PrivateHostMulticast) {
+    EXPECT_TRUE(__ry_is_private_host("224.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostMulticastLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("224.0.0.0", 80));
+}
+
+TEST(HttpSSRF, PrivateHostMulticastUpper) {
+    EXPECT_TRUE(__ry_is_private_host("239.255.255.255", 80));
+}
+
+TEST(HttpSSRF, PrivateHostReserved) {
+    EXPECT_TRUE(__ry_is_private_host("240.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostReservedLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("240.0.0.0", 80));
+}
+
+TEST(HttpSSRF, PrivateHostBroadcast) {
+    EXPECT_TRUE(__ry_is_private_host("255.255.255.255", 80));
+}
+
+// Boundary tests (should remain public / not blocked)
+
+TEST(HttpSSRF, PublicHostBelowCarrierGradeNAT) {
+    EXPECT_FALSE(__ry_is_private_host("100.63.255.255", 80));
+}
+
+TEST(HttpSSRF, PublicHostAboveCarrierGradeNAT) {
+    EXPECT_FALSE(__ry_is_private_host("100.128.0.0", 80));
+}
+
+TEST(HttpSSRF, PublicHostBelowBenchmarking) {
+    EXPECT_FALSE(__ry_is_private_host("198.17.255.255", 80));
+}
+
+TEST(HttpSSRF, PublicHostAboveBenchmarking) {
+    EXPECT_FALSE(__ry_is_private_host("198.20.0.0", 80));
+}
+
+TEST(HttpSSRF, PublicHostBelowMulticast) {
+    EXPECT_FALSE(__ry_is_private_host("223.255.255.255", 80));
+}
+
+// --- Additional SSRF range tests (IPv6 synthetic) ---
+
+TEST(HttpSSRF, PrivateAddrIPv6Unspecified) {
+    struct sockaddr_in6 sin6{};
+    sin6.sin6_family = AF_INET6;
+    EXPECT_TRUE(__ry_is_private_addr((struct sockaddr *)&sin6));
+}
+
+TEST(HttpSSRF, PrivateAddrIPv6Multicast) {
+    struct sockaddr_in6 sin6{};
+    sin6.sin6_family = AF_INET6;
+    sin6.sin6_addr.s6_addr[0] = 0xFF;
+    sin6.sin6_addr.s6_addr[1] = 0x02;
+    sin6.sin6_addr.s6_addr[15] = 0x01; // ff02::1
+    EXPECT_TRUE(__ry_is_private_addr((struct sockaddr *)&sin6));
+}
+
+TEST(HttpSSRF, PrivateAddrNullSockaddr) {
+    EXPECT_FALSE(__ry_is_private_addr(nullptr));
+}
+
 // --- Multipart form-data tests ---
 
 TEST(RuntimeHttp, FormFieldBasic) {

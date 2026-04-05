@@ -26,6 +26,9 @@ bool __ry_is_private_host(const char *host, int64_t port);
 // SSRF protection: check if any address in a pre-resolved addrinfo list is private
 bool __ry_is_private_addrinfo(const struct addrinfo *info);
 
+// SSRF protection: check if a single sockaddr is private/loopback
+bool __ry_is_private_addr(const struct sockaddr *sa);
+
 // Resolve hostname to addrinfo list. Caller must freeaddrinfo(*out).
 // Returns 0 on success, -1 on failure.
 int __ry_resolve(const char *host, int64_t port, struct addrinfo **out);
