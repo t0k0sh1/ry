@@ -10,5 +10,6 @@ static const CodeGen::NativeDispatchEntry path_table[] = {
 };
 
 llvm::Value *CodeGen::emitBuiltinPath(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "path", path_table, std::size(path_table));
+    return emitTableDrivenNativeCall(e, "path", path_table,
+                                     sizeof(path_table) / sizeof(path_table[0]));
 }

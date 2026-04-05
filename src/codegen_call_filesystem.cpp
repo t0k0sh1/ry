@@ -27,5 +27,6 @@ static const CodeGen::NativeDispatchEntry filesystem_table[] = {
 };
 
 llvm::Value *CodeGen::emitBuiltinFilesystem(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "filesystem", filesystem_table, std::size(filesystem_table));
+    return emitTableDrivenNativeCall(e, "filesystem", filesystem_table,
+                                     sizeof(filesystem_table) / sizeof(filesystem_table[0]));
 }

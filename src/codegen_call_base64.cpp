@@ -8,5 +8,6 @@ static const CodeGen::NativeDispatchEntry base64_table[] = {
 };
 
 llvm::Value *CodeGen::emitBuiltinBase64(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "base64", base64_table, std::size(base64_table));
+    return emitTableDrivenNativeCall(e, "base64", base64_table,
+                                     sizeof(base64_table) / sizeof(base64_table[0]));
 }

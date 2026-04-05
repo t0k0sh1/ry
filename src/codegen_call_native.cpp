@@ -64,13 +64,17 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     for (int i = 0; i < entry->arity; i++) {
         llvm::Value *arg = emitExpr(*e.args[i]);
         llvm::Type *expectedTy = ptrTy_; // default
+        std::string expectedTN = "str";
         if (sigIt != native_fn_sigs_.end() && !sigIt->second.empty()) {
             const auto &sig = sigIt->second[0];
-            if (static_cast<size_t>(i) < sig.params.size())
-                expectedTy = resolveType(sig.params[i].type_name);
+            if (static_cast<size_t>(i) < sig.params.size()) {
+                expectedTN = sig.params[i].type_name;
+                expectedTy = resolveType(expectedTN);
+            }
         }
         if (arg->getType() != expectedTy)
-            codegenError(e.callee + "() argument type mismatch");
+            codegenError(e.callee + "() argument " + std::to_string(i) +
+                         " requires " + expectedTN);
         args.push_back(arg);
         paramLLVMTypes.push_back(expectedTy);
     }

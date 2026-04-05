@@ -8,5 +8,6 @@ static const CodeGen::NativeDispatchEntry gc_table[] = {
 };
 
 llvm::Value *CodeGen::emitBuiltinGc(const CallExpr &e) {
-    return emitTableDrivenNativeCall(e, "gc", gc_table, std::size(gc_table));
+    return emitTableDrivenNativeCall(e, "gc", gc_table,
+                                     sizeof(gc_table) / sizeof(gc_table[0]));
 }
