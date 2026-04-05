@@ -79,10 +79,10 @@ ASan が検出した問題（メモリリーク、バッファオーバーフロ
 
 ### 1. Ry 宣言ファイル作成
 
-`share/std/<pkg>/<pkg>.ry` に `@native` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
+`share/std/<pkg>/<pkg>.ry` に `@native("pkg")` 宣言を記述する。`manifest.json` の更新は不要だが、宣言ファイルの追加だけでは package は使えるようにならない。
 
 ```ry
-@native
+@native("crypto")
 fn sha256(data: str) -> str
 ```
 
@@ -94,19 +94,20 @@ fn sha256(data: str) -> str
 extern "C" const char *__ry_crypto_sha256(const char *data) { ... }
 ```
 
-### 3. Codegen dispatcher 作成
+### 3. ビルド設定
 
-`src/codegen_call_<pkg>.cpp` を作成し、`include/ry/codegen.hpp` に宣言を追加する。
+`CMakeLists.txt` で `add_ry_native_lib(pkg src/runtime_<pkg>.cpp)` を追加して共有ライブラリを作成する。`RY_NATIVE_LIBS` リストにも追加して `ry` と `ry_tests` にリンクする。
 
-```cpp
-// codegen_call_<pkg>.cpp
-llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
-    if (!native_fn_arg_counts_.count(e.callee)) return nullptr;
-    // ... dispatch logic ...
-}
-```
+### 4. Codegen dispatcher（カスタムロジックが必要な場合のみ）
 
-共通ヘルパー（`codegen_call.cpp` に実装済み）を活用する:
+単純な関数（引数をそのまま渡してランタイムを呼ぶだけ）は `emitGenericNativeCall` が自動処理するため、codegen ファイルの作成は不要。
+
+リソーストラッキング、受信者型dispatch、Option wrapping 等のカスタムロジックが必要な場合は:
+1. `src/codegen_call_<pkg>.cpp` を作成し、`NativeDispatchEntry` テーブル + `custom_emitter` を定義
+2. `include/ry/builtin_stdlib_registry.hpp` に 1 行追加
+3. `CMakeLists.txt` の `ry_lib` にソースファイルを追加
+
+共通ヘルパー（`codegen_call_dispatch.cpp` に実装済み）を活用する:
 
 | ヘルパー | 用途 |
 |---------|------|
@@ -115,19 +116,7 @@ llvm::Value *CodeGen::emitBuiltin<Pkg>(const CallExpr &e) {
 | `emitResultBranch(isErr, resTy, buildOk, buildErr)` | カスタム Result 構築 |
 | `buildErrorFromRuntime(errFn)` | ランタイムから Error struct を構築 |
 
-### 4. Central registry 登録
-
-`include/ry/builtin_stdlib_registry.hpp` に package を 1 行追加する。dispatcher 配列と native constant registry はここから導出される。
-
-```cpp
-X(crypto, "share/std/crypto/crypto.ry", emitBuiltinCrypto)
-```
-
-### 5. ビルド設定
-
-`CMakeLists.txt` の `ry_lib` に `src/runtime_<pkg>.cpp` と `src/codegen_call_<pkg>.cpp` を追加する。
-
-### 6. テスト追加
+### 5. テスト追加
 
 - package import テストを追加する
 - 代表的な native function の実行テストを追加する
@@ -135,15 +124,15 @@ X(crypto, "share/std/crypto/crypto.ry", emitBuiltinCrypto)
 
 ### 定数の追加
 
-`share/std/<pkg>/<pkg>.ry` に `@native @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
+`share/std/<pkg>/<pkg>.ry` に `@native("pkg") @const` 宣言を追加し、`include/ry/builtin_stdlib_registry.hpp` の constant 一覧にも 1 行追加する。`codegen_stmt.cpp` の変更は不要。
 
 ### 既存パッケージへの関数追加
 
-既存パッケージに関数を追加する場合は、以下の 4 箇所を確認する:
+既存パッケージに関数を追加する場合は、以下の箇所を確認する:
 
-1. `share/std/<pkg>/<pkg>.ry` — `@native fn` 宣言を追加
+1. `share/std/<pkg>/<pkg>.ry` — `@native("pkg") fn` 宣言を追加
 2. `src/runtime_<pkg>.cpp` — C++ 実装を追加
-3. `src/codegen_call_<pkg>.cpp` — dispatch case を追加
+3. `src/codegen_call_<pkg>.cpp` — カスタム dispatch が必要なら custom_emitter を追加（単純な関数は不要）
 4. テスト — selective import と実行ケースを追加
 
 ## repo build と stdlib 解決

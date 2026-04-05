@@ -1,40 +1,40 @@
 # JSON parsing and serialization
 
-@native
+@native("json")
 function parse(text: str) -> Result<JsonValue, Error>
 
-@native
+@native("json")
 function stringify(value: JsonValue) -> str
 
-@native
+@native("json")
 function stringify(value: JsonValue, indent: int) -> str
 
-@native
+@native("json")
 function kind(value: JsonValue) -> str
 
-@native
+@native("json")
 function get(value: JsonValue, key: str) -> Result<JsonValue, Error>
 
-@native
+@native("json")
 function at(value: JsonValue, index: int) -> Result<JsonValue, Error>
 
-@native
+@native("json")
 function to_str(value: JsonValue) -> Result<str, Error>
 
-@native
+@native("json")
 function to_int(value: JsonValue) -> Result<int, Error>
 
-@native
+@native("json")
 function to_float(value: JsonValue) -> Result<float, Error>
 
-@native
+@native("json")
 function to_bool(value: JsonValue) -> Result<bool, Error>
 
-@native
+@native("json")
 function length(value: JsonValue) -> int
 
-@native
+@native("json")
 function keys(value: JsonValue) -> Result<List<str>, Error>
 
-@native
+@native("json")
 function json_free(value: JsonValue) -> Unit

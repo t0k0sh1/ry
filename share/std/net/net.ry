@@ -1,42 +1,42 @@
 # TCP socket operations
-@native
+@native("net")
 function bind(host: str, port: int) -> Result<TcpListener, Error>
 
-@native
+@native("net")
 function listen(listener: TcpListener, backlog: int) -> Result<Unit, Error>
 
-@native
+@native("net")
 function accept(listener: TcpListener) -> Result<TcpStream, Error>
 
-@native
+@native("net")
 function listener_port(listener: TcpListener) -> int
 
-@native
+@native("net")
 function connect(host: str, port: int) -> Result<TcpStream, Error>
 
-@native
+@native("net")
 function shutdown(listener: TcpListener) -> Unit
 
 # TLS connections
-@native
+@native("net")
 function tls_connect(host: str, port: int) -> Result<TlsStream, Error>
 
 # Timeout configuration (milliseconds) — TcpStream
-@native
+@native("net")
 function set_timeout(stream: TcpStream, ms: int) -> Unit
 
-@native
+@native("net")
 function set_receive_timeout(stream: TcpStream, ms: int) -> Unit
 
-@native
+@native("net")
 function set_send_timeout(stream: TcpStream, ms: int) -> Unit
 
 # Timeout configuration (milliseconds) — TlsStream
-@native
+@native("net")
 function set_timeout(stream: TlsStream, ms: int) -> Unit
 
-@native
+@native("net")
 function set_receive_timeout(stream: TlsStream, ms: int) -> Unit
 
-@native
+@native("net")
 function set_send_timeout(stream: TlsStream, ms: int) -> Unit

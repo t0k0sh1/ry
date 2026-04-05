@@ -103,35 +103,19 @@ add_library(ry_lib STATIC
     src/paths.cpp
     src/runtime_parallel.cpp
     src/runtime_print.cpp
-    src/runtime_io.cpp
-    src/runtime_net.cpp
-    src/runtime_http.cpp
-    src/runtime_http_client.cpp
-    src/runtime_http_multipart.cpp
-    src/runtime_json.cpp
     src/codegen_call_json.cpp
     src/formatter.cpp
     src/formatter_stmt.cpp
     src/file_watcher.cpp
     src/coverage_runtime.cpp
     src/dotenv.cpp
-    src/runtime_tls.cpp
-    src/runtime_base64.cpp
-    src/codegen_call_base64.cpp
     src/codegen_call_native.cpp
-    src/runtime_path.cpp
     src/codegen_call_path.cpp
-    src/runtime_filesystem.cpp
-    src/codegen_call_filesystem.cpp
-    src/runtime_thread.cpp
     src/codegen_call_thread.cpp
     src/codegen_arith.cpp
     src/codegen_any.cpp
     src/runtime_any.cpp
     src/codegen_arc.cpp
-    src/runtime_gc.cpp
-    src/codegen_call_gc.cpp
-    src/runtime_convert.cpp
 )
 target_precompile_headers(ry_lib PRIVATE
     <algorithm>
@@ -168,8 +152,10 @@ target_include_directories(ry_lib PUBLIC
 target_link_libraries(ry_lib PUBLIC ${LLVM_LIBS} Threads::Threads OpenSSL::SSL OpenSSL::Crypto)
 
 # ===== Native shared libraries for @native("libname") =====
-# These are loaded dynamically by the JIT when @native("libname") is used.
-# The static ry_lib remains unchanged for backward compatibility with bare @native.
+# Stdlib runtime implementations live exclusively in shared libraries.
+# The JIT loads them dynamically when @native("libname") functions are called.
+# ry_lib contains only compiler infrastructure (codegen, parser, etc.) and
+# language-builtin runtimes (print, regex, hash, sort, utf8, any, parallel).
 
 function(add_ry_native_lib PKG_NAME)
     set(SOURCES ${ARGN})
@@ -204,21 +190,27 @@ target_link_libraries(ry_net PRIVATE ry_io)
 add_ry_native_lib(thread     src/runtime_thread.cpp)
 target_link_libraries(ry_thread PRIVATE ry_io Threads::Threads)
 
-# http depends on tls, net, hash for HTTPS client support, plus io for error API
+# http depends on tls for HTTPS client support, plus io/net for error & socket APIs.
+# runtime_hash.cpp is compiled here (not in a separate shared lib) because ry_http
+# needs hash symbols at link time for HTTP header map construction.
 add_ry_native_lib(http       src/runtime_http.cpp src/runtime_http_client.cpp
                              src/runtime_http_multipart.cpp src/runtime_tls.cpp
-                             src/runtime_net.cpp src/runtime_hash.cpp)
-target_link_libraries(ry_http PRIVATE ry_io OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+                             src/runtime_hash.cpp)
+target_link_libraries(ry_http PRIVATE ry_io ry_net OpenSSL::SSL OpenSSL::Crypto Threads::Threads)
+
+# All native shared libraries — linked into ry and ry_tests so the JIT can
+# resolve runtime symbols via DynamicLibrarySearchGenerator.
+set(RY_NATIVE_LIBS ry_base64 ry_path ry_convert ry_filesystem ry_gc ry_io ry_json ry_net ry_thread ry_http)
 
 # ===== メイン実行ファイル =====
 add_executable(ry src/main.cpp)
 if(APPLE)
-    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib)
+    target_link_libraries(ry PRIVATE -Wl,-force_load,$<TARGET_FILE:ry_lib> ry_lib ${RY_NATIVE_LIBS})
 else()
-    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed atomic -Wl,--as-needed)
-    # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
-    # -rdynamic: プロセスシンボルを JIT に公開
-    # --no-as-needed atomic: __atomic_* シンボルを JIT 実行時に解決可能にするため強制ロード
+    # --no-as-needed: force-link native libs (JIT resolves their symbols at runtime,
+    # so the static linker sees no direct references and would drop them otherwise)
+    target_link_libraries(ry PRIVATE -Wl,--whole-archive ry_lib -Wl,--no-whole-archive -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed)
+    # -rdynamic: export process symbols so JIT DynamicLibrarySearchGenerator can find them
     target_link_options(ry PRIVATE -rdynamic)
 endif()
 
@@ -270,15 +262,16 @@ if(APPLE)
     target_link_libraries(ry_tests PRIVATE
         -Wl,-force_load,$<TARGET_FILE:ry_lib>
         ry_lib
+        ${RY_NATIVE_LIBS}
         GTest::gtest_main
         GTest::gmock
     )
 else()
     target_link_libraries(ry_tests PRIVATE
         -Wl,--whole-archive ry_lib -Wl,--no-whole-archive
+        -Wl,--no-as-needed ${RY_NATIVE_LIBS} atomic -Wl,--as-needed
         GTest::gtest_main
         GTest::gmock
-        -Wl,--no-as-needed atomic -Wl,--as-needed
     )
     # Linux: JIT の DynamicLibrarySearchGenerator がプロセスシンボルを参照できるようにする
     target_link_options(ry_tests PRIVATE -rdynamic)

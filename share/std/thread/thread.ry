@@ -1,93 +1,93 @@
 # Thread — spawn and join OS threads
-@native
+@native("thread")
 function thread_spawn(body: function() -> Unit) -> Thread
 
-@native
+@native("thread")
 function thread_join(thread: Thread) -> Result<Unit, Error>
 
 # Lock (mutex)
-@native
+@native("thread")
 function lock_new() -> Lock
 
-@native
+@native("thread")
 function lock_acquire(lock: Lock) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function lock_release(lock: Lock) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function lock_free(lock: Lock) -> Unit
 
 # RWLock (read-write lock)
-@native
+@native("thread")
 function rwlock_new() -> RWLock
 
-@native
+@native("thread")
 function rwlock_read_lock(rwlock: RWLock) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function rwlock_write_lock(rwlock: RWLock) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function rwlock_unlock(rwlock: RWLock) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function rwlock_free(rwlock: RWLock) -> Unit
 
 # Semaphore
-@native
+@native("thread")
 function semaphore_new(count: int) -> Result<Semaphore, Error>
 
-@native
+@native("thread")
 function semaphore_acquire(sem: Semaphore) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function semaphore_release(sem: Semaphore) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function semaphore_free(sem: Semaphore) -> Unit
 
 # Barrier
-@native
+@native("thread")
 function barrier_new(count: int) -> Result<Barrier, Error>
 
-@native
+@native("thread")
 function barrier_wait(barrier: Barrier) -> Result<Unit, Error>
 
-@native
+@native("thread")
 function barrier_free(barrier: Barrier) -> Unit
 
 # AtomicInt
-@native
+@native("thread")
 function atomic_int_new(value: int) -> AtomicInt
 
-@native
+@native("thread")
 function atomic_int_load(atomic: AtomicInt) -> int
 
-@native
+@native("thread")
 function atomic_int_store(atomic: AtomicInt, value: int) -> Unit
 
-@native
+@native("thread")
 function atomic_int_add(atomic: AtomicInt, delta: int) -> int
 
-@native
+@native("thread")
 function atomic_int_sub(atomic: AtomicInt, delta: int) -> int
 
-@native
+@native("thread")
 function atomic_int_cas(atomic: AtomicInt, expected: int, desired: int) -> bool
 
-@native
+@native("thread")
 function atomic_int_free(atomic: AtomicInt) -> Unit
 
 # AtomicBool
-@native
+@native("thread")
 function atomic_bool_new(value: bool) -> AtomicBool
 
-@native
+@native("thread")
 function atomic_bool_load(atomic: AtomicBool) -> bool
 
-@native
+@native("thread")
 function atomic_bool_store(atomic: AtomicBool, value: bool) -> Unit
 
-@native
+@native("thread")
 function atomic_bool_free(atomic: AtomicBool) -> Unit
