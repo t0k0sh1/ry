@@ -1460,12 +1460,20 @@ TEST(HttpSSRF, PrivateHostBenchmarking) {
     EXPECT_TRUE(__ry_is_private_host("198.18.0.1", 80));
 }
 
+TEST(HttpSSRF, PrivateHostBenchmarkingLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("198.18.0.0", 80));
+}
+
 TEST(HttpSSRF, PrivateHostBenchmarkingUpper) {
     EXPECT_TRUE(__ry_is_private_host("198.19.255.255", 80));
 }
 
 TEST(HttpSSRF, PrivateHostMulticast) {
     EXPECT_TRUE(__ry_is_private_host("224.0.0.1", 80));
+}
+
+TEST(HttpSSRF, PrivateHostMulticastLowerEdge) {
+    EXPECT_TRUE(__ry_is_private_host("224.0.0.0", 80));
 }
 
 TEST(HttpSSRF, PrivateHostMulticastUpper) {
@@ -1488,6 +1496,14 @@ TEST(HttpSSRF, PublicHostBelowCarrierGradeNAT) {
 
 TEST(HttpSSRF, PublicHostAboveCarrierGradeNAT) {
     EXPECT_FALSE(__ry_is_private_host("100.128.0.0", 80));
+}
+
+TEST(HttpSSRF, PublicHostBelowBenchmarking) {
+    EXPECT_FALSE(__ry_is_private_host("198.17.255.255", 80));
+}
+
+TEST(HttpSSRF, PublicHostAboveBenchmarking) {
+    EXPECT_FALSE(__ry_is_private_host("198.20.0.0", 80));
 }
 
 TEST(HttpSSRF, PublicHostBelowMulticast) {
