@@ -66,18 +66,18 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
             }
         }
     }
+    if (!matchedSig)
+        codegenError(std::string(package) + "::" + e.callee +
+                     " has no @native signature with arity " +
+                     std::to_string(entry->arity));
 
     // Emit and validate arguments
     std::vector<llvm::Value *> args;
     std::vector<llvm::Type *> paramLLVMTypes;
     for (int i = 0; i < entry->arity; i++) {
         llvm::Value *arg = emitExpr(*e.args[i]);
-        llvm::Type *expectedTy = ptrTy_; // default
-        std::string expectedTN = "str";
-        if (matchedSig && static_cast<size_t>(i) < matchedSig->params.size()) {
-            expectedTN = matchedSig->params[i].type_name;
-            expectedTy = resolveType(expectedTN);
-        }
+        const std::string &expectedTN = matchedSig->params[i].type_name;
+        llvm::Type *expectedTy = resolveType(expectedTN);
         if (arg->getType() != expectedTy)
             codegenError(e.callee + "() argument " + std::to_string(i) +
                          " requires " + expectedTN);
@@ -97,8 +97,7 @@ llvm::Value *CodeGen::emitTableDrivenNativeCall(
     llvm::Type *cRetTy;
     switch (entry->wrapping) {
     case ReturnWrapping::Direct: {
-        std::string retTN = matchedSig ? matchedSig->return_type_name : "Unit";
-        cRetTy = resolveType(retTN);
+        cRetTy = resolveType(matchedSig->return_type_name);
         break;
     }
     case ReturnWrapping::ResultPtr:
