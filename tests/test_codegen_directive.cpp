@@ -10,6 +10,17 @@ extern "C" const char *__ry_testlib_greet(const char *name) {
     return strdup(buf);
 }
 
+// Result<bool, Error> test symbol: returns status 0 (ok) with bool out-param.
+extern "C" int64_t __ry_testlib_check(const char *s, int64_t *out) {
+    *out = (strcmp(s, "yes") == 0) ? 1 : 0;
+    return 0;  // 0 = success
+}
+
+static thread_local char testlib_err_buf[64] = {0};
+extern "C" const char *__ry_testlib_get_last_error() {
+    return strdup(testlib_err_buf);
+}
+
 class DirectiveTest : public CodeGenTest {};
 
 // --- deriveRuntimeFnName tests ---
@@ -618,18 +629,19 @@ TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchBool) {
 }
 
 TEST_F(DirectiveTest, NativeFnLibraryGenericDispatchResultBool) {
-    // Result<bool, Error> must use ResultOutParam with i64 out-param,
-    // then truncate to i1. Verifies the codegen doesn't crash or miscompile.
-    // We compile-only since no matching C function exists in the test harness.
-    EXPECT_NO_THROW(compileSource(
-        "@native(\"mylib\")\n"
+    // Result<bool, Error> via the generic dispatch path with a real
+    // runtime symbol (__ry_testlib_check). Exercises the full ResultOutParam
+    // ABI: i64 status, i64 out-param, and the final i64→i1 truncation.
+    std::string output = runSource(
+        "@native(\"testlib\")\n"
         "function check(s: str) -> Result<bool, Error>\n"
-        "match check(\"test\"):\n"
+        "match check(\"yes\"):\n"
         "    case Ok(b):\n"
         "        print(b)\n"
         "    case Err(e):\n"
         "        print(e.message)\n"
-    ));
+    );
+    EXPECT_EQ(output, "true\n");
 }
 
 // ===== @inline tests =====
