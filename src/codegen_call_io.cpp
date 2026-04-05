@@ -208,7 +208,9 @@ llvm::Value *CodeGen::emitNetTimeout(const CallExpr &e) {
         codegenError(e.callee + "() requires TcpStream or TlsStream as first argument");
     auto *voidTy = llvm::Type::getVoidTy(*ctx_);
     auto fnTy = llvm::FunctionType::get(voidTy, {ptrTy_, i64Ty_}, false);
-    std::string prefix = isTlsStream(stream) ? "__ry_tls_" : "__ry_tcp_";
+    bool isTls = isTlsStream(stream);
+    std::string prefix = isTls ? "__ry_tls_" : "__ry_tcp_";
+    used_native_libraries_.insert(isTls ? "http" : "net");
     std::string rtName = e.callee;
     if (rtName == "set_receive_timeout") rtName = "set_recv_timeout";
     auto fn = mod_->getOrInsertFunction(prefix + rtName, fnTy);

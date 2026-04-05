@@ -63,6 +63,8 @@ if [ -n "$SRC_STD" ] && [ -d "$SRC_STD" ]; then
     # Clean up old lib/std layout only after successful install (migration)
     if [ "$NEW_LAYOUT" = 1 ]; then
         rm -rf "$RY_HOME/lib/std"
+        # rmdir only removes empty directories — safe when native libs
+        # (libry_*) are installed in $RY_HOME/lib (no-op in that case).
         rmdir "$RY_HOME/lib" 2>/dev/null || true
     fi
 fi
