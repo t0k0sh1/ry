@@ -1511,6 +1511,10 @@ TEST(HttpSSRF, PrivateAddrIPv6Multicast) {
     EXPECT_TRUE(__ry_is_private_addr((struct sockaddr *)&sin6));
 }
 
+TEST(HttpSSRF, PrivateAddrNullSockaddr) {
+    EXPECT_FALSE(__ry_is_private_addr(nullptr));
+}
+
 // --- Multipart form-data tests ---
 
 TEST(RuntimeHttp, FormFieldBasic) {
